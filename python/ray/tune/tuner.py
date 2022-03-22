@@ -81,7 +81,6 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                Type[Trainer],
                 Trainer,
             ]
         ] = None,
@@ -126,12 +125,12 @@ class Tuner:
         #  when a Tuner is restored and fit again?
         if not ray.util.client.ray.is_connected():
             tuner_internal = TunerInternal(restore_path=path)
-            return Tuner(tuner_internal=tuner_internal)
+            return Tuner(_tuner_internal=tuner_internal)
         else:
             tuner_internal = force_on_current_node(
                 ray.remote(num_cpus=0)(TunerInternal)
             ).remote(restore_path=path)
-            return Tuner(tuner_internal=tuner_internal)
+            return Tuner(_tuner_internal=tuner_internal)
 
     def fit(self) -> ResultGrid:
         """Executes hyperparameter tuning job as configured and returns result.
@@ -149,9 +148,6 @@ class Tuner:
         Please use tuner = Tuner.restore("/Users/xwjiang/ray_results/tuner_resume")
         to resume.
 
-        Exception that happens in non-essential integration blocks like during invoking
-        callbacks will not crash the whole run.
-
         Raises:
             TuneError: If errors occur executing the experiment that originate from
                 Tune.
@@ -162,19 +158,19 @@ class Tuner:
                 return self._local_tuner.fit()
             except Exception as e:
                 raise TuneError(
-                    f"Tune run failed."
+                    f"Tune run failed. "
                     f'Please use tuner = Tuner.restore("'
-                    f'{self._local_tuner.experiment_checkpoint_dir()}") to resume.'
+                    f'{self._local_tuner.get_experiment_checkpoint_dir()}") to resume.'
                 ) from e
         else:
             experiment_checkpoint_dir = ray.get(
-                self._remote_tuner.experiment_checkpoint_dir.remote()
+                self._remote_tuner.get_experiment_checkpoint_dir.remote()
             )
             try:
                 return ray.get(self._remote_tuner.fit.remote())
             except Exception as e:
                 raise TuneError(
-                    f"Tune run failed."
+                    f"Tune run failed. "
                     f'Please use tuner = Tuner.restore("'
-                    f'{experiment_checkpoint_dir()}") to resume.'
+                    f'{experiment_checkpoint_dir}") to resume.'
                 ) from e

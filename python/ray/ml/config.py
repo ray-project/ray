@@ -124,6 +124,9 @@ class RunConfig:
     This includes both running a Trainable by itself or running a hyperparameter
     tuning job on top of a Trainable (applies to each trial).
 
+    At resume, tune will automatically apply the same run config so that resumed
+    run uses the same run config as the original run.
+
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
@@ -131,11 +134,12 @@ class RunConfig:
             Defaults to ``~/ray_results``.
         callbacks: Callbacks to invoke.
             Refer to ray.tune.callback.Callback for more info.
+            Callbacks should be serializable.
+            Currently only supporting stateless Callback for resumed runs.
+            (Any state of the callback will not be checkpointed by Tune
+            and thus will not take effect in resumed runs).
     """
 
-    # TODO(xwjiang): Clarify RunConfig behavior across resume. Is one supposed to
-    #  reapply some of the args here? For callbacks, how do we enforce only stateless
-    #  callbacks?
     # TODO(xwjiang): Add more.
     name: Optional[str] = None
     local_dir: Optional[str] = None
