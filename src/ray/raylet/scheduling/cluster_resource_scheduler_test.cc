@@ -48,14 +48,6 @@ using namespace std;
 
 namespace ray {
 
-void addTaskResourceInstances(bool predefined,
-                              vector<double> allocation,
-                              uint64_t idx,
-                              TaskResourceInstances *task_allocation) {
-  std::vector<FixedPoint> allocation_fp = FixedPointVectorFromDouble(allocation);
-  task_allocation->Set(ResourceID(idx), allocation_fp);
-};
-
 ResourceRequest CreateResourceRequest(
     const absl::flat_hash_map<ResourceID, double> &resource_map) {
   ResourceRequest request;
@@ -474,8 +466,10 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   }
   // Custom resource missing, hard constraint violation.
   {
-    ResourceRequest resource_request = CreateResourceRequest(
-        {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID("custom100"), 5}});
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 5},
+                               {ResourceID::Memory(), 2},
+                               {ResourceID("custom100"), 5}});
     int64_t violations;
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
@@ -516,13 +510,13 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) 
           .GetAvailableResourceInstances();
 
   TaskResourceInstances expected_cluster_resources;
-  addTaskResourceInstances(true, {1., 1., 1.}, 0, &expected_cluster_resources);
-  addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
-  addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
+  expected_cluster_resources.Set(ResourceID::CPU(), {1., 1., 1.});
+  expected_cluster_resources.Set(ResourceID::Memory(), {4.});
+  expected_cluster_resources.Set(ResourceID::GPU(), {1., 1., 1., 1., 1.});
 
   ASSERT_EQ(expected_cluster_resources == available_cluster_resources, false);
 
-  addTaskResourceInstances(false, {8.}, 1, &expected_cluster_resources);
+  expected_cluster_resources.Set(ResourceID("custom1"), {8.});
 
   ASSERT_EQ(expected_cluster_resources == available_cluster_resources, true);
 }
@@ -548,22 +542,22 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
           .GetAvailableResourceInstances();
 
   TaskResourceInstances expected_cluster_resources;
-  addTaskResourceInstances(true, {3.}, 0, &expected_cluster_resources);
-  addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
-  addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
+  expected_cluster_resources.Set(ResourceID::CPU(), {3.});
+  expected_cluster_resources.Set(ResourceID::Memory(), {4.});
+  expected_cluster_resources.Set(ResourceID::GPU(), {1., 1., 1., 1., 1.});
 
   ASSERT_EQ(expected_cluster_resources == available_cluster_resources, false);
 
-  addTaskResourceInstances(false, {8.}, 1, &expected_cluster_resources);
+  expected_cluster_resources.Set(ResourceID("custom1"), {8.});
 
   ASSERT_EQ(expected_cluster_resources == available_cluster_resources, true);
 }
 
 TEST_F(ClusterResourceSchedulerTest, GetCPUInstancesDoubleTest) {
   TaskResourceInstances task_resources;
-  addTaskResourceInstances(true, {1., 1., 1.}, CPU, &task_resources);
-  addTaskResourceInstances(true, {4.}, MEM, &task_resources);
-  addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, GPU, &task_resources);
+  task_resources.Set(ResourceID::CPU(), {1., 1., 1.});
+  task_resources.Set(ResourceID::Memory(), {4.});
+  task_resources.Set(ResourceID::GPU(), {1., 1., 1., 1., 1.});
 
   std::vector<FixedPoint> cpu_instances = task_resources.Get(ResourceID::CPU());
   std::vector<FixedPoint> expected_cpu_instances{1., 1., 1.};
@@ -662,10 +656,11 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
     ClusterResourceScheduler resource_scheduler(
         scheduling::NodeID(0), node_resources, *gcs_client_);
 
-    ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 3},
-                                                              {ResourceID::Memory(), 2},
-                                                              {ResourceID::GPU(), 1.5},
-                                                              {ResourceID("custom1"), 2}});
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 3},
+                               {ResourceID::Memory(), 2},
+                               {ResourceID::GPU(), 1.5},
+                               {ResourceID("custom1"), 2}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -1423,9 +1418,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
       scheduling::NodeID("local"), {{"CPU", 4}, {"memory", 4}, {"GPU", 2}}, *gcs_client_);
   std::shared_ptr<TaskResourceInstances> cluster_resources =
       std::make_shared<TaskResourceInstances>();
-  addTaskResourceInstances(true, {2.}, 0, cluster_resources.get());
-  addTaskResourceInstances(true, {4.}, 1, cluster_resources.get());
-  addTaskResourceInstances(true, {1., 1.}, 2, cluster_resources.get());
+  cluster_resources->Set(ResourceID::CPU(), {2.});
+  cluster_resources->Set(ResourceID::Memory(), {4.});
+  cluster_resources->Set(ResourceID::GPU(), {1., 1.});
   std::string serialized_string = cluster_resources->SerializeAsJson();
   std::string expected_serialized_string =
       R"({"CPU":20000,"memory":40000,"GPU":[10000, 10000]})";
@@ -1439,9 +1434,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   )");
   std::shared_ptr<TaskResourceInstances> cluster_instance_resources =
       std::make_shared<TaskResourceInstances>();
-  addTaskResourceInstances(true, {1., 1.}, 0, cluster_instance_resources.get());
-  addTaskResourceInstances(true, {4.}, 1, cluster_instance_resources.get());
-  addTaskResourceInstances(true, {1., 1.}, 2, cluster_instance_resources.get());
+  cluster_resources->Set(ResourceID::CPU(), {1., 1.});
+  cluster_resources->Set(ResourceID::Memory(), {4.});
+  cluster_resources->Set(ResourceID::GPU(), {1., 1.});
   ClusterResourceScheduler resource_scheduler_cpu_instance(
       scheduling::NodeID("local"), {{"CPU", 4}, {"memory", 4}, {"GPU", 2}}, *gcs_client_);
   std::string instance_serialized_string = cluster_instance_resources->SerializeAsJson();
