@@ -147,19 +147,20 @@ def test_autoscaler_shutdown_node_http_everynode(
     a = Placeholder.options(resources={"IS_WORKER": 1}).remote()
     assert ray.get(a.ready.remote()) == 1
 
-    # 2 proxy, 1 controller, and one Placeholder.
+    # 2 proxies, 1 controller, and one placeholder.
     wait_for_condition(lambda: len(ray.state.actors()) == 4)
     assert len(ray.nodes()) == 2
 
+    # Now make sure the placeholder actor exits.
     ray.kill(a)
-    # the http proxy on worker node should exit.
+    # The http proxy on worker node should exit as well.
     wait_for_condition(
         lambda: len(
             list(filter(lambda a: a["State"] == "ALIVE", ray.state.actors().values()))
         )
         == 2
     )
-    # Only head node should exist
+    # Only head node should exist now.
     wait_for_condition(
         lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
     )
