@@ -80,7 +80,10 @@ class NodeSyncConnection {
                      instrumented_io_context &io_context,
                      std::string node_id);
 
-  /// Push a message to the sending queue to be sent later.
+  /// Push a message to the sending queue to be sent later. Some message
+  /// might be dropped if the module think the target node has already got the
+  /// information. Usually it'll happen when the message has the same node id
+  /// as the target or the message is sent from this node.
   ///
   /// \param message The message to be sent.
   ///
@@ -164,13 +167,17 @@ class ServerSyncConnection : public NodeSyncConnection {
                                 RaySyncMessages *response);
 
  protected:
+  /// Send the message from the pending queue to the target node.
+  /// It'll send nothing unless there is a request from the remote node
+  /// for the sending request.
+  /// TODO (iycheng): Unify the sending algorithm when we migrate to gRPC streaming
   void DoSend();
 
-  // These two fields are RPC related. When the server got long-polling requests,
-  // these two fields will be set so that it can be used to send message.
-  // After the message being sent, these two fields will be set to be empty again.
-  // When the periodical timer wake up, it'll check whether these two fields are set
-  // and it'll only send data when these are set.
+  /// These two fields are RPC related. When the server got long-polling requests,
+  /// these two fields will be set so that it can be used to send message.
+  /// After the message being sent, these two fields will be set to be empty again.
+  /// When the periodical timer wake up, it'll check whether these two fields are set
+  /// and it'll only send data when these are set.
   RaySyncMessages *response_ = nullptr;
   grpc::ServerUnaryReactor *unary_reactor_ = nullptr;
 };
@@ -183,6 +190,8 @@ class ClientSyncConnection : public NodeSyncConnection {
                        std::shared_ptr<grpc::Channel> channel);
 
  protected:
+  /// Send the message from the pending queue to the target node.
+  /// It'll use gRPC to send the message directly.
   void DoSend();
 
   /// Start to send long-polling request to remote nodes.
@@ -190,10 +199,11 @@ class ClientSyncConnection : public NodeSyncConnection {
 
   /// Stub for this connection.
   std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub_;
+
+  /// Where the received message is stored.
   ray::rpc::syncer::RaySyncMessages in_message_;
-  StartSyncRequest start_sync_request_;
-  StartSyncResponse start_sync_response_;
-  bool connection_created_ = false;
+
+  /// Dummy request for long-polling.
   DummyRequest dummy_;
 };
 

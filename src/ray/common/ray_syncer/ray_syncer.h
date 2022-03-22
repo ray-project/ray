@@ -140,7 +140,13 @@ class RaySyncer {
   /// Get the io_context used by RaySyncer.
   instrumented_io_context &GetIOContext() { return io_context_; }
 
-  NodeSyncConnection *GetSyncConnection(const std::string &node_id) {
+  /// Get the SyncConnection of a node.
+  ///
+  /// \param node_id The node id to lookup.
+  ///
+  /// \return nullptr if it doesn't exist, otherwise, the connection associated with the
+  /// node.
+  NodeSyncConnection *GetSyncConnection(const std::string &node_id) const {
     auto iter = sync_connections_.find(node_id);
     if (iter == sync_connections_.end()) {
       return nullptr;

@@ -77,6 +77,9 @@ NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
 
 bool NodeSyncConnection::PushToSendingQueue(
     std::shared_ptr<const RaySyncMessage> message) {
+  // Try to filter out the messages the target node already has.
+  // Usually it'll be the case when the message is generated from the
+  // target node or it's sent from the target node.
   if (message->node_id() == GetNodeId()) {
     // Skip the message when it's about the node of this connection.
     return false;
