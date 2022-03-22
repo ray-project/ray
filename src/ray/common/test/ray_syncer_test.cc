@@ -226,7 +226,7 @@ struct SyncerServer {
           msg.set_node_id(syncer->GetNodeId());
           std::string dbg_message;
           google::protobuf::util::MessageToJsonString(msg, &dbg_message);
-          RAY_LOG(ERROR) << "Snapshot:" << dbg_message;
+          RAY_LOG(LOG) << "Snapshot:" << dbg_message;
           snapshot_taken++;
           return std::make_optional(std::move(msg));
         }
@@ -341,7 +341,6 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
 }
 
 TEST(SyncerTest, Test1To1) {
-  RAY_LOG(ERROR) << ":::::::: START ::::::";
   // s1: reporter: RayComponentId::RESOURCE_MANAGER
   // s1: receiver: RayComponentId::SCHEDULER, RayComponentId::RESOURCE_MANAGER
   auto s1 = SyncerServer("19990", false);
@@ -440,7 +439,7 @@ TEST(SyncerTest, Test1To1) {
         ss << "---" << std::endl;
         ss << s1 << std::endl;
         ss << s2 << std::endl;
-        RAY_LOG(ERROR) << ss.str();
+        RAY_LOG(LOG) << ss.str();
         return s1.GetReceivedVersions(s2.syncer->GetNodeId()) == s2.local_versions &&
                s2.GetReceivedVersions(s1.syncer->GetNodeId())[0] == s1.local_versions[0];
       },
