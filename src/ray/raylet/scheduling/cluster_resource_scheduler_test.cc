@@ -1403,6 +1403,7 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) {
+  SetUnitInstanceResourceIds({ResourceID("GPU")});
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID("local"), {{"CPU", 4}, {"memory", 4}, {"GPU", 2}}, *gcs_client_);
   std::shared_ptr<TaskResourceInstances> cluster_resources =
@@ -1418,9 +1419,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   SetUnitInstanceResourceIds({ResourceID::CPU(), ResourceID::GPU()});
   std::shared_ptr<TaskResourceInstances> cluster_instance_resources =
       std::make_shared<TaskResourceInstances>();
-  cluster_resources->Set(ResourceID::CPU(), {1., 1.});
-  cluster_resources->Set(ResourceID::Memory(), {4.});
-  cluster_resources->Set(ResourceID::GPU(), {1., 1.});
+  cluster_instance_resources->Set(ResourceID::CPU(), {1., 1.});
+  cluster_instance_resources->Set(ResourceID::Memory(), {4.});
+  cluster_instance_resources->Set(ResourceID::GPU(), {1., 1.});
   ClusterResourceScheduler resource_scheduler_cpu_instance(
       scheduling::NodeID("local"), {{"CPU", 4}, {"memory", 4}, {"GPU", 2}}, *gcs_client_);
   std::string instance_serialized_string = cluster_instance_resources->SerializeAsJson();
