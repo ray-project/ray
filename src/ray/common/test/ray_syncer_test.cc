@@ -420,6 +420,8 @@ TEST(SyncerTest, Test1To1) {
   std::uniform_int_distribution<> choose_component(0, 1);
   size_t s1_updated = 0;
   size_t s2_updated = 0;
+
+  auto start = steady_clock::now();
   for (int i = 0; i < 10000; ++i) {
     if (choose_component(gen) == 0) {
       s1.local_versions[0]++;
@@ -433,6 +435,15 @@ TEST(SyncerTest, Test1To1) {
     }
   }
 
+  auto end = steady_clock::now();
+
+  // Max messages can be send during this period of time.
+  // +1 is for corner cases.
+  auto max_sends =
+      duration_cast<milliseconds>(end - start).count() /
+          RayConfig::instance().raylet_report_resources_period_milliseconds() +
+      1;
+
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, &s2]() {
         std::stringstream ss;
@@ -444,9 +455,15 @@ TEST(SyncerTest, Test1To1) {
                s2.GetReceivedVersions(s1.syncer->GetNodeId())[0] == s1.local_versions[0];
       },
       5));
+  // s2 has two reporters + 3 for the ones send before the measure
+  ASSERT_LT(s1.GetNumConsumedMessages(s2.syncer->GetNodeId()), max_sends * 2 + 3);
+  // s1 has one reporter + 1 for the one send before the measure
+  ASSERT_LT(s2.GetNumConsumedMessages(s1.syncer->GetNodeId()), max_sends + 3);
 }
 
-// TEST(SyncerTest, Test1ToN) { auto server = SyncerServer("9990"); }
+// TEST(SyncerTest, Test1ToN) {
+//   auto server = SyncerServer("9990");
+// }
 
 // TEST(SyncerTest, TestMToN) { auto server = SyncerServer("9990"); }
 
