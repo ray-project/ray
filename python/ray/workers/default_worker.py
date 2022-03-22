@@ -164,21 +164,6 @@ if __name__ == "__main__":
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
-    # NOTE(suquark): We must initialize the external storage before we
-    # connect to raylet. Otherwise we may receive requests before the
-    # external storage is intialized.
-    if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
-        from ray import external_storage
-        from ray.internal import storage
-
-        storage._init_storage(args.storage, is_head=False)
-        if args.object_spilling_config:
-            object_spilling_config = base64.b64decode(args.object_spilling_config)
-            object_spilling_config = json.loads(object_spilling_config)
-        else:
-            object_spilling_config = {}
-        external_storage.setup_external_storage(object_spilling_config)
-
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
@@ -204,6 +189,24 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True,
     )
+
+    # NOTE(suquark): We must initialize the external storage before we
+    # connect to raylet. Otherwise we may receive requests before the
+    # external storage is intialized.
+    if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
+        from ray import external_storage
+        from ray.internal import storage
+
+        storage._init_storage(args.storage, is_head=False)
+        if args.object_spilling_config:
+            object_spilling_config = base64.b64decode(args.object_spilling_config)
+            object_spilling_config = json.loads(object_spilling_config)
+        else:
+            object_spilling_config = {}
+        external_storage.setup_external_storage(
+            object_spilling_config, node.session_name
+        )
+
     ray.worker._global_node = node
     ray.worker.connect(
         node,

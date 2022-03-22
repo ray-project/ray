@@ -77,7 +77,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
@@ -92,7 +92,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
 TEST_F(NewPlacementGroupResourceManagerTest,
        TestNewPrepareBundleWithInsufficientResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 2.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
@@ -106,7 +106,7 @@ TEST_F(NewPlacementGroupResourceManagerTest,
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
@@ -137,7 +137,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -161,7 +161,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndReturn) {
   // 1. create two bundles spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto first_bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -234,7 +234,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare) {
   // 1. create one bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
@@ -263,7 +263,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) {
   // 1. create one bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -324,7 +324,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   // 1. create a placement group spec with 4 bundles and each required 1 CPU.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);
@@ -383,7 +383,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
   // 1. create a placement group spec with 4 bundles and each required 1 CPU.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);

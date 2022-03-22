@@ -9,7 +9,7 @@ import time
 import types
 import warnings
 
-from typing import Optional, List
+from typing import Optional, List, Callable, Union
 
 from shlex import quote
 
@@ -33,12 +33,15 @@ def noop(*args):
     return
 
 
-def get_sync_client(sync_function, delete_function=None) -> Optional["SyncClient"]:
+def get_sync_client(
+    sync_function: Optional[Union[str, Callable]],
+    delete_function: Optional[Union[str, Callable]] = None,
+) -> Optional["SyncClient"]:
     """Returns a sync client.
 
     Args:
-        sync_function (Optional[str|function]): Sync function.
-        delete_function (Optional[str|function]): Delete function. Must be
+        sync_function: Sync function.
+        delete_function: Delete function. Must be
             the same type as sync_function if it is provided.
 
     Raises:
@@ -61,11 +64,11 @@ def get_sync_client(sync_function, delete_function=None) -> Optional["SyncClient
     return client_cls(sync_function, sync_function, delete_function)
 
 
-def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
+def get_cloud_sync_client(remote_path: str) -> "CommandBasedClient":
     """Returns a CommandBasedClient that can sync to/from remote storage.
 
     Args:
-        remote_path (str): Path to remote storage (S3, GS or HDFS).
+        remote_path: Path to remote storage (S3, GS or HDFS).
 
     Raises:
         ValueError if malformed remote_dir.
@@ -114,13 +117,13 @@ def get_cloud_sync_client(remote_path) -> "CommandBasedClient":
 class SyncClient:
     """Client interface for interacting with remote storage options."""
 
-    def sync_up(self, source, target, exclude: Optional[List] = None):
+    def sync_up(self, source: str, target: str, exclude: Optional[List] = None):
         """Syncs up from source to target.
 
         Args:
-            source (str): Source path.
-            target (str): Target path.
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            source: Source path.
+            target: Target path.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
@@ -128,13 +131,13 @@ class SyncClient:
         """
         raise NotImplementedError
 
-    def sync_down(self, source, target, exclude: Optional[List] = None):
+    def sync_down(self, source: str, target: str, exclude: Optional[List] = None):
         """Syncs down from source to target.
 
         Args:
-            source (str): Source path.
-            target (str): Target path.
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            source: Source path.
+            target: Target path.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
@@ -142,11 +145,11 @@ class SyncClient:
         """
         raise NotImplementedError
 
-    def delete(self, target):
+    def delete(self, target: str):
         """Deletes target.
 
         Args:
-            target (str): Target path.
+            target: Target path.
 
         Returns:
             True if delete initiation successful, False otherwise.
@@ -231,15 +234,15 @@ class CommandBasedClient(SyncClient):
         """Syncs between two directories with the given command.
 
         Arguments:
-            sync_up_template (str): A runnable string template; needs to
+            sync_up_template: A runnable string template; needs to
                 include replacement fields ``{source}``, ``{target}``, and
                 ``{options}``.
-            sync_down_template (str): A runnable string template; needs to
+            sync_down_template: A runnable string template; needs to
                 include replacement fields ``{source}``, ``{target}``, and
                 ``{options}``.
-            delete_template (Optional[str]): A runnable string template; needs
+            delete_template: A runnable string template; needs
                 to include replacement field ``{target}``. Noop by default.
-            exclude_template (Optional[str]): A pattern with possible
+            exclude_template: A pattern with possible
                 replacement fields ``{pattern}`` and ``{regex_pattern}``.
                 Will replace ``{options}}`` in the sync up/down templates
                 if files/directories to exclude are passed.
@@ -257,11 +260,11 @@ class CommandBasedClient(SyncClient):
         # Keep track of last command for retry
         self._last_cmd = None
 
-    def set_logdir(self, logdir):
+    def set_logdir(self, logdir: str):
         """Sets the directory to log sync execution output in.
 
         Args:
-            logdir (str): Log directory.
+            logdir: Log directory.
         """
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync_out", dir=logdir, suffix=".log", delete=False
