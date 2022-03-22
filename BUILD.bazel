@@ -1076,21 +1076,20 @@ cc_test(
     ],
 )
 
-# TODO fix
-# cc_test(
-#     name = "cluster_resource_scheduler_test",
-#     size = "small",
-#     srcs = [
-#         "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
-#     ],
-#     copts = COPTS,
-#     tags = ["team:core"],
-#     deps = [
-#         ":ray_mock",
-#         ":raylet_lib",
-#         "@com_google_googletest//:gtest_main",
-#     ],
-# )
+cc_test(
+    name = "cluster_resource_scheduler_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
 
 cc_test(
     name = "scheduling_policy_test",
