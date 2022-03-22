@@ -177,10 +177,11 @@ Note that the count has been reset to zero because the new version of ``Counter`
   {"count": 0}
 
 Serve also lets you set configurations in the ``@serve.deployment`` decorator
-or using a YAML config file. For example, you can set the
+or in a YAML config file. For example, you can set the
 ``max_concurrent_queries`` for your application:
 
 .. code-block:: python
+
   # File name: counter_app.py
 
   @serve.deployment(
@@ -192,8 +193,7 @@ or using a YAML config file. For example, you can set the
 
   Counter.deploy()
 
-Alternatively, instead of modifying the decorator, you can write a YAML
-config file:
+Instead of modifying the decorator, you can write a YAML config file:
 
 .. code-block:: yaml
   
@@ -212,10 +212,9 @@ deploy ``Counter``:
   
   $ serve run counter_config.yaml
 
-This updates ``Counter`` just like using ``Counter.deploy()``, but you don't
-need to write new update scripts in Python. You can modify the deployment's
-settings in the config file, deploy it via CLI, and continue making requests
-to it:
+This updates ``Counter`` just like ``Counter.deploy()``, but it doesn't require
+Python update scripts. You can modify the deployment's settings in the config
+file, deploy it via CLI, and make requests to it:
 
 .. code-block:: bash
 
