@@ -1,6 +1,6 @@
 import copy
 import os
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 from ray_release.buildkite.concurrency import CONCURRENY_GROUPS, get_concurrency_group
 from ray_release.config import Test, get_test_env_var
@@ -8,7 +8,7 @@ from ray_release.exception import ReleaseTestConfigError
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
-DEFAULT_STEP_TEMPLATE = {
+DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
         "ANYSCALE_CLOUD_ID": "cld_4F7k8814aZzGG8TNUGPKnc",
         "ANYSCALE_PROJECT": "prj_2xR6uT6t7jJuu1aCwWMsle",
@@ -84,12 +84,18 @@ def get_step(
     step["priority"] = priority_val
 
     # If a test is not stable, allow to soft fail
-    if not test.get("stable", True):
+    stable = test.get("stable", True)
+    if not stable:
         step["soft_fail"] = True
+        full_label = "(unstable) "
+    else:
+        full_label = ""
 
-    step["label"] = test["name"]
+    full_label += test["name"]
     if smoke_test:
-        step["label"] += " [smoke test] "
-    step["label"] += f" ({label})"
+        full_label += " [smoke test] "
+    full_label += f" ({label})"
+
+    step["label"] = full_label
 
     return step
