@@ -296,7 +296,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   const auto &right_node_it = std::find_if(
       candidate_nodes.begin(),
       candidate_nodes.end(),
-      [this, &aggregated_resource_request](const auto &entry) {
+      [&aggregated_resource_request](const auto &entry) {
         return entry.second->GetLocalView().IsAvailable(aggregated_resource_request);
       });
 

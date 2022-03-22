@@ -106,7 +106,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
         bundles[i]);
   }
 
-  for (const auto &[node_id, bundles_per_node] : node_to_bundles) {
+  for (const auto &entry : node_to_bundles) {
+    const auto &node_id = entry.first;
+    const auto &bundles_per_node = entry.second;
     for (const auto &bundle : bundles_per_node) {
       lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
     }
