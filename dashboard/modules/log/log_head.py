@@ -3,6 +3,9 @@ import logging
 import aiohttp.web
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private.utils import init_grpc_channel
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
 from ray import ray_constants
@@ -113,6 +116,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         # We disable auto_decompress when forward / proxy log url.
         self._proxy_session = aiohttp.ClientSession(auto_decompress=False)
         log_utils.register_mimetypes()
+        self._http_stubs = {}
         self._stubs = {}
         DataSource.agents.signal.append(self._update_stubs)
 
@@ -120,19 +124,24 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         if change.old:
             node_id, _ = change.old
             ip = DataSource.node_id_to_ip[node_id]
-            self._stubs.pop(ip)
+            self._http_stubs.pop(ip)
+            self._stubs.pop(node_id)
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
 
-            # options = (("grpc.enable_http_proxy", 0),)
-            # channel = ray._private.utils.init_grpc_channel(
-            #     f"{ip}:{ports[1]}", options=options, asynchronous=True
-            # )
-            # stub = reporter_pb2_grpc.ReporterServiceStub(channel)
+            options = (("grpc.enable_http_proxy", 0),)
+            channel = init_grpc_channel(
+                f"{ip}:{ports[1]}", options=options, asynchronous=True
+            )
+            stub = reporter_pb2_grpc.LogServiceStub(channel)
 
             # Add HTTP address
-            self._stubs[ip] = {"node_id": node_id, "address": f"http://{ip}:{ports[0]}"}
+            self._http_stubs[ip] = {
+                "node_id": node_id,
+                "address": f"http://{ip}:{ports[0]}",
+            }
+            self._stubs[node_id] = stub
 
     @staticmethod
     async def get_logs_json_index(node_info, filters):
@@ -198,10 +207,11 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         node_id = req.query.get("node_id", None)
         filters = req.query.get("filters", "").split(",")
         response = {}
-        while self._stubs == {}:
+        while self._http_stubs == {}:
             await asyncio.sleep(0.5)
         tasks = []
-        for node_info in self._stubs.values():
+        # TODO: check this is in fact running in parallel
+        for node_info in self._http_stubs.values():
             if node_id is None or (node_id and node_id == node_info["node_id"]):
 
                 async def coro():
@@ -216,22 +226,46 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
     @routes.get("/v1/api/logs/file/{node_id}/{log_file_name}")
     async def handle_get_log(self, req):
         node_id = req.match_info.get("node_id", None)
+        lines = req.query.get("lines", None)
+        lines = int(lines) if lines else None
         log_file_name = req.match_info.get("log_file_name", None)
-        while self._stubs == {}:
-            await asyncio.sleep(0.5)
-        matches = list(
-            filter(lambda info: node_id == info["node_id"], self._stubs.values())
-        )
-        if len(matches) != 1:
-            raise aiohttp.web.HTTPNotFound()
-        addr = matches[0]["address"]
-        import requests
 
-        return aiohttp.web.Response(
-            text=requests.get(
-                f"{addr}/v1/api/logs/agent/file/{log_file_name}?{req.query_string}"
-            ).text
-        )
+        if self.USE_GRPC:
+            while self._stubs == {}:
+                await asyncio.sleep(0.5)
+            if node_id not in self._stubs:
+                # Better error response here
+                raise aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
+
+            response = aiohttp.web.StreamResponse()
+            response.content_type = 'text/plain'
+            await response.prepare(req)
+
+            async for log_response in self._stubs[node_id].LogFile(
+                reporter_pb2.LogFileRequest(log_file_name=log_file_name, lines=lines)
+            ):
+                await response.write(log_response.data)
+
+            await response.write_eof()
+            return response
+        else:
+            while self._http_stubs == {}:
+                await asyncio.sleep(0.5)
+            matches = list(
+                filter(
+                    lambda info: node_id == info["node_id"], self._http_stubs.values()
+                )
+            )
+            if len(matches) != 1:
+                raise aiohttp.web.HTTPNotFound()
+            addr = matches[0]["address"]
+            import requests
+
+            return aiohttp.web.Response(
+                text=requests.get(
+                    f"{addr}/v1/api/logs/agent/file/{log_file_name}?{req.query_string}"
+                ).text
+            )
 
     # This creates a websocket session which first sends ?lines=x lines from
     # end of log file
@@ -241,11 +275,18 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
     async def handle_stream_log(self, req):
         node_id = req.match_info.get("node_id", None)
         log_file_name = req.match_info.get("log_file_name", None)
-        while self._stubs == {}:
+
+        lines = req.match_info.get("lines", None)
+        lines = int(lines) if lines else None
+
+        interval = req.match_info.get("interval", None)
+        interval = float(interval) if interval else None
+
+        while self._http_stubs == {}:
             await asyncio.sleep(0.5)
 
         matches = list(
-            filter(lambda info: node_id == info["node_id"], self._stubs.values())
+            filter(lambda info: node_id == info["node_id"], self._http_stubs.values())
         )
         if len(matches) != 1:
             raise aiohttp.web.HTTPNotFound()
@@ -253,19 +294,29 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
         ws = aiohttp.web.WebSocketResponse()
         await ws.prepare(req)
-        if
-        async with aiohttp.ClientSession(auto_decompress=False) as session:
-            ws_client = await session.ws_connect(
-                f"{addr}/v1/api/logs/agent/stream/{log_file_name}?{req.query_string}"
-            )
+        if self.USE_GRPC:
+            async for log_response in self._stubs[node_id].LogStream(
+                reporter_pb2.LogStreamRequest(
+                    file=reporter_pb2.LogFileRequest(
+                        log_file_name=log_file_name, lines=lines
+                    ),
+                    interval=interval,
+                )
+            ):
+                await ws.send_bytes(log_response.data)
+        else:
+            async with aiohttp.ClientSession(auto_decompress=False) as session:
+                ws_client = await session.ws_connect(
+                    f"{addr}/v1/api/logs/agent/stream/{log_file_name}?{req.query_string}"
+                )
 
-            while True:
-                msg = await ws_client.receive()
-                if msg.type != aiohttp.WSMsgType.BINARY:
-                    await ws.send_bytes(b"Data could not be read from agent")
-                    break
-                asyncio.sleep(0.5)
-                await ws.send_bytes(msg.data)
+                while True:
+                    msg = await ws_client.receive()
+                    if msg.type != aiohttp.WSMsgType.BINARY:
+                        await ws.send_bytes(b"Data could not be read from agent")
+                        break
+                    asyncio.sleep(0.5)
+                    await ws.send_bytes(msg.data)
         return ws
 
     async def run(self, server):

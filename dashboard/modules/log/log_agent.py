@@ -3,6 +3,8 @@ import logging
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 import aiohttp.web as web
 import asyncio
 
@@ -98,6 +100,66 @@ class LogAgentV1(dashboard_utils.DashboardAgentModule):
         return ws
 
 
+FILE_BLOCK_SIZE = 8192
+
+
+class LogAgentV1Grpc(
+    dashboard_utils.DashboardAgentModule, reporter_pb2_grpc.ReporterServiceServicer
+):
+    def __init__(self, dashboard_agent):
+        super().__init__(dashboard_agent)
+        log_utils.register_mimetypes()
+
+    async def run(self, server):
+        if server:
+            reporter_pb2_grpc.add_LogServiceServicer_to_server(self, server)
+
+    @staticmethod
+    def is_minimal_module():
+        return False
+
+    async def LogFile(self, request, context):
+        lines = request.lines if request.lines else 1000
+        log_file_name = request.log_file_name
+
+        with open(f"{self._dashboard_agent.log_dir}/{log_file_name}", "rb") as f:
+            # If requesting the whole file, we stream the file since it may be large.
+            if lines == -1:
+                while True:
+                    bytes = f.read(FILE_BLOCK_SIZE)
+                    if bytes == b"":
+                        break
+                    yield reporter_pb2.LogReply(data=bytes)
+            else:
+                bytes, end = tail(f, lines)
+                yield reporter_pb2.LogReply(data=bytes)
+
+    async def LogStream(self, request, context):
+        lines = request.file.lines if request.file.lines else 1000
+        log_file_name = request.file.log_file_name
+        interval = request.interval if request.interval else 0.5
+
+        with open(f"{self._dashboard_agent.log_dir}/{log_file_name}", "rb") as f:
+            # If requesting the whole file, we stream the file since it may be large.
+            if lines == -1:
+                while True:
+                    bytes = f.read(FILE_BLOCK_SIZE)
+                    end = f.tell()
+                    if bytes == b"":
+                        break
+                    yield reporter_pb2.LogReply(data=bytes)
+            else:
+                bytes, end = tail(f, lines)
+                yield reporter_pb2.LogReply(data=bytes)
+            f.seek(end)
+
+            while True:
+                await asyncio.sleep(interval)
+                bytes = f.read()
+                if bytes != b"":
+                    yield reporter_pb2.LogReply(data=bytes)
+
+
 def tail(f, lines=1000):
     """
     Inspired by: https://stackoverflow.com/a/136368/8299684
@@ -126,4 +188,5 @@ def tail(f, lines=1000):
         block_end_byte -= BLOCK_SIZE
         block_number -= 1
     all_read_text = b"".join(reversed(blocks))
+    return b"\n".join(all_read_text.splitlines()[-total_lines_wanted:]), last_byte_read
     return b"\n".join(all_read_text.splitlines()[-total_lines_wanted:]), last_byte_read
