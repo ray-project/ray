@@ -6,7 +6,10 @@ from google.protobuf import json_format
 from copy import deepcopy
 
 import ray
-from ray.core.generated.runtime_env_common_pb2 import RuntimeEnv as ProtoRuntimeEnv
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnv as ProtoRuntimeEnv,
+    RuntimeEnvConfig as ProtoRuntimeEnvConfig,
+)
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin, encode_plugin_uri
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.utils import import_attr
@@ -16,6 +19,7 @@ from ray._private.runtime_env.conda import (
 
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray.util.annotations import PublicAPI
+from ray.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 
 
 logger = logging.getLogger(__name__)
@@ -87,6 +91,96 @@ def _parse_proto_plugin_runtime_env(
         runtime_env_dict["plugins"] = dict()
         for plugin in runtime_env.python_runtime_env.plugin_runtime_env.plugins:
             runtime_env_dict["plugins"][plugin.class_path] = json.loads(plugin.config)
+
+
+@PublicAPI(stability="beta")
+class RuntimeEnvConfig(dict):
+    """Used to specify configuration options for a runtime environment.
+
+    The config is not included when calculating the runtime_env hash,
+    which means that two runtime_envs with the same options but different
+    configs are considered the same for caching purposes.
+
+    Args:
+        setup_timeout_seconds (int): The timeout of runtime environment
+            creation, timeout is in seconds. The value `-1` means disable
+            timeout logic, except `-1`, `setup_timeout_seconds` cannot be
+            less than or equal to 0. The default value of `setup_timeout_seconds`
+            is 600 seconds.
+    """
+
+    known_fields: Set[str] = {"setup_timeout_seconds"}
+
+    _default_config: Dict = {
+        "setup_timeout_seconds": DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+    }
+
+    def __init__(
+        self, setup_timeout_seconds: int = DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
+    ):
+        super().__init__()
+        if not isinstance(setup_timeout_seconds, int):
+            raise TypeError(
+                "setup_timeout_seconds must be of type int, "
+                f"got: {type(setup_timeout_seconds)}"
+            )
+        elif setup_timeout_seconds <= 0 and setup_timeout_seconds != -1:
+            raise ValueError(
+                "setup_timeout_seconds must be greater than zero "
+                f"or equals to -1, got: {setup_timeout_seconds}"
+            )
+        self["setup_timeout_seconds"] = setup_timeout_seconds
+
+    @staticmethod
+    def parse_and_validate_runtime_env_config(
+        config: Union[Dict, "RuntimeEnvConfig"]
+    ) -> "RuntimeEnvConfig":
+        if isinstance(config, RuntimeEnvConfig):
+            return config
+        elif isinstance(config, Dict):
+            unknown_fields = set(config.keys()) - RuntimeEnvConfig.known_fields
+            if len(unknown_fields):
+                logger.warning(
+                    "The following unknown entries in the runtime_env_config "
+                    f"dictionary will be ignored: {unknown_fields}."
+                )
+            config_dict = dict()
+            for field in RuntimeEnvConfig.known_fields:
+                if field in config:
+                    config_dict[field] = config[field]
+            return RuntimeEnvConfig(**config_dict)
+        else:
+            raise TypeError(
+                "runtime_env['config'] must be of type dict or RuntimeEnvConfig, "
+                f"got: {type(config)}"
+            )
+
+    @classmethod
+    def default_config(cls):
+        return RuntimeEnvConfig(**cls._default_config)
+
+    def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
+        runtime_env_config = ProtoRuntimeEnvConfig()
+        runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
+        return runtime_env_config
+
+    @classmethod
+    def from_proto(cls, runtime_env_config: ProtoRuntimeEnvConfig):
+        setup_timeout_seconds = runtime_env_config.setup_timeout_seconds
+        # Cause python class RuntimeEnvConfig has validate to avoid
+        # setup_timeout_seconds equals zero, so setup_timeout_seconds
+        # on RuntimeEnvConfig is zero means other Language(except python)
+        # dosn't assign value to setup_timeout_seconds. So runtime_env_agent
+        # assign the default value to setup_timeout_seconds.
+        if setup_timeout_seconds == 0:
+            setup_timeout_seconds = cls._default_config["setup_timeout_seconds"]
+        return cls(setup_timeout_seconds=setup_timeout_seconds)
+
+
+# Due to circular reference, field config can only be assigned a value here
+OPTION_TO_VALIDATION_FN[
+    "config"
+] = RuntimeEnvConfig.parse_and_validate_runtime_env_config
 
 
 @PublicAPI
@@ -173,8 +267,8 @@ class RuntimeEnv(dict):
             containing the path to a pip requirements.txt file, or a python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a
             list of pip packages, 2) ``pip_check`` (optional, bool): whether enable
-            pip check at the end of pip install, default True.
-            3) ``pip_version`` (optional, str): the version of pip, ray will spell
+            pip check at the end of pip install, defaults to False.
+            3) ``pip_version`` (optional, str): the version of pip, Ray will spell
             the package name "pip" in front of the ``pip_version`` to form the final
             requirement string, the syntax of a requirement specifier is defined in
             full in PEP 508.
@@ -188,14 +282,16 @@ class RuntimeEnv(dict):
             This field cannot be specified at the same time as the 'pip' field.
             To use pip with conda, please specify your pip dependencies within
             the conda YAML config:
-            https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-e
-            nvironments.html#create-env-file-manually
+            https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually
         container (dict): Require a given (Docker) container image,
             The Ray worker process will run in a container with this image.
             The `worker_path` is the default_worker.py path.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars (dict): Environment variables to set.
+        config (dict | RuntimeEnvConfig): config for runtime environment. Either
+            a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
+            timeout of runtime environment creation,  timeout is in seconds.
     """
 
     known_fields: Set[str] = {
@@ -211,6 +307,7 @@ class RuntimeEnv(dict):
         "_inject_current_ray",
         "plugins",
         "eager_install",
+        "config",
     }
 
     extensions_fields: Set[str] = {
@@ -228,6 +325,7 @@ class RuntimeEnv(dict):
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
+        config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         **kwargs,
     ):
@@ -246,6 +344,8 @@ class RuntimeEnv(dict):
             runtime_env["container"] = container
         if env_vars is not None:
             runtime_env["env_vars"] = env_vars
+        if config is not None:
+            runtime_env["config"] = config
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the

@@ -35,10 +35,10 @@ class WorkflowNotResumableError(Exception):
 
 @WorkflowStepFunction
 def _recover_workflow_step(
-    args: List[Any],
-    kwargs: Dict[str, Any],
     input_workflows: List[Any],
     input_workflow_refs: List[WorkflowRef],
+    *args,
+    **kwargs,
 ):
     """A workflow step that recovers the output of an unfinished step.
 
@@ -151,8 +151,13 @@ def _construct_resume_workflow_from_step(
         workflow_refs = list(map(WorkflowRef, result.workflow_refs))
 
         args, kwargs = reader.load_step_args(step_id, input_workflows, workflow_refs)
+        # Note: we must uppack args and kwargs, so the refs in the args/kwargs can get
+        # resolved consistently like in Ray.
         recovery_workflow: Workflow = _recover_workflow_step.step(
-            args, kwargs, input_workflows, workflow_refs
+            input_workflows,
+            workflow_refs,
+            *args,
+            **kwargs,
         )
         recovery_workflow._step_id = step_id
         # override step_options

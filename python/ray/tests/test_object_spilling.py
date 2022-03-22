@@ -242,6 +242,7 @@ def test_spill_remote_object(
     assert_no_thrashing(cluster.address)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
