@@ -359,6 +359,14 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "kuberay/test_autoscaling_e2e",
+    size = "medium",
+    srcs = SRCS + ["kuberay/test_autoscaling_e2e.py"],
+    tags = ["exclusive", "kuberay_operator", "team:serverless"],
+    deps = ["//:ray_lib"],
+)
+
 # TODO(ekl) we can't currently support tagging these as flaky since there's
 # no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
