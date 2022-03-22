@@ -21,69 +21,72 @@ class RemoteStorage(abc.ABC):
     directories to and from remote storage.
     """
 
-    def upload(self, local_source: str, remote_target: str) -> None:
+    def upload(self, local_source: str, remote_target: str, **kwargs) -> None:
         """Upload local path to remote target.
 
         Args:
             local_source: Path to local source file or directory.
             remote_target: URI to remote target file or directory.
+            kwargs: Optional provider-specific arguments.
         """
         raise NotImplementedError
 
-    def download(self, remote_source: str, local_target: str) -> None:
+    def download(self, remote_source: str, local_target: str, **kwargs) -> None:
         """Download remote source to local target.
 
         Args:
             remote_source: URI to remote source file or directory.
             local_target: Path to local target file or directory.
+            kwargs: Optional provider-specific arguments.
         """
         raise NotImplementedError
 
-    def delete(self, remote_target: str) -> None:
+    def delete(self, remote_target: str, **kwargs) -> None:
         """Delete remote target file or directory..
 
         Args:
             remote_target: URI to remote target file or directory.
+            kwargs: Optional provider-specific arguments.
         """
         raise NotImplementedError
 
 
 class S3Storage(RemoteStorage):
-    def upload(self, local_source: str, remote_target: str) -> None:
+    def upload(self, local_source: str, remote_target: str, **kwargs) -> None:
         subprocess.check_call(
             ["aws", "s3", "cp", "--recursive", "--quiet", local_source, remote_target]
         )
 
-    def download(self, remote_source: str, local_target: str) -> None:
+    def download(self, remote_source: str, local_target: str, **kwargs) -> None:
         subprocess.check_call(
             ["aws", "s3", "cp", "--recursive", "--quiet", remote_source, local_target]
         )
 
-    def delete(self, remote_target: str) -> None:
+    def delete(self, remote_target: str, **kwargs) -> None:
         subprocess.check_call(
             ["aws", "s3", "rm", "--recursive", "--quiet", remote_target]
         )
 
 
 class GSStorage(RemoteStorage):
-    def upload(self, local_source: str, remote_target: str) -> None:
+    def upload(self, local_source: str, remote_target: str, **kwargs) -> None:
         subprocess.check_call(["gsutil", "-m", "cp", "-r", local_source, remote_target])
 
-    def download(self, remote_source: str, local_target: str) -> None:
+    def download(self, remote_source: str, local_target: str, **kwargs) -> None:
         subprocess.check_call(["gsutil", "-m", "cp", "-r", remote_source, local_target])
 
-    def delete(self, remote_target: str) -> None:
+    def delete(self, remote_target: str, **kwargs) -> None:
         subprocess.check_call(["gsutil", "-m", "rm", "-f", "-r", remote_target])
 
 
 class HDFSStorage(RemoteStorage):
-    def upload(self, local_source: str, remote_target: str) -> None:
+    def upload(self, local_source: str, remote_target: str, **kwargs) -> None:
         subprocess.check_call(["hdfs", "dfs", "-put", local_source, remote_target])
 
-    def download(self, remote_source: str, local_target: str) -> None:
+    def download(self, remote_source: str, local_target: str, **kwargs) -> None:
         subprocess.check_call(["hdfs", "dfs", "-get", remote_source, local_target])
 
-    def delete(self, remote_target: str) -> None:
+    def delete(self, remote_target: str, **kwargs) -> None:
         subprocess.check_call(["hdfs", "dfs", "-rm", "-r", remote_target])
 
 

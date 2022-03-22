@@ -31,7 +31,7 @@ class LocalTestStorage(RemoteStorage):
             raise RuntimeError(f"Invalid URI: {matched}")
         return matched.group(1)
 
-    def upload(self, local_source: str, remote_target: str) -> None:
+    def upload(self, local_source: str, remote_target: str, **kwargs) -> None:
         if not os.path.exists(local_source):
             raise RuntimeError(
                 f"Cannot upload local_source as it does not exist on disk: "
@@ -54,7 +54,7 @@ class LocalTestStorage(RemoteStorage):
                 os.remove(absolute_target)
             shutil.copyfile(local_source, absolute_target)
 
-    def download(self, remote_source: str, local_target: str) -> None:
+    def download(self, remote_source: str, local_target: str, **kwargs) -> None:
         relative_source = self._strip_prefix(remote_source)
         relative_source = relative_source.strip(" /")
 
@@ -75,7 +75,7 @@ class LocalTestStorage(RemoteStorage):
                 os.remove(local_target)
             shutil.copyfile(absolute_source, local_target)
 
-    def delete(self, remote_target: str) -> None:
+    def delete(self, remote_target: str, **kwargs) -> None:
         relative_target = self._strip_prefix(remote_target)
         relative_target = relative_target.strip(" /")
 
