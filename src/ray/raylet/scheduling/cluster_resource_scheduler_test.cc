@@ -56,6 +56,12 @@ void addTaskResourceInstances(bool predefined,
   task_allocation->Set(ResourceID(idx), allocation_fp);
 };
 
+ResourceRequest CreateResourceRequest(
+    const absl::flat_hash_map<ResourceID, double> &resource_map) {
+  ResourceRequest request;
+  return request;
+}
+
 ResourceRequest RandomResourceRequest() {
   auto ids = {ResourceID::CPU(),
               ResourceID::Memory(),
@@ -288,23 +294,22 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   // Create cluster resources.
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 10)
-      .Set(ResourceID::Memory(), 5)
-      .Set(ResourceID::GPU(), 3)
-      .Set(ResourceID("custom1"), 5)
-      .Set(ResourceID("custom2"), 5);
+  ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 10},
+                                                            {ResourceID::Memory(), 5},
+                                                            {ResourceID::GPU(), 3},
+                                                            {ResourceID("custom1"), 5},
+                                                            {ResourceID("custom2"), 5}});
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID(1), node_resources, *gcs_client_);
   AssertPredefinedNodeResources();
 
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 7)
-        .Set(ResourceID::Memory(), 5)
-        .Set(ResourceID("custom1"), 3)
-        .Set(ResourceID("custom2"), 5);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 7},
+                               {ResourceID::Memory(), 5},
+                               {ResourceID("custom1"), 3},
+                               {ResourceID("custom2"), 5}});
     int64_t violations;
     bool is_infeasible;
     rpc::SchedulingStrategy scheduling_strategy;
@@ -363,12 +368,12 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
 
   // Add node.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 10)
-        .Set(ResourceID::Memory(), 5)
-        .Set(ResourceID::GPU(), 3)
-        .Set(ResourceID("custom1"), 5)
-        .Set(ResourceID("custom2"), 5);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 10},
+                               {ResourceID::Memory(), 5},
+                               {ResourceID::GPU(), 3},
+                               {ResourceID("custom1"), 5},
+                               {ResourceID("custom2"), 5}});
     NodeResources node_resources(resource_request);
     resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
         scheduling::NodeID(node_id), node_resources);
@@ -385,11 +390,11 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
 
   // Update node.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 10)
-        .Set(ResourceID::Memory(), 10)
-        .Set(ResourceID("custom1"), 6)
-        .Set(ResourceID("custom2"), 6);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 10},
+                               {ResourceID::Memory(), 10},
+                               {ResourceID("custom1"), 6},
+                               {ResourceID("custom2"), 6}});
     NodeResources node_resources(resource_request);
     resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
         scheduling::NodeID(node_id), node_resources);
@@ -405,10 +410,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   // Create cluster resources containing local node.
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 5)
-      .Set(ResourceID::Memory(), 5)
-      .Set(ResourceID("custom1"), 10);
+  ResourceRequest resource_request = CreateResourceRequest(
+      {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 5}, {ResourceID("custom1"), 10}});
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID(0), node_resources, *gcs_client_);
@@ -416,20 +419,19 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 10)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID::GPU(), 3)
-        .Set(ResourceID("custom1"), 5)
-        .Set(ResourceID("custom2"), 5);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 10},
+                               {ResourceID::Memory(), 2},
+                               {ResourceID::GPU(), 3},
+                               {ResourceID("custom1"), 5},
+                               {ResourceID("custom2"), 5}});
     NodeResources node_resources(resource_request);
     resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
         scheduling::NodeID(node_id.Binary()), node_resources);
   }
   // Predefined resources, hard constraint violation
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 11);
+    ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 11}});
     int64_t violations;
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
@@ -439,8 +441,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
 
   // Predefined resources, no constraint violation.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 5);
+    ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 5}});
     int64_t violations;
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
@@ -450,10 +451,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   }
   // Custom resources, hard constraint violation.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 11)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID("custom"), 11);
+    ResourceRequest resource_request = CreateResourceRequest(
+        {{ResourceID::CPU(), 11}, {ResourceID::Memory(), 2}, {ResourceID("custom"), 11}});
     int64_t violations;
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
@@ -462,10 +461,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   }
   // Custom resources, no constraint violation.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 5)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID("custom"), 5);
+    ResourceRequest resource_request = CreateResourceRequest(
+        {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID("custom"), 5}});
     int64_t violations;
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
@@ -475,10 +472,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   }
   // Custom resource missing, hard constraint violation.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 5)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID("custom"), 5);
+    ResourceRequest resource_request = CreateResourceRequest(
+        {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID("custom"), 5}});
     int64_t violations;
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
@@ -487,10 +482,8 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   }
   // Placement hints, no constraint violation.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 5)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID("custom"), 5);
+    ResourceRequest resource_request = CreateResourceRequest(
+        {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID("custom"), 5}});
     int64_t violations;
     bool is_infeasible;
     auto node_id = resource_scheduler.GetBestSchedulableNode(
@@ -508,11 +501,10 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) 
 }
   )");
   // Create cluster resources containing local node.
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 3)
-      .Set(ResourceID::Memory(), 4)
-      .Set(ResourceID::GPU(), 5)
-      .Set(ResourceID("custom1"), 8);
+  ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 3},
+                                                            {ResourceID::Memory(), 4},
+                                                            {ResourceID::GPU(), 5},
+                                                            {ResourceID("custom1"), 8}});
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID(0), node_resources, *gcs_client_);
@@ -542,11 +534,10 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
 }
   )");
   // Create cluster resources containing local node.
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 3)
-      .Set(ResourceID::Memory(), 4)
-      .Set(ResourceID::GPU(), 5)
-      .Set(ResourceID("custom1"), 8);
+  ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 3},
+                                                            {ResourceID::Memory(), 4},
+                                                            {ResourceID::GPU(), 5},
+                                                            {ResourceID("custom1"), 8}});
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID(0), node_resources, *gcs_client_);
@@ -581,8 +572,7 @@ TEST_F(ClusterResourceSchedulerTest, GetCPUInstancesDoubleTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 3);
+  ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 3}});
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler cluster(scheduling::NodeID(0), node_resources, *gcs_client_);
 
@@ -612,18 +602,14 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
   // Allocate resources for a task request specifying only predefined resources.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 3)
-        .Set(ResourceID::Memory(), 4)
-        .Set(ResourceID::GPU(), 5);
+    ResourceRequest resource_request = CreateResourceRequest(
+        {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 4}, {ResourceID::GPU(), 5}});
     NodeResources node_resources(resource_request);
     ClusterResourceScheduler resource_scheduler(
         scheduling::NodeID(0), node_resources, *gcs_client_);
 
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 5)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID::GPU(), 1.5);
+    ResourceRequest resource_request = CreateResourceRequest(
+        {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -646,18 +632,14 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
   // Try to allocate resources for a task request that overallocates a hard constrained
   // resource.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 3)
-        .Set(ResourceID::Memory(), 4)
-        .Set(ResourceID::GPU(), 5);
+    ResourceRequest resource_request = CreateResourceRequest(
+        {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 4}, {ResourceID::GPU(), 5}});
     NodeResources node_resources(resource_request);
     ClusterResourceScheduler resource_scheduler(
         scheduling::NodeID(0), node_resources, *gcs_client_);
 
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 4)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID::GPU(), 1.5);
+    ResourceRequest resource_request = CreateResourceRequest(
+        {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -675,21 +657,20 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
   // Allocate resources for a task request specifying both predefined and custom
   // resources.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 3)
-        .Set(ResourceID::Memory(), 4)
-        .Set(ResourceID::GPU(), 5)
-        .Set(ResourceID("custom1"), 4)
-        .Set(ResourceID("custom2"), 4);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 3},
+                               {ResourceID::Memory(), 4},
+                               {ResourceID::GPU(), 5},
+                               {ResourceID("custom1"), 4},
+                               {ResourceID("custom2"), 4}});
     NodeResources node_resources(resource_request);
     ClusterResourceScheduler resource_scheduler(
         scheduling::NodeID(0), node_resources, *gcs_client_);
 
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 3)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID::GPU(), 1.5)
-        .Set(ResourceID("custom"), 2);
+    ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 3},
+                                                              {ResourceID::Memory(), 2},
+                                                              {ResourceID::GPU(), 1.5},
+                                                              {ResourceID("custom"), 2}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -711,21 +692,21 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
   // Allocate resources for a task request specifying both predefined and custom
   // resources, but overallocates a hard-constrained custom resource.
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 3)
-        .Set(ResourceID::Memory(), 4)
-        .Set(ResourceID::GPU(), 5)
-        .Set(ResourceID("custom1"), 4)
-        .Set(ResourceID("custom2"), 4);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 3},
+                               {ResourceID::Memory(), 4},
+                               {ResourceID::GPU(), 5},
+                               {ResourceID("custom1"), 4},
+                               {ResourceID("custom2"), 4}});
     NodeResources node_resources(resource_request);
     ClusterResourceScheduler resource_scheduler(
         scheduling::NodeID(0), node_resources, *gcs_client_);
 
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 3)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID::GPU(), 1.5)
-        .Set(ResourceID("custom"), 10);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 3},
+                               {ResourceID::Memory(), 2},
+                               {ResourceID::GPU(), 1.5},
+                               {ResourceID("custom"), 10}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -744,21 +725,19 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesAllocationFailureTest) {
   /// Make sure there's no leak when the resource allocation failed in the middle.
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 1)
-      .Set(ResourceID::Memory(), 1)
-      .Set(ResourceID::GPU(), 1)
-      .Set(ResourceID("custom1"), 4)
-      .Set(ResourceID("custom2"), 4)
-      .Set(ResourceID("custom3"), 4);
+  ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 1},
+                                                            {ResourceID::Memory(), 1},
+                                                            {ResourceID::GPU(), 1},
+                                                            {ResourceID("custom1"), 4},
+                                                            {ResourceID("custom2"), 4},
+                                                            {ResourceID("custom3"), 4}});
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID(0), node_resources, *gcs_client_);
 
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID("custom1"), 3)
-      .Set(ResourceID("custom2"), 3)
-      .Set(ResourceID("custom3"), 4);
+  ResourceRequest resource_request = CreateResourceRequest({{ResourceID("custom1"), 3},
+                                                            {ResourceID("custom2"), 3},
+                                                            {ResourceID("custom3"), 4}});
 
   NodeResourceInstances old_local_resources =
       resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -777,22 +756,22 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesAllocationFailureTest)
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 4)
-        .Set(ResourceID::Memory(), 4)
-        .Set(ResourceID::GPU(), 5)
-        .Set(ResourceID("custom1"), 4)
-        .Set(ResourceID("custom2"), 4);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 4},
+                               {ResourceID::Memory(), 4},
+                               {ResourceID::GPU(), 5},
+                               {ResourceID("custom1"), 4},
+                               {ResourceID("custom2"), 4}});
     NodeResources node_resources(resource_request);
     ClusterResourceScheduler resource_scheduler(
         scheduling::NodeID(0), node_resources, *gcs_client_);
 
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 2)
-        .Set(ResourceID::Memory(), 2)
-        .Set(ResourceID::GPU(), 1.5)
-        .Set(ResourceID("custom1"), 3)
-        .Set(ResourceID("custom2"), 2);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 2},
+                               {ResourceID::Memory(), 2},
+                               {ResourceID::GPU(), 1.5},
+                               {ResourceID("custom1"), 3},
+                               {ResourceID("custom2"), 2}});
 
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>();
@@ -852,11 +831,11 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
 
 TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 1)
-        .Set(ResourceID::Memory(), 1)
-        .Set(ResourceID::GPU(), 4)
-        .Set(ResourceID("custom1"), 8);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 1},
+                               {ResourceID::Memory(), 1},
+                               {ResourceID::GPU(), 4},
+                               {ResourceID("custom1"), 8}});
     NodeResources node_resources(resource_request);
     ClusterResourceScheduler resource_scheduler(
         scheduling::NodeID(0), node_resources, *gcs_client_);
@@ -921,11 +900,11 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
 TEST_F(ClusterResourceSchedulerTest,
        UpdateLocalAvailableResourcesFromResourceInstancesTest) {
   {
-    ResourceRequest resource_request;
-    resource_request.Set(ResourceID::CPU(), 1)
-        .Set(ResourceID::Memory(), 1)
-        .Set(ResourceID::GPU(), 4)
-        .Set(ResourceID("custom1"), 8);
+    ResourceRequest resource_request =
+        CreateResourceRequest({{ResourceID::CPU(), 1},
+                               {ResourceID::Memory(), 1},
+                               {ResourceID::GPU(), 4},
+                               {ResourceID("custom1"), 8}});
     NodeResources node_resources(resource_request);
     ClusterResourceScheduler resource_scheduler(
         scheduling::NodeID(0), node_resources, *gcs_client_);
@@ -977,18 +956,14 @@ TEST_F(ClusterResourceSchedulerTest,
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 4)
-      .Set(ResourceID::Memory(), 2)
-      .Set(ResourceID::GPU(), 4);
+  ResourceRequest resource_request = CreateResourceRequest(
+      {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 4}});
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID(0), node_resources, *gcs_client_);
 
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 2)
-      .Set(ResourceID::Memory(), 2)
-      .Set(ResourceID::GPU(), 1.5);
+  ResourceRequest resource_request = CreateResourceRequest(
+      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
@@ -1005,18 +980,14 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 4)
-      .Set(ResourceID::Memory(), 2)
-      .Set(ResourceID::GPU(), 4);
+  ResourceRequest resource_request = CreateResourceRequest(
+      {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 4}});
   NodeResources node_resources(resource_request);
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID(0), node_resources, *gcs_client_);
 
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 2)
-      .Set(ResourceID::Memory(), 2)
-      .Set(ResourceID::GPU(), 1.5);
+  ResourceRequest resource_request = CreateResourceRequest(
+      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
@@ -1095,15 +1066,14 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
       {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2}, {"3", 3}});
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID("0"), initial_resources, *gcs_client_);
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 1)
-      .Set(ResourceID::Memory(), 1)
-      .Set(ResourceID::GPU(), 1)
-      .Set(ResourceID("custom1"), 5)
-      .Set(ResourceID("custom2"), 4)
-      .Set(ResourceID("custom3"), 3)
-      .Set(ResourceID("custom4"), 2)
-      .Set(ResourceID("custom5"), 1);
+  ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 1},
+                                                            {ResourceID::Memory(), 1},
+                                                            {ResourceID::GPU(), 1},
+                                                            {ResourceID("custom1"), 5},
+                                                            {ResourceID("custom2"), 4},
+                                                            {ResourceID("custom3"), 3},
+                                                            {ResourceID("custom4"), 2},
+                                                            {ResourceID("custom5"), 1}});
   NodeResources other_node_resources(resource_request);
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       scheduling::NodeID(12345), other_node_resources);
@@ -1180,11 +1150,10 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   int64_t *ptr = &used_object_store_memory;
   ClusterResourceScheduler resource_scheduler(
       scheduling::NodeID("0"), initial_resources, *gcs_client_, [&] { return *ptr; });
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 1)
-      .Set(ResourceID::Memory(), 1)
-      .Set(ResourceID::GPU(), 1)
-      .Set(ResourceID("custom1"), 10);
+  ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 1},
+                                                            {ResourceID::Memory(), 1},
+                                                            {ResourceID::GPU(), 1},
+                                                            {ResourceID("custom1"), 10}});
   NodeResources other_node_resources(resource_request);
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       scheduling::NodeID(12345), other_node_resources);
@@ -1446,8 +1415,8 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
 
   auto fpga_resource_id = ResourceID("FPGA");
 
-  ResourceRequest resource_request;
-  resource_request.Set(ResourceID::CPU(), 1).Set(fpga_resource_id, 0.7);
+  ResourceRequest resource_request =
+      CreateResourceRequest({{ResourceID::CPU(), 1}, {fpga_resource_id, 0.7}});
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
@@ -1460,8 +1429,8 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
       resource_request, task_allocation);
   ASSERT_TRUE(success) << resource_scheduler.DebugString();
 
-  ResourceRequest fail_resource_request;
-  fail_resource_request.Set(ResourceID::CPU(), 1).Set(fpga_resource_id, 0.5);
+  ResourceRequest fail_resource_request =
+      CreateResourceRequest({{ResourceID::CPU(), 1}, {fpga_resource_id, 0.5}});
   success = resource_scheduler.GetLocalResourceManager().AllocateTaskResourceInstances(
       fail_resource_request, task_allocation);
   ASSERT_FALSE(success) << resource_scheduler.DebugString();
