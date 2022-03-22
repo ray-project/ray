@@ -4,10 +4,10 @@ Actor Tasks Execution Orders
 Synchronous, Single-Threaded Actor
 ----------------------------------
 In Ray, an actor receives tasks from multiple submitters (including driver and workers).
-Synchronous, single-threaded actors execute tasks following the submission order
-if the same submitter submits the tasks.
-Precisely, for tasks received from the same submitter,
-any task will not be executed until previously submitted tasks have finished execution.
+For tasks received from the same submitter, synchronous, single-threaded actor executes
+them following the submission order.
+In other words, any task will not be executed until previously submitted tasks from
+the same submitter have finished execution.
 
 .. tabbed:: Python
 
@@ -37,10 +37,9 @@ any task will not be executed until previously submitted tasks have finished exe
         print(ray.get(value1))
 
 
-However, the system could reorder actor tasks execution if they come from different
-submitters. The reorder could happen when a previously submitted task is blocked
-by unfulfilled dependence. In this case, the actor might execute a later
-received task from a different submitter.
+However, the actor does not guarantee the execution order of the tasks from different
+submitters. For example, suppose an unfulfilled argument blocks a previously submitted
+task. In this case, the actor can still execute tasks submitted by a different worker.
 
 .. tabbed:: Python
 
@@ -86,5 +85,40 @@ received task from a different submitter.
 Asynchronous or Threaded Actor
 ------------------------------
 :ref:`Asynchronous or threaded actors <async-actors>` does not guarantee the
-task execution order. For example, the system might execute a task
+task execution order. This means the system might execute a task
 even though previously submitted tasks are pending execution.
+
+.. tabbed:: Python
+
+    .. code-block:: python
+
+        import time
+        import ray
+
+        @ray.remote
+        class AsyncCounter:
+            def __init__(self):
+                self.value = 0
+
+            async def add(self, addition):
+                self.value += addition
+                return self.value
+
+        counter = AsyncCounter.remote()
+
+        # Simulate delayed result resolution.
+        @ray.remote
+        def delayed_resolution(value):
+            time.sleep(5)
+            return value
+
+        # Submit tasks from the driver, with
+        # the first submitted task waiting for
+        # dependency resolution.
+        value0 = counter.add.remote(delayed_resolution.remote(1))
+        value1 = counter.add.remote(2)
+
+        # Output: 3. The first submitted task is executed later.
+        print(ray.get(value0))
+        # Output: 2. The later submitted task is executed first.
+        print(ray.get(value1))
