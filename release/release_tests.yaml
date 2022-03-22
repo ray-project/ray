@@ -1952,7 +1952,7 @@
     cluster_compute: compute_tpl.yaml
 
   run:
-    timeout: 1200
+    timeout: 3000
     script: python train_horovod_multi_node_test.py
 
     wait_for_nodes:
