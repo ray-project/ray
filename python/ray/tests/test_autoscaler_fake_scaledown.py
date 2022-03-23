@@ -73,7 +73,7 @@ def check_memory(local_objs, num_spilled_objects=None, num_plasma_objects=None):
         s = ray.internal.internal_api.memory_summary()
         print(f"\n\nMemory Summary:\n{s}\n")
 
-        actual_objs = re.findall(r"LOCAL_REFERENCE\s+([0-9a-f]+)", s)
+        actual_objs = re.findall(r"LOCAL_REFERENCE[\s|\|]+([0-9a-f]+)", s)
         if sorted(actual_objs) != sorted(local_objs):
             raise RuntimeError(
                 f"Expect local objects={local_objs}, actual={actual_objs}"
