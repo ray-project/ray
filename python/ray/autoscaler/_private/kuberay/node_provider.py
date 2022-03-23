@@ -42,6 +42,8 @@ from ray.autoscaler.tags import (
 # Note: Log handlers set up in autoscaling monitor entrypoint.
 logger = logging.getLogger(__name__)
 
+NOT_A_NODE_NAME = "__not_a_node_name__"
+
 provider_exists = False
 
 
@@ -215,31 +217,6 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         ), f"Could not find the worker group with name {group_name}."
         return group_index, group_spec
 
-    def _wait_for_pods(self, group_name: str, replicas: int) -> None:
-        """Wait until `replicas` pods of type group_name are posted."""
-        label_filters = to_label_selector(
-            {"ray.io/cluster": self.cluster_name, "ray.io/group": group_name}
-        )
-        while True:
-            pods = self._get(
-                "pods?labelSelector=" + requests.utils.quote(label_filters)
-            )
-            logger.info(
-                "Currently have {} replicas of group {}, requested {}.".format(
-                    len(pods["items"]), group_name, replicas
-                )
-            )
-            if len(pods["items"]) == replicas:
-                logger.info(f"Adjusted to {replicas} replicas.")
-                break
-            else:
-                logger.info(
-                    "Waiting for reconciler, number of replicas is {}, expected {}.".format(  # noqa: E501
-                        len(pods["items"]), replicas
-                    )
-                )
-                time.sleep(10.0)
-
     def create_node(
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
     ) -> Dict[str, Dict[str, str]]:
@@ -249,17 +226,25 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             raycluster = self._get(url)
             group_name = tags["ray-user-node-type"]
             group_index, group_spec = self._get_worker_group(raycluster, group_name)
-            path = f"/spec/workerGroupSpecs/{group_index}/replicas"
+            prefix = f"/spec/workerGroupSpecs/{group_index}"
             payload = [
-                {"op": "test", "path": path, "value": group_spec["replicas"]},
+                {
+                    "op": "test",
+                    "path": prefix + "/scaleStrategy",
+                    "value": {"workersToDelete": []},
+                },
                 {
                     "op": "replace",
-                    "path": path,
+                    "path": prefix + "/replicas",
                     "value": group_spec["replicas"] + count,
+                },
+                {
+                    "op": "replace",
+                    "path": prefix + "/scaleStrategy",
+                    "value": {"workersToDelete": [NOT_A_NODE_NAME]},
                 },
             ]
             self._patch(url, payload)
-            self._wait_for_pods(group_name, group_spec["replicas"] + count)
         return {}
 
     def internal_ip(self, node_id: str) -> str:
@@ -318,8 +303,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 payload = [
                     {
                         "op": "test",
-                        "path": prefix + "/replicas",
-                        "value": group_spec["replicas"],
+                        "path": prefix + "/scaleStrategy",
+                        "value": {"workersToDelete": []},
                     },
                     {
                         "op": "replace",
@@ -333,20 +318,4 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                     },
                 ]
                 self._patch(url, payload)
-
-            for group_name, nodes in groups.items():
-                group_index, group_spec = self._get_worker_group(raycluster, group_name)
-                prefix = f"/spec/workerGroupSpecs/{group_index}"
-                self._wait_for_pods(group_name, group_spec["replicas"] - len(nodes))
-                # Clean up workersToDelete
-                self._patch(
-                    url,
-                    [
-                        {
-                            "op": "replace",
-                            "path": prefix + "/scaleStrategy",
-                            "value": {"workersToDelete": []},
-                        }
-                    ],
-                )
         return {}
