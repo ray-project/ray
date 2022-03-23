@@ -170,8 +170,10 @@ class StatusReporter:
             kwargs: Latest training result status.
 
         Example:
-            >>> reporter(mean_accuracy=1, training_iteration=4)
-            >>> reporter(mean_accuracy=1, training_iteration=4, done=True)
+            >>> from ray.tune.function_runner import StatusReporter
+            >>> reporter = StatusReporter(...) # doctest: +SKIP
+            >>> reporter(mean_accuracy=1, training_iteration=4) # doctest: +SKIP
+            >>> reporter(mean_accuracy=1, training_iteration=4, done=True) # doctest: +SKIP
 
         Raises:
             StopIteration: A StopIteration exception is raised if the trial has

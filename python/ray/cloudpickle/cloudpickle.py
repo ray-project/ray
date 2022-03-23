@@ -408,7 +408,8 @@ def cell_set(cell, value):
 
     In Python3.7, cell_contents is writeable, so setting the contents of a cell
     can be done simply using
-    >>> cell.cell_contents = value
+    >>> cell = ... # doctest: +SKIP
+    >>> cell.cell_contents = value # doctest: +SKIP
 
     In earlier Python3 versions, the cell_contents attribute of a cell is read
     only, but this limitation can be worked around by leveraging the Python 3
