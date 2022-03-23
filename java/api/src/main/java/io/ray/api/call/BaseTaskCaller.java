@@ -65,11 +65,6 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
     return self();
   }
 
-  public T setRuntimeEnv(RuntimeEnv runtimeEnv) {
-    builder.setRuntimeEnv(runtimeEnv);
-    return self();
-  }
-
   /**
    * Set the placement group to place this task in, which may use any available bundle.
    *
@@ -79,6 +74,11 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
    */
   public T setPlacementGroup(PlacementGroup group) {
     return setPlacementGroup(group, -1);
+  }
+
+  public T setRuntimeEnv(RuntimeEnv runtimeEnv) {
+    builder.setRuntimeEnv(runtimeEnv);
+    return self();
   }
 
   @SuppressWarnings("unchecked")
