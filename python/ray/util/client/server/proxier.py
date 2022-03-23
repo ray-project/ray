@@ -220,15 +220,22 @@ class ProxyManager:
         runtime_env_config: str,
         specific_server: SpecificServer,
     ):
-        """Creates the runtime_env by sending an RPC to the agent.
+        """Increase the runtime_env reference by sending an RPC to the agent.
 
         Includes retry logic to handle the case when the agent is
         temporarily unreachable (e.g., hasn't been started up yet).
         """
-        create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
+        logger.info(
+            f"Increasing runtime env reference for "
+            f"ray_client_server_{specific_server.port}."
+            f"Serialized runtime env is {serialized_runtime_env}."
+        )
+
+        create_env_request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
             runtime_env_config=runtime_env_config,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
+            source_process="client_server",
         )
 
         retries = 0
@@ -236,7 +243,7 @@ class ProxyManager:
         wait_time_s = 0.5
         while retries <= max_retries:
             try:
-                r = self._runtime_env_stub.CreateRuntimeEnv(create_env_request)
+                r = self._runtime_env_stub.GetOrCreateRuntimeEnv(create_env_request)
                 if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
                     return r.serialized_runtime_env_context
                 elif (
@@ -260,7 +267,7 @@ class ProxyManager:
                     raise e
 
                 logger.warning(
-                    f"CreateRuntimeEnv request failed: {e}. "
+                    f"GetOrCreateRuntimeEnv request failed: {e}. "
                     f"Retrying after {wait_time_s}s. "
                     f"{max_retries-retries} retries remaining."
                 )
@@ -271,7 +278,7 @@ class ProxyManager:
             wait_time_s *= 2
 
         raise TimeoutError(
-            f"CreateRuntimeEnv request failed after {max_retries} attempts."
+            f"GetOrCreateRuntimeEnv request failed after {max_retries} attempts."
         )
 
     def start_specific_server(self, client_id: str, job_config: JobConfig) -> bool:

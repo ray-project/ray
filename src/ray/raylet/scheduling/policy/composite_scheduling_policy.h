@@ -37,6 +37,11 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
 
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions options,
+      SchedulingContext *context) override;
+
  private:
   HybridSchedulingPolicy hybrid_policy_;
   RandomSchedulingPolicy random_policy_;

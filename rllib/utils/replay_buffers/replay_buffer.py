@@ -13,6 +13,7 @@ import psutil  # noqa E402
 from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
@@ -91,25 +92,15 @@ class ReplayBuffer:
         return len(self._storage)
 
     @ExperimentalAPI
+    @Deprecated(old="add_batch", new="add", error=False)
     def add_batch(self, batch: SampleBatchType, **kwargs) -> None:
         """Deprecated in favor of new ReplayBuffer API."""
-        if log_once("deprecated_add_batch_method"):
-            logger.info(
-                "ReplayBuffer method ReplayBuffer.add_batch() is deprecated "
-                "in favor of the new ReplayBuffer API. Use ReplayBuffer.add("
-                ") instead."
-            )
         return self.add(batch, **kwargs)
 
     @ExperimentalAPI
+    @Deprecated(old="replay", new="sample", error=False)
     def replay(self, num_items: int = 1, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API."""
-        if log_once("deprecated_replay_method"):
-            logger.info(
-                "ReplayBuffer method ReplayBuffer.replay() is deprecated "
-                "in favor of the new ReplayBuffer API. Use "
-                "ReplayBuffer.sample() instead."
-            )
         return self.sample(num_items, **kwargs)
 
     @ExperimentalAPI
