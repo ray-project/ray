@@ -68,6 +68,8 @@ std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
     const std::vector<FixedPoint> &available,
     const std::vector<FixedPoint> &local_total,
     std::vector<FixedPoint> &local_available) const {
+  RAY_CHECK(available.size() == local_available.size())
+      << available.size() << ", " << local_available.size();
   std::vector<FixedPoint> overflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
     local_available[i] = local_available[i] + available[i];
@@ -208,9 +210,11 @@ void LocalResourceManager::FreeTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   for (auto &resource_id : task_allocation->ResourceIds()) {
-    AddAvailableResourceInstances(task_allocation->Get(resource_id),
-                                  local_resources_.total.GetMutable(resource_id),
-                                  local_resources_.available.GetMutable(resource_id));
+    if (local_resources_.total.Has(resource_id)) {
+      AddAvailableResourceInstances(task_allocation->Get(resource_id),
+                                    local_resources_.total.GetMutable(resource_id),
+                                    local_resources_.available.GetMutable(resource_id));
+    }
   }
 }
 
