@@ -11,6 +11,7 @@ import yaml
 
 from ray.tests.kuberay.utils import (
     get_pod,
+    get_raycluster,
     kubectl_exec,
     wait_for_pods,
     wait_for_pod_to_start,
@@ -115,10 +116,26 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         return config
 
-    def _apply_ray_cr(self, min_replicas=0, max_replicas=300, replicas=0) -> None:
+    def _apply_ray_cr(self, min_replicas=0, max_replicas=300, replicas=0,
+                      validate_replicas: bool = False) -> None:
         """Apply Ray CR config yaml, with configurable replica fields for the single
-        workerGroup."""
+        workerGroup.
+
+        If the CR does not yet exist, `replicas` can be set as desired.
+        If the CR does already exist, the recommended usage is this:
+            (1) Set `replicas` to what we currently expect it to be.
+            (2) Set `validate_replicas` to True. We will then check that the replicas
+            set on the CR coincides with `replicas`.
+        """
         with tempfile.NamedTemporaryFile("w") as config_file:
+            if validate_replicas:
+                raycluster = get_raycluster("raycluster-complete", namespace="default")
+                assert raycluster["spec"]["workerGroupSpecs"][0][
+                    "replicas"] == replicas
+                logger.info(
+                    f"Validated that worker replicas for raycluster-complete"
+                    f" is currently {replicas}"
+                )
             cr_config = self._get_ray_cr_config(
                 min_replicas=min_replicas, max_replicas=max_replicas, replicas=replicas
             )
@@ -139,14 +156,20 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         Resources requested by this test are safely within the bounds of an m5.xlarge
         instance.
+
+        The resource REQUESTS are:
         - One Ray head pod
-            - Autoscaler: .5 CPU, .5 Gi memory
+            - Autoscaler: .25 CPU, .5 Gi memory
             - Ray node: .5 CPU, .5 Gi memeory
         - Two Worker pods
             - Ray node: .5 CPU, .5 Gi memory
-        Total: 2 CPU, 2 Gi memory.
+        Total: 1.75 CPU, 2 Gi memory.
 
-        Including operator and system pods, the total CPU requested is just over 3.
+        Including operator and system pods, the total CPU requested is around 3.
+
+        The cpu LIMIT of each Ray container is 1.
+        The `num-cpus` arg to Ray start is 1 for each Ray container; thus Ray accounts 1 CPU
+        for each Ray node in the test.
         """
         # Cluster-creation
         logger.info("Creating a RayCluster with no worker pods.")
@@ -170,6 +193,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             'ray.init("auto");'
             "ray.autoscaler.sdk.request_resources(num_cpus=2)"
         )
+        # The request for 2 cpus should give us a 1-cpu head (already present) and 1-cpu worker
+        # (will await scale-up).
         kubectl_exec(
             command=["python", "-c", scale_script], pod=head_pod,
             container="ray-head", namespace="default"
@@ -178,7 +203,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         wait_for_pods(goal_num_pods=2, namespace="default")
 
         logger.info("Scaling up to two workers by editing minReplicas.")
-        # (replicas=1 reflects the current number of workers)
+        # replicas=1 reflects the current number of workers
+        # (which is what we expect to be already present in the CR)
         self._apply_ray_cr(min_replicas=2, replicas=1)
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=3, namespace="default")

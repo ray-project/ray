@@ -4,7 +4,8 @@ For consistency, all K8s interactions use kubectl through subprocess calls.
 import logging
 import subprocess
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -159,3 +160,14 @@ def kubectl_exec(command: List[str], pod: str, namespace: str,
     subprocess.check_call(
         ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
     )
+
+
+def get_raycluster(raycluster: str, namespace: str) -> Dict[str, Any]:
+    """Gets the Ray CR with name `raycluster` in namespace `namespace`.
+
+    Returns the CR as a nested Dict.
+    """
+    get_raycluster_output = subprocess.check_output(
+        ["kubectl", "-n", namespace, "get", "raycluster", raycluster, "-o", "yaml"]
+    ).decode().strip()
+    return yaml.safe_load(get_raycluster_output)
