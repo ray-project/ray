@@ -247,8 +247,8 @@ def test_pull_spilled_object_failure(object_spilling_config, ray_start_cluster):
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
-def test_spill_dir_cleanup_on_raylet_start(object_spilling_config):
-    object_spilling_config, temp_folder = object_spilling_config
+def test_spill_dir_cleanup_on_raylet_start(fs_only_object_spilling_config):
+    object_spilling_config, temp_folder = fs_only_object_spilling_config
     cluster = Cluster()
     cluster.add_node(
         num_cpus=0,

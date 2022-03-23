@@ -105,6 +105,7 @@ class ScalingConfigDataClass:
 @PublicAPI(stability="alpha")
 class FailureConfig:
     """Configuration related to failure handling of each run/trial.
+
     Args:
         max_failures: Tries to recover a run at least this many times.
             Will recover from the latest checkpoint if present.

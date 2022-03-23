@@ -39,9 +39,9 @@ class CometLoggerCallback(LoggerCallback):
     ``CometLoggerCallback(api_key=<Your API Key>)``
 
     Args:
-            online (bool, optional): Whether to make use of an Online or
+            online: Whether to make use of an Online or
                 Offline Experiment. Defaults to True.
-            tags (List[str], optional): Tags to add to the logged Experiment.
+            tags: Tags to add to the logged Experiment.
                 Defaults to None.
             **experiment_kwargs: Other keyword arguments will be passed to the
                 constructor for comet_ml.Experiment (or OfflineExperiment if
@@ -126,7 +126,7 @@ class CometLoggerCallback(LoggerCallback):
         and start logging to Comet.
 
         Args:
-            trial:
+            trial: Trial object.
 
         """
         _import_comet()  # is this necessary?
