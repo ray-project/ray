@@ -567,23 +567,9 @@ TEST_F(ClusterResourceSchedulerTest, GetCPUInstancesDoubleTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
-<<<<<<< HEAD
   NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 3}});
-  ClusterResourceScheduler cluster(scheduling::NodeID(0), node_resources, *gcs_client_);
-||||||| cb80518a80
-  NodeResources node_resources;
-  vector<FixedPoint> pred_capacities{3 /* CPU */};
-  initNodeResources(
-      node_resources, pred_capacities, EmptyIntVector, EmptyFixedPointVector);
-  ClusterResourceScheduler cluster(scheduling::NodeID(0), node_resources, *gcs_client_);
-=======
-  NodeResources node_resources;
-  vector<FixedPoint> pred_capacities{3 /* CPU */};
-  initNodeResources(
-      node_resources, pred_capacities, EmptyIntVector, EmptyFixedPointVector);
   ClusterResourceScheduler cluster(
       scheduling::NodeID(0), node_resources, is_node_available_fn_);
->>>>>>> master
 
   std::vector<FixedPoint> total = {6., 6., 6.};
   std::vector<FixedPoint> available = {3., 2., 5.};
@@ -1060,8 +1046,7 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
   absl::flat_hash_map<std::string, double> initial_resources(
       {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2}, {"3", 3}});
   ClusterResourceScheduler resource_scheduler(
-<<<<<<< HEAD
-      scheduling::NodeID("0"), initial_resources, *gcs_client_);
+      scheduling::NodeID("0"), initial_resources, is_node_available_fn_);
   NodeResources other_node_resources = CreateNodeResources({{ResourceID::CPU(), 1},
                                                             {ResourceID::Memory(), 1},
                                                             {ResourceID::GPU(), 1},
@@ -1070,21 +1055,6 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
                                                             {ResourceID("custom3"), 3},
                                                             {ResourceID("custom4"), 2},
                                                             {ResourceID("custom5"), 1}});
-||||||| cb80518a80
-      scheduling::NodeID("0"), initial_resources, *gcs_client_);
-  NodeResources other_node_resources;
-  vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
-  vector<FixedPoint> other_cust_capacities{5., 4., 3., 2., 1.};
-  initNodeResources(
-      other_node_resources, other_pred_capacities, cust_ids, other_cust_capacities);
-=======
-      scheduling::NodeID("0"), initial_resources, is_node_available_fn_);
-  NodeResources other_node_resources;
-  vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
-  vector<FixedPoint> other_cust_capacities{5., 4., 3., 2., 1.};
-  initNodeResources(
-      other_node_resources, other_pred_capacities, cust_ids, other_cust_capacities);
->>>>>>> master
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       scheduling::NodeID(12345), other_node_resources);
 
@@ -1159,29 +1129,13 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
   int64_t used_object_store_memory = 250 * 1024 * 1024;
   int64_t *ptr = &used_object_store_memory;
   ClusterResourceScheduler resource_scheduler(
-<<<<<<< HEAD
-      scheduling::NodeID("0"), initial_resources, *gcs_client_, [&] { return *ptr; });
+      scheduling::NodeID("0"), initial_resources, is_node_available_fn_, [&] {
+        return *ptr;
+      });
   NodeResources other_node_resources = CreateNodeResources({{ResourceID::CPU(), 1},
                                                             {ResourceID::Memory(), 1},
                                                             {ResourceID::GPU(), 1},
                                                             {ResourceID("custom1"), 10}});
-||||||| cb80518a80
-      scheduling::NodeID("0"), initial_resources, *gcs_client_, [&] { return *ptr; });
-  NodeResources other_node_resources;
-  vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
-  vector<FixedPoint> other_cust_capacities{10.};
-  initNodeResources(
-      other_node_resources, other_pred_capacities, cust_ids, other_cust_capacities);
-=======
-      scheduling::NodeID("0"), initial_resources, is_node_available_fn_, [&] {
-        return *ptr;
-      });
-  NodeResources other_node_resources;
-  vector<FixedPoint> other_pred_capacities{1. /* CPU */, 1. /* MEM */, 1. /* GPU */};
-  vector<FixedPoint> other_cust_capacities{10.};
-  initNodeResources(
-      other_node_resources, other_pred_capacities, cust_ids, other_cust_capacities);
->>>>>>> master
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       scheduling::NodeID(12345), other_node_resources);
 
@@ -1480,22 +1434,10 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   cluster_instance_resources->Set(ResourceID::Memory(), {4.});
   cluster_instance_resources->Set(ResourceID::GPU(), {1., 1.});
   ClusterResourceScheduler resource_scheduler_cpu_instance(
-<<<<<<< HEAD
-      scheduling::NodeID("local"), {{"CPU", 4}, {"memory", 4}, {"GPU", 2}}, *gcs_client_);
-  std::string instance_serialized_string = cluster_instance_resources->SerializeAsJson();
-||||||| cb80518a80
-      scheduling::NodeID("local"), {{"CPU", 4}, {"memory", 4}, {"GPU", 2}}, *gcs_client_);
-  std::string instance_serialized_string =
-      resource_scheduler_cpu_instance.GetLocalResourceManager()
-          .SerializedTaskResourceInstances(cluster_instance_resources);
-=======
       scheduling::NodeID("local"),
       {{"CPU", 4}, {"memory", 4}, {"GPU", 2}},
       is_node_available_fn_);
-  std::string instance_serialized_string =
-      resource_scheduler_cpu_instance.GetLocalResourceManager()
-          .SerializedTaskResourceInstances(cluster_instance_resources);
->>>>>>> master
+  std::string instance_serialized_string = cluster_instance_resources->SerializeAsJson();
   std::string expected_instance_serialized_string =
       R"({"CPU":[10000, 10000],"memory":40000,"GPU":[10000, 10000]})";
   ASSERT_EQ(instance_serialized_string, expected_instance_serialized_string);
