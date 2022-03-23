@@ -63,7 +63,7 @@ class Tuner:
             },
         }
         tuner = Tuner(trainable=trainer, param_space=param_space,
-            run_config(name="my_tune_run"))
+            run_config=RunConfig(name="my_tune_run"))
         analysis = tuner.fit()
 
     To retry a failed tune run, you can then do
