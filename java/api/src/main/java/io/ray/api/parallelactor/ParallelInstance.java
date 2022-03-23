@@ -1,6 +1,4 @@
-package io.ray.api.utils.parallelactor;
-
-import io.ray.api.call.ActorTaskCaller;
+package io.ray.api.parallelactor;
 
 //// TODO: This is not suitable for implementing this interface. Even if you want to implement it,
 // you need to distinguish between instance and non instance when calling task ()

@@ -1,6 +1,5 @@
-package io.ray.api.utils.parallelactor;
+package io.ray.api.parallelactor;
 
-import io.ray.api.ActorHandle;
 import io.ray.api.function.RayFuncVoid;
 
 public class VoidParallelActorTaskCaller {

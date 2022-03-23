@@ -1,4 +1,4 @@
-package io.ray.api.utils.parallelactor;
+package io.ray.api.parallelactor;
 
 import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
@@ -28,16 +28,8 @@ public class ParallelActorCreator<A> {
   }
 
   public ParallelActor<A> remote() {
-    ConcurrencyGroup[] concurrencyGroups = new ConcurrencyGroup[parallelNum];
-    for (int i = 0; i < parallelNum; ++i) {
-      concurrencyGroups[i] = new ConcurrencyGroupBuilder<ParallelActorExecutor>()
-        .setName(String.format("PARALLEL_INSTANCE_%d", i))
-        .setMaxConcurrency(1)
-        .build();
-    }
-
     ParallelContext ctx = Ray.internal().getParallelContext();
-    return ctx.createParallelActorExecutor(strategy, parallelNum, concurrencyGroups, this.func);
+    return ctx.createParallelActorExecutor(strategy, parallelNum, this.func);
   }
 
 }

@@ -1,8 +1,8 @@
 package io.ray.runtime.utils.parallelactor;
 
 import io.ray.api.Ray;
-import io.ray.api.utils.parallelactor.ParallelActorExecutor;
-import io.ray.api.utils.parallelactor.ParallelStrategy;
+import io.ray.api.parallelactor.ParallelActorExecutor;
+import io.ray.api.parallelactor.ParallelStrategy;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -43,8 +43,6 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
   }
 
   public Object execute(int instanceIndex, JavaFunctionDescriptor functionDescriptor,  Object[] args) {
-
-    functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
     RayFunction func = functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), functionDescriptor);
     try {
       if (instances.get(instanceIndex) == null) {

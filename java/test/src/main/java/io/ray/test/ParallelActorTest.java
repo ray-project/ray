@@ -1,13 +1,10 @@
 package io.ray.test;
 
-import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
-import io.ray.api.Ray;
-import io.ray.api.utils.parallelactor.Parallel;
-import io.ray.api.utils.parallelactor.ParallelActor;
-import io.ray.api.utils.parallelactor.ParallelInstance;
-import io.ray.api.utils.parallelactor.ParallelStrategy;
-import io.ray.runtime.utils.parallelactor.ParallelActorExecutorImpl;
+import io.ray.api.parallelactor.Parallel;
+import io.ray.api.parallelactor.ParallelActor;
+import io.ray.api.parallelactor.ParallelInstance;
+import io.ray.api.parallelactor.ParallelStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -40,7 +37,7 @@ public class ParallelActorTest extends BaseTest {
   /// 4. The router is in the caller, to decide which index we should route. How to solve? Move to callee?
   /// 5. We used function manager.
   public void testF() {
-    ParallelActor<A> actor = Parallel.parallelActor(A::new)
+    ParallelActor<A> actor = Parallel.actor(A::new)
       .setParallels(ParallelStrategy.ROUND_ROBIN, 10).remote();
 
     /// TODO: Why we set the delta so large? since it's cast to short otherwise.
@@ -51,7 +48,7 @@ public class ParallelActorTest extends BaseTest {
     Assert.assertEquals(1000000, (int) obj1.get());
     Assert.assertEquals(1000000, (int) obj2.get());
 
-    ParallelInstance<A> instance = actor.getParallel(/*index=*/2);
+    ParallelInstance<A> instance = actor.getInstance(/*index=*/2);
 
     /// We haven't impled this, but it's the same implementation as above.
 //    instance.task(A::f1, 100, 200).remote();   // Executed in instance 2

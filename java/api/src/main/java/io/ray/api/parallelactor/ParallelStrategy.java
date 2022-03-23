@@ -1,4 +1,4 @@
-package io.ray.api.utils.parallelactor;
+package io.ray.api.parallelactor;
 
 public enum ParallelStrategy {
   ALWAYS_FIRST,

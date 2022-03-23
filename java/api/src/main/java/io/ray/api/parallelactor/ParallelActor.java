@@ -1,7 +1,6 @@
-package io.ray.api.utils.parallelactor;
+package io.ray.api.parallelactor;
 
 import io.ray.api.ActorHandle;
-import io.ray.api.call.ActorTaskCaller;
 
 public class ParallelActor<A> implements ParallelActorCall<A> {
 
@@ -16,11 +15,11 @@ public class ParallelActor<A> implements ParallelActorCall<A> {
     parallelExecutorHandle = handle;
   }
 
-  public ParallelInstance<A> getParallel(int index) {
+  public ParallelInstance<A> getInstance(int index) {
     return null;
   }
 
-  public ActorHandle<? extends ParallelActorExecutor> getParallelExecutorHandle() {
+  public ActorHandle<? extends ParallelActorExecutor> getExecutor() {
     return parallelExecutorHandle;
   }
 

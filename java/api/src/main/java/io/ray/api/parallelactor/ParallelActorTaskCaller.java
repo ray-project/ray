@@ -1,6 +1,5 @@
-package io.ray.api.utils.parallelactor;
+package io.ray.api.parallelactor;
 
-import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.function.RayFuncR;
@@ -23,7 +22,7 @@ public class ParallelActorTaskCaller<R> {
 
     ParallelContext ctx = Ray.internal().getParallelContext();
     /// TODO(qwang): Select a instance index.
-    ObjectRef<R> ret = ctx.submitParallelTask(parallelActor, 0, func, args);
+    ObjectRef<R> ret = ctx.submitTask(parallelActor, 0, func, args);
     return (ObjectRef<R>) ret;
   }
 

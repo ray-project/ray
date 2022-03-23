@@ -22,7 +22,7 @@ import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.api.runtimeenv.RuntimeEnv;
-import io.ray.api.utils.parallelactor.ParallelContext;
+import io.ray.api.parallelactor.ParallelContext;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
@@ -65,6 +65,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
+
+  private static ParallelContextImpl parallelContextImpl = new ParallelContextImpl();
 
   /** Whether the required thread context is set on the current thread. */
   final ThreadLocal<Boolean> isContextSet = ThreadLocal.withInitial(() -> false);
@@ -293,7 +295,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public ParallelContext getParallelContext() {
-    return new ParallelContextImpl();
+    return parallelContextImpl;
   }
 
   @Override

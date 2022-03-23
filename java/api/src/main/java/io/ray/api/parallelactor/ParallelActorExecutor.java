@@ -1,8 +1,4 @@
-package io.ray.api.utils.parallelactor;
-
-import io.ray.api.function.RayFuncR;
-
-import java.util.List;
+package io.ray.api.parallelactor;
 
 public class ParallelActorExecutor {
 
