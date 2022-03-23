@@ -61,7 +61,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  void AssertObjectIDState(const WorkerID &worker_id, const ObjectID &object_id,
+  void AssertObjectIDState(const WorkerID &worker_id,
+                           const ObjectID &object_id,
                            rpc::ObjectLocationState state) {
     auto it = buffered_object_locations_.find(worker_id);
     RAY_CHECK(it != buffered_object_locations_.end())
@@ -79,7 +80,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     batch_sent = 0;
   }
 
-  std::unordered_map<WorkerID, std::unordered_map<ObjectID, rpc::ObjectLocationState>>
+  absl::flat_hash_map<WorkerID, absl::flat_hash_map<ObjectID, rpc::ObjectLocationState>>
       buffered_object_locations_;
   std::deque<rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply>> callbacks;
   int callback_invoked = 0;
@@ -113,7 +114,10 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
-        obod_(io_service_, gcs_client_mock_, subscriber_.get(), &client_pool,
+        obod_(io_service_,
+              gcs_client_mock_,
+              subscriber_.get(),
+              &client_pool,
               /*max_object_report_batch_size=*/20,
               [this](const ObjectID &object_id, const rpc::ErrorType &error_type) {
                 MarkAsFailed(object_id, error_type);
@@ -141,7 +145,8 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
     return info;
   }
 
-  void AssertObjectIDState(const WorkerID &worker_id, const ObjectID &object_id,
+  void AssertObjectIDState(const WorkerID &worker_id,
+                           const ObjectID &object_id,
                            rpc::ObjectLocationState state) {
     owner_client->AssertObjectIDState(worker_id, object_id, state);
   }
@@ -166,10 +171,11 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
   }
 
   void HandleMessage(const rpc::WorkerObjectLocationsPubMessage &location_info,
-                     const ObjectID &object_id, bool location_lookup_failed = false) {
+                     const ObjectID &object_id,
+                     bool location_lookup_failed = false) {
     // Mock for receiving a message from the pubsub layer.
-    obod_.ObjectLocationSubscriptionCallback(location_info, object_id,
-                                             location_lookup_failed);
+    obod_.ObjectLocationSubscriptionCallback(
+        location_info, object_id, location_lookup_failed);
   }
 
   int64_t max_batch_size = 20;
@@ -191,9 +197,10 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
   {
     RAY_LOG(INFO) << "Object added basic.";
     auto object_info_added = CreateNewObjectInfo(owner_id);
-    obod_.ReportObjectAdded(object_info_added.object_id, current_node_id,
-                            object_info_added);
-    AssertObjectIDState(object_info_added.owner_worker_id, object_info_added.object_id,
+    obod_.ReportObjectAdded(
+        object_info_added.object_id, current_node_id, object_info_added);
+    AssertObjectIDState(object_info_added.owner_worker_id,
+                        object_info_added.object_id,
                         rpc::ObjectLocationState::ADDED);
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
     ASSERT_EQ(NumBatchRequestSent(), 1);
@@ -204,10 +211,11 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
   {
     RAY_LOG(INFO) << "Object removed basic.";
     auto object_info_removed = CreateNewObjectInfo(owner_id);
-    obod_.ReportObjectRemoved(object_info_removed.object_id, current_node_id,
-                              object_info_removed);
+    obod_.ReportObjectRemoved(
+        object_info_removed.object_id, current_node_id, object_info_removed);
     AssertObjectIDState(object_info_removed.owner_worker_id,
-                        object_info_removed.object_id, rpc::ObjectLocationState::REMOVED);
+                        object_info_removed.object_id,
+                        rpc::ObjectLocationState::REMOVED);
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
     ASSERT_EQ(NumBatchRequestSent(), 2);
     ASSERT_EQ(NumBatchReplied(), 2);
@@ -227,7 +235,8 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedUpdate) {
 
   ASSERT_EQ(NumBatchRequestSent(), 2);
   // For the same object ID, it should report the latest result (which is REMOVED).
-  AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
+  AssertObjectIDState(object_info.owner_worker_id,
+                      object_info.object_id,
                       rpc::ObjectLocationState::REMOVED);
 
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
@@ -253,9 +262,11 @@ TEST_F(OwnershipBasedObjectDirectoryTest,
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchReplied(), 2);
   // For the same object ID, it should report the latest result (which is REMOVED).
-  AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
+  AssertObjectIDState(object_info.owner_worker_id,
+                      object_info.object_id,
                       rpc::ObjectLocationState::REMOVED);
-  AssertObjectIDState(object_info_2.owner_worker_id, object_info_2.object_id,
+  AssertObjectIDState(object_info_2.owner_worker_id,
+                      object_info_2.object_id,
                       rpc::ObjectLocationState::ADDED);
   AssertNoLeak();
 }
@@ -284,9 +295,11 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedMultipleOwne
   ASSERT_EQ(NumBatchRequestSent(), 4);
   ASSERT_EQ(NumBatchReplied(), 2);
   // For the same object ID, it should report the latest result (which is REMOVED).
-  AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
+  AssertObjectIDState(object_info.owner_worker_id,
+                      object_info.object_id,
                       rpc::ObjectLocationState::REMOVED);
-  AssertObjectIDState(object_info_2.owner_worker_id, object_info_2.object_id,
+  AssertObjectIDState(object_info_2.owner_worker_id,
+                      object_info_2.object_id,
                       rpc::ObjectLocationState::ADDED);
 
   // Clean up reply and check assert.
@@ -314,7 +327,8 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateOneInFlightRequest) 
 
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchRequestSent(), 2);
-  AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
+  AssertObjectIDState(object_info.owner_worker_id,
+                      object_info.object_id,
                       rpc::ObjectLocationState::REMOVED);
 
   // After it is replied, if there's no more entry in the buffer, it doesn't send a new
@@ -353,7 +367,8 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateMaxBatchSize) {
 
   // Check if object id states are updated properly.
   for (const auto &object_info : object_infos) {
-    AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
+    AssertObjectIDState(object_info.owner_worker_id,
+                        object_info.object_id,
                         rpc::ObjectLocationState::REMOVED);
   }
   AssertNoLeak();
@@ -394,11 +409,15 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestNotifyOnUpdate) {
   EXPECT_CALL(*subscriber_, Subscribe(_, _, _, _, _, _, _)).WillOnce(Return(true));
   ASSERT_TRUE(
       obod_
-          .SubscribeObjectLocations(
-              callback_id, obj_id, rpc::Address(),
-              [&](const ObjectID &object_id, const std::unordered_set<NodeID> &client_ids,
-                  const std::string &spilled_url, const NodeID &spilled_node_id,
-                  bool pending_creation, size_t object_size) { num_callbacks++; })
+          .SubscribeObjectLocations(callback_id,
+                                    obj_id,
+                                    rpc::Address(),
+                                    [&](const ObjectID &object_id,
+                                        const std::unordered_set<NodeID> &client_ids,
+                                        const std::string &spilled_url,
+                                        const NodeID &spilled_node_id,
+                                        bool pending_creation,
+                                        size_t object_size) { num_callbacks++; })
           .ok());
   ASSERT_EQ(num_callbacks, 0);
 

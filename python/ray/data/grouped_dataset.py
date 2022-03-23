@@ -1,19 +1,21 @@
-from typing import Union, Generic, Tuple, List
+from typing import Any, Union, Generic, Tuple, List, Callable
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
+from ray.data.dataset import BatchType
 from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.plan import AllToAllStage
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.compute import CallableClass, ComputeStrategy
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class GroupedDataset(Generic[T]):
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
@@ -130,7 +132,7 @@ class GroupedDataset(Generic[T]):
         on: Union[KeyFn, List[KeyFn]],
         ignore_nulls: bool,
         *args,
-        **kwargs
+        **kwargs,
     ):
         """Helper for aggregating on a particular subset of the dataset.
 
@@ -143,6 +145,114 @@ class GroupedDataset(Generic[T]):
             agg_cls, on, ignore_nulls, *args, skip_cols=self._key, **kwargs
         )
         return self.aggregate(*aggs)
+
+    def map_groups(
+        self,
+        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        batch_format: str = "native",
+        **ray_remote_args,
+    ) -> "Dataset[Any]":
+        """Apply the given function to each group of records of this dataset.
+
+        While map_groups() is very flexible, note that it comes with downsides:
+            * It may be slower than using more specific methods such as min(), max().
+            * It requires that each group fits in memory on a single node.
+
+        In general, prefer to use aggregate() instead of map_groups().
+
+        This is a blocking operation.
+
+        Examples:
+            >>> # Return a single record per group (list of multiple records in,
+            >>> # list of a single record out). Note that median is not an
+            >>> # associative function so cannot be computed with aggregate().
+            >>> ray.data.range(100).groupby(lambda x: x % 3).map_groups(
+            ...     lambda x: [median(x)])
+
+            >>> # Return multiple records per group (dataframe in, dataframe out).
+            >>> df = pd.DataFrame(
+            ...     {"A": ["a", "a", "b"], "B": [1, 1, 3], "C": [4, 6, 5]}
+            ... )
+            >>> grouped = ray.data.from_pandas(df).groupby("A")
+            >>> grouped.map_groups(
+            ...     lambda g: g.apply(
+            ...         lambda c: c / g[c.name].sum() if c.name in ["B", "C"] else c
+            ...     )
+            ... )
+
+        Args:
+            fn: The function to apply to each group of records, or a class type
+                that can be instantiated to create such a callable. It takes as
+                input a batch of all records from a single group, and returns a
+                batch of zero or more records, similar to map_batches().
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+            batch_format: Specify "native" to use the native block format
+                (promotes Arrow to pandas), "pandas" to select
+                ``pandas.DataFrame`` as the batch format,
+                or "pyarrow" to select ``pyarrow.Table``.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+
+        Returns:
+            The return type is determined by the return type of ``fn``, and the return
+            value is combined from results of all groups.
+        """
+        # Globally sort records by key.
+        # Note that sort() will ensure that records of the same key partitioned
+        # into the same block.
+        if self._key is not None:
+            sorted_ds = self._dataset.sort(self._key)
+        else:
+            sorted_ds = self._dataset.repartition(1)
+
+        def get_key(row):
+            if isinstance(self._key, Callable):
+                return self._key(row)
+            elif isinstance(self._key, str):
+                return row[self._key]
+            else:
+                return None
+
+        # Returns the group boundaries.
+        def get_boundaries(block):
+            boundaries = []
+            pre = None
+            for i, item in enumerate(block.iter_rows()):
+                if pre is not None and get_key(pre) != get_key(item):
+                    boundaries.append(i)
+                pre = item
+            if block.num_rows() > 0:
+                boundaries.append(block.num_rows())
+            return boundaries
+
+        # The batch is the entire block, because we have batch_size=None for
+        # map_batches() below.
+        def group_fn(batch):
+            block_accessor = BlockAccessor.for_block(batch)
+            boundaries = get_boundaries(block_accessor)
+            builder = block_accessor.builder()
+            start = 0
+            for end in boundaries:
+                group = block_accessor.slice(start, end, False)
+                applied = fn(group)
+                builder.add_block(applied)
+                start = end
+
+            rs = builder.build()
+            return rs
+
+        # Note we set batch_size=None here, so it will use the entire block as a batch,
+        # which ensures that each group will be contained within a batch in entirety.
+        return sorted_ds.map_batches(
+            group_fn,
+            batch_size=None,
+            compute=compute,
+            batch_format=batch_format,
+            **ray_remote_args,
+        )
 
     def count(self) -> Dataset[U]:
         """Compute count aggregation.

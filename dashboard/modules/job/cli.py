@@ -1,16 +1,16 @@
 import asyncio
-import json
 import os
+import pprint
 from subprocess import list2cmdline
 import time
 from typing import Optional, Tuple
-import yaml
 
 import click
 
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.util.annotations import PublicAPI
+from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 
 
 def _get_sdk_client(
@@ -54,12 +54,12 @@ def _log_job_status(client: JobSubmissionClient, job_id: str):
     elif info.status == JobStatus.FAILED:
         _log_big_error_msg(f"Job '{job_id}' failed")
         if info.message is not None:
-            cli_logger.print(f"Status message: {info.message}")
+            cli_logger.print(f"Status message: {info.message}", no_format=True)
     else:
         # Catch-all.
         cli_logger.print(f"Status for job '{job_id}': {info.status}")
         if info.message is not None:
-            cli_logger.print(f"Status message: {info.message}")
+            cli_logger.print(f"Status message: {info.message}", no_format=True)
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
@@ -136,32 +136,18 @@ def submit(
     entrypoint: Tuple[str],
     no_wait: bool,
 ):
-    """Submits a job to be run on the cluster docstring
+    """Submits a job to be run on the cluster.
 
     Example:
         >>> ray job submit -- python my_script.py --arg=val
     """
     client = _get_sdk_client(address, create_cluster_if_needed=True)
 
-    final_runtime_env = {}
-    if runtime_env is not None:
-        if runtime_env_json is not None:
-            raise ValueError(
-                "Only one of --runtime_env and " "--runtime-env-json can be provided."
-            )
-        with open(runtime_env, "r") as f:
-            final_runtime_env = yaml.safe_load(f)
-
-    elif runtime_env_json is not None:
-        final_runtime_env = json.loads(runtime_env_json)
-
-    if working_dir is not None:
-        if "working_dir" in final_runtime_env:
-            cli_logger.warning(
-                "Overriding runtime_env working_dir with --working-dir option"
-            )
-
-        final_runtime_env["working_dir"] = working_dir
+    final_runtime_env = parse_runtime_env_args(
+        runtime_env=runtime_env,
+        runtime_env_json=runtime_env_json,
+        working_dir=working_dir,
+    )
 
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),
@@ -314,4 +300,31 @@ def logs(address: Optional[str], job_id: str, follow: bool):
                 "for this feature."
             )
     else:
-        print(client.get_job_logs(job_id), end="")
+        # Set no_format to True because the logs may have unescaped "{" and "}"
+        # and the CLILogger calls str.format().
+        cli_logger.print(client.get_job_logs(job_id), end="", no_format=True)
+
+
+@job_cli_group.command()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Address of the Ray cluster to connect to. Can also be specified "
+        "using the RAY_ADDRESS environment variable."
+    ),
+)
+@add_click_logging_options
+@PublicAPI(stability="beta")
+def list(address: Optional[str]):
+    """Lists all running jobs and their information.
+
+    Example:
+        >>> ray job list
+    """
+    client = _get_sdk_client(address)
+    # Set no_format to True because the logs may have unescaped "{" and "}"
+    # and the CLILogger calls str.format().
+    cli_logger.print(pprint.pformat(client.list_jobs()), no_format=True)

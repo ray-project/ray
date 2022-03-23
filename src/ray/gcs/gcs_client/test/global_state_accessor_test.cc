@@ -82,8 +82,8 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
       global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     } else {
-      gcs::GcsClientOptions options(config.redis_address, config.redis_port,
-                                    config.redis_password);
+      gcs::GcsClientOptions options(
+          config.redis_address, config.redis_port, config.redis_password);
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
       global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     }
@@ -161,42 +161,6 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
   }
 }
 
-TEST_P(GlobalStateAccessorTest, TestNodeResourceTable) {
-  int node_count = 100;
-  ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
-  for (int index = 0; index < node_count; ++index) {
-    auto node_table_data =
-        Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
-    auto node_id = NodeID::FromBinary(node_table_data->node_id());
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-        *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
-    WaitReady(promise.get_future(), timeout_ms_);
-    ray::gcs::NodeResourceInfoAccessor::ResourceMap resources;
-    rpc::ResourceTableData resource_table_data;
-    resource_table_data.set_resource_capacity(static_cast<double>(index + 1) + 0.1);
-    resources[std::to_string(index)] =
-        std::make_shared<rpc::ResourceTableData>(resource_table_data);
-    RAY_IGNORE_EXPR(gcs_client_->NodeResources().AsyncUpdateResources(
-        node_id, resources, [](Status status) { RAY_CHECK(status.ok()); }));
-  }
-  auto node_table = global_state_->GetAllNodeInfo();
-  ASSERT_EQ(node_table.size(), node_count);
-  for (int index = 0; index < node_count; ++index) {
-    rpc::GcsNodeInfo node_data;
-    node_data.ParseFromString(node_table[index]);
-    auto resource_map_str =
-        global_state_->GetNodeResourceInfo(NodeID::FromBinary(node_data.node_id()));
-    rpc::ResourceMap resource_map;
-    resource_map.ParseFromString(resource_map_str);
-    ASSERT_EQ(
-        static_cast<uint32_t>(
-            (*resource_map.mutable_items())[std::to_string(node_data.node_manager_port())]
-                .resource_capacity()),
-        node_data.node_manager_port() + 1);
-  }
-}
-
 TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
   rpc::ResourceUsageBatchData resource_usage_batch_data;
@@ -204,6 +168,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
 
   auto node_table_data = Mocker::GenNodeInfo();
+  node_table_data->mutable_resources_total()->insert({"CPU", 1});
+
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
       *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -308,7 +274,8 @@ TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
 
-INSTANTIATE_TEST_SUITE_P(RedisRemovalTest, GlobalStateAccessorTest,
+INSTANTIATE_TEST_SUITE_P(RedisRemovalTest,
+                         GlobalStateAccessorTest,
                          ::testing::Values(false, true));
 
 }  // namespace ray
@@ -316,7 +283,8 @@ INSTANTIATE_TEST_SUITE_P(RedisRemovalTest, GlobalStateAccessorTest,
 int main(int argc, char **argv) {
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);

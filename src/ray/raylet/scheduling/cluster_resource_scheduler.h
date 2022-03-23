@@ -23,20 +23,21 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
-#include "ray/gcs/gcs_client/accessor.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
+#include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
-#include "ray/raylet/scheduling/scheduling_policy.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
+using raylet_scheduling_policy::SchedulingContext;
+using raylet_scheduling_policy::SchedulingOptions;
+using raylet_scheduling_policy::SchedulingResult;
 using rpc::HeartbeatTableData;
 
 /// Class encapsulating the cluster resources and the logic to assign
@@ -50,17 +51,30 @@ class ClusterResourceScheduler {
   /// \param local_node_id: ID of local node,
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
-  ClusterResourceScheduler(int64_t local_node_id,
+  ClusterResourceScheduler(scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
-                           gcs::GcsClient &gcs_client);
+                           std::function<bool(scheduling::NodeID)> is_node_available_fn);
+
   ClusterResourceScheduler(
-      const std::string &local_node_id,
+      scheduling::NodeID local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
-      gcs::GcsClient &gcs_client,
+      std::function<bool(scheduling::NodeID)> is_node_available_fn,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
-  const StringIdMap &GetStringIdMap() const;
+  /// Schedule the specified resources to the cluster nodes.
+  ///
+  /// \param resource_request_list The resource request list we're attempting to schedule.
+  /// \param options: scheduling options.
+  /// \param context: The context of current scheduling. Each policy can
+  /// correspond to a different type of context.
+  /// \return `SchedulingResult`, including the
+  /// selected nodes if schedule successful, otherwise, it will return an empty vector and
+  /// a flag to indicate whether this request can be retry or not.
+  SchedulingResult Schedule(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions options,
+      SchedulingContext *context);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -76,10 +90,11 @@ class ClusterResourceScheduler {
   ///
   ///  \return emptry string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
-  std::string GetBestSchedulableNode(const TaskSpecification &task_spec,
-                                     bool prioritize_local_node, bool exclude_local_node,
-                                     bool requires_object_store_memory,
-                                     bool *is_infeasible);
+  scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
+                                            bool prioritize_local_node,
+                                            bool exclude_local_node,
+                                            bool requires_object_store_memory,
+                                            bool *is_infeasible);
 
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.
@@ -89,8 +104,8 @@ class ClusterResourceScheduler {
   /// \return True if remote node has enough resources to satisfy the resource request.
   /// False otherwise.
   bool AllocateRemoteTaskResources(
-      const std::string &node_id,
-      const absl::flat_hash_map<std::string, double> &task_resources);
+      scheduling::NodeID node_id,
+      const absl::flat_hash_map<std::string, double> &resource_request);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
@@ -100,7 +115,7 @@ class ClusterResourceScheduler {
   ///
   /// \param node_name Name of the node.
   /// \param shape The resource demand's shape.
-  bool IsSchedulableOnNode(const std::string &node_name,
+  bool IsSchedulableOnNode(scheduling::NodeID node_id,
                            const absl::flat_hash_map<std::string, double> &shape);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
@@ -109,7 +124,7 @@ class ClusterResourceScheduler {
   }
 
  private:
-  bool NodeAlive(int64_t node_id) const;
+  bool NodeAlive(scheduling::NodeID node_id) const;
 
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
@@ -119,22 +134,17 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if resource_request can be indeed scheduled on the node,
   /// and false otherwise.
-  bool SubtractRemoteNodeAvailableResources(int64_t node_id,
+  bool SubtractRemoteNodeAvailableResources(scheduling::NodeID node_id,
                                             const ResourceRequest &resource_request);
 
   /// Check whether a resource request can be scheduled given a node.
   ///
   ///  \param resource_request: Resource request to be scheduled.
   ///  \param node_id: ID of the node.
-  ///  \param resources: Node's resources. (Note: Technically, this is
-  ///     redundant, as we can get the node's resources from nodes_
-  ///     using node_id. However, typically both node_id and resources
-  ///     are available when we call this function, and this way we avoid
-  ///     a map find call which could be expensive.)
   ///
   ///  \return: Whether the request can be scheduled.
-  bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
-                     const NodeResources &resources) const;
+  bool IsSchedulable(const ResourceRequest &resource_request,
+                     scheduling::NodeID node_id) const;
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -151,10 +161,13 @@ class ClusterResourceScheduler {
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the resource request.
-  int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
-                                 const rpc::SchedulingStrategy &scheduling_strategy,
-                                 bool actor_creation, bool force_spillback,
-                                 int64_t *violations, bool *is_infeasible);
+  scheduling::NodeID GetBestSchedulableNode(
+      const ResourceRequest &resource_request,
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      bool actor_creation,
+      bool force_spillback,
+      int64_t *violations,
+      bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(...)
@@ -162,27 +175,25 @@ class ClusterResourceScheduler {
   /// \return "", if no node can schedule the current request; otherwise,
   ///          return the ID in string format of a node that can schedule the
   //           resource request.
-  std::string GetBestSchedulableNode(
+  scheduling::NodeID GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      int64_t *violations, bool *is_infeasible);
+      bool requires_object_store_memory,
+      bool actor_creation,
+      bool force_spillback,
+      int64_t *violations,
+      bool *is_infeasible);
 
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap string_to_int_map_;
   /// Identifier of local node.
-  int64_t local_node_id_;
-  /// Internally maintained random number generator.
-  std::mt19937_64 gen_;
-  /// Gcs client. It's not owned by this class.
-  gcs::GcsClient *gcs_client_;
+  scheduling::NodeID local_node_id_;
+  /// Callback to check if node is available.
+  std::function<bool(scheduling::NodeID)> is_node_available_fn_;
   /// Resources of local node.
   std::unique_ptr<LocalResourceManager> local_resource_manager_;
   /// Resources of the entire cluster.
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   /// The scheduling policy to use.
-  std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
+  std::unique_ptr<raylet_scheduling_policy::ISchedulingPolicy> scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);

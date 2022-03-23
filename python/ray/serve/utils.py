@@ -1,3 +1,5 @@
+from functools import wraps
+import importlib
 from itertools import groupby
 import json
 import logging
@@ -5,9 +7,12 @@ import pickle
 import random
 import string
 import time
-from typing import Iterable, Tuple
+from typing import Iterable, List, Tuple
 import os
 import traceback
+from enum import Enum
+import __main__
+from ray.actor import ActorHandle
 
 import requests
 import numpy as np
@@ -17,9 +22,10 @@ import ray
 import ray.serialization_addons
 from ray.exceptions import RayTaskError
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
-from enum import Enum
+from ray.serve.constants import (
+    HTTP_PROXY_TIMEOUT,
+)
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -104,7 +110,10 @@ class ServeEncoder(json.JSONEncoder):
 
 @ray.remote(num_cpus=0)
 def block_until_http_ready(
-    http_endpoint, backoff_time_s=1, check_ready=None, timeout=HTTP_PROXY_TIMEOUT
+    http_endpoint,
+    backoff_time_s=1,
+    check_ready=None,
+    timeout=HTTP_PROXY_TIMEOUT,
 ):
     http_is_ready = False
     start_time = time.time()
@@ -237,6 +246,48 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
+def msgpack_serialize(obj):
+    ctx = ray.worker.global_worker.get_serialization_context()
+    buffer = ctx.serialize(obj)
+    serialized = buffer.to_bytes()
+    return serialized
+
+
+def get_deployment_import_path(deployment, replace_main=False):
+    """
+    Gets the import path for deployment's func_or_class.
+
+    deployment: A deployment object whose import path should be returned
+    replace_main: If this is True, the function will try to replace __main__
+        with __main__'s file name if the deployment's module is __main__
+    """
+
+    body = deployment._func_or_class
+
+    if isinstance(body, str):
+        # deployment's func_or_class is already an import path
+        return body
+    elif hasattr(body, "__ray_actor_class__"):
+        # If ActorClass, get the class or function inside
+        body = body.__ray_actor_class__
+
+    import_path = f"{body.__module__}.{body.__qualname__}"
+
+    if replace_main:
+
+        # Replaces __main__ with its file name. E.g. suppose the import path
+        # is __main__.classname and classname is defined in filename.py.
+        # Its import path becomes filename.classname.
+
+        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
+            file_name = os.path.basename(__main__.__file__)
+            extensionless_file_name = file_name.split(".")[0]
+            attribute_name = import_path.split(".")[-1]
+            import_path = f"{extensionless_file_name}.{attribute_name}"
+
+    return import_path
+
+
 def parse_import_path(import_path: str):
     """
     Takes in an import_path of form:
@@ -257,3 +308,56 @@ def parse_import_path(import_path: str):
         )
 
     return ".".join(nodes[:-1]), nodes[-1]
+
+
+class JavaActorHandleProxy:
+    """Wraps actor handle and translate snake_case to camelCase."""
+
+    def __init__(self, handle: ActorHandle):
+        self.handle = handle
+        self._available_attrs = set(dir(self.handle))
+
+    def __getattr__(self, key: str):
+        if key in self._available_attrs:
+            camel_case_key = key
+        else:
+            components = key.split("_")
+            camel_case_key = components[0] + "".join(x.title() for x in components[1:])
+        return getattr(self.handle, camel_case_key)
+
+
+def require_packages(packages: List[str]):
+    """Decorator making sure function run in specified environments
+
+    Examples:
+        >>> @require_packages(["numpy", "package_a"])
+            def func():
+                import numpy as np
+        >>> func()
+            ImportError: func requires ["numpy", "package_a"] but
+            ["package_a"] are not available, please pip install them.
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            if not hasattr(func, "_require_packages_checked"):
+                missing_packages = []
+                for package in packages:
+                    try:
+                        importlib.import_module(package)
+                    except ModuleNotFoundError:
+                        missing_packages.append(package)
+                if len(missing_packages) > 0:
+                    raise ImportError(
+                        f"{func} requires packages {packages} to run but "
+                        f"{missing_packages} are missing. Please "
+                        "`pip install` them or add them to "
+                        "`runtime_env`."
+                    )
+                setattr(func, "_require_packages_checked", True)
+            return func(*args, **kwargs)
+
+        return wrapped
+
+    return decorator

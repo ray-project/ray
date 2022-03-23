@@ -6,6 +6,7 @@ from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 from ray_release.anyscale_util import get_project_name
 from ray_release.util import dict_hash, get_anyscale_sdk, anyscale_cluster_url
+from ray_release.config import DEFAULT_AUTOSUSPEND_MINS
 
 
 class ClusterManager(abc.ABC):
@@ -30,7 +31,7 @@ class ClusterManager(abc.ABC):
         self.cluster_compute_name = None
         self.cluster_compute_id = None
 
-        self.autosuspend_minutes = 10
+        self.autosuspend_minutes = DEFAULT_AUTOSUSPEND_MINS
 
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
         self.cluster_env = cluster_env
@@ -38,8 +39,10 @@ class ClusterManager(abc.ABC):
         # Add flags for redisless Ray
         self.cluster_env.setdefault("env_vars", {})
         self.cluster_env["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
-        self.cluster_env["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
         self.cluster_env["env_vars"]["RAY_gcs_storage"] = "memory"
+        self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
+        self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
+        self.cluster_env["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
 
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"

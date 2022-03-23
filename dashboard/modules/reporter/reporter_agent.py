@@ -9,17 +9,15 @@ import sys
 import traceback
 import warnings
 
-import aioredis
 
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 from ray.dashboard import k8s_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioPublisher
+from ray._private.gcs_pubsub import GcsAioPublisher
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.ray_constants import DEBUG_AUTOSCALING_STATUS
@@ -163,11 +161,7 @@ class ReporterAgent(
             self._cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
 
         self._ip = dashboard_agent.ip
-        if not use_gcs_for_bootstrap():
-            self._redis_address, _ = dashboard_agent.redis_address
-            self._is_head_node = self._ip == self._redis_address
-        else:
-            self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
+        self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
@@ -586,8 +580,8 @@ class ReporterAgent(
         )
         return records_reported
 
-    async def _perform_iteration(self, publish):
-        """Get any changes to the log files and push updates to Redis."""
+    async def _perform_iteration(self, publisher):
+        """Get any changes to the log files and push updates to kv."""
         while True:
             try:
                 formatted_status_string = internal_kv._internal_kv_get(
@@ -602,38 +596,20 @@ class ReporterAgent(
                 stats = self._get_all_stats()
                 records_reported = self._record_stats(stats, cluster_stats)
                 self._metrics_agent.record_reporter_stats(records_reported)
-                await publish(self._key, jsonify_asdict(stats))
+                await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
-        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-        if gcs_pubsub_enabled():
-            gcs_addr = self._dashboard_agent.gcs_address
-            if gcs_addr is None:
-                aioredis_client = await aioredis.create_redis_pool(
-                    address=self._dashboard_agent.redis_address,
-                    password=self._dashboard_agent.redis_password,
-                )
-                gcs_addr = await aioredis_client.get("GcsServerAddress")
-                gcs_addr = gcs_addr.decode()
-            publisher = GcsAioPublisher(address=gcs_addr)
+        if server:
+            reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
-            async def publish(key: str, data: str):
-                await publisher.publish_resource_usage(key, data)
-
-        else:
-            aioredis_client = await aioredis.create_redis_pool(
-                address=self._dashboard_agent.redis_address,
-                password=self._dashboard_agent.redis_password,
-            )
-
-            async def publish(key: str, data: str):
-                await aioredis_client.publish(key, data)
-
-        await self._perform_iteration(publish)
+        gcs_addr = self._dashboard_agent.gcs_address
+        assert gcs_addr is not None
+        publisher = GcsAioPublisher(address=gcs_addr)
+        await self._perform_iteration(publisher)
 
     @staticmethod
     def is_minimal_module():

@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import unittest
 from typing import Callable
@@ -341,6 +342,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testBuildClusterEnvPreBuildFailed(self):
+        """Pre-build fails, but is kicked off again."""
         self.cluster_manager.set_cluster_env(self.cluster_env)
         self.cluster_manager.cluster_env_id = "correct"
 
@@ -353,14 +355,29 @@ class MinimalSessionManagerTest(unittest.TestCase):
                     id="build_failed",
                     status="failed",
                     created_at=0,
+                    error_message=None,
+                    config_json={},
                 )
             ]
+        )
+        self.sdk.returns["create_cluster_environment_build"] = APIDict(
+            result=APIDict(id="new_build_id")
+        )
+        self.sdk.returns["get_build"] = APIDict(
+            result=APIDict(
+                id="build_now_succeeded",
+                status="failed",
+                created_at=0,
+                error_message=None,
+                config_json={},
+            )
         )
         with self.assertRaisesRegex(ClusterEnvBuildError, "Cluster env build failed"):
             self.cluster_manager.build_cluster_env(timeout=600)
         self.assertFalse(self.cluster_manager.cluster_env_build_id)
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 1)
+        self.assertEqual(self.sdk.call_counter["create_cluster_environment_build"], 1)
+        self.assertEqual(len(self.sdk.call_counter), 3)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testBuildClusterEnvPreBuildSucceeded(self):
@@ -375,11 +392,15 @@ class MinimalSessionManagerTest(unittest.TestCase):
                     id="build_failed",
                     status="failed",
                     created_at=0,
+                    error_message=None,
+                    config_json={},
                 ),
                 APIDict(
                     id="build_succeeded",
                     status="succeeded",
                     created_at=1,
+                    error_message=None,
+                    config_json={},
                 ),
             ]
         )
@@ -403,11 +424,15 @@ class MinimalSessionManagerTest(unittest.TestCase):
                     id="build_failed",
                     status="failed",
                     created_at=0,
+                    error_message=None,
+                    config_json={},
                 ),
                 APIDict(
                     id="build_succeeded",
                     status="pending",
                     created_at=1,
+                    error_message=None,
+                    config_json={},
                 ),
             ]
         )
@@ -417,8 +442,14 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.sdk.returns["get_build"] = _DelayedResponse(
                 lambda: frozen_time.tick(delta=10),
                 finish_after=300,
-                before=APIDict(result=APIDict(status="in_progress")),
-                after=APIDict(result=APIDict(status="failed")),
+                before=APIDict(
+                    result=APIDict(
+                        status="in_progress", error_message=None, config_json={}
+                    )
+                ),
+                after=APIDict(
+                    result=APIDict(status="failed", error_message=None, config_json={})
+                ),
             )
             self.cluster_manager.build_cluster_env(timeout=600)
 
@@ -441,11 +472,15 @@ class MinimalSessionManagerTest(unittest.TestCase):
                     id="build_failed",
                     status="failed",
                     created_at=0,
+                    error_message=None,
+                    config_json={},
                 ),
                 APIDict(
                     id="build_succeeded",
                     status="pending",
                     created_at=1,
+                    error_message=None,
+                    config_json={},
                 ),
             ]
         )
@@ -455,8 +490,16 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.sdk.returns["get_build"] = _DelayedResponse(
                 lambda: frozen_time.tick(delta=10),
                 finish_after=300,
-                before=APIDict(result=APIDict(status="in_progress")),
-                after=APIDict(result=APIDict(status="succeeded")),
+                before=APIDict(
+                    result=APIDict(
+                        status="in_progress", error_message=None, config_json={}
+                    )
+                ),
+                after=APIDict(
+                    result=APIDict(
+                        status="succeeded", error_message=None, config_json={}
+                    )
+                ),
             )
             self.cluster_manager.build_cluster_env(timeout=100)
 
@@ -478,11 +521,15 @@ class MinimalSessionManagerTest(unittest.TestCase):
                     id="build_failed",
                     status="failed",
                     created_at=0,
+                    error_message=None,
+                    config_json={},
                 ),
                 APIDict(
                     id="build_succeeded",
                     status="pending",
                     created_at=1,
+                    error_message=None,
+                    config_json={},
                 ),
             ]
         )
@@ -490,8 +537,16 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.sdk.returns["get_build"] = _DelayedResponse(
                 lambda: frozen_time.tick(delta=10),
                 finish_after=300,
-                before=APIDict(result=APIDict(status="in_progress")),
-                after=APIDict(result=APIDict(status="succeeded")),
+                before=APIDict(
+                    result=APIDict(
+                        status="in_progress", error_message=None, config_json={}
+                    )
+                ),
+                after=APIDict(
+                    result=APIDict(
+                        status="succeeded", error_message=None, config_json={}
+                    )
+                ),
             )
             self.cluster_manager.build_cluster_env(timeout=600)
 
@@ -629,3 +684,9 @@ class LiveSessionManagerTest(unittest.TestCase):
 
         # Start cluster
         self.cluster_manager.start_cluster(timeout=1200)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

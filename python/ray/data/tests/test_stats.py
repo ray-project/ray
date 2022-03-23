@@ -171,13 +171,6 @@ Stage N map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Dataset iterator time breakdown:
-* In ray.wait(): T
-* In ray.get(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
-
 == Pipeline Window N ==
 Stage N read->map_batches: [execution cached]
 Stage N map: N/N blocks executed in T
@@ -187,13 +180,6 @@ Stage N map: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Dataset iterator time breakdown:
-* In ray.wait(): T
-* In ray.get(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
-
 == Pipeline Window N ==
 Stage N read->map_batches: [execution cached]
 Stage N map: N/N blocks executed in T
@@ -202,18 +188,16 @@ Stage N map: N/N blocks executed in T
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
-
-Dataset iterator time breakdown:
-* In ray.wait(): T
-* In ray.get(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
 
 ##### Overall Pipeline Time Breakdown #####
 * Time stalled waiting for next dataset: T min, T max, T mean, T total
-* Time in dataset iterator: T
-* Time in user code: T
+
+DatasetPipeline iterator time breakdown:
+* Waiting for next dataset: T
+* In ray.wait(): T
+* In ray.get(): T
+* In format_batch(): T
+* In user code: T
 * Total time: T
 """
     )
@@ -243,13 +227,6 @@ Stage N read: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Dataset iterator time breakdown:
-* In ray.wait(): T
-* In ray.get(): T
-* In format_batch(): T
-* In user code: T
-* Total time: T
-
 == Pipeline Window N ==
 Stage N read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -258,17 +235,15 @@ Stage N read: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Dataset iterator time breakdown:
+##### Overall Pipeline Time Breakdown #####
+* Time stalled waiting for next dataset: T min, T max, T mean, T total
+
+DatasetPipeline iterator time breakdown:
+* Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
 * In format_batch(): T
 * In user code: T
-* Total time: T
-
-##### Overall Pipeline Time Breakdown #####
-* Time stalled waiting for next dataset: T min, T max, T mean, T total
-* Time in dataset iterator: T
-* Time in user code: T
 * Total time: T
 """
     )

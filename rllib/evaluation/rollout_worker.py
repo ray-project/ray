@@ -1806,7 +1806,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_map[policy_id].import_model_from_h5(import_file)
 
     @Deprecated(
-        new="Trainer.get_policy().export_checkpoint([export_dir], " "[filename]?)",
+        new="Trainer.get_policy().export_checkpoint([export_dir], [filename]?)",
         error=False,
     )
     def export_policy_checkpoint(

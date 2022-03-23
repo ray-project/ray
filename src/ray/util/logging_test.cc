@@ -197,8 +197,8 @@ TEST(PrintLogTest, LogTestWithInit) {
 
 // This test will output large amount of logs to stderr, should be disabled in travis.
 TEST(LogPerfTest, PerfTest) {
-  RayLog::StartRayLog("/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR,
-                      ray::GetUserTempDir());
+  RayLog::StartRayLog(
+      "/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR, ray::GetUserTempDir());
   int rounds = 10;
 
   int64_t start_time = current_time_ms();

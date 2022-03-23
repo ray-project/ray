@@ -576,9 +576,9 @@ def test_gpu(monkeypatch):
         ), "expected launcher task to be scheduled on GPU nodes"
 
         for node_id in ids:
-            assert node_id in cpu_node_ids, (
-                "expected non-GPU tasks/actors to be scheduled on" "non-GPU nodes."
-            )
+            assert (
+                node_id in cpu_node_ids
+            ), "expected non-GPU tasks/actors to be scheduled on non-GPU nodes."
     finally:
         ray.shutdown()
         cluster.shutdown()

@@ -4,7 +4,6 @@ import functools
 import hashlib
 import importlib
 import logging
-import math
 import multiprocessing
 import os
 import signal
@@ -29,7 +28,6 @@ from pathlib import Path
 import numpy as np
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 from ray._private.gcs_pubsub import construct_error_message
 from ray._private.tls_utils import load_certs_from_env
@@ -119,7 +117,10 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
 
 
 def publish_error_to_driver(
-    error_type, message, job_id=None, redis_client=None, gcs_publisher=None
+    error_type,
+    message,
+    gcs_publisher,
+    job_id=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -132,27 +133,15 @@ def publish_error_to_driver(
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
+        gcs_publisher: The GCS publisher to use.
         job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
-        redis_client: The redis client to use.
-        gcs_publisher: The GCS publisher to use. If specified, ignores
-            redis_client.
     """
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     error_data = construct_error_message(job_id, error_type, message, time.time())
-    if gcs_publisher:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
-    elif redis_client:
-        pubsub_msg = gcs_utils.PubSubMessage()
-        pubsub_msg.id = job_id.binary()
-        pubsub_msg.data = error_data.SerializeToString()
-        redis_client.publish(
-            "ERROR_INFO:" + job_id.hex(), pubsub_msg.SerializeToString()
-        )
-    else:
-        raise ValueError("One of redis_client and gcs_publisher needs to be specified!")
+    gcs_publisher.publish_error(job_id.hex().encode(), error_data)
 
 
 def random_string():
@@ -343,7 +332,7 @@ def resources_from_resource_arguments(
 
     if "CPU" in resources or "GPU" in resources:
         raise ValueError(
-            "The resources dictionary must not " "contain the key 'CPU' or 'GPU'"
+            "The resources dictionary must not contain the key 'CPU' or 'GPU'"
         )
     elif "memory" in resources or "object_store_memory" in resources:
         raise ValueError(
@@ -435,9 +424,15 @@ def get_system_memory():
     # container. Note that this file is not specific to Docker and its value is
     # often much larger than the actual amount of memory.
     docker_limit = None
+    # For cgroups v1:
     memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    # For cgroups v2:
+    memory_limit_filename_v2 = "/sys/fs/cgroup/memory.max"
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
+            docker_limit = int(f.read())
+    elif os.path.exists(memory_limit_filename_v2):
+        with open(memory_limit_filename_v2, "r") as f:
             docker_limit = int(f.read())
 
     # Use psutil if it is available.
@@ -455,6 +450,7 @@ def _get_docker_cpus(
     cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
     cpu_period_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
     cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus",
+    cpu_max_file_name="/sys/fs/cgroup/cpu.max",
 ) -> Optional[float]:
     # TODO (Alex): Don't implement this logic oursleves.
     # Docker has 2 underyling ways of implementing CPU limits:
@@ -466,16 +462,31 @@ def _get_docker_cpus(
 
     cpu_quota = None
     # See: https://bugs.openjdk.java.net/browse/JDK-8146115
-    if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_quota_file_name):
+    if os.path.exists(cpu_quota_file_name) and os.path.exists(cpu_period_file_name):
         try:
             with open(cpu_quota_file_name, "r") as quota_file, open(
                 cpu_period_file_name, "r"
             ) as period_file:
                 cpu_quota = float(quota_file.read()) / float(period_file.read())
-        except Exception as e:
-            logger.exception("Unexpected error calculating docker cpu quota.", e)
+        except Exception:
+            logger.exception("Unexpected error calculating docker cpu quota.")
+    # Look at cpu.max for cgroups v2
+    elif os.path.exists(cpu_max_file_name):
+        try:
+            max_file = open(cpu_max_file_name).read()
+            quota_str, period_str = max_file.split()
+            if quota_str.isnumeric() and period_str.isnumeric():
+                cpu_quota = float(quota_str) / float(period_str)
+            else:
+                # quota_str is "max" meaning the cpu quota is unset
+                cpu_quota = None
+        except Exception:
+            logger.exception("Unexpected error calculating docker cpu quota.")
     if (cpu_quota is not None) and (cpu_quota < 0):
         cpu_quota = None
+    elif cpu_quota == 0:
+        # Round up in case the cpu limit is less than 1.
+        cpu_quota = 1
 
     cpuset_num = None
     if os.path.exists(cpuset_file_name):
@@ -491,39 +502,17 @@ def _get_docker_cpus(
                     else:
                         cpu_ids.append(int(num_or_range))
                 cpuset_num = len(cpu_ids)
-        except Exception as e:
-            logger.exception("Unexpected error calculating docker cpuset ids.", e)
+        except Exception:
+            logger.exception("Unexpected error calculating docker cpuset ids.")
+    # Possible to-do: Parse cgroups v2's cpuset.cpus.effective for the number
+    # of accessible CPUs.
 
     if cpu_quota and cpuset_num:
         return min(cpu_quota, cpuset_num)
-    else:
-        return cpu_quota or cpuset_num
-
-
-def get_k8s_cpus(cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.shares") -> float:
-    """Get number of CPUs available for use by this container, in terms of
-    cgroup cpu shares.
-
-    This is the number of CPUs K8s has assigned to the container based
-    on pod spec requests and limits.
-
-    Note: using cpu_quota as in _get_docker_cpus() works
-    only if the user set CPU limit in their pod spec (in addition to CPU
-    request). Otherwise, the quota is unset.
-    """
-    try:
-        cpu_shares = int(open(cpu_share_file_name).read())
-        container_num_cpus = cpu_shares / 1024
-        return container_num_cpus
-    except Exception as e:
-        logger.exception("Error computing CPU limit of Ray Kubernetes pod.", e)
-        return 1.0
+    return cpu_quota or cpuset_num
 
 
 def get_num_cpus() -> int:
-    if "KUBERNETES_SERVICE_HOST" in os.environ:
-        # If in a K8S pod, use cgroup cpu shares and round up.
-        return int(math.ceil(get_k8s_cpus()))
     cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
         logger.info(
@@ -539,7 +528,12 @@ def get_num_cpus() -> int:
         # https://bugs.python.org/issue36054
         docker_count = _get_docker_cpus()
         if docker_count is not None and docker_count != cpu_count:
-            if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
+            # Don't log this warning if we're on K8s or if the warning is
+            # explicitly disabled.
+            if (
+                "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ
+                and "KUBERNETES_SERVICE_HOST" not in os.environ
+            ):
                 logger.warning(
                     "Detecting docker specified CPUs. In "
                     "previous versions of Ray, CPU detection in containers "
@@ -578,9 +572,15 @@ def get_used_memory():
     # Try to accurately figure out the memory usage if we are in a docker
     # container.
     docker_usage = None
+    # For cgroups v1:
     memory_usage_filename = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    # For cgroups v2:
+    memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
     if os.path.exists(memory_usage_filename):
         with open(memory_usage_filename, "r") as f:
+            docker_usage = int(f.read())
+    elif os.path.exists(memory_usage_filename_v2):
+        with open(memory_usage_filename_v2, "r") as f:
             docker_usage = int(f.read())
 
     # Use psutil if it is available.
@@ -1222,7 +1222,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
         if result is not None:
             break
         else:
-            logger.debug(f"Fetched {key}=None from redis. Retrying.")
+            logger.debug(f"Fetched {key}=None from KV. Retrying.")
             time.sleep(2)
     if not result:
         raise RuntimeError(
@@ -1276,8 +1276,8 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
     for dirpath, dirnames, filenames in os.walk(path):
         for f in filenames:
             fp = os.path.join(dirpath, f)
-            # skip if it is a symbolic link
-            if not os.path.islink(fp):
+            # skip if it is a symbolic link or a .pyc file
+            if not os.path.islink(fp) and not f.endswith(".pyc"):
                 total_size_bytes += os.path.getsize(fp)
 
     return total_size_bytes

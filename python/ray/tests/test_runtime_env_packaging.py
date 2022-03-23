@@ -15,8 +15,11 @@ from ray._private.runtime_env.packaging import (
     get_local_dir_from_uri,
     get_uri_for_directory,
     _get_excludes,
+    get_uri_for_package,
     upload_package_if_needed,
     parse_uri,
+    is_zip_uri,
+    is_whl_uri,
     Protocol,
     get_top_level_dir_from_compressed_package,
     remove_dir_from_filepaths,
@@ -349,6 +352,23 @@ def test_parsing(parsing_tuple):
 
     assert protocol == parsed_protocol
     assert package_name == parsed_package_name
+
+
+def test_is_whl_uri():
+    assert is_whl_uri("gcs://my-package.whl")
+    assert not is_whl_uri("gcs://asdf.zip")
+    assert not is_whl_uri("invalid_format")
+
+
+def test_is_zip_uri():
+    assert is_zip_uri("s3://my-package.zip")
+    assert is_zip_uri("gcs://asdf.zip")
+    assert not is_zip_uri("invalid_format")
+    assert not is_zip_uri("gcs://a.whl")
+
+
+def test_get_uri_for_package():
+    assert get_uri_for_package(Path("/tmp/my-pkg.whl")) == "gcs://my-pkg.whl"
 
 
 def test_get_local_dir_from_uri():

@@ -10,12 +10,12 @@ from ray._private.test_utils import (
     generate_runtime_env_dict,
 )
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
-from ray._private.runtime_env.validation import _rewrite_pip_list_ray_libraries
 from ray.runtime_env import RuntimeEnv
 
 import yaml
 import tempfile
 from pathlib import Path
+import subprocess
 
 import ray
 
@@ -23,14 +23,6 @@ if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
     # packages and fall back all the dependencies to current python's site.
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
-
-
-def test_rewrite_pip_list_ray_libraries():
-    input = ["--extra-index-url my.url", "ray==1.4", "requests", "ray[serve]"]
-    output = _rewrite_pip_list_ray_libraries(input)
-    assert "ray" not in output
-    assert "ray[serve]" not in output
-    assert output[:3] == ["--extra-index-url my.url", "ray==1.4", "requests"]
 
 
 def test_get_conda_dict_with_ray_inserted_m1_wheel(monkeypatch):
@@ -202,6 +194,21 @@ class TestGC:
         ray.kill(a)
 
         wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="_PathHelper.get_virtual_activate not supported on Windows.",
+)
+def test_import_in_subprocess(shutdown_only):
+
+    ray.init()
+
+    @ray.remote(runtime_env={"pip": ["pip-install-test==0.5"]})
+    def f():
+        return subprocess.run(["python", "-c", "import pip_install_test"]).returncode
+
+    assert ray.get(f.remote()) == 0
 
 
 if __name__ == "__main__":

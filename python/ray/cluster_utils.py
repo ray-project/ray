@@ -9,7 +9,6 @@ import time
 
 import ray
 import ray._private.services
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.client_mode_hook import disable_client_hook
 from ray import ray_constants
 from ray._raylet import GcsClientOptions
@@ -149,10 +148,7 @@ class Cluster:
 
     @property
     def address(self):
-        if use_gcs_for_bootstrap():
-            return self.gcs_address
-        else:
-            return self.redis_address
+        return self.gcs_address
 
     def connect(self, namespace=None):
         """Connect the driver to the cluster."""
@@ -208,12 +204,7 @@ class Cluster:
                 )
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
-                if use_gcs_for_bootstrap():
-                    gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
-                else:
-                    gcs_options = GcsClientOptions.from_redis_address(
-                        self.redis_address, self.redis_password
-                    )
+                gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
                 self.global_state._initialize_global_state(gcs_options)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)

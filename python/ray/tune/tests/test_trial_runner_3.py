@@ -25,7 +25,7 @@ from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig
-from ray.tune.tests.test_trial_runner_utils import TrialResultObserver
+from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -46,7 +46,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner()
 
         def on_step_begin(self, trialrunner):
-            self._update_avail_resources()
+            self._resource_updater.update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 

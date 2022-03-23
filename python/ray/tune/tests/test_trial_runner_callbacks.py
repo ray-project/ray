@@ -194,7 +194,9 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         # Let the first trial error
         self.executor.next_future_result = ExecutorEvent(
-            event_type=ExecutorEventType.ERROR, trial=trials[0]
+            event_type=ExecutorEventType.ERROR,
+            trial=trials[0],
+            result=(Exception(), "error"),
         )
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_fail"]["iteration"], 6)

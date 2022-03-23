@@ -78,8 +78,8 @@ class Executor {
 ///
 /// Currently, SyncMETHOD will copy the reply additionally.
 /// TODO(sang): Fix it.
-#define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, method_timeout_ms,    \
-                                   SPECS)                                              \
+#define VOID_GCS_RPC_CLIENT_METHOD(                                                    \
+    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS)                            \
   void METHOD(const METHOD##Request &request,                                          \
               const ClientCallback<METHOD##Reply> &callback,                           \
               const int64_t timeout_ms = method_timeout_ms) SPECS {                    \
@@ -102,15 +102,20 @@ class Executor {
         executor->Retry();                                                             \
       }                                                                                \
     };                                                                                 \
-    auto operation = [request, operation_callback,                                     \
-                      timeout_ms](GcsRpcClient *gcs_rpc_client) {                      \
-      RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,         \
-                                 gcs_rpc_client->grpc_client, timeout_ms));            \
-    };                                                                                 \
+    auto operation =                                                                   \
+        [request, operation_callback, timeout_ms](GcsRpcClient *gcs_rpc_client) {      \
+          RAY_UNUSED(INVOKE_RPC_CALL(SERVICE,                                          \
+                                     METHOD,                                           \
+                                     request,                                          \
+                                     operation_callback,                               \
+                                     gcs_rpc_client->grpc_client,                      \
+                                     timeout_ms));                                     \
+        };                                                                             \
     executor->Execute(operation);                                                      \
   }                                                                                    \
                                                                                        \
-  ray::Status Sync##METHOD(const METHOD##Request &request, METHOD##Reply *reply_in,    \
+  ray::Status Sync##METHOD(const METHOD##Request &request,                             \
+                           METHOD##Reply *reply_in,                                    \
                            const int64_t timeout_ms = method_timeout_ms) {             \
     std::promise<Status> promise;                                                      \
     METHOD(                                                                            \
@@ -133,13 +138,16 @@ class GcsRpcClient {
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
   /// and reconnect to GCS RPC server when gcs service failure is detected.
   GcsRpcClient(
-      const std::string &address, const int port, ClientCallManager &client_call_manager,
+      const std::string &address,
+      const int port,
+      ClientCallManager &client_call_manager,
       std::function<void(GcsServiceFailureType)> gcs_service_failure_detected = nullptr)
       : gcs_service_failure_detected_(std::move(gcs_service_failure_detected)) {
     Reset(address, port, client_call_manager);
   };
 
-  void Reset(const std::string &address, const int port,
+  void Reset(const std::string &address,
+             const int port,
              ClientCallManager &client_call_manager) {
     job_info_grpc_client_ = std::make_unique<GrpcClient<JobInfoGcsService>>(
         address, port, client_call_manager);
@@ -148,8 +156,8 @@ class GcsRpcClient {
     node_info_grpc_client_ = std::make_unique<GrpcClient<NodeInfoGcsService>>(
         address, port, client_call_manager);
     node_resource_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(address, port,
-                                                                 client_call_manager);
+        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(
+            address, port, client_call_manager);
     heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
         address, port, client_call_manager);
     stats_grpc_client_ =
@@ -157,8 +165,8 @@ class GcsRpcClient {
     worker_info_grpc_client_ = std::make_unique<GrpcClient<WorkerInfoGcsService>>(
         address, port, client_call_manager);
     placement_group_info_grpc_client_ =
-        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(address, port,
-                                                                   client_call_manager);
+        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(
+            address, port, client_call_manager);
     internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
         address, port, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
@@ -166,173 +174,243 @@ class GcsRpcClient {
   }
 
   /// Add job info to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, job_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
+                             AddJob,
+                             job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Mark job as finished to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, job_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
+                             MarkJobFinished,
+                             job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get information of all jobs from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
+                             GetAllJobInfo,
+                             job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Report job error to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, ReportJobError, job_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
+                             ReportJobError,
+                             job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get next job id from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetNextJobID, job_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
+                             GetNextJobID,
+                             job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Register actor via GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActor, actor_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             RegisterActor,
+                             actor_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Create actor via GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, CreateActor, actor_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             CreateActor,
+                             actor_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get actor data from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, actor_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             GetActorInfo,
+                             actor_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get actor data from GCS Service by name.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetNamedActorInfo,
-                             actor_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             GetNamedActorInfo,
+                             actor_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Get all named actor names from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, ListNamedActors,
-                             actor_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             ListNamedActors,
+                             actor_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Get all actor data from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetAllActorInfo,
-                             actor_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             GetAllActorInfo,
+                             actor_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Kill actor via GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, KillActorViaGcs,
-                             actor_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             KillActorViaGcs,
+                             actor_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Register a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, node_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             RegisterNode,
+                             node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Unregister a node from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DrainNode, node_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             DrainNode,
+                             node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get information of all nodes from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             GetAllNodeInfo,
+                             node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get internal config of the node from the GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
-                             node_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             GetInternalConfig,
+                             node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Get node's resources from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetResources,
-                             node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
-
-  /// Update resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, UpdateResources,
-                             node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
-
-  /// Delete resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, DeleteResources,
-                             node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
+                             GetResources,
+                             node_resource_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Get available resources of all nodes from the GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllAvailableResources,
-                             node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
+                             GetAllAvailableResources,
+                             node_resource_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Report resource usage of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, ReportResourceUsage,
-                             node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
+                             ReportResourceUsage,
+                             node_resource_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Get resource usage of all nodes from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllResourceUsage,
-                             node_resource_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
+                             GetAllResourceUsage,
+                             node_resource_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Report heartbeat of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
-                             heartbeat_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService,
+                             ReportHeartbeat,
+                             heartbeat_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Check GCS is alive.
-  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
-                             heartbeat_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService,
+                             CheckAlive,
+                             heartbeat_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Add profile data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService, AddProfileData, stats_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
+                             AddProfileData,
+                             stats_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get information of all profiles from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService, GetAllProfileInfo, stats_grpc_client_,
+  VOID_GCS_RPC_CLIENT_METHOD(StatsGcsService,
+                             GetAllProfileInfo,
+                             stats_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Report a worker failure to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, ReportWorkerFailure,
-                             worker_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             ReportWorkerFailure,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Get worker information from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetWorkerInfo,
-                             worker_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             GetWorkerInfo,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Get information of all workers from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, GetAllWorkerInfo,
-                             worker_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             GetAllWorkerInfo,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Add worker information to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService, AddWorkerInfo,
-                             worker_info_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(WorkerInfoGcsService,
+                             AddWorkerInfo,
+                             worker_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Create placement group via GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, CreatePlacementGroup,
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService,
+                             CreatePlacementGroup,
                              placement_group_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Remove placement group via GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, RemovePlacementGroup,
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService,
+                             RemovePlacementGroup,
                              placement_group_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
   /// Get placement group via GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetPlacementGroup,
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService,
+                             GetPlacementGroup,
                              placement_group_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get placement group data from GCS Service by name.
-  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetNamedPlacementGroup,
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService,
+                             GetNamedPlacementGroup,
                              placement_group_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Get information of all placement group from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetAllPlacementGroup,
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService,
+                             GetAllPlacementGroup,
                              placement_group_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Wait for placement group until ready via GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, WaitPlacementGroupUntilReady,
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService,
+                             WaitPlacementGroupUntilReady,
                              placement_group_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Operations for kv (Get, Put, Del, Exists)
-  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVGet,
-                             internal_kv_grpc_client_, /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVPut,
-                             internal_kv_grpc_client_, /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVDel,
-                             internal_kv_grpc_client_, /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVExists,
-                             internal_kv_grpc_client_, /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVKeys,
-                             internal_kv_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
+                             InternalKVGet,
+                             internal_kv_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
+                             InternalKVPut,
+                             internal_kv_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
+                             InternalKVDel,
+                             internal_kv_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
+                             InternalKVExists,
+                             internal_kv_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
+                             InternalKVKeys,
+                             internal_kv_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Operations for pubsub
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsPublish,
-                             internal_pubsub_grpc_client_, /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberPoll,
-                             internal_pubsub_grpc_client_, /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberCommandBatch,
-                             internal_pubsub_grpc_client_, /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+                             GcsPublish,
+                             internal_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+                             GcsSubscriberPoll,
+                             internal_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+                             GcsSubscriberCommandBatch,
+                             internal_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 

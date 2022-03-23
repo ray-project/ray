@@ -1,3 +1,5 @@
+from typing import Optional, List
+
 import click
 import logging
 import operator
@@ -57,9 +59,9 @@ def print_format_output(dataframe):
     """Prints output of given dataframe to fit into terminal.
 
     Returns:
-        table (pd.DataFrame): Final outputted dataframe.
-        dropped_cols (list): Columns dropped due to terminal size.
-        empty_cols (list): Empty columns (dropped on default).
+        table: Final outputted dataframe.
+        dropped_cols: Columns dropped due to terminal size.
+        empty_cols: Empty columns (dropped on default).
     """
     print_df = pd.DataFrame()
     dropped_cols = []
@@ -84,7 +86,7 @@ def print_format_output(dataframe):
     print(table)
     if dropped_cols:
         click.secho("Dropped columns: {}".format(dropped_cols), fg="yellow")
-        click.secho("Please increase your terminal size " "to view remaining columns.")
+        click.secho("Please increase your terminal size to view remaining columns.")
     if empty_cols:
         click.secho("Empty columns: {}".format(empty_cols), fg="yellow")
 
@@ -92,26 +94,26 @@ def print_format_output(dataframe):
 
 
 def list_trials(
-    experiment_path,
-    sort=None,
-    output=None,
-    filter_op=None,
-    info_keys=None,
-    limit=None,
-    desc=False,
+    experiment_path: str,
+    sort: Optional[List[str]] = None,
+    output: Optional[str] = None,
+    filter_op: Optional[str] = None,
+    info_keys: Optional[List[str]] = None,
+    limit: int = None,
+    desc: bool = False,
 ):
     """Lists trials in the directory subtree starting at the given path.
 
     Args:
-        experiment_path (str): Directory where trials are located.
+        experiment_path: Directory where trials are located.
             Like Experiment.local_dir/Experiment.name/experiment*.json.
-        sort (list): Keys to sort by.
-        output (str): Name of file where output is saved.
-        filter_op (str): Filter operation in the format
+        sort: Keys to sort by.
+        output: Name of file where output is saved.
+        filter_op: Filter operation in the format
             "<column> <operator> <value>".
-        info_keys (list): Keys that are displayed.
-        limit (int): Number of rows to display.
-        desc (bool): Sort ascending vs. descending.
+        info_keys: Keys that are displayed.
+        limit: Number of rows to display.
+        desc: Sort ascending vs. descending.
     """
     _check_tabulate()
 
@@ -195,26 +197,26 @@ def list_trials(
 
 
 def list_experiments(
-    project_path,
-    sort=None,
-    output=None,
-    filter_op=None,
-    info_keys=None,
-    limit=None,
-    desc=False,
+    project_path: str,
+    sort: Optional[List[str]] = None,
+    output: str = None,
+    filter_op: str = None,
+    info_keys: Optional[List[str]] = None,
+    limit: int = None,
+    desc: bool = False,
 ):
     """Lists experiments in the directory subtree.
 
     Args:
-        project_path (str): Directory where experiments are located.
+        project_path: Directory where experiments are located.
             Corresponds to Experiment.local_dir.
-        sort (list): Keys to sort by.
-        output (str): Name of file where output is saved.
-        filter_op (str): Filter operation in the format
+        sort: Keys to sort by.
+        output: Name of file where output is saved.
+        filter_op: Filter operation in the format
             "<column> <operator> <value>".
-        info_keys (list): Keys that are displayed.
-        limit (int): Number of rows to display.
-        desc (bool): Sort ascending vs. descending.
+        info_keys: Keys that are displayed.
+        limit: Number of rows to display.
+        desc: Sort ascending vs. descending.
     """
     _check_tabulate()
     base, experiment_folders, _ = next(os.walk(project_path))
@@ -282,12 +284,12 @@ def list_experiments(
         click.secho("Output saved at {}".format(output), fg="green")
 
 
-def add_note(path, filename="note.txt"):
+def add_note(path: str, filename: str = "note.txt"):
     """Opens a txt file at the given path where user can add and save notes.
 
     Args:
-        path (str): Directory where note will be saved.
-        filename (str): Name of note. Defaults to "note.txt"
+        path: Directory where note will be saved.
+        filename: Name of note. Defaults to "note.txt"
     """
     path = os.path.expanduser(path)
     assert os.path.isdir(path), "{} is not a valid directory.".format(path)

@@ -46,6 +46,7 @@ sphinx-book-theme==0.1.7
 sphinx-external-toc==0.2.3
 sphinxcontrib.yt==0.2.2
 sphinx-sitemap==2.2.0
+sphinx-thebe==0.1.1
 
 # MyST
 myst-parser==0.15.2

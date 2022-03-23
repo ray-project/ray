@@ -27,15 +27,22 @@ class MockActorSchedulingQueue {
   MockActorSchedulingQueue(instrumented_io_context &main_io_service,
                            DependencyWaiter &waiter)
       : queue_(main_io_service, waiter) {}
-  void Add(int64_t seq_no, int64_t client_processed_up_to,
+  void Add(int64_t seq_no,
+           int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
            std::function<void(rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback = nullptr,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    queue_.Add(seq_no, client_processed_up_to, std::move(accept_request),
-               std::move(reject_request), send_reply_callback, "",
-               FunctionDescriptorBuilder::Empty(), task_id, dependencies);
+    queue_.Add(seq_no,
+               client_processed_up_to,
+               std::move(accept_request),
+               std::move(reject_request),
+               send_reply_callback,
+               "",
+               FunctionDescriptorBuilder::Empty(),
+               task_id,
+               dependencies);
   }
 
  private:

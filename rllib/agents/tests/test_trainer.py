@@ -61,6 +61,7 @@ class TestTrainer(unittest.TestCase):
                     },
                 },
                 "num_workers": 2,  # Test on remote workers as well.
+                "num_cpus_per_worker": 0.1,
                 "model": {
                     "fcnet_hiddens": [5],
                     "fcnet_activation": "linear",
@@ -74,6 +75,10 @@ class TestTrainer(unittest.TestCase):
                     # And only two policies that can be stored in memory at a
                     # time.
                     "policy_map_capacity": 2,
+                },
+                "evaluation_num_workers": 1,
+                "evaluation_config": {
+                    "num_cpus_per_worker": 0.1,
                 },
             }
         )
@@ -110,6 +115,16 @@ class TestTrainer(unittest.TestCase):
                 # than what's defined in the config dict).
                 test = pg.PGTrainer(config=config)
                 test.restore(checkpoint)
+
+                # Make sure evaluation worker also gets the restored policy.
+                def _has_policy(w):
+                    return w.get_policy("p0") is not None
+
+                self.assertTrue(
+                    all(test.evaluation_workers.foreach_worker(_has_policy))
+                )
+
+                # Make sure trainer can continue training the restored policy.
                 pol0 = test.get_policy("p0")
                 test.train()
                 # Test creating an action with the added (and restored) policy.

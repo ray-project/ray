@@ -47,7 +47,7 @@ def train(config, checkpoint_dir=None):
     optimizer = hvd.DistributedOptimizer(optimizer)
     np.random.seed(1 + hvd.rank())
     torch.manual_seed(1234)
-    # To ensure consistent initialization across slots,
+    # To ensure consistent initialization across workers,
     hvd.broadcast_parameters(net.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         train,
         use_gpu=False if args.smoke_test else True,
         num_hosts=1 if args.smoke_test else 2,
-        num_slots=2 if args.smoke_test else 2,
+        num_workers=2 if args.smoke_test else 2,
         replicate_pem=False,
         timeout_s=300,
     )
