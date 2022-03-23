@@ -265,16 +265,17 @@ class PB2(PopulationBasedTraining):
             https://arxiv.org/pdf/1711.09846.pdf.
 
     Example:
-        >>> pb2 = PB2(
-        >>>     time_attr="timesteps_total",
-        >>>     metric="episode_reward_mean",
-        >>>     mode="max",
-        >>>     perturbation_interval=10000,
-        >>>     hyperparam_mutations={
-        >>>         # These must be continuous, currently a limitation.
-        >>>         "factor_1": lambda: random.uniform(0.0, 20.0),
-        >>>     })
-        >>> tune.run({...}, num_samples=8, scheduler=pb2)
+        >>> from ray import tune
+        >>> from ray.tune.schedulers.pb2 import PB2
+        >>> from ray.tune.examples.pbt_function import pbt_function
+        >>> pb2 = PB2(  # use "pip install gpy" to use PB2
+        ...     metric="mean_accuracy",
+        ...     mode="max",
+        ...     perturbation_interval=20,
+        ...     hyperparam_bounds={
+        ...     "factor": [0.0, 20.0],
+        ... })
+        >>> tune.run(pbt_function, config={"lr": 0.0001}, num_samples=8, scheduler=pb2)
     """
 
     def __init__(

@@ -252,6 +252,9 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
+# Add a render priority for doctest
+nb_render_priority = {"doctest": ()}
+
 
 def setup(app):
     app.connect("html-page-context", update_context)

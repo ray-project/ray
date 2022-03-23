@@ -226,12 +226,14 @@ def flatten_inputs_to_1d_tensor(
 
     Examples:
         >>> # B=2
+        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
+        >>> from gym.spaces import Discrete, Box
         >>> out = flatten_inputs_to_1d_tensor(
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
         ... )
         >>> print(out)
-        ... [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
 
         >>> # B=2; T=2
         >>> out = flatten_inputs_to_1d_tensor(
@@ -241,8 +243,8 @@ def flatten_inputs_to_1d_tensor(
         ...     time_axis=True
         ... )
         >>> print(out)
-        ... [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
-        ...  [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
+        [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
 
     flat_inputs = tree.flatten(inputs)
