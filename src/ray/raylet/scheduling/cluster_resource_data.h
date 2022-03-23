@@ -187,26 +187,34 @@ class ResourceRequest {
   }
 
   ResourceRequest &operator+=(const ResourceRequest &other) {
-    auto resource_ids = ResourceIds();
-    for (auto &resource_id : resource_ids) {
-      Set(resource_id, Get(resource_id) + other.Get(resource_id));
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      predefined_resources_[i] += other.predefined_resources_[i];
     }
-    for (auto &resource_id : other.ResourceIds()) {
-      if (resource_ids.find(resource_id) == resource_ids.end()) {
-        Set(resource_id, other.Get(resource_id));
+
+    for (auto &entry : other.custom_resources_) {
+      auto it = custom_resources_.find(entry.first);
+      if (it != custom_resources_.end()) {
+        it->second += entry.second;
+        if (it->second == 0) {
+          custom_resources_.erase(it);
+        }
       }
     }
     return *this;
   }
 
   ResourceRequest &operator-=(const ResourceRequest &other) {
-    auto resource_ids = ResourceIds();
-    for (auto &resource_id : resource_ids) {
-      Set(resource_id, Get(resource_id) - other.Get(resource_id));
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      predefined_resources_[i] -= other.predefined_resources_[i];
     }
-    for (auto &resource_id : other.ResourceIds()) {
-      if (resource_ids.find(resource_id) == resource_ids.end()) {
-        Set(resource_id, -other.Get(resource_id));
+
+    for (auto &entry : other.custom_resources_) {
+      auto it = custom_resources_.find(entry.first);
+      if (it != custom_resources_.end()) {
+        it->second -= entry.second;
+        if (it->second == 0) {
+          custom_resources_.erase(it);
+        }
       }
     }
     return *this;
