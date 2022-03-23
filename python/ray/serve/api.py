@@ -1863,7 +1863,7 @@ def run(
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-) -> RayServeHandle:
+) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
     Either a DeploymentNode, DeploymentFunctionNode, or a pre-built application
@@ -1942,35 +1942,6 @@ def run(
 
     if ingress is not None:
         return ingress.get_handle()
-
-    # TODO (shrekris-anyscale): return handle to ingress deployment
-
-
-def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHandle:
-    """Atomically deploys a group of deployments."""
-
-    if len(deployments) == 0:
-        return
-
-    parameter_group = []
-
-    for deployment in deployments:
-        deployment_parameters = {
-            "name": deployment._name,
-            "func_or_class": deployment._func_or_class,
-            "init_args": deployment.init_args,
-            "init_kwargs": deployment.init_kwargs,
-            "ray_actor_options": deployment._ray_actor_options,
-            "config": deployment._config,
-            "version": deployment._version,
-            "prev_version": deployment._prev_version,
-            "route_prefix": deployment.route_prefix,
-            "url": deployment.url,
-        }
-
-        parameter_group.append(deployment_parameters)
-
-    internal_get_global_client().deploy_group(parameter_group, _blocking=blocking)
 
 
 @PublicAPI(stability="alpha")
