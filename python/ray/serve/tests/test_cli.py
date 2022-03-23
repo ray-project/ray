@@ -387,26 +387,31 @@ class NoArgDriver:
         return await self.dag.remote()
 
 
-TestBuildDagNode = NoArgDriver.bind(global_f.bind())
+TestBuildFNode = global_f.bind()
+TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_build(ray_start_stop):
-    with NamedTemporaryFile(mode="w", suffix=".yaml") as f:
+@pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
+def test_build(ray_start_stop, node):
+    f = NamedTemporaryFile(mode="w+", delete=False, suffix=".yaml")
 
-        # Build an app
-        subprocess.check_output(
-            [
-                "serve",
-                "build",
-                "ray.serve.tests.test_cli.TestBuildDagNode",
-                "-o",
-                f.name,
-            ]
-        )
-        subprocess.check_output(["serve", "deploy", f.name])
+    # Build an app
+    subprocess.check_output(
+        [
+            "serve",
+            "build",
+            f"ray.serve.tests.test_cli.{node}",
+            "-o",
+            f.name,
+        ]
+    )
+    subprocess.check_output(["serve", "deploy", f.name])
+    assert ping_endpoint("") == "wonderful world"
+    subprocess.check_output(["serve", "delete", "-y"])
+    assert ping_endpoint("") == "connection error"
 
-        assert requests.get("http://localhost:8000/").text == "wonderful world"
+    os.unlink(f.name)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

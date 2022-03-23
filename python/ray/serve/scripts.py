@@ -5,7 +5,7 @@ import pathlib
 import click
 import time
 import sys
-from typing import Optional
+from typing import Optional, Union
 import yaml
 
 import ray
@@ -23,6 +23,7 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.api import (
     Application,
+    DeploymentFunctionNode,
     DeploymentNode,
     get_deployment_statuses,
     serve_application_status_to_schema,
@@ -410,10 +411,11 @@ def delete(address: str, yes: bool):
 def build(app_dir: str, output_path: Optional[str], import_path: str):
     sys.path.insert(0, app_dir)
 
-    node: DeploymentNode = import_attr(import_path)
-    if not isinstance(node, DeploymentNode):
+    node: Union[DeploymentNode, DeploymentFunctionNode] = import_attr(import_path)
+    if not isinstance(node, (DeploymentNode, DeploymentFunctionNode)):
         raise TypeError(
-            f"Expected '{import_path}' to be DeploymentNode, but got {type(node)}."
+            f"Expected '{import_path}' to be DeploymentNode or "
+            f"DeploymentFunctionNode, but got {type(node)}."
         )
 
     app = serve.build(node)
