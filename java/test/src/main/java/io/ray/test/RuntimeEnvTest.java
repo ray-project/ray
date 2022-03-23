@@ -142,4 +142,27 @@ public class RuntimeEnvTest {
       Ray.shutdown();
     }
   }
+
+  /// overwrite the runtime env from job config.
+  public void testPerTaskEnvVarsOverwritePerJobEnvVars() {
+    System.setProperty("ray.job.runtime-env.env-vars.KEY1", "A");
+    System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
+    try {
+      Ray.init();
+      RuntimeEnv runtimeEnv =
+        new RuntimeEnv.Builder()
+          .addEnvVar("KEY1", "C")
+          .build();
+
+      /// value of KEY1 is overwritten to `C` and KEY2s is extended from job config.
+      String val =
+        Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
+      Assert.assertEquals(val, "C");
+      val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").remote().get();
+      Assert.assertEquals(val, "B");
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
 }

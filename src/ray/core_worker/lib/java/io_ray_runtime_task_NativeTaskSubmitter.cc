@@ -141,7 +141,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
     }
 
     auto java_serialized_runtime_env_info = reinterpret_cast<jstring>(
-        env->GetObjectField(callOptions, java_call_options_serialzied_runtime_env_info));
+        env->GetObjectField(callOptions, java_call_options_serialized_runtime_env_info));
     RAY_CHECK_JAVA_EXCEPTION(env);
     RAY_CHECK(java_serialized_runtime_env_info != nullptr);
     if (java_serialized_runtime_env_info) {
