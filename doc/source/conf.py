@@ -162,6 +162,7 @@ linkcheck_ignore = [
     # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
     "https://scikit-optimize.github.io/stable/modules/",
     "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+    "https://huggingface.co/transformers/master/main_classes/trainer.html#transformers.Trainer.hyperparameter_search"  # seems to be flaky
 ]
 
 # -- Options for HTML output ----------------------------------------------
