@@ -270,12 +270,10 @@ class SimpleQTrainer(Trainer):
         batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()
 
-        sample_batches = []
         train_results = {}
 
         # (1) Sample (MultiAgentBatch) from workers
         new_sample_batches = synchronous_parallel_sample(self.workers)
-        sample_batches.extend(new_sample_batches)
 
         # Update counters
         self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(s) for s in new_sample_batches)
@@ -285,7 +283,7 @@ class SimpleQTrainer(Trainer):
         )
 
         # (2) Concatenate freshly collected samples
-        concatenated_samples = SampleBatch.concat_samples(sample_batches)
+        concatenated_samples = SampleBatch.concat_samples(new_sample_batches)
         # (3) Store new samples in replay buffer
         self.local_replay_buffer.add(concatenated_samples)
 
