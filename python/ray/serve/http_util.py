@@ -50,7 +50,9 @@ class Response:
     It is expected to be called in async context and pass along
     `scope, receive, send` as in ASGI spec.
 
-    >>> await Response({"k": "v"}).send(scope, receive, send)
+    >>> from ray.serve.http_util import Response
+    >>> scope, receive = ... # doctest: +SKIP
+    >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
 
     def __init__(self, content=None, status_code=200):
@@ -155,13 +157,14 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     https://github.com/dmontagu/fastapi-utils/blob/master/fastapi_utils/cbv.py
 
     Usage:
-    >>> app = FastAPI()
-    >>> class A:
-            @app.route("/{i}")
-            def func(self, i: int) -> str:
-                return self.dep + i
+    >>> from fastapi import FastAPI
+    >>> app = FastAPI() # doctest: +SKIP
+    >>> class A: # doctest: +SKIP
+    ...     @app.route("/{i}") # doctest: +SKIP
+    ...     def func(self, i: int) -> str: # doctest: +SKIP
+    ...         return self.dep + i # doctest: +SKIP
     >>> # just running the app won't work, here.
-    >>> make_fastapi_class_based_view(app, A)
+    >>> make_fastapi_class_based_view(app, A) # doctest: +SKIP
     >>> # now app can be run properly
     """
     # Delayed import to prevent ciruclar imports in workers.
