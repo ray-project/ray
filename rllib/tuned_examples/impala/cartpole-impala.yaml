@@ -10,4 +10,11 @@ cartpole-impala:
         num_gpus: 0
         vtrace_drop_last_ts: false
 
-        _disable_execution_plan_api: true #TODO
+        _disable_execution_plan_api:
+            grid_search:
+            - true
+            - false
+        seed:
+           grid_search:
+             - 512
+             - 42

@@ -393,7 +393,8 @@ class ImpalaTrainer(Trainer):
                         else 1
                     ),
                     replay_ratio=self.config["replay_ratio"],
-                    storage_unit="sequences",
+                    storage_unit="fragments",
+                    learning_starts=0,
                 )
 
             # Create and start the learner thread.
@@ -401,10 +402,18 @@ class ImpalaTrainer(Trainer):
                 self.workers.local_worker(), self.config
             )
             self._learner_thread.start()
+            self._batch_concatenator = ConcatBatches(
+                min_batch_size=self.config["train_batch_size"],
+                count_steps_by=self.config["multiagent"]["count_steps_by"],
+                using_iterators=False,
+            )
+            self.workers_that_need_updates = set()
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
         unprocessed_sample_batches = self.get_samples_from_workers()
+
+        self.workers_that_need_updates |= unprocessed_sample_batches.keys()
 
         if self.config["num_aggregation_workers"] > 0:
             batch = self.process_experiences_tree_aggregation(
@@ -413,38 +422,19 @@ class ImpalaTrainer(Trainer):
         else:
             batch = self.process_experiences_directly(unprocessed_sample_batches)
 
-        if batch:
-            self.place_processed_samples_on_learner_queue(batch)
-        learner_results = {}
-        # learner_results = self.process_trained_results()
-        #
-        # # I'm 90 percent sure that is supposed to be number of timesteps trained,
-        # # not number of timesteps sampled.
-        # global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
-        #
-        # # Only need to update workers if there are remote workers.
-        # self._counters["steps_since_broadcast"] += 1
-        # if (
-        #     self.workers.remote_workers()
-        #     and self._counters["steps_since_broadcast"]
-        #     >= self.config["broadcast_interval"]
-        #     and self._learner_thread.weights_updated
-        # ):
-        #     weights = ray.put(self.workers.local_worker().get_weights())
-        #     self._counters["steps_since_broadcast"] = 0
-        #     self._learner_thread.weights_updated = False
-        #     self._counters["num_weight_broadcasts"] += 1
-        #
-        #     for worker in unprocessed_sample_batches.keys():
-        #         worker.set_weights.remote(weights, global_vars)
-        #
-        # # Update global vars of the local worker.
-        # self.workers.local_worker().set_global_vars(global_vars)
-        #
-        # # Callback for APPO to use to update KL, target network periodically.
-        # # The input to the callback is the learner fetches dict.
-        # if self.config["after_train_step"]:
-        #     self.config["after_train_step"](trainer=self, config=self.config)
+        train_batch = self._batch_concatenator(batch)
+
+        if train_batch:
+            self.place_processed_samples_on_learner_queue(train_batch[0])
+        # learner_results = {}
+        learner_results = self.process_trained_results()
+
+        self.update_workers_if_necessary()
+
+        # Callback for APPO to use to update KL, target network periodically.
+        # The input to the callback is the learner fetches dict.
+        if self.config["after_train_step"]:
+            self.config["after_train_step"](trainer=self, config=self.config)
 
         return learner_results
 
@@ -604,7 +594,7 @@ class ImpalaTrainer(Trainer):
         num_agent_steps_trained = 0
 
         for _ in range(self._learner_thread.outqueue.qsize()):
-            if self.learner_thread.is_alive():
+            if self._learner_thread.is_alive():
                 (
                     num_trained_samples,
                     learner_results,
@@ -625,8 +615,10 @@ class ImpalaTrainer(Trainer):
             learner_info = tree.map_structure(
                 lambda *_args: sum(_args) / len(learner_infos), *learner_infos
             )
+        elif len(learner_infos) == 1:
+            learner_info = learner_infos[0]
         else:
-            learner_info = learner_infos[-1]
+            return {}
 
         # Update the steps trained counters.
         self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
@@ -649,10 +641,8 @@ class ImpalaTrainer(Trainer):
             batches = ray.get(batches)
         for batch in batches:
             batch = batch.decompress_if_needed()
-            # self.local_mixin_buffer.add(batch)
-            # batch = self.local_mixin_buffer.sample(self.config["train_batch_size"])
-            self.local_mixin_buffer.add_batch(batch)
-            batch = self.local_mixin_buffer.replay()
+            self.local_mixin_buffer.add(batch)
+            batch = self.local_mixin_buffer.sample(self.config["train_batch_size"])
             if batch:
                 processed_batches.append(batch)
         if processed_batches:
@@ -664,3 +654,22 @@ class ImpalaTrainer(Trainer):
     ) -> Union[SampleBatchType, None]:
         del sample_batches_refs
         return None
+
+    def update_workers_if_necessary(self) -> None:
+        # Only need to update workers if there are remote workers.
+        global_vars = {"timestep": self._counters[NUM_ENV_STEPS_SAMPLED]}
+        self._counters["steps_since_broadcast"] += 1
+        if (self.workers.remote_workers() and self._counters[
+            "steps_since_broadcast"] >= self.config[
+            "broadcast_interval"] and self._learner_thread.weights_updated):
+            weights = ray.put(self.workers.local_worker().get_weights())
+            self._counters["steps_since_broadcast"] = 0
+            self._learner_thread.weights_updated = False
+            self._counters["num_weight_broadcasts"] += 1
+
+            for worker in self.workers_that_need_updates:
+                worker.set_weights.remote(weights, global_vars)
+            self.workers_that_need_updates = set()
+
+        # Update global vars of the local worker.
+        self.workers.local_worker().set_global_vars(global_vars)

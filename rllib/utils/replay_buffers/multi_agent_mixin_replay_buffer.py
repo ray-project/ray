@@ -238,6 +238,10 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                                     "to be added to it. Some samples may be "
                                     "dropped."
                                 )
+            elif self._storage_unit == StorageUnit.FRAGMENTS:
+                for policy_id, sample_batch in batch.policy_batches.items():
+                    self.replay_buffers[policy_id].add(sample_batch, **kwargs)
+                    self.last_added_batches[policy_id].append(sample_batch)
 
         self._num_added += batch.count
 

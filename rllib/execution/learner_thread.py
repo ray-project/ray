@@ -79,7 +79,6 @@ class LearnerThread(threading.Thread):
                 batch, _ = self.minibatch_buffer.get()
             except queue.Empty:
                 return _NextValueNotReady()
-
         with self.grad_timer:
             # Use LearnerInfoBuilder as a unified way to build the final
             # results dict from `learn_on_loaded_batch` call(s).
