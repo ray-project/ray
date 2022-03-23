@@ -228,16 +228,21 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             group_index, group_spec = self._get_worker_group(raycluster, group_name)
             prefix = f"/spec/workerGroupSpecs/{group_index}"
             payload = [
+                # This test makes sure that the previous request to Kuberay has been completed.
                 {
                     "op": "test",
                     "path": prefix + "/scaleStrategy",
                     "value": {"workersToDelete": []},
                 },
+                # We only submit the request for additional replicas if the above test passes.
                 {
                     "op": "replace",
                     "path": prefix + "/replicas",
                     "value": group_spec["replicas"] + count,
                 },
+                # We insert a dummy node to delete so future requests from create_node and
+                # terminate_nodes can ensure that this request has been completed (by checking that
+                # workersToDelete is empty).
                 {
                     "op": "replace",
                     "path": prefix + "/scaleStrategy",
@@ -301,11 +306,13 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 group_index, group_spec = self._get_worker_group(raycluster, group_name)
                 prefix = f"/spec/workerGroupSpecs/{group_index}"
                 payload = [
+                    # This test makes sure that the previous request to Kuberay has been completed.
                     {
                         "op": "test",
                         "path": prefix + "/scaleStrategy",
                         "value": {"workersToDelete": []},
                     },
+                    # We only submit the request to scale down replicas if the above test passes.
                     {
                         "op": "replace",
                         "path": prefix + "/replicas",
