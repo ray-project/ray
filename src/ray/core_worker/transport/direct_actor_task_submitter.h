@@ -242,8 +242,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Void.
   void PushActorTask(ClientQueue &queue,
                      const TaskSpecification &task_spec,
-                     bool skip_queue,
-                     bool force_fail = false) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                     bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  void ReplyCallback(const Status &status,
+                     const rpc::PushTaskReply &reply,
+                     const rpc::Address &addr,
+                     const TaskSpecification &task_spec) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
   ///
