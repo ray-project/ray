@@ -44,7 +44,7 @@ class DatasetWriter(OutputWriter):
         output_config: Dict = ioctx.output_config
         assert (
             "format" in output_config
-        ), "output_config.type must be specified when using Dataset output."
+        ), "output_config.format must be specified when using Dataset output."
         assert (
             "path" in output_config
         ), "output_config.path must be specified when using Dataset output."
