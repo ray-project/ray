@@ -7,7 +7,12 @@ Using Mars on Ray
 
 
 `Mars`_ is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn.
-Mars on Ray makes it easy to scale your programs with a Ray cluster. 
+Mars on Ray makes it easy to scale your programs with a Ray cluster. Currently Mars on Ray uses Ray actors as execution
+backend, Ray remote function based execution backend is working in progress.
+
+.. image:: https://user-images.githubusercontent.com/12445254/159614968-26f67871-2569-4539-a0be-771c72ad2d1b.png
+   :width: 650px
+   :align: center
 
 
 Installation
