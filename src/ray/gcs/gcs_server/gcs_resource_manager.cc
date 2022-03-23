@@ -89,6 +89,10 @@ void GcsResourceManager::UpdateResources(
           resource_value.Double());
     }
 
+    for (const auto &listener : resources_changed_listeners_) {
+      listener();
+    }
+
     auto start = absl::GetCurrentTimeNanos();
     auto on_done = [node_id, start](const Status &status) {
       auto end = absl::GetCurrentTimeNanos();
