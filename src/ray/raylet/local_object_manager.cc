@@ -592,6 +592,18 @@ void LocalObjectManager::RecordMetrics() const {
                                                        "Restored");
 }
 
+int64_t LocalObjectManager::GetPinnedBytes() const {
+  if (pinned_objects_size_ > 0) {
+    return pinned_objects_size_;
+  }
+  // Report non-zero usage when there are spilled / spill-pending live objects, to
+  // prevent this node from being drained. This seems the simplest and affects scheduling
+  // the least, compared to alternatives including
+  // - tracking the total size of spilled objects,
+  // - always add 1 to pinned_objects_size_ when objects are spilled / spill-pending.
+  return (spilled_objects_url_.empty() && objects_pending_spill_.empty()) ? 0 : 1;
+}
+
 std::string LocalObjectManager::DebugString() const {
   std::stringstream result;
   result << "LocalObjectManager:\n";
