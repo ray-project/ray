@@ -62,20 +62,20 @@ class TestGetDeploymentImportPath:
             pass
 
         with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(inline_f)
+            get_deployment_import_path(inline_f, enforce_importable=True)
 
         with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(gen_func())
+            get_deployment_import_path(gen_func(), enforce_importable=True)
 
         @serve.deployment
         class InlineCls:
             pass
 
         with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(InlineCls)
+            get_deployment_import_path(InlineCls, enforce_importable=True)
 
         with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(gen_class())
+            get_deployment_import_path(gen_class(), enforce_importable=True)
 
     def test_get_import_path_basic(self):
         d = decorated_f.options()
