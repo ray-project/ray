@@ -4,7 +4,7 @@ For consistency, all K8s interactions use kubectl through subprocess calls.
 import logging
 import subprocess
 import time
-from typing import List
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -100,13 +100,16 @@ def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> No
             raise Exception(f"Timed out waiting for pod {pod} to enter Running status.")
 
 
-def wait_for_ray_health(ray_pod: str, namespace: str, tries=60, backoff_s=5) -> None:
+def wait_for_ray_health(ray_pod: str, namespace: str, tries=60,
+                        backoff_s=5, ray_container="ray-head") -> None:
     """Waits for the Ray pod to pass `ray health-check`.
     (Ensures Ray has completely started in the pod.)
     """
     for i in range(tries):
         try:
-            kubectl_exec(["ray", "health-check"], ray_pod, namespace)
+            # `ray health-check` yields 0 exit status iff it succeeds
+            kubectl_exec(["ray", "health-check"],
+                         ray_pod, namespace, container=ray_container)
             logger.info(f"ray health check passes for pod {ray_pod}")
             return
         except subprocess.CalledProcessError as e:
@@ -146,6 +149,13 @@ def get_pod(pod_name_filter: str, namespace: str) -> str:
     return matches[0]
 
 
-def kubectl_exec(command: List[str], pod: str, namespace: str) -> None:
-    """kubectl exec the `command` in the given `pod` in the given `namespace`"""
-    subprocess.check_call(["kubectl", "exec", "-it", pod, "--"] + command)
+def kubectl_exec(command: List[str], pod: str, namespace: str,
+                 container: Optional[str] = None) -> None:
+    """kubectl exec the `command` in the given `pod` in the given `namespace`.
+    If a `container` is specified, will specify that container for kubectl.
+    """
+    container_option = ["-c", container] if container else []
+
+    subprocess.check_call(
+        ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
+    )

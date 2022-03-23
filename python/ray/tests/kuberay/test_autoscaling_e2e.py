@@ -171,7 +171,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             "ray.autoscaler.sdk.request_resources(num_cpus=2)"
         )
         kubectl_exec(
-            command=["python", "-c", scale_script], pod=head_pod, namespace="default"
+            command=["python", "-c", scale_script], pod=head_pod,
+            container="ray-head", namespace="default"
         )
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace="default")
@@ -192,6 +193,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         kubectl_exec(
             command=["python", "-c", scale_down_script],
             pod=head_pod,
+            container="ray-head",
             namespace="default",
         )
         logger.info("Scaling down all workers by editing maxReplicas.")
