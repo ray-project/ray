@@ -195,10 +195,10 @@ static Sum NumWorkersStarted(
     "The total number of worker processes the worker pool has created.",
     "processes");
 
-static Sum NumSpilledTasks("internal_num_spilled_tasks",
-                           "The cumulative number of lease requeusts that this raylet "
-                           "has spilled to other raylets.",
-                           "tasks");
+static Gauge NumSpilledTasks("internal_num_spilled_tasks",
+                             "The cumulative number of lease requeusts that this raylet "
+                             "has spilled to other raylets.",
+                             "tasks");
 
 static Gauge NumInfeasibleSchedulingClasses(
     "internal_num_infeasible_scheduling_classes",

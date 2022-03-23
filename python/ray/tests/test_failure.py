@@ -325,6 +325,7 @@ def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
         ray.get(task2)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Too flaky on windows")
 def test_actor_scope_or_intentionally_killed_message(ray_start_regular, error_pubsub):
     p = error_pubsub
 

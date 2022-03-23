@@ -3,8 +3,10 @@ import pickle
 import shutil
 import tempfile
 import unittest
+from typing import Any
 from unittest.mock import patch
 
+import ray
 from ray.ml.checkpoint import Checkpoint
 
 
@@ -29,7 +31,7 @@ def mock_s3_sync(local_path):
     return mocked
 
 
-class CheckpointsTest(unittest.TestCase):
+class CheckpointsConversionTest(unittest.TestCase):
     def setUp(self):
         self.tmpdir = os.path.realpath(tempfile.mkdtemp())
 
@@ -110,8 +112,6 @@ class CheckpointsTest(unittest.TestCase):
 
     def test_dict_checkpoint_obj_store(self):
         """Test conversion from fs to obj store checkpoint and back."""
-        import ray
-
         if not ray.is_initialized():
             ray.init()
 
@@ -162,12 +162,6 @@ class CheckpointsTest(unittest.TestCase):
 
         self.assertDictEqual(local_data, self.checkpoint_dir_data)
 
-        # Checkpoint should lie within current directory
-        self.assertTrue(
-            local_dir.startswith(self.tmpdir),
-            msg=f"Checkpoint dir {local_dir} is not contained in {self.tmpdir}",
-        )
-
     def test_fs_checkpoint_bytes(self):
         """Test conversion from fs to bytes checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
@@ -212,8 +206,6 @@ class CheckpointsTest(unittest.TestCase):
 
     def test_fs_checkpoint_obj_store(self):
         """Test conversion from fs to obj store checkpoint and back."""
-        import ray
-
         if not ray.is_initialized():
             ray.init()
 
@@ -243,6 +235,74 @@ class CheckpointsTest(unittest.TestCase):
             self.assertTrue(checkpoint._uri)
 
             self._assert_fs_checkpoint(checkpoint)
+
+
+class CheckpointsSerdeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        if not ray.is_initialized():
+            ray.init()
+
+    def _testCheckpointSerde(
+        self, checkpoint: Checkpoint, expected_type: str, expected_data: Any
+    ):
+        @ray.remote
+        def assert_checkpoint_content(cp: Checkpoint):
+            type_, data = cp.get_internal_representation()
+            assert type_ == expected_type
+            assert data == expected_data
+
+            return True
+
+        self.assertTrue(ray.get(assert_checkpoint_content.remote(checkpoint)))
+
+    def testUriCheckpointSerde(self):
+        # URI checkpoints keep the same internal representation, pointing to
+        # a remote location
+
+        checkpoint = Checkpoint.from_uri("s3://some/bucket")
+
+        self._testCheckpointSerde(checkpoint, *checkpoint.get_internal_representation())
+
+    def testDataCheckpointSerde(self):
+        # Data checkpoints keep the same internal representation, including
+        # their data.
+
+        checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
+
+        self._testCheckpointSerde(checkpoint, *checkpoint.get_internal_representation())
+
+    def testLocalCheckpointSerde(self):
+        # Local checkpoints are converted to bytes on serialization. Currently
+        # this is a pickled dict, so we compare with a dict checkpoint.
+        source_checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
+        tmpdir = source_checkpoint.to_directory()
+        self.addCleanup(shutil.rmtree, tmpdir)
+
+        checkpoint = Checkpoint.from_directory(tmpdir)
+        self._testCheckpointSerde(
+            checkpoint, *source_checkpoint.get_internal_representation()
+        )
+
+    def testBytesCheckpointSerde(self):
+        # Bytes checkpoints are just dict checkpoints constructed
+        # from pickled data, so we compare with the source dict checkpoint.
+        source_checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
+        blob = source_checkpoint.to_bytes()
+        checkpoint = Checkpoint.from_bytes(blob)
+
+        self._testCheckpointSerde(
+            checkpoint, *source_checkpoint.get_internal_representation()
+        )
+
+    def testObjRefCheckpointSerde(self):
+        # Obj ref checkpoints are dict checkpoints put into the Ray object
+        # store, but they have their own data representation (the obj ref).
+        # We thus compare with the actual obj ref checkpoint.
+        source_checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
+        obj_ref = source_checkpoint.to_object_ref()
+        checkpoint = Checkpoint.from_object_ref(obj_ref)
+
+        self._testCheckpointSerde(checkpoint, *checkpoint.get_internal_representation())
 
 
 if __name__ == "__main__":

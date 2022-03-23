@@ -16,7 +16,7 @@ To run a distributed experiment with Tune, you need to:
 
 1. First, :ref:`start a Ray cluster <cluster-index>` if you have not already.
 2. Specify ``ray.init(address=...)`` in your script :ref:`to connect to the existing Ray cluster <using-ray-on-a-cluster>`.
-3. Run the script on the head node (or use :ref:`ray submit <ray-submit-doc>`).
+3. Run the script on the head node, or use :ref:`ray submit <ray-submit-doc>`, or use :ref:`Ray Job Submission <jobs-overview>` (in beta starting with Ray 1.12).
 
 
 .. _tune-distributed-local:
