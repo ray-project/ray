@@ -1,7 +1,9 @@
+from optparse import Option
 import os
 import logging
 from typing import Dict, List, Optional, Tuple, Any, Set, Union
 import json
+from typing_extensions import runtime
 from google.protobuf import json_format
 from copy import deepcopy
 
@@ -296,6 +298,8 @@ class RuntimeEnv(dict):
 
     known_fields: Set[str] = {
         "py_modules",
+        "java_jars",
+        "dependent_jars",
         "working_dir",
         "conda",
         "pip",
@@ -320,6 +324,7 @@ class RuntimeEnv(dict):
         self,
         *,
         py_modules: Optional[List[str]] = None,
+        # java_jars: Option[List[str]] = None,
         working_dir: Optional[str] = None,
         pip: Optional[List[str]] = None,
         conda: Optional[Union[Dict[str, str], str]] = None,
@@ -334,6 +339,8 @@ class RuntimeEnv(dict):
         runtime_env = kwargs
         if py_modules is not None:
             runtime_env["py_modules"] = py_modules
+        # if java_jars is not None:
+            # runtime_env["java_jars"] = java_jars
         if working_dir is not None:
             runtime_env["working_dir"] = working_dir
         if pip is not None:
@@ -346,6 +353,9 @@ class RuntimeEnv(dict):
             runtime_env["env_vars"] = env_vars
         if config is not None:
             runtime_env["config"] = config
+
+        if runtime_env.get("java_jars"):
+            runtime_env["java_jars"] = runtime_env.get("java_jars") 
 
         # Blindly trust that the runtime_env has already been validated.
         # This is dangerous and should only be used internally (e.g., on the
@@ -524,6 +534,10 @@ class RuntimeEnv(dict):
             initialize_dict["py_modules"] = list(
                 proto_runtime_env.python_runtime_env.py_modules
             )
+        if proto_runtime_env.java_runtime_env.dependent_jars:
+           initialize_dict["java_jars"] = list(
+                proto_runtime_env.java_runtime_env.dependent_jars
+            ) 
         if proto_runtime_env.working_dir:
             initialize_dict["working_dir"] = proto_runtime_env.working_dir
         if proto_runtime_env.env_vars:
@@ -577,6 +591,11 @@ class RuntimeEnv(dict):
             return list(self["py_modules"])
         return []
 
+    def java_jars(self) -> List[str]:
+        if "java_jars" in self:
+            return list(self["java_jars"])
+        return []
+ 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
 

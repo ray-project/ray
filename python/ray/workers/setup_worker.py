@@ -20,8 +20,15 @@ parser.add_argument(
 
 parser.add_argument("--language", type=str, help="the language type of the worker")
 
+
+def my_log(s):
+    import os
+    with open("/tmp/ray/setup_worker.txt", "wb+") as f:
+        f.write(s + "\n")
+
 if __name__ == "__main__":
     setup_logger(LOGGER_LEVEL, LOGGER_FORMAT)
+
     args, remaining_args = parser.parse_known_args()
     # NOTE(edoakes): args.serialized_runtime_env_context is only None when
     # we're starting the main Ray client proxy server. That case should

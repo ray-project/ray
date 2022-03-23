@@ -6,9 +6,15 @@ from typing import Any, Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
 from ray.core.generated.common_pb2 import Language
+from ray._private.services import get_ray_jars_dir
 
 logger = logging.getLogger(__name__)
 
+
+def my_log(s):
+    import os
+    with open("/tmp/ray/context.txt", "a") as f:
+        f.write("{}\n".format(s))
 
 @DeveloperAPI
 class RuntimeEnvContext:
@@ -21,6 +27,7 @@ class RuntimeEnvContext:
         py_executable: Optional[str] = None,
         resources_dir: Optional[str] = None,
         container: Dict[str, Any] = None,
+        java_jars: List[str] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
@@ -31,6 +38,7 @@ class RuntimeEnvContext:
         # process. We should remove it once Ray client uses the agent.
         self.resources_dir: str = resources_dir
         self.container = container or {}
+        self.java_jars = java_jars or []
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)
@@ -46,6 +54,12 @@ class RuntimeEnvContext:
             executable = f'"{self.py_executable}"'  # Path may contain spaces
         elif language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
+        elif language == Language.JAVA:
+            my_log("It's Java language")
+            executable = f"java"
+            ray_jars = os.path.join(get_ray_jars_dir(), "*")
+            class_path_args = ["-cp", ray_jars + ":" + str(":".join(self.java_jars))]
+            passthrough_args = class_path_args + passthrough_args
         elif sys.platform == "win32":
             executable = ""
         else:
@@ -54,6 +68,10 @@ class RuntimeEnvContext:
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
 
+        my_log("======================456")
+        my_log(command_str)
+        my_log("======================789")
+        my_log(self.java_jars)
         if sys.platform == "win32":
             os.system(command_str)
         else:

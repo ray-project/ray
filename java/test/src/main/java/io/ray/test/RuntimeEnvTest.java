@@ -1,5 +1,6 @@
 package io.ray.test;
 
+import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
@@ -157,6 +158,41 @@ public class RuntimeEnvTest {
       Assert.assertEquals(val, "C");
       val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "B");
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  public void testJarsInJob() {
+//    System.setProperty("ray.job.runtime-env.jars", "[\"http://a.jar\", \"http://b.jar\"]");
+    try {
+      Ray.init();
+//      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addEnvVar("KEY1", "C").build();
+
+
+      /// value of KEY1 is overwritten to `C` and KEY2s is extended from job config.
+      String val =
+        Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").remote().get();
+      Assert.assertEquals(val, "C");
+      val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").remote().get();
+      Assert.assertEquals(val, "B");
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  public void testJarsInActor() {
+    try {
+      Ray.init();
+      final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder()
+        .addJars(
+          ImmutableList.of(
+            "https://raylet.cn-hangzhou-alipay-b.oss-cdn.aliyun-inc.com/systemjobs/common-libs-actor-optimizes-1.1.3.jar",
+            "https://raylet.cn-hangzhou-alipay-b.oss-cdn.aliyun-inc.com/systemjobs/actor-observer-tmp.jar"
+          )).build();
+      ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
+      int pid = actor1.task(A::getPid).remote().get();
+      System.out.println(pid);
     } finally {
       Ray.shutdown();
     }

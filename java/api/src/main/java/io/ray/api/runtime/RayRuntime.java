@@ -286,7 +286,7 @@ public interface RayRuntime {
   List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda);
 
   /** Create runtime env instance at runtime. */
-  RuntimeEnv createRuntimeEnv(Map<String, String> envVars);
+  RuntimeEnv createRuntimeEnv(Map<String, String> envVars, List<String> jars);
 
   /// Get the parallel actor context at runtime.
   ParallelActorContext getParallelActorContext();

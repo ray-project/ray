@@ -547,7 +547,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
 
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
                                  const ProcessEnvironment &env) {
-  if (RAY_LOG_ENABLED(DEBUG)) {
+  if (RAY_LOG_ENABLED(INFO)) {
     std::string debug_info;
     debug_info.append("Starting worker process with command:");
     for (const auto &arg : worker_command_args) {
@@ -566,7 +566,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
       debug_info.pop_back();
     }
     debug_info.append(".");
-    RAY_LOG(DEBUG) << debug_info;
+    RAY_LOG(INFO) << debug_info;
   }
 
   // Launch the process to create the worker.
@@ -1275,6 +1275,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       break;
     }
 
+    RAY_LOG(INFO) << "=============worker == nullptr?" << (worker == nullptr);
     if (worker == nullptr) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
