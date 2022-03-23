@@ -26,6 +26,7 @@ from typing import (
 )
 
 from fastapi import APIRouter, FastAPI
+from ray.exceptions import RayActorError
 from ray.experimental.dag.class_node import ClassNode
 from ray.experimental.dag.function_node import FunctionNode
 from starlette.requests import Request
@@ -83,7 +84,7 @@ from ray.serve.schema import (
 
 
 _INTERNAL_REPLICA_CONTEXT = None
-_global_client = None
+_global_client: "Client" = None
 
 _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}"
@@ -119,9 +120,28 @@ def _get_controller_namespace(
     return controller_namespace
 
 
-def internal_get_global_client(_override_controller_namespace: Optional[str] = None):
-    if _global_client is not None:
-        return _global_client
+def internal_get_global_client(
+    _override_controller_namespace: Optional[str] = None,
+    _health_check_controller: bool = False,
+) -> "Client":
+    """Gets the global client, which stores the controller's handle.
+
+    Args:
+        _override_controller_namespace (Optional[str]): If None and there's no
+            cached client, searches for the controller in this namespace.
+        _health_check_controller (bool): If True, run a health check on the
+            cached controller if it exists. If the check fails, try reconnecting
+            to the controller.
+    """
+
+    try:
+        if _global_client is not None:
+            if _health_check_controller:
+                ray.get(_global_client._controller.check_alive.remote())
+            return _global_client
+    except RayActorError:
+        logger.info("The cached controller has died. Reconnecting.")
+        _set_global_client(None)
 
     return _connect(_override_controller_namespace=_override_controller_namespace)
 
@@ -712,7 +732,8 @@ def start(
 
     try:
         client = internal_get_global_client(
-            _override_controller_namespace=_override_controller_namespace
+            _override_controller_namespace=_override_controller_namespace,
+            _health_check_controller=True,
         )
         logger.info(
             "Connecting to existing Serve instance in namespace "
@@ -1195,12 +1216,18 @@ class Deployment:
         )
 
     @PublicAPI(stability="alpha")
-    def bind(self, *args, **kwargs) -> DeploymentNode:
+    def bind(self, *args, **kwargs) -> Union[DeploymentNode, DeploymentFunctionNode]:
         """Bind the provided arguments and return a DeploymentNode.
 
         The returned bound deployment can be deployed or bound to other
         deployments to create a multi-deployment application.
         """
+        copied_self = copy(self)
+        copied_self._init_args = []
+        copied_self._init_kwargs = {}
+        copied_self._func_or_class = "dummpy.module"
+        schema_shell = deployment_to_schema(copied_self)
+
         if inspect.isfunction(self._func_or_class):
             return DeploymentFunctionNode(
                 self._func_or_class,
@@ -1208,7 +1235,7 @@ class Deployment:
                 kwargs,  # Used to bind and resolve DAG only, can take user input
                 self._ray_actor_options or dict(),
                 other_args_to_resolve={
-                    "deployment_self": copy(self),
+                    "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
                 },
             )
@@ -1219,7 +1246,7 @@ class Deployment:
                 kwargs,
                 cls_options=self._ray_actor_options or dict(),
                 other_args_to_resolve={
-                    "deployment_self": copy(self),
+                    "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
                 },
             )
@@ -1836,7 +1863,6 @@ def run(
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    **kwargs,
 ) -> RayServeHandle:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -1858,6 +1884,7 @@ def run(
     """
     # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
     from ray.serve.pipeline.api import build as pipeline_build
+    from ray.serve.pipeline.api import get_and_validate_ingress_deployment
 
     client = start(detached=True, http_options={"host": host, "port": port})
 
@@ -1867,11 +1894,11 @@ def run(
     # Each DAG should always provide a valid Driver DeploymentNode
     elif isinstance(target, DeploymentNode):
         deployments = pipeline_build(target)
-        ingress = deployments[-1]
+        ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())
     elif isinstance(target, DeploymentFunctionNode):
         deployments = pipeline_build(target)
-        ingress = deployments[-1]
+        ingress = get_and_validate_ingress_deployment(deployments)
         if len(deployments) != 1:
             raise ValueError(
                 "We only support single function node in serve.run, ex: "

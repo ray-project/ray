@@ -11,7 +11,7 @@ class StandardScaler(Preprocessor):
     """Scale values within columns based on mean and standard deviation.
 
     For each column, each value will be transformed to ``(value-mean)/std``,
-    where ``mean`` and ``std` are calculated from the fitted dataset.
+    where ``mean`` and ``std`` are calculated from the fitted dataset.
 
     Args:
         columns: The columns that will individually be scaled.
@@ -53,8 +53,9 @@ class StandardScaler(Preprocessor):
 class MinMaxScaler(Preprocessor):
     """Scale values within columns based on min and max values.
 
-    For each column, each value will be transformed to ``(value-min)/(max-min)``,
-    where ``min`` and ``max` are calculated from the fitted dataset.
+    For each column, each value will be transformed to
+    ``(value - min) / (max - min)``,
+    where ``min`` and ``max`` are calculated from the fitted dataset.
 
     When transforming the fitted dataset, transformed values will be in the
     range [0, 1].

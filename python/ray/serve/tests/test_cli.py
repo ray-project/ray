@@ -137,6 +137,7 @@ def test_deploy(ray_start_stop):
             == "Hello shallow world!"
         )
 
+    serve.shutdown()
     ray.shutdown()
 
 
@@ -407,6 +408,44 @@ def test_build(ray_start_stop):
     assert requests.get("http://localhost:8000/global_f").text == "wonderful world"
 
     os.unlink(f.name)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize("use_command", [True, False])
+def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
+    """Check that CLI is idempotent even if controller dies."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+    success_message_fragment = b"Sent deploy request successfully!"
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+
+    ray.init(address="auto", namespace="serve")
+    serve.start(detached=True)
+    assert len(serve.list_deployments()) == 2
+
+    # Kill controller
+    if use_command:
+        subprocess.check_output(["serve", "shutdown"])
+    else:
+        serve.shutdown()
+
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
+
+    assert "deployments" in info
+    assert len(info["deployments"]) == 0
+
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+
+    # Restore testing controller
+    serve.start(detached=True)
+    assert len(serve.list_deployments()) == 2
+    serve.shutdown()
+    ray.shutdown()
 
 
 if __name__ == "__main__":

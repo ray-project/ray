@@ -15,6 +15,9 @@ from ray.experimental.dag import (
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
+from ray.serve.schema import (
+    DeploymentSchema,
+)
 from ray.serve.utils import parse_import_path
 from ray.serve.handle import (
     HandleOptions,
@@ -78,7 +81,12 @@ class DAGNodeEncoder(json.JSONEncoder):
     """
 
     def default(self, obj):
-        if isinstance(obj, RayServeHandle):
+        if isinstance(obj, DeploymentSchema):
+            return {
+                DAGNODE_TYPE_KEY: "DeploymentSchema",
+                "schema": obj.dict(),
+            }
+        elif isinstance(obj, RayServeHandle):
             return serve_handle_to_json_dict(obj)
         elif isinstance(obj, RayServeDAGHandle):
             # TODO(simon) Do a proper encoder
@@ -122,12 +130,11 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
         return serve_handle_from_json_dict(input_json)
     # Base case for plain objects
     elif DAGNODE_TYPE_KEY not in input_json:
-        try:
-            return json.loads(input_json)
-        except Exception:
-            return input_json
+        return input_json
     elif input_json[DAGNODE_TYPE_KEY] == RayServeDAGHandle.__name__:
         return RayServeDAGHandle(input_json["dag_node_json"])
+    elif input_json[DAGNODE_TYPE_KEY] == "DeploymentSchema":
+        return DeploymentSchema.parse_obj(input_json["schema"])
     elif input_json[DAGNODE_TYPE_KEY] == RayServeLazySyncHandle.__name__:
         return RayServeLazySyncHandle(
             input_json["deployment_name"],

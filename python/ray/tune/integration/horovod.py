@@ -43,8 +43,8 @@ def distributed_checkpoint_dir(step: int, disable: bool = False):
     redundant work.
 
     Args:
-        step (int): Used to label the checkpoint
-        disable (bool): Disable for prototyping.
+        step: Used to label the checkpoint
+        disable: Disable for prototyping.
 
     Yields:
         str: A path to a directory. This path will be used
@@ -160,7 +160,7 @@ class _HorovodTrainable(DistributedTrainable):
 
 
 def DistributedTrainableCreator(
-    func: Callable,
+    func: Callable[[Dict], None],
     use_gpu: bool = False,
     num_hosts: Optional[int] = None,
     num_workers: int = 1,
@@ -196,20 +196,19 @@ def DistributedTrainableCreator(
     support function checkpointing.
 
     Args:
-        func (Callable[[dict], None]): A training function that takes in
+        func: A training function that takes in
             a config dict for hyperparameters and should initialize
             horovod via horovod.init.
-        use_gpu (bool); Whether to allocate a GPU per worker.
-        num_cpus_per_worker (int): Number of CPUs to request
+        use_gpu: Whether to allocate a GPU per worker.
+        num_cpus_per_worker: Number of CPUs to request
             from Ray per worker.
-        num_hosts (int): Number of hosts that each trial is expected
+        num_hosts: Number of hosts that each trial is expected
             to use.
-        num_workers (int): Number of workers to start on each host.
-        timeout_s (int): Seconds for Horovod rendezvous to timeout.
-        replicate_pem (bool): THIS MAY BE INSECURE. If true, this will
+        num_workers: Number of workers to start on each host.
+        timeout_s: Seconds for Horovod rendezvous to timeout.
+        replicate_pem: THIS MAY BE INSECURE. If true, this will
             replicate the underlying Ray cluster ssh key across all hosts.
             This may be useful if using the Ray Autoscaler.
-
 
     Returns:
         Trainable class that can be passed into `tune.run`.
