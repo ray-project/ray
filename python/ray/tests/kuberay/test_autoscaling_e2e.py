@@ -134,7 +134,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
                     "replicas"] == replicas
                 logger.info(
                     f"Validated that worker replicas for raycluster-complete"
-                    f" is currently {replicas}"
+                    f" is currently {replicas}."
                 )
             cr_config = self._get_ray_cr_config(
                 min_replicas=min_replicas, max_replicas=max_replicas, replicas=replicas
@@ -204,8 +204,14 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         logger.info("Scaling up to two workers by editing minReplicas.")
         # replicas=1 reflects the current number of workers
-        # (which is what we expect to be already present in the CR)
-        self._apply_ray_cr(min_replicas=2, replicas=1)
+        # (which is what we expect to be already present in the Ray CR)
+        self._apply_ray_cr(
+            min_replicas=2,
+            replicas=1,
+            # Validate that replicas set on the Ray CR by the autoscaler
+            # is indeed 1:
+            validate_replicas=True
+        )
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=3, namespace="default")
 
@@ -224,7 +230,10 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         logger.info("Scaling down all workers by editing maxReplicas.")
         # (replicas=2 reflects the current number of workers)
-        self._apply_ray_cr(min_replicas=0, max_replicas=0, replicas=2)
+        self._apply_ray_cr(min_replicas=0, max_replicas=0, replicas=2,
+                           # Check that the replicas set on the Ray CR by the
+                           # autoscaler is indeed 2:
+                           validate_replicas=True)
         logger.info("Confirming workers are gone.")
         wait_for_pods(goal_num_pods=1, namespace="default")
 
