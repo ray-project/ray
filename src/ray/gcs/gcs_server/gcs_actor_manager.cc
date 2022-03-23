@@ -767,12 +767,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         created_actors_.erase(node_it);
       }
     } else {
-      RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Get(
-          actor->GetActorID(),
-          [this, actor](Status status, const boost::optional<rpc::TaskSpec> &result) {
-            assert(result.has_value());
-            CancelActorInScheduling(actor, TaskID::FromBinary(result.get().task_id()));
-          }));
+      CancelActorInScheduling(actor, TaskID::ForActorCreationTask(actor_id));
     }
   }
 
