@@ -27,81 +27,7 @@ class LogAgent(dashboard_utils.DashboardAgentModule):
         return False
 
 
-class LogAgentV1(dashboard_utils.DashboardAgentModule):
-    def __init__(self, dashboard_agent):
-        super().__init__(dashboard_agent)
-        log_utils.register_mimetypes()
-
-    async def run(self, server):
-        pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False
-
-    @routes.get("/v1/api/logs/agent/file/{log_file_name}")
-    async def get_log_lines(self, request):
-        lines = int(request.query.get("lines", "1000"))
-        log_file_name = request.match_info.get("log_file_name", None)
-
-        if log_file_name is None:
-            raise web.HTTPNotFound()
-        else:
-            with open(f"{self._dashboard_agent.log_dir}/{log_file_name}", "rb") as f:
-                if lines == -1:
-                    text = f.read()
-                else:
-                    text, _ = tail(f, lines)
-            response = web.StreamResponse()
-            await response.prepare(request)
-            await response.write(text)
-
-            # TODO: improve by not buffering all bytes in memory and converting to
-            # a StreamResponse instead?
-            return response
-
-    @routes.get("/v1/api/logs/agent/stream/{log_file_name}")
-    async def stream_log_lines(self, request):
-        lines = int(request.query.get("lines", "1000"))
-        interval = float(request.query.get("interval", "0.5"))
-        log_file_name = request.match_info.get("log_file_name", None)
-
-        ws = web.WebSocketResponse()
-        await ws.prepare(request)
-
-        async def yield_bytes():
-            try:
-                with open(
-                    f"{self._dashboard_agent.log_dir}/{log_file_name}", "rb"
-                ) as f:
-                    if lines == -1:
-                        bytes = f.read()
-                        end = f.tell()
-                    else:
-                        bytes, end = tail(f, lines)
-                    yield bytes
-                    f.seek(end)
-
-                    while True:
-                        await asyncio.sleep(interval)
-                        bytes = f.read()
-                        if bytes != b"":
-                            yield bytes
-
-                print("websocket connection closed")
-
-            except FileNotFoundError:
-                yield b"could not find file"
-            except Exception as e:
-                yield f"Python Agent Logs Stream. Exception: {e}".encode()
-
-        async for bytes in yield_bytes():
-            await ws.send_bytes(bytes)
-
-        return ws
-
-
-FILE_BLOCK_SIZE = 8192
+BLOCK_SIZE = 8192
 
 
 class LogAgentV1Grpc(
@@ -121,31 +47,17 @@ class LogAgentV1Grpc(
         return False
 
     async def LogFile(self, request, context):
-        lines = request.lines if request.lines else 1000
-        log_file_name = request.log_file_name
-
-        filepath = f"{self._dashboard_agent.log_dir}/{log_file_name}"
-        if not os.path.isfile(filepath):
-            await context.send_initial_metadata([["status", "file_not_found"]])
-        else:
-            await context.send_initial_metadata([["status", "ok"]])
-            with open(filepath, "rb") as f:
-                if lines == -1:
-                    # If requesting the whole file, we stream the file
-                    # since it may be large.
-                    while True:
-                        bytes = f.read(FILE_BLOCK_SIZE)
-                        if bytes == b"":
-                            break
-                        yield reporter_pb2.LogReply(data=bytes)
-                else:
-                    bytes, end = tail(f, lines)
-                    yield reporter_pb2.LogReply(data=bytes)
+        async for reply in self.log_common(request, context, False):
+            yield reply
 
     async def LogStream(self, request, context):
-        lines = request.file.lines if request.file.lines else 1000
-        log_file_name = request.file.log_file_name
-        interval = request.interval if request.interval else 0.5
+        async for reply in self.log_common(request, context, True):
+            yield reply
+
+    async def log_common(self, request, context, keep_alive=False):
+        file_request = request.file if keep_alive else request
+        lines = file_request.lines if file_request.lines else 1000
+        log_file_name = file_request.log_file_name
 
         filepath = f"{self._dashboard_agent.log_dir}/{log_file_name}"
         if not os.path.isfile(filepath):
@@ -155,7 +67,7 @@ class LogAgentV1Grpc(
             # If requesting the whole file, we stream the file since it may be large.
             if lines == -1:
                 while True:
-                    bytes = f.read(FILE_BLOCK_SIZE)
+                    bytes = f.read(BLOCK_SIZE)
                     end = f.tell()
                     if bytes == b"":
                         break
@@ -163,8 +75,9 @@ class LogAgentV1Grpc(
             else:
                 bytes, end = tail(f, lines)
                 yield reporter_pb2.LogReply(data=bytes)
+        if keep_alive:
             f.seek(end)
-
+            interval = request.interval if request.interval else 0.5
             while True:
                 await asyncio.sleep(interval)
                 bytes = f.read()

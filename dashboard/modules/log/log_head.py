@@ -109,14 +109,12 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
 class LogHeadV1(dashboard_utils.DashboardHeadModule):
     LOG_URL_TEMPLATE = "http://{ip}:{port}/logs"
-    USE_GRPC = True
 
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         # We disable auto_decompress when forward / proxy log url.
         self._proxy_session = aiohttp.ClientSession(auto_decompress=False)
         log_utils.register_mimetypes()
-        self._http_stubs = {}
         self._stubs = {}
         DataSource.agents.signal.append(self._update_stubs)
 
@@ -124,7 +122,6 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         if change.old:
             node_id, _ = change.old
             ip = DataSource.node_id_to_ip[node_id]
-            self._http_stubs.pop(ip)
             self._stubs.pop(node_id)
         if change.new:
             node_id, ports = change.new
@@ -135,12 +132,6 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
             )
             stub = reporter_pb2_grpc.LogServiceStub(channel)
-
-            # Add HTTP address
-            self._http_stubs[ip] = {
-                "node_id": node_id,
-                "address": f"http://{ip}:{ports[0]}",
-            }
             self._stubs[node_id] = stub
 
     @staticmethod
@@ -229,51 +220,30 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         lines = req.query.get("lines", None)
         lines = int(lines) if lines else None
         log_file_name = req.match_info.get("log_file_name", None)
+        while self._stubs == {}:
+            await asyncio.sleep(0.5)
+        if node_id not in self._stubs:
+            # Better error response here
+            return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
 
-        if self.USE_GRPC:
-            # TODO: handle file not found etc.
-            while self._stubs == {}:
-                await asyncio.sleep(0.5)
-            if node_id not in self._stubs:
-                # Better error response here
-                return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
+        stream = self._stubs[node_id].LogFile(
+            reporter_pb2.LogFileRequest(
+                log_file_name=log_file_name, lines=lines)
+        )
 
-            stream = self._stubs[node_id].LogFile(
-                reporter_pb2.LogFileRequest(
-                    log_file_name=log_file_name, lines=lines)
-            )
+        metadata = await stream.initial_metadata()
+        if metadata["status"] == "file_not_found":
+            return aiohttp.web.HTTPNotFound(
+                reason=f"File \"{log_file_name}\" not found on node {node_id}")
 
-            metadata = await stream.initial_metadata()
-            if metadata["status"] == "file_not_found":
-                return aiohttp.web.HTTPNotFound(
-                    reason=f"File \"{log_file_name}\" not found on node {node_id}")
+        response = aiohttp.web.StreamResponse()
+        response.content_type = 'text/plain'
+        await response.prepare(req)
 
-            response = aiohttp.web.StreamResponse()
-            response.content_type = 'text/plain'
-            await response.prepare(req)
-
-            async for log_response in stream:
-                await response.write(log_response.data)
-            await response.write_eof()
-            return response
-        else:
-            while self._http_stubs == {}:
-                await asyncio.sleep(0.5)
-            matches = list(
-                filter(
-                    lambda info: node_id == info["node_id"], self._http_stubs.values()
-                )
-            )
-            if len(matches) != 1:
-                return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
-            addr = matches[0]["address"]
-            import requests
-
-            return aiohttp.web.Response(
-                text=requests.get(
-                    f"{addr}/v1/api/logs/agent/file/{log_file_name}?{req.query_string}"
-                ).text
-            )
+        async for log_response in stream:
+            await response.write(log_response.data)
+        await response.write_eof()
+        return response
 
     # This creates a websocket session which first sends ?lines=x lines from
     # end of log file
@@ -290,58 +260,30 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         interval = req.match_info.get("interval", None)
         interval = float(interval) if interval else None
 
-        if self.USE_GRPC:
-            if node_id not in self._stubs:
-                return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
-            stream = self._stubs[node_id].LogStream(
-                reporter_pb2.LogStreamRequest(
-                    file=reporter_pb2.LogFileRequest(
-                        log_file_name=log_file_name, lines=lines
-                    ),
-                    interval=interval,
-                )
+        if node_id not in self._stubs:
+            return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
+        stream = self._stubs[node_id].LogStream(
+            reporter_pb2.LogStreamRequest(
+                file=reporter_pb2.LogFileRequest(
+                    log_file_name=log_file_name, lines=lines
+                ),
+                interval=interval,
             )
+        )
 
-            metadata = await stream.initial_metadata()
-            if metadata["status"] == "file_not_found":
-                return aiohttp.web.HTTPNotFound(
-                    reason=f"File \"{log_file_name}\" not found on node {node_id}")
+        metadata = await stream.initial_metadata()
+        if metadata["status"] == "file_not_found":
+            return aiohttp.web.HTTPNotFound(
+                reason=f"File \"{log_file_name}\" not found on node {node_id}")
 
-            response = aiohttp.web.StreamResponse()
-            response.content_type = 'text/plain'
-            await response.prepare(req)
+        response = aiohttp.web.StreamResponse()
+        response.content_type = 'text/plain'
+        await response.prepare(req)
 
-            async for log_response in stream:
-                await response.write(log_response.data)
-            await response.write_eof()
-            return response
-        else:
-            ws = aiohttp.web.WebSocketResponse()
-            await ws.prepare(req)
-            while self._http_stubs == {}:
-                await asyncio.sleep(0.5)
-
-            matches = list(
-                filter(lambda info: node_id ==
-                       info["node_id"], self._http_stubs.values())
-            )
-            if len(matches) != 1:
-                return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
-            addr = matches[0]["address"]
-            async with aiohttp.ClientSession(auto_decompress=False) as session:
-                ws_client = await session.ws_connect(
-                    f"{addr}/v1/api/logs/agent/stream/{log_file_name}?"
-                    f"{req.query_string}"
-                )
-
-                while True:
-                    msg = await ws_client.receive()
-                    if msg.type != aiohttp.WSMsgType.BINARY:
-                        await ws.send_bytes(b"Data could not be read from agent")
-                        break
-                    asyncio.sleep(0.5)
-                    await ws.send_bytes(msg.data)
-            return ws
+        async for log_response in stream:
+            await response.write(log_response.data)
+        await response.write_eof()
+        return response
 
     async def run(self, server):
         pass

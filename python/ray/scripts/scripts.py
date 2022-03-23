@@ -1857,28 +1857,6 @@ def local_dump(
 def stream_log(api_endpoint, node_id, log, lines):
     import aiohttp
     import asyncio
-
-    async def websocket_stream():
-        session = aiohttp.ClientSession()
-        stream_url = f"{api_endpoint}/v1/api/logs/stream/{node_id}/{log}?lines={lines}"
-        print("connecting to websocket endpoint", stream_url)
-        ws = await session.ws_connect(stream_url)
-        print("connected")
-        while True:
-            msg = await ws.receive()
-            if msg.type == aiohttp.WSMsgType.CLOSED:
-                print("Websocket log streaming connection closed")
-                break
-            elif msg.type == aiohttp.WSMsgType.BINARY:
-                print(msg.data.decode("utf-8"), end="", flush=True)
-            elif (
-                msg.type == aiohttp.WSMsgType.TEXT
-                or msg.type == aiohttp.WSMsgType.ERROR
-            ):
-                print(msg.data)
-            await asyncio.sleep(0.5)
-        # await ws.close()
-
     async def http_stream():
         async with aiohttp.ClientSession(raise_for_status=True) as session:
             stream_url = f"{api_endpoint}/v1/api/logs/stream/{node_id}/{log}?lines={lines}"
