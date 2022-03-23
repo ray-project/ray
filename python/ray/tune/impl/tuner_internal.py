@@ -165,9 +165,9 @@ class TunerInternal:
             scheduler=self._tune_config.scheduler,
             name=self._run_config.name,
             callbacks=self._run_config.callbacks,
-            max_failures=self._run_config.failure.max_failures
-            if self._run_config.failure
-            else 0,
+            max_failures=(
+                self._run_config.failure.max_failures if self._run_config.failure else 0
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
         )
@@ -181,9 +181,9 @@ class TunerInternal:
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
-            max_failures=self._run_config.failure.max_failures
-            if self._run_config.failure
-            else 0,
+            max_failures=(
+                self._run_config.failure.max_failures if self._run_config.failure else 0
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
         )
