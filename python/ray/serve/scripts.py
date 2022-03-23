@@ -383,9 +383,9 @@ def delete(address: str, yes: bool):
 
 
 @cli.command(
-    short_help="Build a Serve app into a structured config.",
+    short_help="Writes a Pipeline's config file.",
     help=(
-        "Imports the Serve app at IMPORT_PATH and generates a structured "
+        "Imports the DeploymentNode at IMPORT_PATH and generates a structured "
         "config for it that can be used by `serve deploy` or the REST API. "
     ),
 )

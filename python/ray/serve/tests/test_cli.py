@@ -12,7 +12,7 @@ import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
-from ray.serve.api import Application
+from ray.serve.api import Application, RayServeDAGHandle
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -378,36 +378,35 @@ def global_f(*args):
     return "wonderful world"
 
 
-test_build_app = Application(
-    [
-        global_f.options(name="f1"),
-        global_f.options(name="f2"),
-    ]
-)
+@serve.deployment
+class NoArgDriver:
+    def __init__(self, dag: RayServeDAGHandle):
+        self.dag = dag
+
+    async def __call__(self):
+        return await self.dag.remote()
+
+
+TestBuildDagNode = NoArgDriver.bind(global_f.bind())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_build(ray_start_stop):
-    f = NamedTemporaryFile(mode="w", delete=False)
+    with NamedTemporaryFile(mode="w", suffix=".yaml") as f:
 
-    # Build an app
-    subprocess.check_output(
-        ["serve", "build", "ray.serve.tests.test_cli.test_build_app", f.name]
-    )
-    subprocess.check_output(["serve", "deploy", f.name])
+        # Build an app
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                "ray.serve.tests.test_cli.TestBuildDagNode",
+                "-o",
+                f.name,
+            ]
+        )
+        subprocess.check_output(["serve", "deploy", f.name])
 
-    assert requests.get("http://localhost:8000/f1").text == "wonderful world"
-    assert requests.get("http://localhost:8000/f2").text == "wonderful world"
-
-    # Build a deployment
-    subprocess.check_output(
-        ["serve", "build", "ray.serve.tests.test_cli.global_f", f.name]
-    )
-    subprocess.check_output(["serve", "deploy", f.name])
-
-    assert requests.get("http://localhost:8000/global_f").text == "wonderful world"
-
-    os.unlink(f.name)
+        assert requests.get("http://localhost:8000/").text == "wonderful world"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
