@@ -237,10 +237,10 @@ void ClusterTaskManager::FillTaskInformation(rpc::GetNodeStatsReply *reply) cons
     }
   };
 
-  std::for_each(tasks_to_schedule_.cbegin(), tasks_to_schedule_.cend(),
-                update_node_state_reply);
-  std::for_each(infeasible_tasks_.cbegin(), infeasible_tasks_.cend(),
-                update_node_state_reply);
+  std::for_each(
+      tasks_to_schedule_.cbegin(), tasks_to_schedule_.cend(), update_node_state_reply);
+  std::for_each(
+      infeasible_tasks_.cbegin(), infeasible_tasks_.cend(), update_node_state_reply);
   local_task_manager_->FillTaskInformation(reply);
 }
 

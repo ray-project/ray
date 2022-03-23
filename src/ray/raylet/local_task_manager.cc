@@ -927,9 +927,10 @@ void LocalTaskManager::FillTaskInformation(rpc::GetNodeStatsReply *reply) const 
         internal::UnscheduledWorkCauseToString(work->GetUnscheduledCause()));
   };
 
-  std::for_each(tasks_to_dispatch_.cbegin(), tasks_to_dispatch_.cend(),
-                update_node_state_reply);
-  std::for_each(waiting_task_queue_.cbegin(), waiting_task_queue_.cend(),
+  std::for_each(
+      tasks_to_dispatch_.cbegin(), tasks_to_dispatch_.cend(), update_node_state_reply);
+  std::for_each(waiting_task_queue_.cbegin(),
+                waiting_task_queue_.cend(),
                 update_node_state_reply_for_waiting_tasks);
 }
 
