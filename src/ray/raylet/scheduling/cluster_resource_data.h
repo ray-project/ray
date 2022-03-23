@@ -224,8 +224,14 @@ class ResourceRequest {
     if (Size() > other.Size()) {
       return false;
     }
-    for (auto &resource_id : ResourceIds()) {
-      if (Get(resource_id) > other.Get(resource_id)) {
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      if (predefined_resources_[i] > other.predefined_resources_[i]) {
+        return false;
+      }
+    }
+    for (auto &entry : custom_resources_) {
+      auto it = other.custom_resources_.find(entry.first);
+      if (it == other.custom_resources_.end() || entry.second > it->second) {
         return false;
       }
     }
