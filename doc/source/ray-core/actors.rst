@@ -350,4 +350,5 @@ More about Ray Actors
     actors/actor-utils.rst
     actors/fault-tolerance.rst
     actors/scheduling.rst
+    actors/task-orders.rst
     actors/patterns/index.rst
