@@ -77,6 +77,20 @@ NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
       io_context_(io_context),
       node_id_(std::move(node_id)) {}
 
+void NodeSyncConnection::ReceiveUpdate(RaySyncMessages messages) {
+  for (auto &message : *messages.mutable_sync_messages()) {
+    auto &node_versions = GetNodeComponentVersions(message.node_id());
+    RAY_LOG(DEBUG) << "Receive update: "
+                   << " component_id=" << message.component_id()
+                   << ", message_version=" << message.version()
+                   << ", local_message_version=" << node_versions[message.component_id()];
+    if (node_versions[message.component_id()] < message.version()) {
+      node_versions[message.component_id()] = message.version();
+    }
+    instance_.BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(message)));
+  }
+}
+
 bool NodeSyncConnection::PushToSendingQueue(
     std::shared_ptr<const RaySyncMessage> message) {
   // Try to filter out the messages the target node already has.
@@ -88,11 +102,6 @@ bool NodeSyncConnection::PushToSendingQueue(
   }
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
-    RAY_LOG(DEBUG) << "PushToSendingQueue: " << NodeID::FromBinary(instance_.GetNodeId())
-                   << "<--" << NodeID::FromBinary(node_id_) << "\t"
-                   << message->component_id() << "\t"
-                   << node_versions[message->component_id()] << "\t"
-                   << message->version();
     sending_queue_.insert(message);
     node_versions[message->component_id()] = message->version();
     return true;

@@ -204,15 +204,15 @@ struct SyncerServer {
       if (has_scheduler_receiver ||
           static_cast<RayComponentId>(cid) != RayComponentId::SCHEDULER) {
         receivers[cid] = std::make_unique<MockReceiverInterface>();
-        ON_CALL(*receivers[cid], Update(_))
-            .WillByDefault(WithArg<0>(Invoke(snapshot_received)));
+        EXPECT_CALL(*receivers[cid], Update(_))
+            .WillRepeatedly(WithArg<0>(Invoke(snapshot_received)));
       }
 
       if (receivers[cid] != nullptr) {
         if (static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER) {
-          ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(false));
+          EXPECT_CALL(*receivers[cid], NeedBroadcast()).WillRepeatedly(Return(false));
         } else {
-          ON_CALL(*receivers[cid], NeedBroadcast()).WillByDefault(Return(true));
+          EXPECT_CALL(*receivers[cid], NeedBroadcast()).WillRepeatedly(Return(true));
         }
       }
 
@@ -228,7 +228,9 @@ struct SyncerServer {
           msg.set_node_id(syncer->GetNodeId());
           std::string dbg_message;
           google::protobuf::util::MessageToJsonString(msg, &dbg_message);
-          RAY_LOG(INFO) << "Snapshot:" << dbg_message;
+          RAY_LOG(INFO) << "Snapshot:" << dbg_message << " ?? "
+                        << static_cast<RayComponentId>(cid) << ", " << local_versions[cid]
+                        << ", " << NodeID::FromBinary(syncer->GetNodeId());
           snapshot_taken++;
           return std::make_optional(std::move(msg));
         }
@@ -236,8 +238,8 @@ struct SyncerServer {
       if (has_scheduler_reporter ||
           static_cast<RayComponentId>(cid) != RayComponentId::SCHEDULER) {
         reporter = std::make_unique<MockReporterInterface>();
-        ON_CALL(*reporter, Snapshot(_, Eq(cid)))
-            .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
+        EXPECT_CALL(*reporter, Snapshot(_, Eq(cid)))
+            .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
       }
       syncer->Register(
           static_cast<RayComponentId>(cid), reporter.get(), receivers[cid].get());
@@ -268,8 +270,8 @@ struct SyncerServer {
     service.reset();
     server.reset();
     io_context.stop();
-    thread->join();
     syncer.reset();
+    thread->join();
   }
 
   int64_t GetNumConsumedMessages(const std::string &node_id) const {
@@ -341,6 +343,9 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
   return grpc::CreateCustomChannel(
       "localhost:" + port, grpc::InsecureChannelCredentials(), argument);
 }
+
+using TClusterView =
+    absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>;
 
 TEST(SyncerTest, Test1To1) {
   // s1: reporter: RayComponentId::RESOURCE_MANAGER
@@ -463,19 +468,174 @@ TEST(SyncerTest, Test1To1) {
   ASSERT_LT(s2.GetNumConsumedMessages(s1.syncer->GetNodeId()), max_sends + 3);
 }
 
+TEST(SyncerTest, Broadcast) {
+  // This test covers the broadcast feature of ray syncer.
+  auto s1 = SyncerServer("19990", false);
+  auto s2 = SyncerServer("19991", true);
+  auto s3 = SyncerServer("19992", true);
+  // We need to make sure s1 is sending data to s3 for s2
+  s1.syncer->Connect(MakeChannel("19991"));
+  s1.syncer->Connect(MakeChannel("19992"));
+
+  // Make sure the setup is correct
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s1]() {
+        return s1.syncer->sync_connections_.size() == 2 && s1.snapshot_taken == 1;
+      },
+      5));
+
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s2]() {
+        return s2.syncer->sync_connections_.size() == 1 && s2.snapshot_taken == 2;
+      },
+      5));
+
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s3]() {
+        return s3.syncer->sync_connections_.size() == 1 && s3.snapshot_taken == 2;
+      },
+      5));
+
+  // Change the resource in s2 and make sure s1 && s3 are correct
+  s2.local_versions[0] = 1;
+  s2.local_versions[1] = 1;
+
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s1, node_id = s2.syncer->GetNodeId()]() mutable {
+        return s1.received_versions[node_id][0] == 1 &&
+               s1.received_versions[node_id][1] == 1;
+      },
+      5));
+
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s3, node_id = s2.syncer->GetNodeId()]() mutable {
+        return s3.received_versions[node_id][0] == 1 &&
+               // Make sure SCHEDULE information is not sent to s3
+               s3.received_versions[node_id][1] == 0;
+      },
+      5));
+}
+
+bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
+                  const std::vector<TClusterView> &views) {
+  for (size_t i = 1; i < views.size(); ++i) {
+    if (views[i].size() != views[0].size()) {
+      return false;
+    }
+
+    for (const auto &[k, v] : views[0]) {
+      auto iter = views[i].find(k);
+      if (iter == views[i].end()) {
+        return false;
+      }
+      const auto &vv = iter->second;
+      // It's about server[0]
+      if (k == servers[0]->syncer->GetNodeId()) {
+        if (v[1] || vv[1]) {
+          RAY_LOG(ERROR) << i << ": FAIL SCHEDULE-1: " << v[0] << ", " << vv[0] << ", "
+                         << v[1] << ", " << vv[1];
+          return false;
+        }
+      } else if (k == servers[i]->syncer->GetNodeId()) {
+        // It's about server[i]
+        if (vv[1] == nullptr || v[1] == nullptr) {
+          RAY_LOG(ERROR) << i << ": FAIL SCHEDULE-2: " << v[0] << ", " << vv[0] << ", "
+                         << v[1] << ", " << vv[1];
+          return false;
+        }
+      } else if (vv[1] != nullptr || v[1] == nullptr) {
+        RAY_LOG(ERROR) << i << ": FAIL SCHEDULE-3: " << v[0] << ", " << vv[0] << ", "
+                       << v[1] << ", " << vv[1];
+        return false;
+      }
+
+      if (v[0] == nullptr || vv[0] == nullptr) {
+        return false;
+      }
+      if (!google::protobuf::util::MessageDifferencer::Equals(*v[0], *vv[0])) {
+        RAY_LOG(ERROR) << i << ": FAIL RESOURCE: " << v[0] << ", " << vv[0] << ", "
+                       << v[1] << ", " << vv[1];
+
+        std::string dbg_message;
+        google::protobuf::util::MessageToJsonString(*v[0], &dbg_message);
+        RAY_LOG(ERROR) << "server[0] >> "
+                       << NodeID::FromBinary(servers[0]->syncer->GetNodeId()) << ": "
+                       << dbg_message << " - " << NodeID::FromBinary(v[0]->node_id());
+        dbg_message.clear();
+        google::protobuf::util::MessageToJsonString(*vv[0], &dbg_message);
+        RAY_LOG(ERROR) << "server[i] << "
+                       << NodeID::FromBinary(servers[i]->syncer->GetNodeId()) << ": "
+                       << dbg_message << " - " << NodeID::FromBinary(vv[0]->node_id());
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+void TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_view,
+                     std::vector<std::unique_ptr<SyncerServer>> &servers) {
+  auto check = [&servers, get_cluster_view]() {
+    std::vector<TClusterView> views;
+    for (auto &s : servers) {
+      views.push_back(get_cluster_view(*(s->syncer)));
+    }
+    return CompareViews(servers, views);
+  };
+
+  for (size_t i = 0; i < 5; ++i) {
+    if (!check()) {
+      std::this_thread::sleep_for(1s);
+    } else {
+      break;
+    }
+  }
+
+  ASSERT_TRUE(check());
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> rand_sleep(0, 1000000);
+  std::uniform_int_distribution<> choose_component(0, 1);
+  std::uniform_int_distribution<> choose_server(0, servers.size() - 1);
+
+  for (size_t i = 0; i < 1000000; ++i) {
+    auto server_idx = choose_server(gen);
+    auto component_id = choose_component(gen);
+    if (server_idx == 0) {
+      component_id = 0;
+    }
+    servers[server_idx]->local_versions[component_id]++;
+    // expect to sleep for 100 times for the whole loop.
+    if (rand_sleep(gen) < 100) {
+      std::this_thread::sleep_for(100ms);
+    }
+  }
+
+  // Make sure everything is synced.
+  for (size_t i = 0; i < 10; ++i) {
+    if (!check()) {
+      std::this_thread::sleep_for(1s);
+    } else {
+      break;
+    }
+  }
+
+  ASSERT_TRUE(check());
+}
+
 TEST(SyncerTest, Test1ToN) {
   size_t base_port = 18990;
   std::vector<std::unique_ptr<SyncerServer>> servers;
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 20; ++i) {
     servers.push_back(
         std::make_unique<SyncerServer>(std::to_string(i + base_port), i != 0));
   }
 
-  for (int i = 1; i < 100; ++i) {
+  for (size_t i = 1; i < servers.size(); ++i) {
     servers[0]->syncer->Connect(MakeChannel(servers[i]->server_port));
   }
-  using TClusterView =
-      absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>;
+
   auto get_cluster_view = [](RaySyncer &syncer) {
     std::promise<TClusterView> p;
     auto f = p.get_future();
@@ -484,80 +644,38 @@ TEST(SyncerTest, Test1ToN) {
         "TEST");
     return f.get();
   };
-  auto check = [&servers, get_cluster_view]() {
-    std::vector<TClusterView> views;
-    for (auto &s : servers) {
-      views.push_back(get_cluster_view(*(s->syncer)));
-    }
-
-    for (size_t i = 1; i < views.size(); ++i) {
-      if (views[i].size() != views[0].size()) {
-        return false;
-      }
-
-      for (const auto &[k, v] : views[0]) {
-        auto iter = views[i].find(k);
-        if (iter == views[i].end()) {
-          return false;
-        }
-        const auto &vv = iter->second;
-        // It's about server[0]
-        if (k == servers[0]->syncer->GetNodeId()) {
-          if (v[1] || vv[1]) {
-            RAY_LOG(ERROR) << "::: Schedule-1";
-            RAY_LOG(ERROR) << i << "\t"
-                           << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
-                           << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
-            return false;
-          }
-        } else if (k == servers[i]->syncer->GetNodeId()) {
-          // It's about server[i]
-          if (vv[1] == nullptr || v[1] == nullptr) {
-            RAY_LOG(ERROR) << "::: Schedule-2";
-            RAY_LOG(ERROR) << i << "\t"
-                           << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
-                           << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
-            return false;
-          }
-        } else if (vv[1] != nullptr || v[1] == nullptr) {
-          RAY_LOG(ERROR) << "::: Schedule-3";
-          RAY_LOG(ERROR) << i << "\t"
-                         << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
-                         << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
-          return false;
-        }
-
-        if (v[0] == nullptr || vv[0] == nullptr) {
-          RAY_LOG(ERROR) << "::: RESOURCE-1";
-          RAY_LOG(ERROR) << i << "\t"
-                         << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
-                         << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
-          return false;
-        }
-        if (!google::protobuf::util::MessageDifferencer::Equals(*v[0], *vv[0])) {
-          RAY_LOG(ERROR) << "::: RESOURCE-2";
-          RAY_LOG(ERROR) << i << "\t"
-                         << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
-                         << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
-          return false;
-        }
-      }
-    }
-    return true;
-  };
-
-  for (size_t i = 0; i < 5; ++i) {
-    RAY_LOG(ERROR) << "CHECKING";
-    if (!check()) {
-      std::this_thread::sleep_for(1s);
-    } else {
-      break;
-    }
-  }
-  ASSERT_TRUE(check());
+  TestCorrectness(get_cluster_view, servers);
 }
 
-// TEST(SyncerTest, TestMToN) { auto server = SyncerServer("9990"); }
+TEST(SyncerTest, TestMToN) {
+  size_t base_port = 18990;
+  std::vector<std::unique_ptr<SyncerServer>> servers;
+  for (int i = 0; i < 20; ++i) {
+    servers.push_back(
+        std::make_unique<SyncerServer>(std::to_string(i + base_port), i != 0));
+  }
+
+  // Try to construct a tree based structure
+  size_t i = 1;
+  size_t curr = 0;
+  while (i < servers.size()) {
+    // try to connect to 2 servers per node.
+    for (int k = 0; k < 2 && i < servers.size(); ++k, ++i) {
+      servers[curr]->syncer->Connect(MakeChannel(servers[i]->server_port));
+    }
+    ++curr;
+  }
+
+  auto get_cluster_view = [](RaySyncer &syncer) {
+    std::promise<TClusterView> p;
+    auto f = p.get_future();
+    syncer.GetIOContext().post(
+        [&p, &syncer]() mutable { p.set_value(syncer.node_state_->GetClusterView()); },
+        "TEST");
+    return f.get();
+  };
+  TestCorrectness(get_cluster_view, servers);
+}
 
 }  // namespace syncer
 }  // namespace ray

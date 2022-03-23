@@ -98,20 +98,7 @@ class NodeSyncConnection {
   /// Handle the udpates sent from this node.
   ///
   /// \param messages The message received.
-  void ReceiveUpdate(RaySyncMessages messages) {
-    for (auto &message : *messages.mutable_sync_messages()) {
-      auto &node_versions = GetNodeComponentVersions(message.node_id());
-      RAY_LOG(DEBUG) << "Receive update: "
-                     << " component_id=" << message.component_id()
-                     << ", message_version=" << message.version()
-                     << ", local_message_version="
-                     << node_versions[message.component_id()];
-      if (node_versions[message.component_id()] < message.version()) {
-        node_versions[message.component_id()] = message.version();
-      }
-      instance_.BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(message)));
-    }
-  }
+  void ReceiveUpdate(RaySyncMessages messages);
 
  protected:
   FRIEND_TEST(RaySyncerTest, NodeSyncConnection);
