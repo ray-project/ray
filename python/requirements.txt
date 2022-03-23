@@ -85,7 +85,6 @@ pytest-lazy-fixture
 pytest-timeout
 pytest-virtualenv
 scikit-learn==0.22.2
-tensorflow
 testfixtures
 werkzeug
 xlrd
