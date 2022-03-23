@@ -242,16 +242,16 @@ class WandbLoggerCallback(LoggerCallback):
     visualization.
 
     Args:
-        project (str): Name of the Wandb project. Mandatory.
-        group (str): Name of the Wandb group. Defaults to the trainable
+        project: Name of the Wandb project. Mandatory.
+        group: Name of the Wandb group. Defaults to the trainable
             name.
-        api_key_file (str): Path to file containing the Wandb API KEY. This
+        api_key_file: Path to file containing the Wandb API KEY. This
             file only needs to be present on the node running the Tune script
             if using the WandbLogger.
-        api_key (str): Wandb API Key. Alternative to setting ``api_key_file``.
-        excludes (list): List of metrics that should be excluded from
+        api_key: Wandb API Key. Alternative to setting ``api_key_file``.
+        excludes: List of metrics that should be excluded from
             the log.
-        log_config (bool): Boolean indicating if the ``config`` parameter of
+        log_config: Boolean indicating if the ``config`` parameter of
             the ``results`` dict should be logged. This makes sense if
             parameters will change during training, e.g. with
             PopulationBasedTraining. Defaults to False.
