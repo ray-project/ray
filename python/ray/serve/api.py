@@ -1974,13 +1974,13 @@ def deploy_group(deployments: List[Deployment], *, blocking=True) -> RayServeHan
 
 
 @PublicAPI(stability="alpha")
-def build(target: DeploymentNode) -> Application:
+def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
-    Takes in a DeploymentNode and converts it to a Serve application
-    consisting of one or more deployments. This is intended to be used for
-    production scenarios and deployed via the Serve REST API or CLI, so there
-    are some restrictions placed on the deployments:
+    Takes in a DeploymentNode or DeploymentFunctionNode and converts it to a
+    Serve application consisting of one or more deployments. This is intended
+    to be used for production scenarios and deployed via the Serve REST API or
+    CLI, so there are some restrictions placed on the deployments:
         1) All of the deployments must be importable. That is, they cannot be
            defined in __main__ or inline defined. The deployments will be
            imported in production using the same import path they were here.

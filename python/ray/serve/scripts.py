@@ -386,8 +386,9 @@ def delete(address: str, yes: bool):
 @cli.command(
     short_help="Writes a Pipeline's config file.",
     help=(
-        "Imports the DeploymentNode at IMPORT_PATH and generates a structured "
-        "config for it that can be used by `serve deploy` or the REST API. "
+        "Imports the DeploymentNode or DeploymentFunctionNode at IMPORT_PATH "
+        "and generates a structured config for it that can be used by "
+        "`serve deploy` or the REST API. "
     ),
 )
 @click.option(
