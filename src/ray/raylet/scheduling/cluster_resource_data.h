@@ -34,7 +34,7 @@ bool IsPredefinedResource(scheduling::ResourceID resource_id);
 /// Represents a set of resources.
 /// NOTE: negative values are valid in this set, while 0 is not. This means if any
 /// resource value is changed to 0, the resource will be removed.
-/// TODO(chenh): This class should be independent with tasks. We should move out the
+/// TODO(hchen): This class should be independent with tasks. We should move out the
 /// "requires_object_store_memory_" field, and rename this class to ResourceSet.
 class ResourceRequest {
  public:
@@ -282,7 +282,7 @@ class ResourceRequest {
 };
 
 /// Represents a resource set that contains the per-instance resource values.
-/// TODO(chenh): due to the same reason of ResourceRequest, we should rename it to
+/// TODO(hchen): due to the same reason of ResourceRequest, we should rename it to
 /// ResourceInstanceSet.
 class TaskResourceInstances {
  public:
@@ -342,7 +342,7 @@ class TaskResourceInstances {
   /// Get the mutable per-instance values of a particular resource.
   /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
   /// check fail will occur.
-  /// TODO(chenh): We should hide this method, and encapsulate all mutation operations.
+  /// TODO(hchen): We should hide this method, and encapsulate all mutation operations.
   std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
     auto ptr = GetPointer(resource_id);
     RAY_CHECK(ptr != nullptr) << "Resource ID not found " << resource_id;
