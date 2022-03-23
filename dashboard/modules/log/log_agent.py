@@ -1,11 +1,11 @@
 import logging
 
 import ray.dashboard.modules.log.log_utils as log_utils
+import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-import aiohttp.web as web
 import asyncio
 import os
 
@@ -46,43 +46,44 @@ class LogAgentV1Grpc(
     def is_minimal_module():
         return False
 
-    async def LogFile(self, request, context):
-        async for reply in self.log_common(request, context, False):
-            yield reply
+    async def LogIndex(self, request, context):
+        return reporter_pb2.LogIndexReply(
+            log_files=os.listdir(self._dashboard_agent.log_dir))
 
-    async def LogStream(self, request, context):
-        async for reply in self.log_common(request, context, True):
-            yield reply
+    async def StreamLog(self, request, context):
+        """
+        Streams the log in real time if request.keep_alive is True.
+        Else, it terminates the stream once there are no more bytes
+        to read from the log file.
+        """
+        lines = request.lines if request.lines else 1000
 
-    async def log_common(self, request, context, keep_alive=False):
-        file_request = request.file if keep_alive else request
-        lines = file_request.lines if file_request.lines else 1000
-        log_file_name = file_request.log_file_name
-
-        filepath = f"{self._dashboard_agent.log_dir}/{log_file_name}"
+        filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
         if not os.path.isfile(filepath):
-            await context.send_initial_metadata([["status", "file_not_found"]])
+            await context.send_initial_metadata(
+                [[log_consts.LOG_STREAM_STATUS, log_consts.FILE_NOT_FOUND]])
         with open(filepath, "rb") as f:
-            await context.send_initial_metadata([["status", "ok"]])
+            await context.send_initial_metadata(
+                [[log_consts.LOG_STREAM_STATUS, log_consts.OK]])
             # If requesting the whole file, we stream the file since it may be large.
             if lines == -1:
                 while True:
                     bytes = f.read(BLOCK_SIZE)
-                    end = f.tell()
                     if bytes == b"":
+                        end = f.tell()
                         break
-                    yield reporter_pb2.LogReply(data=bytes)
+                    yield reporter_pb2.StreamLogReply(data=bytes)
             else:
                 bytes, end = tail(f, lines)
-                yield reporter_pb2.LogReply(data=bytes)
-        if keep_alive:
-            f.seek(end)
+                yield reporter_pb2.StreamLogReply(data=bytes)
+        if request.keep_alive:
             interval = request.interval if request.interval else 0.5
+            f.seek(end)
             while True:
                 await asyncio.sleep(interval)
                 bytes = f.read()
                 if bytes != b"":
-                    yield reporter_pb2.LogReply(data=bytes)
+                    yield reporter_pb2.StreamLogReply(data=bytes)
 
 
 def tail(f, lines=1000):

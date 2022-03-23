@@ -2,6 +2,7 @@ import logging
 
 import aiohttp.web
 import ray.dashboard.modules.log.log_utils as log_utils
+import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._private.utils import init_grpc_channel
 from ray.core.generated import reporter_pb2
@@ -112,9 +113,6 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        # We disable auto_decompress when forward / proxy log url.
-        self._proxy_session = aiohttp.ClientSession(auto_decompress=False)
-        log_utils.register_mimetypes()
         self._stubs = {}
         DataSource.agents.signal.append(self._update_stubs)
 
@@ -135,30 +133,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             self._stubs[node_id] = stub
 
     @staticmethod
-    async def get_logs_json_index(node_info, filters):
-        import requests
-
-        addr = node_info["address"]
-        log_html = requests.get(f"{addr}/logs").text
-
-        def get_link(s):
-            s = s[len('<li><a href="/logs/') :]
-            path = s[: s.find('"')]
-            return path
-
+    async def get_logs_json_index(grpc_stub, filters):
+        reply = await grpc_stub.LogIndex(reporter_pb2.LogIndexRequest())
         filters = [] if filters == [""] else filters
-
-        is_link = filter(
-            lambda s: '<li><a href="/logs/' in s,
-            log_html.splitlines(),
-        )
-        unfiltered_links = map(get_link, is_link)
-        links = list(
-            filter(
-                lambda s: all(f in s for f in filters),
-                unfiltered_links,
-            )
-        )
+        links = list(filter(lambda s: all(f in s for f in filters), reply.log_files))
         logs = {}
         logs["worker_errors"] = list(
             filter(lambda s: "worker" in s and s.endswith(".err"), links)
@@ -193,66 +171,29 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         return logs
 
     @routes.get("/v1/api/logs/index")
-    @dashboard_optional_utils.aiohttp_cache
     async def handle_log_index(self, req):
         node_id = req.query.get("node_id", None)
         filters = req.query.get("filters", "").split(",")
         response = {}
-        while self._http_stubs == {}:
+        while self._stubs == {}:
             await asyncio.sleep(0.5)
         tasks = []
         # TODO: check this is in fact running in parallel
-        for node_info in self._http_stubs.values():
-            if node_id is None or (node_id and node_id == node_info["node_id"]):
+        for node_id, grpc_stub in self._stubs.items():
+            async def coro():
+                response[node_id] = await self.get_logs_json_index(
+                    grpc_stub, filters
+                )
 
-                async def coro():
-                    response[node_info["node_id"]] = await self.get_logs_json_index(
-                        node_info, filters
-                    )
-
-                tasks.append(coro())
+            tasks.append(coro())
         await asyncio.gather(*tasks)
         return aiohttp.web.json_response(response)
 
-    @routes.get("/v1/api/logs/file/{node_id}/{log_file_name}")
-    async def handle_get_log(self, req):
-        node_id = req.match_info.get("node_id", None)
-        lines = req.query.get("lines", None)
-        lines = int(lines) if lines else None
-        log_file_name = req.match_info.get("log_file_name", None)
-        while self._stubs == {}:
-            await asyncio.sleep(0.5)
-        if node_id not in self._stubs:
-            # Better error response here
-            return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
-
-        stream = self._stubs[node_id].LogFile(
-            reporter_pb2.LogFileRequest(
-                log_file_name=log_file_name, lines=lines)
-        )
-
-        metadata = await stream.initial_metadata()
-        if metadata["status"] == "file_not_found":
-            return aiohttp.web.HTTPNotFound(
-                reason=f"File \"{log_file_name}\" not found on node {node_id}")
-
-        response = aiohttp.web.StreamResponse()
-        response.content_type = 'text/plain'
-        await response.prepare(req)
-
-        async for log_response in stream:
-            await response.write(log_response.data)
-        await response.write_eof()
-        return response
-
-    # This creates a websocket session which first sends ?lines=x lines from
-    # end of log file
-    #
-    # Subsequently, log file is polled periodically by agent and new bytes are streamed.
-    @routes.get("/v1/api/logs/stream/{node_id}/{log_file_name}")
-    async def handle_stream_log(self, req):
+    @routes.get("/v1/api/logs/{media_type}/{node_id}/{log_file_name}")
+    async def handle_log(self, req):
         node_id = req.match_info.get("node_id", None)
         log_file_name = req.match_info.get("log_file_name", None)
+        media_type = req.match_info.get("media_type", None)
 
         lines = req.query.get("lines", None)
         lines = int(lines) if lines else None
@@ -260,19 +201,27 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         interval = req.match_info.get("interval", None)
         interval = float(interval) if interval else None
 
+        while self._stubs == {}:
+            await asyncio.sleep(0.5)
         if node_id not in self._stubs:
             return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
-        stream = self._stubs[node_id].LogStream(
-            reporter_pb2.LogStreamRequest(
-                file=reporter_pb2.LogFileRequest(
-                    log_file_name=log_file_name, lines=lines
-                ),
+
+        if media_type == "stream":
+            keep_alive = True
+        elif media_type == "file":
+            keep_alive = False
+        else:
+            return aiohttp.web.HTTPNotFound(reason=f"Invalid media type: {media_type}")
+        stream = self._stubs[node_id].StreamLog(
+            reporter_pb2.StreamLogRequest(
+                keep_alive=keep_alive,
+                log_file_name=log_file_name, lines=lines,
                 interval=interval,
             )
         )
 
         metadata = await stream.initial_metadata()
-        if metadata["status"] == "file_not_found":
+        if metadata["LOG_STREAM_STATUS"] == "FILE_NOT_FOUND":
             return aiohttp.web.HTTPNotFound(
                 reason=f"File \"{log_file_name}\" not found on node {node_id}")
 
@@ -290,5 +239,4 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @staticmethod
     def is_minimal_module():
-        return False
         return False

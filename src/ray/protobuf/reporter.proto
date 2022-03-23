@@ -60,18 +60,7 @@ message NodeResourceUsage {
   string json = 1;
 }
 
-
-
-message GetLogLinesRequest {
-  string log_name = 1;
-  // Maximum number of lines to return, from the end of the log file.
-  int32 max_lines = 2;
-}
-message GetLogLinesReply {
-  repeated string lines = 1;
-}
-
-// Service for communicating with the reporter.py process on a remote node.
+// Service for communicating with the reporter agent module on a remote node.
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
@@ -79,36 +68,27 @@ service ReporterService {
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
-  // Get the log index from the agent.
-  rpc GetNodeLogIndex(GetNodeLogIndexRequest) returns (GetNodeLogIndexReply);
-  // Get lines from a log file from the agent.
-  rpc GetLogLines(GetLogLinesRequest) returns (GetLogLinesReply);
 }
-message LogFileRequest {
+message StreamLogRequest {
   string log_file_name = 1;
-  optional int32 lines = 2;
+  // Keeps stream alive perpertually if true, else terminates on EOF
+  bool keep_alive = 2;
+  optional int32 lines = 3;
+  optional float interval = 4;
 }
-message LogStreamRequest {
-  LogFileRequest file = 1;
-  optional float interval = 2;
+message StreamLogReply {
+  bytes data = 1;
 }
-message LogIndex {
+message LogIndexRequest {
 }
 message LogIndexReply {
   repeated string log_files = 1;
 }
-message LogReply {
-  bytes data = 1;
-}
 
-// Service for communicating with the reporter.py process on a remote node.
+// Service for communicating with the log agent module on a remote node.
 service LogService {
-
+  // Get the log index from the agent.
   rpc LogIndex(LogIndexRequest) returns (LogIndexReply);
-
-
-  rpc LogFileExists(LogFileRequest) returns (stream LogReply);
-  rpc LogFile(LogFileRequest) returns (stream LogReply);
-
-  rpc LogStream(LogStreamRequest) returns (stream LogReply);
+  // Get log file from the agent.
+  rpc StreamLog(StreamLogRequest) returns (stream StreamLogReply);
 }
