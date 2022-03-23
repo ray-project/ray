@@ -48,6 +48,22 @@ using namespace std;
 
 namespace ray {
 
+namespace scheduling {
+
+/// Helper function to set which resource IDs are condiered unit-instance resources.
+/// Note, this function must have the same namespace as "ResourceID".
+void SetUnitInstanceResourceIds(absl::flat_hash_set<ResourceID> ids) {
+  auto &set = ResourceID::UnitInstanceResources();
+  set.clear();
+  for (auto id : ids) {
+    set.insert(id.ToInt());
+  }
+}
+
+}  // namespace scheduling
+
+using scheduling::SetUnitInstanceResourceIds;
+
 ResourceRequest CreateResourceRequest(
     const absl::flat_hash_map<ResourceID, double> &resource_map) {
   ResourceRequest request;
@@ -75,10 +91,6 @@ ResourceRequest RandomResourceRequest() {
     }
   }
   return resource_request;
-}
-
-void SetUnitInstanceResourceIds(absl::flat_hash_set<ResourceID> ids) {
-  ResourceID::SetUnitInstanceResourceIds(ids);
 }
 
 NodeResources RandomNodeResources() { return NodeResources(RandomResourceRequest()); }
