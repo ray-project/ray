@@ -53,12 +53,13 @@ class PlacementGroup:
         It is compatible to ray.get and ray.wait.
 
         Example:
+        >>> import ray
+        >>> from ray.util.placement_group import PlacementGroup
 
-        >>> pg = placement_group([{"CPU": 1}])
-            ray.get(pg.ready())
-
-        >>> pg = placement_group([{"CPU": 1}])
-            ray.wait([pg.ready()], timeout=0)
+        >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
+        >>> ray.get(pg.ready()) # doctest: +SKIP
+        >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
+        >>> ray.wait([pg.ready()], timeout=0) # doctest: +SKIP
         """
         self._fill_bundle_cache_if_needed()
 
@@ -250,20 +251,21 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     (because drivers never belong to any placement group).
 
     Examples:
-
+        >>> import ray
+        >>> from ray.util.placement_group import get_current_placement_group, PlacementGroup
         >>> @ray.remote
-        >>> def f():
+        >>> def f(): # doctest: +SKIP
         >>>     # This will return the placement group the task f belongs to.
         >>>     # It means this pg will be identical to the pg created below.
-        >>>     pg = get_current_placement_group()
-        >>> pg = placement_group([{"CPU": 2}])
-        >>> f.options(placement_group=pg).remote()
+        >>>     pg = get_current_placement_group() # doctest: +SKIP
+        >>> pg = PlacementGroup([{"CPU": 2}]) # doctest: +SKIP
+        >>> f.options(placement_group=pg).remote() # doctest: +SKIP
 
         >>> # New script.
-        >>> ray.init()
+        >>> ray.init() # doctest: +SKIP
         >>> # New script doesn't belong to any placement group,
         >>> # so it returns None.
-        >>> assert get_current_placement_group() is None
+        >>> assert get_current_placement_group() is None # doctest: +SKIP
 
     Return:
         PlacementGroup: Placement group object.
