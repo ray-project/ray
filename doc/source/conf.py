@@ -161,6 +161,7 @@ linkcheck_ignore = [
     "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
     # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
     "https://scikit-optimize.github.io/stable/modules/",
+    "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html"
 ]
 
 # -- Options for HTML output ----------------------------------------------

@@ -125,9 +125,11 @@ class StatusReporter:
     """Object passed into your function that you can report status through.
 
     Example:
-        >>> def trainable_function(config, reporter):
-        >>>     assert isinstance(reporter, StatusReporter)
-        >>>     reporter(timesteps_this_iter=1)
+        >>> from ray.tune.function_runner import StatusReporter
+        >>> reporter = StatusReporter(...) # doctest: +SKIP
+        >>> def trainable_function(config, reporter): # doctest: +SKIP
+        >>>     assert isinstance(reporter, StatusReporter) # doctest: +SKIP
+        >>>     reporter(timesteps_this_iter=1) # doctest: +SKIP
     """
 
     def __init__(
