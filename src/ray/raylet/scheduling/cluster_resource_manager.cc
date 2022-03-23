@@ -134,8 +134,8 @@ void ClusterResourceManager::DeleteResource(scheduling::NodeID node_id,
   }
 
   auto local_view = it->second.GetMutableLocalView();
-  local_view->total.Clear();
-  local_view->available.Clear();
+  local_view->total.Set(resource_id, 0);
+  local_view->available.Set(resource_id, 0);
 }
 
 std::string ClusterResourceManager::GetNodeResourceViewString(
