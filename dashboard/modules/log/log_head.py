@@ -180,10 +180,9 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         tasks = []
         # TODO: check this is in fact running in parallel
         for node_id, grpc_stub in self._stubs.items():
+
             async def coro():
-                response[node_id] = await self.get_logs_json_index(
-                    grpc_stub, filters
-                )
+                response[node_id] = await self.get_logs_json_index(grpc_stub, filters)
 
             tasks.append(coro())
         await asyncio.gather(*tasks)
@@ -215,7 +214,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         stream = self._stubs[node_id].StreamLog(
             reporter_pb2.StreamLogRequest(
                 keep_alive=keep_alive,
-                log_file_name=log_file_name, lines=lines,
+                log_file_name=log_file_name,
+                lines=lines,
                 interval=interval,
             )
         )
@@ -223,10 +223,11 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         metadata = await stream.initial_metadata()
         if metadata[log_consts.LOG_STREAM_STATUS] == log_consts.FILE_NOT_FOUND:
             return aiohttp.web.HTTPNotFound(
-                reason=f"File \"{log_file_name}\" not found on node {node_id}")
+                reason=f'File "{log_file_name}" not found on node {node_id}'
+            )
 
         response = aiohttp.web.StreamResponse()
-        response.content_type = 'text/plain'
+        response.content_type = "text/plain"
         await response.prepare(req)
 
         async for log_response in stream:
