@@ -4,9 +4,9 @@ Actor Tasks Execution Orders
 Synchronous, Single-Threaded Actor
 ----------------------------------
 In Ray, an actor receives tasks from multiple submitters (including driver and workers).
-For tasks received from the same submitter, synchronous, single-threaded actor executes
+For tasks received from the same submitter, a synchronous, single-threaded actor executes
 them following the submission order.
-In other words, any task will not be executed until previously submitted tasks from
+In other words, a given task will not be executed until previously submitted tasks from
 the same submitter have finished execution.
 
 .. tabbed:: Python
@@ -84,7 +84,7 @@ task. In this case, the actor can still execute tasks submitted by a different w
 
 Asynchronous or Threaded Actor
 ------------------------------
-:ref:`Asynchronous or threaded actors <async-actors>` does not guarantee the
+:ref:`Asynchronous or threaded actors <async-actors>` do not guarantee the
 task execution order. This means the system might execute a task
 even though previously submitted tasks are pending execution.
 
