@@ -118,4 +118,28 @@ public class RuntimeEnvTest {
       Ray.shutdown();
     }
   }
+
+  private static String getEnvVar(String key) {
+    return System.getenv(key);
+  }
+
+  public void testEnvVarsForNormalTask() {
+    try {
+      Ray.init();
+      RuntimeEnv runtimeEnv =
+          new RuntimeEnv.Builder()
+              .addEnvVar("KEY1", "A")
+              .addEnvVar("KEY2", "B")
+              .addEnvVar("KEY1", "C")
+              .build();
+
+      String val =
+          Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
+      Assert.assertEquals(val, "C");
+      val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").remote().get();
+      Assert.assertEquals(val, "B");
+    } finally {
+      Ray.shutdown();
+    }
+  }
 }

@@ -2,6 +2,7 @@ package io.ray.api.call;
 
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import java.util.Map;
 
 /**
@@ -61,6 +62,11 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
    */
   public T setPlacementGroup(PlacementGroup group, int bundleIndex) {
     builder.setPlacementGroup(group, bundleIndex);
+    return self();
+  }
+
+  public T setRuntimeEnv(RuntimeEnv runtimeEnv) {
+    builder.setRuntimeEnv(runtimeEnv);
     return self();
   }
 
