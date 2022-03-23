@@ -101,16 +101,18 @@ def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> No
             raise Exception(f"Timed out waiting for pod {pod} to enter Running status.")
 
 
-def wait_for_ray_health(ray_pod: str, namespace: str, tries=60,
-                        backoff_s=5, ray_container="ray-head") -> None:
+def wait_for_ray_health(
+    ray_pod: str, namespace: str, tries=60, backoff_s=5, ray_container="ray-head"
+) -> None:
     """Waits for the Ray pod to pass `ray health-check`.
     (Ensures Ray has completely started in the pod.)
     """
     for i in range(tries):
         try:
             # `ray health-check` yields 0 exit status iff it succeeds
-            kubectl_exec(["ray", "health-check"],
-                         ray_pod, namespace, container=ray_container)
+            kubectl_exec(
+                ["ray", "health-check"], ray_pod, namespace, container=ray_container
+            )
             logger.info(f"ray health check passes for pod {ray_pod}")
             return
         except subprocess.CalledProcessError as e:
@@ -150,8 +152,9 @@ def get_pod(pod_name_filter: str, namespace: str) -> str:
     return matches[0]
 
 
-def kubectl_exec(command: List[str], pod: str, namespace: str,
-                 container: Optional[str] = None) -> None:
+def kubectl_exec(
+    command: List[str], pod: str, namespace: str, container: Optional[str] = None
+) -> None:
     """kubectl exec the `command` in the given `pod` in the given `namespace`.
     If a `container` is specified, will specify that container for kubectl.
     """
@@ -167,7 +170,11 @@ def get_raycluster(raycluster: str, namespace: str) -> Dict[str, Any]:
 
     Returns the CR as a nested Dict.
     """
-    get_raycluster_output = subprocess.check_output(
-        ["kubectl", "-n", namespace, "get", "raycluster", raycluster, "-o", "yaml"]
-    ).decode().strip()
+    get_raycluster_output = (
+        subprocess.check_output(
+            ["kubectl", "-n", namespace, "get", "raycluster", raycluster, "-o", "yaml"]
+        )
+        .decode()
+        .strip()
+    )
     return yaml.safe_load(get_raycluster_output)

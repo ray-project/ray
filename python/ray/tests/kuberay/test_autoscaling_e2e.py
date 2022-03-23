@@ -116,8 +116,13 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         return config
 
-    def _apply_ray_cr(self, min_replicas=0, max_replicas=300, replicas=0,
-                      validate_replicas: bool = False) -> None:
+    def _apply_ray_cr(
+        self,
+        min_replicas=0,
+        max_replicas=300,
+        replicas=0,
+        validate_replicas: bool = False,
+    ) -> None:
         """Apply Ray CR config yaml, with configurable replica fields for the single
         workerGroup.
 
@@ -130,8 +135,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w") as config_file:
             if validate_replicas:
                 raycluster = get_raycluster("raycluster-complete", namespace="default")
-                assert raycluster["spec"]["workerGroupSpecs"][0][
-                    "replicas"] == replicas
+                assert raycluster["spec"]["workerGroupSpecs"][0]["replicas"] == replicas
                 logger.info(
                     f"Validated that worker replicas for raycluster-complete"
                     f" is currently {replicas}."
@@ -168,8 +172,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         Including operator and system pods, the total CPU requested is around 3.
 
         The cpu LIMIT of each Ray container is 1.
-        The `num-cpus` arg to Ray start is 1 for each Ray container; thus Ray accounts 1 CPU
-        for each Ray node in the test.
+        The `num-cpus` arg to Ray start is 1 for each Ray container; thus Ray accounts
+        1 CPU for each Ray node in the test.
         """
         # Cluster-creation
         logger.info("Creating a RayCluster with no worker pods.")
@@ -193,11 +197,13 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             'ray.init("auto");'
             "ray.autoscaler.sdk.request_resources(num_cpus=2)"
         )
-        # The request for 2 cpus should give us a 1-cpu head (already present) and 1-cpu worker
-        # (will await scale-up).
+        # The request for 2 cpus should give us a 1-cpu head (already present) and a
+        # 1-cpu worker (will await scale-up).
         kubectl_exec(
-            command=["python", "-c", scale_script], pod=head_pod,
-            container="ray-head", namespace="default"
+            command=["python", "-c", scale_script],
+            pod=head_pod,
+            container="ray-head",
+            namespace="default",
         )
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace="default")
@@ -210,7 +216,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             replicas=1,
             # Validate that replicas set on the Ray CR by the autoscaler
             # is indeed 1:
-            validate_replicas=True
+            validate_replicas=True,
         )
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=3, namespace="default")
@@ -230,10 +236,14 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         logger.info("Scaling down all workers by editing maxReplicas.")
         # (replicas=2 reflects the current number of workers)
-        self._apply_ray_cr(min_replicas=0, max_replicas=0, replicas=2,
-                           # Check that the replicas set on the Ray CR by the
-                           # autoscaler is indeed 2:
-                           validate_replicas=True)
+        self._apply_ray_cr(
+            min_replicas=0,
+            max_replicas=0,
+            replicas=2,
+            # Check that the replicas set on the Ray CR by the
+            # autoscaler is indeed 2:
+            validate_replicas=True,
+        )
         logger.info("Confirming workers are gone.")
         wait_for_pods(goal_num_pods=1, namespace="default")
 
