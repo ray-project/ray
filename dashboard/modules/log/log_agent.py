@@ -76,14 +76,14 @@ class LogAgentV1Grpc(
             else:
                 bytes, end = tail(f, lines)
                 yield reporter_pb2.StreamLogReply(data=bytes)
-        if request.keep_alive:
-            interval = request.interval if request.interval else 0.5
-            f.seek(end)
-            while True:
-                await asyncio.sleep(interval)
-                bytes = f.read()
-                if bytes != b"":
-                    yield reporter_pb2.StreamLogReply(data=bytes)
+            if request.keep_alive:
+                interval = request.interval if request.interval else 0.5
+                f.seek(end)
+                while True:
+                    await asyncio.sleep(interval)
+                    bytes = f.read()
+                    if bytes != b"":
+                        yield reporter_pb2.StreamLogReply(data=bytes)
 
 
 def tail(f, lines=1000):

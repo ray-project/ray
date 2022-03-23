@@ -221,7 +221,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         )
 
         metadata = await stream.initial_metadata()
-        if metadata["LOG_STREAM_STATUS"] == "FILE_NOT_FOUND":
+        if metadata[log_consts.LOG_STREAM_STATUS] == log_consts.FILE_NOT_FOUND:
             return aiohttp.web.HTTPNotFound(
                 reason=f"File \"{log_file_name}\" not found on node {node_id}")
 
