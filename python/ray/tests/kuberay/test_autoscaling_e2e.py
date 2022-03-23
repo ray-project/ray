@@ -136,6 +136,17 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         Items 1. and 2. protect the example in the documentation.
         Items 3. and 4. protect the autoscaler's ability to respond to Ray CR update.
+
+        Resources requested by this test are safely within the bounds of an m5.xlarge
+        instance.
+        - One Ray head pod
+            - Autoscaler: .5 CPU, .5 Gi memory
+            - Ray node: .5 CPU, .5 Gi memeory
+        - Two Worker pods
+            - Ray node: .5 CPU, .5 Gi memory
+        Total: 2 CPU, 2 Gi memory.
+
+        Including operator and system pods, the total CPU requested is just over 3.
         """
         # Cluster-creation
         logger.info("Creating a RayCluster with no worker pods.")
