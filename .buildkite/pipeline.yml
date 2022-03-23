@@ -388,7 +388,7 @@
     # Build py37-cpu Ray image for the test.
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install -q docker
-    - python ci/travis/build-docker-images.py --py-versions py37 --device-types cpu --build-type BUILDKITE --build-base
+    - python ci/travis/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
     # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.
     - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
     # Load the image into the kind node.
