@@ -2800,8 +2800,7 @@ class Trainer(Trainable):
 
         # Check if old replay buffer should be instantiated
         buffer_type = config["replay_buffer_config"]["type"]
-        if not config["replay_buffer_config"].get("_enable_replay_buffer_api",
-                                                  False):
+        if not config["replay_buffer_config"].get("_enable_replay_buffer_api", False):
             if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
                 # Prepend old-style buffers' path
                 assert buffer_type == "MultiAgentReplayBuffer", (
