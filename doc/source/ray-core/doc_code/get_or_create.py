@@ -11,9 +11,9 @@ class Greeter:
 
 
 # Actor `g1` doesn't yet exist, so it is created with the given args.
-a = Greeter.options(name="g1").get_or_create("Hi Alice")
-assert ray.get(a.say_hello.remote()) == "Hi Alice"
+a = Greeter.options(name="g1", get_if_exists=True).remote("Old Greeting")
+assert ray.get(a.say_hello.remote()) == "Old Greeting"
 
 # Actor `g1` already exists, so it is returned (new args are ignored).
-b = Greeter.options(name="g1").get_or_create("Hi Dave")
-assert ray.get(b.say_hello.remote()) == "Hi Alice"
+b = Greeter.options(name="g1", get_if_exists=True).remote("New Greeting")
+assert ray.get(b.say_hello.remote()) == "Old Greeting"

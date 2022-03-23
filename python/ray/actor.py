@@ -554,6 +554,7 @@ class ActorClass:
         max_task_retries=None,
         name=None,
         namespace=None,
+        get_if_exists=False,
         lifetime=None,
         placement_group="default",
         placement_group_bundle_index=-1,
@@ -596,6 +597,7 @@ class ActorClass:
             max_task_retries=max_task_retries,
             name=name,
             namespace=namespace,
+            get_if_exists=get_if_exists,
             lifetime=lifetime,
             placement_group=placement_group,
             placement_group_bundle_index=placement_group_bundle_index,
@@ -607,46 +609,23 @@ class ActorClass:
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
+                options = cls_options.copy()
+
+                # Handle the get-or-create case.
+                if options.get("get_if_exists"):
+                    if not options.get("name"):
+                        raise ValueError(
+                            "The actor name must be specified to use `get_if_exists`."
+                        )
+                    del options["get_if_exists"]
+                    return self._get_or_create_impl(options, args, kwargs)
+
+                # Normal create case.
                 return actor_cls._remote(
                     args=args,
                     kwargs=kwargs,
-                    **cls_options,
+                    **options,
                 )
-
-            def get_or_create(self, *args, **kwargs):
-                """Get or create a named actor.
-
-                The name of the actor must be set via `Actor.options(name="name")`
-                prior to calling this method.
-
-                If the actor already exists, a handle to the actor will be returned
-                and the arguments will be ignored. Otherwise, a new actor will be
-                created with the specified arguments.
-
-                Args:
-                    args: These arguments are forwarded directly to the actor
-                        constructor.
-                    kwargs: These arguments are forwarded directly to the actor
-                        constructor.
-
-                Returns:
-                    A handle to the new or existing named actor.
-                """
-                if not cls_options.get("name"):
-                    raise ValueError(
-                        "The actor name must be specified before use `get_or_create`."
-                    )
-                name = cls_options["name"]
-                try:
-                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
-                except ValueError:
-                    # Attempt to create it (may race with other attempts).
-                    try:
-                        return self.remote(*args, **kwargs)
-                    except ValueError:
-                        # We lost the creation race, ignore.
-                        pass
-                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
 
             def bind(self, *args, **kwargs):
                 """
@@ -663,6 +642,23 @@ class ActorClass:
                     kwargs,
                     cls_options,
                 )
+
+            def _get_or_create_impl(self, options, args, kwargs):
+                name = options["name"]
+                try:
+                    return ray.get_actor(name, namespace=options.get("namespace"))
+                except ValueError:
+                    # Attempt to create it (may race with other attempts).
+                    try:
+                        return actor_cls._remote(
+                            args=args,
+                            kwargs=kwargs,
+                            **options,
+                        )
+                    except ValueError:
+                        # We lost the creation race, ignore.
+                        pass
+                    return ray.get_actor(name, namespace=options.get("namespace"))
 
         return ActorOptionWrapper()
 

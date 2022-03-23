@@ -20,14 +20,14 @@ def test_simple(shutdown_only):
             return os.getpid()
 
     for ns in [None, "test"]:
-        a = Actor.options(name="x", namespace=ns).get_or_create()
-        b = Actor.options(name="x", namespace=ns).get_or_create()
+        a = Actor.options(name="x", namespace=ns, get_if_exists=True).remote()
+        b = Actor.options(name="x", namespace=ns, get_if_exists=True).remote()
         assert ray.get(a.ping.remote()) == "ok"
         assert ray.get(b.ping.remote()) == "ok"
         assert ray.get(b.pid.remote()) == ray.get(a.pid.remote())
 
     with pytest.raises(ValueError):
-        Actor.options(num_cpus=1).get_or_create()
+        Actor.options(num_cpus=1, get_if_exists=True).remote()
 
 
 def test_no_verbose_output():
@@ -43,7 +43,7 @@ class Actor:
 @ray.remote
 def getter(name):
     actor = Actor.options(
-        name="foo", lifetime="detached", namespace="n").get_or_create()
+        name="foo", lifetime="detached", namespace="n", get_if_exists=True).remote()
     ray.get(actor.ping.remote())
 
 

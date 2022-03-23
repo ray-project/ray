@@ -125,10 +125,13 @@ exist. See :ref:`actor-lifetimes` for more details.
 Get-Or-Create a Named Actor
 ---------------------------
 
-A common use case is to create an actor only if it doesn't exist. You can achieve this
-with a combination of ``ray.get_actor()`` and falling back to creating it on error.
-Ray also provides a ``get_or_create()`` method that does this out of the box. This
-method is available after you set a name for the actor via ``.options()``.
+A common use case is to create an actor only if it doesn't exist.
+Ray provides a ``get_if_exists`` option for actor creation that does this out of the box.
+This method is available after you set a name for the actor via ``.options()``.
+
+If the actor already exists, a handle to the actor will be returned
+and the arguments will be ignored. Otherwise, a new actor will be
+created with the specified arguments.
 
 .. tabbed:: Python
 
