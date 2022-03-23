@@ -9,11 +9,11 @@ from sklearn.utils import shuffle
 from ray import tune
 from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
-from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.ml.train import Trainer
 from ray.tune import Callback, TuneError
+from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -101,7 +101,7 @@ class TunerTest(unittest.TestCase):
             tune_config=TuneConfig(mode="min", metric="train-error"),
         )
         results = tuner.fit()
-        assert isinstance(results.get_best_result().checkpoint, Checkpoint)
+        assert not isinstance(results.get_best_result().checkpoint, TrialCheckpoint)
         assert len(results) == 2
 
     def test_tuner_with_xgboost_trainer_driver_fail_and_resume(self):
