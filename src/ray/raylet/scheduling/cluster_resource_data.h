@@ -330,10 +330,13 @@ class TaskResourceInstances {
   }
 
   /// Get the sum of per-instance values of a particular resource.
-  /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
-  /// check fail will occur.
+  /// If the resource doesn't exist, return 0.
   FixedPoint Sum(const ResourceID resource_id) const {
-    return FixedPoint::Sum(Get(resource_id));
+    if (Has(resource_id)) {
+      return FixedPoint::Sum(Get(resource_id));
+    } else {
+      return FixedPoint(0);
+    }
   }
 
   /// Get the mutable per-instance values of a particular resource.
