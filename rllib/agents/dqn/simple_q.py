@@ -85,12 +85,12 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
-    # Use the new ReplayBuffer API here
-    "_replay_buffer_api": True,
     # Deprecated for Simple Q because of new ReplayBuffer API
     # Use MultiAgentPrioritizedReplayBuffer for prioritization.
     "prioritized_replay": DEPRECATED_VALUE,
     "replay_buffer_config": {
+        # Use the new ReplayBuffer API here
+        "_enable_replay_buffer_api": True,
         "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
         "replay_batch_size": 32,
