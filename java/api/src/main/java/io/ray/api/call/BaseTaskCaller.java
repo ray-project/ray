@@ -76,6 +76,11 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
     return setPlacementGroup(group, -1);
   }
 
+  /**
+   * Set the runtime env for this task to run the task in a specific environment.
+   * @param runtimeEnv The runtime env of this task.
+   * @return self
+   */
   public T setRuntimeEnv(RuntimeEnv runtimeEnv) {
     builder.setRuntimeEnv(runtimeEnv);
     return self();
