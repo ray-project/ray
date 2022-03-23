@@ -38,10 +38,13 @@ class ExternalEnv(threading.Thread):
     This env is thread-safe, but individual episodes must be executed serially.
 
     Examples:
-        >>> register_env("my_env", lambda config: YourExternalEnv(config))
-        >>> trainer = DQNTrainer(env="my_env")
-        >>> while True:
-        >>>     print(trainer.train())
+        >>> from tune import register_env
+        >>> from ray.rllib.agents.dqn import DQNTrainer
+        >>> YourExternalEnv = ... # doctest: +SKIP
+        >>> register_env("my_env", lambda config: YourExternalEnv(config)) # doctest: +SKIP
+        >>> trainer = DQNTrainer(env="my_env") # doctest: +SKIP
+        >>> while True: # doctest: +SKIP
+        >>>     print(trainer.train()) # doctest: +SKIP
     """
 
     @PublicAPI
