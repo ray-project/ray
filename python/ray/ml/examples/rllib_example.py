@@ -57,7 +57,7 @@ def train_old_style():
             },
             "input": "dataset",
             "input_config": {
-                "type": "json",
+                "format": "json",
                 "path": "/tmp/out"
             }
         }
