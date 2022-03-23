@@ -60,12 +60,7 @@ message NodeResourceUsage {
   string json = 1;
 }
 
-message GetNodeLogIndexRequest {
-}
 
-message GetNodeLogIndexReply {
-  repeated string log_files = 1;
-}
 
 message GetLogLinesRequest {
   string log_name = 1;
@@ -97,6 +92,11 @@ message LogStreamRequest {
   LogFileRequest file = 1;
   optional float interval = 2;
 }
+message LogIndex {
+}
+message LogIndexReply {
+  repeated string log_files = 1;
+}
 message LogReply {
   bytes data = 1;
 }
@@ -104,6 +104,10 @@ message LogReply {
 // Service for communicating with the reporter.py process on a remote node.
 service LogService {
 
+  rpc LogIndex(LogIndexRequest) returns (LogIndexReply);
+
+
+  rpc LogFileExists(LogFileRequest) returns (stream LogReply);
   rpc LogFile(LogFileRequest) returns (stream LogReply);
 
   rpc LogStream(LogStreamRequest) returns (stream LogReply);

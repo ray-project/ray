@@ -7,6 +7,7 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 import aiohttp.web as web
 import asyncio
+import os
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -114,6 +115,7 @@ class LogAgentV1Grpc(
         if server:
             reporter_pb2_grpc.add_LogServiceServicer_to_server(self, server)
 
+    # TODO: should this return True
     @staticmethod
     def is_minimal_module():
         return False
@@ -122,24 +124,34 @@ class LogAgentV1Grpc(
         lines = request.lines if request.lines else 1000
         log_file_name = request.log_file_name
 
-        with open(f"{self._dashboard_agent.log_dir}/{log_file_name}", "rb") as f:
-            # If requesting the whole file, we stream the file since it may be large.
-            if lines == -1:
-                while True:
-                    bytes = f.read(FILE_BLOCK_SIZE)
-                    if bytes == b"":
-                        break
+        filepath = f"{self._dashboard_agent.log_dir}/{log_file_name}"
+        if not os.path.isfile(filepath):
+            await context.send_initial_metadata([["status", "file_not_found"]])
+        else:
+            await context.send_initial_metadata([["status", "ok"]])
+            with open(filepath, "rb") as f:
+                if lines == -1:
+                    # If requesting the whole file, we stream the file
+                    # since it may be large.
+                    while True:
+                        bytes = f.read(FILE_BLOCK_SIZE)
+                        if bytes == b"":
+                            break
+                        yield reporter_pb2.LogReply(data=bytes)
+                else:
+                    bytes, end = tail(f, lines)
                     yield reporter_pb2.LogReply(data=bytes)
-            else:
-                bytes, end = tail(f, lines)
-                yield reporter_pb2.LogReply(data=bytes)
 
     async def LogStream(self, request, context):
         lines = request.file.lines if request.file.lines else 1000
         log_file_name = request.file.log_file_name
         interval = request.interval if request.interval else 0.5
 
-        with open(f"{self._dashboard_agent.log_dir}/{log_file_name}", "rb") as f:
+        filepath = f"{self._dashboard_agent.log_dir}/{log_file_name}"
+        if not os.path.isfile(filepath):
+            await context.send_initial_metadata([["status", "file_not_found"]])
+        with open(filepath, "rb") as f:
+            await context.send_initial_metadata([["status", "ok"]])
             # If requesting the whole file, we stream the file since it may be large.
             if lines == -1:
                 while True:
@@ -162,9 +174,10 @@ class LogAgentV1Grpc(
 
 def tail(f, lines=1000):
     """
-    Inspired by: https://stackoverflow.com/a/136368/8299684
+    Taken from: https://stackoverflow.com/a/136368/8299684
 
-    Every block ends with a \n except for the last block.
+    We assume that any "lines" parameter is not significant and will result
+    in a buffer with a small memory profile (<1MB)
     """
 
     total_lines_wanted = lines
@@ -188,5 +201,4 @@ def tail(f, lines=1000):
         block_end_byte -= BLOCK_SIZE
         block_number -= 1
     all_read_text = b"".join(reversed(blocks))
-    return b"\n".join(all_read_text.splitlines()[-total_lines_wanted:]), last_byte_read
     return b"\n".join(all_read_text.splitlines()[-total_lines_wanted:]), last_byte_read
