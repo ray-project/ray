@@ -172,6 +172,12 @@ def test_no_scaledown_with_spilled_objects(shutdown_only):
         # Verify the spilled object still exists, and there is no object in the
         # plasma store.
         check_memory([spilled_obj.hex()], num_plasma_objects=0)
+
+        # Delete the spilled object, the remaining worker node should be scaled
+        # down.
+        del spilled_obj
+        wait_for_condition(lambda: ray.cluster_resources().get("CPU", 0) == 0)
+        check_memory([], num_plasma_objects=0)
     finally:
         cluster.shutdown()
 
