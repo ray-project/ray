@@ -63,29 +63,30 @@ class LogAgentV1Grpc(
             await context.send_initial_metadata(
                 [[log_consts.LOG_STREAM_STATUS, log_consts.FILE_NOT_FOUND]]
             )
-        with open(filepath, "rb") as f:
-            await context.send_initial_metadata(
-                [[log_consts.LOG_STREAM_STATUS, log_consts.OK]]
-            )
-            # If requesting the whole file, we stream the file since it may be large.
-            if lines == -1:
-                while True:
-                    bytes = f.read(BLOCK_SIZE)
-                    if bytes == b"":
-                        end = f.tell()
-                        break
-                    yield reporter_pb2.StreamLogReply(data=bytes)
-            else:
-                bytes, end = tail(f, lines)
-                yield reporter_pb2.StreamLogReply(data=bytes)
-            if request.keep_alive:
-                interval = request.interval if request.interval else 0.5
-                f.seek(end)
-                while True:
-                    await asyncio.sleep(interval)
-                    bytes = f.read()
-                    if bytes != b"":
+        else:
+            with open(filepath, "rb") as f:
+                await context.send_initial_metadata(
+                    [[log_consts.LOG_STREAM_STATUS, log_consts.OK]]
+                )
+                # If requesting the whole file, we stream the file since it may be large.
+                if lines == -1:
+                    while True:
+                        bytes = f.read(BLOCK_SIZE)
+                        if bytes == b"":
+                            end = f.tell()
+                            break
                         yield reporter_pb2.StreamLogReply(data=bytes)
+                else:
+                    bytes, end = tail(f, lines)
+                    yield reporter_pb2.StreamLogReply(data=bytes)
+                if request.keep_alive:
+                    interval = request.interval if request.interval else 0.5
+                    f.seek(end)
+                    while True:
+                        await asyncio.sleep(interval)
+                        bytes = f.read()
+                        if bytes != b"":
+                            yield reporter_pb2.StreamLogReply(data=bytes)
 
 
 def tail(f, lines=1000):
