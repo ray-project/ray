@@ -222,21 +222,21 @@ def flatten_inputs_to_1d_tensor(
         >>> # B=2
         >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
         >>> from gym.spaces import Discrete, Box
-        >>> out = flatten_inputs_to_1d_tensor(
+        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1))))
-        ... )
-        >>> print(out)
+        ... ) # doctest: +SKIP
+        >>> print(out) # doctest: +SKIP
         [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
 
         >>> # B=2; T=2
-        >>> out = flatten_inputs_to_1d_tensor(
+        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     ([[1, 0], [0, 1]],
         ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
         ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
         ...     time_axis=True
-        ... )
-        >>> print(out)
+        ... ) # doctest: +SKIP
+        >>> print(out) # doctest: +SKIP
         [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
         [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
@@ -376,15 +376,14 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         ValueError: If the given space is not a discrete one.
 
     Examples:
-        >>> x = torch.IntTensor([0, 3])  # batch-dim=2
-        >>> # Discrete space with 4 (one-hot) slots per batch item.
+        >>> import torch
         >>> import gym
         >>> from ray.rllib.utils.torch_utils import one_hot
+        >>> x = torch.IntTensor([0, 3])  # batch-dim=2
+        >>> # Discrete space with 4 (one-hot) slots per batch item.
         >>> s = gym.spaces.Discrete(4)
         >>> one_hot(x, s)
         tensor([[1, 0, 0, 0], [0, 0, 0, 1]])
-
-        >>> import torch
         >>> x = torch.IntTensor([[0, 1, 2, 3]])  # batch-dim=1
         >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
         >>> # per batch item.

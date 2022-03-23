@@ -252,8 +252,22 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
+
 # Add a render priority for doctest
-nb_render_priority = {"doctest": ()}
+nb_render_priority = {
+    "doctest": (),
+    "html": (
+        "application/vnd.jupyter.widget-view+json",
+        "application/javascript",
+        "text/html",
+        "image/svg+xml",
+        "image/png",
+        "image/jpeg",
+        "text/markdown",
+        "text/latex",
+        "text/plain",
+    ),
+}
 
 
 def setup(app):
