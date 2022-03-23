@@ -136,7 +136,7 @@ public class RuntimeEnvTest {
       String val =
           Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "C");
-      val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").remote().get();
+      val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "B");
     } finally {
       Ray.shutdown();
@@ -155,7 +155,7 @@ public class RuntimeEnvTest {
       String val =
           Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "C");
-      val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").remote().get();
+      val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "B");
     } finally {
       Ray.shutdown();
