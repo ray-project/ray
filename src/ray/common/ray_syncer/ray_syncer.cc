@@ -14,6 +14,8 @@
 
 #include "ray/common/ray_syncer/ray_syncer.h"
 
+#include <functional>
+
 #include "ray/common/ray_config.h"
 namespace ray {
 namespace syncer {
@@ -237,10 +239,11 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context, const std::string &nod
       node_id_(node_id),
       node_state_(std::make_unique<NodeState>()),
       timer_(io_context) {
+  stopped_ = std::make_shared<bool>(false);
   component_broadcast_.fill(true);
 }
 
-RaySyncer::~RaySyncer() {}
+RaySyncer::~RaySyncer() { *stopped_ = true; }
 
 void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
   auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
@@ -253,30 +256,41 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
       client_context.get(),
       request.get(),
       response.get(),
-      [this, channel, request, response, client_context](grpc::Status status) {
-        io_context_.post(
-            [this, channel, response]() {
-              RAY_LOG(DEBUG) << "Connect to  " << NodeID::FromBinary(response->node_id());
-              auto connection = std::make_unique<ClientSyncConnection>(
-                  *this, io_context_, response->node_id(), channel);
-              Connect(std::move(connection));
-            },
-            "StartSyncCallback");
+      [this, channel, request, response, client_context, stopped = this->stopped_](
+          grpc::Status status) {
+        if (*stopped) {
+          return;
+        }
+        if (status.ok()) {
+          io_context_.post(
+              [this, channel, response]() {
+                auto connection = std::make_unique<ClientSyncConnection>(
+                    *this, io_context_, response->node_id(), channel);
+                Connect(std::move(connection));
+              },
+              "StartSyncCallback");
+        }
       });
 }
 
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
-  RAY_CHECK(connection != nullptr);
-  RAY_CHECK(sync_connections_[connection->GetNodeId()] == nullptr);
-  auto &conn = *connection;
-  sync_connections_[connection->GetNodeId()] = std::move(connection);
-  for (const auto &[_, messages] : node_state_->GetClusterView()) {
-    for (auto &message : messages) {
-      if (message != nullptr) {
-        RAY_CHECK(conn.PushToSendingQueue(message));
-      }
-    }
-  }
+  // Somehow connection=std::move(connection) won't be compiled here.
+  // Potentially it might have a leak here if the function is not executed.
+  io_context_.post(
+      [this, connection = connection.release()]() mutable {
+        RAY_CHECK(connection != nullptr);
+        RAY_CHECK(sync_connections_[connection->GetNodeId()] == nullptr);
+        auto &conn = *connection;
+        sync_connections_[connection->GetNodeId()].reset(connection);
+        for (const auto &[_, messages] : node_state_->GetClusterView()) {
+          for (auto &message : messages) {
+            if (message && component_broadcast_[message->component_id()]) {
+              RAY_CHECK(conn.PushToSendingQueue(message));
+            }
+          }
+        }
+      },
+      "RaySyncer::Connect");
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
@@ -290,6 +304,10 @@ bool RaySyncer::Register(RayComponentId component_id,
                          int64_t pull_from_reporter_interval_ms) {
   if (!node_state_->SetComponents(component_id, reporter, receiver)) {
     return false;
+  }
+
+  if (receiver != nullptr) {
+    component_broadcast_[component_id] = receiver->NeedBroadcast();
   }
 
   // Set job to pull from reporter periodically
@@ -306,9 +324,6 @@ bool RaySyncer::Register(RayComponentId component_id,
         pull_from_reporter_interval_ms);
   }
 
-  if (receiver != nullptr) {
-    component_broadcast_[component_id] = receiver->NeedBroadcast();
-  }
   RAY_LOG(DEBUG) << "Registered components: "
                  << "component_id:" << component_id << ", reporter:" << reporter
                  << ", receiver:" << receiver
@@ -340,7 +355,12 @@ grpc::ServerUnaryReactor *RaySyncerService::StartSync(
   node_id_ = request->node_id();
   RAY_LOG(DEBUG) << "Get connect from: " << NodeID::FromBinary(node_id_);
   syncer_.GetIOContext().post(
-      [this, response, reactor]() {
+      [this, response, reactor, context]() {
+        if (context->IsCancelled()) {
+          reactor->Finish(grpc::Status::CANCELLED);
+          return;
+        }
+
         syncer_.Connect(std::make_unique<ServerSyncConnection>(
             syncer_, syncer_.GetIOContext(), node_id_));
         response->set_node_id(syncer_.GetNodeId());
@@ -384,12 +404,14 @@ grpc::ServerUnaryReactor *RaySyncerService::LongPolling(
           sync_connection->HandleLongPollingRequest(reactor, response);
         } else {
           RAY_LOG(ERROR) << "Fail to setup long-polling";
-          reactor->Finish(grpc::Status::OK);
+          reactor->Finish(grpc::Status::CANCELLED);
         }
       },
       "SyncLongPolling");
   return reactor;
 }
+
+RaySyncerService::~RaySyncerService() { syncer_.Disconnect(node_id_); }
 
 }  // namespace syncer
 }  // namespace ray

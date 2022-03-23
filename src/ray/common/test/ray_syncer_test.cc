@@ -19,6 +19,7 @@
 #include <sstream>
 #include <grpc/grpc.h>
 #include <grpcpp/create_channel.h>
+#include <google/protobuf/util/message_differencer.h>
 #include <google/protobuf/util/json_util.h>
 #include <grpcpp/security/credentials.h>
 #include <grpcpp/security/server_credentials.h>
@@ -171,6 +172,7 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
 
 struct SyncerServer {
   SyncerServer(std::string port, bool has_scheduler_reporter = true) {
+    this->server_port = port;
     bool has_scheduler_receiver = !has_scheduler_reporter;
     // Setup io context
     auto node_id = NodeID::FromRandom();
@@ -241,7 +243,7 @@ struct SyncerServer {
           static_cast<RayComponentId>(cid), reporter.get(), receivers[cid].get());
     }
     thread = std::make_unique<std::thread>([this] {
-      boost::asio::io_context::work work(io_context);
+      this->work = std::make_unique<boost::asio::io_context::work>(io_context);
       io_context.run();
     });
   }
@@ -263,11 +265,11 @@ struct SyncerServer {
   }
 
   ~SyncerServer() {
-    io_context.stop();
-    syncer.reset();
-    server.reset();
     service.reset();
+    server.reset();
+    io_context.stop();
     thread->join();
+    syncer.reset();
   }
 
   int64_t GetNumConsumedMessages(const std::string &node_id) const {
@@ -288,13 +290,13 @@ struct SyncerServer {
     }
     return iter->second;
   }
-
+  std::unique_ptr<boost::asio::io_context::work> work;
   std::unique_ptr<RaySyncerService> service;
   std::unique_ptr<RaySyncer> syncer;
   std::unique_ptr<grpc::Server> server;
   std::unique_ptr<std::thread> thread;
   instrumented_io_context io_context;
-
+  std::string server_port;
   Array<int64_t> local_versions;
   Array<std::unique_ptr<MockReporterInterface>> reporters = {nullptr};
   int64_t snapshot_taken = 0;
@@ -461,9 +463,99 @@ TEST(SyncerTest, Test1To1) {
   ASSERT_LT(s2.GetNumConsumedMessages(s1.syncer->GetNodeId()), max_sends + 3);
 }
 
-// TEST(SyncerTest, Test1ToN) {
-//   auto server = SyncerServer("9990");
-// }
+TEST(SyncerTest, Test1ToN) {
+  size_t base_port = 18990;
+  std::vector<std::unique_ptr<SyncerServer>> servers;
+  for (int i = 0; i < 100; ++i) {
+    servers.push_back(
+        std::make_unique<SyncerServer>(std::to_string(i + base_port), i != 0));
+  }
+
+  for (int i = 1; i < 100; ++i) {
+    servers[0]->syncer->Connect(MakeChannel(servers[i]->server_port));
+  }
+  using TClusterView =
+      absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>;
+  auto get_cluster_view = [](RaySyncer &syncer) {
+    std::promise<TClusterView> p;
+    auto f = p.get_future();
+    syncer.GetIOContext().post(
+        [&p, &syncer]() mutable { p.set_value(syncer.node_state_->GetClusterView()); },
+        "TEST");
+    return f.get();
+  };
+  auto check = [&servers, get_cluster_view]() {
+    std::vector<TClusterView> views;
+    for (auto &s : servers) {
+      views.push_back(get_cluster_view(*(s->syncer)));
+    }
+
+    for (size_t i = 1; i < views.size(); ++i) {
+      if (views[i].size() != views[0].size()) {
+        return false;
+      }
+
+      for (const auto &[k, v] : views[0]) {
+        auto iter = views[i].find(k);
+        if (iter == views[i].end()) {
+          return false;
+        }
+        const auto &vv = iter->second;
+        // It's about server[0]
+        if (k == servers[0]->syncer->GetNodeId()) {
+          if (v[1] || vv[1]) {
+            RAY_LOG(ERROR) << "::: Schedule-1";
+            RAY_LOG(ERROR) << i << "\t"
+                           << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
+                           << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
+            return false;
+          }
+        } else if (k == servers[i]->syncer->GetNodeId()) {
+          // It's about server[i]
+          if (vv[1] == nullptr || v[1] == nullptr) {
+            RAY_LOG(ERROR) << "::: Schedule-2";
+            RAY_LOG(ERROR) << i << "\t"
+                           << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
+                           << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
+            return false;
+          }
+        } else if (vv[1] != nullptr || v[1] == nullptr) {
+          RAY_LOG(ERROR) << "::: Schedule-3";
+          RAY_LOG(ERROR) << i << "\t"
+                         << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
+                         << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
+          return false;
+        }
+
+        if (v[0] == nullptr || vv[0] == nullptr) {
+          RAY_LOG(ERROR) << "::: RESOURCE-1";
+          RAY_LOG(ERROR) << i << "\t"
+                         << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
+                         << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
+          return false;
+        }
+        if (!google::protobuf::util::MessageDifferencer::Equals(*v[0], *vv[0])) {
+          RAY_LOG(ERROR) << "::: RESOURCE-2";
+          RAY_LOG(ERROR) << i << "\t"
+                         << "v[1]=" << v[1].get() << ", vv[1]=" << vv[1].get()
+                         << ", v[0]=" << v[0].get() << ", vv[0]=" << vv[0].get();
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  for (size_t i = 0; i < 5; ++i) {
+    RAY_LOG(ERROR) << "CHECKING";
+    if (!check()) {
+      std::this_thread::sleep_for(1s);
+    } else {
+      break;
+    }
+  }
+  ASSERT_TRUE(check());
+}
 
 // TEST(SyncerTest, TestMToN) { auto server = SyncerServer("9990"); }
 

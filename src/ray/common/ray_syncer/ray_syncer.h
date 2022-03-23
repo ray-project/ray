@@ -174,7 +174,10 @@ class RaySyncer {
   /// Timer is used to do broadcasting.
   ray::PeriodicalRunner timer_;
 
+  std::shared_ptr<bool> stopped_;
+
   FRIEND_TEST(SyncerTest, Test1To1);
+  FRIEND_TEST(SyncerTest, Test1ToN);
 };
 
 class ClientSyncConnection;
@@ -188,6 +191,8 @@ class ServerSyncConnection;
 class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
   RaySyncerService(RaySyncer &syncer) : syncer_(syncer) {}
+
+  ~RaySyncerService();
 
   grpc::ServerUnaryReactor *StartSync(grpc::CallbackServerContext *context,
                                       const StartSyncRequest *request,
