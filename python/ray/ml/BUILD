@@ -130,6 +130,14 @@ py_test(
 )
 
 py_test(
+    name = "test_horovod_trainer",
+    size = "medium",
+    srcs = ["tests/test_horovod_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_lightgbm_predictor",
     size = "small",
     srcs = ["tests/test_lightgbm_predictor.py"],
