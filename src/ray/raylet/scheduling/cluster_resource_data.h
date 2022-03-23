@@ -378,12 +378,12 @@ class TaskResourceInstances {
     if (!Has(resource_id)) {
       Set(resource_id, instances);
     } else {
-      auto &instances = GetMutable(resource_id);
-      if (instances.size() <= instances.size()) {
-        instances.resize(instances.size());
+      auto &resource_instances = GetMutable(resource_id);
+      if (resource_instances.size() <= instances.size()) {
+        resource_instances.resize(instances.size());
       }
       for (size_t i = 0; i < instances.size(); ++i) {
-        instances[i] += instances[i];
+        resource_instances[i] += instances[i];
       }
     }
   }
