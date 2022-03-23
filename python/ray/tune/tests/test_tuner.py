@@ -1,5 +1,4 @@
 import os
-from os.path import expanduser
 import shutil
 from typing import Optional
 import unittest
@@ -14,6 +13,7 @@ from ray.ml.config import RunConfig
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.ml.train import Trainer
 from ray.tune import Callback, TuneError
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -61,7 +61,9 @@ class TunerTest(unittest.TestCase):
 
     def test_tuner_with_xgboost_trainer(self):
         """Test a successful run."""
-        shutil.rmtree(expanduser("~/ray_results/test_tuner"), ignore_errors=True)
+        shutil.rmtree(
+            os.path.join(DEFAULT_RESULTS_DIR, "test_tuner"), ignore_errors=True
+        )
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
@@ -105,7 +107,8 @@ class TunerTest(unittest.TestCase):
         # So that we have some global checkpointing happening.
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
         shutil.rmtree(
-            expanduser("~/ray_results/test_tuner_driver_fail"), ignore_errors=True
+            os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_driver_fail"),
+            ignore_errors=True,
         )
         trainer = XGBoostTrainer(
             label_column="target",
@@ -160,7 +163,7 @@ class TunerTest(unittest.TestCase):
             tuner.fit()
 
         # Test resume
-        restore_path = expanduser("~/ray_results/test_tuner_driver_fail")
+        restore_path = os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_driver_fail")
         tuner = Tuner.restore(restore_path)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
