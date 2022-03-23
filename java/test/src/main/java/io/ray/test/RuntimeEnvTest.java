@@ -149,14 +149,11 @@ public class RuntimeEnvTest {
     System.setProperty("ray.job.runtime-env.env-vars.KEY2", "B");
     try {
       Ray.init();
-      RuntimeEnv runtimeEnv =
-        new RuntimeEnv.Builder()
-          .addEnvVar("KEY1", "C")
-          .build();
+      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addEnvVar("KEY1", "C").build();
 
       /// value of KEY1 is overwritten to `C` and KEY2s is extended from job config.
       String val =
-        Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
+          Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").setRuntimeEnv(runtimeEnv).remote().get();
       Assert.assertEquals(val, "C");
       val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").remote().get();
       Assert.assertEquals(val, "B");
@@ -164,5 +161,4 @@ public class RuntimeEnvTest {
       Ray.shutdown();
     }
   }
-
 }
