@@ -187,7 +187,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/nodes/get")
     @dashboard_optional_utils.aiohttp_cache
-    async def get_node(self, req) -> aiohttp.web.Response:
+    async def get_nodes(self, req) -> aiohttp.web.Response:
         nodes = await self._get_nodes()
         return dashboard_optional_utils.rest_response(
             success=True, message="Node details fetched.", nodes=nodes
