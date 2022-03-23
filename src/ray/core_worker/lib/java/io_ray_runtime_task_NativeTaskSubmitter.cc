@@ -147,8 +147,6 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
     if (java_serialized_runtime_env_info) {
       serialzied_runtime_env_info =
           JavaStringToNativeString(env, java_serialized_runtime_env_info);
-      RAY_LOG(INFO) << "=================serialzied_runtime_env_info:"
-                    << serialzied_runtime_env_info;
     }
   }
 
