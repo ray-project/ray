@@ -17,6 +17,7 @@ from ray.util.joblib import register_ray
 
 from joblib import parallel_backend, Parallel, delayed
 
+
 def teardown_function(function):
     # Delete environment variable if set.
     if "RAY_ADDRESS" in os.environ:
@@ -58,12 +59,14 @@ def ray_start_1_cpu():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+
 @pytest.fixture
 def ray_start_4_cpu():
     address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
 
 def test_ray_init(shutdown_only):
     def getpid(args):
@@ -593,6 +596,7 @@ def test_deadlock_avoidance_in_recursive_tasks(ray_start_1_cpu):
     result = poolit_b()
     assert result == [[0.0, 1.0], [0.0, 1.0]]
 
+
 def test_task_to_actor_assignment(ray_start_4_cpu):
 
     register_ray()
@@ -607,8 +611,9 @@ def test_task_to_actor_assignment(ray_start_4_cpu):
     num_workers = 4
     output = []
     with parallel_backend("ray", n_jobs=-1):
-        output = Parallel()(delayed(worker_func)(worker_id)
-                            for worker_id in range(num_workers))
+        output = Parallel()(
+            delayed(worker_func)(worker_id) for worker_id in range(num_workers)
+        )
 
     worker_ids = set()
     launch_times = []
@@ -621,6 +626,7 @@ def test_task_to_actor_assignment(ray_start_4_cpu):
     for i in range(num_workers):
         for j in range(i + 1, num_workers):
             assert abs(launch_times[i] - launch_times[j]) < 1
+
 
 if __name__ == "__main__":
     import pytest

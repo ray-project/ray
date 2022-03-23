@@ -3,7 +3,6 @@ import logging
 from multiprocessing import TimeoutError
 import os
 import time
-import random
 import collections
 import threading
 import queue
