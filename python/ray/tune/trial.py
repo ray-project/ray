@@ -310,7 +310,6 @@ class Trial:
                 else:
                     placement_group_factory = None
                     resources = default_resources
-        self.location = Location()
 
         self.placement_group_factory = _to_pg_factory(
             resources, placement_group_factory

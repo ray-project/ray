@@ -125,7 +125,7 @@ class RunConfig:
     This includes both running a Trainable by itself or running a hyperparameter
     tuning job on top of a Trainable (applies to each trial).
 
-    At resume, tune will automatically apply the same run config so that resumed
+    At resume, Ray Tune will automatically apply the same run config so that resumed
     run uses the same run config as the original run.
 
     Args:
@@ -136,8 +136,8 @@ class RunConfig:
         callbacks: Callbacks to invoke.
             Refer to ray.tune.callback.Callback for more info.
             Callbacks should be serializable.
-            Currently only supporting stateless Callback for resumed runs.
-            (Any state of the callback will not be checkpointed by Tune
+            Currently only stateless callbacks are supported for resumed runs.
+            (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
     """
 
