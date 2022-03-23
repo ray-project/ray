@@ -197,6 +197,9 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
+        unstable_step.options(max_retries=-2).step().run()
+
+    with pytest.raises(Exception):
         unstable_step.options(max_retries=2).step().run()
     assert 10 == unstable_step.options(max_retries=7).step().run()
     (tmp_path / "test").write_text("0")

@@ -318,52 +318,39 @@ def _wrap_run(
     """
     exception = None
     result = None
+    done = False
     # max_retries are for application level failure.
     # For ray failure, we should use max_retries.
-    if runtime_options.max_retries != -1:
-        for i in range(runtime_options.max_retries + 1):
-            if i == 0:
-                logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
-            else:
-                logger.info(
-                    f"{get_step_status_info(WorkflowStatus.RUNNING)}"
-                    f"\tretries: [{i}/{runtime_options.max_retries}]"
-                )
-            try:
-                result = func(*args, **kwargs)
-                exception = None
-                break
-            except BaseException as e:
-                if i == runtime_options.max_retries:
-                    retry_msg = "Maximum retry reached, stop retry."
-                else:
-                    retry_msg = "The step will be retried."
-                logger.error(
-                    f"{workflow_context.get_name()} failed with error message"
-                    f" {e}. {retry_msg}"
-                )
+    i = 0
+    while not done:
+        if i == 0:
+            logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
+        else:
+            total_retries = (
+                runtime_options.max_retries
+                if runtime_options.max_retries != -1
+                else "inf"
+            )
+            logger.info(
+                f"{get_step_status_info(WorkflowStatus.RUNNING)}"
+                f"\tretries: [{i}/{total_retries}]"
+            )
+        try:
+            result = func(*args, **kwargs)
+            exception = None
+            done = True
+        except BaseException as e:
+            if i == runtime_options.max_retries:
+                retry_msg = "Maximum retry reached, stop retry."
                 exception = e
-    else:
-        i = 0
-        while True:
-            if i == 0:
-                logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
+                done = True
             else:
-                logger.info(
-                    f"{get_step_status_info(WorkflowStatus.RUNNING)}"
-                    f"\tretries: [{i}/inf]"
-                )
-            try:
-                result = func(*args, **kwargs)
-                exception = None
-                break
-            except BaseException as e:
                 retry_msg = "The step will be retried."
-                logger.error(
-                    f"{workflow_context.get_name()} failed with error message"
-                    f" {e}. {retry_msg}"
-                )
                 i += 1
+            logger.error(
+                f"{workflow_context.get_name()} failed with error message"
+                f" {e}. {retry_msg}"
+            )
     step_type = runtime_options.step_type
     if runtime_options.catch_exceptions:
         if step_type == StepType.FUNCTION:
