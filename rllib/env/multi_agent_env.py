@@ -389,20 +389,19 @@ def make_multi_agent(
     Examples:
          >>> from ray.rllib.env.multi_agent_env import make_multi_agent
          >>> # By gym string:
-         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0")
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0") # doctest: +SKIP
          >>> # Create a 2 agent multi-agent cartpole.
-         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2})
-         >>> obs = ma_cartpole.reset()
+         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2}) # doctest: +SKIP
+         >>> obs = ma_cartpole.reset() # doctest: +SKIP
          >>> print(obs) # doctest: +SKIP
          {0: [...], 1: [...]}
          >>> # By env-maker callable:
-         >>> from ray.rllib.examples.env.stateless_cartpole import \
-         ...    StatelessCartPole
-         >>> ma_stateless_cartpole_cls = make_multi_agent(
-         ...    lambda config: StatelessCartPole(config))
+         >>> from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole # doctest: +SKIP
+         >>> ma_stateless_cartpole_cls = make_multi_agent( # doctest: +SKIP
+         ...    lambda config: StatelessCartPole(config)) # doctest: +SKIP
          >>> # Create a 3 agent multi-agent stateless cartpole.
-         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
-         ...    {"num_agents": 3})
+         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls( # doctest: +SKIP
+         ...    {"num_agents": 3}) # doctest: +SKIP
          >>> print(obs) # doctest: +SKIP
          {0: [...], 1: [...], 2: [...]}
     """

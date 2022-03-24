@@ -21,10 +21,13 @@ class StoreToReplayBuffer:
     The batch that was stored is returned.
 
     Examples:
-        >>> actors = [ReplayActor.remote() for _ in range(4)]
-        >>> rollouts = ParallelRollouts(...)
-        >>> store_op = rollouts.for_each(StoreToReplayActors(actors=actors))
-        >>> next(store_op)
+        >>> from ray.rllib.execution.buffers.multi_agent_replay_buffer import ReplayActor
+        >>> from ray.rllib.execution.replay_ops import StoreToReplayActors
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> actors = [ReplayActor.remote() for _ in range(4)] # doctest: +SKIP
+        >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
+        >>> store_op = rollouts.for_each(StoreToReplayActors(actors=actors)) # doctest: +SKIP
+        >>> next(store_op) # doctest: +SKIP
         SampleBatch(...)
     """
 
@@ -81,9 +84,10 @@ def Replay(
             per actor.
 
     Examples:
-        >>> actors = [ReplayActor.remote() for _ in range(4)]
-        >>> replay_op = Replay(actors=actors)
-        >>> next(replay_op)
+        >>> from ray.rllib.execution.buffers.multi_agent_replay_buffer import ReplayActor
+        >>> actors = [ReplayActor.remote() for _ in range(4)] # doctest: +SKIP
+        >>> replay_op = Replay(actors=actors) # doctest: +SKIP
+        >>> next(replay_op) # doctest: +SKIP
         SampleBatch(...)
     """
 
@@ -168,13 +172,14 @@ class MixInReplay:
 
         Examples:
             # replay proportion 2:1
-            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=2)
-            >>> print(next(replay_op))
+            >>> from ray.rllib.execution.replay_ops import MixInReplay
+            >>> rollouts = ... # doctest: +SKIP
+            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=2) # doctest: +SKIP
+            >>> print(next(replay_op)) # doctest: +SKIP
             [SampleBatch(<input>), SampleBatch(<replay>), SampleBatch(<rep.>)]
-
             # replay proportion 0:1, replay disabled
-            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=0)
-            >>> print(next(replay_op))
+            >>> replay_op = MixInReplay(rollouts, 100, replay_proportion=0) # doctest: +SKIP
+            >>> print(next(replay_op)) # doctest: +SKIP
             [SampleBatch(<input>)]
         """
         if replay_proportion > 0 and num_slots == 0:

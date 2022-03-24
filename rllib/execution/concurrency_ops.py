@@ -31,9 +31,10 @@ def Concurrently(
             mode.
 
     Examples:
-        >>> sim_op = ParallelRollouts(...).for_each(...)
-        >>> replay_op = LocalReplay(...).for_each(...)
-        >>> combined_op = Concurrently([sim_op, replay_op], mode="async")
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> sim_op = ParallelRollouts(...).for_each(...) # doctest: +SKIP
+        >>> replay_op = LocalReplay(...).for_each(...) # doctest: +SKIP
+        >>> combined_op = Concurrently([sim_op, replay_op], mode="async") # doctest: +SKIP
     """
 
     if len(ops) < 2:
@@ -79,11 +80,13 @@ class Enqueue:
     Dequeue via the Concurrently() operator.
 
     Examples:
-        >>> queue = queue.Queue(100)
-        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue))
-        >>> read_op = Dequeue(queue)
-        >>> combined_op = Concurrently([write_op, read_op], mode="async")
-        >>> next(combined_op)
+        >>> import queue
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> queue = queue.Queue(100) # doctest: +SKIP
+        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue)) # doctest: +SKIP
+        >>> read_op = Dequeue(queue) # doctest: +SKIP
+        >>> combined_op = Concurrently([write_op, read_op], mode="async") # doctest: +SKIP
+        >>> next(combined_op) # doctest: +SKIP
         SampleBatch(...)
     """
 
@@ -114,11 +117,13 @@ def Dequeue(
             Dequeue() will raise an error to halt execution.
 
     Examples:
-        >>> queue = queue.Queue(100)
-        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue))
-        >>> read_op = Dequeue(queue)
-        >>> combined_op = Concurrently([write_op, read_op], mode="async")
-        >>> next(combined_op)
+        >>> import queue
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> queue = queue.Queue(100) # doctest: +SKIP
+        >>> write_op = ParallelRollouts(...).for_each(Enqueue(queue)) # doctest: +SKIP
+        >>> read_op = Dequeue(queue) # doctest: +SKIP
+        >>> combined_op = Concurrently([write_op, read_op], mode="async") # doctest: +SKIP
+        >>> next(combined_op) # doctest: +SKIP
         SampleBatch(...)
     """
     if not isinstance(input_queue, queue.Queue):

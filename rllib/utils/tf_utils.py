@@ -463,13 +463,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         >>> x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
         >>> # Discrete space with 4 (one-hot) slots per batch item.
         >>> s = gym.spaces.Discrete(4)
-        >>> one_hot(x, s)
+        >>> one_hot(x, s) # doctest: +SKIP
         <tf.Tensor 'one_hot:0' shape=(2, 4) dtype=float32>
         >>> x = tf.Variable([[0, 1, 2, 3]], dtype=tf.int32)  # batch-dim=1
         >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
         >>> # per batch item.
         >>> s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
-        >>> one_hot(x, s)
+        >>> one_hot(x, s) # doctest: +SKIP
         <tf.Tensor 'concat:0' shape=(1, 20) dtype=float32>
     """
     if isinstance(space, Discrete):

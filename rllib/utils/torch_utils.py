@@ -382,13 +382,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         >>> x = torch.IntTensor([0, 3])  # batch-dim=2
         >>> # Discrete space with 4 (one-hot) slots per batch item.
         >>> s = gym.spaces.Discrete(4)
-        >>> one_hot(x, s)
+        >>> one_hot(x, s) # doctest: +SKIP
         tensor([[1, 0, 0, 0], [0, 0, 0, 1]])
         >>> x = torch.IntTensor([[0, 1, 2, 3]])  # batch-dim=1
         >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
         >>> # per batch item.
         >>> s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
-        >>> one_hot(x, s)
+        >>> one_hot(x, s) # doctest: +SKIP
         tensor([[1, 0, 0, 0, 0,
                  0, 1, 0, 0,
                  0, 0, 1, 0,
