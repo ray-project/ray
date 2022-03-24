@@ -232,7 +232,7 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
-    res = "Dataset(num_blocks=40, num_rows=40, " "schema=<class 'torch.Tensor'>)"
+    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -3044,9 +3044,7 @@ def test_sort_partition_same_key_to_same_block(ray_start_regular_shared):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "Dataset(num_blocks=1, num_rows=10, " "schema={1: float64, a: float64})"
-    )
+    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):

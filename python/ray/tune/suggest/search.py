@@ -37,9 +37,9 @@ class SearchAlgorithm:
         ``Searcher`` instance.
 
         Args:
-            metric (str): Metric to optimize
-            mode (str): One of ["min", "max"]. Direction to optimize.
-            config (Dict): Tune config dict.
+            metric: Metric to optimize
+            mode: One of ["min", "max"]. Direction to optimize.
+            config: Tune config dict.
             **spec: Any kwargs for forward compatiblity.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
         """
@@ -60,7 +60,7 @@ class SearchAlgorithm:
         """Tracks given experiment specifications.
 
         Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
+            experiments: Experiments to run.
         """
         raise NotImplementedError
 
@@ -68,7 +68,7 @@ class SearchAlgorithm:
         """Returns single Trial object to be queued into the TrialRunner.
 
         Returns:
-            trial (Trial): Returns a Trial object.
+            trial: Returns a Trial object.
         """
         raise NotImplementedError
 
@@ -90,11 +90,11 @@ class SearchAlgorithm:
 
         Arguments:
             trial_id: Identifier for the trial.
-            result (dict): Defaults to None. A dict will
+            result: Defaults to None. A dict will
                 be provided with this notification when the trial is in
                 the RUNNING state AND either completes naturally or
                 by manual termination.
-            error (bool): Defaults to False. True if the trial is in
+            error: Defaults to False. True if the trial is in
                 the RUNNING state and errors.
         """
         pass

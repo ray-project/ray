@@ -168,6 +168,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
 
   auto node_table_data = Mocker::GenNodeInfo();
+  node_table_data->mutable_resources_total()->insert({"CPU", 1});
+
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
       *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));

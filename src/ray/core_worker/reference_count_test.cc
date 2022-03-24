@@ -92,12 +92,12 @@ class MockDistributedSubscriber;
 class MockDistributedPublisher;
 
 using ObjectToCallbackMap =
-    std::unordered_map<ObjectID, pubsub::SubscriptionItemCallback>;
+    absl::flat_hash_map<ObjectID, pubsub::SubscriptionItemCallback>;
 using ObjectToFailureCallbackMap =
-    std::unordered_map<ObjectID, pubsub::SubscriptionFailureCallback>;
-using SubscriptionCallbackMap = std::unordered_map<std::string, ObjectToCallbackMap>;
+    absl::flat_hash_map<ObjectID, pubsub::SubscriptionFailureCallback>;
+using SubscriptionCallbackMap = absl::flat_hash_map<std::string, ObjectToCallbackMap>;
 using SubscriptionFailureCallbackMap =
-    std::unordered_map<std::string, ObjectToFailureCallbackMap>;
+    absl::flat_hash_map<std::string, ObjectToFailureCallbackMap>;
 
 // static maps are used to simulate distirubted environment.
 static SubscriptionCallbackMap subscription_callback_map;
@@ -422,7 +422,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   void HandleSubmittedTaskFinished(
       const ObjectID &return_id,
       const ObjectID &arg_id,
-      const std::unordered_map<ObjectID, std::vector<ObjectID>> &nested_return_ids = {},
+      const absl::flat_hash_map<ObjectID, std::vector<ObjectID>> &nested_return_ids = {},
       const rpc::Address &borrower_address = empty_borrower,
       const ReferenceCounter::ReferenceTableProto &borrower_refs = empty_refs) {
     std::vector<ObjectID> arguments;
@@ -460,7 +460,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   std::shared_ptr<MockDistributedSubscriber> subscriber_;
   // The ReferenceCounter at the "client".
   ReferenceCounter rc_;
-  std::unordered_map<int, std::function<void()>> borrower_callbacks_;
+  absl::flat_hash_map<int, std::function<void()>> borrower_callbacks_;
   int num_requests_ = 0;
   std::vector<ObjectID> return_ids_;
   bool failed_ = false;

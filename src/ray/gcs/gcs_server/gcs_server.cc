@@ -125,14 +125,14 @@ void GcsServer::Start() {
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
+  // Init cluster resource scheduler.
+  InitClusterResourceScheduler();
+
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
   // Init synchronization service
   InitRaySyncer(gcs_init_data);
-
-  // Init gcs resource scheduler.
-  InitGcsResourceScheduler();
 
   // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
@@ -255,9 +255,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-      main_service_, gcs_publisher_, gcs_table_storage_);
+      gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -267,10 +267,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   rpc_server_.RegisterService(*node_resource_info_service_);
 }
 
-void GcsServer::InitGcsResourceScheduler() {
-  RAY_CHECK(gcs_resource_manager_);
-  gcs_resource_scheduler_ =
-      std::make_shared<GcsResourceScheduler>(*gcs_resource_manager_);
+void GcsServer::InitClusterResourceScheduler() {
+  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -308,16 +306,20 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   };
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
-    scheduler = std::make_unique<GcsBasedActorScheduler>(main_service_,
-                                                         gcs_table_storage_->ActorTable(),
-                                                         *gcs_node_manager_,
-                                                         gcs_resource_manager_,
-                                                         gcs_resource_scheduler_,
-                                                         schedule_failure_handler,
-                                                         schedule_success_handler,
-                                                         raylet_client_pool_,
-                                                         client_factory);
+    RAY_CHECK(gcs_resource_manager_ && cluster_resource_scheduler_);
+    scheduler = std::make_unique<GcsBasedActorScheduler>(
+        main_service_,
+        gcs_table_storage_->ActorTable(),
+        *gcs_node_manager_,
+        cluster_resource_scheduler_,
+        schedule_failure_handler,
+        schedule_success_handler,
+        raylet_client_pool_,
+        client_factory,
+        /*normal_task_resources_changed_callback=*/
+        [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
+          gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
+        });
   } else {
     scheduler =
         std::make_unique<RayletBasedActorScheduler>(main_service_,
@@ -368,13 +370,14 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
-  auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(main_service_,
-                                                                gcs_table_storage_,
-                                                                *gcs_node_manager_,
-                                                                *gcs_resource_manager_,
-                                                                *gcs_resource_scheduler_,
-                                                                raylet_client_pool_,
-                                                                *ray_syncer_);
+  auto scheduler =
+      std::make_shared<GcsPlacementGroupScheduler>(main_service_,
+                                                   gcs_table_storage_,
+                                                   *gcs_node_manager_,
+                                                   *gcs_resource_manager_,
+                                                   *cluster_resource_scheduler_,
+                                                   raylet_client_pool_,
+                                                   *ray_syncer_);
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_,

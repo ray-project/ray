@@ -91,7 +91,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Callbacks associated with a call to GetLocations.
   struct LocationListenerState {
     /// The callback to invoke when object locations are found.
-    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
+    absl::flat_hash_map<UniqueID, OnLocationsFound> callbacks;
     /// The current set of known locations of this object.
     std::unordered_set<NodeID> current_object_locations;
     /// The location where this object has been spilled, if any.
@@ -117,7 +117,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// Reference to the gcs client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
-  std::unordered_map<ObjectID, LocationListenerState> listeners_;
+  absl::flat_hash_map<ObjectID, LocationListenerState> listeners_;
   /// The client call manager used to create the RPC clients.
   rpc::ClientCallManager client_call_manager_;
   /// The object location subscriber.

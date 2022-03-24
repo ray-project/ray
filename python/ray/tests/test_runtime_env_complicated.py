@@ -747,7 +747,7 @@ CLIENT_SERVER_PORT = 24001
 )
 @pytest.mark.parametrize(
     "call_ray_start",
-    [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT}" " --port 0"],
+    [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT} --port 0"],
     indirect=True,
 )
 def test_e2e_complex(call_ray_start, tmp_path):

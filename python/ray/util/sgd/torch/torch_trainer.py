@@ -52,7 +52,7 @@ def _validate_scheduler_step_freq(scheduler_step_freq):
 def _remind_gpu_usage(use_gpu):
     if not use_gpu and torch.cuda.is_available():
         logger.info(
-            "GPUs detected but not using them. Set `use_gpu` to " "enable GPU usage. "
+            "GPUs detected but not using them. Set `use_gpu` to enable GPU usage. "
         )
 
 
@@ -213,7 +213,7 @@ class TorchTrainer:
             )
 
         if use_local and ray.util.client.ray.is_connected():
-            raise ValueError("use_local setting is not supported with Ray " "Client.")
+            raise ValueError("use_local setting is not supported with Ray Client.")
 
         if use_local and log_once("use_local"):
             logger.warning(
@@ -704,7 +704,7 @@ class TorchTrainer:
         """
         if not TUNE_INSTALLED:
             raise RuntimeError(
-                "Please install `ray[tune]` to use the Tune " "integration."
+                "Please install `ray[tune]` to use the Tune integration."
             )
         if override_tune_step is not None:
             callback_args = inspect.signature(override_tune_step)

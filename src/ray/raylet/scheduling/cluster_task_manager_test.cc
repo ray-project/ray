@@ -28,6 +28,7 @@
 #include "ray/common/test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/test/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 
@@ -132,7 +133,11 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID(id), local_node_resources, gcs_client);
+      scheduling::NodeID(id),
+      local_node_resources,
+      /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
+        return gcs_client.Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+      });
 
   return scheduler;
 }

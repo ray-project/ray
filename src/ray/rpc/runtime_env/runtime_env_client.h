@@ -23,11 +23,12 @@ namespace rpc {
 
 class RuntimeEnvAgentClientInterface {
  public:
-  virtual void CreateRuntimeEnv(
-      const rpc::CreateRuntimeEnvRequest &request,
-      const rpc::ClientCallback<rpc::CreateRuntimeEnvReply> &callback) = 0;
-  virtual void DeleteURIs(const rpc::DeleteURIsRequest &request,
-                          const rpc::ClientCallback<rpc::DeleteURIsReply> &callback) = 0;
+  virtual void GetOrCreateRuntimeEnv(
+      const rpc::GetOrCreateRuntimeEnvRequest &request,
+      const rpc::ClientCallback<rpc::GetOrCreateRuntimeEnvReply> &callback) = 0;
+  virtual void DeleteRuntimeEnvIfPossible(
+      const rpc::DeleteRuntimeEnvIfPossibleRequest &request,
+      const rpc::ClientCallback<rpc::DeleteRuntimeEnvIfPossibleReply> &callback) = 0;
   virtual ~RuntimeEnvAgentClientInterface(){};
 };
 
@@ -51,7 +52,7 @@ class RuntimeEnvAgentClient : public RuntimeEnvAgentClientInterface {
   /// \param request The request message
   /// \param callback  The callback function that handles reply
   VOID_RPC_CLIENT_METHOD(RuntimeEnvService,
-                         CreateRuntimeEnv,
+                         GetOrCreateRuntimeEnv,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -60,7 +61,7 @@ class RuntimeEnvAgentClient : public RuntimeEnvAgentClientInterface {
   /// \param request The request message
   /// \param callback  The callback function that handles reply
   VOID_RPC_CLIENT_METHOD(RuntimeEnvService,
-                         DeleteURIs,
+                         DeleteRuntimeEnvIfPossible,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

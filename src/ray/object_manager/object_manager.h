@@ -411,7 +411,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Mapping from locally available objects to information about those objects
   /// including when the object was last pushed to other object managers.
-  std::unordered_map<ObjectID, LocalObjectInfo> local_objects_;
+  absl::flat_hash_map<ObjectID, LocalObjectInfo> local_objects_;
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
@@ -420,9 +420,9 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Maintains a map of push requests that have not been fulfilled due to an object not
   /// being local. Objects are removed from this map after push_timeout_ms have elapsed.
-  std::unordered_map<
+  absl::flat_hash_map<
       ObjectID,
-      std::unordered_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
+      absl::flat_hash_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
   /// The gPRC server.
@@ -435,7 +435,7 @@ class ObjectManager : public ObjectManagerInterface,
   rpc::ClientCallManager client_call_manager_;
 
   /// Client id - object manager gRPC client.
-  std::unordered_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
 
   /// Callback to trigger direct restoration of an object.

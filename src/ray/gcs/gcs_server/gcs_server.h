@@ -35,6 +35,8 @@
 namespace ray {
 namespace gcs {
 
+using ClusterResourceScheduler = gcs::GcsResourceScheduler;
+
 struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
@@ -102,8 +104,8 @@ class GcsServer {
   /// Initialize synchronization service
   void InitRaySyncer(const GcsInitData &gcs_init_data);
 
-  /// Initialize gcs resource scheduler.
-  void InitGcsResourceScheduler();
+  /// Initialize cluster resource scheduler.
+  void InitClusterResourceScheduler();
 
   /// Initialize gcs job manager.
   void InitGcsJobManager(const GcsInitData &gcs_init_data);
@@ -180,8 +182,8 @@ class GcsServer {
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
-  /// The gcs resource scheduler.
-  std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler_;
+  /// The cluster resource scheduler.
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The heartbeat manager.

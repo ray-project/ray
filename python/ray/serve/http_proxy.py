@@ -225,7 +225,7 @@ class HTTPProxy:
         self.deployment_request_error_counter = metrics.Counter(
             "serve_num_deployment_http_error_requests",
             description=(
-                "The number of non-200 HTTP responses returned by each " "deployment."
+                "The number of non-200 HTTP responses returned by each deployment."
             ),
             tag_keys=("deployment",),
         )

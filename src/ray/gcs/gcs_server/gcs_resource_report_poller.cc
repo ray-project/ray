@@ -45,7 +45,7 @@ void GcsResourceReportPoller::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsResourceReportPoller::Start() {
   polling_thread_.reset(new std::thread{[this]() {
-    SetThreadName("resource_report_poller");
+    SetThreadName("resource_poller");
     boost::asio::io_service::work work(polling_service_);
 
     polling_service_.run();

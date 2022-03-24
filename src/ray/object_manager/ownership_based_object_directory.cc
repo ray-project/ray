@@ -265,16 +265,16 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
     // received.  This notifies the client even if the list of locations is
     // empty, since this may indicate that the objects have been evicted from
     // all nodes.
-    for (const auto &callback_pair : callbacks) {
+    for (const auto &[_, func] : callbacks) {
       // We can call the callback directly without worrying about invalidating caller
       // iterators since this is already running in the subscription callback stack.
       // See https://github.com/ray-project/ray/issues/2959.
-      callback_pair.second(object_id,
-                           it->second.current_object_locations,
-                           it->second.spilled_url,
-                           it->second.spilled_node_id,
-                           it->second.pending_creation,
-                           it->second.object_size);
+      func(object_id,
+           it->second.current_object_locations,
+           it->second.spilled_url,
+           it->second.spilled_node_id,
+           it->second.pending_creation,
+           it->second.object_size);
     }
   }
 }
@@ -540,27 +540,26 @@ OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
 }
 
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
-  for (auto &listener : listeners_) {
-    const ObjectID &object_id = listener.first;
-    bool updated = listener.second.current_object_locations.erase(node_id);
-    if (listener.second.spilled_node_id == node_id) {
-      listener.second.spilled_node_id = NodeID::Nil();
-      listener.second.spilled_url = "";
+  for (auto &[object_id, listener] : listeners_) {
+    bool updated = listener.current_object_locations.erase(node_id);
+    if (listener.spilled_node_id == node_id) {
+      listener.spilled_node_id = NodeID::Nil();
+      listener.spilled_url = "";
       updated = true;
     }
 
     if (updated) {
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
-      for (const auto &callback_pair : listener.second.callbacks) {
+      for (const auto &[_, func] : listener.callbacks) {
         // It is safe to call the callback directly since this is already running
         // in the subscription callback stack.
-        callback_pair.second(object_id,
-                             listener.second.current_object_locations,
-                             listener.second.spilled_url,
-                             listener.second.spilled_node_id,
-                             listener.second.pending_creation,
-                             listener.second.object_size);
+        func(object_id,
+             listener.current_object_locations,
+             listener.spilled_url,
+             listener.spilled_node_id,
+             listener.pending_creation,
+             listener.object_size);
       }
     }
   }

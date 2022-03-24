@@ -968,11 +968,14 @@ class ActorClass:
 
         # Update the creation descriptor based on number of arguments
         if meta.is_cross_language:
+            func_name = "<init>"
+            if meta.language == Language.CPP:
+                func_name = meta.actor_creation_function_descriptor.function_name
             meta.actor_creation_function_descriptor = (
                 cross_language.get_function_descriptor_for_actor_method(
                     meta.language,
                     meta.actor_creation_function_descriptor,
-                    "<init>",
+                    func_name,
                     str(len(args) + len(kwargs)),
                 )
             )
@@ -1158,9 +1161,9 @@ class ActorHandle:
             function_descriptor = self._ray_function_descriptor[method_name]
 
         if worker.mode == ray.LOCAL_MODE:
-            assert not self._ray_is_cross_language, (
-                "Cross language remote actor method " "cannot be executed locally."
-            )
+            assert (
+                not self._ray_is_cross_language
+            ), "Cross language remote actor method cannot be executed locally."
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -1198,7 +1201,7 @@ class ActorHandle:
 
                 def remote(self, *args, **kwargs):
                     logger.warning(
-                        f"Actor method {item} is not " "supported by cross language."
+                        f"Actor method {item} is not supported by cross language."
                     )
 
             return FakeActorMethod()
