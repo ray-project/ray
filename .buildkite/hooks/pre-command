@@ -1,3 +1,13 @@
+#!/bin/bash
+# This script is executed by Buildkite on the host machine.
+# In contrast, our build jobs are run in Docker containers.
+# This means that even though our build jobs write to
+# `/artifact-mount`, the directory on the host machine is
+# actually ``/tmp/artifacts`.
+# We clean up the artifacts directory before any command and
+# after uploading artifacts to make sure no stale artifacts
+# remain on the node when a Buildkite runner is re-used.
+set -ex
 if [ -d "/tmp/artifacts" ]; then
     echo "Cleaning up old artifacts before command."
     echo "Artifact directory contents before cleanup:"
