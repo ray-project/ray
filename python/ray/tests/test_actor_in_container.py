@@ -46,7 +46,7 @@ def test_actor_in_heterogeneous_image():
     job_config = ray.job_config.JobConfig(
         runtime_env={
             "container": {
-                "image": "rayproject/ray-worker-container:" "nightly-py36-cpu-pandas",
+                "image": "rayproject/ray-worker-container:nightly-py36-cpu-pandas",
             }
         }
     )

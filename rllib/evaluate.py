@@ -50,7 +50,7 @@ def create_parser(parser_creator=None):
     parser_creator = parser_creator or argparse.ArgumentParser
     parser = parser_creator(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Roll out a reinforcement learning agent " "given a checkpoint.",
+        description="Roll out a reinforcement learning agent given a checkpoint.",
         epilog=EXAMPLE_USAGE,
     )
 

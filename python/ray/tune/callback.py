@@ -60,16 +60,16 @@ class Callback(ABC):
         variables, etc.)
 
         Arguments:
-            stop (dict | callable | :class:`Stopper`): Stopping criteria.
+            stop: Stopping criteria.
                 If ``time_budget_s`` was passed to ``tune.run``, a
                 ``TimeoutStopper`` will be passed here, either by itself
                 or as a part of a ``CombinedStopper``.
-            num_samples (int): Number of times to sample from the
+            num_samples: Number of times to sample from the
                 hyperparameter space. Defaults to 1. If `grid_search` is
                 provided as an argument, the grid will be repeated
                 `num_samples` of times. If this is -1, (virtually) infinite
                 samples are generated until a stopping condition is met.
-            total_num_samples (int): Total number of samples factoring
+            total_num_samples: Total number of samples factoring
                 in grid search samplers.
             **info: Kwargs dict for forward compatibility.
         """
@@ -79,8 +79,8 @@ class Callback(ABC):
         """Called at the start of each tuning loop step.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -91,8 +91,8 @@ class Callback(ABC):
         The iteration counter is increased before this hook is called.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -103,9 +103,9 @@ class Callback(ABC):
         """Called after starting a trial instance.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has been started.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has been started.
             **info: Kwargs dict for forward compatibility.
 
         """
@@ -117,9 +117,9 @@ class Callback(ABC):
         """Called after restoring a trial instance.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has been restored.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has been restored.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -130,9 +130,9 @@ class Callback(ABC):
         """Called after receiving a checkpoint from a trial.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just saved a checkpoint.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just saved a checkpoint.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -151,10 +151,10 @@ class Callback(ABC):
         hook is called.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just sent a result.
-            result (Dict): Result that the trial sent.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just sent a result.
+            result: Result that the trial sent.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -168,9 +168,9 @@ class Callback(ABC):
         hook is called.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has been completed.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has been completed.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -184,9 +184,9 @@ class Callback(ABC):
         hook is called.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has errored.
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has errored.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -202,10 +202,10 @@ class Callback(ABC):
         """Called after a trial saved a checkpoint with Tune.
 
         Arguments:
-            iteration (int): Number of iterations of the tuning loop.
-            trials (List[Trial]): List of trials.
-            trial (Trial): Trial that just has errored.
-            checkpoint (Checkpoint): Checkpoint object that has been saved
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has errored.
+            checkpoint: Checkpoint object that has been saved
                 by the trial.
             **info: Kwargs dict for forward compatibility.
         """
@@ -215,7 +215,7 @@ class Callback(ABC):
         """Called after experiment is over and all trials have concluded.
 
         Arguments:
-            trials (List[Trial]): List of trials.
+            trials: List of trials.
             **info: Kwargs dict for forward compatibility.
         """
         pass

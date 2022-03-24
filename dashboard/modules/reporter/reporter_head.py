@@ -3,10 +3,8 @@ import logging
 import yaml
 import os
 import aiohttp.web
-from aioredis.pubsub import Receiver
 
 import ray
-import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.experimental.internal_kv as internal_kv
@@ -19,7 +17,7 @@ from ray.ray_constants import (
 )
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioResourceUsageSubscriber
+from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.dashboard.datacenter import DataSource
 
@@ -149,43 +147,24 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True
         self.service_discovery.start()
-        if gcs_pubsub_enabled():
-            gcs_addr = self._dashboard_head.gcs_address
-            subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
-            await subscriber.subscribe()
+        gcs_addr = self._dashboard_head.gcs_address
+        subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
+        await subscriber.subscribe()
 
-            while True:
-                try:
-                    # The key is b'RAY_REPORTER:{node id hex}',
-                    # e.g. b'RAY_REPORTER:2b4fbd...'
-                    key, data = await subscriber.poll()
-                    if key is None:
-                        continue
-                    data = json.loads(data)
-                    node_id = key.split(":")[-1]
-                    DataSource.node_physical_stats[node_id] = data
-                except Exception:
-                    logger.exception(
-                        "Error receiving node physical stats " "from reporter agent."
-                    )
-        else:
-            receiver = Receiver()
-            aioredis_client = self._dashboard_head.aioredis_client
-            reporter_key = "{}*".format(reporter_consts.REPORTER_PREFIX)
-            await aioredis_client.psubscribe(receiver.pattern(reporter_key))
-            logger.info(f"Subscribed to {reporter_key}")
-
-            async for sender, msg in receiver.iter():
-                try:
-                    key, data = msg
-                    data = json.loads(ray._private.utils.decode(data))
-                    key = key.decode("utf-8")
-                    node_id = key.split(":")[-1]
-                    DataSource.node_physical_stats[node_id] = data
-                except Exception:
-                    logger.exception(
-                        "Error receiving node physical stats " "from reporter agent."
-                    )
+        while True:
+            try:
+                # The key is b'RAY_REPORTER:{node id hex}',
+                # e.g. b'RAY_REPORTER:2b4fbd...'
+                key, data = await subscriber.poll()
+                if key is None:
+                    continue
+                data = json.loads(data)
+                node_id = key.split(":")[-1]
+                DataSource.node_physical_stats[node_id] = data
+            except Exception:
+                logger.exception(
+                    "Error receiving node physical stats from reporter agent."
+                )
 
     @staticmethod
     def is_minimal_module():

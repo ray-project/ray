@@ -60,23 +60,23 @@ class HyperBandScheduler(FIFOScheduler):
     See also: https://homes.cs.washington.edu/~jamieson/hyperband.html
 
     Args:
-        time_attr (str): The training result attr to use for comparing time.
+        time_attr: The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. Stopping
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        max_t (int): max time units per trial. Trials will be stopped after
+        max_t: max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
             The scheduler will terminate trials after this time has passed.
             Note that this is different from the semantics of `max_t` as
             mentioned in the original HyperBand paper.
-        reduction_factor (float): Same as `eta`. Determines how sharp
+        reduction_factor: Same as `eta`. Determines how sharp
             the difference is between bracket space-time allocation ratios.
-        stop_last_trials (bool): Whether to terminate the trials after
+        stop_last_trials: Whether to terminate the trials after
             reaching max_t. Defaults to True.
     """
 

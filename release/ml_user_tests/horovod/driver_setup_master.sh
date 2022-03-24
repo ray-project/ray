@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cd "${0%/*}" || exit 1
+
 sudo apt update
 sudo apt -y install build-essential
 pip install cmake

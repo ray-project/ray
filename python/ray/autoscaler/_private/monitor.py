@@ -35,12 +35,8 @@ from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated import gcs_pb2
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
-from ray._private.gcs_utils import (
-    GcsClient,
-    get_gcs_address_from_redis,
-    use_gcs_for_bootstrap,
-)
+from ray._private.gcs_pubsub import GcsPublisher
+from ray._private.gcs_utils import GcsClient
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_put,
@@ -148,19 +144,7 @@ class Monitor:
         stop_event: Optional[Event] = None,
         retry_on_failure: bool = True,
     ):
-        if not use_gcs_for_bootstrap():
-            # Initialize the Redis clients.
-            redis_address = address
-            self.redis = ray._private.services.create_redis_client(
-                redis_address, password=redis_password
-            )
-            (ip, port) = address.split(":")
-            # Initialize the gcs stub for getting all node resource usage.
-            gcs_address = get_gcs_address_from_redis(self.redis)
-        else:
-            gcs_address = address
-            redis_address = None
-
+        gcs_address = address
         options = (("grpc.enable_http_proxy", 0),)
         gcs_channel = ray._private.utils.init_grpc_channel(gcs_address, options)
         # TODO: Use gcs client for this
@@ -170,39 +154,25 @@ class Monitor:
         self.gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
-
+        if redis_password is not None:
+            logger.warning("redis_password has been deprecated.")
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
-        if use_gcs_for_bootstrap():
-            gcs_client = GcsClient(address=gcs_address)
-        else:
-            worker.redis_client = self.redis
-            gcs_client = GcsClient.create_from_redis(self.redis)
+        gcs_client = GcsClient(address=gcs_address)
 
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            if use_gcs_for_bootstrap():
-                gcs_client.internal_kv_put(
-                    b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-                )
-            else:
-                self.redis.set("AutoscalerMetricsAddress", monitor_addr)
+            gcs_client.internal_kv_put(
+                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
+            )
         _initialize_internal_kv(gcs_client)
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            if use_gcs_for_bootstrap():
-                gcs_client.internal_kv_put(
-                    b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-                )
-            else:
-                self.redis.set("AutoscalerMetricsAddress", monitor_addr)
+            gcs_client.internal_kv_put(
+                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
+            )
         worker.mode = 0
-        if use_gcs_for_bootstrap():
-            head_node_ip = gcs_address.split(":")[0]
-        else:
-            head_node_ip = redis_address.split(":")[0]
-            self.redis_address = redis_address
-            self.redis_password = redis_password
+        head_node_ip = gcs_address.split(":")[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None
@@ -239,7 +209,7 @@ class Monitor:
                 )
         elif not prometheus_client:
             logger.warning(
-                "`prometheus_client` not found, so metrics will " "not be exported."
+                "`prometheus_client` not found, so metrics will not be exported."
             )
 
         logger.info("Monitor: Started")
@@ -482,26 +452,12 @@ class Monitor:
             _internal_kv_put(
                 ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
             )
-        if not use_gcs_for_bootstrap():
-            redis_client = ray._private.services.create_redis_client(
-                self.redis_address, password=self.redis_password
-            )
-        else:
-            redis_client = None
-        gcs_publisher = None
-        if gcs_pubsub_enabled():
-            if use_gcs_for_bootstrap():
-                gcs_publisher = GcsPublisher(address=args.gcs_address)
-            else:
-                gcs_publisher = GcsPublisher(
-                    address=get_gcs_address_from_redis(redis_client)
-                )
+        gcs_publisher = GcsPublisher(address=args.gcs_address)
         from ray._private.utils import publish_error_to_driver
 
         publish_error_to_driver(
             ray_constants.MONITOR_DIED_ERROR,
             message,
-            redis_client=redis_client,
             gcs_publisher=gcs_publisher,
         )
 
@@ -542,7 +498,7 @@ def log_resource_batch_data_if_desired(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the " "monitor to connect to.")
+        description=("Parse Redis server for the monitor to connect to.")
     )
     parser.add_argument(
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
@@ -591,7 +547,7 @@ if __name__ == "__main__":
         "--logs-dir",
         required=True,
         type=str,
-        help="Specify the path of the temporary directory used by Ray " "processes.",
+        help="Specify the path of the temporary directory used by Ray processes.",
     )
     parser.add_argument(
         "--logging-rotate-bytes",
@@ -637,9 +593,7 @@ if __name__ == "__main__":
     else:
         autoscaling_config = None
 
-    bootstrap_address = (
-        args.gcs_address if use_gcs_for_bootstrap() else args.redis_address
-    )
+    bootstrap_address = args.gcs_address
     if bootstrap_address is None:
         raise ValueError("One of --gcs-address or --redis-address must be set!")
 

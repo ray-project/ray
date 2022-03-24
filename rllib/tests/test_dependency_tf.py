@@ -19,9 +19,9 @@ if __name__ == "__main__":
     )
     trainer.train()
 
-    assert "tensorflow" not in sys.modules, (
-        "`tensorflow` should not be imported after creating and " "training A3CTrainer!"
-    )
+    assert (
+        "tensorflow" not in sys.modules
+    ), "`tensorflow` should not be imported after creating and training A3CTrainer!"
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TF_IMPORT"]

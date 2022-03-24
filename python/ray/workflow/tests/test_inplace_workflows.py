@@ -63,6 +63,20 @@ def test_inplace_workflows(workflow_start_regular_shared):
     assert exp_remote.step(k, n).run() == k * 2 ** n
 
 
+def test_tail_recursion_optimization(workflow_start_regular_shared):
+    @workflow.step
+    def tail_recursion(n):
+        import inspect
+
+        # check if the stack is growing
+        assert len(inspect.stack(0)) < 20
+        if n <= 0:
+            return "ok"
+        return tail_recursion.options(allow_inplace=True).step(n - 1)
+
+    tail_recursion.step(30).run()
+
+
 if __name__ == "__main__":
     import sys
 

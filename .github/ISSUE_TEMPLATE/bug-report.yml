@@ -41,6 +41,19 @@ body:
         - "Others"
     validations:
       required: true
+      
+  - type: dropdown
+    attributes:
+      label: Issue Severity
+      description: |
+        How severe does this issue affect your experience?
+      multiple: false
+      options:
+        - "Low: It annoys or frustrates me for a moment."
+        - "Medium: It contributes to significant difficulty to complete my task but I work arounds and get it resolved."
+        - "High: It blocks me to complete my task."
+    validations:
+      required: true
 
   - type: textarea
     attributes:

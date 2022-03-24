@@ -1,9 +1,6 @@
 import dataclasses
-import importlib
 import logging
-from pathlib import Path
-import tempfile
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, Optional
 
 try:
     import aiohttp
@@ -12,11 +9,6 @@ except ImportError:
     aiohttp = None
     requests = None
 
-from ray._private.runtime_env.packaging import (
-    create_package,
-    get_uri_for_directory,
-    parse_uri,
-)
 from ray.dashboard.modules.job.common import (
     JobStatus,
     JobSubmitRequest,
@@ -24,263 +16,63 @@ from ray.dashboard.modules.job.common import (
     JobStopResponse,
     JobInfo,
     JobLogsResponse,
-    uri_to_http_components,
 )
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
-from ray.ray_constants import DEFAULT_DASHBOARD_PORT
+from ray.runtime_env import RuntimeEnv
+
 from ray.util.annotations import PublicAPI
-from ray.client_builder import _split_address
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-@dataclasses.dataclass
-class ClusterInfo:
-    address: str
-    cookies: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = None
-    headers: Optional[Dict[str, Any]] = None
+class JobSubmissionClient(SubmissionClient):
+    """A local client for submitting and interacting with jobs on a remote cluster.
 
-
-def get_job_submission_client_cluster_info(
-    address: str,
-    # For backwards compatibility
-    *,
-    # only used in importlib case in parse_cluster_info, but needed
-    # in function signature.
-    create_cluster_if_needed: Optional[bool] = False,
-    cookies: Optional[Dict[str, Any]] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-    headers: Optional[Dict[str, Any]] = None,
-    _use_tls: Optional[bool] = False,
-) -> ClusterInfo:
-    """Get address, cookies, and metadata used for JobSubmissionClient.
-
-    If no port is specified in `address`, the Ray dashboard default will be
-    inserted.
-
-    Args:
-        address (str): Address without the module prefix that is passed
-            to JobSubmissionClient.
-        create_cluster_if_needed (bool): Indicates whether the cluster
-            of the address returned needs to be running. Ray doesn't
-            start a cluster before interacting with jobs, but other
-            implementations may do so.
-
-    Returns:
-        ClusterInfo object consisting of address, cookies, and metadata
-        for JobSubmissionClient to use.
+    Submits requests over HTTP to the job server on the cluster using the REST API.
     """
 
-    scheme = "https" if _use_tls else "http"
-
-    split = address.split(":")
-    host = split[0]
-    if len(split) == 1:
-        port = DEFAULT_DASHBOARD_PORT
-    elif len(split) == 2:
-        port = int(split[1])
-    else:
-        raise ValueError(f"Invalid address: {address}.")
-
-    return ClusterInfo(
-        address=f"{scheme}://{host}:{port}",
-        cookies=cookies,
-        metadata=metadata,
-        headers=headers,
-    )
-
-
-def parse_cluster_info(
-    address: str,
-    create_cluster_if_needed: bool = False,
-    cookies: Optional[Dict[str, Any]] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-    headers: Optional[Dict[str, Any]] = None,
-) -> ClusterInfo:
-    module_string, inner_address = _split_address(address)
-
-    # If user passes http(s):// or ray://, go through normal parsing.
-    if module_string in {"http", "https", "ray"}:
-        return get_job_submission_client_cluster_info(
-            inner_address,
-            create_cluster_if_needed=create_cluster_if_needed,
-            cookies=cookies,
-            metadata=metadata,
-            headers=headers,
-            _use_tls=module_string == "https",
-        )
-    # Try to dynamically import the function to get cluster info.
-    else:
-        try:
-            module = importlib.import_module(module_string)
-        except Exception:
-            raise RuntimeError(
-                f"Module: {module_string} does not exist.\n"
-                f"This module was parsed from Address: {address}"
-            ) from None
-        assert "get_job_submission_client_cluster_info" in dir(module), (
-            f"Module: {module_string} does "
-            "not have `get_job_submission_client_cluster_info`."
-        )
-
-        return module.get_job_submission_client_cluster_info(
-            inner_address,
-            create_cluster_if_needed=create_cluster_if_needed,
-            cookies=cookies,
-            metadata=metadata,
-            headers=headers,
-        )
-
-
-class JobSubmissionClient:
     def __init__(
         self,
         address: str,
-        create_cluster_if_needed=False,
+        create_cluster_if_needed: bool = False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
     ):
+        """Initialize a JobSubmissionClient and check the connection to the cluster.
+
+        Args:
+            address: The IP address and port of the head node.
+            create_cluster_if_needed: Indicates whether the cluster at the specified
+                address needs to already be running. Ray doesn't start a cluster
+                before interacting with jobs, but external job managers may do so.
+            cookies: Cookies to use when sending requests to the HTTP job server.
+            metadata: Arbitrary metadata to store along with all jobs.  New metadata
+                specified per job will be merged with the global metadata provided here
+                via a simple dict update.
+            headers: Headers to use when sending requests to the HTTP job server, used
+                for cases like authentication to a remote cluster.
+        """
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``"
             )
-
-        cluster_info = parse_cluster_info(
-            address, create_cluster_if_needed, cookies, metadata, headers
+        super().__init__(
+            address=address,
+            create_cluster_if_needed=create_cluster_if_needed,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers,
         )
-        self._address = cluster_info.address
-        self._cookies = cluster_info.cookies
-        self._default_metadata = cluster_info.metadata or {}
-        # Headers used for all requests sent to job server, optional and only
-        # needed for cases like authentication to remote cluster.
-        self._headers = cluster_info.headers
-
-        self._check_connection_and_version()
-
-    def _check_connection_and_version(self):
-        try:
-            r = self._do_request("GET", "/api/version")
-            if r.status_code == 404:
-                raise RuntimeError(
-                    "Jobs API not supported on the Ray cluster. "
-                    "Please ensure the cluster is running "
-                    "Ray 1.9 or higher."
-                )
-
-            r.raise_for_status()
-            # TODO(edoakes): check the version if/when we break compatibility.
-        except requests.exceptions.ConnectionError:
-            raise ConnectionError(
-                f"Failed to connect to Ray at address: {self._address}."
-            )
-
-    def _raise_error(self, r: "requests.Response"):
-        raise RuntimeError(
-            f"Request failed with status code {r.status_code}: {r.text}."
+        self._check_connection_and_version(
+            min_version="1.9",
+            version_error_message="Jobs API is not supported on the Ray "
+            "cluster. Please ensure the cluster is "
+            "running Ray 1.9 or higher.",
         )
-
-    def _do_request(
-        self,
-        method: str,
-        endpoint: str,
-        *,
-        data: Optional[bytes] = None,
-        json_data: Optional[dict] = None,
-    ) -> "requests.Response":
-        url = self._address + endpoint
-        logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
-        return requests.request(
-            method,
-            url,
-            cookies=self._cookies,
-            data=data,
-            json=json_data,
-            headers=self._headers,
-        )
-
-    def _package_exists(
-        self,
-        package_uri: str,
-    ) -> bool:
-        protocol, package_name = uri_to_http_components(package_uri)
-        r = self._do_request("GET", f"/api/packages/{protocol}/{package_name}")
-
-        if r.status_code == 200:
-            logger.debug(f"Package {package_uri} already exists.")
-            return True
-        elif r.status_code == 404:
-            logger.debug(f"Package {package_uri} does not exist.")
-            return False
-        else:
-            self._raise_error(r)
-
-    def _upload_package(
-        self,
-        package_uri: str,
-        package_path: str,
-        include_parent_dir: Optional[bool] = False,
-        excludes: Optional[List[str]] = None,
-    ) -> bool:
-        logger.info(f"Uploading package {package_uri}.")
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            protocol, package_name = uri_to_http_components(package_uri)
-            package_file = Path(tmp_dir) / package_name
-            create_package(
-                package_path,
-                package_file,
-                include_parent_dir=include_parent_dir,
-                excludes=excludes,
-            )
-            try:
-                r = self._do_request(
-                    "PUT",
-                    f"/api/packages/{protocol}/{package_name}",
-                    data=package_file.read_bytes(),
-                )
-                if r.status_code != 200:
-                    self._raise_error(r)
-            finally:
-                package_file.unlink()
-
-    def _upload_package_if_needed(
-        self, package_path: str, excludes: Optional[List[str]] = None
-    ) -> str:
-        package_uri = get_uri_for_directory(package_path, excludes=excludes)
-        if not self._package_exists(package_uri):
-            self._upload_package(package_uri, package_path, excludes=excludes)
-        else:
-            logger.info(f"Package {package_uri} already exists, skipping upload.")
-
-        return package_uri
-
-    def _upload_working_dir_if_needed(self, runtime_env: Dict[str, Any]):
-        if "working_dir" in runtime_env:
-            working_dir = runtime_env["working_dir"]
-            try:
-                parse_uri(working_dir)
-                is_uri = True
-                logger.debug("working_dir is already a valid URI.")
-            except ValueError:
-                is_uri = False
-
-            if not is_uri:
-                logger.debug("working_dir is not a URI, attempting to upload.")
-                package_uri = self._upload_package_if_needed(
-                    working_dir, excludes=runtime_env.get("excludes", None)
-                )
-                runtime_env["working_dir"] = package_uri
-
-    @PublicAPI(stability="beta")
-    def get_version(self) -> str:
-        r = self._do_request("GET", "/api/version")
-        if r.status_code == 200:
-            return r.json().get("version")
-        else:
-            self._raise_error(r)
 
     @PublicAPI(stability="beta")
     def submit_job(
@@ -291,11 +83,49 @@ class JobSubmissionClient:
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
     ) -> str:
+        """Submit and execute a job asynchronously.
+
+        When a job is submitted, it runs once to completion or failure. Retries or
+        different runs with different parameters should be handled by the
+        submitter. Jobs are bound to the lifetime of a Ray cluster, so if the
+        cluster goes down, all running jobs on that cluster will be terminated.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> client.submit_job(
+            >>>     entrypoint="python script.py",
+            >>>     runtime_env={
+            >>>         "working_dir": "./",
+            >>>         "pip": ["requests==2.26.0"]
+            >>>     }
+            >>> )
+            'raysubmit_4LamXRuQpYdSMg7J'
+
+        Args:
+            entrypoint: The shell command to run for this job.
+            job_id: A unique ID for this job.
+            runtime_env: The runtime environment to install and run this job in.
+            metadata: Arbitrary data to store along with this job.
+
+        Returns:
+            The job ID of the submitted job.  If not specified, this is a randomly
+            generated unique ID.
+
+        Raises:
+            RuntimeError: If the request to the job server fails, or if the specified
+            job_id has already been used by a job on this cluster.
+        """
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
+        self._upload_py_modules_if_needed(runtime_env)
+
+        # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
         req = JobSubmitRequest(
             entrypoint=entrypoint,
             job_id=job_id,
@@ -316,6 +146,25 @@ class JobSubmissionClient:
         self,
         job_id: str,
     ) -> bool:
+        """Request a job to exit asynchronously.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> job_id = client.submit_job(entrypoint="sleep 10")
+            >>> client.stop_job(job_id)
+            True
+
+        Args:
+            job_id: The job ID for the job to be stopped.
+
+        Returns:
+            True if the job was running, otherwise False.
+
+        Raises:
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
+        """
         logger.debug(f"Stopping job with job_id={job_id}.")
         r = self._do_request("POST", f"/api/jobs/{job_id}/stop")
 
@@ -329,6 +178,27 @@ class JobSubmissionClient:
         self,
         job_id: str,
     ) -> JobInfo:
+        """Get the latest status and other information associated with a job.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> job_id = client.submit_job(entrypoint="sleep 1")
+            >>> job_submission_client.get_job_info(job_id)
+            JobInfo(status='SUCCEEDED', message='Job finished successfully.',
+            error_type=None, start_time=1647388711, end_time=1647388712,
+            metadata={}, runtime_env={})
+
+        Args:
+            job_id: The ID of the job whose information is being requested.
+
+        Returns:
+            The JobInfo for the job.
+
+        Raises:
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
+        """
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
@@ -338,6 +208,30 @@ class JobSubmissionClient:
 
     @PublicAPI(stability="beta")
     def list_jobs(self) -> Dict[str, JobInfo]:
+        """List all jobs along with their status and other information.
+
+        Lists all jobs that have ever run on the cluster, including jobs that are
+        currently running and jobs that are no longer running.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> client.submit_job(entrypoint="echo hello")
+            >>> client.submit_job(entrypoint="sleep 2")
+            >>> job_submission_client.list_jobs()
+            {'raysubmit_4LamXRuQpYdSMg7J': JobInfo(status='SUCCEEDED',
+            message='Job finished successfully.', error_type=None,
+            start_time=1647388711, end_time=1647388712, metadata={}, runtime_env={}),
+            'raysubmit_1dxCeNvG1fCMVNHG': JobInfo(status='RUNNING',
+            message='Job is currently running.', error_type=None,
+            start_time=1647454832, end_time=None, metadata={}, runtime_env={})}
+
+        Returns:
+            A dictionary mapping job_ids to their information.
+
+        Raises:
+            RuntimeError: If the request to the job server fails.
+        """
         r = self._do_request("GET", "/api/jobs/")
 
         if r.status_code == 200:
@@ -352,10 +246,48 @@ class JobSubmissionClient:
 
     @PublicAPI(stability="beta")
     def get_job_status(self, job_id: str) -> JobStatus:
+        """Get the most recent status of a job.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> client.submit_job(entrypoint="echo hello")
+            >>> client.get_job_info("raysubmit_4LamXRuQpYdSMg7J")
+            'SUCCEEDED'
+
+        Args:
+            job_id: The ID of the job whose status is being requested.
+
+        Returns:
+            The JobStatus of the job.
+
+        Raises:
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
+        """
         return self.get_job_info(job_id).status
 
     @PublicAPI(stability="beta")
     def get_job_logs(self, job_id: str) -> str:
+        """Get all logs produced by a job.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> job_id = client.submit_job(entrypoint="echo hello")
+            >>> job_submission_client.get_job_logs(job_id)
+            'hello\\n'
+
+        Args:
+            job_id: The ID of the job whose logs are being requested.
+
+        Returns:
+            A string containing the full logs of the job.
+
+        Raises:
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
+        """
         r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
 
         if r.status_code == 200:
@@ -365,7 +297,30 @@ class JobSubmissionClient:
 
     @PublicAPI(stability="beta")
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
-        async with aiohttp.ClientSession(cookies=self._cookies) as session:
+        """Get an iterator that follows the logs of a job.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
+            >>> job_id = client.submit_job(entrypoint="echo hi && sleep 5 && echo hi2")
+            >>> async for lines in client.tail_job_logs('raysubmit_Xe7cvjyGJCyuCvm2'):
+            >>>     print(lines, end="")
+            hi
+            hi2
+
+        Args:
+            job_id: The ID of the job whose logs are being requested.
+
+        Returns:
+            The iterator.
+
+        Raises:
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
+        """
+        async with aiohttp.ClientSession(
+            cookies=self._cookies, headers=self._headers
+        ) as session:
             ws = await session.ws_connect(
                 f"{self._address}/api/jobs/{job_id}/logs/tail"
             )

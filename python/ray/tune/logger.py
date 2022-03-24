@@ -43,7 +43,7 @@ class Logger:
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
-        trial (Trial): Trial object for the logger to access.
+        trial: Trial object for the logger to access.
     """
 
     def __init__(self, config: Dict, logdir: str, trial: Optional["Trial"] = None):
@@ -292,7 +292,7 @@ class UnifiedLogger(Logger):
     Arguments:
         config: Configuration passed to all logger creators.
         logdir: Directory for all logger creators to log to.
-        loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
+        loggers: List of logger creators. Defaults to CSV, Tensorboard,
             and JSON loggers.
     """
 
@@ -361,7 +361,7 @@ class LoggerCallback(Callback):
         """Handle logging when a trial starts.
 
         Args:
-            trial (Trial): Trial object.
+            trial: Trial object.
         """
         pass
 
@@ -369,7 +369,7 @@ class LoggerCallback(Callback):
         """Handle logging when a trial restores.
 
         Args:
-            trial (Trial): Trial object.
+            trial: Trial object.
         """
         pass
 
@@ -377,7 +377,7 @@ class LoggerCallback(Callback):
         """Handle logging when a trial saves a checkpoint.
 
         Args:
-            trial (Trial): Trial object.
+            trial: Trial object.
         """
         pass
 
@@ -385,8 +385,8 @@ class LoggerCallback(Callback):
         """Handle logging when a trial reports a result.
 
         Args:
-            trial (Trial): Trial object.
-            result (dict): Result dictionary.
+            trial: Trial object.
+            result: Result dictionary.
         """
         pass
 
@@ -394,8 +394,8 @@ class LoggerCallback(Callback):
         """Handle logging when a trial ends.
 
         Args:
-            trial (Trial): Trial object.
-            failed (bool): True if the Trial finished gracefully, False if
+            trial: Trial object.
+            failed: True if the Trial finished gracefully, False if
                 it failed (e.g. when it raised an exception).
         """
         pass
@@ -445,7 +445,7 @@ class LegacyLoggerCallback(LoggerCallback):
     and logging to them.
 
     Args:
-        logger_classes (Iterable[Type[Logger]]): Logger classes that should
+        logger_classes: Logger classes that should
             be instantiated for each trial.
 
     """

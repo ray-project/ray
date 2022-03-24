@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 .. _rllib-index:
 
@@ -56,7 +56,8 @@ PyTorch (or both as shown below):
     $ conda activate rllib
     $ pip install "ray[rllib]" tensorflow torch
 
-Note, for installation on computers running Apple Silicon (such as M1), please follow instructions `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
+Note, for installation on computers running Apple Silicon (such as M1), please follow instructions
+`here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`_
 
 To be able to run our Atari examples, you should also install:
 
@@ -81,8 +82,6 @@ Feature Overview
 ----------------
 
 The following is a summary of RLlib's most striking features.
-For an in-depth overview, check out our `documentation <http://docs.ray.io/en/latest/rllib/index.html>`_.
-
 Click on the images below to see an example script for each of the listed features:
 
 .. include:: feature_overview.rst
@@ -159,27 +158,27 @@ click on the dropdowns below:
 .. dropdown:: **RLlib Environments**
     :animate: fade-in-slide-down
 
-    *  `RLlib Environments Overview <rllib/rllib-env.html>`__
-    *  `OpenAI Gym <rllib/rllib-env.html#openai-gym>`__
-    *  `Vectorized <rllib/rllib-env.html#vectorized>`__
-    *  `Multi-Agent and Hierarchical <rllib/rllib-env.html#multi-agent-and-hierarchical>`__
-    *  `External Agents and Applications <rllib/rllib-env.html#external-agents-and-applications>`__
+    *  `RLlib Environments Overview <rllib-env.html>`__
+    *  `OpenAI Gym <rllib-env.html#openai-gym>`__
+    *  `Vectorized <rllib-env.html#vectorized>`__
+    *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
+    *  `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
 
-       -  `External Application Clients <rllib/rllib-env.html#external-application-clients>`__
+       -  `External Application Clients <rllib-env.html#external-application-clients>`__
 
-    *  `Advanced Integrations <rllib/rllib-env.html#advanced-integrations>`__
+    *  `Advanced Integrations <rllib-env.html#advanced-integrations>`__
 
 
 Customizing RLlib
 -----------------
 
 RLlib provides simple APIs to customize all aspects of your training- and experimental workflows.
-For example, you may code your own `environments <../rllib-env.html#configuring-environments>`__
+For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
 in python using openAI's gym or DeepMind's OpenSpiel, provide custom
-`TensorFlow/Keras- <../rllib-models.html#tensorflow-models>`__ or ,
-`Torch models <../rllib-models.html#torch-models>`_, write your own
-`policy- and loss definitions <../rllib-concepts.html#policies>`__, or define
-custom `exploratory behavior <../rllib-training.htmlexploration-api>`_.
+`TensorFlow/Keras- <rllib-models.html#tensorflow-models>`__ or ,
+`Torch models <rllib-models.html#torch-models>`_, write your own
+`policy- and loss definitions <rllib-concepts.html#policies>`__, or define
+custom `exploratory behavior <rllib-training.html#exploration-api>`_.
 
 Via mapping one or more agents in your environments to (one or more) policies, multi-agent
 RL (MARL) becomes an easy-to-use low-level primitive for our users.
@@ -206,4 +205,4 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
     :class: inline-figure
     :width: 16
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

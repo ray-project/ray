@@ -95,32 +95,35 @@ struct LongPollConnection {
   rpc::SendReplyCallback send_reply_callback;
 };
 
-/// Abstraction to each subscriber.
-class Subscriber {
+/// Keeps the state of each connected subscriber.
+class SubscriberState {
  public:
-  Subscriber(std::function<double()> get_time_ms, uint64_t connection_timeout_ms,
-             const int publish_batch_size)
-      : get_time_ms_(std::move(get_time_ms)),
+  SubscriberState(SubscriberID subscriber_id,
+                  std::function<double()> get_time_ms,
+                  uint64_t connection_timeout_ms,
+                  const int publish_batch_size)
+      : subscriber_id_(subscriber_id),
+        get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
         last_connection_update_time_ms_(get_time_ms_()) {}
 
-  ~Subscriber() = default;
+  ~SubscriberState() = default;
 
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
   /// memory. Once the bidirectional gRPC streaming is enabled, we should replace it.
   ///
   /// \param reply pubsub long polling reply.
   /// \param send_reply_callback A callback to reply to the long polling subscriber.
-  /// \return True if connection is new. False if there were already connections cached.
-  bool ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
+  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
+                           rpc::PubsubLongPollingReply *reply,
                            rpc::SendReplyCallback send_reply_callback);
 
   /// Queue the pubsub message to publish to the subscriber.
   ///
   /// \param pub_message A message to publish.
-  /// \param try_publish If true, it try publishing the object id if there is a
-  /// connection.
+  /// \param try_publish If true, try publishing the object id if there is a connection.
+  ///     Currently only set to false in tests.
   void QueueMessage(const rpc::PubMessage &pub_message, bool try_publish = true);
 
   /// Publish all queued messages if possible.
@@ -134,18 +137,17 @@ class Subscriber {
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
-  /// Return true if the subscriber is disconnected (if the subscriber is dead).
-  /// The subscriber is considered to be dead if there was no long polling connection for
-  /// the timeout.
-  bool IsDisconnected() const;
+  /// Returns true if there is a long polling connection.
+  bool ConnectionExists() const;
 
-  /// Return true if there was no new long polling connection for a long time.
-  bool IsActiveConnectionTimedOut() const;
+  /// Returns true if there are recent activities (requests or replies) between the
+  /// subscriber and publisher.
+  bool IsActive() const;
 
  private:
-  /// Cached long polling reply callback.
-  /// It is cached whenever new long polling is coming from the subscriber.
-  /// It becomes a nullptr whenever the long polling request is replied.
+  /// Subscriber ID, for logging and debugging.
+  const SubscriberID subscriber_id_;
+  /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
   std::queue<std::unique_ptr<rpc::PubsubLongPollingReply>> mailbox_;
@@ -232,7 +234,8 @@ class Publisher : public PublisherInterface {
   /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
             PeriodicalRunner *const periodical_runner,
-            std::function<double()> get_time_ms, const uint64_t subscriber_timeout_ms,
+            std::function<double()> get_time_ms,
+            const uint64_t subscriber_timeout_ms,
             const int publish_batch_size)
       : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),
@@ -249,12 +252,12 @@ class Publisher : public PublisherInterface {
 
   ~Publisher() override = default;
 
-  /// Cache the subscriber's long polling request's information.
+  /// Handle a long poll request from `subscriber_id`.
   ///
   /// TODO(sang): Currently, we need to pass the callback for connection because we are
   /// using long polling internally. This should be changed once the bidirectional grpc
   /// streaming is supported.
-  void ConnectToSubscriber(const SubscriberID &subscriber_id,
+  void ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                            rpc::PubsubLongPollingReply *reply,
                            rpc::SendReplyCallback send_reply_callback);
 
@@ -365,7 +368,7 @@ class Publisher : public PublisherInterface {
   mutable absl::Mutex mutex_;
 
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<SubscriberID, std::shared_ptr<pub_internal::Subscriber>>
+  absl::flat_hash_map<SubscriberID, std::shared_ptr<pub_internal::SubscriberState>>
       subscribers_ GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.

@@ -15,7 +15,7 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class GroupedDataset(Generic[T]):
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 

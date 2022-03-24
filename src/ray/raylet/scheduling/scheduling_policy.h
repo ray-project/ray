@@ -64,16 +64,20 @@ class SchedulingPolicy {
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
   scheduling::NodeID HybridPolicy(
-      const ResourceRequest &resource_request, float spread_threshold,
-      bool force_spillback, bool require_available,
+      const ResourceRequest &resource_request,
+      float spread_threshold,
+      bool force_spillback,
+      bool require_available,
       std::function<bool(scheduling::NodeID)> is_node_available,
       bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
   /// Round robin among available nodes.
   /// If there are no available nodes, fallback to hybrid policy.
   scheduling::NodeID SpreadPolicy(
-      const ResourceRequest &resource_request, bool force_spillback,
-      bool require_available, std::function<bool(scheduling::NodeID)> is_node_available);
+      const ResourceRequest &resource_request,
+      bool force_spillback,
+      bool require_available,
+      std::function<bool(scheduling::NodeID)> is_node_available);
 
   /// Policy that "randomly" picks a node that could fulfil the request.
   /// TODO(scv119): if there are a lot of nodes died or can't fulfill the resource
@@ -114,8 +118,10 @@ class SchedulingPolicy {
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
   scheduling::NodeID HybridPolicyWithFilter(
-      const ResourceRequest &resource_request, float spread_threshold,
-      bool force_spillback, bool require_available,
+      const ResourceRequest &resource_request,
+      float spread_threshold,
+      bool force_spillback,
+      bool require_available,
       std::function<bool(scheduling::NodeID)> is_node_available,
       NodeFilter node_filter = NodeFilter::kAny);
 };

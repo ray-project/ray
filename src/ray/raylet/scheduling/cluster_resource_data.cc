@@ -20,9 +20,10 @@
 namespace ray {
 using namespace ::ray::scheduling;
 
-const std::string resource_labels[] = {
-    ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
-    ray::kObjectStoreMemory_ResourceLabel};
+const std::string resource_labels[] = {ray::kCPU_ResourceLabel,
+                                       ray::kMemory_ResourceLabel,
+                                       ray::kGPU_ResourceLabel,
+                                       ray::kObjectStoreMemory_ResourceLabel};
 
 const std::string ResourceEnumToString(PredefinedResources resource) {
   // TODO (Alex): We should replace this with a protobuf enum.
@@ -200,6 +201,13 @@ NodeResources ResourceMapToNodeResources(
   return node_resources;
 }
 
+bool ResourceRequest::IsGPURequest() const {
+  if (predefined_resources.size() <= GPU) {
+    return false;
+  }
+  return predefined_resources[GPU] > 0;
+}
+
 float NodeResources::CalculateCriticalResourceUtilization() const {
   float highest = 0;
   for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
@@ -294,7 +302,7 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
   return true;
 }
 
-bool NodeResources::operator==(const NodeResources &other) {
+bool NodeResources::operator==(const NodeResources &other) const {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (this->predefined_resources[i].total != other.predefined_resources[i].total) {
       return false;
@@ -325,7 +333,9 @@ bool NodeResources::operator==(const NodeResources &other) {
   return true;
 }
 
-bool NodeResources::operator!=(const NodeResources &other) { return !(*this == other); }
+bool NodeResources::operator!=(const NodeResources &other) const {
+  return !(*this == other);
+}
 
 std::string NodeResources::DebugString() const {
   std::stringstream buffer;
@@ -406,6 +416,13 @@ std::string NodeResources::DictString() const {
   }
   buffer << "}" << std::endl;
   return buffer.str();
+}
+
+bool NodeResources::HasGPU() const {
+  if (predefined_resources.size() <= GPU) {
+    return false;
+  }
+  return predefined_resources[GPU].total > 0;
 }
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
@@ -520,6 +537,30 @@ bool ResourceRequest::IsEmpty() const {
     }
   }
   return true;
+}
+
+bool ResourceRequest::operator==(const ResourceRequest &other) const {
+  if (predefined_resources.size() != other.predefined_resources.size() ||
+      custom_resources.size() != other.custom_resources.size() ||
+      requires_object_store_memory != other.requires_object_store_memory) {
+    return false;
+  }
+  for (size_t i = 0; i < predefined_resources.size(); i++) {
+    if (predefined_resources[i] != other.predefined_resources[i]) {
+      return false;
+    }
+  }
+  for (const auto &entry : custom_resources) {
+    auto iter = other.custom_resources.find(entry.first);
+    if (iter == other.custom_resources.end() || entry.second != iter->second) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ResourceRequest::operator!=(const ResourceRequest &other) const {
+  return !(*this == other);
 }
 
 std::string ResourceRequest::DebugString() const {

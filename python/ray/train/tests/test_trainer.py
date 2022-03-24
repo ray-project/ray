@@ -119,9 +119,7 @@ class KillCallback(TrainingCallback):
     def __init__(self, fail_on, trainer):
         self.counter = 0
         self.fail_on = fail_on
-        self.worker_group = ray.get(
-            trainer._backend_executor_actor.get_worker_group.remote()
-        )
+        self.worker_group = trainer._backend_executor.get_worker_group()
 
     def handle_result(self, results):
         print(results)
@@ -810,9 +808,7 @@ def test_worker_start_failure(ray_start_2_cpus):
     with patch.object(ray.train.trainer, "BackendExecutor", TestBackendExecutor):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start(initialization_hook=init_hook_fail)
-        assert (
-            len(ray.get(trainer._backend_executor_actor.get_worker_group.remote())) == 2
-        )
+        assert len(trainer._backend_executor.get_worker_group()) == 2
 
 
 def test_max_failures(ray_start_2_cpus):
@@ -828,7 +824,7 @@ def test_max_failures(ray_start_2_cpus):
     iterator = trainer.run_iterator(train_func)
     with pytest.raises(RuntimeError):
         iterator.get_final_results(force=True)
-    assert ray.get(iterator._backend_executor_actor._get_num_failures.remote()) == 3
+    assert iterator._backend_executor._get_num_failures() == 3
 
 
 def test_start_max_failures(ray_start_2_cpus):

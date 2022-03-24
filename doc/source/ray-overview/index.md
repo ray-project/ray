@@ -1,3 +1,6 @@
+```{include} /_includes/overview/announcement.md
+```
+
 (gentle-intro)=
 
 # Getting Started Guide
@@ -515,4 +518,7 @@ ray submit cluster.yaml example.py --start
 
 
 ```{include} learn-more.md
+```
+
+```{include} /_includes/overview/announcement_bottom.md
 ```

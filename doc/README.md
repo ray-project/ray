@@ -22,7 +22,8 @@ make html && open _build/html/index.html
 ## Building just one sub-project
 
 Often your changes in documentation just concern one sub-project, such as Tune or Train.
-To build just this one sub-project, and ignore the rest (leading to build warnings due to broken references etc.), run the following command:
+To build just this one sub-project, and ignore the rest
+(leading to build warnings due to broken references etc.), run the following command:
 
 ```shell
 DOC_LIB=<project> sphinx-build -b html -d _build/doctrees  source _build/html
@@ -67,7 +68,8 @@ You can now add [executable notebooks](https://myst-nb.readthedocs.io/en/latest/
 which will get built into the documentation.
 An [example can be found here](./source/serve/tutorials/rllib.md).
 By default, building the docs with `make html` will not run those notebooks.
-If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, each notebook cell will be run when you build the documentation, and outputs will be cached into `_build/.jupyter_cache`.
+If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, each notebook cell will be run when you build the
+documentation, and outputs will be cached into `_build/.jupyter_cache`.
 
 ```bash
 RUN_NOTEBOOKS="cache" make html

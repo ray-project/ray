@@ -83,7 +83,7 @@ class ExecutionPlan:
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
         for m in metadata:
-            if m.schema is not None:
+            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
                 return m.schema
         if not fetch_if_missing:
             return None

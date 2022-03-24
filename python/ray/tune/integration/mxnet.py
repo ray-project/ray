@@ -23,7 +23,7 @@ class TuneReportCallback(TuneCallback):
     This has to be passed to MXNet as the ``eval_end_callback``.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to MXNet,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
@@ -80,9 +80,9 @@ class TuneCheckpointCallback(TuneCallback):
     ``TuneReportCallback`` to work!
 
     Args:
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        frequency (int): Integer indicating how often checkpoints should be
+        frequency: Integer indicating how often checkpoints should be
             saved.
 
     Example:

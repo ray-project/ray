@@ -18,6 +18,7 @@
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -40,6 +41,7 @@ class StringIdMap {
   absl::flat_hash_map<std::string, int64_t> string_to_int_;
   absl::flat_hash_map<int64_t, std::string> int_to_string_;
   std::hash<std::string> hasher_;
+  mutable absl::Mutex mutex_;
 
  public:
   StringIdMap(){};
@@ -86,13 +88,15 @@ enum class SchedulingIDTag { Node, Resource };
 template <SchedulingIDTag T>
 class BaseSchedulingID {
  public:
-  explicit BaseSchedulingID(const std::string &name) : id_{GetMap()->Insert(name)} {}
+  explicit BaseSchedulingID() = default;
+
+  explicit BaseSchedulingID(const std::string &name) : id_{GetMap().Insert(name)} {}
 
   explicit BaseSchedulingID(int64_t id) : id_{id} {}
 
   int64_t ToInt() const { return id_; }
 
-  std::string Binary() const { return GetMap()->Get(id_); }
+  std::string Binary() const { return GetMap().Get(id_); }
 
   bool operator==(const BaseSchedulingID &rhs) const { return id_ == rhs.id_; }
 
@@ -106,8 +110,8 @@ class BaseSchedulingID {
 
  private:
   /// Meyer's singleton to store the StringIdMap.
-  static ThreadPrivate<StringIdMap> &GetMap() {
-    static ThreadPrivate<StringIdMap> map;
+  static StringIdMap &GetMap() {
+    static StringIdMap map;
     return map;
   }
   int64_t id_ = -1;
@@ -129,15 +133,16 @@ inline std::ostream &operator<<(
 /// Specialization for SchedulingIDTag. Specifically, we populate
 /// the singleton map with PredefinedResources.
 template <>
-inline ThreadPrivate<StringIdMap> &BaseSchedulingID<SchedulingIDTag::Resource>::GetMap() {
-  static ThreadPrivate<StringIdMap> map{[]() {
-    StringIdMap map;
-    return map.InsertOrDie(kCPU_ResourceLabel, CPU)
+inline StringIdMap &BaseSchedulingID<SchedulingIDTag::Resource>::GetMap() {
+  static std::unique_ptr<StringIdMap> map{[]() {
+    std::unique_ptr<StringIdMap> map(new StringIdMap());
+    map->InsertOrDie(kCPU_ResourceLabel, CPU)
         .InsertOrDie(kGPU_ResourceLabel, GPU)
         .InsertOrDie(kObjectStoreMemory_ResourceLabel, OBJECT_STORE_MEM)
         .InsertOrDie(kMemory_ResourceLabel, MEM);
+    return map;
   }()};
-  return map;
+  return *map;
 }
 
 namespace scheduling {
