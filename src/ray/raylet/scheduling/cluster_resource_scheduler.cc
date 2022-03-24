@@ -243,6 +243,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   if (prioritize_local_node && !best_node.IsNil() &&
       !IsSchedulableOnNode(best_node,
                            task_spec.GetRequiredResources().GetResourceMap())) {
+    *is_infeasible = false;
     return local_node_id_;
   }
 
