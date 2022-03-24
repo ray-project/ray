@@ -209,7 +209,8 @@ class RuntimeEnvAgent(
         )
 
         self._ray_libraries_uri_cache = URICache(
-            self._ray_libraries_manager.delete_uri, 0)
+            self._ray_libraries_manager.delete_uri, 0
+        )
 
         self._logger = default_logger
 
@@ -333,8 +334,9 @@ class RuntimeEnvAgent(
             self._py_modules_manager.modify_context(
                 py_modules_uris, runtime_env, context
             )
-            await self._ray_libraries_manager.create(None, runtime_env, None,
-                logger=per_job_logger)
+            await self._ray_libraries_manager.create(
+                None, runtime_env, None, logger=per_job_logger
+            )
 
             def setup_plugins():
                 # Run setup function from all the plugins
