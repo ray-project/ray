@@ -692,10 +692,29 @@ def test_schedule_actor_and_normal_task(ray_start_cluster):
         ray.get(singal1.wait.remote())
         return 1
 
+    singal1 = SignalActor.remote()
+    signal2 = SignalActor.remote()
+
+    o1 = fun.remote(singal1, signal2)
+    # Make sure the normal task is executing.
+    ray.get(signal2.wait.remote())
+
+    # The normal task is blocked now.
+    # Try to create actor and make sure this actor is not created for the time
+    # being.
     foo = Foo.remote()
     o2 = foo.method.remote()
     ready_list, remaining_list = ray.wait([o2], timeout=2)
-    assert len(ready_list) == 1 and len(remaining_list) == 0
+    assert len(ready_list) == 0 and len(remaining_list) == 1
+
+    # Send a signal to unblock the normal task execution.
+    ray.get(singal1.send.remote())
+
+    # Check the result of normal task.
+    assert ray.get(o1) == 1
+
+    # Make sure the actor is created.
+    assert ray.get(o2) == 2
 
 
 # This case tests whether gcs-based actor scheduler works properly
