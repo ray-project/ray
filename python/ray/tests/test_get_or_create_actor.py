@@ -67,7 +67,11 @@ print("DONE")
     out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
     # Check there's no excessively verbose raylet error messages due to
     # actor creation races.
-    valid = "".join(x for x in out_str.split("\n") if "Ray dashboard" not in x)
+    out = []
+    for line in out_str.split("\n"):
+        if "Ray dashboard" not in line and "The object store" not in line:
+            out.append(line)
+    valid = "".join(out)
     assert valid.strip() == "DONE", out_str
 
 
