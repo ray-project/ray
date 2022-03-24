@@ -394,24 +394,22 @@ TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
 def test_build(ray_start_stop, node):
-    f = NamedTemporaryFile(mode="w+", delete=False, suffix=".yaml")
+    with NamedTemporaryFile(mode="w+", delete=False, suffix=".yaml") as tmp:
 
-    # Build an app
-    subprocess.check_output(
-        [
-            "serve",
-            "build",
-            f"ray.serve.tests.test_cli.{node}",
-            "-o",
-            f.name,
-        ]
-    )
-    subprocess.check_output(["serve", "deploy", f.name])
-    assert ping_endpoint("") == "wonderful world"
-    subprocess.check_output(["serve", "delete", "-y"])
-    assert ping_endpoint("") == "connection error"
-
-    os.unlink(f.name)
+        # Build an app
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                f"ray.serve.tests.test_cli.{node}",
+                "-o",
+                tmp.name,
+            ]
+        )
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        assert ping_endpoint("") == "wonderful world"
+        subprocess.check_output(["serve", "delete", "-y"])
+        assert ping_endpoint("") == "connection error"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
