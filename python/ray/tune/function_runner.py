@@ -295,7 +295,6 @@ class _RunnerThread(threading.Thread):
                         "was not processed. This should never happen."
                     )
                 )
-            raise e
 
 
 class FunctionRunner(Trainable):
