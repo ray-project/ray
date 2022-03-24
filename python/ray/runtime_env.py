@@ -320,6 +320,7 @@ class RuntimeEnv(dict):
         self,
         *,
         py_modules: Optional[List[str]] = None,
+        ray_libraries: Optional[List[str]] = None,
         working_dir: Optional[str] = None,
         pip: Optional[List[str]] = None,
         conda: Optional[Union[Dict[str, str], str]] = None,
@@ -334,6 +335,8 @@ class RuntimeEnv(dict):
         runtime_env = kwargs
         if py_modules is not None:
             runtime_env["py_modules"] = py_modules
+        if ray_libraries is not None:
+            runtime_env["ray_libraries"] = ray_libraries
         if working_dir is not None:
             runtime_env["working_dir"] = working_dir
         if pip is not None:

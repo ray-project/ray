@@ -36,7 +36,7 @@ from ray._private.gcs_pubsub import (
     GcsLogSubscriber,
     GcsFunctionKeySubscriber,
 )
-from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed, upload_ray_libraries_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 import ray._private.import_thread as import_thread
@@ -1536,6 +1536,9 @@ def connect(
         scratch_dir: str = worker.node.get_runtime_env_dir_path()
         runtime_env = job_config.runtime_env or {}
         runtime_env = upload_py_modules_if_needed(
+            runtime_env, scratch_dir, logger=logger
+        )
+        runtime_env = upload_ray_libraries_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
         runtime_env = upload_working_dir_if_needed(

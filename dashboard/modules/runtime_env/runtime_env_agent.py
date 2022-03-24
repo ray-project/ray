@@ -25,7 +25,7 @@ from ray._private.async_compat import create_task
 from ray._private.runtime_env.pip import PipManager
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.py_modules import PyModulesManager
+from ray._private.runtime_env.py_modules import PyModulesManager, RayLibrariesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.uri_cache import URICache
@@ -66,6 +66,7 @@ class UriType(Enum):
     PY_MODULES = 2
     PIP = 3
     CONDA = 4
+    RAY_LIBRARIES = 5
 
 
 class ReferenceTable:
@@ -186,6 +187,7 @@ class RuntimeEnvAgent(
         self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
         self._container_manager = ContainerManager(dashboard_agent.temp_dir)
+        self._ray_libraries_manager = RayLibrariesManager(self._runtime_env_dir)
 
         self._reference_table = ReferenceTable(
             self.uris_parser,
@@ -205,6 +207,10 @@ class RuntimeEnvAgent(
         self._pip_uri_cache = URICache(
             self._pip_manager.delete_uri, PIP_CACHE_SIZE_BYTES
         )
+
+        self._ray_libraries_uri_cache = URICache(
+            self._ray_libraries_manager.delete_uri, 0)
+
         self._logger = default_logger
 
     def uris_parser(self, runtime_env):
@@ -215,6 +221,9 @@ class RuntimeEnvAgent(
         uris = self._py_modules_manager.get_uris(runtime_env)
         for uri in uris:
             result.append((uri, UriType.PY_MODULES))
+        uris = self._ray_libraries_manager.get_uris(runtime_env)
+        for uri in uris:
+            result.append((uri, UriType.RAY_LIBRARIES))
         uri = self._pip_manager.get_uri(runtime_env)
         if uri:
             result.append((uri, UriType.PIP))
@@ -233,6 +242,8 @@ class RuntimeEnvAgent(
                 self._conda_uri_cache.mark_unused(uri)
             elif uri_type == UriType.PIP:
                 self._pip_uri_cache.mark_unused(uri)
+            elif uri_type == UriType.RAY_LIBRARIES:
+                self._ray_libraries_uri_cache.mark_unused(uri)
 
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
@@ -322,6 +333,8 @@ class RuntimeEnvAgent(
             self._py_modules_manager.modify_context(
                 py_modules_uris, runtime_env, context
             )
+            await self._ray_libraries_manager.create(None, runtime_env, None,
+                logger=per_job_logger)
 
             def setup_plugins():
                 # Run setup function from all the plugins
