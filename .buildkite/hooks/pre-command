@@ -1,5 +1,5 @@
-[ -d "/tmp/artifacts" ] || exit
-
-echo "Cleaning up old artifacts before command:"
-ls -alp /tmp/artifacts
-rm -rf /tmp/artifacts/* || true
+if [ -d "/tmp/artifacts" ]; then
+    echo "Cleaning up old artifacts before command:"
+    ls -alp /tmp/artifacts
+    rm -rf /tmp/artifacts/* || true
+fi
