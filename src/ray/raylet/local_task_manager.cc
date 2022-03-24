@@ -316,19 +316,27 @@ void LocalTaskManager::SpillWaitingTasks() {
     // pulled).  If this is true, then we should force the task onto a remote
     // feasible node, even if we have enough resources available locally for
     // placement.
-    bool force_spillback = task_dependency_manager_.TaskDependenciesBlocked(task_id);
+    bool task_dependencies_blocked =
+        task_dependency_manager_.TaskDependenciesBlocked(task_id);
     RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
-                   << " to remote node. Force spillback? " << force_spillback;
+                   << " to remote node. Dependencies blocked? "
+                   << task_dependencies_blocked;
     bool is_infeasible;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
-    auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-        (*it)->task.GetTaskSpecification(),
-        /*prioritize_local_node*/ true,
-        /*exclude_local_node*/ force_spillback,
-        /*requires_object_store_memory*/ true,
-        &is_infeasible);
+    scheduling::NodeID scheduling_node_id;
+    if (task_dependencies_blocked) {
+      scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
+          (*it)->task.GetTaskSpecification(),
+          /*prioritize_local_node*/ true,
+          /*exclude_local_node*/ true,
+          /*requires_object_store_memory*/ true,
+          &is_infeasible);
+    } else {
+      // If the pulling is active, we should avoid spillback.
+      scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
+    }
     if (!scheduling_node_id.IsNil() &&
         scheduling_node_id.Binary() != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
