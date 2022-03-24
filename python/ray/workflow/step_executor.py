@@ -444,6 +444,14 @@ def _workflow_step_executor(
         outer_most_step_id = context.outer_most_step_id
         logger.info(f"**** {workflow_id} --- {step_id} --- {outer_most_step_id} --- {event_listener}")
         return "EVENT STEP", None
+    elif step_type == StepType.FUNCTION:
+        # Check if any downstream step is an EVENT step
+        workflow_id = context.workflow_id
+        count = 0
+        for wsr in baked_inputs.workflow_outputs:
+            obj, ref = _resolve_object_ref(wsr.ref)
+            count += 1
+            logger.info(f"**** {workflow_id} --- {step_id} --- {count} --- downstream --- {obj}")
 
     context.checkpoint_context.checkpoint = runtime_options.checkpoint
 
