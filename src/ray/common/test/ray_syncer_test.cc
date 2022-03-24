@@ -96,9 +96,11 @@ class RaySyncerTest : public ::testing::Test {
     thread_->join();
   }
 
-  Array<int64_t> local_versions_;
-  Array<std::unique_ptr<MockReporterInterface>> reporters_ = {nullptr};
-  Array<std::unique_ptr<MockReceiverInterface>> receivers_ = {nullptr};
+  std::array<int64_t, kComponentArraySize> local_versions_;
+  std::array<std::unique_ptr<MockReporterInterface>, kComponentArraySize> reporters_ = {
+      nullptr};
+  std::array<std::unique_ptr<MockReceiverInterface>, kComponentArraySize> receivers_ = {
+      nullptr};
 
   instrumented_io_context io_context_;
   std::unique_ptr<std::thread> thread_;
@@ -109,14 +111,14 @@ class RaySyncerTest : public ::testing::Test {
 
 TEST_F(RaySyncerTest, NodeStateGetSnapshot) {
   auto node_status = std::make_unique<NodeState>();
-  node_status->SetComponents(RayComponentId::RESOURCE_MANAGER, nullptr, nullptr);
+  node_status->SetComponent(RayComponentId::RESOURCE_MANAGER, nullptr, nullptr);
   ASSERT_EQ(std::nullopt, node_status->GetSnapshot(RayComponentId::RESOURCE_MANAGER));
   ASSERT_EQ(std::nullopt, node_status->GetSnapshot(RayComponentId::SCHEDULER));
 
   auto reporter = std::make_unique<MockReporterInterface>();
-  ASSERT_TRUE(node_status->SetComponents(RayComponentId::RESOURCE_MANAGER,
-                                         GetReporter(RayComponentId::RESOURCE_MANAGER),
-                                         nullptr));
+  ASSERT_TRUE(node_status->SetComponent(RayComponentId::RESOURCE_MANAGER,
+                                        GetReporter(RayComponentId::RESOURCE_MANAGER),
+                                        nullptr));
 
   // Take a snapshot
   ASSERT_EQ(std::nullopt, node_status->GetSnapshot(RayComponentId::SCHEDULER));
@@ -130,9 +132,9 @@ TEST_F(RaySyncerTest, NodeStateGetSnapshot) {
 
 TEST_F(RaySyncerTest, NodeStateConsume) {
   auto node_status = std::make_unique<NodeState>();
-  node_status->SetComponents(RayComponentId::RESOURCE_MANAGER,
-                             nullptr,
-                             GetReceiver(RayComponentId::RESOURCE_MANAGER));
+  node_status->SetComponent(RayComponentId::RESOURCE_MANAGER,
+                            nullptr,
+                            GetReceiver(RayComponentId::RESOURCE_MANAGER));
   auto from_node_id = NodeID::FromRandom();
   // The first time receiver the message
   auto msg = MakeMessage(RayComponentId::RESOURCE_MANAGER, 0, from_node_id);
@@ -275,10 +277,11 @@ struct SyncerServer {
     }
   }
 
-  Array<int64_t> GetReceivedVersions(const std::string &node_id) const {
+  std::array<int64_t, kComponentArraySize> GetReceivedVersions(
+      const std::string &node_id) const {
     auto iter = received_versions.find(node_id);
     if (iter == received_versions.end()) {
-      Array<int64_t> versions;
+      std::array<int64_t, kComponentArraySize> versions;
       versions.fill(-1);
       return versions;
     }
@@ -290,18 +293,21 @@ struct SyncerServer {
   std::unique_ptr<std::thread> thread;
   instrumented_io_context io_context;
   std::string server_port;
-  Array<int64_t> local_versions;
-  Array<std::unique_ptr<MockReporterInterface>> reporters = {nullptr};
+  std::array<int64_t, kComponentArraySize> local_versions;
+  std::array<std::unique_ptr<MockReporterInterface>, kComponentArraySize> reporters = {
+      nullptr};
   int64_t snapshot_taken = 0;
 
-  std::unordered_map<std::string, Array<int64_t>> received_versions;
+  std::unordered_map<std::string, std::array<int64_t, kComponentArraySize>>
+      received_versions;
   std::unordered_map<std::string, int64_t> message_consumed;
-  Array<std::unique_ptr<MockReceiverInterface>> receivers = {nullptr};
+  std::array<std::unique_ptr<MockReceiverInterface>, kComponentArraySize> receivers = {
+      nullptr};
 };
 
 // Useful for debugging
 std::ostream &operator<<(std::ostream &os, const SyncerServer &server) {
-  auto dump_array = [&os](const Array<int64_t> &v,
+  auto dump_array = [&os](const std::array<int64_t, kComponentArraySize> &v,
                           std::string label,
                           int indent) mutable -> std::ostream & {
     os << std::string('\t', indent);
@@ -335,8 +341,9 @@ std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
       "localhost:" + port, grpc::InsecureChannelCredentials(), argument);
 }
 
-using TClusterView =
-    absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>;
+using TClusterView = absl::flat_hash_map<
+    std::string,
+    std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>;
 
 TEST(SyncerTest, Test1To1) {
   // s1: reporter: RayComponentId::RESOURCE_MANAGER

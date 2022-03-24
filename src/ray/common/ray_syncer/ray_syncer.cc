@@ -22,9 +22,9 @@ namespace syncer {
 
 NodeState::NodeState() { snapshots_taken_.fill(-1); }
 
-bool NodeState::SetComponents(RayComponentId cid,
-                              const ReporterInterface *reporter,
-                              ReceiverInterface *receiver) {
+bool NodeState::SetComponent(RayComponentId cid,
+                             const ReporterInterface *reporter,
+                             ReceiverInterface *receiver) {
   if (cid < static_cast<RayComponentId>(kComponentArraySize) &&
       reporters_[cid] == nullptr && receivers_[cid] == nullptr) {
     reporters_[cid] = reporter;
@@ -319,7 +319,7 @@ bool RaySyncer::Register(RayComponentId component_id,
                          ReceiverInterface *receiver,
                          bool upward_only,
                          int64_t pull_from_reporter_interval_ms) {
-  if (!node_state_->SetComponents(component_id, reporter, receiver)) {
+  if (!node_state_->SetComponent(component_id, reporter, receiver)) {
     return false;
   }
 

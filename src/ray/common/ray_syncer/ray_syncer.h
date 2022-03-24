@@ -70,9 +70,6 @@ struct ReceiverInterface {
   virtual ~ReceiverInterface() {}
 };
 
-template <typename T>
-using Array = std::array<T, kComponentArraySize>;
-
 // Forward declaration of internal structures
 class NodeState;
 class NodeSyncConnection;
@@ -161,7 +158,7 @@ class RaySyncer {
   /// The current node id.
   const std::string node_id_;
 
-  /// Manage connections
+  /// Manage connections. Here the key is the NodeID in binary form.
   absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncConnection>> sync_connections_;
 
   /// Upward connections. These are connections initialized not by this node
@@ -172,7 +169,7 @@ class RaySyncer {
 
   /// Each component will define a flag to indicate whether the message should be sent
   /// to ClientSyncConnection only.
-  Array<bool> upward_only_;
+  std::array<bool, kComponentArraySize> upward_only_;
 
   /// Timer is used to do broadcasting.
   ray::PeriodicalRunner timer_;

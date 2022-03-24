@@ -23,7 +23,7 @@ class NodeState {
   /// Constructor of NodeState.
   NodeState();
 
-  /// Set the local components.
+  /// Set the local component.
   ///
   /// \param cid The component id.
   /// \param reporter The reporter is defined to be the local module which wants to
@@ -35,9 +35,9 @@ class NodeState {
   /// received messages are consumed.
   ///
   /// \return true if set successfully.
-  bool SetComponents(RayComponentId cid,
-                     const ReporterInterface *reporter,
-                     ReceiverInterface *receiver);
+  bool SetComponent(RayComponentId cid,
+                    const ReporterInterface *reporter,
+                    ReceiverInterface *receiver);
 
   /// Get the snapshot of a component for a newer version.
   ///
@@ -55,22 +55,26 @@ class NodeState {
   bool ConsumeMessage(std::shared_ptr<const RaySyncMessage> message);
 
   /// Return the cluster view of this local node.
-  const absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>
+  const absl::flat_hash_map<
+      std::string,
+      std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
       &GetClusterView() const {
     return cluster_view_;
   }
 
  private:
   /// For local nodes
-  Array<const ReporterInterface *> reporters_ = {nullptr};
-  Array<ReceiverInterface *> receivers_ = {nullptr};
+  std::array<const ReporterInterface *, kComponentArraySize> reporters_ = {nullptr};
+  std::array<ReceiverInterface *, kComponentArraySize> receivers_ = {nullptr};
 
   /// This field records the version of the snapshot that has been taken.
-  Array<int64_t> snapshots_taken_;
+  std::array<int64_t, kComponentArraySize> snapshots_taken_;
   /// Keep track of the latest messages received.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.
-  absl::flat_hash_map<std::string, Array<std::shared_ptr<const RaySyncMessage>>>
+  absl::flat_hash_map<
+      std::string,
+      std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
       cluster_view_;
 };
 
@@ -95,7 +99,7 @@ class NodeSyncConnection {
 
   virtual ~NodeSyncConnection() {}
 
-  /// Return the node id of this sync context.
+  /// Return the node id of this connection.
   const std::string &GetNodeId() const { return node_id_; }
 
   /// Handle the udpates sent from this node.
