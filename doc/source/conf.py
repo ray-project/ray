@@ -162,7 +162,7 @@ linkcheck_ignore = [
     # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
     "https://scikit-optimize.github.io/stable/modules/",
     "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
-    r"https://huggingface.co/*$"  # seems to be flaky
+    r"https://huggingface.co/*$",  # seems to be flaky
 ]
 
 # -- Options for HTML output ----------------------------------------------
