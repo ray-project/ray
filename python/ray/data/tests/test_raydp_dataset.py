@@ -1,6 +1,7 @@
 import pytest
 import ray
 import raydp
+import torch
 
 
 @pytest.fixture(scope="function")
@@ -46,12 +47,18 @@ def test_raydp_to_spark(spark_on_ray_small):
     rows = [r.value for r in df.take(5)]
     assert values == rows
 
-def test_spark_on_ray(spark_on_ray_small):
+def test_raydp_small_data(spark_on_ray_small):
     spark = spark_on_ray_small
-    spark_df = spark.createDataFrame([(1, 0), (2, 0), (3, 1)], ["one", "two"])
+    spark_df = spark.createDataFrame([(1, 0), (2, 0), (3, 1)], ["feature", "label"])
+    data_size = spark_df.count()
+    features = [r["feature"] for r in spark_df.take(data_size)]
+    features = torch.tensor(features).reshape(data_size, 1)
+    labels = [r["label"] for r in spark_df.take(data_size)]
+    labels = torch.tensor(labels).reshape(data_size, 1)
     ds = ray.data.from_spark(spark_df)
-    dataset = ds.to_torch(batch_size=2)
-    print(next(dataset.__iter__()))
+    dataset = ds.to_torch(label_column="label", batch_size=3)
+    data_features, data_labels = next(dataset.__iter__())
+    assert torch.equal(data_features, features) and torch.equal(data_labels, labels)
 
 
 if __name__ == "__main__":
