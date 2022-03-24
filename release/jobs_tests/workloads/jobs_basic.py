@@ -15,7 +15,6 @@ import json
 import os
 import time
 
-import ray
 from ray.job_submission import JobSubmissionClient
 
 
