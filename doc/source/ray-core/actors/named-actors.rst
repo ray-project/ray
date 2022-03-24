@@ -60,7 +60,8 @@ exist. See :ref:`actor-lifetimes` for more details.
 
 .. note::
 
-     Named actors are only accessible in the same namespace.
+     Named actors are scoped by namespace. If no namespace is assigned, they will
+     be placed in an anonymous namespace by default.
 
 .. tabbed:: Python
 
@@ -82,6 +83,8 @@ exist. See :ref:`actor-lifetimes` for more details.
         ray.init(address="auto", namespace="fruit")
         # This fails because "orange" was defined in the "colors" namespace.
         ray.get_actor("orange")
+        # You can also specify the namespace explicitly.
+        ray.get_actor("orange", namespace="colors")
 
         # driver_3.py
         # Job 3 connects to the original "colors" namespace
@@ -118,6 +121,33 @@ exist. See :ref:`actor-lifetimes` for more details.
         // This returns the "orange" actor we created in the first job.
         Optional<ActorHandle<Actor>> actor = Ray.getActor("orange");
         Assert.assertTrue(actor.isPresent());  // actor.isPresent() is true.
+
+Get-Or-Create a Named Actor
+---------------------------
+
+A common use case is to create an actor only if it doesn't exist.
+Ray provides a ``get_if_exists`` option for actor creation that does this out of the box.
+This method is available after you set a name for the actor via ``.options()``.
+
+If the actor already exists, a handle to the actor will be returned
+and the arguments will be ignored. Otherwise, a new actor will be
+created with the specified arguments.
+
+.. tabbed:: Python
+
+    .. literalinclude:: ../doc_code/get_or_create.py
+
+.. tabbed:: Java
+
+    .. code-block:: java
+
+        // This feature is not yet available in Java.
+
+.. tabbed:: C++
+
+    .. code-block:: c++
+
+        // This feature is not yet available in C++.
 
 
 .. _actor-lifetimes:

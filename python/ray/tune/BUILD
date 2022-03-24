@@ -241,6 +241,14 @@ py_test(
 )
 
 py_test(
+    name = "test_result_grid",
+    size = "small",
+    srcs = ["tests/test_result_grid.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
     name = "test_sample",
     size = "large",
     srcs = ["tests/test_sample.py"],
@@ -380,6 +388,14 @@ py_test(
     name = "test_tune_server",
     size = "medium",
     srcs = ["tests/test_tune_server.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_tuner",
+    size = "medium",
+    srcs = ["tests/test_tuner.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )

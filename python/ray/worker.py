@@ -1132,7 +1132,6 @@ def shutdown(_exiting_interpreter: bool = False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     _internal_kv_reset()
-    storage._reset()
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
@@ -1152,6 +1151,7 @@ def shutdown(_exiting_interpreter: bool = False):
             _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
+    storage._reset()
 
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
