@@ -1,5 +1,6 @@
 package io.ray.test;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.parallelactor.Parallel;
 import io.ray.api.parallelactor.ParallelActor;
@@ -50,7 +51,9 @@ public class ParallelActorTest extends BaseTest {
 
     ParallelInstance<A> instance = actor.getInstance(/*index=*/2);
 
+    Preconditions.checkNotNull(instance);
     /// We haven't impled this, but it's the same implementation as above.
-//    instance.task(A::f1, 100, 200).remote();   // Executed in instance 2
+    int res = instance.task(A::f1, 100, 200).remote().get();   // Executed in instance 2
+    Assert.assertEquals(res, 300);
   }
 }

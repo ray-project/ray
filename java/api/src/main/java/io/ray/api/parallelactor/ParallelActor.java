@@ -16,7 +16,8 @@ public class ParallelActor<A> implements ParallelActorCall<A> {
   }
 
   public ParallelInstance<A> getInstance(int index) {
-    return null;
+    // TODO(qwang): Not new this object every time.
+    return new ParallelInstance();
   }
 
   public ActorHandle<? extends ParallelActorExecutor> getExecutor() {
