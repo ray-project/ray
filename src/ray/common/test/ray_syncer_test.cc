@@ -146,7 +146,8 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
 
 TEST_F(RaySyncerTest, NodeSyncConnection) {
   auto node_id = NodeID::FromRandom();
-  NodeSyncConnection sync_connection(*syncer_, io_context_, node_id.Binary());
+
+  MockNodeSyncConnection sync_connection(*syncer_, io_context_, node_id.Binary());
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(RayComponentId::RESOURCE_MANAGER, 0, from_node_id);
 
@@ -228,9 +229,6 @@ struct SyncerServer {
           msg.set_node_id(syncer->GetNodeId());
           std::string dbg_message;
           google::protobuf::util::MessageToJsonString(msg, &dbg_message);
-          RAY_LOG(INFO) << "Snapshot:" << dbg_message << " ?? "
-                        << static_cast<RayComponentId>(cid) << ", " << local_versions[cid]
-                        << ", " << NodeID::FromBinary(syncer->GetNodeId());
           snapshot_taken++;
           return std::make_optional(std::move(msg));
         }
@@ -517,9 +515,15 @@ TEST(SyncerTest, Broadcast) {
 }
 
 bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
-                  const std::vector<TClusterView> &views) {
+                  const std::vector<TClusterView> &views,
+                  const std::vector<std::set<size_t>> &g) {
+  // Check broadcasting is working
+  // component id = 0
+  // simply compare everything with server 0
   for (size_t i = 1; i < views.size(); ++i) {
     if (views[i].size() != views[0].size()) {
+      RAY_LOG(ERROR) << "View size wrong: (" << i << ") :" << views[i].size()
+                     << " vs " << views[0].size();
       return false;
     }
 
@@ -529,33 +533,10 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
         return false;
       }
       const auto &vv = iter->second;
-      // It's about server[0]
-      if (k == servers[0]->syncer->GetNodeId()) {
-        if (v[1] || vv[1]) {
-          RAY_LOG(ERROR) << i << ": FAIL SCHEDULE-1: " << v[0] << ", " << vv[0] << ", "
-                         << v[1] << ", " << vv[1];
-          return false;
-        }
-      } else if (k == servers[i]->syncer->GetNodeId()) {
-        // It's about server[i]
-        if (vv[1] == nullptr || v[1] == nullptr) {
-          RAY_LOG(ERROR) << i << ": FAIL SCHEDULE-2: " << v[0] << ", " << vv[0] << ", "
-                         << v[1] << ", " << vv[1];
-          return false;
-        }
-      } else if (vv[1] != nullptr || v[1] == nullptr) {
-        RAY_LOG(ERROR) << i << ": FAIL SCHEDULE-3: " << v[0] << ", " << vv[0] << ", "
-                       << v[1] << ", " << vv[1];
-        return false;
-      }
 
-      if (v[0] == nullptr || vv[0] == nullptr) {
-        return false;
-      }
       if (!google::protobuf::util::MessageDifferencer::Equals(*v[0], *vv[0])) {
         RAY_LOG(ERROR) << i << ": FAIL RESOURCE: " << v[0] << ", " << vv[0] << ", "
                        << v[1] << ", " << vv[1];
-
         std::string dbg_message;
         google::protobuf::util::MessageToJsonString(*v[0], &dbg_message);
         RAY_LOG(ERROR) << "server[0] >> "
@@ -570,20 +551,83 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
       }
     }
   }
+
+  std::map<std::string, size_t> node_id_to_idx;
+  for(size_t i = 0; i < servers.size(); ++i) {
+    node_id_to_idx[servers[i]->syncer->GetNodeId()] = i;
+  }
+  // Check whether j is reachable from i
+  auto reachable = [&g](size_t i, size_t j) {
+    std::deque<size_t> q;
+    q.push_back(i);
+    while(!q.empty()) {
+      auto f = q.front();
+      q.pop_front();
+      for(auto m : g[f]) {
+        if(m == j) {
+          return true;
+        }
+        q.push_back(m);
+      }
+    }
+    return false;
+  };
+  // Check scheduler which is aggregating only
+  for(size_t i = 0; i < servers.size(); ++i) {
+    const auto& view = views[i];
+    // view: node_id -> msg
+    for(auto [node_id, msgs] : view) {
+      auto msg = msgs[1];
+      auto is_reachable = reachable(i, node_id_to_idx[node_id]);
+      if(msg == nullptr) {
+        if(is_reachable) {
+          RAY_LOG(ERROR) << i << " Parent is null, but it's reachable from other node";
+          return false;
+        }
+      } else {
+        if(!is_reachable) {
+          RAY_LOG(ERROR) << i << " Parent is not null, but it's not reachable from other node";
+          return false;
+        }
+        auto iter = views[node_id_to_idx[node_id]].find(node_id);
+        if(iter == views[node_id_to_idx[node_id]].end()) {
+          return false;
+        }
+        auto msg2 = iter->second[1];
+        if(msg2 == nullptr) {
+          return false;
+        }
+        if(!google::protobuf::util::MessageDifferencer::Equals(*msg, *msg2)) {
+          std::string dbg_message;
+          google::protobuf::util::MessageToJsonString(*msg, &dbg_message);
+          RAY_LOG(ERROR) << "server["<< i << "] >> "
+                         << NodeID::FromBinary(servers[i]->syncer->GetNodeId()) << ": "
+                         << dbg_message;
+          dbg_message.clear();
+          google::protobuf::util::MessageToJsonString(*msg2, &dbg_message);
+          RAY_LOG(ERROR) << "server["<< node_id_to_idx[node_id] << "] << "
+                         << NodeID::FromBinary(servers[node_id_to_idx[node_id]]->syncer->GetNodeId())
+                         << ": " << dbg_message;
+          return false;
+        }
+      }
+    }
+  }
   return true;
 }
 
-void TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_view,
-                     std::vector<std::unique_ptr<SyncerServer>> &servers) {
-  auto check = [&servers, get_cluster_view]() {
+bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_view,
+                     std::vector<std::unique_ptr<SyncerServer>> &servers,
+                     const std::vector<std::set<size_t>>& g) {
+  auto check = [&servers, get_cluster_view, &g]() {
     std::vector<TClusterView> views;
     for (auto &s : servers) {
       views.push_back(get_cluster_view(*(s->syncer)));
     }
-    return CompareViews(servers, views);
+    return CompareViews(servers, views, g);
   };
 
-  for (size_t i = 0; i < 5; ++i) {
+  for (size_t i = 0; i < 10; ++i) {
     if (!check()) {
       std::this_thread::sleep_for(1s);
     } else {
@@ -591,7 +635,10 @@ void TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     }
   }
 
-  ASSERT_TRUE(check());
+  if(!check()) {
+    RAY_LOG(ERROR) << "Initial check failed";
+    return false;
+  }
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -621,7 +668,7 @@ void TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     }
   }
 
-  ASSERT_TRUE(check());
+  return check();
 }
 
 TEST(SyncerTest, Test1ToN) {
@@ -631,9 +678,10 @@ TEST(SyncerTest, Test1ToN) {
     servers.push_back(
         std::make_unique<SyncerServer>(std::to_string(i + base_port), i != 0));
   }
-
+  std::vector<std::set<size_t>> g(servers.size());
   for (size_t i = 1; i < servers.size(); ++i) {
     servers[0]->syncer->Connect(MakeChannel(servers[i]->server_port));
+    g[0].insert(i);
   }
 
   auto get_cluster_view = [](RaySyncer &syncer) {
@@ -644,7 +692,8 @@ TEST(SyncerTest, Test1ToN) {
         "TEST");
     return f.get();
   };
-  TestCorrectness(get_cluster_view, servers);
+
+  ASSERT_TRUE(TestCorrectness(get_cluster_view, servers, g));
 }
 
 TEST(SyncerTest, TestMToN) {
@@ -654,7 +703,7 @@ TEST(SyncerTest, TestMToN) {
     servers.push_back(
         std::make_unique<SyncerServer>(std::to_string(i + base_port), i != 0));
   }
-
+  std::vector<std::set<size_t>> g(servers.size());
   // Try to construct a tree based structure
   size_t i = 1;
   size_t curr = 0;
@@ -662,6 +711,7 @@ TEST(SyncerTest, TestMToN) {
     // try to connect to 2 servers per node.
     for (int k = 0; k < 2 && i < servers.size(); ++k, ++i) {
       servers[curr]->syncer->Connect(MakeChannel(servers[i]->server_port));
+      g[curr].insert(i);
     }
     ++curr;
   }
@@ -674,7 +724,7 @@ TEST(SyncerTest, TestMToN) {
         "TEST");
     return f.get();
   };
-  TestCorrectness(get_cluster_view, servers);
+  ASSERT_TRUE(TestCorrectness(get_cluster_view, servers, g));
 }
 
 }  // namespace syncer

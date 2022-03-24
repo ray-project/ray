@@ -90,6 +90,9 @@ class NodeSyncConnection {
   /// \return true if push to queue successfully.
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message);
 
+  /// Send the message queued.
+  virtual void DoSend() = 0;
+
   virtual ~NodeSyncConnection() {}
 
   /// Return the node id of this sync context.
@@ -105,7 +108,7 @@ class NodeSyncConnection {
 
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);
-  ray::PeriodicalRunner timer_;
+
   RaySyncer &instance_;
   instrumented_io_context &io_context_;
   std::string node_id_;
@@ -158,7 +161,7 @@ class ServerSyncConnection : public NodeSyncConnection {
   /// It'll send nothing unless there is a request from the remote node
   /// for the sending request.
   /// TODO (iycheng): Unify the sending algorithm when we migrate to gRPC streaming
-  void DoSend();
+  void DoSend() override;
 
   /// These two fields are RPC related. When the server got long-polling requests,
   /// these two fields will be set so that it can be used to send message.
@@ -179,7 +182,7 @@ class ClientSyncConnection : public NodeSyncConnection {
  protected:
   /// Send the message from the pending queue to the target node.
   /// It'll use gRPC to send the message directly.
-  void DoSend();
+  void DoSend() override;
 
   /// Start to send long-polling request to remote nodes.
   void StartLongPolling();

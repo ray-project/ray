@@ -72,8 +72,7 @@ bool NodeState::ConsumeMessage(std::shared_ptr<const RaySyncMessage> message) {
 NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
                                        instrumented_io_context &io_context,
                                        std::string node_id)
-    : timer_(io_context),
-      instance_(instance),
+    : instance_(instance),
       io_context_(io_context),
       node_id_(std::move(node_id)) {}
 
@@ -100,6 +99,7 @@ bool NodeSyncConnection::PushToSendingQueue(
     // Skip the message when it's about the node of this connection.
     return false;
   }
+
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
     sending_queue_.insert(message);
@@ -126,10 +126,6 @@ ClientSyncConnection::ClientSyncConnection(RaySyncer &instance,
                                            std::shared_ptr<grpc::Channel> channel)
     : NodeSyncConnection(instance, io_context, node_id),
       stub_(ray::rpc::syncer::RaySyncer::NewStub(channel)) {
-  timer_.RunFnPeriodically(
-      [this]() { DoSend(); },
-      RayConfig::instance().raylet_report_resources_period_milliseconds());
-
   StartLongPolling();
 }
 
@@ -138,7 +134,6 @@ void ClientSyncConnection::StartLongPolling() {
   //    1. there is a new version of message
   //    2. and it has passed X ms since last update.
   auto client_context = std::make_shared<grpc::ClientContext>();
-  RAY_LOG(DEBUG) << "Start long pulling from " << NodeID::FromBinary(GetNodeId());
   stub_->async()->LongPolling(
       client_context.get(),
       &dummy_,
@@ -181,25 +176,24 @@ void ClientSyncConnection::DoSend() {
     holder.push_back(*iter);
     sending_queue_.erase(iter++);
   }
-  stub_->async()->Update(
-      client_context.get(),
-      request,
-      response,
-      [arena, client_context, holder = std::move(holder)](grpc::Status status) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Sending request failed because of "
-                         << status.error_message();
-        }
-      });
+  if (request->sync_messages_size() != 0) {
+    stub_->async()->Update(
+        client_context.get(),
+        request,
+        response,
+        [arena, client_context, holder = std::move(holder)](grpc::Status status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Sending request failed because of "
+                           << status.error_message();
+          }
+        });
+  }
 }
 
 ServerSyncConnection::ServerSyncConnection(RaySyncer &instance,
                                            instrumented_io_context &io_context,
                                            const std::string &node_id)
     : NodeSyncConnection(instance, io_context, node_id) {
-  timer_.RunFnPeriodically(
-      [this]() { DoSend(); },
-      RayConfig::instance().raylet_report_resources_period_milliseconds());
 }
 
 ServerSyncConnection::~ServerSyncConnection() {
@@ -250,6 +244,13 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context, const std::string &nod
       timer_(io_context) {
   stopped_ = std::make_shared<bool>(false);
   component_broadcast_.fill(true);
+  timer_.RunFnPeriodically(
+      [this]() {
+        for(auto& [_, sync_connection] : sync_connections_) {
+          sync_connection->DoSend();
+        }
+      },
+      RayConfig::instance().raylet_report_resources_period_milliseconds());
 }
 
 RaySyncer::~RaySyncer() { *stopped_ = true; }

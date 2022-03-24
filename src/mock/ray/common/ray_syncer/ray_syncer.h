@@ -41,8 +41,10 @@ class MockReceiverInterface : public ReceiverInterface {
 namespace ray {
 namespace syncer {
 
-class MockRaySyncer : public RaySyncer {
+class MockNodeSyncConnection : public NodeSyncConnection {
  public:
+  using NodeSyncConnection::NodeSyncConnection;
+  MOCK_METHOD(void, DoSend, (), (override));
 };
 
 }  // namespace syncer
