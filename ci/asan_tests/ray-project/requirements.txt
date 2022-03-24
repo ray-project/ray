@@ -9,7 +9,7 @@ feather-format
 flask
 frozenlist
 grpcio >= 1.28.1, <= 1.43.0
-gym
+gym==0.21
 kubernetes
 lxml
 networkx

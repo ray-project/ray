@@ -92,8 +92,8 @@ class PullManagerTestWithCapacity {
   std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
-  std::unordered_map<ObjectID, int> num_abort_calls_;
-  std::unordered_map<ObjectID, std::string> spilled_url_;
+  absl::flat_hash_map<ObjectID, int> num_abort_calls_;
+  absl::flat_hash_map<ObjectID, std::string> spilled_url_;
   std::unordered_set<ObjectID> timed_out_objects_;
 };
 

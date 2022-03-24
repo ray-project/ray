@@ -58,25 +58,25 @@ class HyperOptSearch(Searcher):
 
 
     Parameters:
-        space (dict): HyperOpt configuration. Parameters will be sampled
+        space: HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        n_initial_points (int): number of random evaluations of the
+        n_initial_points: number of random evaluations of the
             objective function before starting to aproximate it with
             tree parzen estimators. Defaults to 20.
-        random_state_seed (int, array_like, None): seed for reproducible
+        random_state_seed: seed for reproducible
             results. Defaults to None.
-        gamma (float in range (0,1)): parameter governing the tree parzen
+        gamma: parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
@@ -244,9 +244,7 @@ class HyperOptSearch(Searcher):
                                     "provided. "
                                 )
 
-                            msg += (
-                                "Please make sure the specified category " "is valid."
-                            )
+                            msg += "Please make sure the specified category is valid."
                             raise ValueError(msg) from exc
                         config_dict[key] = idx
 

@@ -15,6 +15,8 @@
 namespace ray {
 namespace gcs {
 
+using ScheduleContext = raylet_scheduling_policy::BundleSchedulingContext;
+
 class Mockpair_hash : public pair_hash {
  public:
 };
@@ -82,7 +84,7 @@ class MockGcsScheduleStrategy : public GcsScheduleStrategy {
       Schedule,
       (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
        const std::unique_ptr<ScheduleContext> &context,
-       GcsResourceScheduler &gcs_resource_scheduler),
+       ClusterResourceScheduler &cluster_resource_scheduler),
       (override));
 };
 
@@ -99,7 +101,7 @@ class MockGcsPackStrategy : public GcsPackStrategy {
       Schedule,
       (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
        const std::unique_ptr<ScheduleContext> &context,
-       GcsResourceScheduler &gcs_resource_scheduler),
+       ClusterResourceScheduler &cluster_resource_scheduler),
       (override));
 };
 
@@ -116,7 +118,7 @@ class MockGcsSpreadStrategy : public GcsSpreadStrategy {
       Schedule,
       (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
        const std::unique_ptr<ScheduleContext> &context,
-       GcsResourceScheduler &gcs_resource_scheduler),
+       ClusterResourceScheduler &cluster_resource_scheduler),
       (override));
 };
 
@@ -133,7 +135,7 @@ class MockGcsStrictPackStrategy : public GcsStrictPackStrategy {
       Schedule,
       (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
        const std::unique_ptr<ScheduleContext> &context,
-       GcsResourceScheduler &gcs_resource_scheduler),
+       ClusterResourceScheduler &cluster_resource_scheduler),
       (override));
 };
 
@@ -150,7 +152,7 @@ class MockGcsStrictSpreadStrategy : public GcsStrictSpreadStrategy {
       Schedule,
       (const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
        const std::unique_ptr<ScheduleContext> &context,
-       GcsResourceScheduler &gcs_resource_scheduler),
+       ClusterResourceScheduler &cluster_resource_scheduler),
       (override));
 };
 

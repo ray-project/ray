@@ -1,4 +1,5 @@
 import os
+import sys
 import unittest
 from typing import Dict
 from unittest.mock import patch
@@ -20,12 +21,13 @@ from ray_release.buildkite.settings import (
 from ray_release.buildkite.step import get_step
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.tests.test_glue import MockReturn
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
 
 
-class MockBuildkite:
+class MockBuildkiteAgent:
     def __init__(self, return_dict: Dict):
         self.return_dict = return_dict
 
@@ -33,10 +35,18 @@ class MockBuildkite:
         return self.return_dict.get(key, None)
 
 
+class MockBuildkitePythonAPI(MockReturn):
+    def builds(self):
+        return self
+
+    def artifacts(self):
+        return self
+
+
 class BuildkiteSettingsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.buildkite = {}
-        self.buildkite_mock = MockBuildkite(self.buildkite)
+        self.buildkite_mock = MockBuildkiteAgent(self.buildkite)
 
     def testSplitRayRepoStr(self):
         url, branch = split_ray_repo_str("https://github.com/ray-project/ray.git")
@@ -339,3 +349,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(1, 0, "tiny")
         test_concurrency(32, 0, "tiny")
         test_concurrency(33, 0, "small")
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

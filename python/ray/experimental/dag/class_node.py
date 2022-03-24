@@ -93,18 +93,7 @@ class ClassNode(DAGNode):
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, ClassNode.__name__)
-        import_path = self.get_import_path()
-        error_message = (
-            "Class used in DAG should not be in-line defined when exporting"
-            "import path for deployment. Please ensure it has fully "
-            "qualified name with valid __module__ and __qualname__ for "
-            "import path, with no __main__ or <locals>. \n"
-            f"Current import path: {import_path}"
-        )
-        assert "__main__" not in import_path, error_message
-        assert "<locals>" not in import_path, error_message
-
-        json_dict["import_path"] = import_path
+        json_dict["import_path"] = self.get_import_path()
         return json_dict
 
     @classmethod
@@ -143,6 +132,15 @@ class _UnboundClassMethodNode(object):
         )
         self._actor._last_call = node
         return node
+
+    def __getattr__(self, attr: str):
+        if attr == "remote":
+            raise AttributeError(
+                ".remote() cannot be used on ClassMethodNodes. Use .bind() instead "
+                "to express an symbolic actor call."
+            )
+        else:
+            return self.__getattribute__(attr)
 
     def options(self, **options):
         self._options = options

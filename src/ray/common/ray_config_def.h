@@ -140,7 +140,7 @@ RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 /// Whether to only report the usage of pinned copies of objects in the
 /// object_store_memory resource. This means nodes holding secondary copies only
 /// will become eligible for removal in the autoscaler.
-RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, false)
+RAY_CONFIG(bool, scheduler_report_pinned_bytes_only, true)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -318,6 +318,15 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
+/// Whether to start a background thread to import Python dependencies eagerly.
+/// When set to false, Python dependencies will still be imported, only when
+/// they are needed.
+RAY_CONFIG(bool, start_python_importer_thread, true)
+
+/// Determines if forking in Ray actors / tasks are supported.
+/// Note that this only enables forking in workers, but not drivers.
+RAY_CONFIG(bool, support_fork, false)
+
 /// Maximum timeout for GCS reconnection in seconds.
 /// Each reconnection ping will be retried every 1 second.
 RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
@@ -341,17 +350,8 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 /// Maximum number of pending lease requests per scheduling category
 RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
 
-/// Interval to restart dashboard agent after the process exit.
-RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
-
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
-
-/// Max restart count for the dashboard agent.
-RAY_CONFIG(uint32_t, agent_max_restart_count, 5)
-
-/// Whether to fail raylet when agent fails.
-RAY_CONFIG(bool, raylet_shares_fate_with_agent, false)
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.

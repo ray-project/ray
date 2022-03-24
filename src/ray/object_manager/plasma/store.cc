@@ -321,7 +321,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   client->Close();
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
-  std::unordered_map<ObjectID, const LocalObject *> sealed_objects;
+  absl::flat_hash_map<ObjectID, const LocalObject *> sealed_objects;
   auto &object_ids = client->GetObjectIDs();
   for (const auto &object_id : object_ids) {
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
@@ -342,8 +342,8 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   /// Remove all of the client's GetRequests.
   get_request_queue_.RemoveGetRequestsForClient(client);
 
-  for (const auto &entry : sealed_objects) {
-    RemoveFromClientObjectIds(entry.first, client);
+  for (const auto &[object_id, _] : sealed_objects) {
+    RemoveFromClientObjectIds(object_id, client);
   }
 
   create_request_queue_.RemoveDisconnectedClientRequests(client);

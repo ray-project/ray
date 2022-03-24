@@ -141,7 +141,7 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:conda_env # pip field in runtime_env not supported
-      -python/ray/serve:test_cross_langauge # Ray java not built on Windows yet.
+      -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -189,15 +189,6 @@ test_large() {
   bazel test --config=ci "$(./scripts/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
-      -- python/ray/tests/...
-}
-
-# For running large Python tests on Linux and MacOS in GCS HA mode.
-test_large_gcs() {
-  bazel test --config=ci "$(./scripts/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
-      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
-      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
-      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_bootstrap_with_gcs=1 --test_env=RAY_gcs_storage=memory \
       -- python/ray/tests/...
 }
 
@@ -273,6 +264,7 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       sphinx-build -q -E -W -T -b html source _build/html
+      make linkcheck
     fi
   )
 }

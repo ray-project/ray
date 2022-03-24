@@ -14,7 +14,6 @@ from ray.tests.conftest import (
     mock_distributed_fs_object_spilling_config,
 )
 from ray.external_storage import create_url_with_offset, parse_url_with_offset
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import memory_summary
 from ray._raylet import GcsClientOptions
@@ -42,12 +41,7 @@ def is_dir_empty(temp_folder, append_path=ray.ray_constants.DEFAULT_OBJECT_PREFI
 
 def assert_no_thrashing(address):
     state = ray.state.GlobalState()
-    if use_gcs_for_bootstrap():
-        options = GcsClientOptions.from_gcs_address(address)
-    else:
-        options = GcsClientOptions.from_redis_address(
-            address, ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        )
+    options = GcsClientOptions.from_gcs_address(address)
     state._initialize_global_state(options)
     summary = memory_summary(address=address, stats_only=True)
     restored_bytes = 0
@@ -248,6 +242,7 @@ def test_spill_remote_object(
     assert_no_thrashing(cluster.address)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
@@ -471,6 +466,67 @@ async def test_spill_during_get(object_spilling_config, shutdown_only, is_async)
         seconds=timeout_seconds
     ), "Concurrent gets took too long. Maybe IO workers are not started properly."  # noqa: E501
     assert_no_thrashing(address["address"])
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        {
+            "object_store_memory": 75 * 1024 * 1024,
+            "_system_config": {"max_io_workers": 1},
+        }
+    ],
+    indirect=True,
+)
+def test_spill_worker_failure(ray_start_regular):
+    def run_workload():
+        @ray.remote
+        def f():
+            return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+
+        ids = []
+        for _ in range(5):
+            x = f.remote()
+            ids.append(x)
+        for id in ids:
+            ray.get(id)
+        del ids
+
+    run_workload()
+
+    def get_spill_worker():
+        import psutil
+
+        for proc in psutil.process_iter():
+            try:
+                name = ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
+                if name in proc.name():
+                    return proc
+                # for macOS
+                if proc.cmdline() and name in proc.cmdline()[0]:
+                    return proc
+                # for Windows
+                if proc.cmdline() and "--worker-type=SPILL_WORKER" in proc.cmdline():
+                    return proc
+            except psutil.AccessDenied:
+                pass
+            except psutil.NoSuchProcess:
+                pass
+
+    # Spilling occurred. Get the PID of the spill worker.
+    spill_worker_proc = get_spill_worker()
+    assert spill_worker_proc
+
+    # Kill the spill worker
+    spill_worker_proc.kill()
+    spill_worker_proc.wait()
+
+    # Now we trigger spilling again
+    run_workload()
+
+    # A new spill worker should be created
+    spill_worker_proc = get_spill_worker()
+    assert spill_worker_proc
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
 
@@ -28,10 +29,10 @@ class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest() {
     gcs_resource_manager_ =
-        std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
+        std::make_shared<gcs::GcsResourceManager>(nullptr, cluster_resource_manager_);
   }
 
-  instrumented_io_context io_service_;
+  ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 
@@ -46,22 +47,28 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   gcs_resource_manager_->OnNodeAdd(*node);
 
   // Get and check cluster resources.
-  const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
-  ASSERT_EQ(1, cluster_resource.size());
+  const auto &resource_view = cluster_resource_manager_.GetResourceView();
+  ASSERT_EQ(1, resource_view.size());
 
-  const auto &node_id = NodeID::FromBinary(node->node_id());
+  scheduling::NodeID scheduling_node_id(node->node_id());
   auto resource_request =
       ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false);
 
   // Test `AcquireResources`.
-  ASSERT_TRUE(gcs_resource_manager_->AcquireResources(node_id, resource_request));
-  ASSERT_FALSE(gcs_resource_manager_->AcquireResources(node_id, resource_request));
+  ASSERT_TRUE(cluster_resource_manager_.HasSufficientResource(
+      scheduling_node_id,
+      resource_request,
+      /*ignore_object_store_memory_requirement=*/true));
+  ASSERT_TRUE(cluster_resource_manager_.SubtractNodeAvailableResources(scheduling_node_id,
+                                                                       resource_request));
+  ASSERT_FALSE(cluster_resource_manager_.HasSufficientResource(
+      scheduling_node_id,
+      resource_request,
+      /*ignore_object_store_memory_requirement=*/true));
 
   // Test `ReleaseResources`.
-  ASSERT_TRUE(
-      gcs_resource_manager_->ReleaseResources(NodeID::FromRandom(), resource_request));
-  ASSERT_TRUE(gcs_resource_manager_->ReleaseResources(node_id, resource_request));
-  ASSERT_TRUE(gcs_resource_manager_->AcquireResources(node_id, resource_request));
+  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(scheduling_node_id,
+                                                                  resource_request));
 }
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
@@ -96,18 +103,19 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   node->mutable_resources_total()->insert({"CPU", 10});
 
   gcs_resource_manager_->OnNodeAdd(*node);
-  ASSERT_EQ(gcs_resource_manager_->GetClusterResources().size(), 1);
+  ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 1);
 
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_resource_manager_->OnNodeDead(node_id);
-  ASSERT_EQ(gcs_resource_manager_->GetClusterResources().size(), 0);
+  ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 
   rpc::ResourcesData resources_data;
   resources_data.set_node_id(node->node_id());
+  resources_data.mutable_resources_total()->insert({"CPU", 5});
   resources_data.mutable_resources_available()->insert({"CPU", 5});
   resources_data.set_resources_available_changed(true);
   gcs_resource_manager_->UpdateFromResourceReport(resources_data);
-  ASSERT_EQ(gcs_resource_manager_->GetClusterResources().size(), 0);
+  ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 }
 
 }  // namespace ray

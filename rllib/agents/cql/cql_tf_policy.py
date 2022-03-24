@@ -5,6 +5,7 @@ from functools import partial
 import numpy as np
 import gym
 import logging
+import tree
 from typing import Dict, List, Type, Union
 
 import ray
@@ -46,30 +47,38 @@ MEAN_MIN = -9.0
 MEAN_MAX = 9.0
 
 
+def _repeat_tensor(t: tf.Tensor, n: int):
+    # Insert new axis at position 1 into tensor t
+    t_rep = tf.expand_dims(t, 1)
+    # Repeat tensor t_rep along new axis n times
+    multiples = tf.concat([[1, n], tf.tile([1], tf.expand_dims(tf.rank(t) - 1, 0))], 0)
+    t_rep = tf.tile(t_rep, multiples)
+    # Merge new axis into batch axis
+    t_rep = tf.reshape(t_rep, tf.concat([[-1], tf.shape(t)[1:]], 0))
+    return t_rep
+
+
 # Returns policy tiled actions and log probabilities for CQL Loss
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
-    obs_temp = tf.reshape(
-        tf.tile(tf.expand_dims(obs, 1), [1, num_repeat, 1]), [-1, obs.shape[1]]
-    )
+    batch_size = tf.shape(tree.flatten(obs)[0])[0]
+    obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
     logits = model.get_policy_output(obs_temp)
     policy_dist = action_dist(logits, model)
     actions, logp_ = policy_dist.sample_logp()
     logp = tf.expand_dims(logp_, -1)
-    return actions, tf.reshape(logp, [tf.shape(obs)[0], num_repeat, 1])
+    return actions, tf.reshape(logp, [batch_size, num_repeat, 1])
 
 
 def q_values_repeat(model, obs, actions, twin=False):
     action_shape = tf.shape(actions)[0]
-    obs_shape = tf.shape(obs)[0]
+    obs_shape = tf.shape(tree.flatten(obs)[0])[0]
     num_repeat = action_shape // obs_shape
-    obs_temp = tf.reshape(
-        tf.tile(tf.expand_dims(obs, 1), [1, num_repeat, 1]), [-1, tf.shape(obs)[1]]
-    )
+    obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
     if not twin:
         preds_ = model.get_q_values(obs_temp, actions)
     else:
         preds_ = model.get_twin_q_values(obs_temp, actions)
-    preds = tf.reshape(preds_, [tf.shape(obs)[0], num_repeat, 1])
+    preds = tf.reshape(preds_, [obs_shape, num_repeat, 1])
     return preds
 
 

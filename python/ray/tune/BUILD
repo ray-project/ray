@@ -209,6 +209,14 @@ py_test(
 )
 
 py_test(
+    name = "test_resource_updater",
+    size = "large",
+    srcs = ["tests/test_resource_updater.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
     name = "test_ray_trial_executor",
     size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
@@ -228,6 +236,14 @@ py_test(
     name = "test_remote",
     size = "medium",
     srcs = ["tests/test_remote.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
+    name = "test_result_grid",
+    size = "small",
+    srcs = ["tests/test_result_grid.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
 )
@@ -615,6 +631,16 @@ py_test(
 )
 
 py_test(
+    name = "lightgbm_example_cv",
+    size = "small",
+    main = "examples/lightgbm_example.py",
+    srcs = ["examples/lightgbm_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
+)
+
+py_test(
     name = "logging_example",
     size = "small",
     srcs = ["examples/logging_example.py"],
@@ -915,6 +941,16 @@ py_test(
     srcs = ["examples/xgboost_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
+)
+
+py_test(
+    name = "xgboost_example_cv",
+    size = "small",
+    main = "examples/xgboost_example.py",
+    srcs = ["examples/xgboost_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--use-cv"]
 )
 
 py_test(

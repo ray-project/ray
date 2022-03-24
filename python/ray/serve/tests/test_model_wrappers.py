@@ -1,16 +1,19 @@
 import json
 import tempfile
+from fastapi import Depends, FastAPI
 
 import numpy as np
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 from ray._private.test_utils import wait_for_condition
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import DataBatchType, Predictor
 from ray.serve.model_wrappers import ModelWrapper
 from ray.serve.pipeline.api import build
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
-from requests.adapters import HTTPAdapter, Retry
+from ray.experimental.dag.input_node import InputNode
+from ray.serve.api import RayServeDAGHandle
+from ray.serve.http_adapters import array_to_databatch
 import ray
 from ray import serve
 
@@ -74,6 +77,20 @@ def test_batching(serve_instance):
         assert resp == {"value": [42], "batch_size": 2}
 
 
+app = FastAPI()
+
+
+@serve.deployment(route_prefix="/ingress")
+@serve.ingress(app)
+class Ingress:
+    def __init__(self, dag: RayServeDAGHandle) -> None:
+        self.dag = dag
+
+    @app.post("/")
+    async def predict(self, data=Depends(array_to_databatch)):
+        return await self.dag.remote(data)
+
+
 def test_model_wrappers_in_pipeline(serve_instance):
     _, path = tempfile.mkstemp()
     with open(path, "w") as f:
@@ -81,9 +98,8 @@ def test_model_wrappers_in_pipeline(serve_instance):
 
     predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
     checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
-    schema_cls = "ray.serve.http_adapters.array_to_databatch"
 
-    with PipelineInputNode(preprocessor=schema_cls) as dag_input:
+    with InputNode() as dag_input:
         m1 = ray.remote(ModelWrapper).bind(
             predictor_cls=predictor_cls,  # TODO: can't be the raw class right now?
             checkpoint={  # TODO: can't be the raw object right now?
@@ -92,11 +108,12 @@ def test_model_wrappers_in_pipeline(serve_instance):
             },
         )
         dag = m1.predict.bind(dag_input)
-    deployments = build(dag)
+    deployments = build(Ingress.bind(dag))
     for d in deployments:
         d.deploy()
 
     resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
+    print(resp.text)
     resp.raise_for_status()
     return resp.json() == {"value": [42], "batch_size": 1}
 

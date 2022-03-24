@@ -53,7 +53,7 @@ class ReplayBuffer:
             self._storage_unit = StorageUnit.EPISODES
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', `sequences` or " "`episodes`."
+                "storage_unit must be either 'timesteps', `sequences` or `episodes`."
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).

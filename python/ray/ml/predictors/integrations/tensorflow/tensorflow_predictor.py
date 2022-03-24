@@ -1,14 +1,12 @@
 from typing import Callable, Optional, Union, List, Type
 
+import pandas as pd
 import tensorflow as tf
 
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-
-# TensorFlow model objects cannot be pickled, therefore we use
-# a callable that returns the model, instead of a model object
-# itself.
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 
 
 class TensorflowPredictor(Predictor):
@@ -25,10 +23,12 @@ class TensorflowPredictor(Predictor):
     def __init__(
         self,
         model_definition: Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]],
-        preprocessor: Preprocessor,
+        preprocessor: Optional[Preprocessor] = None,
         model_weights: Optional[list] = None,
     ):
-        raise NotImplementedError
+        self.model_definition = model_definition
+        self.model_weights = model_weights
+        self.preprocessor = preprocessor
 
     @classmethod
     def from_checkpoint(
@@ -47,7 +47,20 @@ class TensorflowPredictor(Predictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
         """
-        raise NotImplementedError
+        checkpoint_dict = checkpoint.to_dict()
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+        if MODEL_KEY not in checkpoint_dict:
+            raise RuntimeError(
+                f"No item with key: {MODEL_KEY} is found in the "
+                f"Checkpoint. Make sure this key exists when saving the "
+                f"checkpoint in ``TensorflowTrainer``."
+            )
+        model_weights = checkpoint_dict[MODEL_KEY]
+        return TensorflowPredictor(
+            model_definition=model_definition,
+            model_weights=model_weights,
+            preprocessor=preprocessor,
+        )
 
     def predict(
         self,
@@ -57,7 +70,7 @@ class TensorflowPredictor(Predictor):
     ) -> DataBatchType:
         """Run inference on data batch.
 
-        The data is converted into a torch Tensor before being inputted to
+        The data is converted into a TensorFlow Tensor before being inputted to
         the model.
 
         Args:
@@ -121,4 +134,24 @@ class TensorflowPredictor(Predictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        raise NotImplementedError
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
+
+        if isinstance(data, pd.DataFrame):
+            if feature_columns:
+                data = data[feature_columns]
+            data = data.values
+        else:
+            data = data[:, feature_columns]
+
+        tensor = tf.convert_to_tensor(data, dtype=dtype)
+
+        # TensorFlow model objects cannot be pickled, therefore we use
+        # a callable that returns the model and initialize it here,
+        # instead of having an initialized model object as an attribute.
+        model = self.model_definition()
+        if self.model_weights:
+            model.set_weights(self.model_weights)
+
+        prediction = model(tensor).numpy().ravel()
+        return pd.DataFrame(prediction, columns=["predictions"])

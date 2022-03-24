@@ -31,7 +31,7 @@ def dict_hash(dt: Dict[Any, Any]) -> str:
 
 
 def url_exists(url: str):
-    return requests.head(url).status_code == 200
+    return requests.head(url, allow_redirects=True).status_code == 200
 
 
 def format_link(link: str):

@@ -563,6 +563,7 @@ class ActorClass:
         max_task_retries=None,
         name=None,
         namespace=None,
+        get_if_exists=False,
         lifetime=None,
         placement_group="default",
         placement_group_bundle_index=-1,
@@ -618,6 +619,15 @@ class ActorClass:
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
+                # Handle the get-or-create case.
+                if get_if_exists:
+                    if not cls_options.get("name"):
+                        raise ValueError(
+                            "The actor name must be specified to use `get_if_exists`."
+                        )
+                    return self._get_or_create_impl(args, kwargs)
+
+                # Normal create case.
                 return actor_cls._remote(
                     args=args,
                     kwargs=kwargs,
@@ -639,6 +649,23 @@ class ActorClass:
                     kwargs,
                     cls_options,
                 )
+
+            def _get_or_create_impl(self, args, kwargs):
+                name = cls_options["name"]
+                try:
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
+                except ValueError:
+                    # Attempt to create it (may race with other attempts).
+                    try:
+                        return actor_cls._remote(
+                            args=args,
+                            kwargs=kwargs,
+                            **cls_options,
+                        )
+                    except ValueError:
+                        # We lost the creation race, ignore.
+                        pass
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
 
         return ActorOptionWrapper()
 
@@ -984,11 +1011,14 @@ class ActorClass:
 
         # Update the creation descriptor based on number of arguments
         if meta.is_cross_language:
+            func_name = "<init>"
+            if meta.language == Language.CPP:
+                func_name = meta.actor_creation_function_descriptor.function_name
             meta.actor_creation_function_descriptor = (
                 cross_language.get_function_descriptor_for_actor_method(
                     meta.language,
                     meta.actor_creation_function_descriptor,
-                    "<init>",
+                    func_name,
                     str(len(args) + len(kwargs)),
                 )
             )
@@ -1180,9 +1210,9 @@ class ActorHandle:
             function_descriptor = self._ray_function_descriptor[method_name]
 
         if worker.mode == ray.LOCAL_MODE:
-            assert not self._ray_is_cross_language, (
-                "Cross language remote actor method " "cannot be executed locally."
-            )
+            assert (
+                not self._ray_is_cross_language
+            ), "Cross language remote actor method cannot be executed locally."
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -1220,7 +1250,7 @@ class ActorHandle:
 
                 def remote(self, *args, **kwargs):
                     logger.warning(
-                        f"Actor method {item} is not " "supported by cross language."
+                        f"Actor method {item} is not supported by cross language."
                     )
 
             return FakeActorMethod()

@@ -86,15 +86,15 @@ class RayParams:
             Defaults to 8265.
         dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
-        logging_level: Logging level, default will be logging.INFO.
-        logging_format: Logging format, default contains a timestamp,
-            filename, line number, and message. See ray_constants.py.
         plasma_store_socket_name (str): If provided, it will specify the socket
             name used by the plasma store.
         raylet_socket_name (str): If provided, it will specify the socket path
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        storage: Specify a URI for persistent cluster-wide storage. This storage path
+            must be accessible by all nodes of the cluster, otherwise an error will be
+            raised.
         runtime_env_dir_name (str): If provided, specifies the directory that
             will be created in the session dir to hold runtime_env files.
         include_log_monitor (bool): If True, then start a log monitor to
@@ -155,11 +155,10 @@ class RayParams:
         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
         dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
         dashboard_agent_listen_port=0,
-        logging_level=logging.INFO,
-        logging_format=ray_constants.LOGGER_FORMAT,
         plasma_store_socket_name=None,
         raylet_socket_name=None,
         temp_dir=None,
+        storage=None,
         runtime_env_dir_name=None,
         include_log_monitor=None,
         autoscaling_config=None,
@@ -209,6 +208,9 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
+        self.storage = storage or os.environ.get(
+            ray_constants.RAY_STORAGE_ENVIRONMENT_VARIABLE
+        )
         self.runtime_env_dir_name = (
             runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
         )
@@ -262,7 +264,7 @@ class RayParams:
                     setattr(self, arg, kwargs[arg])
             else:
                 raise ValueError(
-                    "Invalid RayParams parameter in" " update_if_absent: %s" % arg
+                    f"Invalid RayParams parameter in update_if_absent: {arg}"
                 )
 
         self._check_usage()
@@ -317,13 +319,10 @@ class RayParams:
                 if port in self.reserved_ports:
                     raise ValueError(
                         f"Ray component {comp} is trying to use "
-                        f"a port number {port} that is used by "
-                        "other components.\n"
-                        f"Port information: "
-                        f"{self._format_ports(pre_selected_ports)}\n"
-                        "If you allocate ports, "
-                        "please make sure the same port is not used by "
-                        "multiple components."
+                        f"a port number {port} that is used by other components.\n"
+                        f"Port information: {self._format_ports(pre_selected_ports)}\n"
+                        "If you allocate ports, please make sure the same port "
+                        "is not used by multiple components."
                     )
                 self.reserved_ports.add(port)
 
@@ -335,13 +334,13 @@ class RayParams:
                 except ValueError as e:
                     raise ValueError(
                         "worker_port_list must be a comma-separated "
-                        + "list of integers: {}".format(e)
+                        f"list of integers: {e}"
                     ) from None
 
                 if port < 1024 or port > 65535:
                     raise ValueError(
                         "Ports in worker_port_list must be "
-                        "between 1024 and 65535. Got: {}".format(port)
+                        f"between 1024 and 65535. Got: {port}"
                     )
 
         # Used primarily for testing.
@@ -355,13 +354,13 @@ class RayParams:
                 self.min_worker_port < 1024 or self.min_worker_port > 65535
             ):
                 raise ValueError(
-                    "min_worker_port must be 0 or an integer " "between 1024 and 65535."
+                    "min_worker_port must be 0 or an integer between 1024 and 65535."
                 )
 
         if self.max_worker_port is not None:
             if self.min_worker_port is None:
                 raise ValueError(
-                    "If max_worker_port is set, min_worker_port " "must also be set."
+                    "If max_worker_port is set, min_worker_port must also be set."
                 )
             elif self.max_worker_port != 0:
                 if self.max_worker_port < 1024 or self.max_worker_port > 65535:
@@ -371,7 +370,7 @@ class RayParams:
                     )
                 elif self.max_worker_port <= self.min_worker_port:
                     raise ValueError(
-                        "max_worker_port must be higher than " "min_worker_port."
+                        "max_worker_port must be higher than min_worker_port."
                     )
 
         if self.ray_client_server_port is not None:
@@ -407,9 +406,7 @@ class RayParams:
             )
 
     def _format_ports(self, pre_selected_ports):
-        """Format the pre selected ports information to be more
-        human readable.
-        """
+        """Format the pre-selected ports information to be more human-readable."""
         ports = pre_selected_ports.copy()
 
         for comp, port_list in ports.items():
@@ -421,7 +418,6 @@ class RayParams:
             elif comp == "worker_ports":
                 min_port = port_list[0]
                 max_port = port_list[len(port_list) - 1]
-                port_range_str = None
                 if len(port_list) < 50:
                     port_range_str = str(port_list)
                 else:

@@ -1,8 +1,7 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.api import Deployment, deployment
-from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.common import DeploymentStatus
 from ray.serve.utils import DEFAULT
 
 
@@ -311,91 +310,3 @@ class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
 
 class ServeApplicationStatusSchema(BaseModel, extra=Extra.forbid):
     statuses: List[DeploymentStatusSchema] = Field(...)
-
-
-def deployment_to_schema(d: Deployment) -> DeploymentSchema:
-    if d.ray_actor_options is not None:
-        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
-    else:
-        ray_actor_options_schema = None
-
-    return DeploymentSchema(
-        name=d.name,
-        import_path=d.func_or_class,
-        init_args=d.init_args,
-        init_kwargs=d.init_kwargs,
-        num_replicas=d.num_replicas,
-        route_prefix=d.route_prefix,
-        max_concurrent_queries=d.max_concurrent_queries,
-        user_config=d.user_config,
-        autoscaling_config=d._config.autoscaling_config,
-        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
-        health_check_period_s=d._config.health_check_period_s,
-        health_check_timeout_s=d._config.health_check_timeout_s,
-        ray_actor_options=ray_actor_options_schema,
-    )
-
-
-def schema_to_deployment(s: DeploymentSchema) -> Deployment:
-    if s.ray_actor_options is None:
-        ray_actor_options = None
-    else:
-        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
-
-    return deployment(
-        name=s.name,
-        num_replicas=s.num_replicas,
-        init_args=s.init_args,
-        init_kwargs=s.init_kwargs,
-        route_prefix=s.route_prefix,
-        ray_actor_options=ray_actor_options,
-        max_concurrent_queries=s.max_concurrent_queries,
-        _autoscaling_config=s.autoscaling_config,
-        _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
-        _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
-        _health_check_period_s=s.health_check_period_s,
-        _health_check_timeout_s=s.health_check_timeout_s,
-    )(s.import_path)
-
-
-def serve_application_to_schema(
-    deployments: List[Deployment],
-) -> ServeApplicationSchema:
-    schemas = [deployment_to_schema(d) for d in deployments]
-    return ServeApplicationSchema(deployments=schemas)
-
-
-def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
-    return [schema_to_deployment(s) for s in schema.deployments]
-
-
-def status_info_to_schema(
-    deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
-) -> DeploymentStatusSchema:
-    if isinstance(status_info, DeploymentStatusInfo):
-        return DeploymentStatusSchema(
-            name=deployment_name, status=status_info.status, message=status_info.message
-        )
-    elif isinstance(status_info, dict):
-        return DeploymentStatusSchema(
-            name=deployment_name,
-            status=status_info["status"],
-            message=status_info["message"],
-        )
-    else:
-        raise TypeError(
-            f"Got {type(status_info)} as status_info's "
-            "type. Expected status_info to be either a "
-            "DeploymentStatusInfo or a dictionary."
-        )
-
-
-def serve_application_status_to_schema(
-    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
-) -> ServeApplicationStatusSchema:
-    schemas = [
-        status_info_to_schema(deployment_name, status_info)
-        for deployment_name, status_info in status_infos.items()
-    ]
-    return ServeApplicationStatusSchema(statuses=schemas)

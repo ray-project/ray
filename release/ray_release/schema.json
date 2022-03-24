@@ -52,7 +52,6 @@
 			"required": [
 				"cluster",
 				"frequency",
-				"legacy",
 				"name",
 				"run",
 				"team",
