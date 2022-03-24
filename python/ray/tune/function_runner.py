@@ -277,7 +277,7 @@ class _RunnerThread(threading.Thread):
                     "signal to terminate the thread without error."
                 )
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Runner Thread raised error.")
             try:
                 # report the error but avoid indefinite blocking which would
