@@ -51,7 +51,9 @@ if __name__ == "__main__":
         runtime_env={"pip": ["ray[tune]"], "working_dir": "./"},
     )
     timeout_s = 10 * 60
-    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=timeout_s)
+    wait_for_condition(
+        _check_job_succeeded, client=client, job_id=job_id, timeout=timeout_s
+    )
 
     taken = time.time() - start
     result = {
