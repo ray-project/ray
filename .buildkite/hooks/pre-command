@@ -1,2 +1,3 @@
+echo "Cleaning up old artifacts before command:"
+ls -alp /artifact-mount
 rm -rf /artifact-mount/* || true
-
