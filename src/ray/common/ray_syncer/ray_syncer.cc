@@ -72,9 +72,7 @@ bool NodeState::ConsumeMessage(std::shared_ptr<const RaySyncMessage> message) {
 NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
                                        instrumented_io_context &io_context,
                                        std::string node_id)
-    : instance_(instance),
-      io_context_(io_context),
-      node_id_(std::move(node_id)) {}
+    : instance_(instance), io_context_(io_context), node_id_(std::move(node_id)) {}
 
 void NodeSyncConnection::ReceiveUpdate(RaySyncMessages messages) {
   for (auto &message : *messages.mutable_sync_messages()) {
@@ -193,8 +191,7 @@ void ClientSyncConnection::DoSend() {
 ServerSyncConnection::ServerSyncConnection(RaySyncer &instance,
                                            instrumented_io_context &io_context,
                                            const std::string &node_id)
-    : NodeSyncConnection(instance, io_context, node_id) {
-}
+    : NodeSyncConnection(instance, io_context, node_id) {}
 
 ServerSyncConnection::~ServerSyncConnection() {
   // If there is a pending request, we need to cancel it. Otherwise, rpc will
@@ -243,10 +240,10 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context, const std::string &nod
       node_state_(std::make_unique<NodeState>()),
       timer_(io_context) {
   stopped_ = std::make_shared<bool>(false);
-  component_broadcast_.fill(true);
+  upward_only_.fill(false);
   timer_.RunFnPeriodically(
       [this]() {
-        for(auto& [_, sync_connection] : sync_connections_) {
+        for (auto &[_, sync_connection] : sync_connections_) {
           sync_connection->DoSend();
         }
       },
@@ -286,17 +283,26 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
 void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
   // Somehow connection=std::move(connection) won't be compiled here.
   // Potentially it might have a leak here if the function is not executed.
-  io_context_.post(
+  io_context_.dispatch(
       [this, connection = connection.release()]() mutable {
         RAY_CHECK(connection != nullptr);
         RAY_CHECK(sync_connections_[connection->GetNodeId()] == nullptr);
         auto &conn = *connection;
+        bool is_upward_conn = false;
+        if (dynamic_cast<ClientSyncConnection *>(connection) == nullptr) {
+          upward_connections_.insert(connection);
+          is_upward_conn = true;
+        }
         sync_connections_[connection->GetNodeId()].reset(connection);
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
           for (auto &message : messages) {
-            if (message && component_broadcast_[message->component_id()]) {
-              RAY_CHECK(conn.PushToSendingQueue(message));
+            if (!message) {
+              continue;
             }
+            if (upward_only_[message->component_id()] && !is_upward_conn) {
+              continue;
+            }
+            RAY_CHECK(conn.PushToSendingQueue(message));
           }
         }
       },
@@ -311,14 +317,13 @@ void RaySyncer::Disconnect(const std::string &node_id) {
 bool RaySyncer::Register(RayComponentId component_id,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,
+                         bool upward_only,
                          int64_t pull_from_reporter_interval_ms) {
   if (!node_state_->SetComponents(component_id, reporter, receiver)) {
     return false;
   }
 
-  if (receiver != nullptr) {
-    component_broadcast_[component_id] = receiver->NeedBroadcast();
-  }
+  upward_only_[component_id] = upward_only;
 
   // Set job to pull from reporter periodically
   if (reporter != nullptr) {
@@ -338,7 +343,7 @@ bool RaySyncer::Register(RayComponentId component_id,
                  << "component_id:" << component_id << ", reporter:" << reporter
                  << ", receiver:" << receiver
                  << ", pull_from_reporter_interval_ms:" << pull_from_reporter_interval_ms
-                 << ", need_broadcast:" << component_broadcast_[component_id];
+                 << ", upward_only:" << upward_only_[component_id];
   return true;
 }
 
@@ -348,7 +353,11 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
     return;
   }
 
-  if (component_broadcast_[message->component_id()]) {
+  if (upward_only_[message->component_id()]) {
+    for (auto &connection : upward_connections_) {
+      connection->PushToSendingQueue(message);
+    }
+  } else {
     for (auto &connection : sync_connections_) {
       connection.second->PushToSendingQueue(message);
     }

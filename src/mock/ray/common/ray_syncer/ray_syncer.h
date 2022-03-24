@@ -32,7 +32,6 @@ namespace syncer {
 class MockReceiverInterface : public ReceiverInterface {
  public:
   MOCK_METHOD(void, Update, (std::shared_ptr<const RaySyncMessage> message), (override));
-  MOCK_METHOD(bool, NeedBroadcast, (), (const, override));
 };
 
 }  // namespace syncer

@@ -209,14 +209,6 @@ struct SyncerServer {
             .WillRepeatedly(WithArg<0>(Invoke(snapshot_received)));
       }
 
-      if (receivers[cid] != nullptr) {
-        if (static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER) {
-          EXPECT_CALL(*receivers[cid], NeedBroadcast()).WillRepeatedly(Return(false));
-        } else {
-          EXPECT_CALL(*receivers[cid], NeedBroadcast()).WillRepeatedly(Return(true));
-        }
-      }
-
       auto &reporter = reporters[cid];
       auto take_snapshot =
           [this, cid](int64_t version_after) mutable -> std::optional<RaySyncMessage> {
@@ -239,8 +231,10 @@ struct SyncerServer {
         EXPECT_CALL(*reporter, Snapshot(_, Eq(cid)))
             .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
       }
-      syncer->Register(
-          static_cast<RayComponentId>(cid), reporter.get(), receivers[cid].get());
+      syncer->Register(static_cast<RayComponentId>(cid),
+                       reporter.get(),
+                       receivers[cid].get(),
+                       static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER);
     }
     thread = std::make_unique<std::thread>([this] {
       this->work = std::make_unique<boost::asio::io_context::work>(io_context);
@@ -522,8 +516,8 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
   // simply compare everything with server 0
   for (size_t i = 1; i < views.size(); ++i) {
     if (views[i].size() != views[0].size()) {
-      RAY_LOG(ERROR) << "View size wrong: (" << i << ") :" << views[i].size()
-                     << " vs " << views[0].size();
+      RAY_LOG(ERROR) << "View size wrong: (" << i << ") :" << views[i].size() << " vs "
+                     << views[0].size();
       return false;
     }
 
@@ -553,18 +547,21 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
   }
 
   std::map<std::string, size_t> node_id_to_idx;
-  for(size_t i = 0; i < servers.size(); ++i) {
+  for (size_t i = 0; i < servers.size(); ++i) {
     node_id_to_idx[servers[i]->syncer->GetNodeId()] = i;
   }
   // Check whether j is reachable from i
   auto reachable = [&g](size_t i, size_t j) {
+    if (i == j) {
+      return true;
+    }
     std::deque<size_t> q;
     q.push_back(i);
-    while(!q.empty()) {
+    while (!q.empty()) {
       auto f = q.front();
       q.pop_front();
-      for(auto m : g[f]) {
-        if(m == j) {
+      for (auto m : g[f]) {
+        if (m == j) {
           return true;
         }
         q.push_back(m);
@@ -573,40 +570,45 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
     return false;
   };
   // Check scheduler which is aggregating only
-  for(size_t i = 0; i < servers.size(); ++i) {
-    const auto& view = views[i];
+  for (size_t i = 0; i < servers.size(); ++i) {
+    const auto &view = views[i];
     // view: node_id -> msg
-    for(auto [node_id, msgs] : view) {
+    for (auto [node_id, msgs] : view) {
+      if (node_id_to_idx[node_id] == i) {
+        continue;
+      }
       auto msg = msgs[1];
       auto is_reachable = reachable(i, node_id_to_idx[node_id]);
-      if(msg == nullptr) {
-        if(is_reachable) {
-          RAY_LOG(ERROR) << i << " Parent is null, but it's reachable from other node";
+      if (msg == nullptr) {
+        if (is_reachable) {
+          RAY_LOG(ERROR) << i << " is null, but it can reach " << node_id_to_idx[node_id];
           return false;
         }
       } else {
-        if(!is_reachable) {
-          RAY_LOG(ERROR) << i << " Parent is not null, but it's not reachable from other node";
+        if (!is_reachable) {
+          RAY_LOG(ERROR) << i << " is not null, but it can't reachable "
+                         << node_id_to_idx[node_id];
           return false;
         }
         auto iter = views[node_id_to_idx[node_id]].find(node_id);
-        if(iter == views[node_id_to_idx[node_id]].end()) {
+        if (iter == views[node_id_to_idx[node_id]].end()) {
           return false;
         }
         auto msg2 = iter->second[1];
-        if(msg2 == nullptr) {
+        if (msg2 == nullptr) {
           return false;
         }
-        if(!google::protobuf::util::MessageDifferencer::Equals(*msg, *msg2)) {
+        if (!google::protobuf::util::MessageDifferencer::Equals(*msg, *msg2)) {
           std::string dbg_message;
           google::protobuf::util::MessageToJsonString(*msg, &dbg_message);
-          RAY_LOG(ERROR) << "server["<< i << "] >> "
+          RAY_LOG(ERROR) << "server[" << i << "] >> "
                          << NodeID::FromBinary(servers[i]->syncer->GetNodeId()) << ": "
                          << dbg_message;
           dbg_message.clear();
           google::protobuf::util::MessageToJsonString(*msg2, &dbg_message);
-          RAY_LOG(ERROR) << "server["<< node_id_to_idx[node_id] << "] << "
-                         << NodeID::FromBinary(servers[node_id_to_idx[node_id]]->syncer->GetNodeId())
+          RAY_LOG(ERROR) << "server[" << node_id_to_idx[node_id] << "] << "
+                         << NodeID::FromBinary(
+                                servers[node_id_to_idx[node_id]]->syncer->GetNodeId())
                          << ": " << dbg_message;
           return false;
         }
@@ -618,7 +620,7 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
 
 bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_view,
                      std::vector<std::unique_ptr<SyncerServer>> &servers,
-                     const std::vector<std::set<size_t>>& g) {
+                     const std::vector<std::set<size_t>> &g) {
   auto check = [&servers, get_cluster_view, &g]() {
     std::vector<TClusterView> views;
     for (auto &s : servers) {
@@ -635,7 +637,7 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     }
   }
 
-  if(!check()) {
+  if (!check()) {
     RAY_LOG(ERROR) << "Initial check failed";
     return false;
   }

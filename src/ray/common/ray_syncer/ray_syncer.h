@@ -66,9 +66,7 @@ struct ReceiverInterface {
   ///
   /// \param message The message received from remote node.
   virtual void Update(std::shared_ptr<const RaySyncMessage> message) = 0;
-  /// Indicate whether the message received by this module needs to be
-  /// broadcasted to other nodes.
-  virtual bool NeedBroadcast() const = 0;
+
   virtual ~ReceiverInterface() {}
 };
 
@@ -120,11 +118,13 @@ class RaySyncer {
   /// \param component_id The component to sync.
   /// \param reporter The local component to be broadcasted.
   /// \param receiver The snapshot of the component in the cluster.
-  /// \param pull_from_reporter_interval_ms The frequence to pull a message from reporter
-  /// and push it to sending queue.
+  /// \param upstream_only Only send the message to the upstream server for this
+  /// component. \param pull_from_reporter_interval_ms The frequence to pull a message
+  /// from reporter and push it to sending queue.
   bool Register(RayComponentId component_id,
                 const ReporterInterface *reporter,
                 ReceiverInterface *receiver,
+                bool upstream_only = false,
                 int64_t pull_from_reporter_interval_ms = 100);
 
   /// Function to broadcast the messages to other nodes.
@@ -164,18 +164,20 @@ class RaySyncer {
   /// Manage connections
   absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncConnection>> sync_connections_;
 
+  /// Upward connections. These are connections initialized not by this node
+  absl::flat_hash_set<NodeSyncConnection *> upward_connections_;
+
   /// The local node state
   std::unique_ptr<NodeState> node_state_;
 
-  /// If the field is set to be true, it means, message generated or received
-  /// is needed to be sent to other nodes.
-  Array<bool> component_broadcast_;
+  /// Each component will define a flag to indicate whether the message should be sent
+  /// to ClientSyncConnection only.
+  Array<bool> upward_only_;
 
   /// Timer is used to do broadcasting.
   ray::PeriodicalRunner timer_;
 
   std::shared_ptr<bool> stopped_;
-
 
   FRIEND_TEST(SyncerTest, Broadcast);
   FRIEND_TEST(SyncerTest, Test1To1);
