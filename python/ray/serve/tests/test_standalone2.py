@@ -152,16 +152,20 @@ def test_shutdown_remote(start_and_shutdown_ray_cli):
 
     with NamedTemporaryFile(mode="w+", suffix=".py") as deploy_file:
         with NamedTemporaryFile(mode="w+", suffix=".py") as shutdown_file:
-            deploy_file.write(deploy_serve_script)
-            shutdown_file.write(shutdown_serve_script)
 
-        # Ensure Serve can be restarted and shutdown with for loop
-        for _ in range(2):
-            subprocess.check_output(["python", deploy_file.name])
-            assert requests.get("http://localhost:8000/f").text == "got f"
-            subprocess.check_output(["python", shutdown_file.name])
-            with pytest.raises(requests.exceptions.ConnectionError):
-                requests.get("http://localhost:8000/f")
+            deploy_file.write(deploy_serve_script)
+            deploy_file.flush()
+
+            shutdown_file.write(shutdown_serve_script)
+            shutdown_file.flush()
+
+            # Ensure Serve can be restarted and shutdown with for loop
+            for _ in range(2):
+                subprocess.check_output(["python", deploy_file.name])
+                assert requests.get("http://localhost:8000/f").text == "got f"
+                subprocess.check_output(["python", shutdown_file.name])
+                with pytest.raises(requests.exceptions.ConnectionError):
+                    requests.get("http://localhost:8000/f")
 
 
 def test_autoscaler_shutdown_node_http_everynode(
