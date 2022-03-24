@@ -390,20 +390,33 @@ def wait_for_event_revised(
             ", which is not a subclass of workflow.EventListener"
         )
 
-    event_inputs = serialization_context.make_workflow_inputs(event_listener_type)
+    @step
+    def construction(event_listener_type):
+        pass
+
+    w = construction.step(event_listener_type)
+
+    w.data.step_options.step_type=StepType.EVENT
+
+    return w
+
+    '''
+    event_inputs = serialization_context.make_workflow_inputs([event_listener_type, None])
 
     step_options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.EVENT
     )
     workflow_data = WorkflowData(
-        func_body=lambda:None,
+        func_body=lambda: None,
         inputs=event_inputs,
         step_options=step_options,
         name=None,
         user_metadata={},
     )
+
     logger.info(f"wait_for_event_revised exit")
     return Workflow(workflow_data)
+    '''
 
 @PublicAPI(stability="beta")
 def sleep(duration: float) -> Workflow[Event]:

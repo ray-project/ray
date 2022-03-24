@@ -151,7 +151,7 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
             if static_ref is None:
                 # The input workflow is not a reference to an executed
                 # workflow .
-                logger.info(f"******--------- {w.data.step_options.step_type}")
+                logger.info(f"******execute_workflow--------- {w.data.step_options.step_type}")
                 output = execute_workflow(w).persisted_output
                 static_ref = WorkflowStaticRef(step_id=w.step_id, ref=output)
             workflow_outputs.append(static_ref)
@@ -375,7 +375,7 @@ def _wrap_run(
 
     step_type = runtime_options.step_type
     if runtime_options.catch_exceptions:
-        if step_type == StepType.FUNCTION:
+        if step_type == StepType.FUNCTION or step_type == StepType.EVENT:
             if isinstance(result, Workflow):
                 # When it returns a nested workflow, catch_exception
                 # should be passed recursively.
@@ -398,7 +398,7 @@ def _wrap_run(
                 _record_step_status(workflow_context.get_current_step_id(), status)
                 logger.info(get_step_status_info(status))
             raise exception
-        if step_type == StepType.FUNCTION:
+        if step_type == StepType.FUNCTION or step_type == StepType.EVENT:
             persisted_output, volatile_output = result, None
         elif step_type == StepType.ACTOR_METHOD:
             persisted_output, volatile_output = result
@@ -438,6 +438,7 @@ def _workflow_step_executor(
     context = workflow_context.get_workflow_step_context()
     step_type = runtime_options.step_type
     logger.info(f"**** {step_id} func type {step_type}")
+    '''
     if step_type == StepType.EVENT:
         event_listener = ray.get(baked_inputs.args)
         workflow_id = context.workflow_id
@@ -452,7 +453,7 @@ def _workflow_step_executor(
             obj, ref = _resolve_object_ref(wsr.ref)
             count += 1
             logger.info(f"**** {workflow_id} --- {step_id} --- {count} --- downstream --- {obj}")
-
+    '''
     context.checkpoint_context.checkpoint = runtime_options.checkpoint
 
     logger.info(f"**** {step_id} Before baked_inputs.resolve(), inside _workflow_step_executor() {baked_inputs}")

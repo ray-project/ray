@@ -29,6 +29,8 @@ def e1():
 def e2():
     return workflow.wait_for_event_revised(SQSEventListener, "hello")
 
+e3 = workflow.wait_for_event_revised(ExampleEventProvider, "hello")
+
 @workflow.step
 def w1():
     return 1
@@ -41,7 +43,9 @@ def w2():
 def w3():
     return 3
 
+res = handle_event.step(e3).run()
+
 #res = handle_event.step(workflow.wait_for_event_revised.step(ExampleEventProvider, "hello")).run()
-res = handle_event.step([e1.step(), e2.step(), w3.step()]).run()
+#res = handle_event.step([e1.step(), e2.step(), w3.step()]).run()
 #res = handle_event.step([w1.step(),w2.step(),w3.step()]).run()
 print(res)
