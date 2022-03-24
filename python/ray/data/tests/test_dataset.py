@@ -1939,27 +1939,46 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
         {"A": 2, "sum(B)": None},
     ]
 
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_global_arrow_sum with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
     # Test built-in global sum aggregation
-    assert (
-        ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).sum("A")
-        == 4950
-    )
+    ds = ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    assert ds.sum("A") == 4950
 
     # Test empty dataset
-    assert (
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum("value") is None
-    )
+    ds = ray.data.range_arrow(10)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    assert ds.filter(lambda r: r["value"] > 10).sum("value") is None
 
     # Test built-in global sum aggregation with nans
     nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
         num_parts
     )
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.sum("A") == 4950
     # Test ignore_nulls=False
     assert nan_ds.sum("A", ignore_nulls=False) is None
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.sum("A") is None
+    assert nan_ds.sum("A", ignore_nulls=False) is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -2018,26 +2037,46 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
         {"A": 2, "min(B)": None},
     ]
 
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_global_arrow_min with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
     # Test built-in global min aggregation
-    assert (
-        ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).min("A") == 0
-    )
+    ds = ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    assert ds.min("A") == 0
 
     # Test empty dataset
-    assert (
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value") is None
-    )
+    ds = ray.data.range_arrow(10)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    assert ds.filter(lambda r: r["value"] > 10).min("value") is None
 
     # Test built-in global min aggregation with nans
     nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
         num_parts
     )
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.min("A") == 0
     # Test ignore_nulls=False
     assert nan_ds.min("A", ignore_nulls=False) is None
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.min("A") is None
+    assert nan_ds.min("A", ignore_nulls=False) is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -2096,27 +2135,46 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
         {"A": 2, "max(B)": None},
     ]
 
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_global_arrow_max with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
     # Test built-in global max aggregation
-    assert (
-        ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).max("A")
-        == 99
-    )
+    ds = ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    assert ds.max("A") == 99
 
     # Test empty dataset
-    assert (
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value") is None
-    )
+    ds = ray.data.range_arrow(10)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    assert ds.filter(lambda r: r["value"] > 10).max("value") is None
 
     # Test built-in global max aggregation with nans
     nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
         num_parts
     )
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.max("A") == 99
     # Test ignore_nulls=False
     assert nan_ds.max("A", ignore_nulls=False) is None
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.max("A") is None
+    assert nan_ds.max("A", ignore_nulls=False) is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -2176,27 +2234,46 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
         {"A": 2, "mean(B)": None},
     ]
 
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_global_arrow_mean with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
     # Test built-in global mean aggregation
-    assert (
-        ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts).mean("A")
-        == 49.5
-    )
+    ds = ray.data.from_items([{"A": x} for x in xs]).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    assert ds.mean("A") == 49.5
 
     # Test empty dataset
-    assert (
-        ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean("value") is None
-    )
+    ds = ray.data.range_arrow(10)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    assert ds.filter(lambda r: r["value"] > 10).mean("value") is None
 
     # Test built-in global mean aggregation with nans
     nan_ds = ray.data.from_items([{"A": x} for x in xs] + [{"A": None}]).repartition(
         num_parts
     )
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.mean("A") == 49.5
     # Test ignore_nulls=False
     assert nan_ds.mean("A", ignore_nulls=False) is None
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.mean("A") is None
+    assert nan_ds.mean("A", ignore_nulls=False) is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -2250,31 +2327,55 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     expected = pd.Series([None] * 3)
     np.testing.assert_array_equal(result, expected)
 
-    # Test built-in global std aggregation
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_global_arrow_std with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    def _to_arrow(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pyarrow")
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    # Test built-in global max aggregation
     df = pd.DataFrame({"A": xs})
-    assert math.isclose(
-        ray.data.from_pandas(df).repartition(num_parts).std("A"), df["A"].std()
-    )
-    # ddof of 0
-    assert math.isclose(
-        ray.data.from_pandas(df).repartition(num_parts).std("A", ddof=0),
-        df["A"].std(ddof=0),
-    )
+    ds = ray.data.from_pandas(df).repartition(num_parts)
+    if ds_format == "arrow":
+        ds = _to_arrow(ds)
+    assert math.isclose(ds.std("A"), df["A"].std())
+    assert math.isclose(ds.std("A", ddof=0), df["A"].std(ddof=0))
 
     # Test empty dataset
-    assert ray.data.from_pandas(pd.DataFrame({"A": []})).std("A") is None
+    ds = ray.data.from_pandas(pd.DataFrame({"A": []}))
+    if ds_format == "arrow":
+        ds = _to_arrow(ds)
+    assert ds.std("A") is None
     # Test edge cases
-    assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
+    ds = ray.data.from_pandas(pd.DataFrame({"A": [3]}))
+    if ds_format == "arrow":
+        ds = _to_arrow(ds)
+    assert ds.std("A") == 0
 
     # Test built-in global std aggregation with nans
     nan_df = pd.DataFrame({"A": xs + [None]})
     nan_ds = ray.data.from_pandas(nan_df).repartition(num_parts)
-    assert math.isclose(nan_ds.std("A"), df["A"].std())
+    if ds_format == "arrow":
+        nan_ds = _to_arrow(nan_ds)
+    assert math.isclose(nan_ds.std("A"), nan_df["A"].std())
     # Test ignore_nulls=False
     assert nan_ds.std("A", ignore_nulls=False) is None
     # Test all nans
     nan_ds = ray.data.from_items([{"A": None}] * len(xs)).repartition(num_parts)
+    if ds_format == "pandas":
+        nan_ds = _to_pandas(nan_ds)
     assert nan_ds.std("A") is None
+    assert nan_ds.std("A", ignore_nulls=False) is None
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])

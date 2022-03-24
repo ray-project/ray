@@ -10,7 +10,7 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats, KeyFn
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats, U, KeyFn
 from ray.data.row import TableRow
 from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
@@ -120,7 +120,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table
 
     def num_rows(self) -> int:
-        return self._table.num_rows
+        return self._table.num_rows if self._table.num_columns > 0 else 0
 
     def size_bytes(self) -> int:
         return self._table.nbytes
@@ -152,6 +152,72 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def _sample(self, n_samples: int, key: "SortKeyT") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
         return self._table.select([k[0] for k in key]).take(indices)
+
+    def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        col = self._table[on]
+        return pac.count(col).as_py()
+
+    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        import pyarrow as pa
+        import pyarrow.compute as pac
+
+        col = self._table[on]
+        if pa.types.is_null(col.type):
+            return None
+        else:
+            return pac.sum(col, skip_nulls=ignore_nulls).as_py()
+
+    def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        import pyarrow as pa
+        import pyarrow.compute as pac
+
+        col = self._table[on]
+        if pa.types.is_null(col.type):
+            return None
+        else:
+            return pac.min(col, skip_nulls=ignore_nulls).as_py()
+
+    def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        import pyarrow as pa
+        import pyarrow.compute as pac
+
+        col = self._table[on]
+        if pa.types.is_null(col.type):
+            return None
+        else:
+            return pac.max(col, skip_nulls=ignore_nulls).as_py()
+
+    def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        import pyarrow as pa
+        import pyarrow.compute as pac
+
+        col = self._table[on]
+        if pa.types.is_null(col.type):
+            return None
+        else:
+            return pac.mean(col, skip_nulls=ignore_nulls).as_py()
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        on: KeyFn,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+    ) -> Optional[U]:
+        import pyarrow as pa
+        import pyarrow.compute as pac
+
+        if mean is None:
+            mean = self.mean(on, ignore_nulls)
+        col = self._table[on]
+        if pa.types.is_null(col.type):
+            return None
+        return pac.sum(pac.power(pac.subtract(col, mean), 2)).as_py()
+        # col = self._table[on]
+        # if pa.types.is_null(col.type):
+        #     return None
+        # return (pac.count(col) + 1) * pac.variance(col)
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool

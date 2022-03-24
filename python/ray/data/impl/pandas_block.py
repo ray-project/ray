@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple, Iterator, Any, TypeVar, Optional, TYPE_CHE
 import collections
 import numpy as np
 
-from ray.data.block import BlockAccessor, BlockMetadata, KeyFn
+from ray.data.block import BlockAccessor, BlockMetadata, KeyFn, U
 from ray.data.row import TableRow
 from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.impl.arrow_block import ArrowBlockAccessor
@@ -164,6 +164,76 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def _sample(self, n_samples: int, key: "SortKeyT") -> "pandas.DataFrame":
         return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
+
+    def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        col = self._table[on]
+        return col.count()
+
+    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        col = self._table[on]
+        if col.isnull().all():
+            # Short-circuit on an all-null column, returning None.
+            return None
+        return col.sum(skipna=ignore_nulls)
+
+    def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        col = self._table[on]
+        try:
+            return col.min(skipna=ignore_nulls)
+        except TypeError as e:
+            # Converting an all-null column in an Arrow Table to a Pandas DataFrame
+            # column will result in an all-None column of object type, which will raise
+            # a type error when attempting to do most binary operations. We explicitly
+            # check for this type failure here so we can properly propagate a null.
+            if np.issubdtype(col.dtype, np.object_) and col.isnull().all():
+                return None
+            raise e from None
+
+    def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        col = self._table[on]
+        try:
+            return col.max(skipna=ignore_nulls)
+        except TypeError as e:
+            # Converting an all-null column in an Arrow Table to a Pandas DataFrame
+            # column will result in an all-None column of object type, which will raise
+            # a type error when attempting to do most binary operations. We explicitly
+            # check for this type failure here so we can properly propagate a null.
+            if np.issubdtype(col.dtype, np.object_) and col.isnull().all():
+                return None
+            raise e from None
+
+    def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        col = self._table[on]
+        try:
+            return col.mean(skipna=ignore_nulls)
+        except TypeError as e:
+            # Converting an all-null column in an Arrow Table to a Pandas DataFrame
+            # column will result in an all-None column of object type, which will raise
+            # a type error when attempting to do most binary operations. We explicitly
+            # check for this type failure here so we can properly propagate a null.
+            if np.issubdtype(col.dtype, np.object_) and col.isnull().all():
+                return None
+            raise e from None
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        on: KeyFn,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+    ) -> Optional[U]:
+        if mean is None:
+            mean = self.mean(on, ignore_nulls)
+        col = self._table[on]
+        try:
+            return ((col - mean) ** 2).sum()
+        except TypeError as e:
+            # Converting an all-null column in an Arrow Table to a Pandas DataFrame
+            # column will result in an all-None column of object type, which will raise
+            # a type error when attempting to do most binary operations. We explicitly
+            # check for this type failure here so we can properly propagate a null.
+            if np.issubdtype(col.dtype, np.object_) and col.isnull().all():
+                return None
+            raise e from None
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
