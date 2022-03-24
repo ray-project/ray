@@ -6,11 +6,9 @@ import io.ray.api.Ray;
 import io.ray.api.function.RayFunc0;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.exception.RayActorException;
-import io.ray.runtime.exception.RayException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
-import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
@@ -79,8 +77,8 @@ public class FailureTest extends BaseTest {
       }
     }
 
-    public int getPid() {
-      return SystemUtil.pid();
+    public String ping() {
+      return "pong";
     }
   }
 
@@ -162,19 +160,19 @@ public class FailureTest extends BaseTest {
             .setMaxRestarts(1)
             .setEnableTaskFastFail(true)
             .remote();
-    int pid = actor.task(SlowActor::getPid).remote().get();
-    Runtime.getRuntime().exec("kill -9 " + pid);
+    actor.task(SlowActor::ping).remote().get();
+    actor.kill(/*noRestart=*/ false);
 
     // Wait for a while so that now the driver knows the actor is in RESTARTING state.
     Thread.sleep(1000);
     // An actor task should fail quickly until the actor is restarted.
-    Assert.expectThrows(RayException.class, () -> actor.task(SlowActor::getPid).remote().get());
+    Assert.expectThrows(RayActorException.class, () -> actor.task(SlowActor::ping).remote().get());
 
     signalActor.task(SignalActor::sendSignal).remote().get();
     // Wait for a while so that now the driver knows the actor is in ALIVE state.
     Thread.sleep(1000);
     // An actor task should succeed.
-    actor.task(SlowActor::getPid).remote().get();
+    actor.task(SlowActor::ping).remote().get();
   }
 
   public void testGetThrowsQuicklyWhenFoundException() {
