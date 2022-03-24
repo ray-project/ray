@@ -1,4 +1,3 @@
-import os
 from typing import Optional, Dict, Type, Union, Callable
 
 from ray.ml.checkpoint import Checkpoint
@@ -7,8 +6,10 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
 from ray.rllib.agents.trainer import Trainer as RLTrainer
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
-from ray.tune import Trainable
+from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
+from ray.tune.registry import get_trainable_cls
+from ray.tune.resources import Resources
 from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
 
@@ -62,7 +63,7 @@ class RLLibTrainer(Trainer):
         base_config = self._param_dict
         trainer_cls = self.__class__
 
-        rllib_trainer = self._algorithm
+        rllib_trainer = get_trainable_cls(self._algorithm)
 
         class AIRRLlibTrainer(rllib_trainer):
             def __init__(
@@ -85,6 +86,16 @@ class RLLibTrainer(Trainer):
                     remote_checkpoint_dir,
                     sync_function_tpl,
                 )
+
+            @classmethod
+            def default_resource_request(
+                cls, config: PartialTrainerConfigDict
+            ) -> Union[Resources, PlacementGroupFactory]:
+                resolved_config = merge_dicts(base_config, config)
+                trainer = trainer_cls(**resolved_config)
+                rllib_config = trainer._get_rllib_config()
+
+                return rllib_trainer.default_resource_request(rllib_config)
 
         AIRRLlibTrainer.__name__ = rllib_trainer.__name__
         return AIRRLlibTrainer

@@ -1,24 +1,15 @@
 import argparse
-from typing import Tuple
-
-import pandas as pd
 
 import ray
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
 from ray.ml.train.integrations.rllib.rllib_trainer import RLLibTrainer
-from ray.ml.train.integrations.xgboost import XGBoostTrainer
-from ray.data.dataset import Dataset
 from ray.ml.result import Result
-from ray.ml.preprocessors import StandardScaler
 from ray.rllib.agents.marwil import BCTrainer
-from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
 
 
 def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
     path = "/tmp/out"
 
+    # Curently doesn't seem to work, to unblock dev pass `input_config`
     # dataset = ray.data.read_json(
     #         path, parallelism=num_workers, ray_remote_args={"num_cpus": 1}
     #     )
@@ -88,5 +79,5 @@ if __name__ == "__main__":
     )
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.address)
+    ray.init(address="auto")  # args.address)
     result = train_rllib_bc(num_workers=args.num_workers, use_gpu=args.use_gpu)
