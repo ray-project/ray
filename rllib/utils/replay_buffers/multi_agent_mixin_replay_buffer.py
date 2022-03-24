@@ -137,7 +137,6 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         if not 0 <= replay_ratio <= 1:
             raise ValueError("Replay ratio must be within [0, 1]")
 
-
         if "replay_mode" in kwargs and kwargs["replay_mode"] == "lockstep":
             if log_once("lockstep_mode_not_supported"):
                 logger.error(

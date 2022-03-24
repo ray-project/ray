@@ -27,7 +27,7 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 

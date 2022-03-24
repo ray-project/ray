@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 def asynchronous_parallel_requests(
     *,
     actors: List[Union[ActorHandle, Any]],
-    remote_requests_in_flight: Optional[DefaultDict[ActorHandle, Set[ray.ObjectRef]]] = None,
+    remote_requests_in_flight: Optional[
+        DefaultDict[ActorHandle, Set[ray.ObjectRef]]
+    ] = None,
     ray_wait_timeout_s: Optional[float] = None,
     max_remote_requests_in_flight_per_actor: int = 2,
     remote_fn: Optional[

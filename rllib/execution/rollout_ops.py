@@ -204,57 +204,6 @@ def AsyncGradients(workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, in
     return grads.gather_async().for_each(record_metrics())
 
 
-def concat_batches(
-    *,
-    batch: SampleBatchType,
-    buffer: List[SampleBatchType],
-    min_batch_size: int,
-    count_steps_by: str = "env_steps",
-):
-    """Concatenate smaller batches into larger batches for training.
-
-    Returns one large concatenated batch when the size of the smaller batches summed,
-    using the count_by_steps, logic is greater than
-
-    Examples:
-        >>>> buffer = []  # This will be used for hol
-        >>>> batch_size = BATCH_SIZE_FOR_REPLAY_BUFFER
-        >>>> batch = replay_buffer.sample(batch_size)
-        >>> count_steps_by = COUNTING_MODE
-        >>>> large_batch = concat_batches(batch=batch, buffer=buffer,
-        ... batch_size=batch_size, min_batch_size=min_batch_size,
-        ... count_steps_by=count_steps_by)
-
-    Args:
-        batch: batch to concatenate with batches in buffer to make large batch.
-        buffer: list of batches to concatenate, used for storing smaller batches
-            until their size is greater than or equal to min_batch_size.
-        min_batch_size: the minimum size that the larger returned batch should be,
-            in timesteps (counted by the number of agent_steps or env_steps).
-        count_steps_by: string, either "env_steps" or "agent_steps". Use agent_steps
-            only if your batches are of the type MultiAgentBatch. use env_steps
-            otherwise.
-
-    Returns:
-        A batch of size greater than or equal to min_batch_size, or None if the sum
-        of the timesteps of the batches in buffer and the batch that is passed in is
-        less than min_batch_size.
-
-    """
-    if count_steps_by == "env_steps":
-        size = batch.count
-    else:
-        assert isinstance(batch, MultiAgentBatch), (
-            "`count_steps_by=agent_steps` only allowed in multi-agent " "environments!"
-        )
-        size = batch.agent_steps()
-    curr_count = sum(
-        [b.count if count_steps_by == "env_steps" else b.agent_steps() for b in buffer]
-    ) + size
-    buffer.append(batch)
-
-
-
 class ConcatBatches:
     """Callable used to merge batches into larger batches for training.
 
@@ -268,8 +217,12 @@ class ConcatBatches:
         10000
     """
 
-    def __init__(self, min_batch_size: int, count_steps_by: str = "env_steps",
-                 using_iterators=True):
+    def __init__(
+        self,
+        min_batch_size: int,
+        count_steps_by: str = "env_steps",
+        using_iterators=True,
+    ):
         self.min_batch_size = min_batch_size
         self.count_steps_by = count_steps_by
         self.buffer = []

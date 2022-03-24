@@ -142,7 +142,7 @@ class SimpleReplayBuffer:
                 self.replay_index %= self.num_slots
 
     def replay(self) -> SampleBatchType:
-            return random.choice(self.replay_batches)
+        return random.choice(self.replay_batches)
 
     def __len__(self):
         return len(self.replay_batches)
