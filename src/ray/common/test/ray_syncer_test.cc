@@ -237,7 +237,7 @@ struct SyncerServer {
                        static_cast<RayComponentId>(cid) == RayComponentId::SCHEDULER);
     }
     thread = std::make_unique<std::thread>([this] {
-      this->work = std::make_unique<boost::asio::io_context::work>(io_context);
+      boost::asio::io_context::work work(io_context);
       io_context.run();
     });
   }
@@ -284,7 +284,6 @@ struct SyncerServer {
     }
     return iter->second;
   }
-  std::unique_ptr<boost::asio::io_context::work> work;
   std::unique_ptr<RaySyncerService> service;
   std::unique_ptr<RaySyncer> syncer;
   std::unique_ptr<grpc::Server> server;
