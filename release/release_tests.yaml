@@ -1649,6 +1649,38 @@
   alert: long_running_tests
 
 ########################
+# Jobs tests
+########################
+
+- name: jobs_basic
+  group: Jobs tests
+  working_dir: jobs_tests
+
+  legacy:
+    test_name: jobs_basic
+    test_suite: jobs_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_basic.py
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default  
+
+
+########################
 # Runtime env tests
 ########################
 - name: runtime_env_rte_many_tasks_actors
