@@ -89,6 +89,11 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # on timesteps to sampled from an environment and stored in the replay
         # buffer timesteps. Otherwise, replay will proceed as fast as possible.
         "training_intensity": None,
+        # Experimental flag.
+        # If True, the execution plan API will not be used. Instead,
+        # a Trainer's `training_iteration` method will be called as-is each
+        # training iteration.
+        "_disable_execution_plan_api": False,
     },
 )
 # __sphinx_doc_end__
