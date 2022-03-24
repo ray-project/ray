@@ -17,7 +17,7 @@ class ActorPool:
         ...     ... # doctest: +SKIP
         >>> a1, a2 = Actor.remote(), Actor.remote() # doctest: +SKIP
         >>> pool = ActorPool([a1, a2]) # doctest: +SKIP
-        >>> print(list(pool.map(lambda a, v: a.double.remote(v),
+        >>> print(list(pool.map(lambda a, v: a.double.remote(v), # doctest: +SKIP
         ...                     [1, 2, 3, 4]))) # doctest: +SKIP
         [2, 4, 6, 8]
     """
@@ -287,7 +287,7 @@ class ActorPool:
             None
             >>> print(pool.get_next()) # doctest: +SKIP
             2
-            >>> print(pool.pop_idle())
+            >>> print(pool.pop_idle()) # doctest: +SKIP
             <ptr to a1>
         """
         if self.has_free():

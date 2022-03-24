@@ -55,7 +55,6 @@ class PlacementGroup:
         Example:
         >>> import ray
         >>> from ray.util.placement_group import PlacementGroup
-
         >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
         >>> ray.get(pg.ready()) # doctest: +SKIP
         >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
@@ -253,11 +252,11 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     Examples:
         >>> import ray
         >>> from ray.util.placement_group import get_current_placement_group, PlacementGroup
-        >>> @ray.remote
-        >>> def f(): # doctest: +SKIP
-        >>>     # This will return the placement group the task f belongs to.
-        >>>     # It means this pg will be identical to the pg created below.
-        >>>     pg = get_current_placement_group() # doctest: +SKIP
+        >>> @ray.remote # doctest: +SKIP
+        ... def f(): # doctest: +SKIP
+        ...     # This will return the placement group the task f belongs to.
+        ...     # It means this pg will be identical to the pg created below.
+        ...     pg = get_current_placement_group() # doctest: +SKIP
         >>> pg = PlacementGroup([{"CPU": 2}]) # doctest: +SKIP
         >>> f.options(placement_group=pg).remote() # doctest: +SKIP
 
