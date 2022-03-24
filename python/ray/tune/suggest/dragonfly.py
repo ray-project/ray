@@ -59,34 +59,34 @@ class DragonflySearch(Searcher):
     results.
 
     Parameters:
-        optimizer (dragonfly.opt.BlackboxOptimiser|str): Optimizer provided
+        optimizer: Optimizer provided
             from dragonfly. Choose an optimiser that extends BlackboxOptimiser.
             If this is a string, `domain` must be set and `optimizer` must be
             one of [random, bandit, genetic].
-        domain (str): Optional domain. Should only be set if you don't pass
+        domain: Optional domain. Should only be set if you don't pass
             an optimizer as the `optimizer` argument.
             Has to be one of [cartesian, euclidean].
-        space (list|dict): Search space. Should only be set if you don't pass
+        space: Search space. Should only be set if you don't pass
             an optimizer as the `optimizer` argument. Defines the search space
             and requires a `domain` to be set. Can be automatically converted
             from the `config` dict passed to `tune.run()`.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        evaluated_rewards (list): If you have previously evaluated the
+        evaluated_rewards: If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate.
-        random_state_seed (int, None): Seed for reproducible
+        random_state_seed: Seed for reproducible
             results. Defaults to None. Please note that setting this to a value
             will change global random state for `numpy`
             on initalization and loading from checkpoint.
@@ -331,7 +331,7 @@ class DragonflySearch(Searcher):
             )
         else:
             logger.warning(
-                "Only non errored and non pruned points" " can be added to dragonfly."
+                "Only non errored and non pruned points can be added to dragonfly."
             )
 
     def set_search_properties(

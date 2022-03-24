@@ -65,6 +65,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.row import TableRow
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
+from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.block_batching import batch_blocks, BatchType
 from ray.data.impl.plan import ExecutionPlan, OneToOneStage, AllToAllStage
@@ -123,6 +124,10 @@ class Dataset(Generic[T]):
         if not lazy:
             # TODO(ekl) we should clear inputs once we have full lineage recorded.
             self._plan.execute(clear_input_blocks=False)
+
+    @staticmethod
+    def copy(dataset: "Dataset[T]") -> "Dataset[T]":
+        return Dataset(dataset._plan, dataset._epoch, dataset._lazy)
 
     def map(
         self,
@@ -628,7 +633,7 @@ class Dataset(Generic[T]):
             This assume that the given splits are sorted in ascending order.
             """
             if target_size == 0:
-                return splits
+                return splits, []
             new_splits = []
             leftovers = []
             for split in splits:
@@ -2078,11 +2083,7 @@ Dict[str, List[str]]]): The names of the columns
         import torch
 
         from ray.data.impl.torch_iterable_dataset import TorchIterableDataset
-
-        multi_input = feature_columns and (
-            isinstance(feature_columns, dict)
-            or isinstance(feature_columns[0], (list, tuple))
-        )
+        from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -2101,6 +2102,8 @@ Dict[str, List[str]]]): The names of the columns
                         "`feature_columns` and `feature_column_dtypes` "
                         "must have the same keys."
                     )
+                if any(not subcolumns for subcolumns in feature_columns.values()):
+                    raise ValueError("column list may not be empty")
             elif isinstance(feature_columns[0], (list, tuple)):
                 if not isinstance(feature_column_dtypes, (list, tuple)):
                     raise TypeError(
@@ -2113,6 +2116,8 @@ Dict[str, List[str]]]): The names of the columns
                         "`feature_columns` and `feature_column_dtypes` "
                         "must have the same length."
                     )
+                if any(not subcolumns for subcolumns in feature_columns):
+                    raise ValueError("column list may not be empty")
 
         def make_generator():
             for batch in self.iter_batches(
@@ -2129,55 +2134,24 @@ Dict[str, List[str]]]): The names of the columns
                 else:
                     label_tensor = None
 
-                def get_feature_tensors(
-                    batch,
-                    feature_columns: List[str],
-                    feature_column_dtype: "torch.dtype",
-                    assert_feature_columns_not_empty: bool = False,
-                ) -> torch.Tensor:
-                    feature_tensors = []
-                    if assert_feature_columns_not_empty and not feature_columns:
-                        raise ValueError("`feature_columns` may not be empty")
-                    if feature_columns:
-                        batch = batch[feature_columns]
-
-                    for col in batch.columns:
-                        col_vals = batch[col].values
-                        t = torch.as_tensor(col_vals, dtype=feature_column_dtype)
-                        t = t.view(-1, 1)
-                        feature_tensors.append(t)
-
-                    return torch.cat(feature_tensors, dim=1)
-
-                if not multi_input:
-                    features_tensor = get_feature_tensors(
-                        batch, feature_columns, feature_column_dtypes
-                    )
+                if isinstance(feature_columns, dict):
+                    features_tensor = {
+                        key: convert_pandas_to_torch_tensor(
+                            batch,
+                            feature_columns[key],
+                            feature_column_dtypes[key]
+                            if isinstance(feature_column_dtypes, dict)
+                            else feature_column_dtypes,
+                        )
+                        for key in feature_columns
+                    }
                 else:
-                    if isinstance(feature_columns, dict):
-                        features_tensor = {
-                            key: get_feature_tensors(
-                                batch,
-                                feature_columns[key],
-                                feature_column_dtypes[key]
-                                if isinstance(feature_column_dtypes, dict)
-                                else feature_column_dtypes,
-                                assert_feature_columns_not_empty=True,
-                            )
-                            for key in feature_columns
-                        }
-                    else:
-                        features_tensor = [
-                            get_feature_tensors(
-                                batch,
-                                feature_columns[idx],
-                                feature_column_dtypes[idx]
-                                if isinstance(feature_column_dtypes, (list, tuple))
-                                else feature_column_dtypes,
-                                assert_feature_columns_not_empty=True,
-                            )
-                            for idx in range(len(feature_columns))
-                        ]
+                    features_tensor = convert_pandas_to_torch_tensor(
+                        batch,
+                        columns=feature_columns,
+                        column_dtypes=feature_column_dtypes,
+                    )
+
                 yield (features_tensor, label_tensor)
 
         return TorchIterableDataset(make_generator)
@@ -2443,6 +2417,35 @@ Dict[str, List[str]]]): The names of the columns
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
+
+    def to_random_access_dataset(
+        self,
+        key: str,
+        num_workers: Optional[int] = None,
+    ) -> RandomAccessDataset:
+        """Convert this Dataset into a distributed RandomAccessDataset (EXPERIMENTAL).
+
+        RandomAccessDataset partitions the dataset across the cluster by the given sort
+        key, providing efficient random access to records via binary search. A number
+        of worker actors are created, each of which has zero-copy access to the
+        underlying sorted data blocks of the Dataset.
+
+        Note that the key must be unique in the dataset. If there are duplicate keys,
+        an arbitrary value is returned.
+
+        This is only supported for Arrow-format datasets.
+
+        Args:
+            key: The key column over which records can be queried.
+            num_workers: The number of actors to use to serve random access queries.
+                By default, this is determined by multiplying the number of Ray nodes
+                in the cluster by four. As a rule of thumb, you can expect each worker
+                to provide ~3000 records / second via ``get_async()``, and
+                ~10000 records / second via ``multiget()``.
+        """
+        if num_workers is None:
+            num_workers = 4 * len(ray.nodes())
+        return RandomAccessDataset(self, key, num_workers=num_workers)
 
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.

@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Callable, Dict, List, Union, Optional
 from collections import OrderedDict
 from ray import tune
 
@@ -34,13 +34,17 @@ class TuneReportCallback(TuneCallback):
     Reports metrics to Ray Tune.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to XGBoost,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to XGBoost. If this is None,
             all metrics will be reported to Tune under their default names as
             obtained from XGBoost.
+        results_postprocessing_fn: An optional Callable that takes in
+            the dict that will be reported to Tune (after it has been flattened)
+            and returns a modified dict that will be reported instead. Can be used
+            to eg. average results across CV fold when using ``xgboost.cv``.
 
     Example:
 
@@ -64,10 +68,17 @@ class TuneReportCallback(TuneCallback):
 
     """
 
-    def __init__(self, metrics: Union[None, str, List[str], Dict[str, str]] = None):
+    def __init__(
+        self,
+        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        results_postprocessing_fn: Optional[
+            Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
+        ] = None,
+    ):
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
+        self._results_postprocessing_fn = results_postprocessing_fn
 
     def _get_report_dict(self, evals_log):
         if isinstance(evals_log, OrderedDict):
@@ -88,6 +99,10 @@ class TuneReportCallback(TuneCallback):
                 else:
                     metric = key
                 report_dict[key] = result_dict[metric]
+
+        if self._results_postprocessing_fn:
+            report_dict = self._results_postprocessing_fn(report_dict)
+
         return report_dict
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
@@ -106,9 +121,9 @@ class _TuneCheckpointCallback(TuneCallback):
     instead.
 
     Args:
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        frequency (int): How often to save checkpoints. Per default, a
+        frequency: How often to save checkpoints. Per default, a
             checkpoint is saved every five iterations.
 
     """
@@ -135,17 +150,21 @@ class TuneReportCheckpointCallback(TuneCallback):
     which is needed for checkpoint registration.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to XGBoost,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to XGBoost.
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint". If this is None,
             all metrics will be reported to Tune under their default names as
             obtained from XGBoost.
-        frequency (int): How often to save checkpoints. Per default, a
+        frequency: How often to save checkpoints. Per default, a
             checkpoint is saved every five iterations.
+        results_postprocessing_fn: An optional Callable that takes in
+            the dict that will be reported to Tune (after it has been flattened)
+            and returns a modified dict that will be reported instead. Can be used
+            to eg. average results across CV fold when using ``xgboost.cv``.
 
     Example:
 
@@ -179,9 +198,12 @@ class TuneReportCheckpointCallback(TuneCallback):
         metrics: Union[None, str, List[str], Dict[str, str]] = None,
         filename: str = "checkpoint",
         frequency: int = 5,
+        results_postprocessing_fn: Optional[
+            Callable[[Dict[str, Union[float, List[float]]]], float]
+        ] = None,
     ):
         self._checkpoint = self._checkpoint_callback_cls(filename, frequency)
-        self._report = self._report_callbacks_cls(metrics)
+        self._report = self._report_callbacks_cls(metrics, results_postprocessing_fn)
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
         self._checkpoint.after_iteration(model, epoch, evals_log)

@@ -38,13 +38,13 @@ def handle_result(
         target_time = 800
     elif test_name == "durable_trainable":
         target_terminated = 16
-        target_time = 600
+        target_time = 650
     elif test_name == "network_overhead":
         target_terminated = 100 if not was_smoke_test else 20
         target_time = 900 if not was_smoke_test else 400
     elif test_name == "result_throughput_cluster":
         target_terminated = 1000
-        target_time = 120
+        target_time = 130
     elif test_name == "result_throughput_single_node":
         target_terminated = 96
         target_time = 120

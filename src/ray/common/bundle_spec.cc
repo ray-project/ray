@@ -139,7 +139,8 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
       original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
 }
 
-bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
+bool IsBundleIndex(const std::string &resource,
+                   const PlacementGroupID &group_id,
                    const int bundle_index) {
   return resource.find(kGroupKeyword + std::to_string(bundle_index) + "_" +
                        group_id.Hex()) != std::string::npos;

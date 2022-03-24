@@ -87,6 +87,22 @@ def upload_working_dir_if_needed(
     return runtime_env
 
 
+def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
+    """Insert the path as the first entry in PYTHONPATH in the runtime env.
+
+    This is compatible with users providing their own PYTHONPATH in env_vars,
+    and is also compatible with the existing PYTHONPATH in the cluster.
+
+    The import priority is as follows:
+    this python_path arg > env_vars PYTHONPATH > existing cluster env PYTHONPATH.
+    """
+    if "PYTHONPATH" in context.env_vars:
+        python_path += os.pathsep + context.env_vars["PYTHONPATH"]
+    if "PYTHONPATH" in os.environ:
+        python_path += os.pathsep + os.environ["PYTHONPATH"]
+    context.env_vars["PYTHONPATH"] = python_path
+
+
 class WorkingDirManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
@@ -148,10 +164,4 @@ class WorkingDirManager:
             )
 
         context.command_prefix += [f"cd {local_dir}"]
-
-        # Insert the working_dir as the first entry in PYTHONPATH. This is
-        # compatible with users providing their own PYTHONPATH in env_vars.
-        python_path = str(local_dir)
-        if "PYTHONPATH" in context.env_vars:
-            python_path += os.pathsep + context.env_vars["PYTHONPATH"]
-        context.env_vars["PYTHONPATH"] = python_path
+        set_pythonpath_in_context(python_path=str(local_dir), context=context)

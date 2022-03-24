@@ -19,7 +19,7 @@ namespace ray {
 namespace raylet {
 
 SchedulerStats::SchedulerStats(const ClusterTaskManager &cluster_task_manager,
-                               const LocalTaskManager &local_task_manager)
+                               const ILocalTaskManager &local_task_manager)
     : cluster_task_manager_(cluster_task_manager),
       local_task_manager_(local_task_manager) {}
 
@@ -38,22 +38,27 @@ void SchedulerStats::ComputeStats() {
   size_t num_tasks_waiting_for_workers = 0;
   size_t num_cancelled_tasks = 0;
 
-  size_t num_infeasible_tasks = std::accumulate(
-      cluster_task_manager_.infeasible_tasks_.begin(),
-      cluster_task_manager_.infeasible_tasks_.end(), (size_t)0, accumulator);
+  size_t num_infeasible_tasks =
+      std::accumulate(cluster_task_manager_.infeasible_tasks_.begin(),
+                      cluster_task_manager_.infeasible_tasks_.end(),
+                      (size_t)0,
+                      accumulator);
 
   // TODO(sang): Normally, the # of queued tasks are not large, so this is less likley to
   // be an issue that we iterate all of them. But if it uses lots of CPU, consider
   // optimizing by updating live instead of iterating through here.
-  auto per_work_accumulator = [&num_waiting_for_resource, &num_waiting_for_plasma_memory,
+  auto per_work_accumulator = [&num_waiting_for_resource,
+                               &num_waiting_for_plasma_memory,
                                &num_waiting_for_remote_node_resources,
                                &num_worker_not_started_by_job_config_not_exist,
                                &num_worker_not_started_by_registration_timeout,
                                &num_worker_not_started_by_process_rate_limit,
-                               &num_tasks_waiting_for_workers, &num_cancelled_tasks](
+                               &num_tasks_waiting_for_workers,
+                               &num_cancelled_tasks](
                                   size_t state,
                                   const std::pair<
-                                      int, std::deque<std::shared_ptr<internal::Work>>>
+                                      int,
+                                      std::deque<std::shared_ptr<internal::Work>>>
                                       &pair) {
     const auto &work_queue = pair.second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
@@ -84,12 +89,16 @@ void SchedulerStats::ComputeStats() {
     }
     return state + pair.second.size();
   };
-  size_t num_tasks_to_schedule = std::accumulate(
-      cluster_task_manager_.tasks_to_schedule_.begin(),
-      cluster_task_manager_.tasks_to_schedule_.end(), (size_t)0, per_work_accumulator);
-  size_t num_tasks_to_dispatch = std::accumulate(
-      local_task_manager_.tasks_to_dispatch_.begin(),
-      local_task_manager_.tasks_to_dispatch_.end(), (size_t)0, per_work_accumulator);
+  size_t num_tasks_to_schedule =
+      std::accumulate(cluster_task_manager_.tasks_to_schedule_.begin(),
+                      cluster_task_manager_.tasks_to_schedule_.end(),
+                      (size_t)0,
+                      per_work_accumulator);
+  size_t num_tasks_to_dispatch =
+      std::accumulate(local_task_manager_.GetTaskToDispatch().begin(),
+                      local_task_manager_.GetTaskToDispatch().end(),
+                      (size_t)0,
+                      per_work_accumulator);
 
   /// Update the internal states.
   num_waiting_for_resource_ = num_waiting_for_resource;
@@ -113,10 +122,10 @@ void SchedulerStats::RecordMetrics() const {
   /// that function is expensive. ComputeStats is called by ComputeAndReportDebugStr
   /// method and they are always periodically called by node manager.
   stats::NumSpilledTasks.Record(metric_tasks_spilled_ +
-                                local_task_manager_.num_task_spilled_);
+                                local_task_manager_.GetNumTaskSpilled());
+  local_task_manager_.RecordMetrics();
   stats::NumInfeasibleSchedulingClasses.Record(
       cluster_task_manager_.infeasible_tasks_.size());
-
   /// Worker startup failure
   ray::stats::STATS_scheduler_failed_worker_startup_total.Record(
       num_worker_not_started_by_job_config_not_exist_, "JobConfigMissing");
@@ -127,10 +136,6 @@ void SchedulerStats::RecordMetrics() const {
 
   /// Queued tasks.
   ray::stats::STATS_scheduler_tasks.Record(num_cancelled_tasks_, "Cancelled");
-  ray::stats::STATS_scheduler_tasks.Record(
-      local_task_manager_.executing_task_args_.size(), "Executing");
-  ray::stats::STATS_scheduler_tasks.Record(
-      local_task_manager_.waiting_tasks_index_.size(), "Waiting");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_dispatch_, "Dispatched");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_schedule_, "Received");
 
@@ -172,59 +177,9 @@ std::string SchedulerStats::ComputeAndReportDebugStr() {
          << num_worker_not_started_by_process_rate_limit_ << "\n";
   buffer << "num_tasks_waiting_for_workers: " << num_tasks_waiting_for_workers_ << "\n";
   buffer << "num_cancelled_tasks: " << num_cancelled_tasks_ << "\n";
-  buffer << "Waiting tasks size: " << local_task_manager_.waiting_tasks_index_.size()
-         << "\n";
-  buffer << "Number of executing tasks: "
-         << local_task_manager_.executing_task_args_.size() << "\n";
-  buffer << "Number of pinned task arguments: "
-         << local_task_manager_.pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_task_manager_.cluster_resource_scheduler_->DebugString() << "\n";
-  buffer << "Resource usage {\n";
-
-  // Calculates how much resources are occupied by tasks or actors.
-  // Only iterate upto this number to avoid excessive CPU usage.
-  auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
-  uint32_t iteration = 0;
-  for (const auto &worker : local_task_manager_.worker_pool_.GetAllRegisteredWorkers(
-           /*filter_dead_workers*/ true)) {
-    if (max_iteration < iteration++) {
-      break;
-    }
-    if (worker->IsDead()        // worker is dead
-        || worker->IsBlocked()  // worker is blocked by blocking Ray API
-        || (worker->GetAssignedTaskId().IsNil() &&
-            worker->GetActorId().IsNil())) {  // Tasks or actors not assigned
-      // Then this shouldn't have allocated resources.
-      continue;
-    }
-
-    const auto &task_or_actor_name = worker->GetAssignedTask()
-                                         .GetTaskSpecification()
-                                         .FunctionDescriptor()
-                                         ->CallString();
-    buffer << "    - ("
-           << "language="
-           << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
-           << " "
-           << "actor_or_task=" << task_or_actor_name << " "
-           << "pid=" << worker->GetProcess().GetId() << "): "
-           << worker->GetAssignedTask()
-                  .GetTaskSpecification()
-                  .GetRequiredResources()
-                  .ToString()
-           << "\n";
-  }
-  buffer << "}\n";
-  buffer << "Running tasks by scheduling class:\n";
-
-  for (const auto &pair : local_task_manager_.info_by_sched_cls_) {
-    const auto &sched_cls = pair.first;
-    const auto &info = pair.second;
-    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
-    buffer << "    - " << descriptor.DebugString() << ": " << info.running_tasks.size()
-           << "/" << info.capacity << "\n";
-  }
+  local_task_manager_.DebugStr(buffer);
 
   buffer << "==================================================\n";
   return buffer.str();

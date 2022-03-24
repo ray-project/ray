@@ -114,7 +114,7 @@ class LongPollClient:
         if self.event_loop.is_running():
             self.event_loop.call_soon_threadsafe(callback)
         else:
-            logger.error("The event loop is closed, shutting down long poll " "client.")
+            logger.error("The event loop is closed, shutting down long poll client.")
             self.is_running = False
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):
@@ -122,7 +122,7 @@ class LongPollClient:
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
             # exit.
-            logger.debug("LongPollClient failed to connect to host. " "Shutting down.")
+            logger.debug("LongPollClient failed to connect to host. Shutting down.")
             self.is_running = False
             return
 

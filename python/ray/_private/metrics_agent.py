@@ -74,17 +74,29 @@ class MetricsAgent:
         self._lock = threading.Lock()
 
         # Configure exporter. (We currently only support prometheus).
-        self.view_manager.register_exporter(
-            prometheus_exporter.new_stats_exporter(
+        try:
+            stats_exporter = prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
                     namespace="ray",
                     port=metrics_export_port,
                     address=metrics_export_address,
                 )
             )
-        )
+        except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
+            logger.exception(
+                "Failed to start prometheus stats exporter. Agent will stay "
+                "alive but disable the stats."
+            )
+            self.view_manager = None
+        else:
+            self.view_manager.register_exporter(stats_exporter)
 
     def record_reporter_stats(self, records: List[Record]):
+        if not self.view_manager:
+            return
         with self._lock:
             for record in records:
                 gauge = record.gauge
@@ -111,6 +123,8 @@ class MetricsAgent:
 
     def record_metric_points_from_protobuf(self, metrics: List[Metric]):
         """Record metrics from Opencensus Protobuf"""
+        if not self.view_manager:
+            return
         with self._lock:
             self._record_metrics(metrics)
 

@@ -3,6 +3,7 @@ import itertools
 from typing import Any, Callable, Dict, Optional, List, Union, Iterator, TYPE_CHECKING
 
 import numpy as np
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -17,6 +18,7 @@ from ray.data.datasource.file_based_datasource import (
     _resolve_paths_and_filesystem,
     _resolve_kwargs,
 )
+from ray.data.datasource.file_meta_provider import FileMetadataProvider
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
@@ -54,6 +56,111 @@ def _deregister_parquet_file_fragment_serialization():
     ray.util.deregister_serializer(ParquetFileFragment)
 
 
+@DeveloperAPI
+class ParquetMetadataProvider(FileMetadataProvider):
+    """Abstract callable that provides metadata for Arrow Parquet file fragments.
+
+    Supports optional pre-fetching of ordered metadata for all file fragments in
+    a single batch to help optimize metadata resolution.
+
+    Current subclasses:
+        DefaultParquetMetadataProvider
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        prefetched_metadata: Optional[List[Any]],
+    ) -> BlockMetadata:
+        """Resolves and returns block metadata for the given file paths.
+
+        Args:
+            paths: The file paths to aggregate block metadata across.
+            schema: The user-provided or inferred schema for the given file
+                paths, if any.
+            pieces: The Parquet file fragments derived from the input file paths.
+            prefetched_metadata: Metadata previously returned from
+                `prefetch_file_metadata()` for each file fragment, where
+                `prefetched_metadata[i]` contains the metadata for `pieces[i]`.
+
+        Returns:
+            BlockMetadata aggregated across the given file paths.
+        """
+        raise NotImplementedError
+
+    def prefetch_file_metadata(
+        self,
+        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+    ) -> Optional[List[Any]]:
+        """Pre-fetches file metadata for all Parquet file fragments in a single batch.
+
+        Subsets of the metadata returned will be provided as input to
+        subsequent calls to _get_block_metadata() together with their
+        corresponding Parquet file fragments.
+
+        Implementations that don't support pre-fetching file metadata shouldn't
+        override this method.
+
+        Args:
+            pieces: The Parquet file fragments to fetch metadata for.
+
+        Returns:
+            Metadata resolved for each input file fragment, or `None`. Metadata
+            must be returned in the same order as all input file fragments, such
+            that `metadata[i]` always contains the metadata for `pieces[i]`.
+        """
+        return None
+
+
+class DefaultParquetMetadataProvider(ParquetMetadataProvider):
+    """The default file metadata provider for ParquetDatasource.
+
+    Aggregates total block bytes and number of rows using the Parquet file metadata
+    associated with a list of Arrow Parquet dataset file fragments.
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+        prefetched_metadata: Optional[List["pyarrow.parquet.FileMetaData"]],
+    ) -> BlockMetadata:
+        if prefetched_metadata is not None and len(prefetched_metadata) == len(pieces):
+            # Piece metadata was available, construct a normal
+            # BlockMetadata.
+            block_metadata = BlockMetadata(
+                num_rows=sum(m.num_rows for m in prefetched_metadata),
+                size_bytes=sum(
+                    sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
+                    for m in prefetched_metadata
+                ),
+                schema=schema,
+                input_files=paths,
+                exec_stats=None,
+            )  # Exec stats filled in later.
+        else:
+            # Piece metadata was not available, construct an empty
+            # BlockMetadata.
+            block_metadata = BlockMetadata(
+                num_rows=None, size_bytes=None, schema=schema, input_files=paths
+            )
+        return block_metadata
+
+    def prefetch_file_metadata(
+        self,
+        pieces: List["pyarrow.dataset.ParquetFileFragment"],
+    ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
+        if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
+            return _fetch_metadata_remotely(pieces)
+        else:
+            return _fetch_metadata(pieces)
+
+
 class ParquetDatasource(FileBasedDatasource):
     """Parquet datasource, for reading and writing Parquet files.
 
@@ -70,6 +177,7 @@ class ParquetDatasource(FileBasedDatasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         columns: Optional[List[str]] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
     ) -> List[ReadTask]:
@@ -168,21 +276,23 @@ class ParquetDatasource(FileBasedDatasource):
         else:
             inferred_schema = schema
         read_tasks = []
-        if len(pq_ds.pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
-            metadata = _fetch_metadata_remotely(pq_ds.pieces)
-        else:
-            metadata = _fetch_metadata(pq_ds.pieces)
-
+        metadata = meta_provider.prefetch_file_metadata(pq_ds.pieces) or []
         try:
             _register_parquet_file_fragment_serialization()
-            for piece_data in np.array_split(
-                list(zip(pq_ds.pieces, metadata)), parallelism
+            for pieces, metadata in zip(
+                np.array_split(pq_ds.pieces, parallelism),
+                np.array_split(metadata, parallelism),
             ):
-                if len(piece_data) == 0:
+                if len(pieces) <= 0:
                     continue
-                pieces, metadata = zip(*piece_data)
                 serialized_pieces = cloudpickle.dumps(pieces)
-                meta = _build_block_metadata(pieces, metadata, inferred_schema)
+                input_files = [p.path for p in pieces]
+                meta = meta_provider(
+                    input_files,
+                    inferred_schema,
+                    pieces=pieces,
+                    prefetched_metadata=metadata,
+                )
                 read_tasks.append(
                     ReadTask(lambda p=serialized_pieces: read_pieces(p), meta)
                 )
@@ -256,31 +366,3 @@ def _fetch_metadata(
         except AttributeError:
             break
     return piece_metadata
-
-
-def _build_block_metadata(
-    pieces: List["pyarrow.dataset.ParquetFileFragment"],
-    metadata: List["pyarrow.parquet.FileMetaData"],
-    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-) -> BlockMetadata:
-    input_files = [p.path for p in pieces]
-    if len(metadata) == len(pieces):
-        # Piece metadata was available, construct a normal
-        # BlockMetadata.
-        block_metadata = BlockMetadata(
-            num_rows=sum(m.num_rows for m in metadata),
-            size_bytes=sum(
-                sum(m.row_group(i).total_byte_size for i in range(m.num_row_groups))
-                for m in metadata
-            ),
-            schema=schema,
-            input_files=input_files,
-            exec_stats=None,
-        )  # Exec stats filled in later.
-    else:
-        # Piece metadata was not available, construct an empty
-        # BlockMetadata.
-        block_metadata = BlockMetadata(
-            num_rows=None, size_bytes=None, schema=schema, input_files=input_files
-        )
-    return block_metadata

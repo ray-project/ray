@@ -20,9 +20,10 @@
 namespace ray {
 using namespace ::ray::scheduling;
 
-const std::string resource_labels[] = {
-    ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
-    ray::kObjectStoreMemory_ResourceLabel};
+const std::string resource_labels[] = {ray::kCPU_ResourceLabel,
+                                       ray::kMemory_ResourceLabel,
+                                       ray::kGPU_ResourceLabel,
+                                       ray::kObjectStoreMemory_ResourceLabel};
 
 const std::string ResourceEnumToString(PredefinedResources resource) {
   // TODO (Alex): We should replace this with a protobuf enum.
@@ -536,6 +537,30 @@ bool ResourceRequest::IsEmpty() const {
     }
   }
   return true;
+}
+
+bool ResourceRequest::operator==(const ResourceRequest &other) const {
+  if (predefined_resources.size() != other.predefined_resources.size() ||
+      custom_resources.size() != other.custom_resources.size() ||
+      requires_object_store_memory != other.requires_object_store_memory) {
+    return false;
+  }
+  for (size_t i = 0; i < predefined_resources.size(); i++) {
+    if (predefined_resources[i] != other.predefined_resources[i]) {
+      return false;
+    }
+  }
+  for (const auto &entry : custom_resources) {
+    auto iter = other.custom_resources.find(entry.first);
+    if (iter == other.custom_resources.end() || entry.second != iter->second) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ResourceRequest::operator!=(const ResourceRequest &other) const {
+  return !(*this == other);
 }
 
 std::string ResourceRequest::DebugString() const {

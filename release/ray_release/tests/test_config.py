@@ -1,4 +1,5 @@
 import os
+import sys
 import unittest
 
 from ray_release.config import (
@@ -37,6 +38,7 @@ class ConfigTest(unittest.TestCase):
                     "wait_for_nodes": {"num_nodes": 2, "timeout": 100},
                     "type": "client",
                 },
+                "smoke_test": {"run": {"timeout": 20}, "frequency": "multi"},
                 "alert": "default",
             }
         )
@@ -73,5 +75,17 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaises(ReleaseTestConfigError):
             validate_release_test_collection([invalid_test])
 
+        # Faulty smoke test
+        invalid_test = test.copy()
+        del invalid_test["smoke_test"]["frequency"]
+        with self.assertRaises(ReleaseTestConfigError):
+            validate_release_test_collection([invalid_test])
+
     def testLoadAndValidateTestCollectionFile(self):
         read_and_validate_release_test_collection(self.test_collection_file)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

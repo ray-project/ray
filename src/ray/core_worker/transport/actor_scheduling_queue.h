@@ -40,10 +40,12 @@ const int kMaxReorderWaitSeconds = 30;
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(
-      instrumented_io_context &main_io_service, DependencyWaiter &waiter,
+      instrumented_io_context &main_io_service,
+      DependencyWaiter &waiter,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager =
           std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-      bool is_asyncio = false, int fiber_max_concurrency = 1,
+      bool is_asyncio = false,
+      int fiber_max_concurrency = 1,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds);
 
@@ -54,7 +56,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
   size_t Size() const override;
 
   /// Add a new actor task's callbacks to the worker queue.
-  void Add(int64_t seq_no, int64_t client_processed_up_to,
+  void Add(int64_t seq_no,
+           int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
            std::function<void(rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,

@@ -241,7 +241,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     if _func is not None:
         if not callable(_func):
             raise TypeError(
-                "@serve.batch can only be used to " "decorate functions or methods."
+                "@serve.batch can only be used to decorate functions or methods."
             )
 
         if not iscoroutinefunction(_func):

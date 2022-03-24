@@ -166,10 +166,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CPlacementGroupID FromBinary(const c_string &binary)
 
         @staticmethod
-        const CActorID Nil()
+        const CPlacementGroupID Nil()
 
         @staticmethod
         size_t Size()
 
         @staticmethod
-        CPlacementGroupID FromRandom()
+        CPlacementGroupID Of(CJobID job_id)

@@ -43,7 +43,8 @@ struct TaskState {
 
 void InlineDependencies(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> dependencies,
-    TaskSpecification &task, std::vector<ObjectID> *inlined_dependency_ids,
+    TaskSpecification &task,
+    std::vector<ObjectID> *inlined_dependency_ids,
     std::vector<ObjectID> *contained_ids) {
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
@@ -110,31 +111,34 @@ void LocalDependencyResolver::ResolveDependencies(
 
   for (const auto &it : state->local_dependencies) {
     const ObjectID &obj_id = it.first;
-    in_memory_store_.GetAsync(obj_id, [this, state, obj_id,
-                                       on_complete](std::shared_ptr<RayObject> obj) {
-      RAY_CHECK(obj != nullptr);
-      bool complete = false;
-      std::vector<ObjectID> inlined_dependency_ids;
-      std::vector<ObjectID> contained_ids;
-      {
-        absl::MutexLock lock(&mu_);
-        state->local_dependencies[obj_id] = std::move(obj);
-        if (--state->obj_dependencies_remaining == 0) {
-          InlineDependencies(state->local_dependencies, state->task,
-                             &inlined_dependency_ids, &contained_ids);
-          if (state->actor_dependencies_remaining == 0) {
-            complete = true;
-            num_pending_ -= 1;
+    in_memory_store_.GetAsync(
+        obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
+          RAY_CHECK(obj != nullptr);
+          bool complete = false;
+          std::vector<ObjectID> inlined_dependency_ids;
+          std::vector<ObjectID> contained_ids;
+          {
+            absl::MutexLock lock(&mu_);
+            state->local_dependencies[obj_id] = std::move(obj);
+            if (--state->obj_dependencies_remaining == 0) {
+              InlineDependencies(state->local_dependencies,
+                                 state->task,
+                                 &inlined_dependency_ids,
+                                 &contained_ids);
+              if (state->actor_dependencies_remaining == 0) {
+                complete = true;
+                num_pending_ -= 1;
+              }
+            }
           }
-        }
-      }
-      if (inlined_dependency_ids.size() > 0) {
-        task_finisher_.OnTaskDependenciesInlined(inlined_dependency_ids, contained_ids);
-      }
-      if (complete) {
-        on_complete(state->status);
-      }
-    });
+          if (inlined_dependency_ids.size() > 0) {
+            task_finisher_.OnTaskDependenciesInlined(inlined_dependency_ids,
+                                                     contained_ids);
+          }
+          if (complete) {
+            on_complete(state->status);
+          }
+        });
   }
 
   for (const auto &actor_id : state->actor_dependencies) {

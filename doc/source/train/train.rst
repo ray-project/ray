@@ -1,3 +1,5 @@
+.. include:: /_includes/train/announcement.rst
+
 .. _train-docs:
 
 Ray Train: Distributed Deep Learning
@@ -155,3 +157,5 @@ system. Let's take following simple examples:
 
 
 **Next steps:** Check out the :ref:`User Guide <train-user-guide>`!
+
+.. include:: /_includes/train/announcement_bottom.rst

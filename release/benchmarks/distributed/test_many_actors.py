@@ -5,10 +5,12 @@ import ray._private.test_utils as test_utils
 import time
 import tqdm
 
+is_smoke_test = True
 if "SMOKE_TEST" in os.environ:
     MAX_ACTORS_IN_CLUSTER = 100
 else:
     MAX_ACTORS_IN_CLUSTER = 10000
+    is_smoke_test = False
 
 
 def test_max_actors():
@@ -33,7 +35,7 @@ def test_max_actors():
 
 
 def no_resource_leaks():
-    return ray.available_resources() == ray.cluster_resources()
+    return test_utils.no_resource_leaks_excluding_node_resources()
 
 
 ray.init(address="auto")
@@ -66,4 +68,12 @@ if "TEST_OUTPUT_JSON" in os.environ:
         "_peak_memory": round(used_gb, 2),
         "_peak_process_memory": usage,
     }
+    if not is_smoke_test:
+        results["perf_metrics"] = [
+            {
+                "perf_metric_name": "actors_per_second",
+                "perf_metric_value": rate,
+                "perf_metric_type": "THROUGHPUT",
+            }
+        ]
     json.dump(results, out_file)

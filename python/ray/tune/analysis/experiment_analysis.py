@@ -6,6 +6,7 @@ import traceback
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
+from ray.ml.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
@@ -125,6 +126,10 @@ class ExperimentAnalysis:
         )
         self._sync_config = sync_config
 
+        # If True, will return a legacy TrialCheckpoint class.
+        # If False, will just return a Checkpoint class.
+        self._legacy_checkpoint = True
+
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
         if not self._sync_config or not self._sync_config.upload_dir:
@@ -202,7 +207,7 @@ class ExperimentAnalysis:
         return self.get_best_config(self.default_metric, self.default_mode)
 
     @property
-    def best_checkpoint(self) -> TrialCheckpoint:
+    def best_checkpoint(self) -> Checkpoint:
         """Get the checkpoint path of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
@@ -212,7 +217,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`TrialCheckpoint <ray.tune.cloud.TrialCheckpoint>` object.
+            :class:`Checkpoint <ray.ml.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -330,7 +335,7 @@ class ExperimentAnalysis:
         """Get all the last results as a pandas dataframe."""
         if not pd:
             raise ValueError(
-                "`results_df` requires pandas. Install with " "`pip install pandas`."
+                "`results_df` requires pandas. Install with `pip install pandas`."
             )
         return pd.DataFrame.from_records(
             [
@@ -358,9 +363,8 @@ class ExperimentAnalysis:
         ``metric=None`` or ``mode=None``, the last result will be returned.
 
         Args:
-            metric (str): Key for trial info to order on.
-                If None, uses last result.
-            mode (None|str): One of [None, "min", "max"].
+            metric: Key for trial info to order on. If None, uses last result.
+            mode: One of [None, "min", "max"].
 
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
@@ -391,8 +395,8 @@ class ExperimentAnalysis:
         """Gets paths and metrics of all persistent checkpoints of a trial.
 
         Args:
-            trial (Trial): The log directory of a trial, or a trial instance.
-            metric (str): key for trial info to return, e.g. "mean_accuracy".
+            trial: The log directory of a trial, or a trial instance.
+            metric: key for trial info to return, e.g. "mean_accuracy".
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
 
@@ -424,18 +428,18 @@ class ExperimentAnalysis:
 
     def get_best_checkpoint(
         self, trial: Trial, metric: Optional[str] = None, mode: Optional[str] = None
-    ) -> Optional[TrialCheckpoint]:
+    ) -> Optional[Checkpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
         Args:
-            trial (Trial): The log directory of a trial, or a trial instance.
-            metric (str): key of trial info to return, e.g. "mean_accuracy".
+            trial: The log directory of a trial, or a trial instance.
+            metric: key of trial info to return, e.g. "mean_accuracy".
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
 
         Returns:
-            :class:`TrialCheckpoint <ray.tune.cloud.TrialCheckpoint>` object.
+            :class:`Checkpoint <ray.ml.Checkpoint>` object.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)
@@ -449,15 +453,32 @@ class ExperimentAnalysis:
         best_path_metrics = sorted(checkpoint_paths, key=lambda x: a * x[1])
 
         best_path, best_metric = best_path_metrics[0]
-        return TrialCheckpoint(
-            local_path=best_path, cloud_path=self._parse_cloud_path(best_path)
-        )
+        cloud_path = self._parse_cloud_path(best_path)
+
+        if self._legacy_checkpoint:
+            return TrialCheckpoint(local_path=best_path, cloud_path=cloud_path)
+
+        if cloud_path:
+            # Prefer cloud path over local path for downsteam processing
+            return Checkpoint.from_uri(cloud_path)
+        elif os.path.exists(best_path):
+            return Checkpoint.from_directory(best_path)
+        else:
+            logger.error(
+                f"No checkpoint locations for {trial} available on "
+                f"this node. To avoid this, you "
+                f"should enable checkpoint synchronization with the"
+                f"`sync_config` argument in Ray Tune. "
+                f"The checkpoint may be available on a different node - "
+                f"please check this location on worker nodes: {best_path}"
+            )
+            return None
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
         """Returns a list of all configurations.
 
         Args:
-            prefix (bool): If True, flattens the config dict
+            prefix: If True, flattens the config dict
                 and prepends `config/`.
 
         Returns:
@@ -496,10 +517,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -509,10 +530,13 @@ class ExperimentAnalysis:
                 `metric` and compare across trials based on `mode=[min,max]`.
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
-            filter_nan_and_inf (bool): If True (default), NaN or infinite
+            filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
+        if len(self.trials) == 1:
+            return self.trials[0]
+
         metric = self._validate_metric(metric)
         mode = self._validate_mode(mode)
 
@@ -528,6 +552,7 @@ class ExperimentAnalysis:
             )
         best_trial = None
         best_metric_score = None
+
         for trial in self.trials:
             if metric not in trial.metric_analysis:
                 continue
@@ -574,10 +599,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -606,10 +631,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -631,12 +656,12 @@ class ExperimentAnalysis:
         provided metric and mode (defaults to max. training iteration).
 
         Args:
-            trial (Trial): The log directory or an instance of a trial.
-            If None, load the latest trial automatically.
-            metric (str): If no trial is specified, use this metric to identify
-            the best trial and load the last checkpoint from this trial.
-            mode (str): If no trial is specified, use the metric and this mode
-            to identify the best trial and load the last checkpoint from it.
+            trial: The log directory or an instance of a trial.
+                If None, load the latest trial automatically.
+            metric: If no trial is specified, use this metric to identify
+                the best trial and load the last checkpoint from this trial.
+            mode: If no trial is specified, use the metric and this mode
+                to identify the best trial and load the last checkpoint from it.
 
         Returns:
             Path for last checkpoint of trial

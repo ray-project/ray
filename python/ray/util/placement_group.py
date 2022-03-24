@@ -177,7 +177,7 @@ def placement_group(
         detached = True
     else:
         raise ValueError(
-            "placement group `lifetime` argument must be either" " `None` or 'detached'"
+            "placement group `lifetime` argument must be either `None` or 'detached'"
         )
 
     placement_group_id = worker.core_worker.create_placement_group(

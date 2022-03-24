@@ -45,8 +45,8 @@ class ActorHandle {
         std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
         "Class types must be same.");
     ray::internal::RemoteFunctionHolder remote_func_holder(actor_func);
-    return ray::internal::ActorTaskCaller<F>(internal::GetRayRuntime().get(), id_,
-                                             std::move(remote_func_holder));
+    return ray::internal::ActorTaskCaller<F>(
+        internal::GetRayRuntime().get(), id_, std::move(remote_func_holder));
   }
 
   template <typename R>

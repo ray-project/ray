@@ -82,8 +82,8 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
       global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     } else {
-      gcs::GcsClientOptions options(config.redis_address, config.redis_port,
-                                    config.redis_password);
+      gcs::GcsClientOptions options(
+          config.redis_address, config.redis_port, config.redis_password);
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
       global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     }
@@ -168,6 +168,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
 
   auto node_table_data = Mocker::GenNodeInfo();
+  node_table_data->mutable_resources_total()->insert({"CPU", 1});
+
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
       *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -272,7 +274,8 @@ TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
 
-INSTANTIATE_TEST_SUITE_P(RedisRemovalTest, GlobalStateAccessorTest,
+INSTANTIATE_TEST_SUITE_P(RedisRemovalTest,
+                         GlobalStateAccessorTest,
                          ::testing::Values(false, true));
 
 }  // namespace ray
@@ -280,7 +283,8 @@ INSTANTIATE_TEST_SUITE_P(RedisRemovalTest, GlobalStateAccessorTest,
 int main(int argc, char **argv) {
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);

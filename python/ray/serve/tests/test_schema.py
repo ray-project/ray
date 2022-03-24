@@ -13,6 +13,12 @@ from ray.serve.schema import (
     DeploymentStatusSchema,
     ServeApplicationSchema,
     ServeApplicationStatusSchema,
+)
+from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
+from ray.serve.config import AutoscalingConfig
+from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
+from ray.serve.api import (
+    get_deployment_statuses,
     deployment_to_schema,
     schema_to_deployment,
     serve_application_to_schema,
@@ -20,10 +26,6 @@ from ray.serve.schema import (
     status_info_to_schema,
     serve_application_status_to_schema,
 )
-from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
-from ray.serve.config import AutoscalingConfig
-from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
-from ray.serve.api import get_deployment_statuses
 from ray import serve
 
 
@@ -61,7 +63,7 @@ class TestRayActorOptionsSchema:
         # Test different runtime_env configurations
 
         ray_actor_options_schema = {
-            "runtime_env": None,
+            "runtime_env": {},
             "num_cpus": 0.2,
             "num_gpus": 50,
             "memory": 3,
@@ -107,12 +109,12 @@ class TestRayActorOptionsSchema:
         # Undefined fields should be forbidden in the schema
 
         ray_actor_options_schema = {
-            "runtime_env": None,
+            "runtime_env": {},
             "num_cpus": None,
             "num_gpus": None,
             "memory": None,
             "object_store_memory": None,
-            "resources": None,
+            "resources": {},
             "accelerator_type": None,
         }
 
@@ -123,6 +125,15 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema["fake_field"] = None
         with pytest.raises(ValidationError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+
+    def test_dict_defaults_ray_actor_options(self):
+        # Dictionary fields should have empty dictionaries as defaults, not None
+
+        ray_actor_options_schema = {}
+        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        d = schema.dict()
+        assert d["runtime_env"] == {}
+        assert d["resources"] == {}
 
 
 class TestDeploymentSchema:
@@ -144,12 +155,12 @@ class TestDeploymentSchema:
             "health_check_period_s": None,
             "health_check_timeout_s": None,
             "ray_actor_options": {
-                "runtime_env": None,
+                "runtime_env": {},
                 "num_cpus": None,
                 "num_gpus": None,
                 "memory": None,
                 "object_store_memory": None,
-                "resources": None,
+                "resources": {},
                 "accelerator_type": None,
             },
         }
@@ -372,12 +383,12 @@ class TestServeApplicationSchema:
                     "health_check_period_s": None,
                     "health_check_timeout_s": None,
                     "ray_actor_options": {
-                        "runtime_env": None,
+                        "runtime_env": {},
                         "num_cpus": None,
                         "num_gpus": None,
                         "memory": None,
                         "object_store_memory": None,
-                        "resources": None,
+                        "resources": {},
                         "accelerator_type": None,
                     },
                 },
@@ -543,6 +554,24 @@ def test_deployment_to_schema_to_deployment():
     serve.shutdown()
 
 
+def test_unset_fields_schema_to_deployment_ray_actor_options():
+    # Ensure unset fields are excluded from ray_actor_options
+
+    @serve.deployment(
+        num_replicas=3,
+        route_prefix="/hello",
+        ray_actor_options={},
+    )
+    def f():
+        pass
+
+    f._func_or_class = "ray.serve.tests.test_schema.global_f"
+
+    deployment = schema_to_deployment(deployment_to_schema(f))
+
+    assert len(deployment.ray_actor_options) == 0
+
+
 def test_serve_application_to_schema_to_serve_application():
     @serve.deployment(
         num_replicas=1,
@@ -589,6 +618,28 @@ def test_serve_application_to_schema_to_serve_application():
     assert len(deployment_names) == 0
 
     serve.shutdown()
+
+
+@serve.deployment
+def decorated_f(*args):
+    return "reached decorated_f"
+
+
+def test_use_deployment_import_path():
+    """Ensure deployment func_or_class becomes import path when schematized."""
+
+    d = schema_to_deployment(deployment_to_schema(decorated_f))
+
+    assert isinstance(d.func_or_class, str)
+
+    # CI may change the parent path, so check only that the suffix matches.
+    assert d.func_or_class.endswith("ray.serve.tests.test_schema.decorated_f")
+
+    serve.start()
+    d.deploy()
+    assert (
+        requests.get("http://localhost:8000/decorated_f").text == "reached decorated_f"
+    )
 
 
 if __name__ == "__main__":
