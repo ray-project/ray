@@ -2052,8 +2052,8 @@ def healthcheck(address, redis_password, component):
 
     if not component:
         try:
-            ray._private.gcs_utils.ping_cluster(address)
-            sys.exit(0)
+            if ray._private.gcs_utils.ping_cluster(address):
+                sys.exit(0)
         except Exception:
             pass
         sys.exit(1)
