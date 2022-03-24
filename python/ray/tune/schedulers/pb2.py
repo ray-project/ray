@@ -268,7 +268,8 @@ class PB2(PopulationBasedTraining):
         >>> from ray import tune
         >>> from ray.tune.schedulers.pb2 import PB2
         >>> from ray.tune.examples.pbt_function import pbt_function
-        >>> pb2 = PB2(  # use "pip install gpy" to use PB2
+        >>> # run "pip install gpy" to use PB2
+        >>> pb2 = PB2( # doctest: +SKIP
         ...     metric="mean_accuracy",
         ...     mode="max",
         ...     perturbation_interval=20,
