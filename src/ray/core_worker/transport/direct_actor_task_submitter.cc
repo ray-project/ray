@@ -335,15 +335,34 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   auto &client_queue = it->second;
-  bool force_fail = client_queue.state == rpc::ActorTableData::RESTARTING &&
-                    client_queue.enable_task_fast_fail;
-  if (!client_queue.rpc_client && !force_fail) {
+  auto &actor_submit_queue = client_queue.actor_submit_queue;
+  if (!client_queue.rpc_client) {
+    if (client_queue.state == rpc::ActorTableData::RESTARTING &&
+        client_queue.enable_task_fast_fail) {
+      // Fail all pending actor_submit_queue->
+      while (true) {
+        auto task = actor_submit_queue->PopNextTaskToSend();
+        if (!task.has_value()) {
+          break;
+        }
+        io_service_.post(
+            [this, task_spec = std::move(task.value().first)] {
+              rpc::PushTaskReply reply;
+              rpc::Address addr;
+              ReplyCallback(Status::IOError("The actor is temporarily unavailable."),
+                            reply,
+                            addr,
+                            task_spec);
+            },
+            "CoreWorkerDirectActorTaskSubmitter::SendPendingTasks_ForceFail");
+      }
+    }
     return;
   }
 
   // Check if there is a pending force kill. If there is, send it and disconnect the
   // client.
-  if (client_queue.pending_force_kill && client_queue.rpc_client) {
+  if (client_queue.pending_force_kill) {
     RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
     // It's okay if this fails because this means the worker is already dead.
     client_queue.rpc_client->KillActor(*client_queue.pending_force_kill, nullptr);
@@ -351,28 +370,13 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   }
 
   // Submit all pending actor_submit_queue->
-  auto &actor_submit_queue = client_queue.actor_submit_queue;
-
   while (true) {
     auto task = actor_submit_queue->PopNextTaskToSend();
     if (!task.has_value()) {
       break;
     }
-    RAY_CHECK(!client_queue.worker_id.empty() || force_fail);
-    if (force_fail) {
-      io_service_.post(
-          [this, task_spec = std::move(task.value().first)] {
-            rpc::PushTaskReply reply;
-            rpc::Address addr;
-            ReplyCallback(Status::IOError("The actor is temporarily unavailable."),
-                          reply,
-                          addr,
-                          task_spec);
-          },
-          "CoreWorkerDirectActorTaskSubmitter::SendPendingTasks_ForceFail");
-    } else {
-      PushActorTask(client_queue, task.value().first, task.value().second);
-    }
+    RAY_CHECK(!client_queue.worker_id.empty());
+    PushActorTask(client_queue, task.value().first, task.value().second);
   }
 }
 
@@ -398,8 +402,6 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                                        const TaskSpecification &task_spec,
                                                        bool skip_queue) {
-  RAY_CHECK(queue.rpc_client);
-
   auto request = std::make_unique<rpc::PushTaskRequest>();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -423,7 +425,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
     next_queueing_warn_threshold_ *= 2;
   }
 
-  rpc::Address addr = queue.rpc_client->Addr();
+  rpc::Address addr(queue.rpc_client->Addr());
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
         ReplyCallback(status, reply, addr, task_spec);
