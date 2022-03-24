@@ -13,7 +13,7 @@ if [ -d "/tmp/artifacts" ]; then
     echo "Artifact directory contents before cleanup:"
     find /tmp/artifacts -print || true
 
-    rm -rf /tmp/artifacts/* || true
+    find /tmp/artifacts -depth 1 -exec rm -rf -- {} +
 
     echo "Artifact directory contents after cleanup:"
     find /tmp/artifacts -print || true
