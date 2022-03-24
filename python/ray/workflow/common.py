@@ -223,12 +223,10 @@ class WorkflowStepRuntimeOptions:
     ):
         if max_retries is None:
             max_retries = 3
-        elif not isinstance(max_retries, int) or max_retries < 1:
-            raise ValueError("max_retries should be greater or equal to 1.")
+        elif not isinstance(max_retries, int) or max_retries < -1:
+            raise ValueError("'max_retries' only accepts 0, -1 or a positive integer.")
         if catch_exceptions is None:
             catch_exceptions = False
-        if max_retries is None:
-            max_retries = 3
         if not isinstance(checkpoint, bool) and checkpoint is not None:
             raise ValueError("'checkpoint' should be None or a boolean.")
         if ray_options is None:

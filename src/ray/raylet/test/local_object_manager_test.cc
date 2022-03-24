@@ -666,14 +666,12 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
 
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
-  int64_t total_size = 0;
   int64_t object_size = 1000;
 
   const ObjectID object_id = ObjectID::FromRandom();
   object_ids.push_back(object_id);
   unevictable_objects_.emplace(object_id);
   auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
-  total_size += object_size;
   auto object = std::make_unique<RayObject>(
       data_buffer, nullptr, std::vector<rpc::ObjectReference>());
   objects.push_back(std::move(object));
@@ -918,7 +916,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
-  // // Make sure all spilled objects are deleted.
+  // Make sure all spilled objects are deleted.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, object_ids_to_spill.size());
@@ -1296,6 +1294,72 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
   ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
 
   manager.FlushFreeObjects();
+  AssertNoLeaks();
+}
+
+TEST_F(LocalObjectManagerTest, TestPinBytes) {
+  // Prepare data for objects.
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+  }
+
+  std::vector<std::unique_ptr<RayObject>> objects;
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    auto object = std::make_unique<RayObject>(
+        nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+
+  // There is no pinned object yet.
+  ASSERT_EQ(manager.GetPinnedBytes(), 0);
+
+  // Pin objects.
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+
+  // Pinned object memory should be reported.
+  ASSERT_GT(manager.GetPinnedBytes(), 0);
+
+  // Spill all objects.
+  bool spilled = false;
+  manager.SpillObjects(object_ids, [&](const Status &status) {
+    RAY_CHECK(status.ok());
+    spilled = true;
+  });
+  ASSERT_FALSE(spilled);
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  std::vector<std::string> urls;
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    urls.push_back(BuildURL("url" + std::to_string(i)));
+  }
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  }
+  ASSERT_TRUE(spilled);
+
+  // With all objects spilled, the pinned bytes would be 1.
+  ASSERT_EQ(manager.GetPinnedBytes(), 1);
+
+  // Delete all (spilled) objects.
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
+  }
+  manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
+  int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
+  ASSERT_EQ(deleted_urls_size, object_ids.size());
+
+  // With no pinned or spilled object, the pinned bytes should be 0.
+  ASSERT_EQ(manager.GetPinnedBytes(), 0);
+
   AssertNoLeaks();
 }
 
