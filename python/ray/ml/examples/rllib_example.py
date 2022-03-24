@@ -1,7 +1,7 @@
 import argparse
 
 import ray
-from ray.ml.train.integrations.rllib.rllib_trainer import RLLibTrainer
+from ray.ml.train.integrations.rllib.rl_trainer import RLTrainer
 from ray.ml.result import Result
 from ray.rllib.agents.marwil import BCTrainer
 
@@ -10,11 +10,11 @@ def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
     path = "/tmp/out"
 
     # Curently doesn't seem to work, to unblock dev pass `input_config`
-    # dataset = ray.data.read_json(
-    #         path, parallelism=num_workers, ray_remote_args={"num_cpus": 1}
-    #     )
+    dataset = ray.data.read_json(
+        path, parallelism=num_workers, ray_remote_args={"num_cpus": 1}
+    )
 
-    trainer = RLLibTrainer(
+    trainer = RLTrainer(
         scaling_config={
             "num_workers": num_workers,
             "use_gpu": use_gpu,
@@ -28,7 +28,7 @@ def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
             "evaluation_interval": 1,
             "evaluation_config": {"input": "sampler"},
             "input": "dataset",
-            "input_config": {"format": "json", "path": path},
+            "input_config": {"format": "native", "path": lambda: dataset},
         },
     )
     result = trainer.fit()

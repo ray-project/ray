@@ -4,7 +4,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
-from ray.rllib.agents.trainer import Trainer as RLTrainer
+from ray.rllib.agents.trainer import Trainer as RLLibTrainer
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
@@ -15,10 +15,10 @@ from ray.util.ml_utils.dict import merge_dicts
 
 
 @PublicAPI(stability="alpha")
-class RLLibTrainer(Trainer):
+class RLTrainer(Trainer):
     def __init__(
         self,
-        algorithm: Union[str, RLTrainer],
+        algorithm: Union[str, RLLibTrainer],
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -63,9 +63,12 @@ class RLLibTrainer(Trainer):
         base_config = self._param_dict
         trainer_cls = self.__class__
 
-        rllib_trainer = get_trainable_cls(self._algorithm)
+        if isinstance(self._algorithm, str):
+            rllib_trainer = get_trainable_cls(self._algorithm)
+        else:
+            rllib_trainer = self._algorithm
 
-        class AIRRLlibTrainer(rllib_trainer):
+        class AIRRLTrainer(rllib_trainer):
             def __init__(
                 self,
                 config: Optional[PartialTrainerConfigDict] = None,
@@ -79,7 +82,7 @@ class RLLibTrainer(Trainer):
                 trainer = trainer_cls(**resolved_config)
                 rllib_config = trainer._get_rllib_config()
 
-                super(AIRRLlibTrainer, self).__init__(
+                super(AIRRLTrainer, self).__init__(
                     rllib_config,
                     env,
                     logger_creator,
@@ -97,5 +100,5 @@ class RLLibTrainer(Trainer):
 
                 return rllib_trainer.default_resource_request(rllib_config)
 
-        AIRRLlibTrainer.__name__ = rllib_trainer.__name__
-        return AIRRLlibTrainer
+        AIRRLTrainer.__name__ = rllib_trainer.__name__
+        return AIRRLTrainer

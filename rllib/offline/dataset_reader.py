@@ -54,6 +54,12 @@ def get_dataset_and_shards(
         dataset = ray.data.read_parquet(
             path, parallelism=parallelism, ray_remote_args={"num_cpus": cpus_per_task}
         )
+    elif format == "native":
+        # Todo: This should probably not be named path
+        if callable(path):
+            dataset = path()
+        else:
+            dataset = path
     else:
         raise ValueError("Un-supported Ray dataset format: ", format)
 
