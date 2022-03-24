@@ -31,8 +31,7 @@ class SpreadSchedulingPolicy : public ISchedulingPolicy {
                          std::function<bool(scheduling::NodeID)> is_node_available)
       : local_node_id_(local_node_id),
         nodes_(nodes),
-        is_node_available_(is_node_available),
-        hybrid_policy_(local_node_id_, nodes_, is_node_available_) {}
+        is_node_available_(is_node_available) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -48,8 +47,6 @@ class SpreadSchedulingPolicy : public ISchedulingPolicy {
   size_t spread_scheduling_next_index_ = 0;
   /// Function Checks if node is alive.
   std::function<bool(scheduling::NodeID)> is_node_available_;
-  /// Instance of hybrid policy;
-  HybridSchedulingPolicy hybrid_policy_;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray
