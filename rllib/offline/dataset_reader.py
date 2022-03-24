@@ -44,6 +44,7 @@ def get_dataset_and_shards(
     )
 
     format = input_config["format"]
+
     path = input_config["path"]
     if format == "json":
         dataset = ray.data.read_json(

@@ -11,27 +11,34 @@ from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.data.dataset import Dataset
 from ray.ml.result import Result
 from ray.ml.preprocessors import StandardScaler
+from ray.rllib.agents.marwil import BCTrainer
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 
 
 def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
     path = "/tmp/out"
-    parallelism = 2
-    dataset = ray.data.read_json(
-            path, parallelism=parallelism, ray_remote_args={"num_cpus": 1}
-        )
 
-    # Scale some random columns
-    columns_to_scale = ["mean radius", "mean texture"]
+    # dataset = ray.data.read_json(
+    #         path, parallelism=num_workers, ray_remote_args={"num_cpus": 1}
+    #     )
 
     trainer = RLLibTrainer(
         scaling_config={
             "num_workers": num_workers,
             "use_gpu": use_gpu,
         },
-        datasets={"train": dataset},
-        num_boost_round=100,
+        # datasets={"train": dataset},
+        algorithm=BCTrainer,
+        param_space={
+            "env": "CartPole-v0",
+            "framework": "tf",
+            "evaluation_num_workers": 1,
+            "evaluation_interval": 1,
+            "evaluation_config": {"input": "sampler"},
+            "input": "dataset",
+            "input_config": {"format": "json", "path": path},
+        },
     )
     result = trainer.fit()
     print(result.metrics)
@@ -41,37 +48,30 @@ def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
 
 def train_old_style():
     from ray import tune
+
+    path = "/tmp/out"
+    # parallelism = 2
+    # dataset = ray.data.read_json(
+    #     path, parallelism=parallelism, ray_remote_args={"num_cpus": 1}
+    # ).fully_executed()
+
     analysis = tune.run(
         "BC",
-        stop={
-            "timesteps_total": 500000
-
-        },
+        stop={"timesteps_total": 500000},
         config={
             "env": "CartPole-v0",
             "framework": "tf",
             "evaluation_num_workers": 1,
             "evaluation_interval": 1,
-            "evaluation_config": {
-                "input": "sampler"
-            },
+            "evaluation_config": {"input": "sampler"},
             "input": "dataset",
-            "input_config": {
-                "format": "json",
-                "path": "/tmp/out"
-            }
-        }
+            "input_config": {"format": "json", "path": path},
+        },
     )
     print(analysis.trials[0].checkpoint)
 
 
 if __name__ == "__main__":
-    train_old_style()
-
-    import sys
-    sys.exit(0)
-
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--address", required=False, type=str, help="the address to use for Ray"

@@ -10,7 +10,6 @@ import traceback
 import warnings
 
 import ray
-from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList, Callback
@@ -161,8 +160,8 @@ class _ExperimentCheckpointManager:
             search_alg.save_to_dir(self._checkpoint_dir, session_str=self._session_str)
 
         checkpoint_time_start = time.monotonic()
-        with out_of_band_serialize_dataset():
-            _serialize_and_write()
+
+        _serialize_and_write()
 
         if self._sync_trial_checkpoints:
             exclude = None
