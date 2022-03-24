@@ -1,5 +1,4 @@
 import functools
-import json
 from typing import Callable, Dict, Any, Optional, TYPE_CHECKING
 
 from ray._private import signature
@@ -10,6 +9,7 @@ from ray.workflow.common import (
     StepType,
     ensure_ray_initialized,
     WorkflowStepRuntimeOptions,
+    validate_user_metadata,
 )
 from ray.workflow import workflow_context
 from ray.util.annotations import PublicAPI
@@ -42,17 +42,7 @@ class WorkflowStepFunction:
         name: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ):
-        if metadata is not None:
-            if not isinstance(metadata, dict):
-                raise ValueError("metadata must be a dict.")
-            for k, v in metadata.items():
-                try:
-                    json.dumps(v)
-                except TypeError as e:
-                    raise ValueError(
-                        "metadata values must be JSON serializable, "
-                        "however '{}' has a value whose {}.".format(k, e)
-                    )
+        validate_user_metadata(metadata)
         self._func = func
         self._step_options = step_options
         self._func_signature = signature.extract_signature(func)
@@ -101,11 +91,11 @@ class WorkflowStepFunction:
     def options(
         self,
         *,
-        max_retries: int = 3,
-        catch_exceptions: bool = False,
+        max_retries: int = None,
+        catch_exceptions: bool = None,
         name: str = None,
         metadata: Dict[str, Any] = None,
-        allow_inplace: bool = False,
+        allow_inplace: bool = None,
         checkpoint: "Optional[CheckpointModeType]" = None,
         **ray_options,
     ) -> "WorkflowStepFunction":
@@ -132,11 +122,15 @@ class WorkflowStepFunction:
         Returns:
             The step function itself.
         """
-        # TODO(suquark): The options seems drops items that we did not
-        # specify (e.g., the name become "None" if we did not pass
-        # name to the options). This does not seem correct to me.
+        name = name or self._name
+        validate_user_metadata(metadata)
+        if metadata is not None:
+            metadata = {**self._user_metadata, **metadata}
+        else:
+            metadata = self._user_metadata
         step_options = WorkflowStepRuntimeOptions.make(
             step_type=StepType.FUNCTION,
+            existing_options=self._step_options,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
             allow_inplace=allow_inplace,

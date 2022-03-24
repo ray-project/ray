@@ -17,6 +17,7 @@ from ray.workflow.common import (
     WorkflowRef,
     StepType,
     WorkflowStepRuntimeOptions,
+    validate_user_metadata,
 )
 from ray.workflow import serialization_context
 from ray.workflow.storage import Storage, get_global_storage
@@ -268,19 +269,10 @@ class _VirtualActorMethodHelper:
         metadata=None,
         **ray_options,
     ) -> "_VirtualActorMethodHelper":
-        if metadata is not None:
-            if not isinstance(metadata, dict):
-                raise ValueError("metadata must be a dict.")
-            for k, v in metadata.items():
-                try:
-                    json.dumps(v)
-                except TypeError as e:
-                    raise ValueError(
-                        "metadata values must be JSON serializable, "
-                        "however '{}' has a value whose {}.".format(k, e)
-                    )
+        validate_user_metadata(metadata)
         options = WorkflowStepRuntimeOptions.make(
             step_type=self._options.step_type,
+            existing_options=self._options,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
             ray_options=ray_options,
@@ -291,9 +283,11 @@ class _VirtualActorMethodHelper:
             self._method_name,
             runtime_options=options,
         )
-
-        _self._name = name
-        _self._user_metadata = metadata
+        _self._name = name if name else self._name
+        if metadata is not None:
+            _self._user_metadata = {**self._user_metadata, **metadata}
+        else:
+            _self._user_metadata = self._user_metadata
         return _self
 
     def __call__(self, *args, **kwargs):

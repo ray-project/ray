@@ -323,6 +323,28 @@ def test_workflow_error_message():
     assert str(e.value) == expected_error_msg
 
 
+def test_options_update(workflow_start_regular_shared):
+    # Options are given in decorator first, then in the first .options()
+    # and finally in the second .options()
+    @workflow.step(name="old_name", metadata={"k": "v"},
+                   max_retries=1, num_cpus=2)
+    def f():
+        return
+    new_f = f.options(name="new_name", metadata={"extra_k1": "extra_v1"})\
+        .options(num_returns=2, metadata={"extra_k2": "extra_v2"})
+    # name is updated from the old name in the decorator to the new
+    # name in the first .options(), then preserved in the second options.
+    assert new_f._name == "new_name"
+    # metadata and ray_options are "updated"
+    assert new_f._user_metadata == {
+        "k": "v", "extra_k1": "extra_v1", "extra_k2": "extra_v2"}
+    assert new_f._step_options.ray_options == {
+        'num_cpus': 2, 'num_returns': 2
+    }
+    # max_retries only defined in the decorator and it got preserved all the way
+    assert new_f._step_options.max_retries == 1
+
+
 if __name__ == "__main__":
     import sys
 
