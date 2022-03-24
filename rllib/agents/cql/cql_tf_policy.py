@@ -47,7 +47,7 @@ MEAN_MIN = -9.0
 MEAN_MAX = 9.0
 
 
-def _repeat_tensor(t: tf.Tensor, n: int):
+def _repeat_tensor(t: TensorType, n: int):
     # Insert new axis at position 1 into tensor t
     t_rep = tf.expand_dims(t, 1)
     # Repeat tensor t_rep along new axis n times
