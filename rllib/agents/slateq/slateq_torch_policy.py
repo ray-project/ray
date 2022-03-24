@@ -17,8 +17,11 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import apply_grad_clipping, convert_to_torch_tensor, \
-    huber_loss
+from ray.rllib.utils.torch_utils import (
+    apply_grad_clipping,
+    convert_to_torch_tensor,
+    huber_loss,
+)
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -92,7 +95,8 @@ def build_slateq_losses(
     actions = train_batch[SampleBatch.ACTIONS]
 
     observation = convert_to_torch_tensor(
-        train_batch[SampleBatch.OBS], device=actions.device)
+        train_batch[SampleBatch.OBS], device=actions.device
+    )
     # user.shape: [B, E]
     user_obs = observation["user"]
     batch_size, embedding_size = user_obs.shape
@@ -118,7 +122,8 @@ def build_slateq_losses(
     # Target computations.
     # --------------------
     next_obs = convert_to_torch_tensor(
-        train_batch[SampleBatch.NEXT_OBS], device=actions.device)
+        train_batch[SampleBatch.NEXT_OBS], device=actions.device
+    )
 
     # user.shape: [B, E]
     user_next_obs = next_obs["user"]
