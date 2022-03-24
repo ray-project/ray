@@ -212,35 +212,6 @@ class ClientAPI:
 
         return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.NODES)
 
-    def method(self, *args, **kwargs):
-        """Annotate an actor method
-
-        Args:
-            num_returns: The number of object refs that should be returned by
-                invocations of this actor method.
-        """
-
-        # NOTE: So this follows the same logic as in ray/actor.py::method()
-        # The reason to duplicate it here is to simplify the client mode
-        # redirection logic. As the annotated method gets pickled and sent to
-        # the server from the client it carries this private variable, it
-        # activates the same logic on the server side; so there's no need to
-        # pass anything else. It's inside the class definition that becomes an
-        # actor. Similar annotations would follow the same way.
-        assert len(args) == 0
-        assert len(kwargs) == 1
-
-        assert "num_returns" in kwargs or "concurrency_group" in kwargs
-
-        def annotate_method(method):
-            if "num_returns" in kwargs:
-                method.__ray_num_returns__ = kwargs["num_returns"]
-            if "concurrency_group" in kwargs:
-                method.__ray_concurrency_group__ = kwargs["concurrency_group"]
-            return method
-
-        return annotate_method
-
     def cluster_resources(self):
         """Get the current total cluster resources.
 
