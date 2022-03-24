@@ -41,8 +41,6 @@ from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_r
 
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.cli import job_cli_group
 from distutils.dir_util import copy_tree
 
@@ -2054,15 +2052,8 @@ def healthcheck(address, redis_password, component):
 
     if not component:
         try:
-            options = (("grpc.enable_http_proxy", 0),)
-            channel = ray._private.utils.init_grpc_channel(address, options)
-            stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
-            request = gcs_service_pb2.CheckAliveRequest()
-            reply = stub.CheckAlive(
-                request, timeout=ray.ray_constants.HEALTHCHECK_EXPIRATION_S
-            )
-            if reply.status.code == 0:
-                sys.exit(0)
+            ray._private.gcs_utils.ping_cluster(address)
+            sys.exit(0)
         except Exception:
             pass
         sys.exit(1)

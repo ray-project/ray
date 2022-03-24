@@ -1,5 +1,4 @@
 import enum
-import json
 import logging
 from typing import List, Optional
 from functools import wraps
@@ -7,9 +6,7 @@ import time
 
 import grpc
 
-import ray.ray_constants as ray_constants
-import ray._private.usage.usage_constants as usage_constant
-from ray._private.utils import check_version_info
+import ray
 from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
@@ -108,24 +105,27 @@ def ping_cluster(address: str, timeout=2):
         address: GCS address string, e.g. ip:port.
         timeout: request.
     Returns:
-        Returns True if the cluster is running and has matching Python and Ray
-        versions.
+        Returns True if the cluster is running and has matching Ray version.
         Returns False if no service is running.
         Raises an exception otherwise.
     """
-    req = gcs_service_pb2.InternalKVGetRequest(
-        namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-        key=usage_constant.CLUSTER_METADATA_KEY,
-    )
+    req = gcs_service_pb2.CheckAliveRequest()
     try:
         channel = create_gcs_channel(address)
-        stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
-        resp = stub.InternalKVGet(req, timeout=timeout)
-        if resp is None or resp.value is None:
-            return False
-        check_version_info(json.loads(resp.value))
+        stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
+        resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
         return False
+    if resp.status.code != GcsCode.OK:
+        raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
+    if resp.ray_version is None:
+        resp.ray_version = "<= 1.12"
+    if resp.ray_version != ray.__version__:
+        raise RuntimeError(
+            f"Ray cluster at {address} has version "
+            f"{resp.ray_version}, but this process is running "
+            f"Ray version {ray.__version__}."
+        )
     return True
 
 
