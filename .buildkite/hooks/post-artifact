@@ -1,3 +1,5 @@
+[ -d "/tmp/artifacts" ] || exit
+
 echo "Cleaning up artifacts after upload:"
 ls -alp /tmp/artifacts
 rm -rf /tmp/artifacts/* || true
