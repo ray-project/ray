@@ -5,14 +5,14 @@ import asyncio
 from ray import serve
 
 
-@serve.deployment(num_replicas=5)
+@serve.deployment(num_replicas=2)
 def model_one(input_data):
     print("Model 1 predict")
     time.sleep(4)
     return 1
 
 
-@serve.deployment(num_replicas=5)
+@serve.deployment(num_replicas=2)
 def model_two(input_data):
     print("Model 2 predict")
     time.sleep(4)
@@ -33,7 +33,7 @@ class EnsembleModel:
         return predictions
 
 
-def send_concurrent_model_requests(num_single_model_replicas=5):
+def send_concurrent_model_requests(num_single_model_replicas=2):
     ensemble_model = EnsembleModel.get_handle()
     all_data = [
         ensemble_model.remote(input_data)
@@ -52,9 +52,9 @@ model_one.deploy()
 model_two.deploy()
 EnsembleModel.deploy()
 
-# Send 5 concurrent requests to the Ensemble Model for predictions.
-# This runs 4 seconds in total calling 5 times the ensemble model concurrently,
-# which calls 2 models in parallel for each call. In total 10 models run parallel.
+# Send 2 concurrent requests to the Ensemble Model for predictions.
+# This runs 4 seconds in total calling 2 times the ensemble model concurrently,
+# which calls 2 models in parallel for each call. In total 4 models run parallel.
 st = time.time()
 send_concurrent_model_requests()
 print("duration", time.time() - st)
