@@ -11,12 +11,9 @@ Acceptance criteria: Should run through and print "PASSED"
 """
 
 import argparse
-from asyncio import subprocess
 import json
 import os
-import tempfile
 import time
-from pathlib import Path
 
 import ray
 from ray.job_submission import JobSubmissionClient
@@ -38,9 +35,12 @@ if __name__ == "__main__":
         pass
     else:
         address = "http://127.0.0.1:8265"
-    
+
     client = JobSubmissionClient(address)
-    job_id = client.submit_job(entrypoint="python jobs_basic_driver_script.py", runtime_env={"pip": ["ray[tune]"], "working_dir": "./"}, )
+    job_id = client.submit_job(
+        entrypoint="python jobs_basic_driver_script.py",
+        runtime_env={"pip": ["ray[tune]"], "working_dir": "./"},
+    )
 
     taken = time.time() - start
     result = {
