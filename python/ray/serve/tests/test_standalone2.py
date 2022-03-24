@@ -7,7 +7,6 @@ import requests
 import pytest
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
-import requests
 
 import ray
 import ray.state
@@ -147,7 +146,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli):
     deploy_serve_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
     with open(deploy_serve_file.name, "w") as f:
         f.write(deploy_serve_script)
-    
+
     shutdown_serve_script = (
         "import ray\n"
         "from ray import serve\n"
@@ -167,7 +166,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli):
         subprocess.check_output(["python", shutdown_serve_file.name])
         with pytest.raises(requests.exceptions.ConnectionError):
             requests.get("http://localhost:8000/f")
-    
+
     os.unlink(deploy_serve_file.name)
     os.unlink(shutdown_serve_file.name)
 

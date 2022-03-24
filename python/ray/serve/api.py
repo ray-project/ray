@@ -131,7 +131,7 @@ def internal_get_global_client(
         _health_check_controller (bool): If True, run a health check on the
             cached controller if it exists. If the check fails, try reconnecting
             to the controller.
-    
+
     Raises:
         RayServeException: if there is no Serve controller actor in the
             expected namespace.
@@ -815,7 +815,7 @@ def _connect(_override_controller_namespace: Optional[str] = None) -> Client:
         _override_controller_namespace (Optional[str]): The namespace to use
             when looking for the controller. If None, Serve recalculates the
             controller's namespace using _get_controller_namespace().
-    
+
     Raises:
         RayServeException: if there is no Serve controller actor in the
             expected namespace.
@@ -865,12 +865,14 @@ def shutdown() -> None:
     Shuts down all processes and deletes all state associated with the
     instance.
     """
-    
+
     try:
         client = internal_get_global_client()
     except RayServeException:
-        logger.info("Nothing to shut down. There's no Serve application "
-                    "running on this Ray cluster.")
+        logger.info(
+            "Nothing to shut down. There's no Serve application "
+            "running on this Ray cluster."
+        )
         return
 
     client.shutdown()
