@@ -1,4 +1,8 @@
+import os
 import sys
+import subprocess
+from tempfile import NamedTemporaryFile
+import requests
 
 import pytest
 from ray.cluster_utils import AutoscalingCluster
@@ -20,6 +24,13 @@ def shutdown_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
+
+
+@pytest.fixture
+def start_and_shutdown_ray_cli():
+    subprocess.check_output(["ray", "start", "--head"])
+    yield
+    subprocess.check_output(["ray", "stop", "--force"])
 
 
 def test_standalone_actor_outside_serve():
@@ -114,6 +125,51 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
 
     serve.shutdown()
     ray.shutdown()
+
+
+def test_shutdown_remote(start_and_shutdown_ray_cli):
+    """Check that serve.shutdown() works on a remote Ray cluster."""
+
+    deploy_serve_script = (
+        "import ray\n"
+        "from ray import serve\n"
+        "\n"
+        'ray.init(address="auto", namespace="x")\n'
+        "serve.start(detached=True)\n"
+        "\n"
+        "@serve.deployment\n"
+        "def f(*args):\n"
+        '   return "got f"\n'
+        "\n"
+        "f.deploy()\n"
+    )
+
+    deploy_serve_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
+    with open(deploy_serve_file.name, "w") as f:
+        f.write(deploy_serve_script)
+    
+    shutdown_serve_script = (
+        "import ray\n"
+        "from ray import serve\n"
+        "\n"
+        'ray.init(address="auto", namespace="x")\n'
+        "serve.shutdown()\n"
+    )
+
+    shutdown_serve_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
+    with open(shutdown_serve_file.name, "w") as f:
+        f.write(shutdown_serve_script)
+
+    # Ensure Serve can be restarted and shutdown with for loop
+    for _ in range(2):
+        subprocess.check_output(["python", deploy_serve_file.name])
+        assert requests.get("http://localhost:8000/f").text == "got f"
+        subprocess.check_output(["python", shutdown_serve_file.name])
+        with pytest.raises(requests.exceptions.ConnectionError):
+            requests.get("http://localhost:8000/f")
+    
+    os.unlink(deploy_serve_file.name)
+    os.unlink(shutdown_serve_file.name)
 
 
 def test_autoscaler_shutdown_node_http_everynode(
