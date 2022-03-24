@@ -472,7 +472,7 @@ slateq-interest-evolution-recsim-env:
                 # test for now, we'll use pytorch, and investigate why tensorflow is not working.
                 # One indication of the issue is that the loss inputs are not flattened from the
                 # original dictionary spaces.
-                framework: torch
+                framework: tf
                 # Each step, sample `num_candidates` documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
@@ -487,7 +487,7 @@ slateq-interest-evolution-recsim-env:
                 convert_to_discrete_action_space: false
                 seed: 0
 
-        num_gpus: 1
+        num_gpus: 0
 
         exploration_config:
             warmup_timesteps: 20000
