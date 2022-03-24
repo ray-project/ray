@@ -138,7 +138,8 @@ class AzureNodeProvider(NodeProvider):
         Examples:
             >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND
             >>> provider = ... # doctest: +SKIP
-            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker"}) # doctest: +SKIP
+            >>> provider.non_terminated_nodes( # doctest: +SKIP
+            ...     {TAG_RAY_NODE_KIND: "worker"})
             ["node-1", "node-2"]
         """
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)

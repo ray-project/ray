@@ -301,7 +301,8 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         >>> import ray
         >>> from ray.data.datasource import RandomIntRowDatasource
         >>> source = RandomIntRowDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource(source, n=10, num_columns=2).take() # doctest: +SKIP
+        >>> ray.data.read_datasource( # doctest: +SKIP
+        ...     source, n=10, num_columns=2).take()
         {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
         {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """

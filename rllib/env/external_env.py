@@ -41,7 +41,8 @@ class ExternalEnv(threading.Thread):
         >>> from ray.tune import register_env
         >>> from ray.rllib.agents.dqn import DQNTrainer # doctest: +SKIP
         >>> YourExternalEnv = ... # doctest: +SKIP
-        >>> register_env("my_env", lambda config: YourExternalEnv(config)) # doctest: +SKIP
+        >>> register_env("my_env", # doctest: +SKIP
+        ...     lambda config: YourExternalEnv(config))
         >>> trainer = DQNTrainer(env="my_env") # doctest: +SKIP
         >>> while True: # doctest: +SKIP
         >>>     print(trainer.train()) # doctest: +SKIP

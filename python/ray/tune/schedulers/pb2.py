@@ -275,7 +275,9 @@ class PB2(PopulationBasedTraining):
         ...     hyperparam_bounds={
         ...     "factor": [0.0, 20.0],
         ... })
-        >>> tune.run(pbt_function, config={"lr": 0.0001}, num_samples=8, scheduler=pb2) # doctest: +SKIP
+        >>> tune.run( # doctest: +SKIP
+        ...     pbt_function, config={"lr": 0.0001}, num_samples=8, scheduler=pb2
+        ... )
     """
 
     def __init__(

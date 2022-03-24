@@ -251,7 +251,8 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
 
     Examples:
         >>> import ray
-        >>> from ray.util.placement_group import get_current_placement_group, PlacementGroup
+        >>> from ray.util.placement_group import PlacementGroup
+        >>> from ray.util.placement_group import get_current_placement_group
         >>> @ray.remote # doctest: +SKIP
         ... def f(): # doctest: +SKIP
         ...     # This will return the placement group the task f belongs to.

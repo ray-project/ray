@@ -248,7 +248,8 @@ class MultiGPUTrainOneStep:
         >>> from ray.rllib.execution.train_ops import MultiGPUTrainOneStep
         >>> workers = ... # doctest: +SKIP
         >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
-        >>> train_op = rollouts.for_each(MultiGPUTrainOneStep(workers, ...)) # doctest: +SKIP
+        >>> train_op = rollouts.for_each( # doctest: +SKIP
+        ...     MultiGPUTrainOneStep(workers, ...))
         >>> # This trains the policy on one batch.
         >>> print(next(train_op)) # doctest: +SKIP
         SampleBatch(...), {"learner_stats": ...}
@@ -532,7 +533,8 @@ class UpdateTargetNetwork:
         >>> from ray.rllib.execution.train_ops import UpdateTargetNetwork
         >>> from ray.rllib.execution import ParallelRollouts, TrainOneStep
         >>> workers = ... # doctest: +SKIP
-        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...)) # doctest: +SKIP
+        >>> train_op = ParallelRollouts(...).for_each( # doctest: +SKIP
+        ...     TrainOneStep(...))
         >>> update_op = train_op.for_each( # doctest: +SKIP
         ...     UpdateTargetNetwork(workers, target_update_freq=500)) # doctest: +SKIP
         >>> print(next(update_op)) # doctest: +SKIP

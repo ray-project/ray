@@ -282,7 +282,8 @@ class SelectExperiences:
         >>> from ray.rllib.execution import ParallelRollouts
         >>> from ray.rllib.execution.rollout_ops import SelectExperiences
         >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
-        >>> rollouts = rollouts.for_each(SelectExperiences(["pol1", "pol2"])) # doctest: +SKIP
+        >>> rollouts = rollouts.for_each( # doctest: +SKIP
+        ...     SelectExperiences(["pol1", "pol2"]))
         >>> print(next(rollouts).policy_batches.keys()) # doctest: +SKIP
         {"pol1", "pol2"}
     """
@@ -347,8 +348,10 @@ class StandardizeFields:
     Examples:
         >>> from ray.rllib.execution import ParallelRollouts
         >>> from ray.rllib.execution.rollout_ops import StandardizeFields
+        >>> import numpy as np
         >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
-        >>> rollouts = rollouts.for_each(StandardizeFields(["advantages"])) # doctest: +SKIP
+        >>> rollouts = rollouts.for_each( # doctest: +SKIP
+        ...     StandardizeFields(["advantages"]))
         >>> print(np.std(next(rollouts)["advantages"])) # doctest: +SKIP
         1.0
     """

@@ -271,14 +271,16 @@ def list_all(
         >>> from ray import workflow
         >>> long_running_job = ... # doctest: +SKIP
         >>> workflow_step = long_running_job.step() # doctest: +SKIP
-        >>> wf = workflow_step.run_async(workflow_id="long_running_job") # doctest: +SKIP
+        >>> wf = workflow_step.run_async( # doctest: +SKIP
+        ...     workflow_id="long_running_job")
         >>> jobs = workflow.list_all() # doctest: +SKIP
         >>> assert jobs == [ ("long_running_job", workflow.RUNNING) ] # doctest: +SKIP
         >>> ray.get(wf) # doctest: +SKIP
         >>> jobs = workflow.list_all({workflow.RUNNING}) # doctest: +SKIP
         >>> assert jobs == [] # doctest: +SKIP
         >>> jobs = workflow.list_all(workflow.SUCCESSFUL) # doctest: +SKIP
-        >>> assert jobs == [ ("long_running_job", workflow.SUCCESSFUL) ] # doctest: +SKIP
+        >>> assert jobs == [ # doctest: +SKIP
+        ...     ("long_running_job", workflow.SUCCESSFUL)]
 
     Returns:
         A list of tuple with workflow id and workflow status
@@ -429,8 +431,9 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
         >>> from ray import workflow
         >>> trip = ... # doctest: +SKIP
         >>> workflow_step = trip.options( # doctest: +SKIP
-        ...     name="trip", metadata={"k1": "v1"}).step() # doctest: +SKIP
-        >>> workflow_step.run(workflow_id="trip1", metadata={"k2": "v2"}) # doctest: +SKIP
+        ...     name="trip", metadata={"k1": "v1"}).step()
+        >>> workflow_step.run( # doctest: +SKIP
+        ...     workflow_id="trip1", metadata={"k2": "v2"})
         >>> workflow_metadata = workflow.get_metadata("trip1") # doctest: +SKIP
         >>> assert workflow_metadata["status"] == "SUCCESSFUL" # doctest: +SKIP
         >>> assert workflow_metadata["user_metadata"] == {"k2": "v2"} # doctest: +SKIP
@@ -466,7 +469,8 @@ def cancel(workflow_id: str) -> None:
         >>> workflow_step = some_job.step() # doctest: +SKIP
         >>> output = workflow_step.run_async(workflow_id="some_job") # doctest: +SKIP
         >>> workflow.cancel(workflow_id="some_job") # doctest: +SKIP
-        >>> assert [("some_job", workflow.CANCELED)] == workflow.list_all() # doctest: +SKIP
+        >>> assert [ # doctest: +SKIP
+        ...     ("some_job", workflow.CANCELED)] == workflow.list_all()
 
     Returns:
         None

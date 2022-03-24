@@ -302,8 +302,10 @@ class JobSubmissionClient(SubmissionClient):
         Example:
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
-            >>> job_id = client.submit_job(entrypoint="echo hi && sleep 5 && echo hi2") # doctest: +SKIP
-            >>> async for lines in client.tail_job_logs('raysubmit_Xe7cvjyGJCyuCvm2'): # doctest: +SKIP
+            >>> job_id = client.submit_job( # doctest: +SKIP
+            ...     entrypoint="echo hi && sleep 5 && echo hi2")
+            >>> async for lines in client.tail_job_logs( # doctest: +SKIP
+            ...           'raysubmit_Xe7cvjyGJCyuCvm2'):
             ...     print(lines, end="") # doctest: +SKIP
             hi
             hi2

@@ -12,7 +12,8 @@ This module was extracted from the `cloud` package, developed by `PiCloud, Inc.
 <https://web.archive.org/web/20140626004012/http://www.picloud.com/>`_.
 
 Copyright (c) 2012, Regents of the University of California.
-Copyright (c) 2009 `PiCloud, Inc. <https://web.archive.org/web/20140626004012/http://www.picloud.com/>`_.
+Copyright (c) 2009 `PiCloud, Inc.
+<https://web.archive.org/web/20140626004012/http://www.picloud.com/>`_.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -58,7 +59,6 @@ from .compat import pickle
 from collections import OrderedDict
 from typing import Generic, Union, Tuple, Callable
 from pickle import _getattribute
-from importlib._bootstrap import _find_spec
 
 try:  # pragma: no branch
     import typing_extensions as _typing_extensions

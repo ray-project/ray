@@ -149,7 +149,8 @@ class DatasetPipeline(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> for pandas_df in ray.data.range(1000000).repeat(5).iter_batches(): # doctest: +SKIP
+            >>> ds = ray.data.range(1000000).repeat(5) # doctest: +SKIP
+            >>> for pandas_df in ds.iter_batches(): # doctest: +SKIP
             ...     print(pandas_df) # doctest: +SKIP
 
         Time complexity: O(1)
@@ -199,7 +200,8 @@ class DatasetPipeline(Generic[T]):
             >>> pipe = ray.data.range(10).repeat(50) # doctest: +SKIP
             >>> workers = ... # doctest: +SKIP
             >>> # Split up a pipeline to process over `n` worker actors.
-            >>> shards = pipe.split(len(workers), locality_hints=workers) # doctest: +SKIP
+            >>> shards = pipe.split( # doctest: +SKIP
+            ...     len(workers), locality_hints=workers)
             >>> for shard, worker in zip(shards, workers): # doctest: +SKIP
             ...     worker.consume.remote(shard) # doctest: +SKIP
 

@@ -1572,7 +1572,8 @@ def deployment(
     ...     pass # doctest: +SKIP
 
     >>> MyDeployment.deploy(*init_args) # doctest: +SKIP
-    >>> MyDeployment.options(num_replicas=2, init_args=init_args).deploy() # doctest: +SKIP
+    >>> MyDeployment.options( # doctest: +SKIP
+    ...     num_replicas=2, init_args=init_args).deploy()
 
     Returns:
         Deployment

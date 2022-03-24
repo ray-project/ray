@@ -396,7 +396,8 @@ def make_multi_agent(
          >>> print(obs) # doctest: +SKIP
          {0: [...], 1: [...]}
          >>> # By env-maker callable:
-         >>> from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole # doctest: +SKIP
+         >>> from ray.rllib.examples.env.stateless_cartpole # doctest: +SKIP
+         ...    import StatelessCartPole
          >>> ma_stateless_cartpole_cls = make_multi_agent( # doctest: +SKIP
          ...    lambda config: StatelessCartPole(config)) # doctest: +SKIP
          >>> # Create a 3 agent multi-agent stateless cartpole.

@@ -59,7 +59,8 @@ def asynchronous_parallel_requests(
 
     Examples:
         >>> import time
-        >>> from ray.rllib.execution.parallel_requests import asynchronous_parallel_sample
+        >>> from ray.rllib.execution.parallel_requests
+        ...     import asynchronous_parallel_sample
         >>> # Define an RLlib Trainer.
         >>> trainer = ... # doctest: +SKIP
         >>> # 2 remote rollout workers (num_workers=2):

@@ -147,7 +147,8 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(1000) # doctest: +SKIP
             >>> ds.map(lambda x: x * 2) # doctest: +SKIP
             >>> # Transform Arrow records.
-            >>> ds = ray.data.from_items([{"value": i} for i in range(1000)]) # doctest: +SKIP
+            >>> ds = ray.data.from_items( # doctest: +SKIP
+            ...     [{"value": i} for i in range(1000)])
             >>> ds.map(lambda record: {"v2": record["value"] * 2}) # doctest: +SKIP
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
@@ -161,7 +162,9 @@ class Dataset(Generic[T]):
             >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
             >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
             >>> from ray.data.impl.compute import ActorPoolStrategy
-            >>> ds.map(CachedModel, compute=ActorPoolStrategy(2, 8), num_gpus=1) # doctest: +SKIP
+            >>> ds.map(CachedModel, # doctest: +SKIP
+            ...        compute=ActorPoolStrategy(2, 8),
+            ...        num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
@@ -329,7 +332,8 @@ class Dataset(Generic[T]):
             >>> import ray
             >>> ds = ray.data.range_arrow(100) # doctest: +SKIP
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column("new_col", lambda df: df["value"] * 2) # doctest: +SKIP
+            >>> ds = ds.add_column( # doctest: +SKIP
+            ...     "new_col", lambda df: df["value"] * 2)
             >>> # Overwrite the existing "value" with zeros.
             >>> ds = ds.add_column("value", lambda df: 0) # doctest: +SKIP
 
@@ -915,7 +919,8 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> import ray
-            >>> d1, d2, d3 = ray.data.range(10).split_at_indices([2, 5]) # doctest: +SKIP
+            >>> ds = ray.data.range(10) # doctest: +SKIP
+            >>> d1, d2, d3 = ds.split_at_indices([2, 5]) # doctest: +SKIP
             >>> d1.take() # doctest: +SKIP
             [0, 1]
             >>> d2.take() # doctest: +SKIP
@@ -1403,7 +1408,8 @@ class Dataset(Generic[T]):
             >>> ds = ray.data.range(100) # doctest: +SKIP
             >>> ds.sort() # doctest: +SKIP
             >>> # Sort by a single column in descending order.
-            >>> ds = ray.data.from_items([{"value": i} for i in range(1000)]) # doctest: +SKIP
+            >>> ds = ray.data.from_items( # doctest: +SKIP
+            ...     [{"value": i} for i in range(1000)])
             >>> ds.sort("value", descending=True) # doctest: +SKIP
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP

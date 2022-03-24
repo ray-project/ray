@@ -417,7 +417,8 @@ class SampleBatch(dict):
 
         Examples:
             >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> batch = SampleBatch({"a": [1, 2, 3], "eps_id": [0, 0, 1]}) # doctest: +SKIP
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
             >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
         """
@@ -623,7 +624,8 @@ class SampleBatch(dict):
 
         Examples:
             >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> batch = SampleBatch({"a": [1, 2, 3], "seq_lens": [1, 2]}) # doctest: +SKIP
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3], "seq_lens": [1, 2]})
             >>> print(batch.right_zero_pad(max_seq_len=4)) # doctest: +SKIP
             {"a": [1, 0, 0, 0, 2, 3, 0, 0], "seq_lens": [1, 2]}
 

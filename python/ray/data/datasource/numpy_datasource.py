@@ -17,7 +17,8 @@ class NumpyDatasource(FileBasedDatasource):
         >>> import ray
         >>> from ray.data.datasource import NumpyDatasource
         >>> source = NumpyDatasource() # doctest: +SKIP
-        >>> ray.data.read_datasource(source, paths="/path/to/dir").take() # doctest: +SKIP
+        >>> ray.data.read_datasource( # doctest: +SKIP
+        ...     source, paths="/path/to/dir").take()
         [array([0., 1., 2.]), ...]
 
     """

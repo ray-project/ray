@@ -148,20 +148,20 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> import random
         >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
         >>> worker = RolloutWorker( # doctest: +SKIP
-        ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25), # doctest: +SKIP
+        ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
         ...   policy_spec={ # doctest: +SKIP
         ...       # Use an ensemble of two policies for car agents
         ...       "car_policy1": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}), # doctest: +SKIP
+        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
         ...       "car_policy2": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}), # doctest: +SKIP
+        ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}),
         ...       # Use a single shared policy for all traffic lights
-        ...       "traffic_light_policy": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...), {}), # doctest: +SKIP
+        ...       "traffic_light_policy":
+        ...         (PGTFPolicy, Box(...), Discrete(...), {}),
         ...   },
-        ...   policy_mapping_fn=lambda agent_id, episode, **kwargs: # doctest: +SKIP
-        ...     random.choice(["car_policy1", "car_policy2"]) # doctest: +SKIP
-        ...     if agent_id.startswith("car_") else "traffic_light_policy") # doctest: +SKIP
+        ...   policy_mapping_fn=lambda agent_id, episode, **kwargs:
+        ...     random.choice(["car_policy1", "car_policy2"])
+        ...     if agent_id.startswith("car_") else "traffic_light_policy")
         >>> print(worker.sample()) # doctest: +SKIP
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
@@ -1620,7 +1620,8 @@ class RolloutWorker(ParallelIteratorWorker):
 
         Examples:
             >>> worker = ... # doctest: +SKIP
-            >>> global_vars = worker.set_global_vars({"timestep": 4242}) # doctest: +SKIP
+            >>> global_vars = worker.set_global_vars( # doctest: +SKIP
+            ...     {"timestep": 4242})
         """
         self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
         self.global_vars = global_vars

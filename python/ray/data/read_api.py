@@ -168,7 +168,8 @@ def range_tensor(
     Examples:
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
-        >>> ds.map_batches(lambda arr: arr * 2, batch_format="pandas").show() # doctest: +SKIP
+        >>> ds.map_batches( # doctest: +SKIP
+        ...     lambda arr: arr * 2, batch_format="pandas").show()
 
     This is similar to range_arrow(), but uses the ArrowTensorArray extension
     type. The dataset elements take the form {"value": array(N, shape=shape)}.
@@ -407,7 +408,8 @@ def read_json(
         >>> ray.data.read_json(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_json(["s3://bucket/path1", "s3://bucket/path2"]) # doctest: +SKIP
+        >>> ray.data.read_json( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -459,7 +461,8 @@ def read_csv(
         >>> ray.data.read_csv(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_csv(["s3://bucket/path1", "s3://bucket/path2"]) # doctest: +SKIP
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -564,7 +567,8 @@ def read_numpy(
         >>> ray.data.read_numpy(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_numpy(["s3://bucket/path1", "s3://bucket/path2"]) # doctest: +SKIP
+        >>> ray.data.read_numpy( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -610,7 +614,8 @@ def read_binary_files(
         >>> ray.data.read_binary_files("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_binary_files(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
+        >>> ray.data.read_binary_files( # doctest: +SKIP
+        ...     ["/path/to/file1", "/path/to/file2"])
 
     Args:
         paths: A single file path or a list of file paths (or directories).

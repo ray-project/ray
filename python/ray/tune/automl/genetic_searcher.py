@@ -150,7 +150,8 @@ class GeneticSearch(AutoMLSearcher):
         Examples:
             >>> import numpy as np
             >>> from ray.tune.automl.genetic_searcher import GeneticSearch
-            >>> genetic_search = GeneticSearch(search_space={}, reward_attr="attr") # doctest: +SKIP
+            >>> genetic_search = GeneticSearch( # doctest: +SKIP
+            ...     search_space={}, reward_attr="attr")
             >>> # Genes that represent 3 parameters
             >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
             >>> gene2 = np.array([[0, 1, 0], [1, 0], [0, 1]])
@@ -195,7 +196,8 @@ class GeneticSearch(AutoMLSearcher):
         Examples:
             >>> import numpy as np
             >>> from ray.tune.automl.genetic_searcher import GeneticSearch
-            >>> genetic_search = GeneticSearch(search_space={}, reward_attr="attr") # doctest: +SKIP
+            >>> genetic_search = GeneticSearch( # doctest: +SKIP
+            ...     search_space={}, reward_attr="attr")
             >>> # Genes that represent 3 parameters
             >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
             >>> gene2 = np.array([[0, 1, 0], [1, 0], [0, 1]])
@@ -241,7 +243,8 @@ class GeneticSearch(AutoMLSearcher):
         Examples:
             >>> import numpy as np
             >>> from ray.tune.automl.genetic_searcher import GeneticSearch
-            >>> genetic_search = GeneticSearch(search_space={}, reward_attr="attr") # doctest: +SKIP
+            >>> genetic_search = GeneticSearch( # doctest: +SKIP
+            ...     search_space={}, reward_attr="attr")
             >>> # Genes that represent 3 parameters
             >>> gene1 = np.array([[0, 0, 1], [0, 1], [1, 0]])
             >>> new_gene = genetic_search._mutation([gene1]) # doctest: +SKIP

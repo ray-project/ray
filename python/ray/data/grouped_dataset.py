@@ -39,7 +39,8 @@ class GroupedDataset(Generic[T]):
         Examples:
             >>> import ray
             >>> from ray.data.aggregate import AggregateFn
-            >>> grouped_ds = ray.data.range(100).groupby(lambda x: x % 3) # doctest: +SKIP
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> grouped_ds = ds.groupby(lambda x: x % 3) # doctest: +SKIP
             >>> grouped_ds.aggregate(AggregateFn( # doctest: +SKIP
             ...     init=lambda k: [], # doctest: +SKIP
             ...     accumulate=lambda a, r: a + [r], # doctest: +SKIP
@@ -176,18 +177,20 @@ class GroupedDataset(Generic[T]):
             >>> import ray
             >>> import pandas as pd
             >>> import numpy as np
-            >>> ray.data.range(100).groupby(lambda x: x % 3).map_groups( # doctest: +SKIP
-            ...     lambda x: [np.median(x)]) # doctest: +SKIP
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.groupby(lambda x: x % 3).map_groups( # doctest: +SKIP
+            ...     lambda x: [np.median(x)])
 
             >>> # Return multiple records per group (dataframe in, dataframe out).
             >>> df = pd.DataFrame(
             ...     {"A": ["a", "a", "b"], "B": [1, 1, 3], "C": [4, 6, 5]}
             ... )
-            >>> grouped = ray.data.from_pandas(df).groupby("A") # doctest: +SKIP
+            >>> ds = ray.data.from_pandas(df) # doctest: +SKIP
+            >>> grouped = ds.groupby("A") # doctest: +SKIP
             >>> grouped.map_groups( # doctest: +SKIP
-            ...     lambda g: g.apply( # doctest: +SKIP
-            ...         lambda c: c / g[c.name].sum() if c.name in ["B", "C"] else c # doctest: +SKIP
-            ...     ) # doctest: +SKIP
+            ...     lambda g: g.apply(
+            ...         lambda c: c / g[c.name].sum() if c.name in ["B", "C"] else c
+            ...     )
             ... ) # doctest: +SKIP
 
         Args:

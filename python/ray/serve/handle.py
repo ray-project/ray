@@ -61,14 +61,17 @@ class RayServeHandle:
         >>> let_it_crash_request = ... # doctest: +SKIP
         >>> ray.get(handle.remote(let_it_crash_request)) # doctest: +SKIP
         # raises RayTaskError Exception
-        >>> async_handle = serve_client.get_handle("my_deployment", sync=False) # doctest: +SKIP
+        >>> async_handle = serve_client.get_handle( # doctest: +SKIP
+        ...     "my_deployment", sync=False)
         >>> async_handle  # doctest: +SKIP
         RayServeHandle(deployment="my_deployment")
         >>> await async_handle.remote(my_request_content) # doctest: +SKIP
         ObjectRef(...)
         >>> ray.get(await async_handle.remote(...)) # doctest: +SKIP
         # result
-        >>> ray.get(await async_handle.remote(let_it_crash_request)) # doctest: +SKIP
+        >>> ray.get( # doctest: +SKIP
+        ...     await async_handle.remote(let_it_crash_request)
+        ... )
         # raises RayTaskError Exception
     """
 

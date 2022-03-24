@@ -41,7 +41,8 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         >>> while True: # doctest: +SKIP
         >>>     pg.train() # doctest: +SKIP
 
-        >>> client = PolicyClient("localhost:9900", inference_mode="local") # doctest: +SKIP
+        >>> client = PolicyClient( # doctest: +SKIP
+        ...     "localhost:9900", inference_mode="local")
         >>> eps_id = client.start_episode()  # doctest: +SKIP
         >>> env = gym.make("CartPole-v0")
         >>> obs = env.reset()

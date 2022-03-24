@@ -861,7 +861,8 @@ class Trainable:
         >>> from ray.tune.utils import validate_save_restore
         >>> MyTrainableClass = ... # doctest: +SKIP
         >>> validate_save_restore(MyTrainableClass) # doctest: +SKIP
-        >>> validate_save_restore(MyTrainableClass, use_object_store=True) # doctest: +SKIP
+        >>> validate_save_restore( # doctest: +SKIP
+        ...     MyTrainableClass, use_object_store=True)
 
         .. versionadded:: 0.8.7
 
