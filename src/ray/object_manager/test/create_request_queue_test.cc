@@ -19,6 +19,8 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_priority.h"
 
+#include <stdlib.h>
+
 namespace plasma {
 
 class MockClient : public ClientInterface {
@@ -73,6 +75,41 @@ class CreateRequestQueueTest : public ::testing::Test {
   CreateRequestQueue queue_;
   int num_global_gc_ = 0;
 };
+
+TEST_F(CreateRequestQueueTest, TestBlockTasks) {
+  auto oom_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
+    return PlasmaError::OutOfMemory;
+  };
+  auto blocked_request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
+    result->data_size = 1234;
+    return PlasmaError::OK;
+  };
+  ray::TaskKey key(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({3,4}), ObjectID::FromRandom().TaskId());
+
+  auto client = std::make_shared<MockClient>();
+  auto req_id1 = queue_.AddRequest(key, ObjectID::Nil(), client, oom_request, 1234);
+  auto req_id2 = queue_.AddRequest(key1, ObjectID::Nil(), client, blocked_request, 1234);
+
+  // Neither request was fulfilled.
+  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
+  ASSERT_TRUE(queue_.ProcessRequests().IsObjectStoreFull());
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
+  ASSERT_EQ(num_global_gc_, 2);
+
+  // Grace period is done. 
+  // Blocked request should be still blocked
+  current_time_ns_ += oom_grace_period_s_ * 2e9;
+  ASSERT_TRUE(queue_.ProcessRequests().ok());
+  ASSERT_EQ(num_global_gc_, 3);
+
+  // Both requests fulfilled.
+  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OutOfMemory);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id2, PlasmaError::OK);
+
+  AssertNoLeaks();
+}
 
 TEST_F(CreateRequestQueueTest, TestBtree) {
   auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
