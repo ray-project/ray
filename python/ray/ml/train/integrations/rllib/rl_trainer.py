@@ -33,7 +33,7 @@ class RLTrainer(Trainer):
             scaling_config, run_config, datasets, preprocessor, resume_from_checkpoint
         )
 
-    def _get_rllib_config(self) -> Dict:
+    def _get_rllib_config(self, process_datasets: bool = False) -> Dict:
         config = self._train_kwargs.get("param_space", {}).copy()
         num_workers = self.scaling_config.get("num_workers")
         if num_workers is not None:
@@ -53,6 +53,17 @@ class RLTrainer(Trainer):
         trainer_resources = self.scaling_config.get("trainer_resources")
         if trainer_resources:
             config["num_cpus_for_driver"] = trainer_resources.get("CPU", 1)
+
+        if process_datasets:
+            self.preprocess_datasets()
+            # Up for discussion: If datasets is passed, should we always
+            # set the input config? Is the sampler config required here, too?
+            if self.datasets:
+                config["input"] = "dataset"
+                config["input_config"] = {
+                    "format": "native",
+                    "path": lambda: self.datasets["train"],
+                }
 
         return config
 
@@ -80,7 +91,7 @@ class RLTrainer(Trainer):
                 resolved_config = merge_dicts(base_config, config)
 
                 trainer = trainer_cls(**resolved_config)
-                rllib_config = trainer._get_rllib_config()
+                rllib_config = trainer._get_rllib_config(process_datasets=True)
 
                 super(AIRRLTrainer, self).__init__(
                     rllib_config,
@@ -96,7 +107,7 @@ class RLTrainer(Trainer):
             ) -> Union[Resources, PlacementGroupFactory]:
                 resolved_config = merge_dicts(base_config, config)
                 trainer = trainer_cls(**resolved_config)
-                rllib_config = trainer._get_rllib_config()
+                rllib_config = trainer._get_rllib_config(process_datasets=False)
 
                 return rllib_trainer.default_resource_request(rllib_config)
 

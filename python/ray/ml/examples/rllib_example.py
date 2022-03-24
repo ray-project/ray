@@ -19,7 +19,7 @@ def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
             "num_workers": num_workers,
             "use_gpu": use_gpu,
         },
-        # datasets={"train": dataset},
+        datasets={"train": dataset},
         algorithm=BCTrainer,
         param_space={
             "env": "CartPole-v0",
@@ -27,8 +27,6 @@ def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
             "evaluation_num_workers": 1,
             "evaluation_interval": 1,
             "evaluation_config": {"input": "sampler"},
-            "input": "dataset",
-            "input_config": {"format": "native", "path": lambda: dataset},
         },
     )
     result = trainer.fit()
