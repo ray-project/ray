@@ -25,11 +25,6 @@ from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes
 from ray._private.utils import try_to_create_directory
 
-import ray.rllib as rllib
-import ray.tune as tune
-import ray.serve as serve
-import ray.train as train
-
 default_logger = logging.getLogger(__name__)
 
 
@@ -234,67 +229,3 @@ class PyModulesManager:
                 )
             module_dirs.append(str(module_dir))
         set_pythonpath_in_context(os.pathsep.join(module_dirs), context)
-
-
-class RayLibrariesManager:
-    def __init__(self, resources_dir: str):
-        self._resources_dir = os.path.join(resources_dir,
-                                           "ray_libraries_modules_files")
-        try_to_create_directory(self._resources_dir)
-        assert _internal_kv_initialized()
-
-    def _get_local_dir_from_uri(self, uri: str):
-        return get_local_dir_from_uri(uri, self._resources_dir)
-
-    def delete_uri(
-        self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> int:
-        """Delete URI and return the number of bytes deleted."""
-        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
-        local_dir_size = get_directory_size_bytes(local_dir)
-
-        deleted = delete_package(uri, self._resources_dir)
-        if not deleted:
-            logger.warning(f"Tried to delete nonexistent URI: {uri}.")
-            return 0
-
-        return local_dir_size
-
-    async def create(
-        self,
-        uri: str,
-        runtime_env: "RuntimeEnv",  # noqa: F821
-        context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
-    ) -> int:
-        # Currently create method is still a sync process, to avoid blocking
-        # the loop, need to run this function in another thread.
-        # TODO(Catch-Bull): Refactor method create into an async process, and
-        # make this method running in current loop.
-        def _create():
-            if is_whl_uri(uri):
-                module_dir = self._download_and_install_wheel(uri=uri, logger=logger)
-
-            else:
-                module_dir = download_and_unpack_package(
-                    uri, self._resources_dir, logger=logger
-                )
-
-                if module_dir.endswith("rllib"):
-                    library_dir = rllib.__path__
-                elif module_dir.endswith("tune"):
-                    library_dir = tune.__path__
-                elif module_dir.endswith("train"):
-                    library_dir = train.__path__
-                elif module_dir.endswith("serve"):
-                    library_dir = serve.__path__
-                else:
-                    raise ValueError(f"Unknown ray library library: {module_dir}")
-
-
-                os.rename(library_dir, module_dir)
-
-            return get_directory_size_bytes(module_dir)
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _create)
