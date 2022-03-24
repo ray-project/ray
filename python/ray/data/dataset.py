@@ -985,60 +985,19 @@ class Dataset(Generic[T]):
             on = [on]
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
 
-    def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
-        """Compute sum over entire dataset.
-
-        This is a blocking operation.
-
-        Examples:
-            >>> ray.data.range(100).sum()
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).sum(lambda x: x[1])
-            >>> ray.data.range_arrow(100).sum("value")
-            >>> ray.data.from_items([
-            ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).sum(["A", "B"])
-
-        Args:
-            on: The data subset on which to compute the sum.
-
-                - For a simple dataset: it can be a callable or a list thereof,
-                  and the default is to return a scalar sum of all rows.
-                - For an Arrow dataset: it can be a column name or a list
-                  thereof, and the default is to return an ``ArrowRow``
-                  containing the column-wise sum of all columns.
-
+    def sum(self) -> int:
+        """Sum up the elements of this dataset.
+        Time complexity: O(dataset size / parallelism)
         Returns:
-            The sum result.
-
-            For a simple dataset, the output is:
-
-            - ``on=None``: a scalar representing the sum of all rows,
-            - ``on=callable``: a scalar representing the sum of the outputs of
-              the callable called on each row,
-            - ``on=[callable_1, ..., calalble_n]``: a tuple of
-              ``(sum_1, ..., sum_n)`` representing the sum of the outputs of
-              the corresponding callables called on each row.
-
-            For an Arrow dataset, the output is:
-
-            - ``on=None``: an ArrowRow containing the column-wise sum of all
-              columns,
-            - ``on="col"``: a scalar representing the sum of all items in
-              column ``"col"``,
-            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
-              containing the column-wise sum of the provided columns.
-
-            If the dataset is empty, then the output is 0.
+            The sum of the records in the dataset.
         """
-        ret = self._aggregate_on(Sum, on)
-        if ret is None:
-            return 0
-        elif len(ret) == 1:
-            return ret[0]
-        else:
-            return ret
+
+        get_sum = cached_remote_fn(_get_sum)
+
+        return sum(
+            ray.get([
+                get_sum.remote(block) for block in self._blocks.iter_blocks()
+            ]))
 
     def min(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute minimum over entire dataset.
@@ -2482,6 +2441,11 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+def _get_sum(block: Block) -> int:
+    block = BlockAccessor.for_block(block)
+    return sum(block.iter_rows())
 
 
 def _split_block(
