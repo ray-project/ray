@@ -68,7 +68,9 @@ def load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        new_trial = Trial(trial_cp["trainable_name"], stub=stub)
+        new_trial = Trial(
+            trial_cp["trainable_name"], stub=stub, _setup_default_resource=False
+        )
         new_trial.__setstate__(trial_cp)
         trials.append(new_trial)
 
