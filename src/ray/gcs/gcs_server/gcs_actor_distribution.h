@@ -22,20 +22,17 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
 
-using ClusterResourceScheduler = gcs::GcsResourceScheduler;
-
 /// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a
 /// worker process.
-/// TODO(Chong-Li): It contains multiple slots, and each of them can bind to an actor.
 class GcsActorWorkerAssignment
     : public std::enable_shared_from_this<GcsActorWorkerAssignment> {
  public:
@@ -124,22 +121,11 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   std::unique_ptr<GcsActorWorkerAssignment> AllocateActorWorkerAssignment(
       const TaskSpecification &task_spec);
 
-  /// TODO(Chong-Li): This is to accommodate the Raylet scheduling's behavior (different
-  /// resources for scheduling and allocation). We need to unify these two at the end.
-  /// Allocate resources for the actor.
-  ///
-  /// \param required_placement_resources The required resources of the task for
-  /// scheduling. \param required_resources The required resources of the task for
-  /// allocation. \return ID of the node from which the resources are allocated.
-  scheduling::NodeID AllocateResources(
-      const ResourceRequest &required_placement_resources,
-      const ResourceRequest &required_resources);
+  /// \param task_spec The specification of the task.
+  /// \return ID of the node from which the resources are allocated.
+  scheduling::NodeID AllocateResources(const TaskSpecification &task_spec);
 
-  scheduling::NodeID GetHighestScoreNodeResource(
-      const ResourceRequest &required_resources) const;
-
-  void WarnResourceAllocationFailure(const TaskSpecification &task_spec,
-                                     const ResourceRequest &required_resources) const;
+  void WarnResourceAllocationFailure(const TaskSpecification &task_spec) const;
 
   /// A rejected rely means resources were preempted by normal tasks. Then
   /// update the the cluster resource view and reschedule immediately.

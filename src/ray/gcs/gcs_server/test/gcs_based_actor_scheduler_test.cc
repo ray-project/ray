@@ -68,7 +68,8 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
             [this](const rpc::Address &address) { return worker_client_; },
             /*normal_task_resources_changed_callback=*/
             [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
-              gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
+              gcs_resource_manager_->UpdateNodeNormalTaskAndAvailableResources(node_id,
+                                                                               resources);
             });
   }
 

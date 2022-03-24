@@ -25,6 +25,7 @@ using namespace ::ray::raylet_scheduling_policy;
 
 ClusterResourceScheduler::ClusterResourceScheduler()
     : local_node_id_(scheduling::NodeID::Nil()) {
+  is_node_available_fn_ = [this](scheduling::NodeID node_id) { return true; };
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   NodeResources node_resources;
   node_resources.predefined_resources.resize(PredefinedResources_MAX);
@@ -36,6 +37,7 @@ ClusterResourceScheduler::ClusterResourceScheduler()
       [&](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
+  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, node_resources);
   scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
@@ -121,7 +123,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
-  if (actor_creation && resource_request.IsEmpty()) {
+  if (actor_creation && resource_request.IsEmpty() && !force_spillback) {
     return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
   }
 

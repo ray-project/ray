@@ -203,7 +203,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    UpdateNodeNormalTaskResources(node_id, data);
+    UpdateNodeNormalTaskAndAvailableResources(node_id, data);
   } else {
     if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
             scheduling::NodeID(node_id.Binary()), data)) {
@@ -364,9 +364,9 @@ void GcsResourceManager::AddResourcesChangedListener(std::function<void()> liste
   resources_changed_listeners_.emplace_back(std::move(listener));
 }
 
-void GcsResourceManager::UpdateNodeNormalTaskResources(
+void GcsResourceManager::UpdateNodeNormalTaskAndAvailableResources(
     const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
-  if (cluster_resource_manager_.UpdateNodeNormalTaskResources(
+  if (cluster_resource_manager_.UpdateNodeNormalTaskAndAvailableResources(
           scheduling::NodeID(node_id.Binary()), heartbeat)) {
     for (const auto &listener : resources_changed_listeners_) {
       listener();

@@ -333,7 +333,7 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
   return true;
 }
 
-bool ClusterResourceManager::UpdateNodeNormalTaskResources(
+bool ClusterResourceManager::UpdateNodeNormalTaskAndAvailableResources(
     scheduling::NodeID node_id, const rpc::ResourcesData &resource_data) {
   auto iter = nodes_.find(node_id);
   if (iter != nodes_.end()) {
@@ -346,6 +346,9 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
           /*requires_object_store_memory=*/false);
       auto &local_normal_task_resources = node_resources->normal_task_resources;
       if (normal_task_resources != local_normal_task_resources) {
+        // Return the current normal task resources back to the available resources.
+        AddNodeAvailableResources(node_id, local_normal_task_resources);
+
         local_normal_task_resources.predefined_resources.resize(PredefinedResources_MAX);
         for (size_t i = 0; i < PredefinedResources_MAX; ++i) {
           local_normal_task_resources.predefined_resources[i] =
@@ -355,6 +358,9 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
             std::move(normal_task_resources.custom_resources);
         node_resources->latest_resources_normal_task_timestamp =
             resource_data.resources_normal_task_timestamp();
+
+        // Acquire the new normal task resources from the available resources.
+        SubtractNodeAvailableResources(node_id, normal_task_resources);
         return true;
       }
     }

@@ -113,8 +113,8 @@ class ClusterResourceManager {
   /// Update node normal task resources.
   /// Return false if such node doesn't exist.
   /// TODO(Shanly): Integrated this method into `UpdateNode` later.
-  bool UpdateNodeNormalTaskResources(scheduling::NodeID node_id,
-                                     const rpc::ResourcesData &resource_data);
+  bool UpdateNodeNormalTaskAndAvailableResources(scheduling::NodeID node_id,
+                                                 const rpc::ResourcesData &resource_data);
 
   /// Return false if the specified node doesn't exist.
   /// TODO(Shanly): This method will be removed once the `gcs_resource_manager` is

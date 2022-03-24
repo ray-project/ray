@@ -50,7 +50,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
     GcsResourceManager &gcs_resource_manager,
-    ClusterResourceScheduler &cluster_resource_scheduler,
+    GcsResourceScheduler &cluster_resource_scheduler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     syncer::RaySyncer &ray_syncer)
     : return_timer_(io_context),
@@ -94,7 +94,7 @@ ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
 ScheduleResult GcsStrictPackStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
-    ClusterResourceScheduler &cluster_resource_scheduler) {
+    GcsResourceScheduler &cluster_resource_scheduler) {
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
   const auto &scheduling_result = cluster_resource_scheduler.Schedule(
       required_resources, SchedulingType::STRICT_PACK);
@@ -105,7 +105,7 @@ ScheduleResult GcsStrictPackStrategy::Schedule(
 ScheduleResult GcsPackStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
-    ClusterResourceScheduler &cluster_resource_scheduler) {
+    GcsResourceScheduler &cluster_resource_scheduler) {
   // The current algorithm is to select a node and deploy as many bundles as possible.
   // First fill up a node. If the node resource is insufficient, select a new node.
   // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
@@ -119,7 +119,7 @@ ScheduleResult GcsPackStrategy::Schedule(
 ScheduleResult GcsSpreadStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
-    ClusterResourceScheduler &cluster_resource_scheduler) {
+    GcsResourceScheduler &cluster_resource_scheduler) {
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
   const auto &scheduling_result =
       cluster_resource_scheduler.Schedule(required_resources, SchedulingType::SPREAD);
@@ -130,7 +130,7 @@ ScheduleResult GcsSpreadStrategy::Schedule(
 ScheduleResult GcsStrictSpreadStrategy::Schedule(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context,
-    ClusterResourceScheduler &cluster_resource_scheduler) {
+    GcsResourceScheduler &cluster_resource_scheduler) {
   // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
   // schedule bundles with special resource requirements first, which will be implemented
   // in the next pr.

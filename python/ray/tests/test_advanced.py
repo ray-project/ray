@@ -692,29 +692,10 @@ def test_schedule_actor_and_normal_task(ray_start_cluster):
         ray.get(singal1.wait.remote())
         return 1
 
-    singal1 = SignalActor.remote()
-    signal2 = SignalActor.remote()
-
-    o1 = fun.remote(singal1, signal2)
-    # Make sure the normal task is executing.
-    ray.get(signal2.wait.remote())
-
-    # The normal task is blocked now.
-    # Try to create actor and make sure this actor is not created for the time
-    # being.
     foo = Foo.remote()
     o2 = foo.method.remote()
     ready_list, remaining_list = ray.wait([o2], timeout=2)
-    assert len(ready_list) == 0 and len(remaining_list) == 1
-
-    # Send a signal to unblock the normal task execution.
-    ray.get(singal1.send.remote())
-
-    # Check the result of normal task.
-    assert ray.get(o1) == 1
-
-    # Make sure the actor is created.
-    assert ray.get(o2) == 2
+    assert len(ready_list) == 1 and len(remaining_list) == 0
 
 
 # This case tests whether gcs-based actor scheduler works properly
@@ -761,7 +742,7 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
 
 # This case tests whether gcs-based actor scheduler distributes actors
 # in a balanced way. By default, it uses the `SPREAD` strategy of
-# gcs resource scheduler.
+# cluster resource scheduler.
 @pytest.mark.parametrize("args", [[5, 20], [5, 3]])
 def test_actor_distribution_balance(ray_start_cluster, args):
     cluster = ray_start_cluster
@@ -772,12 +753,17 @@ def test_actor_distribution_balance(ray_start_cluster, args):
     for i in range(node_count):
         cluster.add_node(
             memory=1024 ** 3,
-            _system_config={"gcs_actor_scheduling_enabled": True} if i == 0 else {},
+            _system_config={
+                "gcs_actor_scheduling_enabled": True,
+                "scheduler_spread_threshold": 1,
+            }
+            if i == 0
+            else {},
         )
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01)
+    @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01, scheduling_strategy="SPREAD")
     class Foo:
         def method(self):
             return ray.worker.global_worker.node.unique_id
@@ -806,16 +792,17 @@ def test_worker_lease_reply_with_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         memory=2000 * 1024 ** 2,
+        num_cpus=1,
         _system_config={
             "gcs_resource_report_poll_period_ms": 1000000,
             "gcs_actor_scheduling_enabled": True,
         },
     )
-    node2 = cluster.add_node(memory=1000 * 1024 ** 2)
+    node2 = cluster.add_node(memory=1000 * 1024 ** 2, num_cpus=1)
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
-    @ray.remote(memory=1500 * 1024 ** 2)
+    @ray.remote(memory=1500 * 1024 ** 2, num_cpus=0.01)
     def fun(signal):
         signal.send.remote()
         time.sleep(30)
@@ -826,7 +813,7 @@ def test_worker_lease_reply_with_resources(ray_start_cluster):
     # Make sure that the `fun` is running.
     ray.get(signal.wait.remote())
 
-    @ray.remote(memory=800 * 1024 ** 2)
+    @ray.remote(memory=800 * 1024 ** 2, num_cpus=0.01)
     class Foo:
         def method(self):
             return ray.worker.global_worker.node.unique_id
