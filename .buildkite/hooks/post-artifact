@@ -1,5 +1,10 @@
 if [ -d "/tmp/artifacts" ]; then
-    echo "Cleaning up artifacts after upload:"
-    ls -alp /tmp/artifacts
+    echo "Cleaning up artifacts after upload."
+    echo "Contents before cleanup:"
+    find /tmp/artifacts -print || true
+
     rm -rf /tmp/artifacts/* || true
+
+    echo "Contents after cleanup:"
+    find /tmp/artifacts -print || true
 fi

@@ -1,5 +1,10 @@
 if [ -d "/tmp/artifacts" ]; then
-    echo "Cleaning up old artifacts before command:"
-    ls -alp /tmp/artifacts
+    echo "Cleaning up old artifacts before command."
+    echo "Contents before cleanup:"
+    find /tmp/artifacts -print || true
+
     rm -rf /tmp/artifacts/* || true
+
+    echo "Contents after cleanup:"
+    find /tmp/artifacts -print || true
 fi
