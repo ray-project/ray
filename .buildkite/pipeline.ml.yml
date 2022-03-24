@@ -39,26 +39,6 @@
       --test_arg=--framework=tf2
       rllib/...
 
-- label: ":brain: RLlib: Learning discr. actions TF1-static-graph"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 TF_VERSION=1.14.0 TFP_VERSION=0.7 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph,-multi_gpu
-      --test_arg=--framework=tf
-      rllib/...
-- label: ":brain: RLlib: Learning cont. actions TF1-static-graph"
-  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 PYTHON=3.7 TF_VERSION=1.14.0 TFP_VERSION=0.7 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --build_tests_only
-      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-tf2_only,-no_tf_static_graph,-multi_gpu
-      --test_arg=--framework=tf
-      rllib/...
 - label: ":brain: RLlib: Learning discr. actions PyTorch"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:

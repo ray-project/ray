@@ -34,18 +34,18 @@ logger = logging.getLogger(__name__)
 def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
         dict_ = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
-        return tf.nest.map_structure(_convert_to_tf, dict_)
+        return tree.map_structure(_convert_to_tf, dict_)
     elif isinstance(x, Policy):
         return x
     # Special handling of "Repeated" values.
     elif isinstance(x, RepeatedValues):
         return RepeatedValues(
-            tf.nest.map_structure(_convert_to_tf, x.values), x.lengths, x.max_len
+            tree.map_structure(_convert_to_tf, x.values), x.lengths, x.max_len
         )
 
     if x is not None:
         d = dtype
-        return tf.nest.map_structure(
+        return tree.map_structure(
             lambda f: _convert_to_tf(f, d)
             if isinstance(f, RepeatedValues)
             else tf.convert_to_tensor(f, d)
@@ -311,6 +311,11 @@ def build_eager_tf_policy(
             self.framework = config.get("framework", "tfe")
             Policy.__init__(self, observation_space, action_space, config)
 
+            # Global timestep should be a tensor.
+            self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
+            self.explore = tf.Variable(
+                self.config["explore"], trainable=False, dtype=tf.bool)
+
             # Log device and worker index.
             from ray.rllib.evaluation.rollout_worker import get_global_worker
 
@@ -438,7 +443,7 @@ def build_eager_tf_policy(
                 after_init(self, observation_space, action_space, config)
 
             # Got to reset global_timestep again after fake run-throughs.
-            self.global_timestep = 0
+            self.global_timestep.assign(0)
 
         @override(Policy)
         def compute_actions_from_input_dict(
@@ -455,7 +460,7 @@ def build_eager_tf_policy(
 
             self._is_training = False
 
-            explore = explore if explore is not None else self.config["explore"]
+            explore = explore if explore is not None else self.explore
             timestep = timestep if timestep is not None else self.global_timestep
             if isinstance(timestep, tf.Tensor):
                 timestep = int(timestep.numpy())
@@ -476,6 +481,13 @@ def build_eager_tf_policy(
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
             )
 
+            #TEST:
+            #input_dict.set_get_interceptor(None)
+            #for k in input_dict.keys():
+            #    input_dict[k] = _convert_to_tf(input_dict[k])
+                #input_dict = _convert_to_tf(input_dict)
+            #END: TEST
+
             ret = self._compute_actions_helper(
                 input_dict,
                 state_batches,
@@ -485,7 +497,8 @@ def build_eager_tf_policy(
                 timestep,
             )
             # Update our global timestep by the batch size.
-            self.global_timestep += tree.flatten(ret[0])[0].shape.as_list()[0]
+            self.global_timestep.assign_add(
+                tree.flatten(ret[0])[0].shape.as_list()[0])
             return convert_to_numpy(ret)
 
         @override(Policy)
@@ -501,7 +514,6 @@ def build_eager_tf_policy(
             timestep=None,
             **kwargs,
         ):
-
             # Create input dict to simply pass the entire call to
             # self.compute_actions_from_input_dict().
             input_dict = SampleBatch(
