@@ -43,22 +43,28 @@ def send_concurrent_model_requests(num_single_model_replicas=2):
     print(all_predictions)
 
 
-# start local cluster and ray serve processes
-ray.init()
-serve.start()
+if __name__ == "__main__":
+    # start local cluster and ray serve processes
+    # Start ray with 8 processes.
+    if ray.is_initialized:
+        ray.shutdown()
+    ray.init(num_cpus=8)
+    serve.start()
 
-# deploy all actors / models
-model_one.deploy()
-model_two.deploy()
-EnsembleModel.deploy()
+    # deploy all actors / models
+    model_one.deploy()
+    model_two.deploy()
+    EnsembleModel.deploy()
 
-# Send 2 concurrent requests to the Ensemble Model for predictions.
-# This runs 4 seconds in total calling 2 times the ensemble model concurrently,
-# which calls 2 models in parallel for each call. In total 4 models run parallel.
-st = time.time()
-send_concurrent_model_requests()
-print("duration", time.time() - st)
+    # Send 2 concurrent requests to the Ensemble Model for predictions.
+    # This runs 4 seconds in total calling 2 times the ensemble model
+    # concurrently,
+    # which calls 2 models in parallel for each call. In total 4 models run
+    # parallel.
+    st = time.time()
+    send_concurrent_model_requests()
+    print("duration", time.time() - st)
 
-# Output
-# [[1, 2], [1, 2], [1, 2], [1, 2], [1, 2]]
-# duration 4.015406847000122
+    # Output
+    # [[1, 2], [1, 2], [1, 2], [1, 2], [1, 2]]
+    # duration 4.015406847000122
