@@ -344,9 +344,9 @@ validate_wheels_commit_str() {
     return 0
   fi
 
-  PATH=${1-.whl}
+  WHEELS_PATH=${1-.whl}
 
-  for whl in "$PATH"/*.whl; do
+  for whl in "$WHEELS_PATH"/*.whl; do
     basename=${whl##*/}
 
     if [[ "$basename" =~ "_cpp" ]]; then
@@ -426,7 +426,7 @@ build_wheels() {
       # This command should be kept in sync with ray/python/README-building-wheels.md.
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
 
-      validate_wheels_commit_str
+      validate_wheels_commit_str .whl
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
