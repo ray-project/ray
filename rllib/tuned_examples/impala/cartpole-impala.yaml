@@ -18,3 +18,4 @@ cartpole-impala:
            grid_search:
              - 512
              - 42
+             - 144

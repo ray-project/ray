@@ -96,22 +96,35 @@ class LearnerThread(threading.Thread):
         self.outqueue.put((batch.count, self.learner_info))
         self.learner_queue_size.push(self.inqueue.qsize())
 
-    def add_learner_metrics(self, result: Dict) -> Dict:
+    def add_learner_metrics(self, result: Dict, overwrite_learner_info=True) -> Dict:
         """Add internal metrics to a trainer result dict."""
 
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)
 
-        result["info"].update(
-            {
-                "learner_queue": self.learner_queue_size.stats(),
-                LEARNER_INFO: copy.deepcopy(self.learner_info),
-                "timing_breakdown": {
-                    "learner_grad_time_ms": timer_to_ms(self.grad_timer),
-                    "learner_load_time_ms": timer_to_ms(self.load_timer),
-                    "learner_load_wait_time_ms": timer_to_ms(self.load_wait_timer),
-                    "learner_dequeue_time_ms": timer_to_ms(self.queue_timer),
-                },
-            }
-        )
+        if overwrite_learner_info:
+            result["info"].update(
+                {
+                    "learner_queue": self.learner_queue_size.stats(),
+                    LEARNER_INFO: copy.deepcopy(self.learner_info),
+                    "timing_breakdown": {
+                        "learner_grad_time_ms": timer_to_ms(self.grad_timer),
+                        "learner_load_time_ms": timer_to_ms(self.load_timer),
+                        "learner_load_wait_time_ms": timer_to_ms(self.load_wait_timer),
+                        "learner_dequeue_time_ms": timer_to_ms(self.queue_timer),
+                    },
+                }
+            )
+        else:
+            result["info"].update(
+                {
+                    "learner_queue": self.learner_queue_size.stats(),
+                    "timing_breakdown": {
+                        "learner_grad_time_ms": timer_to_ms(self.grad_timer),
+                        "learner_load_time_ms": timer_to_ms(self.load_timer),
+                        "learner_load_wait_time_ms": timer_to_ms(self.load_wait_timer),
+                        "learner_dequeue_time_ms": timer_to_ms(self.queue_timer),
+                    },
+                }
+            )
         return result

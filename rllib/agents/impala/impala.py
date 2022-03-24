@@ -659,9 +659,12 @@ class ImpalaTrainer(Trainer):
         # Only need to update workers if there are remote workers.
         global_vars = {"timestep": self._counters[NUM_ENV_STEPS_SAMPLED]}
         self._counters["steps_since_broadcast"] += 1
-        if (self.workers.remote_workers() and self._counters[
-            "steps_since_broadcast"] >= self.config[
-            "broadcast_interval"] and self._learner_thread.weights_updated):
+        if (
+            self.workers.remote_workers()
+            and self._counters["steps_since_broadcast"]
+            >= self.config["broadcast_interval"]
+            and self._learner_thread.weights_updated
+        ):
             weights = ray.put(self.workers.local_worker().get_weights())
             self._counters["steps_since_broadcast"] = 0
             self._learner_thread.weights_updated = False
@@ -673,3 +676,13 @@ class ImpalaTrainer(Trainer):
 
         # Update global vars of the local worker.
         self.workers.local_worker().set_global_vars(global_vars)
+
+    @override(Trainer)
+    def _compile_step_results(self, *, step_ctx, step_attempt_results=None):
+        result = super()._compile_step_results(
+            step_ctx=step_ctx, step_attempt_results=step_attempt_results
+        )
+        result = self._learner_thread.add_learner_metrics(
+            result, overwrite_learner_info=False
+        )
+        return result
