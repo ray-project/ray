@@ -46,7 +46,7 @@ def send_concurrent_model_requests(num_single_model_replicas=2):
 if __name__ == "__main__":
     # start local cluster and ray serve processes
     # Start ray with 8 processes.
-    if ray.is_initialized:
+    if ray.is_initialized():
         ray.shutdown()
     ray.init(num_cpus=8)
     serve.start()
