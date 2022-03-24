@@ -14,8 +14,18 @@ import argparse
 import json
 import os
 import time
+from ray._private.test_utils import wait_for_condition
+from ray.dashboard.modules.job.common import JobStatus
 
 from ray.job_submission import JobSubmissionClient
+
+
+def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
+    status = client.get_job_status(job_id)
+    if status == JobStatus.FAILED:
+        logs = client.get_job_logs(job_id)
+        raise RuntimeError(f"Job failed\nlogs:\n{logs}")
+    return status == JobStatus.SUCCEEDED
 
 
 if __name__ == "__main__":
@@ -40,6 +50,8 @@ if __name__ == "__main__":
         entrypoint="python jobs_basic_driver_script.py",
         runtime_env={"pip": ["ray[tune]"], "working_dir": "./"},
     )
+    timeout_s = 10 * 60
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=timeout_s)
 
     taken = time.time() - start
     result = {
