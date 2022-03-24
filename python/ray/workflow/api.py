@@ -403,6 +403,7 @@ def wait_for_event_revised(
         user_metadata={},
     )
     logger.info(f"wait_for_event_revised exit")
+    logger.info(f"{type(Workflow(workflow_data))}")
     return Workflow(workflow_data)
 
 @PublicAPI(stability="beta")

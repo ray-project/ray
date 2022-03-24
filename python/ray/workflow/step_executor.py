@@ -151,6 +151,7 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
             if static_ref is None:
                 # The input workflow is not a reference to an executed
                 # workflow .
+                logger.info(f"******--------- {w.data.step_options.step_type}")
                 output = execute_workflow(w).persisted_output
                 static_ref = WorkflowStaticRef(step_id=w.step_id, ref=output)
             workflow_outputs.append(static_ref)
@@ -442,6 +443,7 @@ def _workflow_step_executor(
         workflow_id = context.workflow_id
         outer_most_step_id = context.outer_most_step_id
         logger.info(f"**** {workflow_id} --- {step_id} --- {outer_most_step_id} --- {event_listener}")
+        return "EVENT STEP", None
 
     context.checkpoint_context.checkpoint = runtime_options.checkpoint
 
@@ -538,6 +540,9 @@ def _workflow_step_executor(
         volatile_output = volatile_output.run_async(
             workflow_context.get_current_workflow_id()
         )
+
+    logger.info(f"***** {step_id} step_executor exit {persisted_output} ---- {volatile_output}")
+
     return persisted_output, volatile_output
 
 

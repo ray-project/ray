@@ -18,11 +18,30 @@ class ExampleEventProvider(EventListener):
 
 
 @workflow.step
-def handle_event(msg):
-    return msg
+def handle_event(*args):
+    return args[0]
 
 @workflow.step
-def event_func():
+def e1():
     return workflow.wait_for_event_revised(ExampleEventProvider, "hello")
 
-res = handle_event.step(event_func.step()).run()
+@workflow.step
+def e2():
+    return workflow.wait_for_event_revised(SQSEventListener, "hello")
+
+@workflow.step
+def w1():
+    return 1
+
+@workflow.step
+def w2():
+    return 2
+
+@workflow.step
+def w3():
+    return 3
+
+#res = handle_event.step(workflow.wait_for_event_revised.step(ExampleEventProvider, "hello")).run()
+res = handle_event.step([e1.step(), e2.step(), w3.step()]).run()
+#res = handle_event.step([w1.step(),w2.step(),w3.step()]).run()
+print(res)
