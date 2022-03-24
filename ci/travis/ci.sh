@@ -344,7 +344,9 @@ validate_wheels_commit_str() {
     return 0
   fi
 
-  for whl in .whl/*.whl; do
+  PATH=${1-.whl}
+
+  for whl in "$PATH"/*.whl; do
     basename=${whl##*/}
 
     if [[ "$basename" =~ "_cpp" ]]; then
@@ -416,7 +418,8 @@ build_wheels() {
         rm -rf /artifact-mount/.whl || true
         cp -r .whl /artifact-mount/.whl
 
-      validate_wheels_commit_str
+        validate_wheels_commit_str .whl
+        validate_wheels_commit_str /artifact-mount/.whl
       fi
       ;;
     darwin*)
