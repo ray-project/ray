@@ -22,11 +22,11 @@ class StoreToReplayBuffer:
 
     Examples:
         >>> from ray.rllib.execution.buffers.multi_agent_replay_buffer import ReplayActor
-        >>> from ray.rllib.execution.replay_ops import StoreToReplayActors
+        >>> from ray.rllib.execution.replay_ops import StoreToReplayBuffer
         >>> from ray.rllib.execution import ParallelRollouts
         >>> actors = [ReplayActor.remote() for _ in range(4)] # doctest: +SKIP
         >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
-        >>> store_op = rollouts.for_each(StoreToReplayActors(actors=actors)) # doctest: +SKIP
+        >>> store_op = rollouts.for_each(StoreToReplayBuffer(actors=actors)) # doctest: +SKIP
         >>> next(store_op) # doctest: +SKIP
         SampleBatch(...)
     """

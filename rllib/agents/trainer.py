@@ -1971,7 +1971,7 @@ class Trainer(Trainable):
             >>> trainer = PPOTrainer(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
-            >>> trainer.export_policy_model("/tmp/dir")
+            >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
             >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
@@ -1996,7 +1996,7 @@ class Trainer(Trainable):
             >>> trainer = PPOTrainer(...) # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP
-            >>> trainer.export_policy_checkpoint("/tmp/export_dir")
+            >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
 

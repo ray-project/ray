@@ -1503,7 +1503,7 @@ class RolloutWorker(ParallelIteratorWorker):
             objs: The byte sequence to restore this worker's state from.
 
         Examples:
-            >>> ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> # Create a RolloutWorker.
             >>> worker = ... # doctest: +SKIP
             >>> state = worker.save() # doctest: +SKIP
@@ -1548,7 +1548,7 @@ class RolloutWorker(ParallelIteratorWorker):
             Dict mapping PolicyIDs to ModelWeights.
 
         Examples:
-            >>> ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> # Create a RolloutWorker.
             >>> worker = ... # doctest: +SKIP
             >>> weights = worker.get_weights() # doctest: +SKIP
@@ -1577,7 +1577,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 worker to. If None, do not update the global_vars.
 
         Examples:
-            >>> ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> # Create a RolloutWorker.
             >>> worker = ... # doctest: +SKIP
             >>> weights = worker.get_weights() # doctest: +SKIP
@@ -1602,7 +1602,7 @@ class RolloutWorker(ParallelIteratorWorker):
             The current global_vars dict of this worker.
 
         Examples:
-            >>> ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
             >>> # Create a RolloutWorker.
             >>> worker = ... # doctest: +SKIP
             >>> global_vars = worker.get_global_vars() # doctest: +SKIP
@@ -1619,7 +1619,8 @@ class RolloutWorker(ParallelIteratorWorker):
             global_vars: The new global_vars dict.
 
         Examples:
-            >>> global_vars = worker.set_global_vars({"timestep": 4242})
+            >>> worker = ... # doctest: +SKIP
+            >>> global_vars = worker.set_global_vars({"timestep": 4242}) # doctest: +SKIP
         """
         self.foreach_policy(lambda p, _: p.on_global_var_update(global_vars))
         self.global_vars = global_vars
