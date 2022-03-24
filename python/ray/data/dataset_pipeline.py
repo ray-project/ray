@@ -270,12 +270,15 @@ class DatasetPipeline(Generic[T]):
 
     def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
-        # Pin the coordinator (and any child actors) to the local node to avoid
-        # errors during node failures. If the local node dies, then the driver
-        # will fate-share with the coordinator anyway.
-        local_node_resource = "node:{}".format(ray.util.get_node_ip_address())
+        resources = {}
+        if not ray.util.client.ray.is_connected():
+            # Pin the coordinator (and any child actors) to the local node to avoid
+            # errors during node failures. If the local node dies, then the driver
+            # will fate-share with the coordinator anyway.
+            resources["node:{}".format(ray.util.get_node_ip_address())] = 0.0001
+
         coordinator = PipelineSplitExecutorCoordinator.options(
-            resources={local_node_resource: 0.0001},
+            resources=resources,
             placement_group=None,
         ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:

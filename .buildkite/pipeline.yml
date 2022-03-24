@@ -380,6 +380,21 @@
       - bazel test --config=ci $(./scripts/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
 
 - label: ":kubernetes: operator"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    # Set up local kind cluster.
     - ./ci/travis/prep-k8s-environment.sh
+    # Build py37-cpu Ray image for the test.
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install -q docker
+    - python ci/travis/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
+    # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.
+    - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
+    # Load the image into the kind node.
+    - kind load docker-image ray-ci:kuberay-test
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=kuberay_operator
+      --test_env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test
+      --test_env=KUBECONFIG=/root/.kube/config
+      python/ray/tests/...

@@ -81,6 +81,9 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
     auto job_id = JobID::FromInt(1);
 
     std::unordered_map<std::string, double> required_resources;
+
+    required_resources.insert(required_placement_resources.begin(),
+                              required_placement_resources.end());
     auto actor_creating_task_spec =
         Mocker::GenActorCreationTask(job_id,
                                      /*max_restarts=*/1,
