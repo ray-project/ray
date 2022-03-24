@@ -16,7 +16,6 @@ from ray.util.scheduling_strategies import (
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
-from ray._private.client_mode_hook import client_mode_hook
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_convert_actor
 from ray import cross_language
@@ -36,7 +35,6 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
 def method(*args, **kwargs):
     """Annotate an actor method.
 
