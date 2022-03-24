@@ -1,0 +1,2 @@
+rm -rf /artifact-mount/* || true
+
