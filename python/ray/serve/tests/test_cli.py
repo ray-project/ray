@@ -394,7 +394,7 @@ TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
 def test_build(ray_start_stop, node):
-    with NamedTemporaryFile(mode="w+", delete=False, suffix=".yaml") as tmp:
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
 
         # Build an app
         subprocess.check_output(
