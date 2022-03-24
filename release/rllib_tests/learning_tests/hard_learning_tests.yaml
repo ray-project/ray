@@ -487,7 +487,7 @@ slateq-interest-evolution-recsim-env:
                 convert_to_discrete_action_space: false
                 seed: 0
 
-        num_gpus: 1
+        num_gpus: 0
 
         exploration_config:
             warmup_timesteps: 20000
