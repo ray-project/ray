@@ -17,7 +17,11 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import apply_grad_clipping, huber_loss
+from ray.rllib.utils.torch_utils import (
+    apply_grad_clipping,
+    convert_to_torch_tensor,
+    huber_loss,
+)
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -87,14 +91,18 @@ def build_slateq_losses(
 
     # Q-value computations.
     # ---------------------
-    observation = train_batch[SampleBatch.OBS]
+    # action.shape: [B, S]
+    actions = train_batch[SampleBatch.ACTIONS]
+
+    observation = convert_to_torch_tensor(
+        train_batch[SampleBatch.OBS], device=actions.device
+    )
     # user.shape: [B, E]
     user_obs = observation["user"]
     batch_size, embedding_size = user_obs.shape
     # doc.shape: [B, C, E]
     doc_obs = list(observation["doc"].values())
-    # action.shape: [B, S]
-    actions = train_batch[SampleBatch.ACTIONS]
+
     A, S = policy.slates.shape
 
     # click_indicator.shape: [B, S]
@@ -113,7 +121,9 @@ def build_slateq_losses(
 
     # Target computations.
     # --------------------
-    next_obs = train_batch[SampleBatch.NEXT_OBS]
+    next_obs = convert_to_torch_tensor(
+        train_batch[SampleBatch.NEXT_OBS], device=actions.device
+    )
 
     # user.shape: [B, E]
     user_next_obs = next_obs["user"]

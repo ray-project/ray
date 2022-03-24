@@ -74,7 +74,7 @@ def test_horovod_simple(start_client_server_2_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.horovod_simple import tune_horovod
 
-    tune_horovod(hosts_per_trial=1, slots_per_host=2, num_samples=2, use_gpu=False)
+    tune_horovod(num_workers=2, num_samples=2, use_gpu=False)
 
 
 def test_xgboost_example(start_client_server):

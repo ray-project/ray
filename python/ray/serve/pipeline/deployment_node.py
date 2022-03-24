@@ -1,12 +1,22 @@
+import inspect
+import json
 from typing import Any, Callable, Dict, Optional, List, Tuple, Union
 
 from ray.experimental.dag import DAGNode, InputNode
-from ray.serve.handle import RayServeSyncHandle, RayServeHandle
+from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
+from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.api import (
+    Deployment,
+    DeploymentConfig,
+    RayServeDAGHandle,
+    schema_to_deployment,
+)
+from ray.serve.utils import get_deployment_import_path
+from ray.serve.schema import DeploymentSchema
 
 
 class DeploymentNode(DAGNode):
@@ -47,30 +57,71 @@ class DeploymentNode(DAGNode):
         # Thus we need convert all DeploymentNode used in init args into
         # deployment handles (executable and picklable) in ray serve DAG to make
         # serve DAG end to end executable.
+        def replace_with_handle(node):
+            if isinstance(node, DeploymentNode):
+                return node._get_serve_deployment_handle(
+                    node._deployment, node._bound_other_args_to_resolve
+                )
+            elif isinstance(node, (DeploymentMethodNode, DeploymentFunctionNode)):
+                from ray.serve.pipeline.json_serde import DAGNodeEncoder
+
+                serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
+                return RayServeDAGHandle(serve_dag_root_json)
+
         (
             replaced_deployment_init_args,
             replaced_deployment_init_kwargs,
-        ) = self._apply_functional(
+        ) = self.apply_functional(
             [deployment_init_args, deployment_init_kwargs],
             predictate_fn=lambda node: isinstance(
-                node, (DeploymentNode, DeploymentMethodNode)
+                node, (DeploymentNode, DeploymentMethodNode, DeploymentFunctionNode)
             ),
-            apply_fn=lambda node: node._get_serve_deployment_handle(
-                node._deployment, node._bound_other_args_to_resolve
-            ),
+            apply_fn=replace_with_handle,
         )
-        self._deployment: Deployment = Deployment(
-            func_or_class,
-            deployment_name,
-            # TODO: (jiaodong) Support deployment config from user input
-            DeploymentConfig(),
-            init_args=replaced_deployment_init_args,
-            init_kwargs=replaced_deployment_init_kwargs,
-            ray_actor_options=ray_actor_options,
-            _internal=True,
-        )
+
+        if "deployment_schema" in self._bound_other_args_to_resolve:
+            deployment_schema: DeploymentSchema = self._bound_other_args_to_resolve[
+                "deployment_schema"
+            ]
+            deployment_shell = schema_to_deployment(deployment_schema)
+
+            # Prefer user specified name to override the generated one.
+            if (
+                inspect.isclass(func_or_class)
+                and deployment_shell.name != func_or_class.__name__
+            ):
+                deployment_name = deployment_shell.name
+
+            # Set the route prefix, prefer the one user supplied,
+            # otherwise set it to /deployment_name
+            if (
+                deployment_shell.route_prefix is None
+                or deployment_shell.route_prefix != f"/{deployment_shell.name}"
+            ):
+                route_prefix = deployment_shell.route_prefix
+            else:
+                route_prefix = f"/{deployment_name}"
+
+            self._deployment = deployment_shell.options(
+                func_or_class=func_or_class,
+                name=deployment_name,
+                init_args=replaced_deployment_init_args,
+                init_kwargs=replaced_deployment_init_kwargs,
+                route_prefix=route_prefix,
+            )
+        else:
+            self._deployment: Deployment = Deployment(
+                func_or_class,
+                deployment_name,
+                # TODO: (jiaodong) Support deployment config from user input
+                DeploymentConfig(),
+                init_args=replaced_deployment_init_args,
+                init_kwargs=replaced_deployment_init_kwargs,
+                ray_actor_options=ray_actor_options,
+                _internal=True,
+            )
         self._deployment_handle: Union[
-            RayServeHandle, RayServeSyncHandle
+            RayServeLazySyncHandle, RayServeHandle, RayServeSyncHandle
         ] = self._get_serve_deployment_handle(self._deployment, other_args_to_resolve)
 
     def _copy_impl(
@@ -89,11 +140,9 @@ class DeploymentNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
+    def _execute_impl(self, *args, **kwargs):
         """Executor of DeploymentNode by ray.remote()"""
-        return self._deployment_handle.options(**self._bound_options).remote(
-            *self._bound_args, **self._bound_kwargs
-        )
+        return self._deployment_handle.remote(*self._bound_args, **self._bound_kwargs)
 
     def _get_serve_deployment_handle(
         self,
@@ -114,9 +163,10 @@ class DeploymentNode(DAGNode):
                 return async handle only if user explicitly set
                 USE_SYNC_HANDLE_KEY with value of False.
         """
+        # TODO (jiaodong): Support configurable async handle
         if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
+            # Return sync RayServeLazySyncHandle
+            return RayServeLazySyncHandle(deployment.name)
         elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
             # Return sync RayServeSyncHandle
             return deployment.get_handle(sync=True)
@@ -158,13 +208,11 @@ class DeploymentNode(DAGNode):
         return self._deployment.name
 
     def get_import_path(self):
-        if isinstance(self._deployment._func_or_class, str):
-            # We're processing a deserilized JSON node where import_path
-            # is dag_node body.
-            return self._deployment._func_or_class
-        else:
-            body = self._deployment._func_or_class.__ray_actor_class__
-            return f"{body.__module__}.{body.__qualname__}"
+        if (
+            "is_from_serve_deployment" in self._bound_other_args_to_resolve
+        ):  # built by serve top level api, this is ignored for serve.run
+            return "dummy"
+        return get_deployment_import_path(self._deployment)
 
     def to_json(self, encoder_cls) -> Dict[str, Any]:
         json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)

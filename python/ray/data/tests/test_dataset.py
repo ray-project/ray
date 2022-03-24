@@ -232,7 +232,7 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
-    res = "Dataset(num_blocks=40, num_rows=40, " "schema=<class 'torch.Tensor'>)"
+    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -1565,7 +1565,8 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     assert np.array_equal(df.values, combined_iterations)
 
 
-def test_to_tf_feature_columns(ray_start_regular_shared):
+@pytest.mark.parametrize("label_column", [None, "label"])
+def test_to_tf_feature_columns(ray_start_regular_shared, label_column):
     import tensorflow as tf
 
     df1 = pd.DataFrame(
@@ -1577,17 +1578,29 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
     ds = ray.data.from_pandas([df1, df2, df3])
-    tfd = ds.to_tf(
-        label_column="label",
-        feature_columns=["one"],
-        output_signature=(
+
+    if label_column:
+        output_signature = (
             tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
             tf.TensorSpec(shape=(None), dtype=tf.float32),
-        ),
+        )
+    else:
+        output_signature = tf.TensorSpec(shape=(None, 1), dtype=tf.float32)
+        df = df.drop("label", axis=1)
+
+    tfd = ds.to_tf(
+        label_column=label_column,
+        feature_columns=["one"],
+        output_signature=output_signature,
     )
     iterations = []
     for batch in tfd.as_numpy_iterator():
-        iterations.append(np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+        if label_column:
+            iterations.append(
+                np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1)
+            )
+        else:
+            iterations.append(batch)
     combined_iterations = np.concatenate(iterations)
     assert np.array_equal(df.values, combined_iterations)
 
@@ -3031,9 +3044,7 @@ def test_sort_partition_same_key_to_same_block(ray_start_regular_shared):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "Dataset(num_blocks=1, num_rows=10, " "schema={1: float64, a: float64})"
-    )
+    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
@@ -3289,6 +3300,13 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
             paths=path1,
             ray_remote_args={"retry_exceptions": False},
         ).take()
+
+
+def test_datasource(ray_start_regular):
+    source = ray.data.datasource.RandomIntRowDatasource()
+    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RangeDatasource()
+    assert ray.data.read_datasource(source, n=10).take() == list(range(10))
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@ from collections import defaultdict
 import threading
 import traceback
 
-import redis
 import grpc
 
 import ray
@@ -34,21 +33,16 @@ class ImportThread:
         self.worker = worker
         self.mode = mode
         self.gcs_client = worker.gcs_client
-        if worker.gcs_pubsub_enabled:
-            self.subscriber = worker.gcs_function_key_subscriber
-            self.subscriber.subscribe()
-        else:
-            self.subscriber = worker.redis_client.pubsub()
-            self.subscriber.subscribe(
-                b"__keyspace@0__:"
-                + ray._private.function_manager.make_exports_prefix(
-                    self.worker.current_job_id
-                )
-            )
+        self.subscriber = worker.gcs_function_key_subscriber
+        self.subscriber.subscribe()
+        self.exception_type = grpc.RpcError
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
+        self.t = None
         # Keep track of the number of imports that we've imported.
         self.num_imported = 0
+        # Protect writes to self.num_imported.
+        self._lock = threading.Lock()
 
     def start(self):
         """Start the import thread."""
@@ -60,7 +54,8 @@ class ImportThread:
 
     def join_import_thread(self):
         """Wait for the thread to exit."""
-        self.t.join()
+        if self.t:
+            self.t.join()
 
     def _run(self):
         try:
@@ -69,22 +64,12 @@ class ImportThread:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
                     return
-
-                if self.worker.gcs_pubsub_enabled:
-                    key = self.subscriber.poll()
-                    if key is None:
-                        # subscriber has closed.
-                        break
-                else:
-                    msg = self.subscriber.get_message()
-                    if msg is None:
-                        self.threads_stopped.wait(timeout=0.01)
-                        continue
-                    if msg["type"] == "subscribe":
-                        continue
-
+                key = self.subscriber.poll()
+                if key is None:
+                    # subscriber has closed.
+                    break
                 self._do_importing()
-        except (OSError, redis.exceptions.ConnectionError, grpc.RpcError) as e:
+        except (OSError, self.exception_type) as e:
             logger.error(f"ImportThread: {e}")
         finally:
             # Close the Redis / GCS subscriber to avoid leaking file
@@ -93,17 +78,18 @@ class ImportThread:
 
     def _do_importing(self):
         while True:
-            export_key = ray._private.function_manager.make_export_key(
-                self.num_imported + 1, self.worker.current_job_id
-            )
-            key = self.gcs_client.internal_kv_get(
-                export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
-            )
-            if key is not None:
-                self._process_key(key)
-                self.num_imported += 1
-            else:
-                break
+            with self._lock:
+                export_key = ray._private.function_manager.make_export_key(
+                    self.num_imported + 1, self.worker.current_job_id
+                )
+                key = self.gcs_client.internal_kv_get(
+                    export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
+                )
+                if key is not None:
+                    self._process_key(key)
+                    self.num_imported += 1
+                else:
+                    break
 
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""

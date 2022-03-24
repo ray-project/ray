@@ -190,40 +190,40 @@ class TestSAC(unittest.TestCase):
             "_model.0.weight",
             "default_policy/fc_1/bias": "action_model._hidden_layers.0."
             "_model.0.bias",
-            "default_policy/fc_out/kernel": "action_model." "_logits._model.0.weight",
+            "default_policy/fc_out/kernel": "action_model._logits._model.0.weight",
             "default_policy/fc_out/bias": "action_model._logits._model.0.bias",
             "default_policy/value_out/kernel": "action_model."
             "_value_branch._model.0.weight",
             "default_policy/value_out/bias": "action_model."
             "_value_branch._model.0.bias",
             # Q-net.
-            "default_policy/fc_1_1/kernel": "q_net." "_hidden_layers.0._model.0.weight",
-            "default_policy/fc_1_1/bias": "q_net." "_hidden_layers.0._model.0.bias",
+            "default_policy/fc_1_1/kernel": "q_net._hidden_layers.0._model.0.weight",
+            "default_policy/fc_1_1/bias": "q_net._hidden_layers.0._model.0.bias",
             "default_policy/fc_out_1/kernel": "q_net._logits._model.0.weight",
             "default_policy/fc_out_1/bias": "q_net._logits._model.0.bias",
             "default_policy/value_out_1/kernel": "q_net."
             "_value_branch._model.0.weight",
-            "default_policy/value_out_1/bias": "q_net." "_value_branch._model.0.bias",
+            "default_policy/value_out_1/bias": "q_net._value_branch._model.0.bias",
             "default_policy/log_alpha": "log_alpha",
             # Target action-net.
             "default_policy/fc_1_2/kernel": "action_model."
             "_hidden_layers.0._model.0.weight",
             "default_policy/fc_1_2/bias": "action_model."
             "_hidden_layers.0._model.0.bias",
-            "default_policy/fc_out_2/kernel": "action_model." "_logits._model.0.weight",
-            "default_policy/fc_out_2/bias": "action_model." "_logits._model.0.bias",
+            "default_policy/fc_out_2/kernel": "action_model._logits._model.0.weight",
+            "default_policy/fc_out_2/bias": "action_model._logits._model.0.bias",
             "default_policy/value_out_2/kernel": "action_model."
             "_value_branch._model.0.weight",
             "default_policy/value_out_2/bias": "action_model."
             "_value_branch._model.0.bias",
             # Target Q-net
-            "default_policy/fc_1_3/kernel": "q_net." "_hidden_layers.0._model.0.weight",
-            "default_policy/fc_1_3/bias": "q_net." "_hidden_layers.0._model.0.bias",
-            "default_policy/fc_out_3/kernel": "q_net." "_logits._model.0.weight",
-            "default_policy/fc_out_3/bias": "q_net." "_logits._model.0.bias",
+            "default_policy/fc_1_3/kernel": "q_net._hidden_layers.0._model.0.weight",
+            "default_policy/fc_1_3/bias": "q_net._hidden_layers.0._model.0.bias",
+            "default_policy/fc_out_3/kernel": "q_net._logits._model.0.weight",
+            "default_policy/fc_out_3/bias": "q_net._logits._model.0.bias",
             "default_policy/value_out_3/kernel": "q_net."
             "_value_branch._model.0.weight",
-            "default_policy/value_out_3/bias": "q_net." "_value_branch._model.0.bias",
+            "default_policy/value_out_3/bias": "q_net._value_branch._model.0.bias",
             "default_policy/log_alpha_1": "log_alpha",
         }
 

@@ -41,8 +41,8 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << mutable_job_table_data.driver_pid();
 
-  auto on_done = [this, job_id, mutable_job_table_data, reply,
-                  send_reply_callback](const Status &status) {
+  auto on_done = [this, job_id, mutable_job_table_data, reply, send_reply_callback](
+                     const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << mutable_job_table_data.driver_pid();
@@ -107,8 +107,9 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
   };
 
   Status status = gcs_table_storage_->JobTable().Get(
-      job_id, [this, job_id, send_reply](
-                  Status status, const boost::optional<rpc::JobTableData> &result) {
+      job_id,
+      [this, job_id, send_reply](Status status,
+                                 const boost::optional<rpc::JobTableData> &result) {
         if (status.ok() && result) {
           MarkJobAsFinished(*result, send_reply);
         } else {
@@ -149,7 +150,7 @@ void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request
                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Getting all job info.";
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<JobID, JobTableData> &result) {
+                     const absl::flat_hash_map<JobID, JobTableData> &result) {
     for (auto &data : result) {
       reply->add_job_info_list()->CopyFrom(data.second);
     }
@@ -158,7 +159,7 @@ void GcsJobManager::HandleGetAllJobInfo(const rpc::GetAllJobInfoRequest &request
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(std::unordered_map<JobID, JobTableData>());
+    on_done(absl::flat_hash_map<JobID, JobTableData>());
   }
 }
 

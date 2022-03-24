@@ -115,6 +115,12 @@ def main(test_collection_file: Optional[str] = None):
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
+    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule
+    report = (
+        bool(int(os.environ.get("REPORT", "0")))
+        or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
+    )
+
     steps = []
     for group in sorted(grouped_tests):
         tests = grouped_tests[group]
@@ -122,6 +128,7 @@ def main(test_collection_file: Optional[str] = None):
         for test, smoke_test in tests:
             step = get_step(
                 test,
+                report=report,
                 smoke_test=smoke_test,
                 ray_wheels=ray_wheels_url,
                 env=env,

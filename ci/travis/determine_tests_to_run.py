@@ -126,6 +126,12 @@ if __name__ == "__main__":
         for changed_file in files:
             if changed_file.startswith("python/ray/ml"):
                 RAY_CI_ML_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
+                RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_TUNE_AFFECTED = 1
+                RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/tune"):
                 RAY_CI_DOC_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1

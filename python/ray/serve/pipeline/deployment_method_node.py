@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional, Tuple, List, Union
 
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.handle import RayServeSyncHandle, RayServeHandle
+from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.serve.api import Deployment, DeploymentConfig
@@ -29,7 +29,7 @@ class DeploymentMethodNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
         self._deployment_handle: Union[
-            RayServeHandle, RayServeSyncHandle
+            RayServeLazySyncHandle, RayServeHandle, RayServeSyncHandle
         ] = self._get_serve_deployment_handle(deployment, other_args_to_resolve)
 
     def _copy_impl(
@@ -48,12 +48,11 @@ class DeploymentMethodNode(DAGNode):
             other_args_to_resolve=new_other_args_to_resolve,
         )
 
-    def _execute_impl(self, *args):
+    def _execute_impl(self, *args, **kwargs):
         """Executor of DeploymentMethodNode by ray.remote()"""
         # Execute with bound args.
         method_body = getattr(self._deployment_handle, self._deployment_method_name)
-
-        return method_body.options(**self._bound_options).remote(
+        return method_body.remote(
             *self._bound_args,
             **self._bound_kwargs,
         )
@@ -77,9 +76,10 @@ class DeploymentMethodNode(DAGNode):
                 return async handle only if user explicitly set
                 USE_SYNC_HANDLE_KEY with value of False.
         """
+        # TODO (jiaodong): Support configurable async handle
         if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
+            # Return sync RayServeLazySyncHandle
+            return RayServeLazySyncHandle(deployment.name)
         elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
             # Return sync RayServeSyncHandle
             return deployment.get_handle(sync=True)
@@ -104,7 +104,14 @@ class DeploymentMethodNode(DAGNode):
         return self._deployment_method_name
 
     def get_import_path(self) -> str:
-        if isinstance(self._deployment._func_or_class, str):
+        if (
+            "is_from_serve_deployment"
+            in self._bound_other_args_to_resolve[
+                "parent_class_node"
+            ]._bound_other_args_to_resolve
+        ):  # built by serve top level api, this is ignored for serve.run
+            return "dummy"
+        elif isinstance(self._deployment._func_or_class, str):
             # We're processing a deserilized JSON node where import_path
             # is dag_node body.
             return self._deployment._func_or_class

@@ -1,4 +1,5 @@
-from typing import Dict, Optional
+import datetime
+from typing import Dict, Optional, Callable, Union
 import time
 from collections import defaultdict, deque
 import numpy as np
@@ -95,13 +96,13 @@ class FunctionStopper(Stopper):
     True, the trial will be stopped.
 
     Args:
-        function (Callable[[str, Dict], bool): Function that checks if a trial
+        function: Function that checks if a trial
             should be stopped. Must accept the `trial_id` string  and `result`
             dictionary as arguments. Must return a boolean.
 
     """
 
-    def __init__(self, function):
+    def __init__(self, function: Callable[[str, Dict], bool]):
         self._fn = function
 
     def __call__(self, trial_id, result):
@@ -126,7 +127,7 @@ class MaximumIterationStopper(Stopper):
     """Stop trials after reaching a maximum number of iterations
 
     Args:
-        max_iter (int): Number of iterations before stopping a trial.
+        max_iter: Number of iterations before stopping a trial.
     """
 
     def __init__(self, max_iter: int):
@@ -150,13 +151,13 @@ class ExperimentPlateauStopper(Stopper):
     the patience parameter.
 
     Args:
-        metric (str): The metric to be monitored.
-        std (float): The minimal standard deviation after which
+        metric: The metric to be monitored.
+        std: The minimal standard deviation after which
             the tuning process has to stop.
-        top (int): The number of best models to consider.
-        mode (str): The mode to select the top results.
+        top: The number of best models to consider.
+        mode: The mode to select the top results.
             Can either be "min" or "max".
-        patience (int): Number of epochs to wait for
+        patience: Number of epochs to wait for
             a change in the top models.
 
     Raises:
@@ -169,19 +170,26 @@ class ExperimentPlateauStopper(Stopper):
             a strictly positive integer.
     """
 
-    def __init__(self, metric, std=0.001, top=10, mode="min", patience=0):
+    def __init__(
+        self,
+        metric: str,
+        std: float = 0.001,
+        top: int = 10,
+        mode: str = "min",
+        patience: int = 0,
+    ):
         if mode not in ("min", "max"):
-            raise ValueError("The mode parameter can only be" " either min or max.")
+            raise ValueError("The mode parameter can only be either min or max.")
         if not isinstance(top, int) or top <= 1:
             raise ValueError(
                 "Top results to consider must be"
                 " a positive integer greater than one."
             )
         if not isinstance(patience, int) or patience < 0:
-            raise ValueError("Patience must be" " a strictly positive integer.")
+            raise ValueError("Patience must be a strictly positive integer.")
         if not isinstance(std, float) or std <= 0:
             raise ValueError(
-                "The standard deviation must be" " a strictly positive float number."
+                "The standard deviation must be a strictly positive float number."
             )
         self._mode = mode
         self._metric = metric
@@ -230,17 +238,17 @@ class TrialPlateauStopper(Stopper):
     early.
 
     Args:
-        metric (str): Metric to check for convergence.
-        std (float): Maximum metric standard deviation to decide if a
+        metric: Metric to check for convergence.
+        std: Maximum metric standard deviation to decide if a
             trial plateaued. Defaults to 0.01.
-        num_results (int): Number of results to consider for stdev
+        num_results: Number of results to consider for stdev
             calculation.
-        grace_period (int): Minimum number of timesteps before a trial
+        grace_period: Minimum number of timesteps before a trial
             can be early stopped
         metric_threshold (Optional[float]):
             Minimum or maximum value the result has to exceed before it can
             be stopped early.
-        mode (Optional[str]): If a `metric_threshold` argument has been
+        mode: If a `metric_threshold` argument has been
             passed, this must be one of [min, max]. Specifies if we optimize
             for a large metric (max) or a small metric (min). If max, the
             `metric_threshold` has to be exceeded, if min the value has to
@@ -316,11 +324,11 @@ class TimeoutStopper(Stopper):
     argument is passed to `tune.run()`.
 
     Args:
-        timeout (int|float|datetime.timedelta): Either a number specifying
-            the timeout in seconds, or a `datetime.timedelta` object.
+        timeout: Either a number specifying the timeout in seconds, or
+            a `datetime.timedelta` object.
     """
 
-    def __init__(self, timeout):
+    def __init__(self, timeout: Union[int, float, datetime.timedelta]):
         from datetime import timedelta
 
         if isinstance(timeout, timedelta):

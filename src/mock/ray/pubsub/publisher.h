@@ -54,19 +54,26 @@ namespace pubsub {
 
 class MockPublisherInterface : public PublisherInterface {
  public:
-  MOCK_METHOD(bool, RegisterSubscription,
-              (const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+  MOCK_METHOD(bool,
+              RegisterSubscription,
+              (const rpc::ChannelType channel_type,
+               const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id_binary),
               (override));
-  MOCK_METHOD(void, Publish,
-              (const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
+  MOCK_METHOD(void,
+              Publish,
+              (const rpc::ChannelType channel_type,
+               const rpc::PubMessage &pub_message,
                const std::string &key_id_binary),
               (override));
-  MOCK_METHOD(void, PublishFailure,
+  MOCK_METHOD(void,
+              PublishFailure,
               (const rpc::ChannelType channel_type, const std::string &key_id_binary),
               (override));
-  MOCK_METHOD(bool, UnregisterSubscription,
-              (const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+  MOCK_METHOD(bool,
+              UnregisterSubscription,
+              (const rpc::ChannelType channel_type,
+               const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id_binary),
               (override));
 };
@@ -79,19 +86,26 @@ namespace pubsub {
 
 class MockPublisher : public Publisher {
  public:
-  MOCK_METHOD(bool, RegisterSubscription,
-              (const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+  MOCK_METHOD(bool,
+              RegisterSubscription,
+              (const rpc::ChannelType channel_type,
+               const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id_binary),
               (override));
-  MOCK_METHOD(void, Publish,
-              (const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
+  MOCK_METHOD(void,
+              Publish,
+              (const rpc::ChannelType channel_type,
+               const rpc::PubMessage &pub_message,
                const std::string &key_id_binary),
               (override));
-  MOCK_METHOD(void, PublishFailure,
+  MOCK_METHOD(void,
+              PublishFailure,
               (const rpc::ChannelType channel_type, const std::string &key_id_binary),
               (override));
-  MOCK_METHOD(bool, UnregisterSubscription,
-              (const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+  MOCK_METHOD(bool,
+              UnregisterSubscription,
+              (const rpc::ChannelType channel_type,
+               const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id_binary),
               (override));
 };

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/object_manager/memory_object_reader.h"
+
 #include <cstring>
 
 namespace ray {
@@ -30,7 +31,8 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
 
-bool MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size,
+bool MemoryObjectReader::ReadFromDataSection(uint64_t offset,
+                                             uint64_t size,
                                              char *output) const {
   if (offset + size > GetDataSize()) {
     return false;
@@ -39,7 +41,8 @@ bool MemoryObjectReader::ReadFromDataSection(uint64_t offset, uint64_t size,
   return true;
 }
 
-bool MemoryObjectReader::ReadFromMetadataSection(uint64_t offset, uint64_t size,
+bool MemoryObjectReader::ReadFromMetadataSection(uint64_t offset,
+                                                 uint64_t size,
                                                  char *output) const {
   if (offset + size > GetMetadataSize()) {
     return false;

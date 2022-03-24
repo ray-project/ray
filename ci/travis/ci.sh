@@ -141,7 +141,7 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:conda_env # pip field in runtime_env not supported
-      -python/ray/serve:test_cross_langauge # Ray java not built on Windows yet.
+      -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -161,6 +161,7 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
+      -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -192,15 +193,6 @@ test_large() {
       -- python/ray/tests/...
 }
 
-# For running large Python tests on Linux and MacOS in GCS HA mode.
-test_large_gcs() {
-  bazel test --config=ci "$(./scripts/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
-      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
-      --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
-      --test_env=RAY_gcs_grpc_based_pubsub=1 --test_env=RAY_bootstrap_with_gcs=1 --test_env=RAY_gcs_storage=memory \
-      -- python/ray/tests/...
-}
-
 test_cpp() {
   # C++ worker example need _GLIBCXX_USE_CXX11_ABI flag, but if we put the flag into .bazelrc, the linux ci can't pass.
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
@@ -211,6 +203,8 @@ test_cpp() {
   # run cluster mode test with external cluster
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
+  
+  bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example
   rm -rf ray-template && mkdir ray-template
@@ -271,6 +265,7 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       sphinx-build -q -E -W -T -b html source _build/html
+      make linkcheck
     fi
   )
 }

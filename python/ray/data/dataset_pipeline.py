@@ -1,4 +1,5 @@
 import inspect
+import itertools
 import logging
 import time
 from typing import (
@@ -94,6 +95,9 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
+        self._dataset_iter = None
+        self._first_dataset = None
+        self._schema = None
         self._stats = DatasetPipelineStats()
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Union[T, TableRow]]:
@@ -266,12 +270,15 @@ class DatasetPipeline(Generic[T]):
 
     def _split(self, n: int, splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
-        # Pin the coordinator (and any child actors) to the local node to avoid
-        # errors during node failures. If the local node dies, then the driver
-        # will fate-share with the coordinator anyway.
-        local_node_resource = "node:{}".format(ray.util.get_node_ip_address())
+        resources = {}
+        if not ray.util.client.ray.is_connected():
+            # Pin the coordinator (and any child actors) to the local node to avoid
+            # errors during node failures. If the local node dies, then the driver
+            # will fate-share with the coordinator anyway.
+            resources["node:{}".format(ray.util.get_node_ip_address())] = 0.0001
+
         coordinator = PipelineSplitExecutorCoordinator.options(
-            resources={local_node_resource: 0.0001},
+            resources=resources,
             placement_group=None,
         ).remote(self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
@@ -483,6 +490,10 @@ class DatasetPipeline(Generic[T]):
         For datasets of Arrow records, this will return the Arrow schema.
         For dataset of Python objects, this returns their Python type.
 
+        Note: This is intended to be a method for peeking schema before
+        the execution of DatasetPipeline. If execution has already started,
+        it will simply return the cached schema from the previous call.
+
         Time complexity: O(1)
 
         Args:
@@ -494,7 +505,9 @@ class DatasetPipeline(Generic[T]):
             The Python type or Arrow schema of the records, or None if the
             schema is not known.
         """
-        return next(self.iter_datasets()).schema(fetch_if_missing=fetch_if_missing)
+        if not self._executed[0]:
+            self._schema = self._peek().schema(fetch_if_missing)
+        return self._schema
 
     def count(self) -> int:
         """Count the number of records in the dataset pipeline.
@@ -652,8 +665,12 @@ class DatasetPipeline(Generic[T]):
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
-        self._optimize_stages()
-        return PipelineExecutor(self)
+        if self._first_dataset is None:
+            self._peek()
+        iter = itertools.chain([self._first_dataset], self._dataset_iter)
+        self._first_dataset = None
+        self._dataset_iter = None
+        return iter
 
     @DeveloperAPI
     def foreach_window(
@@ -742,6 +759,13 @@ class DatasetPipeline(Generic[T]):
                 )
             )
         self._optimized_stages = optimized_stages
+
+    def _peek(self) -> Dataset[T]:
+        if self._first_dataset is None:
+            self._optimize_stages()
+            self._dataset_iter = PipelineExecutor(self)
+            self._first_dataset = next(self._dataset_iter)
+        return self._first_dataset
 
 
 for method in _PER_DATASET_OPS:

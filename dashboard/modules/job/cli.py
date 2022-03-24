@@ -54,12 +54,12 @@ def _log_job_status(client: JobSubmissionClient, job_id: str):
     elif info.status == JobStatus.FAILED:
         _log_big_error_msg(f"Job '{job_id}' failed")
         if info.message is not None:
-            cli_logger.print(f"Status message: {info.message}")
+            cli_logger.print(f"Status message: {info.message}", no_format=True)
     else:
         # Catch-all.
         cli_logger.print(f"Status for job '{job_id}': {info.status}")
         if info.message is not None:
-            cli_logger.print(f"Status message: {info.message}")
+            cli_logger.print(f"Status message: {info.message}", no_format=True)
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
@@ -136,7 +136,7 @@ def submit(
     entrypoint: Tuple[str],
     no_wait: bool,
 ):
-    """Submits a job to be run on the cluster docstring
+    """Submits a job to be run on the cluster.
 
     Example:
         >>> ray job submit -- python my_script.py --arg=val

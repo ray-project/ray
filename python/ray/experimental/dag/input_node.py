@@ -229,7 +229,23 @@ class InputAtrributeNode(DAGNode):
                 )
 
     def __str__(self) -> str:
-        return get_dag_node_str(self, f"__InputNode__[{self._key}]")
+        return get_dag_node_str(self, f'["{self._key}"]')
+
+    def to_json(self, encoder_cls) -> Dict[str, Any]:
+        json_dict = super().to_json_base(encoder_cls, InputAtrributeNode.__name__)
+        return json_dict
+
+    @classmethod
+    def from_json(cls, input_json, object_hook=None):
+        assert input_json[DAGNODE_TYPE_KEY] == InputAtrributeNode.__name__
+        args_dict = super().from_json_base(input_json, object_hook=object_hook)
+        node = cls(
+            args_dict["other_args_to_resolve"]["dag_input_node"],
+            args_dict["other_args_to_resolve"]["key"],
+            args_dict["other_args_to_resolve"]["accessor_method"],
+        )
+        node._stable_uuid = input_json["uuid"]
+        return node
 
 
 class DAGInputData:

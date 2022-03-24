@@ -38,7 +38,7 @@ class Backend(object):
         backend = getattr(Backend, name.upper(), Backend.UNRECOGNIZED)
         if backend == Backend.UNRECOGNIZED:
             raise ValueError(
-                "Unrecognized backend: '{}'. " "Only NCCL is supported".format(name)
+                "Unrecognized backend: '{}'. Only NCCL is supported".format(name)
             )
         if backend == Backend.MPI:
             raise RuntimeError("Ray does not support MPI backend.")

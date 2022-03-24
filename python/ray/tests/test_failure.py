@@ -11,7 +11,7 @@ import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.test_utils import (
     wait_for_condition,
     SignalActor,
@@ -69,21 +69,12 @@ def test_unhandled_errors(ray_start_regular):
 
 def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
-    redis_client = None
-    gcs_publisher = None
-    if gcs_pubsub_enabled():
-        gcs_publisher = GcsPublisher(address=address_info["gcs_address"])
-    else:
-        redis_client = ray._private.services.create_redis_client(
-            address_info["redis_address"],
-            password=ray.ray_constants.REDIS_DEFAULT_PASSWORD,
-        )
+    gcs_publisher = GcsPublisher(address=address_info["gcs_address"])
 
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
         ray_constants.DASHBOARD_AGENT_DIED_ERROR,
         error_message,
-        redis_client=redis_client,
         gcs_publisher=gcs_publisher,
     )
     errors = get_error_message(
@@ -334,6 +325,7 @@ def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
         ray.get(task2)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Too flaky on windows")
 def test_actor_scope_or_intentionally_killed_message(ray_start_regular, error_pubsub):
     p = error_pubsub
 

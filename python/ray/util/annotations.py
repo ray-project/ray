@@ -5,9 +5,17 @@ def PublicAPI(*args, **kwargs):
     can expect these APIs to remain backwards compatible across minor Ray
     releases (e.g., Ray 1.4 -> 1.8).
 
+    If "stability" is beta, the API is still public and can be used by early
+    users, but are subject to change.
+
+    If "stability" is alpha, the API can be used by advanced users who are
+    tolerant to and expect breaking changes.
+
+    For a full definition of the stability levels, please refer to the
+    `Google stability level guidelines <https://google.aip.dev/181>`_
+
     Args:
-        stability: Either "stable" for stable features or "beta" for APIs that
-            are intended to be public but still in beta.
+        stability: One of {"stable", "beta", "alpha"}.
 
     Examples:
         >>> @PublicAPI
@@ -23,7 +31,7 @@ def PublicAPI(*args, **kwargs):
 
     if "stability" in kwargs:
         stability = kwargs["stability"]
-        assert stability in ["stable", "beta"], stability
+        assert stability in ["stable", "beta", "alpha"], stability
     elif kwargs:
         raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
     else:
@@ -32,10 +40,10 @@ def PublicAPI(*args, **kwargs):
     def wrap(obj):
         if not obj.__doc__:
             obj.__doc__ = ""
-        if stability == "beta":
+        if stability in ["alpha", "beta"]:
             obj.__doc__ += (
-                "\n    PublicAPI (beta): This API is in beta and may change "
-                "before becoming stable."
+                f"\n    PublicAPI ({stability}): This API is in {stability} "
+                "and may change before becoming stable."
             )
         else:
             obj.__doc__ += "\n    PublicAPI: This API is stable across Ray releases."
