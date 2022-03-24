@@ -345,7 +345,10 @@ class Workflow(Generic[T]):
     def __init__(
         self, workflow_data: WorkflowData, prepare_inputs: Optional[Callable] = None
     ):
-        if workflow_data.step_options.ray_options.get("num_returns", 1) > 1:
+        num_returns = workflow_data.step_options.ray_options.get("num_returns", 1)
+        if num_returns is None:  # ray could use `None` as default value
+            num_returns = 1
+        if num_returns > 1:
             raise ValueError("Workflow steps can only have one return.")
         self._data: WorkflowData = workflow_data
         self._prepare_inputs: Callable = prepare_inputs
