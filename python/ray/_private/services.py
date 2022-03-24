@@ -32,6 +32,9 @@ import psutil
 resource = None
 if sys.platform != "win32":
     import resource
+    _timeout = 30
+else:
+    _timeout = 60
 
 EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
@@ -359,7 +362,7 @@ def wait_for_node(
     gcs_address,
     node_plasma_store_socket_name,
     redis_password=None,
-    timeout=30,
+    timeout=_timeout,
 ):
     """Wait until this node has appeared in the client table.
 
