@@ -409,35 +409,6 @@ def test_single_functional_node_base_case(serve_instance):
     assert requests.get("http://127.0.0.1:8000/").text == "1"
 
 
-class TestServeBuild:
-    @serve.deployment
-    class A:
-        pass
-
-    def test_build_non_json_serializable_args(self, serve_instance):
-        with pytest.raises(
-            TypeError, match="must be JSON-serializable to build.*init_args"
-        ):
-            serve.build(self.A.bind(np.zeros(100))).to_dict()
-
-    def test_build_non_json_serializable_kwargs(self, serve_instance):
-        with pytest.raises(
-            TypeError, match="must be JSON-serializable to build.*init_kwargs"
-        ):
-            serve.build(self.A.bind(kwarg=np.zeros(100))).to_dict()
-
-    def test_build_non_importable(self, serve_instance):
-        def gen_deployment():
-            @serve.deployment
-            def f():
-                pass
-
-            return f
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            serve.build(gen_deployment().bind()).to_dict()
-
-
 def test_unsupported_bind():
     @serve.deployment
     class Actor:
@@ -471,9 +442,6 @@ def test_unsupported_remote():
 
     with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
         _ = func.bind().remote()
-
-
-# TODO: check that serve.build raises an exception.
 
 
 if __name__ == "__main__":
