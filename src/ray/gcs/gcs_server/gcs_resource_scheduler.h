@@ -21,6 +21,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/policy/scheduling_policy.h"
 
 namespace ray {
 namespace gcs {
@@ -39,19 +40,9 @@ enum SchedulingType {
   SchedulingType_MAX = 4,
 };
 
-// Status of resource scheduling result.
-enum class SchedulingResultStatus {
-  // Scheduling failed but retryable.
-  FAILED = 0,
-  // Scheduling failed and non-retryable.
-  INFEASIBLE = 1,
-  // Scheduling successful.
-  SUCCESS = 2,
-};
-
+using SchedulingResultStatus = raylet_scheduling_policy::SchedulingResultStatus;
+using SchedulingResult = raylet_scheduling_policy::SchedulingResult;
 using NodeScore = std::pair<scheduling::NodeID, double>;
-typedef std::pair<SchedulingResultStatus, std::vector<scheduling::NodeID>>
-    SchedulingResult;
 
 /// NodeScorer is a scorer to make a grade to the node, which is used for scheduling
 /// decision.

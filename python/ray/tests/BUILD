@@ -128,8 +128,6 @@ py_test_module_list(
     "test_tls_auth.py",
     "test_ray_debugger.py",
     "test_worker_capping.py",
-    "test_object_spilling_2.py",
-    "test_object_spilling_3.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_namespace.py",
@@ -217,6 +215,7 @@ py_test_module_list(
     "test_actor_advanced.py",
     "test_stress_failure.py",
     "test_reconstruction.py",
+    "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",
     "test_reference_counting_2.py",
@@ -231,9 +230,10 @@ py_test_module_list(
   files = [
     "test_basic_3.py",
     "test_output.py",
-    "test_failure_2.py",
     "test_failure_4.py",
     "test_object_spilling.py",
+    "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_plasma_unlimited.py",
     "test_placement_group_mini_integration.py",
   ],
@@ -356,6 +356,14 @@ py_test(
     size = "small",
     srcs = SRCS + ["test_serve_ray_minimal.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "kuberay/test_autoscaling_e2e",
+    size = "medium",
+    srcs = SRCS + ["kuberay/test_autoscaling_e2e.py"],
+    tags = ["exclusive", "kuberay_operator", "team:serverless"],
     deps = ["//:ray_lib"],
 )
 
