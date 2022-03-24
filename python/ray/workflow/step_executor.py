@@ -356,28 +356,39 @@ def _wrap_run(
     """
     exception = None
     result = None
+    done = False
     # max_retries are for application level failure.
     # For ray failure, we should use max_retries.
-    for i in range(runtime_options.max_retries):
-        logger.info(
-            f"{get_step_status_info(WorkflowStatus.RUNNING)}"
-            f"\t[{i + 1}/{runtime_options.max_retries}]"
-        )
+    i = 0
+    while not done:
+        if i == 0:
+            logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
+        else:
+            total_retries = (
+                runtime_options.max_retries
+                if runtime_options.max_retries != -1
+                else "inf"
+            )
+            logger.info(
+                f"{get_step_status_info(WorkflowStatus.RUNNING)}"
+                f"\tretries: [{i}/{total_retries}]"
+            )
         try:
             result = func(*args, **kwargs)
             exception = None
-            break
+            done = True
         except BaseException as e:
-            if i + 1 == runtime_options.max_retries:
+            if i == runtime_options.max_retries:
                 retry_msg = "Maximum retry reached, stop retry."
+                exception = e
+                done = True
             else:
                 retry_msg = "The step will be retried."
+                i += 1
             logger.error(
                 f"{workflow_context.get_name()} failed with error message"
                 f" {e}. {retry_msg}"
             )
-            exception = e
-
     step_type = runtime_options.step_type
     if runtime_options.catch_exceptions:
         if step_type == StepType.FUNCTION:
