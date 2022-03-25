@@ -1072,6 +1072,11 @@ def import_attr(full_path: str):
         raise TypeError("import path cannot be None")
 
     if ":" in full_path:
+        if full_path.count(":") > 1:
+            raise ValueError(
+                f'Got invalid import path "{full_path}". An '
+                "import path may have at most one colon."
+            )
         module_name, attr_name = full_path.split(":")
     else:
         last_period_idx = full_path.rfind(".")
