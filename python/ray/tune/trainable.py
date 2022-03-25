@@ -8,7 +8,7 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Optional, Union, Callable
+from typing import Any, Dict, Optional, Union, Callable, List
 import uuid
 
 import ray
@@ -103,14 +103,14 @@ class Trainable:
         ``__init__()`` directly.
 
         Args:
-            config (dict): Trainable-specific configuration data. By default
+            config: Trainable-specific configuration data. By default
                 will be saved as ``self.config``.
-            logger_creator (func): Function that creates a ray.tune.Logger
+            logger_creator: Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
-            remote_checkpoint_dir (str): Upload directory (S3 or GS path).
+            remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
                 which is different from **per checkpoint** directory.
-            sync_function_tpl (str): Sync function template to use. Defaults
+            sync_function_tpl: Sync function template to use. Defaults
               to `cls._sync_function` (which defaults to `None`).
         """
 
@@ -209,11 +209,11 @@ class Trainable:
         return None
 
     @classmethod
-    def resource_help(cls, config):
+    def resource_help(cls, config: Dict):
         """Returns a help string for configuring this trainable's resources.
 
         Args:
-            config (dict): The Trainer's config dict.
+            config: The Trainer's config dict.
         """
         return ""
 
@@ -274,10 +274,10 @@ class Trainable:
         block until at least one result is received.
 
         Args:
-            buffer_time_s (float): Maximum time to buffer. The next result
+            buffer_time_s: Maximum time to buffer. The next result
                 received after this amount of time has passed will return
                 the whole buffer.
-            max_buffer_length (int): Maximum number of results to buffer.
+            max_buffer_length: Maximum number of results to buffer.
 
         """
         results = []
@@ -415,7 +415,7 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir=None) -> str:
+    def save(self, checkpoint_dir: Optional[str] = None) -> str:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -425,7 +425,7 @@ class Trainable:
         storage.
 
         Args:
-            checkpoint_dir (str): Optional dir to place the checkpoint.
+            checkpoint_dir: Optional dir to place the checkpoint.
 
         Returns:
             str: path that points to xxx.pkl file.
@@ -552,11 +552,11 @@ class Trainable:
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
-    def delete_checkpoint(self, checkpoint_path):
+    def delete_checkpoint(self, checkpoint_path: str):
         """Deletes local copy of checkpoint.
 
         Args:
-            checkpoint_path (str): Path to checkpoint.
+            checkpoint_path: Path to checkpoint.
         """
         # Ensure TrialCheckpoints are converted
         if isinstance(checkpoint_path, TrialCheckpoint):
@@ -580,16 +580,18 @@ class Trainable:
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
 
-    def export_model(self, export_formats, export_dir=None):
+    def export_model(
+        self, export_formats: Union[List[str], str], export_dir: Optional[str] = None
+    ):
         """Exports model based on export_formats.
 
         Subclasses should override _export_model() to actually
         export model to local directory.
 
         Args:
-            export_formats (Union[list,str]): Format or list of (str) formats
+            export_formats: Format or list of (str) formats
                 that should be exported.
-            export_dir (str): Optional dir to place the exported model.
+            export_dir: Optional dir to place the exported model.
                 Defaults to self.logdir.
 
         Returns:
@@ -646,7 +648,7 @@ class Trainable:
 
         return True
 
-    def reset_config(self, new_config):
+    def reset_config(self, new_config: Dict):
         """Resets configuration without restarting the trial.
 
         This method is optional, but can be implemented to speed up algorithms
@@ -654,7 +656,7 @@ class Trainable:
         experiments with reuse_actors=True.
 
         Args:
-            new_config (dict): Updated hyperparameter configuration
+            new_config: Updated hyperparameter configuration
                 for the trainable.
 
         Returns:
@@ -846,7 +848,7 @@ class Trainable:
             )
         raise NotImplementedError
 
-    def save_checkpoint(self, tmp_checkpoint_dir):
+    def save_checkpoint(self, tmp_checkpoint_dir: str):
         """Subclasses should override this to implement ``save()``.
 
         Warning:
@@ -857,13 +859,15 @@ class Trainable:
         ``Trainable.load_checkpoint`` errors before execution.
 
         >>> from ray.tune.utils import validate_save_restore
-        >>> validate_save_restore(MyTrainableClass)
-        >>> validate_save_restore(MyTrainableClass, use_object_store=True)
+        >>> MyTrainableClass = ... # doctest: +SKIP
+        >>> validate_save_restore(MyTrainableClass) # doctest: +SKIP
+        >>> validate_save_restore( # doctest: +SKIP
+        ...     MyTrainableClass, use_object_store=True)
 
         .. versionadded:: 0.8.7
 
         Args:
-            tmp_checkpoint_dir (str): The directory where the checkpoint
+            tmp_checkpoint_dir: The directory where the checkpoint
                 file must be stored. In a Tune run, if the trial is paused,
                 the provided path may be temporary and moved.
 
@@ -873,13 +877,13 @@ class Trainable:
             be automatically serialized by Tune and
             passed to ``Trainable.load_checkpoint()``.
 
-        Examples:
-            >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1"))
+        Example:
+            >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
+            >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1")) # doctest: +SKIP
             "/tmp/checkpoint_1/my_checkpoint_file"
-            >>> print(trainable2.save_checkpoint("/tmp/checkpoint_2"))
+            >>> print(trainable2.save_checkpoint("/tmp/checkpoint_2")) # doctest: +SKIP
             {"some": "data"}
-
-            >>> trainable.save_checkpoint("/tmp/bad_example")
+            >>> trainable.save_checkpoint("/tmp/bad_example") # doctest: +SKIP
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
         if self._implements_method("_save") and log_once("_save"):
@@ -889,7 +893,7 @@ class Trainable:
             )
         raise NotImplementedError
 
-    def load_checkpoint(self, checkpoint):
+    def load_checkpoint(self, checkpoint: Union[Dict, str]):
         """Subclasses should override this to implement restore().
 
         Warning:
@@ -907,26 +911,26 @@ class Trainable:
 
         See the example below.
 
-        .. code-block:: python
-
-            class Example(Trainable):
-                def save_checkpoint(self, checkpoint_path):
-                    print(checkpoint_path)
-                    return os.path.join(checkpoint_path, "my/check/point")
-
-                def load_checkpoint(self, checkpoint):
-                    print(checkpoint)
-
+        Example:
+            >>> from ray.tune.trainable import Trainable
+            >>> class Example(Trainable):
+            ...    def save_checkpoint(self, checkpoint_path):
+            ...        print(checkpoint_path)
+            ...        return os.path.join(checkpoint_path, "my/check/point")
+            ...    def load_checkpoint(self, checkpoint):
+            ...        print(checkpoint)
             >>> trainer = Example()
-            >>> obj = trainer.save_to_object()  # This is used when PAUSED.
+            >>> # This is used when PAUSED.
+            >>> obj = trainer.save_to_object() # doctest: +SKIP
             <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
-            >>> trainer.restore_from_object(obj)  # Note the different prefix.
+            >>> # Note the different prefix.
+            >>> trainer.restore_from_object(obj) # doctest: +SKIP
             <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
 
         .. versionadded:: 0.8.7
 
         Args:
-            checkpoint (str|dict): If dict, the return value is as
+            checkpoint: If dict, the return value is as
                 returned by `save_checkpoint`. If a string, then it is
                 a checkpoint path that may have a different prefix than that
                 returned by `save_checkpoint`. The directory structure
@@ -939,13 +943,13 @@ class Trainable:
             )
         raise NotImplementedError
 
-    def setup(self, config):
+    def setup(self, config: Dict):
         """Subclasses should override this for custom initialization.
 
         .. versionadded:: 0.8.7
 
         Args:
-            config (dict): Hyperparameters and other configs given.
+            config: Hyperparameters and other configs given.
                 Copy of `self.config`.
 
         """
@@ -956,7 +960,7 @@ class Trainable:
             )
         pass
 
-    def log_result(self, result):
+    def log_result(self, result: Dict):
         """Subclasses can optionally override this to customize logging.
 
         The logging here is done on the worker process rather than
@@ -966,7 +970,7 @@ class Trainable:
         .. versionadded:: 0.8.7
 
         Args:
-            result (dict): Training result returned by step().
+            result: Training result returned by step().
         """
         if self._implements_method("_log_result") and log_once("_log_result"):
             raise DeprecationWarning(
@@ -993,12 +997,12 @@ class Trainable:
             )
         pass
 
-    def _export_model(self, export_formats, export_dir):
+    def _export_model(self, export_formats: List[str], export_dir: str):
         """Subclasses should override this to export model.
 
         Args:
-            export_formats (list): List of formats that should be exported.
-            export_dir (str): Directory to place exported models.
+            export_formats: List of formats that should be exported.
+            export_dir: Directory to place exported models.
 
         Return:
             A dict that maps ExportFormats to successfully exported models.

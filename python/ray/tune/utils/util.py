@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Callable, Type
 import copy
 import glob
 import logging
@@ -134,8 +134,10 @@ class warn_if_slow:
     """Prints a warning if a given operation is slower than 500ms.
 
     Example:
-        >>> with warn_if_slow("some_operation"):
-        ...    ray.get(something)
+        >>> from ray.tune.utils.util import warn_if_slow
+        >>> something = ... # doctest: +SKIP
+        >>> with warn_if_slow("some_operation"): # doctest: +SKIP
+        ...    ray.get(something) # doctest: +SKIP
     """
 
     DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
@@ -243,11 +245,11 @@ def _from_pinnable(obj):
     return obj[0]
 
 
-def diagnose_serialization(trainable):
+def diagnose_serialization(trainable: Callable):
     """Utility for detecting why your trainable function isn't serializing.
 
     Args:
-        trainable (func): The trainable object passed to
+        trainable: The trainable object passed to
             tune.run(trainable). Currently only supports
             Function API.
 
@@ -344,10 +346,10 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name:
     This is automatically used by tune.run during a Tune job.
 
     Args:
-        state (dict): Object state to be serialized.
-        checkpoint_dir (str): Directory location for the checkpoint.
-        file_name (str): Final name of file.
-        tmp_file_name (str): Temporary name of file.
+        state: Object state to be serialized.
+        checkpoint_dir: Directory location for the checkpoint.
+        file_name: Final name of file.
+        tmp_file_name: Temporary name of file.
     """
     import ray.cloudpickle as cloudpickle
 
@@ -365,8 +367,8 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
     :obj:atomic_save.
 
     Args:
-        dirpath (str): Directory in which to look for the checkpoint file.
-        ckpt_pattern (str): File name pattern to match to find checkpoint
+        dirpath: Directory in which to look for the checkpoint file.
+        ckpt_pattern: File name pattern to match to find checkpoint
             files.
 
     Returns:
@@ -384,22 +386,26 @@ def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
 
 
 def wait_for_gpu(
-    gpu_id=None, target_util=0.01, retry=20, delay_s=5, gpu_memory_limit=None
+    gpu_id: Optional[Union[int, str]] = None,
+    target_util: float = 0.01,
+    retry: int = 20,
+    delay_s: int = 5,
+    gpu_memory_limit: Optional[float] = None,
 ):
     """Checks if a given GPU has freed memory.
 
     Requires ``gputil`` to be installed: ``pip install gputil``.
 
     Args:
-        gpu_id (Optional[Union[int, str]]): GPU id or uuid to check.
+        gpu_id: GPU id or uuid to check.
             Must be found within GPUtil.getGPUs(). If none, resorts to
             the first item returned from `ray.get_gpu_ids()`.
-        target_util (float): The utilization threshold to reach to unblock.
+        target_util: The utilization threshold to reach to unblock.
             Set this to 0 to block until the GPU is completely free.
-        retry (int): Number of times to check GPU limit. Sleeps `delay_s`
+        retry: Number of times to check GPU limit. Sleeps `delay_s`
             seconds between checks.
-        delay_s (int): Seconds to wait before check.
-        gpu_memory_limit (float): Deprecated.
+        delay_s: Seconds to wait before check.
+        gpu_memory_limit: Deprecated.
 
     Returns:
         bool: True if free.
@@ -474,15 +480,18 @@ def wait_for_gpu(
 
 
 def validate_save_restore(
-    trainable_cls, config=None, num_gpus=0, use_object_store=False
+    trainable_cls: Type,
+    config: Optional[Dict] = None,
+    num_gpus: int = 0,
+    use_object_store: bool = False,
 ):
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
         trainable_cls: Trainable class for evaluation.
-        config (dict): Config to pass to Trainable when testing.
-        num_gpus (int): GPU resources to allocate when testing.
-        use_object_store (bool): Whether to save and restore to Ray's object
+        config: Config to pass to Trainable when testing.
+        num_gpus: GPU resources to allocate when testing.
+        use_object_store: Whether to save and restore to Ray's object
             store. Recommended to set this to True if planning to use
             algorithms that pause training (i.e., PBT, HyperBand).
     """
@@ -572,8 +581,8 @@ def create_logdir(dirname: str, local_dir: str):
     to the dirname.
 
     Args:
-        dirname (str): Dirname to create in `local_dir`
-        local_dir (str): Root directory for the log dir
+        dirname: Dirname to create in `local_dir`
+        local_dir: Root directory for the log dir
 
     Returns:
         full path to the newly created logdir.

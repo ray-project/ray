@@ -18,6 +18,7 @@ class ResultGrid:
     The constructor is a private API.
 
     Usage pattern:
+
     .. code-block:: python
 
         result_grid = tuner.fit()
