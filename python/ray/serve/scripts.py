@@ -192,7 +192,6 @@ def deploy(config_file_name: str, address: str):
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
-    hidden=True,
 )
 @click.argument("config_or_import_path")
 @click.option(
