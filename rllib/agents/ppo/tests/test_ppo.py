@@ -93,12 +93,14 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether a PPOTrainer can be built with all frameworks."""
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+        config = ppo.PPOConfig(
+            num_sgd_iter=2,
+        )
         # For checking lr-schedule correctness.
         config["callbacks"] = MyCallbacks
 
         config["num_workers"] = 1
-        config["num_sgd_iter"] = 2
+        #config["num_sgd_iter"] = 2
         # Settings in case we use an LSTM.
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20

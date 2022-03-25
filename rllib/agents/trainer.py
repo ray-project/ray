@@ -1469,10 +1469,10 @@ class Trainer(Trainable):
             train_op = train_op.for_each(
                 MultiGPUTrainOneStep(
                     workers=workers,
-                    sgd_minibatch_size=config.get(
+                    shuffle_sequences=config.get(
                         "sgd_minibatch_size", config["train_batch_size"]
                     ),
-                    num_sgd_iter=config.get("num_sgd_iter", 1),
+                    num_sgd_iter=config.get("sgd_minibatch_size", 1),
                     num_gpus=config["num_gpus"],
                     _fake_gpus=config["_fake_gpus"],
                 )
