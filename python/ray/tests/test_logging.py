@@ -26,8 +26,8 @@ def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
 
 
-def test_log_rotation_config(ray_start_cluster, monkeypatch):
-    cluster = ray_start_cluster
+def test_log_rotation_config(ray_start_cluster_enabled, monkeypatch):
+    cluster = ray_start_cluster_enabled
     max_bytes = 100
     backup_count = 3
 

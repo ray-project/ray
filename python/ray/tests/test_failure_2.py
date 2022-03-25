@@ -4,6 +4,7 @@ import signal
 import sys
 import threading
 import time
+import platform
 
 import numpy as np
 import pytest
@@ -460,9 +461,9 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head, log_pubsub):
     assert len(match) > 0
 
 
-def test_gcs_server_crash_cluster(ray_start_cluster):
+def test_gcs_server_crash_cluster(ray_start_cluster_enabled):
     # Test the GCS server failures will crash the driver.
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     GCS_RECONNECTION_TIMEOUT = 5
     node = cluster.add_node(
         num_cpus=0,
@@ -487,7 +488,10 @@ time.sleep(60)
     time.sleep(5)
     start = time.time()
     print(gcs_server_pid)
-    os.kill(gcs_server_pid, signal.SIGKILL)
+    os.kill(
+        gcs_server_pid,
+        signal.SIGTERM if platform.system() == "Windows" else signal.SIGKILL,
+    )
     wait_for_condition(lambda: proc.poll() is None, timeout=10)
     # Make sure the driver was exited within the timeout instead of hanging.
     # * 2 for avoiding flakiness.

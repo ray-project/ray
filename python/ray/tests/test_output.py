@@ -1,5 +1,7 @@
+import platform
 import subprocess
 import sys
+import psutil
 import pytest
 import re
 import signal
@@ -392,14 +394,13 @@ def test_output():
         assert len(lines) == 2, lines
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 # TODO: fix this test to support minimal installation
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test currently fails with minimal install.",
 )
-def test_output_on_driver_shutdown(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_output_on_driver_shutdown(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=16)
     # many_ppo.py script.
     script = """
@@ -450,7 +451,9 @@ run_experiments(
     print(f"Script is running... pid: {proc.pid}")
     # Send multiple signals to terminate it like real world scenario.
     for _ in range(10):
-        time.sleep(0.1)
+        time.sleep(10)
+        if not psutil.pid_exists(proc.pid) and platform.system() == "Windows":
+            break
         os.kill(proc.pid, signal.SIGINT)
     try:
         proc.wait(timeout=10)

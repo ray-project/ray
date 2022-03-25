@@ -101,9 +101,9 @@ _AUTOSCALER_METRICS = [
 
 
 @pytest.fixture
-def _setup_cluster_for_test(ray_start_cluster):
+def _setup_cluster_for_test(ray_start_cluster_enabled):
     NUM_NODES = 2
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Add a head node.
     cluster.add_node(
         _system_config={
@@ -255,11 +255,11 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_cases()  # Should fail assert
 
 
-def test_prometheus_file_based_service_discovery(ray_start_cluster):
+def test_prometheus_file_based_service_discovery(ray_start_cluster_enabled):
     # Make sure Prometheus service discovery file is correctly written
     # when number of nodes are dynamically changed.
     NUM_NODES = 5
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     nodes = [cluster.add_node() for _ in range(NUM_NODES)]
     cluster.wait_for_nodes()
     addr = ray.init(address=cluster.address)

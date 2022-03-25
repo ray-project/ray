@@ -4,8 +4,8 @@ from ray._private.test_utils import run_string_as_driver
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
 # in the past, e.g., https://github.com/ray-project/ray/issues/3275.
-def test_infeasible_tasks(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_infeasible_tasks(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
 
     @ray.remote
     def f():

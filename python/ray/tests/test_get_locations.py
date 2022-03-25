@@ -107,8 +107,8 @@ def test_get_locations_multi_nodes(ray_start_cluster_enabled):
         assert location["object_size"] > 0
 
 
-def test_location_pending(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_location_pending(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
     ray.init(cluster.address)
     cluster.wait_for_nodes()
