@@ -551,8 +551,8 @@ def remove_dir_from_filepaths(base_dir: str, rdir: str):
         rdir_children = os.listdir(os.path.join(tmp_dir, rdir))
         for child in rdir_children:
             shutil.move(
-                os.path.join(tmp_dir, rdir, child), os.path.join(base_dir, child)
-            )
+                os.path.join(tmp_dir, rdir, child),
+                os.path.join(base_dir, child))
 
 
 def unzip_package(package_path: str,
