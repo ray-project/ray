@@ -153,7 +153,7 @@ class LocalObjectManager {
   std::string DebugString() const;
 
  private:
-  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);

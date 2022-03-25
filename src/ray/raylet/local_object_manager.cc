@@ -181,8 +181,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
   int64_t counts = 0;
-  while (bytes_to_spill <= num_bytes_to_spill && it != pinned_objects_.end() &&
-         counts < max_fused_object_count_) {
+  while (it != pinned_objects_.end() && counts < max_fused_object_count_) {
     if (is_plasma_object_spillable_(it->first)) {
       bytes_to_spill += it->second->GetSize();
       objects_to_spill.push_back(it->first);
@@ -191,7 +190,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     counts += 1;
   }
   if (!objects_to_spill.empty()) {
-    if (it == pinned_objects_.end() && bytes_to_spill <= num_bytes_to_spill &&
+    if (it == pinned_objects_.end() && bytes_to_spill < num_bytes_to_spill &&
         !objects_pending_spill_.empty()) {
       // We have gone through all spillable objects but we have not yet reached
       // the minimum bytes to spill and we are already spilling other objects.
