@@ -24,12 +24,25 @@ class TrainerConfig:
     """A RLlib TrainerConfig builds an RLlib trainer from a given configuration.
 
     Example:
-       >>> from ray.rllib.agents.callbacks import MemoryTrackingCallbacks
-       >>> config = TrainerConfig.training(gamma=0.9, lr=0.01)
-       ...              .environment(env="CartPole-v1")
-       ...              .resources(num_gpus=0)
-       ...              .rollouts(num_rollout_workers=4)
-       ...              .callbacks(MemoryTrackingCallbacks)
+        >>> from ray.rllib.agents.callbacks import MemoryTrackingCallbacks
+        >>> # Construct a generic config object, specifying values within different
+        >>> # sub-categories, e.g. "training".
+        >>> config = TrainerConfig().training(gamma=0.9, lr=0.01)
+        ...              .environment(env="CartPole-v1")
+        ...              .resources(num_gpus=0)
+        ...              .rollouts(num_rollout_workers=4)
+        ...              .callbacks(MemoryTrackingCallbacks)
+        >>> # A config object can be used to construct the respective Trainer.
+        >>> rllib_trainer = config.build()
+
+    Example:
+        >>> from ray import tune
+        >>> # In combination with a tune.grid_search:
+        >>> config = TrainerConfig()
+        >>> config.training(lr=tune.grid_search([0.01, 0.001]))
+        >>> # Use `to_dict()` method to get the legacy plain python config dict
+        >>> # for usage with `tune.run()`.
+        >>> tune.run("[registered trainer class]", config=config.to_dict())
     """
 
     def __init__(self, trainer_class=None):

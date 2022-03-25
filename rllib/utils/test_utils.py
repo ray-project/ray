@@ -45,8 +45,8 @@ def framework_iterator(
     as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
-        config: An optional config dict or TrainerConfig object to alter in place
-            depending on the iteration.
+        config: An optional config dict or TrainerConfig object. This will be modified
+            (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
         session: If True and only in the tf-case: Enter a tf.Session()
