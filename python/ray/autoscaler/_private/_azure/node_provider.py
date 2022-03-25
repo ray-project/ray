@@ -4,22 +4,31 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from azure.common.client_factory import get_client_from_cli_profile
-from msrestazure.azure_active_directory import MSIAuthentication
+from azure.identity import DefaultAzureCredential
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
-from knack.util import CLIError
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.autoscaler._private._azure.config import bootstrap_azure
+from ray.autoscaler.tags import (
+    TAG_RAY_CLUSTER_NAME,
+    TAG_RAY_NODE_NAME,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_LAUNCH_CONFIG,
+    TAG_RAY_USER_NODE_TYPE,
+)
+from ray.autoscaler._private._azure.config import (
+    bootstrap_azure,
+    get_azure_sdk_function,
+)
 
 VM_NAME_MAX_LEN = 64
 VM_NAME_UUID_LEN = 8
 
 logger = logging.getLogger(__name__)
+azure_logger = logging.getLogger("azure.core.pipeline.policies.http_logging_policy")
+azure_logger.setLevel(logging.WARNING)
 
 
 def synchronized(f):
@@ -47,29 +56,12 @@ class AzureNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        kwargs = {}
-        if "subscription_id" in provider_config:
-            kwargs["subscription_id"] = provider_config["subscription_id"]
-        try:
-            self.compute_client = get_client_from_cli_profile(
-                client_class=ComputeManagementClient, **kwargs)
-            self.network_client = get_client_from_cli_profile(
-                client_class=NetworkManagementClient, **kwargs)
-            self.resource_client = get_client_from_cli_profile(
-                client_class=ResourceManagementClient, **kwargs)
-        except CLIError as e:
-            if str(e) != "Please run 'az login' to setup account.":
-                raise
-            else:
-                logger.info("CLI profile authentication failed. Trying MSI")
-
-                credentials = MSIAuthentication()
-                self.compute_client = ComputeManagementClient(
-                    credentials=credentials, **kwargs)
-                self.network_client = NetworkManagementClient(
-                    credentials=credentials, **kwargs)
-                self.resource_client = ResourceManagementClient(
-                    credentials=credentials, **kwargs)
+        subscription_id = provider_config["subscription_id"]
+        self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", True)
+        credential = DefaultAzureCredential(exclude_shared_token_cache_credential=True)
+        self.compute_client = ComputeManagementClient(credential, subscription_id)
+        self.network_client = NetworkManagementClient(credential, subscription_id)
+        self.resource_client = ResourceManagementClient(credential, subscription_id)
 
         self.lock = RLock()
 
@@ -85,7 +77,8 @@ class AzureNodeProvider(NodeProvider):
             return True
 
         vms = self.compute_client.virtual_machines.list(
-            resource_group_name=self.provider_config["resource_group"])
+            resource_group_name=self.provider_config["resource_group"]
+        )
 
         nodes = [self._extract_metadata(vm) for vm in filter(match_tags, vms)]
         self.cached_nodes = {node["name"]: node for node in nodes}
@@ -98,7 +91,8 @@ class AzureNodeProvider(NodeProvider):
         # get status
         resource_group = self.provider_config["resource_group"]
         instance = self.compute_client.virtual_machines.instance_view(
-            resource_group_name=resource_group, vm_name=vm.name).as_dict()
+            resource_group_name=resource_group, vm_name=vm.name
+        ).as_dict()
         for status in instance["statuses"]:
             code, state = status["code"].split("/")
             # skip provisioning status
@@ -111,7 +105,8 @@ class AzureNodeProvider(NodeProvider):
         metadata["nic_name"] = nic_id.split("/")[-1]
         nic = self.network_client.network_interfaces.get(
             resource_group_name=resource_group,
-            network_interface_name=metadata["nic_name"])
+            network_interface_name=metadata["nic_name"],
+        )
         ip_config = nic.ip_configurations[0]
 
         if not self.provider_config.get("use_internal_ips", False):
@@ -119,12 +114,18 @@ class AzureNodeProvider(NodeProvider):
             metadata["public_ip_name"] = public_ip_id.split("/")[-1]
             public_ip = self.network_client.public_ip_addresses.get(
                 resource_group_name=resource_group,
-                public_ip_address_name=metadata["public_ip_name"])
+                public_ip_address_name=metadata["public_ip_name"],
+            )
             metadata["external_ip"] = public_ip.ip_address
 
         metadata["internal_ip"] = ip_config.private_ip_address
 
         return metadata
+
+    def stopped_nodes(self, tag_filters):
+        """Return a list of stopped node ids filtered by the specified tags dict."""
+        nodes = self._get_filtered_nodes(tag_filters=tag_filters)
+        return [k for k, v in nodes.items() if v["status"].startswith("deallocat")]
 
     def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
@@ -135,14 +136,14 @@ class AzureNodeProvider(NodeProvider):
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.non_terminated_nodes({TAG_RAY_NODE_KIND: "worker"})
+            >>> from ray.autoscaler.tags import TAG_RAY_NODE_KIND
+            >>> provider = ... # doctest: +SKIP
+            >>> provider.non_terminated_nodes( # doctest: +SKIP
+            ...     {TAG_RAY_NODE_KIND: "worker"})
             ["node-1", "node-2"]
         """
         nodes = self._get_filtered_nodes(tag_filters=tag_filters)
-        return [
-            k for k, v in nodes.items()
-            if not v["status"].startswith("deallocat")
-        ]
+        return [k for k, v in nodes.items() if not v["status"].startswith("deallocat")]
 
     def is_running(self, node_id):
         """Return whether the specified node is running."""
@@ -162,19 +163,50 @@ class AzureNodeProvider(NodeProvider):
 
     def external_ip(self, node_id):
         """Returns the external ip of the given node."""
-        ip = (self._get_cached_node(node_id=node_id)["external_ip"]
-              or self._get_node(node_id=node_id)["external_ip"])
+        ip = (
+            self._get_cached_node(node_id=node_id)["external_ip"]
+            or self._get_node(node_id=node_id)["external_ip"]
+        )
         return ip
 
     def internal_ip(self, node_id):
         """Returns the internal ip (Ray ip) of the given node."""
-        ip = (self._get_cached_node(node_id=node_id)["internal_ip"]
-              or self._get_node(node_id=node_id)["internal_ip"])
+        ip = (
+            self._get_cached_node(node_id=node_id)["internal_ip"]
+            or self._get_node(node_id=node_id)["internal_ip"]
+        )
         return ip
 
     def create_node(self, node_config, tags, count):
+        resource_group = self.provider_config["resource_group"]
+
+        if self.cache_stopped_nodes:
+            VALIDITY_TAGS = [
+                TAG_RAY_CLUSTER_NAME,
+                TAG_RAY_NODE_KIND,
+                TAG_RAY_LAUNCH_CONFIG,
+                TAG_RAY_USER_NODE_TYPE,
+            ]
+            filters = {tag: tags[tag] for tag in VALIDITY_TAGS if tag in tags}
+            reuse_nodes = self.stopped_nodes(filters)[:count]
+            logger.info(
+                f"Reusing nodes {list(reuse_nodes)}. "
+                "To disable reuse, set `cache_stopped_nodes: False` "
+                "under `provider` in the cluster configuration.",
+            )
+            start = get_azure_sdk_function(
+                client=self.compute_client.virtual_machines, function_name="start"
+            )
+            for node_id in reuse_nodes:
+                start(resource_group_name=resource_group, vm_name=node_id).wait()
+                self.set_node_tags(node_id, tags)
+            count -= len(reuse_nodes)
+
+        if count:
+            self._create_node(node_config, tags, count)
+
+    def _create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
-        # TODO: restart deallocated nodes if possible
         resource_group = self.provider_config["resource_group"]
 
         # load the template file
@@ -204,45 +236,39 @@ class AzureNodeProvider(NodeProvider):
                 "mode": DeploymentMode.incremental,
                 "template": template,
                 "parameters": {
-                    key: {
-                        "value": value
-                    }
-                    for key, value in template_params.items()
-                }
+                    key: {"value": value} for key, value in template_params.items()
+                },
             }
         }
 
         # TODO: we could get the private/public ips back directly
-        if hasattr(self.resource_client.deployments, "create_or_update"):
-            create = self.resource_client.deployments.create_or_update
-        else:
-            create = self.resource_client.deployments.begin_create_or_update
-        create(
+        create_or_update = get_azure_sdk_function(
+            client=self.resource_client.deployments, function_name="create_or_update"
+        )
+        create_or_update(
             resource_group_name=resource_group,
             deployment_name="ray-vm-{}".format(name_tag),
-            parameters=parameters).wait()
+            parameters=parameters,
+        ).wait()
 
     @synchronized
     def set_node_tags(self, node_id, tags):
         """Sets the tag values (string dict) for the specified node."""
         node_tags = self._get_cached_node(node_id)["tags"]
         node_tags.update(tags)
-        if hasattr(self.compute_client.virtual_machines, "update"):
-            self.compute_client.virtual_machines.update(
-                resource_group_name=self.provider_config["resource_group"],
-                vm_name=node_id,
-                parameters={"tags": node_tags})
-        else:
-            # Newer versions of the client use begin_update, not update
-            self.compute_client.virtual_machines.begin_update(
-                resource_group_name=self.provider_config["resource_group"],
-                vm_name=node_id,
-                parameters={"tags": node_tags})
+        update = get_azure_sdk_function(
+            client=self.compute_client.virtual_machines, function_name="update"
+        )
+        update(
+            resource_group_name=self.provider_config["resource_group"],
+            vm_name=node_id,
+            parameters={"tags": node_tags},
+        )
         self.cached_nodes[node_id]["tags"] = node_tags
 
     def terminate_node(self, node_id):
         """Terminates the specified node. This will delete the VM and
-           associated resources (NIC, IP, Storage) for the specified node."""
+        associated resources (NIC, IP, Storage) for the specified node."""
 
         resource_group = self.provider_config["resource_group"]
         try:
@@ -252,48 +278,74 @@ class AzureNodeProvider(NodeProvider):
             # node no longer exists
             return
 
-        # TODO: deallocate instead of delete to allow possible reuse
-        # self.compute_client.virtual_machines.deallocate(
-        #   resource_group_name=resource_group,
-        #   vm_name=node_id)
-
-        # gather disks to delete later
-        vm = self.compute_client.virtual_machines.get(
-            resource_group_name=resource_group, vm_name=node_id)
-        disks = {d.name for d in vm.storage_profile.data_disks}
-        disks.add(vm.storage_profile.os_disk.name)
-
-        try:
-            # delete machine, must wait for this to complete
-            self.compute_client.virtual_machines.delete(
-                resource_group_name=resource_group, vm_name=node_id).wait()
-        except Exception as e:
-            logger.warning("Failed to delete VM: {}".format(e))
-
-        try:
-            # delete nic
-            self.network_client.network_interfaces.delete(
-                resource_group_name=resource_group,
-                network_interface_name=metadata["nic_name"])
-        except Exception as e:
-            logger.warning("Failed to delete nic: {}".format(e))
-
-        # delete ip address
-        if "public_ip_name" in metadata:
+        if self.cache_stopped_nodes:
             try:
-                self.network_client.public_ip_addresses.delete(
+                # stop machine and leave all resources
+                logger.info(
+                    f"Stopping instance {node_id}"
+                    "(to fully terminate instead, "
+                    "set `cache_stopped_nodes: False` "
+                    "under `provider` in the cluster configuration)"
+                )
+                stop = get_azure_sdk_function(
+                    client=self.compute_client.virtual_machines,
+                    function_name="deallocate",
+                )
+                stop(resource_group_name=resource_group, vm_name=node_id)
+            except Exception as e:
+                logger.warning("Failed to stop VM: {}".format(e))
+        else:
+            vm = self.compute_client.virtual_machines.get(
+                resource_group_name=resource_group, vm_name=node_id
+            )
+            disks = {d.name for d in vm.storage_profile.data_disks}
+            disks.add(vm.storage_profile.os_disk.name)
+
+            try:
+                # delete machine, must wait for this to complete
+                delete = get_azure_sdk_function(
+                    client=self.compute_client.virtual_machines, function_name="delete"
+                )
+                delete(resource_group_name=resource_group, vm_name=node_id).wait()
+            except Exception as e:
+                logger.warning("Failed to delete VM: {}".format(e))
+
+            try:
+                # delete nic
+                delete = get_azure_sdk_function(
+                    client=self.network_client.network_interfaces,
+                    function_name="delete",
+                )
+                delete(
                     resource_group_name=resource_group,
-                    public_ip_address_name=metadata["public_ip_name"])
+                    network_interface_name=metadata["nic_name"],
+                )
             except Exception as e:
-                logger.warning("Failed to delete public ip: {}".format(e))
+                logger.warning("Failed to delete nic: {}".format(e))
 
-        # delete disks
-        for disk in disks:
-            try:
-                self.compute_client.disks.delete(
-                    resource_group_name=resource_group, disk_name=disk)
-            except Exception as e:
-                logger.warning("Failed to delete disk: {}".format(e))
+            # delete ip address
+            if "public_ip_name" in metadata:
+                try:
+                    delete = get_azure_sdk_function(
+                        client=self.network_client.public_ip_addresses,
+                        function_name="delete",
+                    )
+                    delete(
+                        resource_group_name=resource_group,
+                        public_ip_address_name=metadata["public_ip_name"],
+                    )
+                except Exception as e:
+                    logger.warning("Failed to delete public ip: {}".format(e))
+
+            # delete disks
+            for disk in disks:
+                try:
+                    delete = get_azure_sdk_function(
+                        client=self.compute_client.disks, function_name="delete"
+                    )
+                    delete(resource_group_name=resource_group, disk_name=disk)
+                except Exception as e:
+                    logger.warning("Failed to delete disk: {}".format(e))
 
     def _get_node(self, node_id):
         self._get_filtered_nodes({})  # Side effect: updates cache

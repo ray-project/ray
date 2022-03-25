@@ -24,10 +24,9 @@ class _MockSearcher(Searcher):
         self.counter["result"] += 1
         self.results += [result]
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         self.counter["complete"] += 1
         if result:
             self._process_result(result)
@@ -43,7 +42,8 @@ class _MockSuggestionAlgorithm(SearchGenerator):
         self.searcher = _MockSearcher(**kwargs)
         if max_concurrent:
             self.searcher = ConcurrencyLimiter(
-                self.searcher, max_concurrent=max_concurrent)
+                self.searcher, max_concurrent=max_concurrent
+            )
         super(_MockSuggestionAlgorithm, self).__init__(self.searcher)
 
     @property

@@ -7,8 +7,10 @@ import unittest
 import ray
 from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
-from ray.rllib.models.tf.tf_action_dist import MultiActionDistribution, \
-    TFActionDistribution
+from ray.rllib.models.tf.tf_action_dist import (
+    MultiActionDistribution,
+    TFActionDistribution,
+)
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -39,8 +41,8 @@ class CustomActionDistribution(TFActionDistribution):
         custom_model_config = model.model_config["custom_model_config"]
         if "output_dim" in custom_model_config:
             self.output_shape = tf.concat(
-                [tf.shape(inputs)[:1], custom_model_config["output_dim"]],
-                axis=0)
+                [tf.shape(inputs)[:1], custom_model_config["output_dim"]], axis=0
+            )
         else:
             self.output_shape = tf.shape(inputs)
         super().__init__(inputs, model)
@@ -48,8 +50,7 @@ class CustomActionDistribution(TFActionDistribution):
     @staticmethod
     def required_model_output_shape(action_space, model_config=None):
         custom_model_config = model_config["custom_model_config"] or {}
-        if custom_model_config is not None and \
-                custom_model_config.get("output_dim"):
+        if custom_model_config is not None and custom_model_config.get("output_dim"):
             return custom_model_config.get("output_dim")
         return action_space.shape
 
@@ -88,7 +89,7 @@ class TestModelCatalog(unittest.TestCase):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
         for fw in framework_iterator(frameworks=("jax", "tf", "tf2", "torch")):
-            obs_space = Box(0, 1, shape=(3, ), dtype=np.float32)
+            obs_space = Box(0, 1, shape=(3,), dtype=np.float32)
             p1 = ModelCatalog.get_model_v2(
                 obs_space=obs_space,
                 action_space=Discrete(5),
@@ -120,34 +121,33 @@ class TestModelCatalog(unittest.TestCase):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_model("foo", CustomModel)
         p1 = ModelCatalog.get_model_v2(
-            obs_space=Box(0, 1, shape=(3, ), dtype=np.float32),
+            obs_space=Box(0, 1, shape=(3,), dtype=np.float32),
             action_space=Discrete(5),
             num_outputs=5,
-            model_config={"custom_model": "foo"})
+            model_config={"custom_model": "foo"},
+        )
         self.assertEqual(str(type(p1)), str(CustomModel))
 
     def test_custom_action_distribution(self):
-        class Model():
+        class Model:
             pass
 
         ray.init(
-            object_store_memory=1000 * 1024 * 1024,
-            ignore_reinit_error=True)  # otherwise fails sometimes locally
+            object_store_memory=1000 * 1024 * 1024, ignore_reinit_error=True
+        )  # otherwise fails sometimes locally
         # registration
-        ModelCatalog.register_custom_action_dist("test",
-                                                 CustomActionDistribution)
+        ModelCatalog.register_custom_action_dist("test", CustomActionDistribution)
         action_space = Box(0, 1, shape=(5, 3), dtype=np.float32)
 
         # test retrieving it
         model_config = MODEL_DEFAULTS.copy()
         model_config["custom_action_dist"] = "test"
-        dist_cls, param_shape = ModelCatalog.get_action_dist(
-            action_space, model_config)
+        dist_cls, param_shape = ModelCatalog.get_action_dist(action_space, model_config)
         self.assertEqual(str(dist_cls), str(CustomActionDistribution))
         self.assertEqual(param_shape, action_space.shape)
 
         # test the class works as a distribution
-        dist_input = tf1.placeholder(tf.float32, (None, ) + param_shape)
+        dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
         model = Model()
         model.model_config = model_config
         dist = dist_cls(dist_input, model=model)
@@ -157,11 +157,10 @@ class TestModelCatalog(unittest.TestCase):
             dist.entropy()
 
         # test passing the options to it
-        model_config["custom_model_config"].update({"output_dim": (3, )})
-        dist_cls, param_shape = ModelCatalog.get_action_dist(
-            action_space, model_config)
-        self.assertEqual(param_shape, (3, ))
-        dist_input = tf1.placeholder(tf.float32, (None, ) + param_shape)
+        model_config["custom_model_config"].update({"output_dim": (3,)})
+        dist_cls, param_shape = ModelCatalog.get_action_dist(action_space, model_config)
+        self.assertEqual(param_shape, (3,))
+        dist_input = tf1.placeholder(tf.float32, (None,) + param_shape)
         model.model_config = model_config
         dist = dist_cls(dist_input, model=model)
         self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])
@@ -170,24 +169,22 @@ class TestModelCatalog(unittest.TestCase):
             dist.entropy()
 
     def test_custom_multi_action_distribution(self):
-        class Model():
+        class Model:
             pass
 
         ray.init(
-            object_store_memory=1000 * 1024 * 1024,
-            ignore_reinit_error=True)  # otherwise fails sometimes locally
+            object_store_memory=1000 * 1024 * 1024, ignore_reinit_error=True
+        )  # otherwise fails sometimes locally
         # registration
-        ModelCatalog.register_custom_action_dist(
-            "test", CustomMultiActionDistribution)
+        ModelCatalog.register_custom_action_dist("test", CustomMultiActionDistribution)
         s1 = Discrete(5)
-        s2 = Box(0, 1, shape=(3, ), dtype=np.float32)
+        s2 = Box(0, 1, shape=(3,), dtype=np.float32)
         spaces = dict(action_1=s1, action_2=s2)
         action_space = Dict(spaces)
         # test retrieving it
         model_config = MODEL_DEFAULTS.copy()
         model_config["custom_action_dist"] = "test"
-        dist_cls, param_shape = ModelCatalog.get_action_dist(
-            action_space, model_config)
+        dist_cls, param_shape = ModelCatalog.get_action_dist(action_space, model_config)
         self.assertIsInstance(dist_cls, partial)
         self.assertEqual(param_shape, s1.n + 2 * s2.shape[0])
 
@@ -209,4 +206,5 @@ class TestModelCatalog(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

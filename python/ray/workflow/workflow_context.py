@@ -1,12 +1,28 @@
+import copy
 from dataclasses import dataclass, field
 import logging
 from typing import Optional, List, TYPE_CHECKING
 from contextlib import contextmanager
 from ray.workflow.common import WorkflowStatus
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from python.ray.workflow.common import StepID
+    from ray.workflow.common import StepID, CheckpointModeType
+
+
+@dataclass
+class CheckpointContext:
+    # The step is checkpointed or not.
+    checkpoint: "CheckpointModeType" = True
+    # Detached from DAG means step is not checkpointed in the DAG.
+    # The output step inside current step is an exception, because
+    # its output is linked to the output of the current step.
+    detached_from_dag: bool = False
+
+    def copy(self) -> "CheckpointContext":
+        """Copy the dataclass safely."""
+        return copy.copy(self)
 
 
 @dataclass
@@ -32,6 +48,7 @@ class WorkflowStepContext:
     "B" is the outer most step for "C", "D"; "E" is the outer most step
     for "G", "H".
     """
+
     # ID of the workflow.
     workflow_id: Optional[str] = None
     # The storage of the workflow, used for checkpointing.
@@ -44,15 +61,17 @@ class WorkflowStepContext:
     # The step that generates the output of the workflow (including all
     # nested steps).
     last_step_of_workflow: bool = False
+    # The checkpoint context.
+    checkpoint_context: CheckpointContext = field(default_factory=CheckpointContext)
 
 
 _context: Optional[WorkflowStepContext] = None
 
 
 @contextmanager
-def workflow_step_context(workflow_id,
-                          storage_url,
-                          last_step_of_workflow=False) -> None:
+def workflow_step_context(
+    workflow_id, storage_url, last_step_of_workflow=False
+) -> None:
     """Initialize the workflow step context.
 
     Args:
@@ -64,9 +83,8 @@ def workflow_step_context(workflow_id,
     assert workflow_id is not None
     try:
         _context = WorkflowStepContext(
-            workflow_id,
-            storage_url,
-            last_step_of_workflow=last_step_of_workflow)
+            workflow_id, storage_url, last_step_of_workflow=last_step_of_workflow
+        )
         yield
     finally:
         _context = original_context
@@ -77,11 +95,13 @@ _sentinel = object()
 
 @contextmanager
 def fork_workflow_step_context(
-        workflow_id: Optional[str] = _sentinel,
-        storage_url: Optional[str] = _sentinel,
-        workflow_scope: Optional[List[str]] = _sentinel,
-        outer_most_step_id: Optional[str] = _sentinel,
-        last_step_of_workflow: Optional[bool] = _sentinel):
+    workflow_id: Optional[str] = _sentinel,
+    storage_url: Optional[str] = _sentinel,
+    workflow_scope: Optional[List[str]] = _sentinel,
+    outer_most_step_id: Optional[str] = _sentinel,
+    last_step_of_workflow: Optional[bool] = _sentinel,
+    checkpoint_context: CheckpointContext = _sentinel,
+):
     """Fork the workflow step context.
     Inherits the original value if no value is provided.
 
@@ -95,15 +115,23 @@ def fork_workflow_step_context(
     try:
         _context = WorkflowStepContext(
             workflow_id=original_context.workflow_id
-            if workflow_id is _sentinel else workflow_id,
+            if workflow_id is _sentinel
+            else workflow_id,
             storage_url=original_context.storage_url
-            if storage_url is _sentinel else storage_url,
+            if storage_url is _sentinel
+            else storage_url,
             workflow_scope=original_context.workflow_scope
-            if workflow_scope is _sentinel else workflow_scope,
+            if workflow_scope is _sentinel
+            else workflow_scope,
             outer_most_step_id=original_context.outer_most_step_id
-            if outer_most_step_id is _sentinel else outer_most_step_id,
+            if outer_most_step_id is _sentinel
+            else outer_most_step_id,
             last_step_of_workflow=original_context.last_step_of_workflow
-            if last_step_of_workflow is _sentinel else last_step_of_workflow,
+            if last_step_of_workflow is _sentinel
+            else last_step_of_workflow,
+            checkpoint_context=original_context.checkpoint_context
+            if checkpoint_context is _sentinel
+            else checkpoint_context,
         )
         yield
     finally:
@@ -119,13 +147,13 @@ def set_workflow_step_context(context: Optional[WorkflowStepContext]):
     _context = context
 
 
-def update_workflow_step_context(context: Optional[WorkflowStepContext],
-                                 step_id: str):
+def update_workflow_step_context(context: Optional[WorkflowStepContext], step_id: str):
     global _context
     _context = context
     _context.workflow_scope.append(step_id)
     # avoid cyclic import
     from ray.workflow import storage
+
     # TODO(suquark): [optimization] if the original storage has the same URL,
     # skip creating the new one
     storage.set_global_storage(storage.create_storage(context.storage_url))
@@ -154,3 +182,23 @@ def get_step_status_info(status: WorkflowStatus) -> str:
 
 def get_scope():
     return _context.workflow_scope
+
+
+_in_workflow_execution = False
+
+
+@contextmanager
+def workflow_execution() -> None:
+    """Scope for workflow step execution."""
+    global _in_workflow_execution
+    try:
+        _in_workflow_execution = True
+        yield
+    finally:
+        _in_workflow_execution = False
+
+
+def in_workflow_execution() -> bool:
+    """Whether we are in workflow step execution."""
+    global _in_workflow_execution
+    return _in_workflow_execution

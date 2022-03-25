@@ -28,11 +28,14 @@ class LoggerSuite(unittest.TestCase):
             with self.assertWarns(UserWarning) as cm:
                 for _ in range(50):
                     f.remote(large_argument)
-            assert "More than 10MB of messages have been created to " \
+            assert (
+                "More than 10MB of messages have been created to "
                 "schedule tasks on the server." in cm.warning.args[0]
+            )
 
 
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -41,20 +41,33 @@ public class PlacementGroupTest extends BaseTest {
   // This test just creates a placement group with one bundle.
   // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
-    PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
+    PlacementGroup placementGroup =
+        PlacementGroupTestUtils.createSpecifiedSimpleGroup(
+            "CPU", 2, PlacementStrategy.PACK, 1.0, false);
     Assert.assertTrue(placementGroup.wait(60));
     Assert.assertEquals(placementGroup.getName(), "unnamed_group");
 
     // Test creating an actor from a constructor.
-    ActorHandle<Counter> actor =
+    ActorHandle<Counter> firstActor =
         Ray.actor(Counter::new, 1)
             .setResource("CPU", 1.0)
             .setPlacementGroup(placementGroup, 0)
             .remote();
-    Assert.assertNotEquals(actor.getId(), ActorId.NIL);
+    Assert.assertNotEquals(firstActor.getId(), ActorId.NIL);
 
     // Test calling an actor.
-    Assert.assertEquals(actor.task(Counter::getValue).remote().get(), Integer.valueOf(1));
+    Assert.assertEquals(firstActor.task(Counter::getValue).remote().get(), Integer.valueOf(1));
+
+    // Test creating an actor without specifying which bundle to use.
+    ActorHandle<Counter> secondActor =
+        Ray.actor(Counter::new, 1)
+            .setResource("CPU", 1.0)
+            .setPlacementGroup(placementGroup)
+            .remote();
+    Assert.assertNotEquals(secondActor.getId(), ActorId.NIL);
+
+    // Test calling an actor.
+    Assert.assertEquals(secondActor.task(Counter::getValue).remote().get(), Integer.valueOf(1));
   }
 
   @Test(groups = {"cluster"})
@@ -139,13 +152,6 @@ public class PlacementGroupTest extends BaseTest {
       ++exceptionCount;
     }
     Assert.assertEquals(exceptionCount, 1);
-
-    try {
-      Ray.actor(Counter::new, 1).setPlacementGroup(placementGroup, -1).remote();
-    } catch (IllegalArgumentException e) {
-      ++exceptionCount;
-    }
-    Assert.assertEquals(exceptionCount, 2);
   }
 
   @Test(expectedExceptions = {IllegalArgumentException.class})
@@ -221,6 +227,15 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertEquals(
         Ray.task(Counter::ping)
             .setPlacementGroup(placementGroup, 0)
+            .setResource("CPU", 1.0)
+            .remote()
+            .get(),
+        "pong");
+
+    // Submit a normal task without specifying which bundle to use.
+    Assert.assertEquals(
+        Ray.task(Counter::ping)
+            .setPlacementGroup(placementGroup)
             .setResource("CPU", 1.0)
             .remote()
             .get(),

@@ -22,8 +22,8 @@ np.random.seed(1234)
 
 # We will run inference with this test batch
 test_data = {
-    "obs": np.random.uniform(0, 1., size=(10, 4)).astype(np.float32),
-    "state_ins": np.array([0.], dtype=np.float32),
+    "obs": np.random.uniform(0, 1.0, size=(10, 4)).astype(np.float32),
+    "state_ins": np.array([0.0], dtype=np.float32),
 }
 
 # Start Ray and initialize a PPO trainer
@@ -35,9 +35,11 @@ trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
 # Let's run inference on the torch model
 policy = trainer.get_policy()
-result_pytorch, _ = policy.model({
-    "obs": torch.tensor(test_data["obs"]),
-})
+result_pytorch, _ = policy.model(
+    {
+        "obs": torch.tensor(test_data["obs"]),
+    }
+)
 
 # Evaluate tensor to fetch numpy array
 result_pytorch = result_pytorch.detach().numpy()
@@ -62,6 +64,5 @@ result_onnx = session.run(["output"], test_data)
 print("PYTORCH", result_pytorch)
 print("ONNX", result_onnx)
 
-assert np.allclose(result_pytorch, result_onnx), \
-   "Model outputs are NOT equal. FAILED"
+assert np.allclose(result_pytorch, result_onnx), "Model outputs are NOT equal. FAILED"
 print("Model outputs are equal. PASSED")

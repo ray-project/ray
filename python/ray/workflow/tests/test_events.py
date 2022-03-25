@@ -39,11 +39,14 @@ def test_sleep_checkpointing(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
-        # implementation we shouldn't need these extra cpus.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
+            # implementation we shouldn't need these extra cpus.
+        }
+    ],
+    indirect=True,
+)
 def test_wait_for_multiple_events(workflow_start_regular_shared):
     """If a workflow has multiple event arguments, it should wait for them at the
     same time.
@@ -72,8 +75,9 @@ def test_wait_for_multiple_events(workflow_start_regular_shared):
 
     promise = trivial_step.step(event1_promise, event2_promise).run_async()
 
-    while not (utils.check_global_mark("listener1")
-               and utils.check_global_mark("listener2")):
+    while not (
+        utils.check_global_mark("listener1") and utils.check_global_mark("listener2")
+    ):
         time.sleep(0.1)
 
     utils.set_global_mark("trigger_event")
@@ -82,11 +86,14 @@ def test_wait_for_multiple_events(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
-        # implementation we shouldn't need these extra cpus.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
+            # implementation we shouldn't need these extra cpus.
+        }
+    ],
+    indirect=True,
+)
 def test_event_after_arg_resolution(workflow_start_regular_shared):
     """Ensure that a workflow resolves all of its non-event arguments while it
     waiting the the event to occur.
@@ -109,17 +116,19 @@ def test_event_after_arg_resolution(workflow_start_regular_shared):
 
     event_promise = workflow.wait_for_event(MyEventListener)
 
-    assert gather.step(event_promise, triggers_event.step()).run() \
-        == (None, None)
+    assert gather.step(event_promise, triggers_event.step()).run() == (None, None)
 
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
-        # implementation we shouldn't need these extra cpus.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
+            # implementation we shouldn't need these extra cpus.
+        }
+    ],
+    indirect=True,
+)
 def test_event_during_arg_resolution(workflow_start_regular_shared):
     """If a workflow's arguments are being executed when the event occurs, the
     workflow should run immediately with no issues.
@@ -142,13 +151,12 @@ def test_event_during_arg_resolution(workflow_start_regular_shared):
         return args
 
     event_promise = workflow.wait_for_event(MyEventListener)
-    assert gather.step(event_promise, triggers_event.step()).run() \
-        == (None, None)
+    assert gather.step(event_promise, triggers_event.step()).run() == (None, None)
 
 
 def test_crash_during_event_checkpointing(workflow_start_regular_shared):
     """Ensure that if the cluster dies while the event is being checkpointed, we
-       properly re-poll for the event."""
+    properly re-poll for the event."""
     _storage = storage.get_global_storage()
     """Ensure that we don't re-call poll_for_event after `event_checkpointed`
        returns, even after a crash."""
@@ -195,11 +203,14 @@ def test_crash_during_event_checkpointing(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
-        # implementation we shouldn't need these extra cpus.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
+            # implementation we shouldn't need these extra cpus.
+        }
+    ],
+    indirect=True,
+)
 def test_crash_after_commit(workflow_start_regular_shared):
     _storage = storage.get_global_storage()
     """Ensure that we don't re-call poll_for_event after `event_checkpointed`
@@ -240,11 +251,14 @@ def test_crash_after_commit(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
-        # implementation we shouldn't need these extra cpus.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
+            # implementation we shouldn't need these extra cpus.
+        }
+    ],
+    indirect=True,
+)
 def test_event_as_workflow(workflow_start_regular_shared):
     class MyEventListener(workflow.EventListener):
         async def poll_for_event(self):
@@ -262,11 +276,14 @@ def test_event_as_workflow(workflow_start_regular_shared):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared",
-    [{
-        "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
-        # implementation we shouldn't need these extra cpus.
-    }],
-    indirect=True)
+    [
+        {
+            "num_cpus": 4,  # TODO (Alex): When we switch to the efficient event
+            # implementation we shouldn't need these extra cpus.
+        }
+    ],
+    indirect=True,
+)
 def test_types(workflow_start_regular_shared):
     class NotAnEventListener:
         pass
@@ -277,4 +294,5 @@ def test_types(workflow_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

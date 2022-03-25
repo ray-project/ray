@@ -38,6 +38,7 @@ def disable_ipython():
     """Disable output of IPython HTML objects."""
     try:
         from IPython.core.interactiveshell import InteractiveShell
+
         InteractiveShell.clear_instance()
     except Exception:
         pass

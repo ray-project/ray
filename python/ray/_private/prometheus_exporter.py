@@ -21,7 +21,7 @@ from opencensus.stats import base_exporter
 
 
 class Options(object):
-    """ Options contains options for configuring the exporter.
+    """Options contains options for configuring the exporter.
     The address can be empty as the prometheus client will
     assume it's localhost
     :type namespace: str
@@ -36,11 +36,9 @@ class Options(object):
     :param registry: A Prometheus collector registry instance.
     """
 
-    def __init__(self,
-                 namespace="",
-                 port=8000,
-                 address="",
-                 registry=CollectorRegistry()):
+    def __init__(
+        self, namespace="", port=8000, address="", registry=CollectorRegistry()
+    ):
         self._namespace = namespace
         self._registry = registry
         self._port = int(port)
@@ -48,32 +46,27 @@ class Options(object):
 
     @property
     def registry(self):
-        """ Prometheus Collector Registry instance
-        """
+        """Prometheus Collector Registry instance"""
         return self._registry
 
     @property
     def namespace(self):
-        """ Prefix to be used with view name
-        """
+        """Prefix to be used with view name"""
         return self._namespace
 
     @property
     def port(self):
-        """ Port number to listen
-        """
+        """Port number to listen"""
         return self._port
 
     @property
     def address(self):
-        """ Endpoint address (default is localhost)
-        """
+        """Endpoint address (default is localhost)"""
         return self._address
 
 
 class Collector(object):
-    """ Collector represents the Prometheus Collector object
-    """
+    """Collector represents the Prometheus Collector object"""
 
     def __init__(self, options=Options(), view_name_to_data_map=None):
         if view_name_to_data_map is None:
@@ -85,31 +78,28 @@ class Collector(object):
 
     @property
     def options(self):
-        """ Options to be used to configure the exporter
-        """
+        """Options to be used to configure the exporter"""
         return self._options
 
     @property
     def registry(self):
-        """ Prometheus Collector Registry instance
-        """
+        """Prometheus Collector Registry instance"""
         return self._registry
 
     @property
     def view_name_to_data_map(self):
-        """ Map with all view data objects
+        """Map with all view data objects
         that will be sent to Prometheus
         """
         return self._view_name_to_data_map
 
     @property
     def registered_views(self):
-        """ Map with all registered views
-        """
+        """Map with all registered views"""
         return self._registered_views
 
     def register_view(self, view):
-        """ register_view will create the needed structure
+        """register_view will create the needed structure
         in order to be able to sent all data to Prometheus
         """
         v_name = get_view_name(self.options.namespace, view)
@@ -119,21 +109,20 @@ class Collector(object):
                 "name": v_name,
                 "documentation": view.description,
                 "labels": list(map(sanitize, view.columns)),
-                "units": view.measure.unit
+                "units": view.measure.unit,
             }
             self.registered_views[v_name] = desc
             self.registry.register(self)
 
     def add_view_data(self, view_data):
-        """ Add view data object to be sent to server
-        """
+        """Add view data object to be sent to server"""
         self.register_view(view_data.view)
         v_name = get_view_name(self.options.namespace, view_data.view)
         self.view_name_to_data_map[v_name] = view_data
 
     # TODO: add start and end timestamp
     def to_metric(self, desc, tag_values, agg_data):
-        """ to_metric translate the data that OpenCensus create
+        """to_metric translate the data that OpenCensus create
         to Prometheus format, using Prometheus Metric object
         :type desc: dict
         :param desc: The map that describes view definition
@@ -155,7 +144,7 @@ class Collector(object):
         metric_description = desc["documentation"]
         label_keys = desc["labels"]
         metric_units = desc["units"]
-        assert (len(tag_values) == len(label_keys))
+        assert len(tag_values) == len(label_keys)
         # Prometheus requires that all tag values be strings hence
         # the need to cast none to the empty string before exporting. See
         # https://github.com/census-instrumentation/opencensus-python/issues/480
@@ -166,14 +155,14 @@ class Collector(object):
                 name=metric_name,
                 documentation=metric_description,
                 unit=metric_units,
-                labels=label_keys)
+                labels=label_keys,
+            )
             metric.add_metric(labels=tag_values, value=agg_data.count_data)
             return metric
 
-        elif isinstance(agg_data,
-                        aggregation_data_module.DistributionAggregationData):
+        elif isinstance(agg_data, aggregation_data_module.DistributionAggregationData):
 
-            assert (agg_data.bounds == sorted(agg_data.bounds))
+            assert agg_data.bounds == sorted(agg_data.bounds)
             # buckets are a list of buckets. Each bucket is another list with
             # a pair of bucket name and value, or a triple of bucket name,
             # value, and exemplar. buckets need to be in order.
@@ -188,9 +177,8 @@ class Collector(object):
             # append it here.
             buckets.append(["+Inf", agg_data.count_data])
             metric = HistogramMetricFamily(
-                name=metric_name,
-                documentation=metric_description,
-                labels=label_keys)
+                name=metric_name, documentation=metric_description, labels=label_keys
+            )
             metric.add_metric(
                 labels=tag_values,
                 buckets=buckets,
@@ -200,18 +188,15 @@ class Collector(object):
 
         elif isinstance(agg_data, aggregation_data_module.SumAggregationData):
             metric = UnknownMetricFamily(
-                name=metric_name,
-                documentation=metric_description,
-                labels=label_keys)
+                name=metric_name, documentation=metric_description, labels=label_keys
+            )
             metric.add_metric(labels=tag_values, value=agg_data.sum_data)
             return metric
 
-        elif isinstance(agg_data,
-                        aggregation_data_module.LastValueAggregationData):
+        elif isinstance(agg_data, aggregation_data_module.LastValueAggregationData):
             metric = GaugeMetricFamily(
-                name=metric_name,
-                documentation=metric_description,
-                labels=label_keys)
+                name=metric_name, documentation=metric_description, labels=label_keys
+            )
             metric.add_metric(labels=tag_values, value=agg_data.value)
             return metric
 
@@ -235,7 +220,7 @@ class Collector(object):
 
 
 class PrometheusStatsExporter(base_exporter.StatsExporter):
-    """ Exporter exports stats to Prometheus, users need
+    """Exporter exports stats to Prometheus, users need
         to register the exporter as an HTTP Handler to be
         able to export.
     :type options:
@@ -253,11 +238,9 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
     :param collector: An instance of the Prometheus Collector object.
     """
 
-    def __init__(self,
-                 options,
-                 gatherer,
-                 transport=sync.SyncTransport,
-                 collector=Collector()):
+    def __init__(
+        self, options, gatherer, transport=sync.SyncTransport, collector=Collector()
+    ):
         self._options = options
         self._gatherer = gatherer
         self._collector = collector
@@ -267,32 +250,30 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
 
     @property
     def transport(self):
-        """ The transport way to be sent data to server
+        """The transport way to be sent data to server
         (default is sync).
         """
         return self._transport
 
     @property
     def collector(self):
-        """ Collector class instance to be used
+        """Collector class instance to be used
         to communicate with Prometheus
         """
         return self._collector
 
     @property
     def gatherer(self):
-        """ Prometheus Collector Registry instance
-        """
+        """Prometheus Collector Registry instance"""
         return self._gatherer
 
     @property
     def options(self):
-        """ Options to be used to configure the exporter
-        """
+        """Options to be used to configure the exporter"""
         return self._options
 
     def export(self, view_data):
-        """ export send the data to the transport class
+        """export send the data to the transport class
         in order to be sent to Prometheus in a sync or async way.
         """
         if view_data is not None:  # pragma: NO COVER
@@ -302,7 +283,7 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         return NotImplementedError("Not supported by Prometheus")
 
     def emit(self, view_data):  # pragma: NO COVER
-        """ Emit exports to the Prometheus if view data has one or more rows.
+        """Emit exports to the Prometheus if view data has one or more rows.
         Each OpenCensus AggregationData will be converted to
         corresponding Prometheus Metric: SumData will be converted
         to Untyped Metric, CountData will be a Counter Metric
@@ -314,14 +295,12 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
                 self.collector.add_view_data(v_data)
 
     def serve_http(self):
-        """ serve_http serves the Prometheus endpoint.
-        """
-        start_http_server(
-            port=self.options.port, addr=str(self.options.address))
+        """serve_http serves the Prometheus endpoint."""
+        start_http_server(port=self.options.port, addr=str(self.options.address))
 
 
 def new_stats_exporter(option):
-    """ new_stats_exporter returns an exporter
+    """new_stats_exporter returns an exporter
     that exports stats to Prometheus.
     """
     if option.namespace == "":
@@ -330,12 +309,13 @@ def new_stats_exporter(option):
     collector = new_collector(option)
 
     exporter = PrometheusStatsExporter(
-        options=option, gatherer=option.registry, collector=collector)
+        options=option, gatherer=option.registry, collector=collector
+    )
     return exporter
 
 
 def new_collector(options):
-    """ new_collector should be used
+    """new_collector should be used
     to create instance of Collector class in order to
     prevent the usage of constructor directly
     """
@@ -343,8 +323,7 @@ def new_collector(options):
 
 
 def get_view_name(namespace, view):
-    """ create the name for the view
-    """
+    """create the name for the view"""
     name = ""
     if namespace != "":
         name = namespace + "_"
@@ -355,7 +334,7 @@ _NON_LETTERS_NOR_DIGITS_RE = re.compile(r"[^\w]", re.UNICODE | re.IGNORECASE)
 
 
 def sanitize(key):
-    """ sanitize the given metric name or label according to Prometheus rule.
+    """sanitize the given metric name or label according to Prometheus rule.
     Replace all characters other than [A-Za-z0-9_] with '_'.
     """
     return _NON_LETTERS_NOR_DIGITS_RE.sub("_", key)

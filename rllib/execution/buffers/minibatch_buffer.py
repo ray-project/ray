@@ -8,12 +8,14 @@ class MinibatchBuffer:
     This is for use with AsyncSamplesOptimizer.
     """
 
-    def __init__(self,
-                 inqueue: queue.Queue,
-                 size: int,
-                 timeout: float,
-                 num_passes: int,
-                 init_num_passes: int = 1):
+    def __init__(
+        self,
+        inqueue: queue.Queue,
+        size: int,
+        timeout: float,
+        num_passes: int,
+        init_num_passes: int = 1,
+    ):
         """Initialize a minibatch buffer.
 
         Args:
@@ -25,7 +27,7 @@ class MinibatchBuffer:
            init_num_passes (int): Initial passes for each data item.
            Maxiumum number of passes per item are increased to num_passes over
            time.
-       """
+        """
         self.inqueue = inqueue
         self.size = size
         self.timeout = timeout

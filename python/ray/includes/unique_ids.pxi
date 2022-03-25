@@ -7,7 +7,6 @@ See https://github.com/ray-project/ray/issues/3721.
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
 
-from concurrent.futures import Future
 import logging
 import os
 
@@ -275,8 +274,7 @@ cdef class WorkerID(UniqueID):
 cdef class ActorID(BaseID):
 
     def __init__(self, id):
-        check_id(id, CActorID.Size())
-        self.data = CActorID.FromBinary(<c_string>id)
+        self._set_id(id)
 
     @classmethod
     def of(cls, job_id, parent_task_id, parent_task_counter):
@@ -301,6 +299,10 @@ cdef class ActorID(BaseID):
     def size(self):
         return CActorID.Size()
 
+    def _set_id(self, id):
+        check_id(id, CActorID.Size())
+        self.data = CActorID.FromBinary(<c_string>id)
+
     @property
     def job_id(self):
         return JobID(self.data.JobId().Binary())
@@ -319,76 +321,6 @@ cdef class ActorID(BaseID):
 
     cdef CActorID native(self):
         return <CActorID>self.data
-
-
-cdef class ClientActorRef(ActorID):
-
-    def __init__(self, id: Union[bytes, concurrent.futures.Future]):
-        self._mutex = threading.Lock()
-        if isinstance(id, bytes):
-            self._set_id(id)
-        elif isinstance(id, Future):
-            self._id_future = id
-        else:
-            raise TypeError("Unexpected type for id {}".format(id))
-
-    def __dealloc__(self):
-        if client is None or client.ray is None:
-            # The client package or client.ray object might be set
-            # to None when the script exits. Should be safe to skip
-            # call_release in this case, since the client should have already
-            # disconnected at this point.
-            return
-        if client.ray.is_connected():
-            try:
-                self._wait_for_id()
-            # cython would suppress this exception as well, but it tries to
-            # print out the exception which may crash. Log a simpler message
-            # instead.
-            except Exception:
-                logger.info(
-                    "Exception from actor creation is ignored in destructor. "
-                    "To receive this exception in application code, call "
-                    "a method on the actor reference before its destructor "
-                    "is run.")
-            if not self.data.IsNil():
-                client.ray.call_release(self.id)
-
-    def binary(self):
-        self._wait_for_id()
-        return self.data.Binary()
-
-    def hex(self):
-        self._wait_for_id()
-        return decode(self.data.Hex())
-
-    def is_nil(self):
-        self._wait_for_id()
-        return self.data.IsNil()
-
-    cdef size_t hash(self):
-        self._wait_for_id()
-        return self.data.Hash()
-
-    cdef CActorID native(self):
-        self._wait_for_id()
-        return <CActorID>self.data
-
-    @property
-    def id(self):
-        return self.binary()
-
-    cdef _set_id(self, id):
-        check_id(id, CActorID.Size())
-        self.data = CActorID.FromBinary(<c_string>id)
-        client.ray.call_retain(id)
-
-    cdef _wait_for_id(self, timeout=None):
-        if self._id_future:
-            with self._mutex:
-                if self._id_future:
-                    self._set_id(self._id_future.result(timeout=timeout))
-                    self._id_future = None
 
 
 cdef class FunctionID(UniqueID):
@@ -425,7 +357,12 @@ cdef class PlacementGroupID(BaseID):
 
     @classmethod
     def from_random(cls):
-        return cls(CPlacementGroupID.FromRandom().Binary())
+        return cls(os.urandom(CPlacementGroupID.Size()))
+
+    @classmethod
+    def of(cls, job_id):
+        assert isinstance(job_id, JobID)
+        return cls(CPlacementGroupID.Of(CJobID.FromBinary(job_id.binary())).Binary())
 
     @classmethod
     def nil(cls):

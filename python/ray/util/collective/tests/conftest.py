@@ -3,8 +3,10 @@ import logging
 
 import pytest
 import ray
-from ray.util.collective.collective_group.nccl_collective_group \
-    import _get_comm_key_from_devices, _get_comm_key_send_recv
+from ray.util.collective.collective_group.nccl_collective_group import (
+    _get_comm_key_from_devices,
+    _get_comm_key_send_recv,
+)
 from ray.util.collective.const import get_store_name
 
 logger = logging.getLogger(__name__)
@@ -36,7 +38,9 @@ def clean_up():
         if actor:
             logger.debug(
                 "Killing actor with group_key: '{}' and store: '{}'.".format(
-                    group_key, store_name))
+                    group_key, store_name
+                )
+            )
             ray.kill(actor)
 
 

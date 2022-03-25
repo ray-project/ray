@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _cluster-cloud:
 
 Launching Cloud Clusters
@@ -21,168 +23,143 @@ Ray with cloud providers
 
     /cluster/aws-tips.rst
 
-.. tabs::
-    .. group-tab:: AWS
+.. tabbed::  AWS
 
-        First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
-        as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
+    First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
+    as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
 
-        Once boto is configured to manage resources on your AWS account, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with an m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
+    Once boto is configured to manage resources on your AWS account, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with an m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
 
-        Test that it works by running the following commands from your local machine:
+    Test that it works by running the following commands from your local machine:
 
-        .. code-block:: bash
+    .. code-block:: bash
 
-            # Create or update the cluster. When the command finishes, it will print
-            # out the command that can be used to SSH into the cluster head node.
-            $ ray up ray/python/ray/autoscaler/aws/example-full.yaml
+        # Create or update the cluster. When the command finishes, it will print
+        # out the command that can be used to SSH into the cluster head node.
+        $ ray up ray/python/ray/autoscaler/aws/example-full.yaml
 
-            # Get a remote screen on the head node.
-            $ ray attach ray/python/ray/autoscaler/aws/example-full.yaml
-            $ # Try running a Ray program with 'ray.init(address="auto")'.
+        # Get a remote screen on the head node.
+        $ ray attach ray/python/ray/autoscaler/aws/example-full.yaml
+        $ # Try running a Ray program with 'ray.init(address="auto")'.
 
-            # Tear down the cluster.
-            $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
+        # Tear down the cluster.
+        $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
 
-        See :ref:`aws-cluster` for recipes on customizing AWS clusters.
-    .. group-tab:: Azure
+    AWS Node Provider Maintainers (GitHub handles): pdames, Zyiqin-Miranda, DmitriGekhtman, wuisawesome
 
-        First, install the Azure CLI (``pip install azure-cli``) then login using (``az login``).
+    See :ref:`aws-cluster` for recipes on customizing AWS clusters.
+.. tabbed:: Azure
 
-        Set the subscription to use from the command line (``az account set -s <subscription_id>``) or by modifying the provider section of the config provided e.g: `ray/python/ray/autoscaler/azure/example-full.yaml`
+    First, install the Azure CLI (``pip install azure-cli azure-identity``) then login using (``az login``).
 
-        Once the Azure CLI is configured to manage resources on your Azure account, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/azure/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/azure/example-full.yaml>`__ cluster config file will create a small cluster with a Standard DS2v3 head node (on-demand) configured to autoscale up to two Standard DS2v3 `spot workers <https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms>`__. Note that you'll need to fill in your resource group and location in those templates.
+    Set the subscription to use from the command line (``az account set -s <subscription_id>``) or by modifying the provider section of the config provided e.g: `ray/python/ray/autoscaler/azure/example-full.yaml`
 
-        Test that it works by running the following commands from your local machine:
+    Once the Azure CLI is configured to manage resources on your Azure account, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/azure/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/azure/example-full.yaml>`__ cluster config file will create a small cluster with a Standard DS2v3 head node (on-demand) configured to autoscale up to two Standard DS2v3 `spot workers <https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms>`__. Note that you'll need to fill in your resource group and location in those templates.
 
-        .. code-block:: bash
+    Test that it works by running the following commands from your local machine:
 
-            # Create or update the cluster. When the command finishes, it will print
-            # out the command that can be used to SSH into the cluster head node.
-            $ ray up ray/python/ray/autoscaler/azure/example-full.yaml
+    .. code-block:: bash
 
-            # Get a remote screen on the head node.
-            $ ray attach ray/python/ray/autoscaler/azure/example-full.yaml
-            # test ray setup
-            $ python -c 'import ray; ray.init(address="auto")'
-            $ exit
-            # Tear down the cluster.
-            $ ray down ray/python/ray/autoscaler/azure/example-full.yaml
+        # Create or update the cluster. When the command finishes, it will print
+        # out the command that can be used to SSH into the cluster head node.
+        $ ray up ray/python/ray/autoscaler/azure/example-full.yaml
 
-        **Azure Portal**:
-        Alternatively, you can deploy a cluster using Azure portal directly. Please note that autoscaling is done using Azure VM Scale Sets and not through
-        the Ray autoscaler. This will deploy `Azure Data Science VMs (DSVM) <https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/>`_
-        for both the head node and the auto-scalable cluster managed by `Azure Virtual Machine Scale Sets <https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/>`_.
-        The head node conveniently exposes both SSH as well as JupyterLab.
+        # Get a remote screen on the head node.
+        $ ray attach ray/python/ray/autoscaler/azure/example-full.yaml
+        # test ray setup
+        $ python -c 'import ray; ray.init(address="auto")'
+        $ exit
+        # Tear down the cluster.
+        $ ray down ray/python/ray/autoscaler/azure/example-full.yaml
 
-        .. image:: https://aka.ms/deploytoazurebutton
-           :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Fazure%2Fazure-ray-template.json
-           :alt: Deploy to Azure
+    **Azure Portal**:
+    Alternatively, you can deploy a cluster using Azure portal directly. Please note that autoscaling is done using Azure VM Scale Sets and not through
+    the Ray autoscaler. This will deploy `Azure Data Science VMs (DSVM) <https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/>`_
+    for both the head node and the auto-scalable cluster managed by `Azure Virtual Machine Scale Sets <https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/>`_.
+    The head node conveniently exposes both SSH as well as JupyterLab.
 
-        Once the template is successfully deployed the deployment Outputs page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
-        Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py37_tensorflow by default) to connect to the Ray cluster.
+    .. image:: https://aka.ms/deploytoazurebutton
+       :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fray-project%2Fray%2Fmaster%2Fdoc%2Fazure%2Fazure-ray-template.json
+       :alt: Deploy to Azure
 
-        .. code-block:: python
+    Once the template is successfully deployed the deployment Outputs page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
+    Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py38_tensorflow by default) to connect to the Ray cluster.
 
-            import ray
-            ray.init(address='auto')
+    .. code-block:: python
 
-        Note that on each node the `azure-init.sh <https://github.com/ray-project/ray/blob/master/doc/azure/azure-init.sh>`_ script is executed and performs the following actions:
+        import ray
+        ray.init(address='auto')
 
-        1. Activates one of the conda environments available on DSVM
-        2. Installs Ray and any other user-specified dependencies
-        3. Sets up a systemd task (``/lib/systemd/system/ray.service``) to start Ray in head or worker mode
+    Note that on each node the `azure-init.sh <https://github.com/ray-project/ray/blob/master/doc/azure/azure-init.sh>`_ script is executed and performs the following actions:
 
-    .. group-tab:: GCP
+    1. Activates one of the conda environments available on DSVM
+    2. Installs Ray and any other user-specified dependencies
+    3. Sets up a systemd task (``/lib/systemd/system/ray.service``) to start Ray in head or worker mode
 
-        First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
 
-        Once the API client is configured to manage resources on your GCP account, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__. Note that you'll need to fill in your project id in those templates.
+    Azure Node Provider Maintainers (GitHub handles): gramhagen, eisber, ijrsvt
 
-        Test that it works by running the following commands from your local machine:
+.. tabbed:: GCP
 
-        .. code-block:: bash
+    First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
 
-            # Create or update the cluster. When the command finishes, it will print
-            # out the command that can be used to SSH into the cluster head node.
-            $ ray up ray/python/ray/autoscaler/gcp/example-full.yaml
+    Once the API client is configured to manage resources on your GCP account, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__. Note that you'll need to fill in your project id in those templates.
 
-            # Get a remote screen on the head node.
-            $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
-            $ # Try running a Ray program with 'ray.init(address="auto")'.
+    Test that it works by running the following commands from your local machine:
 
-            # Tear down the cluster.
-            $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
+    .. code-block:: bash
 
-    .. group-tab:: Staroid Kubernetes Engine (contributed)
+        # Create or update the cluster. When the command finishes, it will print
+        # out the command that can be used to SSH into the cluster head node.
+        $ ray up ray/python/ray/autoscaler/gcp/example-full.yaml
 
-        The Ray Cluster Launcher can be used to start Ray clusters on an existing Staroid Kubernetes Engine (SKE) cluster.
+        # Get a remote screen on the head node.
+        $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
+        $ # Try running a Ray program with 'ray.init(address="auto")'.
 
-        First, install the staroid client package (``pip install staroid``) then get `access token <https://staroid.com/settings/accesstokens>`_.
-        Once you have an access token, you should be ready to launch your cluster.
+        # Tear down the cluster.
+        $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
-        The provided `ray/python/ray/autoscaler/staroid/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/staroid/example-full.yaml>`__ cluster config file will create a cluster with
+    GCP Node Provider Maintainers (GitHub handles): wuisawesome, DmitriGekhtman, ijrsvt
 
-        - a Jupyter notebook running on head node.
-          (Staroid management console -> Kubernetes -> ``<your_ske_name>`` -> ``<ray_cluster_name>`` -> Click "notebook")
-        - a shared nfs volume across all ray nodes mounted under ``/nfs`` directory.
+.. tabbed:: Aliyun
 
-        Test that it works by running the following commands from your local machine:
+    First, install the aliyun client package (``pip install aliyun-python-sdk-core aliyun-python-sdk-ecs``). Obtain the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>`__ and grant AliyunECSFullAccess/AliyunVPCFullAccess permissions to the RAM user. Finally, set the AccessKey pair in your cluster config file.
 
-        .. code-block:: bash
+    Once the above is done, you should be ready to launch your cluster. The provided `aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ``ecs.n4.large`` head node (on-demand) configured to autoscale up to two ``ecs.n4.2xlarge`` nodes.
 
-            # Configure access token through environment variable.
-            $ export STAROID_ACCESS_TOKEN=<your access token>
+    Make sure your account balance is not less than 100 RMB, otherwise you will receive a `InvalidAccountStatus.NotEnoughBalance` error.
 
-            # Create or update the cluster. When the command finishes,
-            # you can attach a screen to the head node.
-            $ ray up ray/python/ray/autoscaler/staroid/example-full.yaml
+    Test that it works by running the following commands from your local machine:
 
-            # Get a remote screen on the head node.
-            $ ray attach ray/python/ray/autoscaler/staroid/example-full.yaml
-            $ # Try running a Ray program with 'ray.init(address="auto")'.
+    .. code-block:: bash
 
-            # Tear down the cluster
-            $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
+        # Create or update the cluster. When the command finishes, it will print
+        # out the command that can be used to SSH into the cluster head node.
+        $ ray up ray/python/ray/autoscaler/aliyun/example-full.yaml
 
-    .. group-tab:: Aliyun
+        # Get a remote screen on the head node.
+        $ ray attach ray/python/ray/autoscaler/aliyun/example-full.yaml
+        $ # Try running a Ray program with 'ray.init(address="auto")'.
 
-        First, install the aliyun client package (``pip install aliyun-python-sdk-core aliyun-python-sdk-ecs``). Obtain the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>`__ and grant AliyunECSFullAccess/AliyunVPCFullAccess permissions to the RAM user. Finally, set the AccessKey pair in your cluster config file.
+        # Tear down the cluster.
+        $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
 
-        Once the above is done, you should be ready to launch your cluster. The provided `aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ``ecs.n4.large`` head node (on-demand) configured to autoscale up to two ``ecs.n4.2xlarge`` nodes.
+    Aliyun Node Provider Maintainers (GitHub handles): zhuangzhuang131419, chenk008
 
-        Make sure your account balance is not less than 100 RMB, otherwise you will receive a `InvalidAccountStatus.NotEnoughBalance` error.
+.. tabbed:: Custom
 
-        Test that it works by running the following commands from your local machine:
+    Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
+    You can specify the external node provider using the yaml config:
 
-        .. code-block:: bash
+    .. code-block:: yaml
 
-            # Create or update the cluster. When the command finishes, it will print
-            # out the command that can be used to SSH into the cluster head node.
-            $ ray up ray/python/ray/autoscaler/aliyun/example-full.yaml
+        provider:
+            type: external
+            module: mypackage.myclass
 
-            # Get a remote screen on the head node.
-            $ ray attach ray/python/ray/autoscaler/aliyun/example-full.yaml
-            $ # Try running a Ray program with 'ray.init(address="auto")'.
-
-            # Tear down the cluster.
-            $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
-
-        Aliyun Node Provider Maintainer: zhuangzhuang131419, chenk008
-
-    .. group-tab:: Custom
-
-        Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
-        You can specify the external node provider using the yaml config:
-
-        .. code-block:: yaml
-
-            provider:
-                type: external
-                module: mypackage.myclass
-
-        The module needs to be in the format ``package.provider_class`` or ``package.sub_package.provider_class``.
+    The module needs to be in the format ``package.provider_class`` or ``package.sub_package.provider_class``.
 
 
 .. _cluster-private-setup:
@@ -206,61 +183,60 @@ There are two ways of running private clusters:
         $ ssh-keygen
         $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
-.. tabs::
-
-    .. group-tab:: Manually Managed
-
-        You can get started by filling out the fields in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
-        Be sure to specify the proper ``head_ip``, list of ``worker_ips``, and the ``ssh_user`` field.
-
-        Test that it works by running the following commands from your local machine:
-
-        .. code-block:: bash
-
-            # Create or update the cluster. When the command finishes, it will print
-            # out the command that can be used to get a remote shell into the head node.
-            $ ray up ray/python/ray/autoscaler/local/example-full.yaml
-
-            # Get a remote screen on the head node.
-            $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
-            $ # Try running a Ray program with 'ray.init(address="auto")'.
-
-            # Tear down the cluster
-            $ ray down ray/python/ray/autoscaler/local/example-full.yaml
-
-    .. group-tab:: Automatically Managed
+.. tabbed:: Manually Managed
 
 
-        Start by launching the coordinator server that will manage all the on prem clusters. This server also makes sure to isolate the resources between different users. The script for running the coordinator server is `ray/python/ray/autoscaler/local/coordinator_server.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/coordinator_server.py>`__. To launch the coordinator server run:
+    You can get started by filling out the fields in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
+    Be sure to specify the proper ``head_ip``, list of ``worker_ips``, and the ``ssh_user`` field.
 
-        .. code-block:: bash
+    Test that it works by running the following commands from your local machine:
 
-            $ python coordinator_server.py --ips <list_of_node_ips> --port <PORT>
+    .. code-block:: bash
 
-        where ``list_of_node_ips`` is a comma separated list of all the available nodes on the private cluster. For example, ``160.24.42.48,160.24.42.49,...`` and ``<PORT>`` is the port that the coordinator server will listen on.
-        After running the coordinator server it will print the address of the coordinator server. For example:
+        # Create or update the cluster. When the command finishes, it will print
+        # out the command that can be used to get a remote shell into the head node.
+        $ ray up ray/python/ray/autoscaler/local/example-full.yaml
 
-        .. code-block:: bash
+        # Get a remote screen on the head node.
+        $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
+        $ # Try running a Ray program with 'ray.init(address="auto")'.
 
-          >> INFO:ray.autoscaler.local.coordinator_server:Running on prem coordinator server
-                on address <Host:PORT>
+        # Tear down the cluster
+        $ ray down ray/python/ray/autoscaler/local/example-full.yaml
 
-        Next, the user only specifies the ``<Host:PORT>`` printed above in the ``coordinator_address`` entry instead of specific head/worker ips in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
+.. tabbed:: Automatically Managed
 
-        Now we can test that it works by running the following commands from your local machine:
 
-        .. code-block:: bash
+    Start by launching the coordinator server that will manage all the on prem clusters. This server also makes sure to isolate the resources between different users. The script for running the coordinator server is `ray/python/ray/autoscaler/local/coordinator_server.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/coordinator_server.py>`__. To launch the coordinator server run:
 
-            # Create or update the cluster. When the command finishes, it will print
-            # out the command that can be used to get a remote shell into the head node.
-            $ ray up ray/python/ray/autoscaler/local/example-full.yaml
+    .. code-block:: bash
 
-            # Get a remote screen on the head node.
-            $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
-            $ # Try running a Ray program with 'ray.init(address="auto")'.
+        $ python coordinator_server.py --ips <list_of_node_ips> --port <PORT>
 
-            # Tear down the cluster
-            $ ray down ray/python/ray/autoscaler/local/example-full.yaml
+    where ``list_of_node_ips`` is a comma separated list of all the available nodes on the private cluster. For example, ``160.24.42.48,160.24.42.49,...`` and ``<PORT>`` is the port that the coordinator server will listen on.
+    After running the coordinator server it will print the address of the coordinator server. For example:
+
+    .. code-block:: bash
+
+      >> INFO:ray.autoscaler.local.coordinator_server:Running on prem coordinator server
+            on address <Host:PORT>
+
+    Next, the user only specifies the ``<Host:PORT>`` printed above in the ``coordinator_address`` entry instead of specific head/worker ips in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
+
+    Now we can test that it works by running the following commands from your local machine:
+
+    .. code-block:: bash
+
+        # Create or update the cluster. When the command finishes, it will print
+        # out the command that can be used to get a remote shell into the head node.
+        $ ray up ray/python/ray/autoscaler/local/example-full.yaml
+
+        # Get a remote screen on the head node.
+        $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
+        $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+        # Tear down the cluster
+        $ ray down ray/python/ray/autoscaler/local/example-full.yaml
 
 
 .. _manual-cluster:
@@ -288,16 +264,18 @@ random port.
   ...
   Next steps
     To connect to this Ray runtime from another node, run
-      ray start --address='<ip address>:6379' --redis-password='<password>'
+      ray start --address='<ip address>:6379'
 
   If connection fails, check your firewall settings and network configuration.
 
-The command will print out the address of the Redis server that was started
+The command will print out the address of the Ray GCS server that was started
 (the local node IP address plus the port number you specified).
 
 .. note::
 
-    If you already has remote redis instances, you can specify `--address=ip1:port1,ip2:port2...` to use them. The first one is primary and rest are shards. Ray will create a redis instance if the default is unreachable.
+    If you already has remote Redis instances, you can specify environment variable
+    `RAY_REDIS_ADDRESS=ip1:port1,ip2:port2...` to use them. The first one is
+    primary and rest are shards.
 
 **Then on each of the other nodes**, run the following. Make sure to replace
 ``<address>`` with the value printed by the command on the head node (it
@@ -312,7 +290,7 @@ place of an IP address and rely on the DNS.
 
 .. code-block:: bash
 
-  $ ray start --address=<address> --redis-password='<password>'
+  $ ray start --address=<address>
   --------------------
   Ray runtime started.
   --------------------
@@ -323,19 +301,15 @@ place of an IP address and rely on the DNS.
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
 with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the :ref:`Configuration <configuring-ray>` page for more information.
 
-If you see ``Unable to connect to Redis. If the Redis instance is on a
-different machine, check that your firewall is configured properly.``,
-this means the ``--port`` is inaccessible at the given IP address (because, for
-example, the head node is not actually running Ray, or you have the wrong IP
-address).
+If you see ``Unable to connect to GCS at ...``,
+this means the head node is inaccessible at the given ``--address`` (because, for
+example, the head node is not actually running, a different version of Ray is
+running at the specified address, the specified address is wrong, or there are
+firewall settings preventing access).
 
 If you see ``Ray runtime started.``, then the node successfully connected to
-the IP address at the ``--port``. You should now be able to connect to the
+the head node at the ``--address``. You should now be able to connect to the
 cluster with ``ray.init(address='auto')``.
-
-If ``ray.init(address='auto')`` keeps repeating
-``redis_context.cc:303: Failed to connect to Redis, retrying.``, then the node
-is failing to connect to some other port(s) besides the main port.
 
 .. code-block:: bash
 
@@ -351,7 +325,7 @@ you can use a tool such as ``nmap`` or ``nc``.
   Host is up, received echo-reply ttl 60 (0.00087s latency).
   rDNS record for 123.456.78.910: compute04.berkeley.edu
   PORT     STATE SERVICE REASON         VERSION
-  6379/tcp open  redis   syn-ack ttl 60 Redis key-value store
+  6379/tcp open  redis?  syn-ack
   Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
   $ nc -vv -z $HEAD_ADDRESS $PORT
   Connection to compute04.berkeley.edu 6379 port [tcp/*] succeeded!
@@ -395,16 +369,15 @@ Running a Ray program on the Ray cluster
 
 To run a distributed Ray program, you'll need to execute your program on the same machine as one of the nodes.
 
-.. tabs::
-  .. group-tab:: Python
+.. tabbed:: Python
 
-    Within your program/script, you must call ``ray.init`` and add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``). This causes Ray to connect to the existing cluster. For example:
+    Within your program/script, you must call ``ray.init`` and add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``). This causes your script to connect to the existing Ray runtime on the cluster. For example:
 
     .. code-block:: python
 
         ray.init(address="auto")
 
-  .. group-tab:: Java
+.. tabbed:: Java
 
     You need to add the ``ray.address`` parameter to your command line (like ``-Dray.address=...``).
 
@@ -418,7 +391,7 @@ To run a distributed Ray program, you'll need to execute your program on the sam
 
     .. note:: Specifying ``auto`` as the address hasn't been implemented in Java yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
 
-  .. group-tab:: C++
+.. tabbed:: C++
 
     You need to add the ``RAY_ADDRESS`` env var to your command line (like ``RAY_ADDRESS=...``).
 
@@ -462,4 +435,4 @@ Now that you have a working understanding of the cluster launcher, check out:
 Questions or Issues?
 --------------------
 
-.. include:: /_help.rst
+.. include:: /_includes/_help.rst

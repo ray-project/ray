@@ -39,8 +39,9 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
         4: o4 r4 d4 o4'=o5
     """
 
-    assert not any(batch[SampleBatch.DONES][:-1]), \
-        "Unexpected done in middle of trajectory!"
+    assert not any(
+        batch[SampleBatch.DONES][:-1]
+    ), "Unexpected done in middle of trajectory!"
 
     len_ = len(batch)
 
@@ -48,31 +49,36 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     batch[SampleBatch.NEXT_OBS] = np.concatenate(
         [
             batch[SampleBatch.OBS][n_step:],
-            np.stack([batch[SampleBatch.NEXT_OBS][-1]] * min(n_step, len_))
+            np.stack([batch[SampleBatch.NEXT_OBS][-1]] * min(n_step, len_)),
         ],
-        axis=0)
+        axis=0,
+    )
     batch[SampleBatch.DONES] = np.concatenate(
         [
-            batch[SampleBatch.DONES][n_step - 1:],
-            np.tile(batch[SampleBatch.DONES][-1], min(n_step - 1, len_))
+            batch[SampleBatch.DONES][n_step - 1 :],
+            np.tile(batch[SampleBatch.DONES][-1], min(n_step - 1, len_)),
         ],
-        axis=0)
+        axis=0,
+    )
 
     # Change rewards in place.
     for i in range(len_):
         for j in range(1, n_step):
             if i + j < len_:
-                batch[SampleBatch.REWARDS][i] += \
-                    gamma**j * batch[SampleBatch.REWARDS][i + j]
+                batch[SampleBatch.REWARDS][i] += (
+                    gamma ** j * batch[SampleBatch.REWARDS][i + j]
+                )
 
 
 @DeveloperAPI
-def compute_advantages(rollout: SampleBatch,
-                       last_r: float,
-                       gamma: float = 0.9,
-                       lambda_: float = 1.0,
-                       use_gae: bool = True,
-                       use_critic: bool = True):
+def compute_advantages(
+    rollout: SampleBatch,
+    last_r: float,
+    gamma: float = 0.9,
+    lambda_: float = 1.0,
+    use_gae: bool = True,
+    use_critic: bool = True,
+):
     """Given a rollout, compute its value targets and the advantages.
 
     Args:
@@ -88,52 +94,52 @@ def compute_advantages(rollout: SampleBatch,
         SampleBatch with experience from rollout and processed rewards.
     """
 
-    assert SampleBatch.VF_PREDS in rollout or not use_critic, \
-        "use_critic=True but values not found"
-    assert use_critic or not use_gae, \
-        "Can't use gae without using a value function"
+    assert (
+        SampleBatch.VF_PREDS in rollout or not use_critic
+    ), "use_critic=True but values not found"
+    assert use_critic or not use_gae, "Can't use gae without using a value function"
 
     if use_gae:
-        vpred_t = np.concatenate(
-            [rollout[SampleBatch.VF_PREDS],
-             np.array([last_r])])
-        delta_t = (
-            rollout[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1])
+        vpred_t = np.concatenate([rollout[SampleBatch.VF_PREDS], np.array([last_r])])
+        delta_t = rollout[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1]
         # This formula for the advantage comes from:
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
-        rollout[Postprocessing.ADVANTAGES] = discount_cumsum(
-            delta_t, gamma * lambda_)
+        rollout[Postprocessing.ADVANTAGES] = discount_cumsum(delta_t, gamma * lambda_)
         rollout[Postprocessing.VALUE_TARGETS] = (
-            rollout[Postprocessing.ADVANTAGES] +
-            rollout[SampleBatch.VF_PREDS]).astype(np.float32)
+            rollout[Postprocessing.ADVANTAGES] + rollout[SampleBatch.VF_PREDS]
+        ).astype(np.float32)
     else:
         rewards_plus_v = np.concatenate(
-            [rollout[SampleBatch.REWARDS],
-             np.array([last_r])])
-        discounted_returns = discount_cumsum(rewards_plus_v,
-                                             gamma)[:-1].astype(np.float32)
+            [rollout[SampleBatch.REWARDS], np.array([last_r])]
+        )
+        discounted_returns = discount_cumsum(rewards_plus_v, gamma)[:-1].astype(
+            np.float32
+        )
 
         if use_critic:
-            rollout[Postprocessing.
-                    ADVANTAGES] = discounted_returns - rollout[SampleBatch.
-                                                               VF_PREDS]
+            rollout[Postprocessing.ADVANTAGES] = (
+                discounted_returns - rollout[SampleBatch.VF_PREDS]
+            )
             rollout[Postprocessing.VALUE_TARGETS] = discounted_returns
         else:
             rollout[Postprocessing.ADVANTAGES] = discounted_returns
             rollout[Postprocessing.VALUE_TARGETS] = np.zeros_like(
-                rollout[Postprocessing.ADVANTAGES])
+                rollout[Postprocessing.ADVANTAGES]
+            )
 
-    rollout[Postprocessing.ADVANTAGES] = rollout[
-        Postprocessing.ADVANTAGES].astype(np.float32)
+    rollout[Postprocessing.ADVANTAGES] = rollout[Postprocessing.ADVANTAGES].astype(
+        np.float32
+    )
 
     return rollout
 
 
 def compute_gae_for_sample_batch(
-        policy: Policy,
-        sample_batch: SampleBatch,
-        other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[Episode] = None) -> SampleBatch:
+    policy: Policy,
+    sample_batch: SampleBatch,
+    other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
+    episode: Optional[Episode] = None,
+) -> SampleBatch:
     """Adds GAE (generalized advantage estimations) to a trajectory.
 
     The trajectory contains only data from one episode and from one agent.
@@ -167,7 +173,8 @@ def compute_gae_for_sample_batch(
         # input_dict.
         # Create an input dict according to the Model's requirements.
         input_dict = sample_batch.get_single_step_input_dict(
-            policy.model.view_requirements, index="last")
+            policy.model.view_requirements, index="last"
+        )
         last_r = policy._value(**input_dict)
 
     # Adds the policy logits, VF preds, and advantages to the batch,
@@ -178,7 +185,8 @@ def compute_gae_for_sample_batch(
         policy.config["gamma"],
         policy.config["lambda"],
         use_gae=policy.config["use_gae"],
-        use_critic=policy.config.get("use_critic", True))
+        use_critic=policy.config.get("use_critic", True),
+    )
 
     return batch
 

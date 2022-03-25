@@ -9,8 +9,12 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray._private.test_utils import (client_test_enabled, get_error_message,
-                                     SignalActor, run_string_as_driver)
+from ray._private.test_utils import (
+    client_test_enabled,
+    get_error_message,
+    SignalActor,
+    run_string_as_driver,
+)
 
 import ray
 
@@ -37,7 +41,8 @@ def test_release_resources_race(shutdown_only):
     ray.init(
         num_cpus=2,
         object_store_memory=700e6,
-        _system_config={"inline_object_status_in_refs": True})
+        _system_config={"inline_object_status_in_refs": True},
+    )
     refs = []
     for _ in range(10):
         refs.append(ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8)))
@@ -51,6 +56,40 @@ def test_release_resources_race(shutdown_only):
     pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
     # Should not have started multiple workers.
     assert len(pids) <= 2, pids
+
+
+# https://github.com/ray-project/ray/issues/22504
+def test_worker_isolation_by_resources(shutdown_only):
+    ray.init(num_cpus=1, num_gpus=1)
+
+    @ray.remote(num_gpus=1)
+    def gpu():
+        return os.getpid()
+
+    @ray.remote
+    def cpu():
+        return os.getpid()
+
+    pid1 = ray.get(cpu.remote())
+    pid2 = ray.get(gpu.remote())
+    assert pid1 != pid2, (pid1, pid2)
+
+
+# https://github.com/ray-project/ray/issues/10960
+def test_max_calls_releases_resources(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1)
+
+    @ray.remote(num_cpus=0)
+    def g():
+        return 0
+
+    @ray.remote(num_cpus=1, num_gpus=1, max_calls=1, max_retries=0)
+    def f():
+        return [g.remote()]
+
+    for i in range(10):
+        print(i)
+        ray.get(f.remote())  # This will hang if GPU resources aren't released.
 
 
 # https://github.com/ray-project/ray/issues/7263
@@ -95,8 +134,8 @@ def test_submit_api(shutdown_only):
     id1, id2, id3 = f._remote(args=[3], num_returns=3)
     assert ray.get([id1, id2, id3]) == [0, 1, 2]
     assert ray.get(
-        g._remote(args=[], num_cpus=1, num_gpus=1,
-                  resources={"Custom": 1})) == [0]
+        g._remote(args=[], num_cpus=1, num_gpus=1, resources={"Custom": 1})
+    ) == [0]
     infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
     assert ray.get(g._remote()) == []
     ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
@@ -129,14 +168,12 @@ def test_submit_api(shutdown_only):
         def method(self):
             pass
 
-    a = Actor._remote(
-        args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
+    a = Actor._remote(args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
 
     a2 = Actor2._remote()
     ray.get(a2.method._remote())
 
-    id1, id2, id3, id4 = a.method._remote(
-        args=["test"], kwargs={"b": 2}, num_returns=4)
+    id1, id2, id3, id4 = a.method._remote(args=["test"], kwargs={"b": 2}, num_returns=4)
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
@@ -145,9 +182,9 @@ def test_invalid_arguments(shutdown_only):
 
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
-                ValueError,
-                match="The keyword 'num_returns' only accepts 0 or a"
-                " positive integer"):
+            ValueError,
+            match="The keyword 'num_returns' only accepts 0 or a positive integer",
+        ):
 
             @ray.remote(num_returns=opt)
             def g1():
@@ -155,9 +192,10 @@ def test_invalid_arguments(shutdown_only):
 
     for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
         with pytest.raises(
-                ValueError,
-                match="The keyword 'max_retries' only accepts 0, -1 or a"
-                " positive integer"):
+            ValueError,
+            match="The keyword 'max_retries' only accepts 0, -1 or a"
+            " positive integer",
+        ):
 
             @ray.remote(max_retries=opt)
             def g2():
@@ -165,9 +203,9 @@ def test_invalid_arguments(shutdown_only):
 
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
-                ValueError,
-                match="The keyword 'max_calls' only accepts 0 or a positive"
-                " integer"):
+            ValueError,
+            match="The keyword 'max_calls' only accepts 0 or a positive integer",
+        ):
 
             @ray.remote(max_calls=opt)
             def g3():
@@ -175,9 +213,10 @@ def test_invalid_arguments(shutdown_only):
 
     for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
         with pytest.raises(
-                ValueError,
-                match="The keyword 'max_restarts' only accepts -1, 0 or a"
-                " positive integer"):
+            ValueError,
+            match="The keyword 'max_restarts' only accepts -1, 0 or a"
+            " positive integer",
+        ):
 
             @ray.remote(max_restarts=opt)
             class A1:
@@ -185,16 +224,16 @@ def test_invalid_arguments(shutdown_only):
 
     for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
         with pytest.raises(
-                ValueError,
-                match="The keyword 'max_task_retries' only accepts -1, 0 or a"
-                " positive integer"):
+            ValueError,
+            match="The keyword 'max_task_retries' only accepts -1, 0 or a"
+            " positive integer",
+        ):
 
             @ray.remote(max_task_retries=opt)
             class A2:
                 x = 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_user_setup_function():
     script = """
 import ray
@@ -209,16 +248,14 @@ print("local", ray._private.runtime_env.VAR)
 
 """
 
-    out = run_string_as_driver(
-        script,
-        {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"})
-    (remote_out, local_out) = out.strip().split("\n")[-2:]
+    env = {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"}
+    out = run_string_as_driver(script, dict(os.environ, **env))
+    (remote_out, local_out) = out.strip().splitlines()[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
 
 
 # https://github.com/ray-project/ray/issues/17842
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_disable_cuda_devices():
     script = """
 import ray
@@ -232,21 +269,22 @@ def check():
 print("remote", ray.get(check.remote()))
 """
 
-    run_string_as_driver(script,
-                         {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
+    run_string_as_driver(
+        script, dict(os.environ, **{"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
+    )
 
 
 def test_put_get(shutdown_only):
     ray.init(num_cpus=0)
 
     for i in range(100):
-        value_before = i * 10**6
+        value_before = i * 10 ** 6
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
 
     for i in range(100):
-        value_before = i * 10**6 * 1.0
+        value_before = i * 10 ** 6 * 1.0
         object_ref = ray.put(value_before)
         value_after = ray.get(object_ref)
         assert value_before == value_after
@@ -283,13 +321,15 @@ def test_wait_timing(shutdown_only):
 @pytest.mark.skipif(client_test_enabled(), reason="internal _raylet")
 def test_function_descriptor():
     python_descriptor = ray._raylet.PythonFunctionDescriptor(
-        "module_name", "function_name", "class_name", "function_hash")
+        "module_name", "function_name", "class_name", "function_hash"
+    )
     python_descriptor2 = pickle.loads(pickle.dumps(python_descriptor))
     assert python_descriptor == python_descriptor2
     assert hash(python_descriptor) == hash(python_descriptor2)
     assert python_descriptor.function_id == python_descriptor2.function_id
     java_descriptor = ray._raylet.JavaFunctionDescriptor(
-        "class_name", "function_name", "signature")
+        "class_name", "function_name", "signature"
+    )
     java_descriptor2 = pickle.loads(pickle.dumps(java_descriptor))
     assert java_descriptor == java_descriptor2
     assert python_descriptor != java_descriptor
@@ -301,8 +341,7 @@ def test_function_descriptor():
 def test_ray_options(shutdown_only):
     ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
 
-    @ray.remote(
-        num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
+    @ray.remote(num_cpus=2, num_gpus=3, memory=150 * 2 ** 20, resources={"custom1": 1})
     def foo(expected_resources):
         # Possibly wait until the available resources have been updated
         # (there might be a delay due to heartbeats)
@@ -322,41 +361,36 @@ def test_ray_options(shutdown_only):
             retries -= 1
         raise RuntimeError("Number of retries exceeded")
 
-    expected_resources_without_options = {
-        "CPU": 8.0,
-        "GPU": 7.0,
-        "custom1": 1.0
-    }
+    expected_resources_without_options = {"CPU": 8.0, "GPU": 7.0, "custom1": 1.0}
     memory_available_without_options = ray.get(
-        foo.remote(expected_resources_without_options))
+        foo.remote(expected_resources_without_options)
+    )
 
     expected_resources_with_options = {"CPU": 7.0, "GPU": 6.0, "custom1": 1.5}
     memory_available_with_options = ray.get(
         foo.options(
-            num_cpus=3,
-            num_gpus=4,
-            memory=50 * 2**20,
-            resources={
-                "custom1": 0.5
-            }).remote(expected_resources_with_options))
+            num_cpus=3, num_gpus=4, memory=50 * 2 ** 20, resources={"custom1": 0.5}
+        ).remote(expected_resources_with_options)
+    )
 
     assert memory_available_without_options < memory_available_with_options
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 0,
-        "object_store_memory": 75 * 1024 * 1024,
-        "_system_config": {
-            "automatic_object_spilling_enabled": False
+    "ray_start_cluster_head",
+    [
+        {
+            "num_cpus": 0,
+            "object_store_memory": 75 * 1024 * 1024,
+            "_system_config": {"automatic_object_spilling_enabled": False},
         }
-    }],
-    indirect=True)
+    ],
+    indirect=True,
+)
 def test_fetch_local(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2, object_store_memory=75 * 1024 * 1024)
-
     signal_actor = SignalActor.remote()
 
     @ray.remote
@@ -367,16 +401,14 @@ def test_fetch_local(ray_start_cluster_head):
     local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
     remote_ref = put.remote()
     # Data is not ready in any node
-    (ready_ref, remaining_ref) = ray.wait(
-        [remote_ref], timeout=2, fetch_local=False)
+    (ready_ref, remaining_ref) = ray.wait([remote_ref], timeout=2, fetch_local=False)
     assert (0, 1) == (len(ready_ref), len(remaining_ref))
     ray.wait([signal_actor.send.remote()])
 
     # Data is ready in some node, but not local node.
     (ready_ref, remaining_ref) = ray.wait([remote_ref], fetch_local=False)
     assert (1, 0) == (len(ready_ref), len(remaining_ref))
-    (ready_ref, remaining_ref) = ray.wait(
-        [remote_ref], timeout=2, fetch_local=True)
+    (ready_ref, remaining_ref) = ray.wait([remote_ref], timeout=2, fetch_local=True)
     assert (0, 1) == (len(ready_ref), len(remaining_ref))
     del local_ref
     (ready_ref, remaining_ref) = ray.wait([remote_ref], fetch_local=True)
@@ -459,8 +491,7 @@ def test_ray_recursive_objects(ray_start_shared_local_modes):
         ray.put(obj)
 
 
-def test_passing_arguments_by_value_out_of_the_box(
-        ray_start_shared_local_modes):
+def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes):
     @ray.remote
     def f(x):
         return x
@@ -492,8 +523,7 @@ def test_passing_arguments_by_value_out_of_the_box(
     ray.get(ray.put(Foo))
 
 
-def test_putting_object_that_closes_over_object_ref(
-        ray_start_shared_local_modes):
+def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -634,7 +664,11 @@ def test_args_named_and_star(ray_start_shared_local_modes):
         assert fn(1, 2, y=3) == ray.get(remote_fn.remote(1, 2, y=3))
         assert fn(1, y=3) == ray.get(remote_fn.remote(1, y=3))
 
-        assert fn(1, ) == ray.get(remote_fn.remote(1, ))
+        assert fn(1,) == ray.get(
+            remote_fn.remote(
+                1,
+            )
+        )
         assert fn(1) == ray.get(remote_fn.remote(1))
 
         with pytest.raises(TypeError):
@@ -667,8 +701,7 @@ def test_oversized_function(ray_start_shared_local_modes):
     def f():
         return len(bar)
 
-    with pytest.raises(
-            ValueError, match="The remote function .*f is too large"):
+    with pytest.raises(ValueError, match="The remote function .*f is too large"):
         f.remote()
 
     with pytest.raises(ValueError, match="The actor Actor is too large"):
@@ -684,19 +717,17 @@ def test_args_stars_after(ray_start_shared_local_modes):
             return a, b, args, kwargs
 
     def test_function(fn, remote_fn):
-        assert fn("hi", "hello", 2) == ray.get(
-            remote_fn.remote("hi", "hello", 2))
-        assert fn(
-            "hi", "hello", 2, hi="hi") == ray.get(
-                remote_fn.remote("hi", "hello", 2, hi="hi"))
+        assert fn("hi", "hello", 2) == ray.get(remote_fn.remote("hi", "hello", 2))
+        assert fn("hi", "hello", 2, hi="hi") == ray.get(
+            remote_fn.remote("hi", "hello", 2, hi="hi")
+        )
         assert fn(hi="hi") == ray.get(remote_fn.remote(hi="hi"))
 
     remote_test_function = ray.remote(test_function)
 
     remote_star_args_after = ray.remote(star_args_after)
     test_function(star_args_after, remote_star_args_after)
-    ray.get(
-        remote_test_function.remote(star_args_after, remote_star_args_after))
+    ray.get(remote_test_function.remote(star_args_after, remote_star_args_after))
 
     remote_actor_class = ray.remote(TestActor)
     remote_actor = remote_actor_class.remote()

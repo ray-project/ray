@@ -24,9 +24,12 @@ class CartPoleWrapper(CartPoleEnv):
 
         # 1.0 if we are still on, 0.0 if we are terminated due to bounds
         # (angular or x-axis) being breached.
-        rew = 1.0 - ((x < -self.x_threshold) | (x > self.x_threshold) |
-                     (theta < -self.theta_threshold_radians) |
-                     (theta > self.theta_threshold_radians)).astype(np.float32)
+        rew = 1.0 - (
+            (x < -self.x_threshold)
+            | (x > self.x_threshold)
+            | (theta < -self.theta_threshold_radians)
+            | (theta > self.theta_threshold_radians)
+        ).astype(np.float32)
 
         return rew
 
@@ -41,18 +44,18 @@ class PendulumWrapper(PendulumEnv):
     def reward(self, obs, action, obs_next):
         # obs = [cos(theta), sin(theta), dtheta/dt]
         # To get the angle back from obs: atan2(sin(theta), cos(theta)).
-        theta = np.arctan2(
-            np.clip(obs[:, 1], -1.0, 1.0), np.clip(obs[:, 0], -1.0, 1.0))
+        theta = np.arctan2(np.clip(obs[:, 1], -1.0, 1.0), np.clip(obs[:, 0], -1.0, 1.0))
         # Do everything in (B,) space (single theta-, action- and
         # reward values).
         a = np.clip(action, -self.max_torque, self.max_torque)[0]
-        costs = self.angle_normalize(theta) ** 2 + \
-            0.1 * obs[:, 2] ** 2 + 0.001 * (a ** 2)
+        costs = (
+            self.angle_normalize(theta) ** 2 + 0.1 * obs[:, 2] ** 2 + 0.001 * (a ** 2)
+        )
         return -costs
 
     @staticmethod
     def angle_normalize(x):
-        return (((x + np.pi) % (2 * np.pi)) - np.pi)
+        return ((x + np.pi) % (2 * np.pi)) - np.pi
 
 
 class HalfCheetahWrapper(HalfCheetahEnv or object):
@@ -86,8 +89,7 @@ class HopperWrapper(HopperEnv or object):
     def reward(self, obs, action, obs_next):
         alive_bonus = 1.0
         assert obs.ndim == 2 and action.ndim == 2
-        assert (obs.shape == obs_next.shape
-                and action.shape[0] == obs.shape[0])
+        assert obs.shape == obs_next.shape and action.shape[0] == obs.shape[0]
         vel = obs_next[:, 5]
         ctrl_cost = 1e-3 * np.sum(np.square(action), axis=1)
         reward = vel + alive_bonus - ctrl_cost

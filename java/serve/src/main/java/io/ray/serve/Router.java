@@ -20,6 +20,7 @@ public class Router {
 
   private Count numRouterRequests;
 
+  @SuppressWarnings("unused")
   private LongPollClient longPollClient;
 
   public Router(BaseActorHandle controllerHandle, String deploymentName) {
@@ -40,7 +41,6 @@ public class Router {
         new KeyType(LongPollNamespace.REPLICA_HANDLES, deploymentName),
         workerReplicas -> replicaSet.updateWorkerReplicas(workerReplicas)); // cross language
     this.longPollClient = new LongPollClient(controllerHandle, keyListeners);
-    this.longPollClient.start();
   }
 
   /**

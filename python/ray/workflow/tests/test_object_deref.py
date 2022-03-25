@@ -37,8 +37,12 @@ def nested_workflow(n: int):
 @workflow.step
 def deref_check(u: int, x: str, y: List[str], z: List[Dict[str, str]]):
     try:
-        return (u == 42 and x == "nested" and y[0] == "nested"
-                and z[0]["output"] == "nested"), f"{u}, {x}, {y}, {z}"
+        return (
+            u == 42
+            and x == "nested"
+            and y[0] == "nested"
+            and z[0]["output"] == "nested"
+        ), f"{u}, {x}, {y}, {z}"
     except Exception as e:
         return False, str(e)
 
@@ -78,9 +82,11 @@ def receive_data(data: np.ndarray):
 
 def test_objectref_inputs(workflow_start_regular_shared):
     output, s = deref_check.step(
-        ray.put(42), nested_workflow.step(10), [nested_workflow.step(9)], [{
-            "output": nested_workflow.step(7)
-        }]).run()
+        ray.put(42),
+        nested_workflow.step(10),
+        [nested_workflow.step(9)],
+        [{"output": nested_workflow.step(7)}],
+    ).run()
     assert output is True, s
 
 
@@ -113,4 +119,5 @@ def test_object_deref(workflow_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

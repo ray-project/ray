@@ -37,6 +37,7 @@
 #include "ray/util/filesystem.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/runtime_env_common.pb.h"
 
 namespace {
 
@@ -60,19 +61,28 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-  RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                         "actor creation task", "", "", ""));
+  RayFunction func(
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("actor creation task", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
   std::string name = "";
   std::string ray_namespace = "";
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
   ActorCreationOptions actor_options{max_restarts,
                                      /*max_task_retries=*/0,
-                                     /*max_concurrency*/ 1,  resources, resources,     {},
-                                     /*is_detached=*/false,  name,      ray_namespace,
-                                     /*is_asyncio=*/false};
+                                     /*max_concurrency*/ 1,
+                                     resources,
+                                     resources,
+                                     {},
+                                     /*is_detached=*/std::make_optional<bool>(false),
+                                     name,
+                                     ray_namespace,
+                                     /*is_asyncio=*/false,
+                                     scheduling_strategy};
 
   // Create an actor.
   ActorID actor_id;
@@ -108,7 +118,9 @@ class CoreWorkerTest : public ::testing::Test {
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
       raylet_socket_names_[i] =
-          TestSetupUtil::StartRaylet("127.0.0.1", node_manager_port + i, "127.0.0.1",
+          TestSetupUtil::StartRaylet("127.0.0.1",
+                                     node_manager_port + i,
+                                     "127.0.0.1",
                                      "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
                                      &raylet_store_socket_names_[i]);
     }
@@ -159,7 +171,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   // Test normal tasks.
-  void TestNormalTask(std::unordered_map<std::string, double> &resources);
+  void TestNormalTask();
 
   // Test actor tasks.
   void TestActorTask(std::unordered_map<std::string, double> &resources);
@@ -175,7 +187,8 @@ class CoreWorkerTest : public ::testing::Test {
   void TestActorRestart(std::unordered_map<std::string, double> &resources);
 
  protected:
-  bool WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
+  bool WaitForDirectCallActorState(const ActorID &actor_id,
+                                   bool wait_alive,
                                    int timeout_ms);
 
   // Get the pid for the worker process that runs the actor.
@@ -189,7 +202,8 @@ class CoreWorkerTest : public ::testing::Test {
   std::string gcs_server_socket_name_;
 };
 
-bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
+bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id,
+                                                 bool wait_alive,
                                                  int timeout_ms) {
   auto condition_func = [actor_id, wait_alive]() -> bool {
     bool actor_alive =
@@ -208,8 +222,9 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   RayFunction func{Language::PYTHON,
                    FunctionDescriptorBuilder::BuildPython("GetWorkerPid", "", "", "")};
 
-  auto return_ids = ObjectRefsToIds(
-      CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options));
+  auto return_ids = ObjectRefsToIds(CoreWorkerProcess::GetCoreWorker()
+                                        .SubmitActorTask(actor_id, func, args, options)
+                                        .value());
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
@@ -224,7 +239,7 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   return std::stoi(pid_string);
 }
 
-void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
+void CoreWorkerTest::TestNormalTask() {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // Test for tasks with by-value and by-ref args.
@@ -236,7 +251,8 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
 
       ObjectID object_id;
       RAY_CHECK_OK(
-          driver.Put(RayObject(buffer2, nullptr, std::vector<rpc::ObjectReference>()), {},
+          driver.Put(RayObject(buffer2, nullptr, std::vector<rpc::ObjectReference>()),
+                     {},
                      &object_id));
 
       std::vector<std::unique_ptr<TaskArg>> args;
@@ -245,13 +261,19 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       args.emplace_back(
           new TaskArgByReference(object_id, driver.GetRpcAddress(), /*call_site=*/""));
 
-      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                             "MergeInputArgsAsOutput", "", "", ""));
+      RayFunction func(
+          Language::PYTHON,
+          FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
-      auto return_refs = driver.SubmitTask(
-          func, args, options, /*max_retries=*/0,
-          /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
-          /*debugger_breakpoint=*/"");
+      rpc::SchedulingStrategy scheduling_strategy;
+      scheduling_strategy.mutable_default_scheduling_strategy();
+      auto return_refs = driver.SubmitTask(func,
+                                           args,
+                                           options,
+                                           /*max_retries=*/0,
+                                           /*retry_exceptions=*/false,
+                                           scheduling_strategy,
+                                           /*debugger_breakpoint=*/"");
       auto return_ids = ObjectRefsToIds(return_refs);
 
       ASSERT_EQ(return_ids.size(), 1);
@@ -263,7 +285,8 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
       ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
                 0);
-      ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(),
+                       buffer2->Data(),
                        buffer2->Size()),
                 0);
     }
@@ -290,11 +313,12 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
           buffer2, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
-      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                             "MergeInputArgsAsOutput", "", "", ""));
+      RayFunction func(
+          Language::PYTHON,
+          FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
       ASSERT_EQ(return_ids.size(), 1);
 
       std::vector<std::shared_ptr<RayObject>> results;
@@ -307,7 +331,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
       ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()),
                 0);
-      ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
+      ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(),
+                       buffer2->Data(),
                        buffer2->Size()),
                 0);
     }
@@ -323,7 +348,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     ObjectID object_id;
     RAY_CHECK_OK(
-        driver.Put(RayObject(buffer1, nullptr, std::vector<rpc::ObjectReference>()), {},
+        driver.Put(RayObject(buffer1, nullptr, std::vector<rpc::ObjectReference>()),
+                   {},
                    &object_id));
 
     // Create arguments with PassByRef and PassByValue.
@@ -334,10 +360,11 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
         buffer2, nullptr, std::vector<rpc::ObjectReference>())));
 
     TaskOptions options{"", 1, resources};
-    RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                           "MergeInputArgsAsOutput", "", "", ""));
+    RayFunction func(
+        Language::PYTHON,
+        FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
     auto return_ids =
-        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
 
     ASSERT_EQ(return_ids.size(), 1);
 
@@ -347,7 +374,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     ASSERT_EQ(results.size(), 1);
     ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
     ASSERT_EQ(memcmp(results[0]->GetData()->Data(), buffer1->Data(), buffer1->Size()), 0);
-    ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(), buffer2->Data(),
+    ASSERT_EQ(memcmp(results[0]->GetData()->Data() + buffer1->Size(),
+                     buffer2->Data(),
                      buffer2->Size()),
               0);
   }
@@ -396,11 +424,12 @@ void CoreWorkerTest::TestActorRestart(
           buffer1, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
-      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                             "MergeInputArgsAsOutput", "", "", ""));
+      RayFunction func(
+          Language::PYTHON,
+          FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
       ASSERT_EQ(return_ids.size(), 1);
       // Verify if it's expected data.
       std::vector<std::shared_ptr<RayObject>> results;
@@ -439,11 +468,12 @@ void CoreWorkerTest::TestActorFailure(
           buffer1, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
-      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                             "MergeInputArgsAsOutput", "", "", ""));
+      RayFunction func(
+          Language::PYTHON,
+          FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
 
       ASSERT_EQ(return_ids.size(), 1);
       all_results.emplace_back(std::make_pair(return_ids[0], buffer1));
@@ -500,21 +530,32 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   std::unordered_map<std::string, double> resources;
   std::string name = "";
   std::string ray_namespace = "";
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
   ActorCreationOptions actor_options{0,
                                      0,
                                      1,
                                      resources,
                                      resources,
                                      {},
-                                     /*is_detached=*/false,
+                                     /*is_detached=*/std::make_optional<bool>(false),
                                      name,
                                      ray_namespace,
-                                     /*is_asyncio=*/false};
+                                     /*is_asyncio=*/false,
+                                     scheduling_strategy};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                           TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-                           function.GetLanguage(), function.GetFunctionDescriptor(), "",
-                           0, "", "");
+                           TaskID::Nil(),
+                           rpc::Address(),
+                           job_id,
+                           ObjectID::FromRandom(),
+                           function.GetLanguage(),
+                           function.GetFunctionDescriptor(),
+                           "",
+                           0,
+                           "",
+                           "",
+                           -1);
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -528,10 +569,20 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(RandomTaskId(), options.name, function.GetLanguage(),
-                              function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
-                              RandomTaskId(), address, num_returns, resources, resources,
-                              std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0);
+    builder.SetCommonTaskSpec(RandomTaskId(),
+                              options.name,
+                              function.GetLanguage(),
+                              function.GetFunctionDescriptor(),
+                              job_id,
+                              RandomTaskId(),
+                              0,
+                              RandomTaskId(),
+                              address,
+                              num_returns,
+                              resources,
+                              resources,
+                              "",
+                              0);
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);
@@ -572,11 +623,12 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
         buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
     TaskOptions options{"", 1, resources};
-    RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
-                                           "MergeInputArgsAsOutput", "", "", ""));
+    RayFunction func(
+        Language::PYTHON,
+        FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
     auto return_ids =
-        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
     ASSERT_EQ(return_ids.size(), 1);
     object_ids.emplace_back(return_ids[0]);
   }
@@ -631,10 +683,18 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(ZeroNodeTest, TestActorHandle) {
   // Test actor handle serialization and deserialization round trip.
   JobID job_id = NextJobId();
-  ActorHandle original(
-      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), TaskID::Nil(),
-      rpc::Address(), job_id, ObjectID::FromRandom(), Language::PYTHON,
-      FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0, "", "");
+  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0),
+                       TaskID::Nil(),
+                       rpc::Address(),
+                       job_id,
+                       ObjectID::FromRandom(),
+                       Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                       "",
+                       0,
+                       "",
+                       "",
+                       -1);
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
@@ -696,12 +756,14 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   for (size_t i = 0; i < ids.size(); i++) {
     const auto &expected = buffers[i];
     ASSERT_EQ(results[ids[i]]->GetData()->Size(), expected.GetData()->Size());
-    ASSERT_EQ(memcmp(results[ids[i]]->GetData()->Data(), expected.GetData()->Data(),
+    ASSERT_EQ(memcmp(results[ids[i]]->GetData()->Data(),
+                     expected.GetData()->Data(),
                      expected.GetData()->Size()),
               0);
     ASSERT_EQ(results[ids[i]]->GetMetadata()->Size(), expected.GetMetadata()->Size());
     ASSERT_EQ(memcmp(results[ids[i]]->GetMetadata()->Data(),
-                     expected.GetMetadata()->Data(), expected.GetMetadata()->Size()),
+                     expected.GetMetadata()->Data(),
+                     expected.GetMetadata()->Size()),
               0);
   }
 
@@ -833,10 +895,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_TRUE(results[1]->IsException());
 }
 
-TEST_F(SingleNodeTest, TestNormalTaskLocal) {
-  std::unordered_map<std::string, double> resources;
-  TestNormalTask(resources);
-}
+TEST_F(SingleNodeTest, TestNormalTaskLocal) { TestNormalTask(); }
 
 TEST_F(SingleNodeTest, TestCancelTasks) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
@@ -851,19 +910,27 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   // func2.
   std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options;
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
 
   // Submit func1. The function should start looping forever.
-  auto return_ids1 = ObjectRefsToIds(driver.SubmitTask(
-      func1, args, options, /*max_retries=*/0,
-      /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
-      /*debugger_breakpoint=*/""));
+  auto return_ids1 = ObjectRefsToIds(driver.SubmitTask(func1,
+                                                       args,
+                                                       options,
+                                                       /*max_retries=*/0,
+                                                       /*retry_exceptions=*/false,
+                                                       scheduling_strategy,
+                                                       /*debugger_breakpoint=*/""));
   ASSERT_EQ(return_ids1.size(), 1);
 
   // Submit func2. The function should be queued at the worker indefinitely.
-  auto return_ids2 = ObjectRefsToIds(driver.SubmitTask(
-      func2, args, options, /*max_retries=*/0,
-      /*retry_exceptions=*/false, std::make_pair(PlacementGroupID::Nil(), -1), true,
-      /*debugger_breakpoint=*/""));
+  auto return_ids2 = ObjectRefsToIds(driver.SubmitTask(func2,
+                                                       args,
+                                                       options,
+                                                       /*max_retries=*/0,
+                                                       /*retry_exceptions=*/false,
+                                                       scheduling_strategy,
+                                                       /*debugger_breakpoint=*/""));
   ASSERT_EQ(return_ids2.size(), 1);
 
   // Cancel func2 by removing it from the worker's queue
@@ -875,15 +942,10 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   // TestNormalTask will get stuck unless both func1 and func2 have been cancelled. Thus,
   // if TestNormalTask succeeds, we know that func2 must have been removed from the
   // worker's queue.
-  std::unordered_map<std::string, double> resources;
-  TestNormalTask(resources);
+  TestNormalTask();
 }
 
-TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
-  std::unordered_map<std::string, double> resources;
-  resources.emplace("resource1", 1);
-  TestNormalTask(resources);
-}
+TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) { TestNormalTask(); }
 
 TEST_F(SingleNodeTest, TestActorTaskLocal) {
   std::unordered_map<std::string, double> resources;
@@ -916,6 +978,140 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorFailure(resources);
+}
+
+TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars) {
+  rpc::RuntimeEnv child;
+  auto parent = std::make_shared<rpc::RuntimeEnv>();
+  // child {"a": "b"}, parent {}, expected {"a": "b"}
+  (*child.mutable_env_vars())["a"] = "b";
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.env_vars().size(), 1);
+  ASSERT_EQ(result.env_vars().count("a"), 1);
+  ASSERT_EQ(result.env_vars().at("a"), "b");
+  child.clear_env_vars();
+  parent->clear_env_vars();
+  // child {}, parent {"a": "b"}, expected {"a": "b"}
+  (*(parent->mutable_env_vars()))["a"] = "b";
+  result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.env_vars().size(), 1);
+  ASSERT_EQ(result.env_vars().count("a"), 1);
+  ASSERT_EQ(result.env_vars().at("a"), "b");
+  child.clear_env_vars();
+  parent->clear_env_vars();
+  // child {"a": "b"}, parent {"a": "d"}, expected {"a": "b"}
+  (*child.mutable_env_vars())["a"] = "b";
+  (*(parent->mutable_env_vars()))["a"] = "d";
+  result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.env_vars().size(), 1);
+  ASSERT_EQ(result.env_vars().count("a"), 1);
+  ASSERT_EQ(result.env_vars().at("a"), "b");
+  child.clear_env_vars();
+  parent->clear_env_vars();
+  // child {"a": "b"}, parent {"c": "d"}, expected {"a": "b", "c": "d"}
+  (*child.mutable_env_vars())["a"] = "b";
+  (*(parent->mutable_env_vars()))["c"] = "d";
+  result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.env_vars().size(), 2);
+  ASSERT_EQ(result.env_vars().count("a"), 1);
+  ASSERT_EQ(result.env_vars().at("a"), "b");
+  ASSERT_EQ(result.env_vars().count("c"), 1);
+  ASSERT_EQ(result.env_vars().at("c"), "d");
+  child.clear_env_vars();
+  parent->clear_env_vars();
+  // child {"a": "b"}, parent {"a": "e", "c": "d"}, expected {"a": "b", "c": "d"}
+  (*child.mutable_env_vars())["a"] = "b";
+  (*(parent->mutable_env_vars()))["a"] = "e";
+  (*(parent->mutable_env_vars()))["c"] = "d";
+  result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.env_vars().size(), 2);
+  ASSERT_EQ(result.env_vars().count("a"), 1);
+  ASSERT_EQ(result.env_vars().at("a"), "b");
+  ASSERT_EQ(result.env_vars().count("c"), 1);
+  ASSERT_EQ(result.env_vars().at("c"), "d");
+  child.clear_env_vars();
+  parent->clear_env_vars();
+}
+
+TEST(TestOverrideRuntimeEnv, TestPyModulesInherit) {
+  rpc::RuntimeEnv child;
+  auto parent = std::make_shared<rpc::RuntimeEnv>();
+  parent->mutable_python_runtime_env()->mutable_py_modules()->Add("s3://456");
+  parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://456");
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.python_runtime_env().py_modules().size(), 1);
+  ASSERT_EQ(result.python_runtime_env().py_modules()[0], "s3://456");
+  ASSERT_EQ(result.uris().py_modules_uris().size(), 1);
+  ASSERT_EQ(result.uris().py_modules_uris()[0], "s3://456");
+}
+
+TEST(TestOverrideRuntimeEnv, TestOverridePyModules) {
+  rpc::RuntimeEnv child;
+  auto parent = std::make_shared<rpc::RuntimeEnv>();
+  child.mutable_python_runtime_env()->mutable_py_modules()->Add("s3://123");
+  child.mutable_uris()->mutable_py_modules_uris()->Add("s3://123");
+  parent->mutable_python_runtime_env()->mutable_py_modules()->Add("s3://456");
+  parent->mutable_python_runtime_env()->mutable_py_modules()->Add("s3://789");
+  parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://456");
+  parent->mutable_uris()->mutable_py_modules_uris()->Add("s3://789");
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.python_runtime_env().py_modules().size(), 1);
+  ASSERT_EQ(result.python_runtime_env().py_modules()[0], "s3://123");
+  ASSERT_EQ(result.uris().py_modules_uris().size(), 1);
+  ASSERT_EQ(result.uris().py_modules_uris()[0], "s3://123");
+}
+
+TEST(TestOverrideRuntimeEnv, TestWorkingDirInherit) {
+  rpc::RuntimeEnv child;
+  auto parent = std::make_shared<rpc::RuntimeEnv>();
+  parent->set_working_dir("uri://abc");
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.working_dir(), "uri://abc");
+}
+
+TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride) {
+  rpc::RuntimeEnv child;
+  auto parent = std::make_shared<rpc::RuntimeEnv>();
+  child.set_working_dir("uri://abc");
+  parent->set_working_dir("uri://def");
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.working_dir(), "uri://abc");
+}
+
+TEST(TestOverrideRuntimeEnv, TestCondaInherit) {
+  rpc::RuntimeEnv child;
+  auto parent = std::make_shared<rpc::RuntimeEnv>();
+  child.mutable_uris()->set_working_dir_uri("gcs://abc");
+  parent->mutable_uris()->set_working_dir_uri("gcs://def");
+  parent->mutable_uris()->set_conda_uri("conda://456");
+  parent->mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name");
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.uris().working_dir_uri(), "gcs://abc");
+  ASSERT_EQ(result.uris().conda_uri(), "conda://456");
+  ASSERT_TRUE(result.python_runtime_env().has_conda_runtime_env());
+  ASSERT_TRUE(result.python_runtime_env().conda_runtime_env().has_conda_env_name());
+  ASSERT_EQ(result.python_runtime_env().conda_runtime_env().conda_env_name(),
+            "my-env-name");
+}
+
+TEST(TestOverrideRuntimeEnv, TestCondaOverride) {
+  rpc::RuntimeEnv child;
+  auto parent = std::make_shared<rpc::RuntimeEnv>();
+  child.mutable_uris()->set_conda_uri("conda://123");
+  child.mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name-123");
+  parent->mutable_uris()->set_conda_uri("conda://456");
+  parent->mutable_python_runtime_env()->mutable_conda_runtime_env()->set_conda_env_name(
+      "my-env-name-456");
+  parent->mutable_uris()->set_working_dir_uri("gcs://def");
+  auto result = CoreWorker::OverrideRuntimeEnv(child, parent);
+  ASSERT_EQ(result.uris().conda_uri(), "conda://123");
+  ASSERT_TRUE(result.python_runtime_env().has_conda_runtime_env());
+  ASSERT_TRUE(result.python_runtime_env().conda_runtime_env().has_conda_env_name());
+  ASSERT_EQ(result.python_runtime_env().conda_runtime_env().conda_env_name(),
+            "my-env-name-123");
+  ASSERT_EQ(result.uris().working_dir_uri(), "gcs://def");
 }
 
 }  // namespace core

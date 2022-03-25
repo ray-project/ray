@@ -13,17 +13,18 @@ torch, nn = try_import_torch()
 
 
 class TDModel(nn.Module):
-    """Transition Dynamics Model (FC Network with Weight Norm)
-    """
+    """Transition Dynamics Model (FC Network with Weight Norm)"""
 
-    def __init__(self,
-                 input_size,
-                 output_size,
-                 hidden_layers=(512, 512),
-                 hidden_nonlinearity=None,
-                 output_nonlinearity=None,
-                 weight_normalization=False,
-                 use_bias=True):
+    def __init__(
+        self,
+        input_size,
+        output_size,
+        hidden_layers=(512, 512),
+        hidden_nonlinearity=None,
+        output_nonlinearity=None,
+        weight_normalization=False,
+        use_bias=True,
+    ):
 
         super().__init__()
         assert len(hidden_layers) >= 1
@@ -98,19 +99,15 @@ def mean_std_stats(dataset: SampleBatchType):
     act = dataset[SampleBatch.ACTIONS]
     delta = dataset[SampleBatch.NEXT_OBS] - obs
 
-    norm_dict[SampleBatch.CUR_OBS] = (np.mean(obs, axis=0), np.std(
-        obs, axis=0))
-    norm_dict[SampleBatch.ACTIONS] = (np.mean(act, axis=0), np.std(
-        act, axis=0))
+    norm_dict[SampleBatch.CUR_OBS] = (np.mean(obs, axis=0), np.std(obs, axis=0))
+    norm_dict[SampleBatch.ACTIONS] = (np.mean(act, axis=0), np.std(act, axis=0))
     norm_dict["delta"] = (np.mean(delta, axis=0), np.std(delta, axis=0))
 
     return norm_dict
 
 
 def process_samples(samples: SampleBatchType):
-    filter_keys = [
-        SampleBatch.CUR_OBS, SampleBatch.ACTIONS, SampleBatch.NEXT_OBS
-    ]
+    filter_keys = [SampleBatch.CUR_OBS, SampleBatch.ACTIONS, SampleBatch.NEXT_OBS]
     filtered = {}
     for key in filter_keys:
         filtered[key] = samples[key]
@@ -118,28 +115,28 @@ def process_samples(samples: SampleBatchType):
 
 
 class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
-    """Represents an ensemble of transition dynamics (TD) models.
-    """
+    """Represents an ensemble of transition dynamics (TD) models."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        """Initializes a DynamicEnsemble object.
-        """
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        """Initializes a DynamicEnsemble object."""
         nn.Module.__init__(self)
         if isinstance(action_space, Discrete):
             input_space = gym.spaces.Box(
                 obs_space.low[0],
                 obs_space.high[0],
-                shape=(obs_space.shape[0] + action_space.n, ))
+                shape=(obs_space.shape[0] + action_space.n,),
+            )
         elif isinstance(action_space, Box):
             input_space = gym.spaces.Box(
                 obs_space.low[0],
                 obs_space.high[0],
-                shape=(obs_space.shape[0] + action_space.shape[0], ))
+                shape=(obs_space.shape[0] + action_space.shape[0],),
+            )
         else:
             raise NotImplementedError
         super(DynamicsEnsembleCustomModel, self).__init__(
-            input_space, action_space, num_outputs, model_config, name)
+            input_space, action_space, num_outputs, model_config, name
+        )
 
         # Keep the original Env's observation space for possible clipping.
         self.env_obs_space = obs_space
@@ -158,7 +155,9 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 hidden_layers=model_config["fcnet_hiddens"],
                 hidden_nonlinearity=nn.ReLU,
                 output_nonlinearity=None,
-                weight_normalization=True) for _ in range(self.num_models)
+                weight_normalization=True,
+            )
+            for _ in range(self.num_models)
         ]
 
         for i in range(self.num_models):
@@ -166,8 +165,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         self.replay_buffer_max = 10000
         self.replay_buffer = None
         self.optimizers = [
-            torch.optim.Adam(
-                self.dynamics_ensemble[i].parameters(), lr=self.lr)
+            torch.optim.Adam(self.dynamics_ensemble[i].parameters(), lr=self.lr)
             for i in range(self.num_models)
         ]
         # Metric Reporting
@@ -178,12 +176,12 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         worker_index = get_global_worker().worker_index
         self.sample_index = int((worker_index - 1) / self.num_models)
         self.global_itr = 0
-        self.device = (torch.device("cuda")
-                       if torch.cuda.is_available() else torch.device("cpu"))
+        self.device = (
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        )
 
     def forward(self, x):
-        """Outputs the delta between next and current observation.
-        """
+        """Outputs the delta between next and current observation."""
         return self.dynamics_ensemble[self.sample_index](x)
 
     # Loss functions for each TD model in Ensemble (Standard L2 Loss)
@@ -191,8 +189,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         xs = torch.chunk(x, self.num_models)
         ys = torch.chunk(y, self.num_models)
         return [
-            torch.mean(
-                torch.pow(self.dynamics_ensemble[i](xs[i]) - ys[i], 2.0))
+            torch.mean(torch.pow(self.dynamics_ensemble[i](xs[i]) - ys[i], 2.0))
             for i in range(self.num_models)
         ]
 
@@ -201,8 +198,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         # Add env samples to Replay Buffer
         local_worker = get_global_worker()
         for pid, pol in local_worker.policy_map.items():
-            pol.view_requirements[
-                SampleBatch.NEXT_OBS].used_for_training = True
+            pol.view_requirements[SampleBatch.NEXT_OBS].used_for_training = True
         new_samples = local_worker.sample()
         # Initial Exploration of 8000 timesteps
         if not self.global_itr:
@@ -224,7 +220,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
         # Keep Replay Buffer Size Constant
         self.replay_buffer = self.replay_buffer.slice(
-            start=-self.replay_buffer_max, end=None)
+            start=-self.replay_buffer_max, end=None
+        )
 
         if self.normalize_data:
             self.normalizations = mean_std_stats(self.replay_buffer)
@@ -241,12 +238,14 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 torch.utils.data.DataLoader(
                     TDDataset(t, self.normalizations),
                     batch_size=self.batch_size,
-                    shuffle=True))
+                    shuffle=True,
+                )
+            )
             val_loaders.append(
                 torch.utils.data.DataLoader(
-                    TDDataset(v, self.normalizations),
-                    batch_size=v.count,
-                    shuffle=False))
+                    TDDataset(v, self.normalizations), batch_size=v.count, shuffle=False
+                )
+            )
 
         # List of which models in ensemble to train
         indexes = list(range(self.num_models))
@@ -269,8 +268,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                     self.optimizers[ind].step()
 
                 for ind in range(self.num_models):
-                    train_losses[ind] = train_losses[
-                        ind].detach().cpu().numpy()
+                    train_losses[ind] = train_losses[ind].detach().cpu().numpy()
 
             # Validation
             val_lists = []
@@ -294,21 +292,30 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 valid_loss_roll_avg = 1.5 * avg_val_losses
                 valid_loss_roll_avg_prev = 2.0 * avg_val_losses
 
-            valid_loss_roll_avg = roll_avg_persitency*valid_loss_roll_avg + \
-                (1.0-roll_avg_persitency)*avg_val_losses
+            valid_loss_roll_avg = (
+                roll_avg_persitency * valid_loss_roll_avg
+                + (1.0 - roll_avg_persitency) * avg_val_losses
+            )
 
-            print("Training Dynamics Ensemble - Epoch #%i:"
-                  "Train loss: %s, Valid Loss: %s,  Moving Avg Valid Loss: %s"
-                  % (epoch, convert_to_str(train_losses),
-                     convert_to_str(avg_val_losses),
-                     convert_to_str(valid_loss_roll_avg)))
+            print(
+                "Training Dynamics Ensemble - Epoch #%i:"
+                "Train loss: %s, Valid Loss: %s,  Moving Avg Valid Loss: %s"
+                % (
+                    epoch,
+                    convert_to_str(train_losses),
+                    convert_to_str(avg_val_losses),
+                    convert_to_str(valid_loss_roll_avg),
+                )
+            )
             for i in range(self.num_models):
-                if (valid_loss_roll_avg_prev[i] < valid_loss_roll_avg[i]
-                        or epoch == self.max_epochs - 1) and i in indexes:
+                if (
+                    valid_loss_roll_avg_prev[i] < valid_loss_roll_avg[i]
+                    or epoch == self.max_epochs - 1
+                ) and i in indexes:
                     indexes.remove(i)
                     print("Stopping Training of Model %i" % i)
             valid_loss_roll_avg_prev = valid_loss_roll_avg
-            if (len(indexes) == 0):
+            if len(indexes) == 0:
                 break
 
         self.global_itr += 1
@@ -331,21 +338,18 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
         return SampleBatch(train), SampleBatch(val)
 
     def predict_model_batches(self, obs, actions, device=None):
-        """Used by worker who gather trajectories via TD models.
-        """
+        """Used by worker who gather trajectories via TD models."""
         pre_obs = obs
         if self.normalize_data:
             obs = normalize(obs, self.normalizations[SampleBatch.CUR_OBS])
-            actions = normalize(actions,
-                                self.normalizations[SampleBatch.ACTIONS])
+            actions = normalize(actions, self.normalizations[SampleBatch.ACTIONS])
         x = np.concatenate([obs, actions], axis=-1)
         x = convert_to_torch_tensor(x, device=device)
         delta = self.forward(x).detach().cpu().numpy()
         if self.normalize_data:
             delta = denormalize(delta, self.normalizations["delta"])
         new_obs = pre_obs + delta
-        clipped_obs = np.clip(new_obs, self.env_obs_space.low,
-                              self.env_obs_space.high)
+        clipped_obs = np.clip(new_obs, self.env_obs_space.low, self.env_obs_space.high)
         return clipped_obs
 
     def set_norms(self, normalization_dict):

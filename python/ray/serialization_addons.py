@@ -28,7 +28,7 @@ def register_pydantic_serializer(serialization_context):
             "alias": o.alias,
             "field_info": o.field_info,
         },
-        custom_deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs)
+        custom_deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
     )
 
 

@@ -18,14 +18,15 @@ def test_user_metadata(workflow_start_regular):
     def simple():
         return 0
 
-    simple.options(
-        name=step_name, metadata=user_step_metadata).step().run(
-            workflow_id, metadata=user_run_metadata)
+    simple.options(name=step_name, metadata=user_step_metadata).step().run(
+        workflow_id, metadata=user_run_metadata
+    )
 
-    assert workflow.get_metadata("simple")[
-        "user_metadata"] == user_run_metadata
-    assert workflow.get_metadata(
-        "simple", "simple_step")["user_metadata"] == user_step_metadata
+    assert workflow.get_metadata("simple")["user_metadata"] == user_run_metadata
+    assert (
+        workflow.get_metadata("simple", "simple_step")["user_metadata"]
+        == user_step_metadata
+    )
 
 
 def test_user_metadata_empty(workflow_start_regular):
@@ -40,8 +41,7 @@ def test_user_metadata_empty(workflow_start_regular):
     simple.options(name=step_name).step().run(workflow_id)
 
     assert workflow.get_metadata("simple")["user_metadata"] == {}
-    assert workflow.get_metadata("simple",
-                                 "simple_step")["user_metadata"] == {}
+    assert workflow.get_metadata("simple", "simple_step")["user_metadata"] == {}
 
 
 def test_user_metadata_not_dict(workflow_start_regular):
@@ -86,14 +86,17 @@ def test_runtime_metadata(workflow_start_regular):
     workflow_metadata = workflow.get_metadata("simple")
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
-    assert workflow_metadata["stats"]["end_time"] >= \
-           workflow_metadata["stats"]["start_time"] + 2
+    assert (
+        workflow_metadata["stats"]["end_time"]
+        >= workflow_metadata["stats"]["start_time"] + 2
+    )
 
     step_metadata = workflow.get_metadata("simple", "simple_step")
     assert "start_time" in step_metadata["stats"]
     assert "end_time" in step_metadata["stats"]
-    assert step_metadata["stats"]["end_time"] >= \
-           step_metadata["stats"]["start_time"] + 2
+    assert (
+        step_metadata["stats"]["end_time"] >= step_metadata["stats"]["start_time"] + 2
+    )
 
 
 def test_successful_workflow(workflow_start_regular):
@@ -108,24 +111,27 @@ def test_successful_workflow(workflow_start_regular):
         time.sleep(2)
         return 0
 
-    simple.options(
-        name=step_name, metadata=user_step_metadata).step().run(
-            workflow_id, metadata=user_run_metadata)
+    simple.options(name=step_name, metadata=user_step_metadata).step().run(
+        workflow_id, metadata=user_run_metadata
+    )
 
     workflow_metadata = workflow.get_metadata("simple")
     assert workflow_metadata["status"] == "SUCCESSFUL"
     assert workflow_metadata["user_metadata"] == user_run_metadata
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
-    assert workflow_metadata["stats"]["end_time"] >= \
-           workflow_metadata["stats"]["start_time"] + 2
+    assert (
+        workflow_metadata["stats"]["end_time"]
+        >= workflow_metadata["stats"]["start_time"] + 2
+    )
 
     step_metadata = workflow.get_metadata("simple", "simple_step")
     assert step_metadata["user_metadata"] == user_step_metadata
     assert "start_time" in step_metadata["stats"]
     assert "end_time" in step_metadata["stats"]
-    assert step_metadata["stats"]["end_time"] >= \
-           step_metadata["stats"]["start_time"] + 2
+    assert (
+        step_metadata["stats"]["end_time"] >= step_metadata["stats"]["start_time"] + 2
+    )
 
 
 def test_running_and_canceled_workflow(workflow_start_regular, tmp_path):
@@ -184,10 +190,14 @@ def test_failed_and_resumed_workflow(workflow_start_regular, tmp_path):
     assert workflow_metadata_resumed["status"] == "SUCCESSFUL"
 
     # make sure resume updated running metrics
-    assert workflow_metadata_resumed["stats"]["start_time"] \
-           > workflow_metadata_failed["stats"]["start_time"]
-    assert workflow_metadata_resumed["stats"]["end_time"] \
-           > workflow_metadata_failed["stats"]["end_time"]
+    assert (
+        workflow_metadata_resumed["stats"]["start_time"]
+        > workflow_metadata_failed["stats"]["start_time"]
+    )
+    assert (
+        workflow_metadata_resumed["stats"]["end_time"]
+        > workflow_metadata_failed["stats"]["end_time"]
+    )
 
 
 def test_nested_workflow(workflow_start_regular):
@@ -211,14 +221,22 @@ def test_nested_workflow(workflow_start_regular):
     assert outer_step_metadata["user_metadata"] == {"outer_k": "outer_v"}
     assert inner_step_metadata["user_metadata"] == {"inner_k": "inner_v"}
 
-    assert workflow_metadata["stats"]["end_time"] >= \
-           workflow_metadata["stats"]["start_time"] + 4
-    assert outer_step_metadata["stats"]["end_time"] >= \
-           outer_step_metadata["stats"]["start_time"] + 2
-    assert inner_step_metadata["stats"]["end_time"] >= \
-           inner_step_metadata["stats"]["start_time"] + 2
-    assert inner_step_metadata["stats"]["start_time"] >= \
-           outer_step_metadata["stats"]["end_time"]
+    assert (
+        workflow_metadata["stats"]["end_time"]
+        >= workflow_metadata["stats"]["start_time"] + 4
+    )
+    assert (
+        outer_step_metadata["stats"]["end_time"]
+        >= outer_step_metadata["stats"]["start_time"] + 2
+    )
+    assert (
+        inner_step_metadata["stats"]["end_time"]
+        >= inner_step_metadata["stats"]["start_time"] + 2
+    )
+    assert (
+        inner_step_metadata["stats"]["start_time"]
+        >= outer_step_metadata["stats"]["end_time"]
+    )
 
 
 def test_simple_virtual_actor(workflow_start_regular):
@@ -242,18 +260,20 @@ def test_simple_virtual_actor(workflow_start_regular):
     actor.add_v.options(name="add", metadata={"k3": "v3"}).run(10)
 
     assert workflow.get_metadata("vid", "add")["user_metadata"] == {"k1": "v1"}
-    assert workflow.get_metadata("vid", "add_1")["user_metadata"] == {
-        "k2": "v2"
-    }
-    assert workflow.get_metadata("vid", "add_2")["user_metadata"] == {
-        "k3": "v3"
-    }
-    assert workflow.get_metadata("vid", "add")["stats"]["end_time"] >= \
-           workflow.get_metadata("vid", "add")["stats"]["start_time"] + 1
-    assert workflow.get_metadata("vid", "add_1")["stats"]["end_time"] >= \
-           workflow.get_metadata("vid", "add_1")["stats"]["start_time"] + 1
-    assert workflow.get_metadata("vid", "add_2")["stats"]["end_time"] >= \
-           workflow.get_metadata("vid", "add_2")["stats"]["start_time"] + 1
+    assert workflow.get_metadata("vid", "add_1")["user_metadata"] == {"k2": "v2"}
+    assert workflow.get_metadata("vid", "add_2")["user_metadata"] == {"k3": "v3"}
+    assert (
+        workflow.get_metadata("vid", "add")["stats"]["end_time"]
+        >= workflow.get_metadata("vid", "add")["stats"]["start_time"] + 1
+    )
+    assert (
+        workflow.get_metadata("vid", "add_1")["stats"]["end_time"]
+        >= workflow.get_metadata("vid", "add_1")["stats"]["start_time"] + 1
+    )
+    assert (
+        workflow.get_metadata("vid", "add_2")["stats"]["end_time"]
+        >= workflow.get_metadata("vid", "add_2")["stats"]["start_time"] + 1
+    )
 
 
 def test_nested_virtual_actor(workflow_start_regular):
@@ -266,9 +286,8 @@ def test_nested_virtual_actor(workflow_start_regular):
             self.n += 1
             if n - 1 > 0:
                 return self.incr.options(
-                    name="incr", metadata={
-                        "current_n": self.n
-                    }).step(n - 1)
+                    name="incr", metadata={"current_n": self.n}
+                ).step(n - 1)
             else:
                 return self.n
 
@@ -317,10 +336,10 @@ def test_no_workflow_found(workflow_start_regular):
 
     with pytest.raises(ValueError) as excinfo:
         workflow.get_metadata("simple", "simple_step1")
-    assert str(
-        excinfo.value) == "No such step_id simple_step1 in workflow simple"
+    assert str(excinfo.value) == "No such step_id simple_step1 in workflow simple"
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

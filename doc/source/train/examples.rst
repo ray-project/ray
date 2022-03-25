@@ -47,11 +47,11 @@ Horovod
   Simple example for Horovod (with TensorFlow)
 
 
-Iterator API Examples
----------------------
-
+Logger/Callback Examples
+------------------------
 * :doc:`/train/examples/mlflow_fashion_mnist_example`:
-  Example for using the Iterator API for custom MLFlow integration.
+  Example for logging training to MLflow via the ``MLflowLoggerCallback``
+
 
 Ray Datasets Integration Examples
 ---------------------------------
@@ -64,6 +64,7 @@ Ray Datasets Integration Examples
 
 * :doc:`/train/examples/tune_linear_dataset_example`:
   Simple example for tuning a linear PyTorch model.
+
 
 Ray Tune Integration Examples
 -----------------------------
@@ -90,3 +91,10 @@ Ray Tune Integration Examples
     ------
 
     * Example training on Vision model.
+
+Benchmarks
+----------
+
+* :doc:`/train/examples/torch_data_prefetch_benchmark/benchmark_example`:
+  Benchmark example for the PyTorch data transfer auto pipeline.
+

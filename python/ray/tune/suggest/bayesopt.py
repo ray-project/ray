@@ -7,8 +7,11 @@ from typing import Dict, List, Optional, Tuple, Any
 from ray.tune import ExperimentAnalysis
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
-from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
-    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
+from ray.tune.suggest.suggestion import (
+    UNRESOLVED_SEARCH_SPACE,
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+)
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
 
@@ -52,30 +55,30 @@ class BayesOptSearch(Searcher):
     `BayesianOptimization search space specification`_.
 
     Args:
-        space (dict): Continuous search space. Parameters will be sampled from
+        space: Continuous search space. Parameters will be sampled from
             this space which will be used to run trials.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        utility_kwargs (dict): Parameters to define the utility function.
+        utility_kwargs: Parameters to define the utility function.
             The default value is a dictionary with three keys:
             - kind: ucb (Upper Confidence Bound)
             - kappa: 2.576
             - xi: 0.0
-        random_state (int): Used to initialize BayesOpt.
-        random_search_steps (int): Number of initial random searches.
+        random_state: Used to initialize BayesOpt.
+        random_search_steps: Number of initial random searches.
             This is necessary to avoid initial local overfitting
             of the Bayesian process.
-        analysis (ExperimentAnalysis): Optionally, the previous analysis
+        analysis: Optionally, the previous analysis
             to integrate.
-        verbose (int): Sets verbosity level for BayesOpt packages.
+        verbose: Sets verbosity level for BayesOpt packages.
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
@@ -110,26 +113,30 @@ class BayesOptSearch(Searcher):
         tune.run(my_func, search_alg=bayesopt)
 
     """
+
     # bayes_opt.BayesianOptimization: Optimization object
     optimizer = None
 
-    def __init__(self,
-                 space: Optional[Dict] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[Dict]] = None,
-                 utility_kwargs: Optional[Dict] = None,
-                 random_state: int = 42,
-                 random_search_steps: int = 10,
-                 verbose: int = 0,
-                 patience: int = 5,
-                 skip_duplicate: bool = True,
-                 analysis: Optional[ExperimentAnalysis] = None,
-                 max_concurrent: Optional[int] = None,
-                 use_early_stopped_trials: Optional[bool] = None):
+    def __init__(
+        self,
+        space: Optional[Dict] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        points_to_evaluate: Optional[List[Dict]] = None,
+        utility_kwargs: Optional[Dict] = None,
+        random_state: int = 42,
+        random_search_steps: int = 10,
+        verbose: int = 0,
+        patience: int = 5,
+        skip_duplicate: bool = True,
+        analysis: Optional[ExperimentAnalysis] = None,
+        max_concurrent: Optional[int] = None,
+        use_early_stopped_trials: Optional[bool] = None,
+    ):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
-            " the command: `pip install bayesian-optimization`.")
+            " the command: `pip install bayesian-optimization`."
+        )
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self.max_concurrent = max_concurrent
@@ -144,7 +151,8 @@ class BayesOptSearch(Searcher):
             metric=metric,
             mode=mode,
             max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials)
+            use_early_stopped_trials=use_early_stopped_trials,
+        )
 
         if utility_kwargs is None:
             # The defaults arguments are the same
@@ -156,9 +164,9 @@ class BayesOptSearch(Searcher):
             )
 
         if mode == "max":
-            self._metric_op = 1.
+            self._metric_op = 1.0
         elif mode == "min":
-            self._metric_op = -1.
+            self._metric_op = -1.0
 
         self._points_to_evaluate = points_to_evaluate
 
@@ -175,8 +183,8 @@ class BayesOptSearch(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
+                )
                 space = self.convert_search_space(space, join=True)
 
         self._space = space
@@ -196,14 +204,16 @@ class BayesOptSearch(Searcher):
             f=None,
             pbounds=self._space,
             verbose=self._verbose,
-            random_state=self._random_state)
+            random_state=self._random_state,
+        )
 
         # Registering the provided analysis, if given
         if self._analysis is not None:
             self.register_analysis(self._analysis)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
+    ) -> bool:
         if self.optimizer:
             return False
         space = self.convert_search_space(config)
@@ -214,9 +224,9 @@ class BayesOptSearch(Searcher):
             self._mode = mode
 
         if self._mode == "max":
-            self._metric_op = 1.
+            self._metric_op = 1.0
         elif self._mode == "min":
-            self._metric_op = -1.
+            self._metric_op = -1.0
 
         self._setup_optimizer()
         return True
@@ -225,7 +235,7 @@ class BayesOptSearch(Searcher):
         """Return new point to be explored by black box function.
 
         Args:
-            trial_id (str): Id of the trial.
+            trial_id: Id of the trial.
                 This is a short alphanumerical string.
 
         Returns:
@@ -235,20 +245,16 @@ class BayesOptSearch(Searcher):
         if not self.optimizer:
             raise RuntimeError(
                 UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                    cls=self.__class__.__name__, space="space"
+                )
+            )
 
         if not self._metric or not self._mode:
             raise RuntimeError(
                 UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
-
-        # If we have more active trials than the allowed maximum
-        total_live_trials = len(self._live_trial_mapping)
-        if self.max_concurrent and self.max_concurrent <= total_live_trials:
-            # we stop the suggestion and return None.
-            return None
+                    cls=self.__class__.__name__, metric=self._metric, mode=self._mode
+                )
+            )
 
         if self._points_to_evaluate:
             config = self._points_to_evaluate.pop(0)
@@ -293,29 +299,28 @@ class BayesOptSearch(Searcher):
         """Integrate the given analysis into the gaussian process.
 
         Args:
-            analysis (ExperimentAnalysis): Optionally, the previous analysis
+            analysis: Optionally, the previous analysis
                 to integrate.
         """
         for (_, report), params in zip(
-                analysis.dataframe(metric=self._metric,
-                                   mode=self._mode).iterrows(),
-                analysis.get_all_configs().values()):
+            analysis.dataframe(metric=self._metric, mode=self._mode).iterrows(),
+            analysis.get_all_configs().values(),
+        ):
             # We add the obtained results to the
             # gaussian process optimizer
             self._register_result(params, report)
 
-    def on_trial_complete(self,
-                          trial_id: str,
-                          result: Optional[Dict] = None,
-                          error: bool = False):
+    def on_trial_complete(
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
+    ):
         """Notification for the completion of trial.
 
         Args:
-            trial_id (str): Id of the trial.
+            trial_id: Id of the trial.
                 This is a short alphanumerical string.
-            result (dict): Dictionary of result.
+            result: Dictionary of result.
                 May be none when some error occurs.
-            error (bool): Boolean representing a previous error state.
+            error: Boolean representing a previous error state.
                 The result should be None when error is True.
         """
         # We try to get the parameters used for this trial
@@ -360,16 +365,27 @@ class BayesOptSearch(Searcher):
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
         with open(checkpoint_path, "wb") as f:
-            pickle.dump((self.optimizer, self._buffered_trial_results,
-                         self._total_random_search_trials,
-                         self._config_counter, self._points_to_evaluate), f)
+            pickle.dump(
+                (
+                    self.optimizer,
+                    self._buffered_trial_results,
+                    self._total_random_search_trials,
+                    self._config_counter,
+                    self._points_to_evaluate,
+                ),
+                f,
+            )
 
     def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
-            (self.optimizer, self._buffered_trial_results,
-             self._total_random_search_trials, self._config_counter,
-             self._points_to_evaluate) = pickle.load(f)
+            (
+                self.optimizer,
+                self._buffered_trial_results,
+                self._total_random_search_trials,
+                self._config_counter,
+                self._points_to_evaluate,
+            ) = pickle.load(f)
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:
@@ -378,7 +394,8 @@ class BayesOptSearch(Searcher):
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
-                "to a BayesOpt search space.")
+                "to a BayesOpt search space."
+            )
 
         # Flatten and resolve again after checking for grid search.
         spec = flatten_dict(spec, prevent_delimiter=True)
@@ -389,24 +406,25 @@ class BayesOptSearch(Searcher):
             if isinstance(sampler, Quantized):
                 logger.warning(
                     "BayesOpt search does not support quantization. "
-                    "Dropped quantization.")
+                    "Dropped quantization."
+                )
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
                 if domain.sampler is not None:
                     logger.warning(
                         "BayesOpt does not support specific sampling methods. "
-                        "The {} sampler will be dropped.".format(sampler))
+                        "The {} sampler will be dropped.".format(sampler)
+                    )
                 return (domain.lower, domain.upper)
 
-            raise ValueError("BayesOpt does not support parameters of type "
-                             "`{}`".format(type(domain).__name__))
+            raise ValueError(
+                "BayesOpt does not support parameters of type "
+                "`{}`".format(type(domain).__name__)
+            )
 
         # Parameter name is e.g. "a/b/c" for nested dicts
-        bounds = {
-            "/".join(path): resolve_value(domain)
-            for path, domain in domain_vars
-        }
+        bounds = {"/".join(path): resolve_value(domain) for path, domain in domain_vars}
 
         if join:
             spec.update(bounds)

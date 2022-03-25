@@ -50,6 +50,7 @@ public class NamedActorTest extends BaseTest {
     Ray.actor(Counter::new).setName(name).remote();
   }
 
+  @Test
   public void testGetNonExistingNamedActor() {
     Assert.assertTrue(!Ray.getActor("non_existing_actor").isPresent());
   }

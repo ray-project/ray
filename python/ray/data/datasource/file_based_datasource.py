@@ -1,6 +1,16 @@
 import logging
-from typing import Callable, Optional, List, Tuple, Union, Any, Dict, \
-    Iterator, Iterable, TYPE_CHECKING
+from typing import (
+    Callable,
+    Optional,
+    List,
+    Tuple,
+    Union,
+    Any,
+    Dict,
+    Iterator,
+    Iterable,
+    TYPE_CHECKING,
+)
 import urllib.parse
 
 if TYPE_CHECKING:
@@ -13,6 +23,7 @@ from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
+from ray.data.datasource.file_meta_provider import FileMetadataProvider
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -30,14 +41,15 @@ class BlockWritePathProvider:
     """
 
     def _get_write_path_for_block(
-            self,
-            base_path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            dataset_uuid: Optional[str] = None,
-            block: Optional[ObjectRef[Block]] = None,
-            block_index: Optional[int] = None,
-            file_format: Optional[str] = None) -> str:
+        self,
+        base_path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        dataset_uuid: Optional[str] = None,
+        block: Optional[ObjectRef[Block]] = None,
+        block_index: Optional[int] = None,
+        file_format: Optional[str] = None,
+    ) -> str:
         """
         Resolves and returns the write path for the given dataset block. When
         implementing this method, care should be taken to ensure that a unique
@@ -56,24 +68,30 @@ class BlockWritePathProvider:
                 dataset.
             file_format: File format string for the block that can be used as
                 the file extension in the write path returned.
+
+        Returns:
+            The dataset block write path.
         """
         raise NotImplementedError
 
-    def __call__(self,
-                 base_path: str,
-                 *,
-                 filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                 dataset_uuid: Optional[str] = None,
-                 block: Optional[ObjectRef[Block]] = None,
-                 block_index: Optional[int] = None,
-                 file_format: Optional[str] = None) -> str:
+    def __call__(
+        self,
+        base_path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        dataset_uuid: Optional[str] = None,
+        block: Optional[ObjectRef[Block]] = None,
+        block_index: Optional[int] = None,
+        file_format: Optional[str] = None,
+    ) -> str:
         return self._get_write_path_for_block(
             base_path,
             filesystem=filesystem,
             dataset_uuid=dataset_uuid,
             block=block,
             block_index=block_index,
-            file_format=file_format)
+            file_format=file_format,
+        )
 
 
 class DefaultBlockWritePathProvider(BlockWritePathProvider):
@@ -83,19 +101,137 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
     """
 
     def _get_write_path_for_block(
-            self,
-            base_path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            dataset_uuid: Optional[str] = None,
-            block: Optional[ObjectRef[Block]] = None,
-            block_index: Optional[int] = None,
-            file_format: Optional[str] = None) -> str:
+        self,
+        base_path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        dataset_uuid: Optional[str] = None,
+        block: Optional[ObjectRef[Block]] = None,
+        block_index: Optional[int] = None,
+        file_format: Optional[str] = None,
+    ) -> str:
         suffix = f"{dataset_uuid}_{block_index:06}.{file_format}"
         # Use forward slashes for cross-filesystem compatibility, since PyArrow
         # FileSystem paths are always forward slash separated, see:
         # https://arrow.apache.org/docs/python/filesystems.html
         return f"{base_path}/{suffix}"
+
+
+@DeveloperAPI
+class BaseFileMetadataProvider(FileMetadataProvider):
+    """Abstract callable that provides metadata for FileBasedDatasource
+     implementations that reuse the base `prepare_read` method.
+
+    Also supports file and file size discovery in input directory paths.
+
+     Current subclasses:
+         DefaultFileMetadataProvider
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        rows_per_file: Optional[int],
+        file_sizes: List[Optional[int]],
+    ) -> BlockMetadata:
+        """Resolves and returns block metadata for the given file paths.
+
+        Args:
+            paths: The file paths to aggregate block metadata across. These
+                paths will always be a subset of those previously returned from
+                `expand_paths()`.
+            schema: The user-provided or inferred schema for the given file
+                paths, if any.
+            rows_per_file: The fixed number of rows per input file, or None.
+            file_sizes: Optional file size per input file previously returned
+                from `expand_paths()`, where `file_sizes[i]` holds the size of
+                the file at `paths[i]`.
+
+        Returns:
+            BlockMetadata aggregated across the given file paths.
+        """
+        raise NotImplementedError
+
+    def expand_paths(
+        self,
+        paths: List[str],
+        filesystem: Optional["pyarrow.fs.FileSystem"],
+    ) -> Tuple[List[str], List[Optional[int]]]:
+        """Expands all paths into concrete file paths by walking directories.
+
+         Also returns a sidecar of file sizes.
+
+        The input paths will be normalized for compatibility with the input
+        filesystem prior to invocation.
+
+         Args:
+             paths: A list of file and/or directory paths compatible with the
+                 given filesystem.
+             filesystem: The filesystem implementation that should be used for
+                 expanding all paths and reading their files.
+
+         Returns:
+             A tuple whose first item contains the list of file paths discovered,
+             and whose second item contains the size of each file. `None` may be
+             returned if a file size is either unknown or will be fetched later
+             by `_get_block_metadata()`, but the length of both lists must be
+             equal.
+        """
+        raise NotImplementedError
+
+
+class DefaultFileMetadataProvider(BaseFileMetadataProvider):
+    """Default metadata provider for FileBasedDatasource implementations that
+    reuse the base `prepare_read` method.
+
+    Calculates block size in bytes as the sum of its constituent file sizes,
+    and assumes a fixed number of rows per file.
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        rows_per_file: Optional[int],
+        file_sizes: List[Optional[int]],
+    ) -> BlockMetadata:
+        if rows_per_file is None:
+            num_rows = None
+        else:
+            num_rows = len(paths) * rows_per_file
+        return BlockMetadata(
+            num_rows=num_rows,
+            size_bytes=None if None in file_sizes else sum(file_sizes),
+            schema=schema,
+            input_files=paths,
+            exec_stats=None,
+        )  # Exec stats filled in later.
+
+    def expand_paths(
+        self,
+        paths: List[str],
+        filesystem: "pyarrow.fs.FileSystem",
+    ) -> Tuple[List[str], List[Optional[int]]]:
+        from pyarrow.fs import FileType
+
+        expanded_paths = []
+        file_infos = []
+        for path in paths:
+            file_info = filesystem.get_file_info(path)
+            if file_info.type == FileType.Directory:
+                paths, file_infos_ = _expand_directory(path, filesystem)
+                expanded_paths.extend(paths)
+                file_infos.extend(file_infos_)
+            elif file_info.type == FileType.File:
+                expanded_paths.append(path)
+                file_infos.append(file_info)
+            else:
+                raise FileNotFoundError(path)
+        file_sizes = [file_info.size for file_info in file_infos]
+        return expanded_paths, file_sizes
 
 
 @DeveloperAPI
@@ -111,22 +247,23 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """
 
     def prepare_read(
-            self,
-            parallelism: int,
-            paths: Union[str, List[str]],
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-            open_stream_args: Optional[Dict[str, Any]] = None,
-            _block_udf: Optional[Callable[[Block], Block]] = None,
-            **reader_args) -> List[ReadTask]:
-        """Creates and returns read tasks for a file-based datasource.
-        """
+        self,
+        parallelism: int,
+        paths: Union[str, List[str]],
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        # TODO(ekl) deprecate this once read fusion is available.
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        **reader_args,
+    ) -> List[ReadTask]:
+        """Creates and returns read tasks for a file-based datasource."""
         _check_pyarrow_version()
         import numpy as np
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        paths, file_infos = _expand_paths(paths, filesystem)
-        file_sizes = [file_info.size for file_info in file_infos]
+        paths, file_sizes = meta_provider.expand_paths(paths, filesystem)
 
         read_stream = self._read_stream
 
@@ -135,17 +272,46 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         if open_stream_args is None:
             open_stream_args = {}
 
-        def read_files(read_paths: List[str],
-                       fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]
-                       ) -> Iterable[Block]:
+        def read_files(
+            read_paths: List[str],
+            fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
+        ) -> Iterable[Block]:
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
             ctx = DatasetContext.get_current()
             output_buffer = BlockOutputBuffer(
-                block_udf=_block_udf,
-                target_max_block_size=ctx.target_max_block_size)
+                block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
+            )
             for read_path in read_paths:
+                compression = open_stream_args.pop("compression", None)
+                if compression is None:
+                    import pyarrow as pa
+
+                    try:
+                        # If no compression manually given, try to detect
+                        # compression codec from path.
+                        compression = pa.Codec.detect(read_path).name
+                    except (ValueError, TypeError):
+                        # Arrow's compression inference on the file path
+                        # doesn't work for Snappy, so we double-check ourselves.
+                        import pathlib
+
+                        suffix = pathlib.Path(read_path).suffix
+                        if suffix and suffix[1:] == "snappy":
+                            compression = "snappy"
+                        else:
+                            compression = None
+                if compression == "snappy":
+                    # Pass Snappy compression as a reader arg, so datasource subclasses
+                    # can manually handle streaming decompression in
+                    # self._read_stream().
+                    reader_args["compression"] = compression
+                    reader_args["filesystem"] = fs
+                elif compression is not None:
+                    # Non-Snappy compression, pass as open_input_stream() arg so Arrow
+                    # can take care of streaming decompression for us.
+                    open_stream_args["compression"] = compression
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         output_buffer.add_block(data)
@@ -157,23 +323,19 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         read_tasks = []
         for read_paths, file_sizes in zip(
-                np.array_split(paths, parallelism),
-                np.array_split(file_sizes, parallelism)):
+            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
+        ):
             if len(read_paths) <= 0:
                 continue
 
-            if self._rows_per_file() is None:
-                num_rows = None
-            else:
-                num_rows = len(read_paths) * self._rows_per_file()
-            meta = BlockMetadata(
-                num_rows=num_rows,
-                size_bytes=sum(file_sizes),
-                schema=schema,
-                input_files=read_paths)
+            meta = meta_provider(
+                read_paths,
+                schema,
+                rows_per_file=self._rows_per_file(),
+                file_sizes=file_sizes,
+            )
             read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(
-                    read_paths, filesystem), meta
+                lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
             )
             read_tasks.append(read_task)
 
@@ -183,36 +345,38 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """Returns the number of rows per file, or None if unknown."""
         return None
 
-    def _read_stream(self, f: "pyarrow.NativeFile", path: str,
-                     **reader_args) -> Iterator[Block]:
+    def _read_stream(
+        self, f: "pyarrow.NativeFile", path: str, **reader_args
+    ) -> Iterator[Block]:
         """Streaming read a single file, passing all kwargs to the reader.
 
         By default, delegates to self._read_file().
         """
         yield self._read_file(f, path, **reader_args)
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str,
-                   **reader_args) -> Block:
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _read_file().")
+            "Subclasses of FileBasedDatasource must implement _read_file()."
+        )
 
-    def do_write(self,
-                 blocks: List[ObjectRef[Block]],
-                 metadata: List[BlockMetadata],
-                 path: str,
-                 dataset_uuid: str,
-                 filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                 try_create_dir: bool = True,
-                 open_stream_args: Optional[Dict[str, Any]] = None,
-                 block_path_provider:
-                 BlockWritePathProvider = DefaultBlockWritePathProvider(),
-                 write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-                 _block_udf: Optional[Callable[[Block], Block]] = None,
-                 **write_args) -> List[ObjectRef[WriteResult]]:
+    def do_write(
+        self,
+        blocks: List[ObjectRef[Block]],
+        metadata: List[BlockMetadata],
+        path: str,
+        dataset_uuid: str,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        _block_udf: Optional[Callable[[Block], Block]] = None,
+        **write_args,
+    ) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
@@ -238,7 +402,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                     f,
                     BlockAccessor.for_block(block),
                     writer_args_fn=write_args_fn,
-                    **write_args)
+                    **write_args,
+                )
 
         write_block = cached_remote_fn(write_block)
 
@@ -253,23 +418,27 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 dataset_uuid=dataset_uuid,
                 block=block,
                 block_index=block_idx,
-                file_format=file_format)
+                file_format=file_format,
+            )
             write_task = write_block.remote(write_path, block)
             write_tasks.append(write_task)
 
         return write_tasks
 
-    def _write_block(self,
-                     f: "pyarrow.NativeFile",
-                     block: BlockAccessor,
-                     writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-                     **writer_args):
+    def _write_block(
+        self,
+        f: "pyarrow.NativeFile",
+        block: BlockAccessor,
+        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        **writer_args,
+    ):
         """Writes a block to a single file, passing all kwargs to the writer.
 
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _write_files().")
+            "Subclasses of FileBasedDatasource must implement _write_files()."
+        )
 
     def _file_format(self):
         """Returns the file format string, to be used as the file extension
@@ -278,7 +447,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _file_format().")
+            "Subclasses of FileBasedDatasource must implement _file_format()."
+        )
 
 
 # TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem and
@@ -286,8 +456,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
 
 def _resolve_paths_and_filesystem(
-        paths: Union[str, List[str]],
-        filesystem: "pyarrow.fs.FileSystem" = None,
+    paths: Union[str, List[str]],
+    filesystem: "pyarrow.fs.FileSystem" = None,
 ) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
     """
     Resolves and normalizes all provided paths, infers a filesystem from the
@@ -303,23 +473,27 @@ def _resolve_paths_and_filesystem(
             compatibility.
     """
     import pyarrow as pa
-    from pyarrow.fs import FileSystem, PyFileSystem, FSSpecHandler, \
-        _resolve_filesystem_and_path
+    from pyarrow.fs import (
+        FileSystem,
+        PyFileSystem,
+        FSSpecHandler,
+        _resolve_filesystem_and_path,
+    )
 
     if isinstance(paths, str):
         paths = [paths]
-    elif (not isinstance(paths, list)
-          or any(not isinstance(p, str) for p in paths)):
-        raise ValueError(
-            "paths must be a path string or a list of path strings.")
+    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
+        raise ValueError("paths must be a path string or a list of path strings.")
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
 
     if filesystem and not isinstance(filesystem, FileSystem):
-        err_msg = f"The filesystem passed must either conform to " \
-                  f"pyarrow.fs.FileSystem, or " \
-                  f"fsspec.spec.AbstractFileSystem. The provided " \
-                  f"filesystem was: {filesystem}"
+        err_msg = (
+            f"The filesystem passed must either conform to "
+            f"pyarrow.fs.FileSystem, or "
+            f"fsspec.spec.AbstractFileSystem. The provided "
+            f"filesystem was: {filesystem}"
+        )
         try:
             import fsspec
         except ModuleNotFoundError:
@@ -336,12 +510,13 @@ def _resolve_paths_and_filesystem(
     for path in paths:
         try:
             resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
-                path, filesystem)
+                path, filesystem
+            )
         except pa.lib.ArrowInvalid as e:
             if "Cannot parse URI" in str(e):
-                resolved_filesystem, resolved_path = (
-                    _resolve_filesystem_and_path(
-                        _encode_url(path), filesystem))
+                resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
+                    _encode_url(path), filesystem
+                )
                 resolved_path = _decode_url(resolved_path)
             else:
                 raise
@@ -355,44 +530,11 @@ def _resolve_paths_and_filesystem(
     return resolved_paths, filesystem
 
 
-def _expand_paths(paths: Union[str, List[str]],
-                  filesystem: "pyarrow.fs.FileSystem"):
-    """
-    Expands all provided paths into concrete file paths by walking directories.
-    Also returns a sidecar of file infos.
-
-    This should be used on the output of _resolve_paths_and_filesystem.
-
-    Args:
-        paths: A single file/directory path or a list of file/directory paths.
-            A list of paths can contain both files and directories. These paths
-            should be properly resolved, e.g. the paths returned from
-            _resolve_paths_and_filesystem.
-        filesystem: The filesystem implementation that should be used for
-            reading these files.
-    """
-    from pyarrow.fs import FileType
-
-    expanded_paths = []
-    file_infos = []
-    for path in paths:
-        file_info = filesystem.get_file_info(path)
-        if file_info.type == FileType.Directory:
-            paths, file_infos_ = _expand_directory(path, filesystem)
-            expanded_paths.extend(paths)
-            file_infos.extend(file_infos_)
-        elif file_info.type == FileType.File:
-            expanded_paths.append(path)
-            file_infos.append(file_info)
-        else:
-            raise FileNotFoundError(path)
-    return expanded_paths, file_infos
-
-
 def _expand_directory(
-        path: str,
-        filesystem: "pyarrow.fs.FileSystem",
-        exclude_prefixes: Optional[List[str]] = None) -> List[str]:
+    path: str,
+    filesystem: "pyarrow.fs.FileSystem",
+    exclude_prefixes: Optional[List[str]] = None,
+) -> List[str]:
     """
     Expand the provided directory path to a list of file paths.
 
@@ -411,6 +553,7 @@ def _expand_directory(
         exclude_prefixes = [".", "_"]
 
     from pyarrow.fs import FileSelector
+
     selector = FileSelector(path, recursive=True)
     files = filesystem.get_file_info(selector)
     base_path = selector.base_dir
@@ -421,7 +564,7 @@ def _expand_directory(
         file_path = file_.path
         if not file_path.startswith(base_path):
             continue
-        relative = file_path[len(base_path):]
+        relative = file_path[len(base_path) :]
         if any(relative.startswith(prefix) for prefix in exclude_prefixes):
             continue
         filtered_paths.append((file_path, file_))
@@ -453,6 +596,8 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
     # imported before deserialization. See #17085.
     import pyarrow as pa
+    import pyarrow.fs
+
     if isinstance(filesystem, pa.fs.S3FileSystem):
         return _S3FileSystemWrapper(filesystem)
     return filesystem
@@ -477,8 +622,22 @@ class _S3FileSystemWrapper:
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
 
 
-def _resolve_kwargs(kwargs_fn: Callable[[], Dict[str, Any]],
-                    **kwargs) -> Dict[str, Any]:
+def _wrap_arrow_serialization_workaround(kwargs: dict) -> dict:
+    if "filesystem" in kwargs:
+        kwargs["filesystem"] = _wrap_s3_serialization_workaround(kwargs["filesystem"])
+
+    return kwargs
+
+
+def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
+    if isinstance(kwargs.get("filesystem"), _S3FileSystemWrapper):
+        kwargs["filesystem"] = kwargs["filesystem"].unwrap()
+    return kwargs
+
+
+def _resolve_kwargs(
+    kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
+) -> Dict[str, Any]:
 
     if kwargs_fn:
         kwarg_overrides = kwargs_fn()

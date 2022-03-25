@@ -2,8 +2,10 @@ import random
 import unittest
 
 import gym
-from ray.rllib.env.wrappers.exception_wrapper import ResetOnExceptionWrapper, \
-    TooManyResetAttemptsException
+from ray.rllib.env.wrappers.exception_wrapper import (
+    ResetOnExceptionWrapper,
+    TooManyResetAttemptsException,
+)
 
 
 class TestResetOnExceptionWrapper(unittest.TestCase):
@@ -41,8 +43,9 @@ class TestResetOnExceptionWrapper(unittest.TestCase):
 
         env = VeryUnstableEnv()
         env = ResetOnExceptionWrapper(env)
-        self.assertRaises(TooManyResetAttemptsException,
-                          lambda: self._run_for_100_steps(env))
+        self.assertRaises(
+            TooManyResetAttemptsException, lambda: self._run_for_100_steps(env)
+        )
 
     @staticmethod
     def _run_for_100_steps(env):
@@ -54,4 +57,5 @@ class TestResetOnExceptionWrapper(unittest.TestCase):
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

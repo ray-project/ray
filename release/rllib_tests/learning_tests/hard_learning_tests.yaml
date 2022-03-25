@@ -1,4 +1,3 @@
-
 a2c-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: A2C
@@ -19,41 +18,44 @@ a2c-breakoutnoframeskip-v4:
             [20000000, 0.000000000001],
         ]
 
-# a3c-pongdeterministic-v4:
-#    env: PongDeterministic-v4
-#    run: A3C
-#    # Minimum reward and total ts (in given time_total_s) to pass this test.
-#    pass_criteria:
-#        episode_reward_mean: 18.0
-#        timesteps_total: 5000000
-#    stop:
-#        time_total_s: 3600
-#    config:
-#        ignore_worker_failures: true
-#        num_gpus: 0
-#        num_workers: 16
-#        rollout_fragment_length: 20
-#        vf_loss_coeff: 0.5
-#        entropy_coeff: 0.01
-#        gamma: 0.99
-#        grad_clip: 40.0
-#        lambda: 1.0
-#        lr: 0.0001
-#        observation_filter: NoFilter
-#        preprocessor_pref: rllib
-#        model:
-#            use_lstm: true
-#            conv_activation: elu
-#            dim: 42
-#            grayscale: true
-#            zero_mean: false
-#            # Reduced channel depth and kernel size from default.
-#            conv_filters: [
-#                [32, [3, 3], 2],
-#                [32, [3, 3], 2],
-#                [32, [3, 3], 2],
-#                [32, [3, 3], 2],
-#            ]
+a3c-pongdeterministic-v4:
+    env: PongDeterministic-v4
+    run: A3C
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 18.0
+        timesteps_total: 5000000
+    stop:
+        time_total_s: 3600
+    # TODO(sven, jungong): there seems to be a race condition between A3C
+    #    and torch, causing matrix shape mismatch error.
+    #    Fix and re-enable torch.
+    frameworks: ["tf"]
+    config:
+        num_gpus: 0
+        num_workers: 16
+        rollout_fragment_length: 20
+        vf_loss_coeff: 0.5
+        entropy_coeff: 0.01
+        gamma: 0.99
+        grad_clip: 40.0
+        lambda: 1.0
+        lr: 0.0001
+        observation_filter: NoFilter
+        preprocessor_pref: rllib
+        model:
+            use_lstm: true
+            conv_activation: elu
+            dim: 42
+            grayscale: true
+            zero_mean: false
+            # Reduced channel depth and kernel size from default.
+            conv_filters: [
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+                [32, [3, 3], 2],
+            ]
 
 apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
@@ -137,82 +139,82 @@ appo-pongnoframeskip-v4:
 #        observation_filter: NoFilter
 #        report_length: 3
 
-# TODO: (sven) Fix all BC-dependent learning tests for cont. actions.
-#  These seem quite hard to learn from the SAC-recorded HalfCheetahBulletEnv.
-# bc-halfcheetahbulletenv-v0:
-#    env: HalfCheetahBulletEnv-v0
-#    run: BC
-#    pass_criteria:
-#        episode_reward_mean: 400.0
-#        timesteps_total: 10000000
-#    stop:
-#        time_total_s: 3600
-#    config:
-#        # Use input produced by expert SAC algo.
-#        input: ["~/halfcheetah_expert_sac.zip"]
-#        actions_in_input_normalized: true
+bc-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: BC
+    pass_criteria:
+        evaluation/episode_reward_mean: 400.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 3600
+    config:
+        # Use input produced by expert SAC algo.
+        input: ["~/halfcheetah_expert_sac.zip"]
+        actions_in_input_normalized: true
 
-#        num_gpus: 1
+        num_gpus: 1
 
-#        model:
-#            fcnet_activation: relu
-#            fcnet_hiddens: [256, 256, 256]
+        model:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
 
-#        evaluation_num_workers: 1
-#        evaluation_interval: 3
-#        evaluation_config:
-#            input: sampler
+        evaluation_num_workers: 1
+        evaluation_interval: 3
+        evaluation_config:
+            input: sampler
+        always_attach_evaluation_results: True
 
-# cql-halfcheetahbulletenv-v0:
-#    env: HalfCheetahBulletEnv-v0
-#    run: CQL
-#    pass_criteria:
-#        episode_reward_mean: 400.0
-#        timesteps_total: 10000000
-#    stop:
-#        time_total_s: 3600
-#    config:
-#        # Use input produced by expert SAC algo.
-#        input: ["~/halfcheetah_expert_sac.zip"]
-#        actions_in_input_normalized: true
-#
-#        soft_horizon: False
-#        horizon: 1000
-#        Q_model:
-#            fcnet_activation: relu
-#            fcnet_hiddens: [256, 256, 256]
-#        policy_model:
-#            fcnet_activation: relu
-#            fcnet_hiddens: [256, 256, 256]
-#        tau: 0.005
-#        target_entropy: auto
-#        no_done_at_end: false
-#        n_step: 3
-#        rollout_fragment_length: 1
-#        prioritized_replay: false
-#        train_batch_size: 256
-#        target_network_update_freq: 0
-#        timesteps_per_iteration: 1000
-#        learning_starts: 256
-#        optimization:
-#            actor_learning_rate: 0.0001
-#            critic_learning_rate: 0.0003
-#            entropy_learning_rate: 0.0001
-#        num_workers: 0
-#        num_gpus: 1
-#        metrics_smoothing_episodes: 5
-#
-#        # CQL Configs
-#        min_q_weight: 5.0
-#        bc_iters: 20000
-#        temperature: 1.0
-#        num_actions: 10
-#        lagrangian: False
-#
-#        # Switch on online evaluation.
-#        evaluation_interval: 3
-#        evaluation_config:
-#            input: sampler
+cql-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: CQL
+    pass_criteria:
+        evaluation/episode_reward_mean: 400.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 3600
+    config:
+        # Use input produced by expert SAC algo.
+        input: ["~/halfcheetah_expert_sac.zip"]
+        actions_in_input_normalized: true
+
+        soft_horizon: False
+        horizon: 1000
+        Q_model:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
+        policy_model:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
+        tau: 0.005
+        target_entropy: auto
+        no_done_at_end: false
+        n_step: 3
+        rollout_fragment_length: 1
+        prioritized_replay: false
+        train_batch_size: 256
+        target_network_update_freq: 0
+        timesteps_per_iteration: 1000
+        learning_starts: 256
+        optimization:
+            actor_learning_rate: 0.0001
+            critic_learning_rate: 0.0003
+            entropy_learning_rate: 0.0001
+        num_workers: 0
+        num_gpus: 1
+        metrics_smoothing_episodes: 5
+
+        # CQL Configs
+        min_q_weight: 5.0
+        bc_iters: 20000
+        temperature: 1.0
+        num_actions: 10
+        lagrangian: False
+
+        # Switch on online evaluation.
+        evaluation_interval: 3
+        evaluation_config:
+            input: sampler
+        always_attach_evaluation_results: True
 
 ddpg-hopperbulletenv-v0:
     env: HopperBulletEnv-v0
@@ -363,31 +365,32 @@ impala-breakoutnoframeskip-v4:
         ]
         num_gpus: 1
 
-# marwil-halfcheetahbulletenv-v0:
-#    env: HalfCheetahBulletEnv-v0
-#    run: MARWIL
-#    pass_criteria:
-#        episode_reward_mean: 400.0
-#        timesteps_total: 10000000
-#    stop:
-#        time_total_s: 3600
-#    config:
-#        # Use input produced by expert SAC algo.
-#        input: ["~/halfcheetah_expert_sac.zip"]
-#        actions_in_input_normalized: true
-#        # Switch off input evaluation (data does not contain action probs).
-#        input_evaluation: []
+marwil-halfcheetahbulletenv-v0:
+    env: HalfCheetahBulletEnv-v0
+    run: MARWIL
+    pass_criteria:
+        evaluation/episode_reward_mean: 400.0
+        timesteps_total: 10000000
+    stop:
+        time_total_s: 3600
+    config:
+        # Use input produced by expert SAC algo.
+        input: ["~/halfcheetah_expert_sac.zip"]
+        actions_in_input_normalized: true
+        # Switch off input evaluation (data does not contain action probs).
+        input_evaluation: []
 
-#        num_gpus: 1
+        num_gpus: 1
 
-#        model:
-#            fcnet_activation: relu
-#            fcnet_hiddens: [256, 256, 256]
+        model:
+            fcnet_activation: relu
+            fcnet_hiddens: [256, 256, 256]
 
-#        evaluation_num_workers: 1
-#        evaluation_interval: 1
-#        evaluation_config:
-#            input: sampler
+        evaluation_num_workers: 1
+        evaluation_interval: 1
+        evaluation_config:
+            input: sampler
+        always_attach_evaluation_results: True
 
 ppo-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
@@ -453,6 +456,49 @@ sac-halfcheetahbulletenv-v0:
         num_workers: 0
         num_gpus: 1
         metrics_smoothing_episodes: 5
+
+slateq-interest-evolution-recsim-env:
+    env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
+    run: SlateQ
+    stop:
+        episode_reward_mean: 162.0
+        timesteps_total: 300000
+    config:
+        # RLlib/RecSim wrapper specific settings:
+        env_config:
+            # Env class specified above takes one `config` arg in its c'tor:
+            config:
+                # GPU support currently does not work for tensorflow. For the learning
+                # test for now, we'll use pytorch, and investigate why tensorflow is not working.
+                # One indication of the issue is that the loss inputs are not flattened from the
+                # original dictionary spaces.
+                framework: tf
+                # Each step, sample `num_candidates` documents using the env-internal
+                # document sampler model (a logic that creates n documents to select
+                # the slate from).
+                resample_documents: true
+                num_candidates: 50
+                # How many documents to recommend (out of `num_candidates`) each
+                # timestep?
+                slate_size: 2
+                # Should the action space be purely Discrete? Useful for algos that
+                # don't support MultiDiscrete (e.g. DQN or Bandits).
+                # SlateQ handles MultiDiscrete action spaces.
+                convert_to_discrete_action_space: false
+                seed: 0
+
+        num_gpus: 1
+
+        exploration_config:
+            warmup_timesteps: 20000
+            epsilon_timesteps: 70000
+
+        replay_buffer_config:
+            capacity: 500000
+
+        lr: 0.00025
+
+        metrics_num_episodes_for_smoothing: 200
 
 td3-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0

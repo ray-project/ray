@@ -26,6 +26,7 @@ class FaultInjectEnv(gym.Env):
 
     def __init__(self, config):
         self.env = gym.make("CartPole-v0")
+        self._skip_env_checking = True
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
         self.config = config
@@ -35,12 +36,22 @@ class FaultInjectEnv(gym.Env):
 
     def step(self, action):
         if self.config.worker_index in self.config["bad_indices"]:
-            raise ValueError("This is a simulated error from "
-                             f"worker-idx={self.config.worker_index}.")
+            raise ValueError(
+                "This is a simulated error from "
+                f"worker-idx={self.config.worker_index}."
+            )
         return self.env.step(action)
 
 
 class IgnoresWorkerFailure(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def do_test(self, alg, config, fn=None):
         fn = fn or self._do_test_fault_recover
         try:
@@ -90,17 +101,19 @@ class IgnoresWorkerFailure(unittest.TestCase):
 
     def test_async_replay(self):
         self.do_test(
-            "APEX", {
+            "APEX",
+            {
                 "timesteps_per_iteration": 1000,
                 "num_gpus": 0,
-                "min_iter_time_s": 1,
+                "min_time_s_per_reporting": 1,
                 "explore": False,
                 "learning_starts": 1000,
                 "target_network_update_freq": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
                 },
-            })
+            },
+        )
 
     def test_async_samples(self):
         self.do_test("IMPALA", {"num_gpus": 0})
@@ -110,12 +123,14 @@ class IgnoresWorkerFailure(unittest.TestCase):
 
     def test_multi_g_p_u(self):
         self.do_test(
-            "PPO", {
+            "PPO",
+            {
                 "num_sgd_iter": 1,
                 "train_batch_size": 10,
                 "rollout_fragment_length": 10,
                 "sgd_minibatch_size": 1,
-            })
+            },
+        )
 
     def test_sync_samples(self):
         self.do_test("PG", {"optimizer": {}})
@@ -127,4 +142,5 @@ class IgnoresWorkerFailure(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

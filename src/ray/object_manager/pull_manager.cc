@@ -15,15 +15,19 @@
 #include "ray/object_manager/pull_manager.h"
 
 #include "ray/common/common_protocol.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
 PullManager::PullManager(
-    NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
+    NodeID &self_node_id,
+    const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     const std::function<void(const ObjectID &)> cancel_pull_request,
+    const std::function<void(const ObjectID &)> fail_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
-    const std::function<double()> get_time, int pull_timeout_ms,
+    const std::function<double()> get_time_seconds,
+    int pull_timeout_ms,
     int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
     std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
@@ -32,11 +36,12 @@ PullManager::PullManager(
       send_pull_request_(send_pull_request),
       cancel_pull_request_(cancel_pull_request),
       restore_spilled_object_(restore_spilled_object),
-      get_time_(get_time),
+      get_time_seconds_(get_time_seconds),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
       pin_object_(pin_object),
       get_locally_spilled_object_url_(get_locally_spilled_object_url),
+      fail_pull_request_(fail_pull_request),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -79,7 +84,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       // The first pull request doesn't need to be special case. Instead we can just let
       // the retry timer fire immediately.
       it = object_pull_requests_
-               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_()))
+               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_seconds_()))
                .first;
     } else {
       if (it->second.object_size_set) {
@@ -183,7 +188,8 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
 }
 
 void PullManager::DeactivatePullBundleRequest(
-    const Queue &bundles, const Queue::iterator &request_it,
+    const Queue &bundles,
+    const Queue::iterator &request_it,
     uint64_t *highest_req_id_being_pulled,
     std::unordered_set<ObjectID> *objects_to_cancel) {
   for (const auto &ref : request_it->second.objects) {
@@ -220,8 +226,12 @@ void PullManager::DeactivatePullBundleRequest(
 }
 
 void PullManager::DeactivateUntilMarginAvailable(
-    const std::string &debug_name, Queue &bundles, int retain_min, int64_t quota_margin,
-    uint64_t *highest_id_for_bundle, std::unordered_set<ObjectID> *object_ids_to_cancel) {
+    const std::string &debug_name,
+    Queue &bundles,
+    int retain_min,
+    int64_t quota_margin,
+    uint64_t *highest_id_for_bundle,
+    std::unordered_set<ObjectID> *object_ids_to_cancel) {
   while (RemainingQuota() < quota_margin && *highest_id_for_bundle != 0) {
     if (num_active_bundles_ <= retain_min) {
       return;
@@ -231,8 +241,8 @@ void PullManager::DeactivateUntilMarginAvailable(
                    << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = bundles.find(*highest_id_for_bundle);
     RAY_CHECK(last_request_it != bundles.end());
-    DeactivatePullBundleRequest(bundles, last_request_it, highest_id_for_bundle,
-                                object_ids_to_cancel);
+    DeactivatePullBundleRequest(
+        bundles, last_request_it, highest_id_for_bundle, object_ids_to_cancel);
   }
 }
 
@@ -265,19 +275,25 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   while (get_requests_remaining) {
     int64_t margin_required =
         NextRequestBundleSize(get_request_bundles_, highest_get_req_id_being_pulled_);
-    DeactivateUntilMarginAvailable("task args request", task_argument_bundles_,
-                                   /*retain_min=*/0, /*quota_margin=*/margin_required,
+    DeactivateUntilMarginAvailable("task args request",
+                                   task_argument_bundles_,
+                                   /*retain_min=*/0,
+                                   /*quota_margin=*/margin_required,
                                    &highest_task_req_id_being_pulled_,
                                    &object_ids_to_cancel);
-    DeactivateUntilMarginAvailable("wait request", wait_request_bundles_,
-                                   /*retain_min=*/0, /*quota_margin=*/margin_required,
+    DeactivateUntilMarginAvailable("wait request",
+                                   wait_request_bundles_,
+                                   /*retain_min=*/0,
+                                   /*quota_margin=*/margin_required,
                                    &highest_wait_req_id_being_pulled_,
                                    &object_ids_to_cancel);
 
     // Activate the next get request unconditionally.
-    get_requests_remaining = ActivateNextPullBundleRequest(
-        get_request_bundles_, &highest_get_req_id_being_pulled_,
-        /*respect_quota=*/false, &objects_to_pull);
+    get_requests_remaining =
+        ActivateNextPullBundleRequest(get_request_bundles_,
+                                      &highest_get_req_id_being_pulled_,
+                                      /*respect_quota=*/false,
+                                      &objects_to_pull);
   }
 
   // Do the same but for wait requests (medium priority).
@@ -285,30 +301,41 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   while (wait_requests_remaining) {
     int64_t margin_required =
         NextRequestBundleSize(wait_request_bundles_, highest_wait_req_id_being_pulled_);
-    DeactivateUntilMarginAvailable("task args request", task_argument_bundles_,
-                                   /*retain_min=*/0, /*quota_margin=*/margin_required,
+    DeactivateUntilMarginAvailable("task args request",
+                                   task_argument_bundles_,
+                                   /*retain_min=*/0,
+                                   /*quota_margin=*/margin_required,
                                    &highest_task_req_id_being_pulled_,
                                    &object_ids_to_cancel);
 
     // Activate the next wait request if we have space.
-    wait_requests_remaining = ActivateNextPullBundleRequest(
-        wait_request_bundles_, &highest_wait_req_id_being_pulled_,
-        /*respect_quota=*/true, &objects_to_pull);
+    wait_requests_remaining =
+        ActivateNextPullBundleRequest(wait_request_bundles_,
+                                      &highest_wait_req_id_being_pulled_,
+                                      /*respect_quota=*/true,
+                                      &objects_to_pull);
   }
 
   // Do the same but for task arg requests (lowest priority).
   // allowed for task arg requests.
   while (ActivateNextPullBundleRequest(task_argument_bundles_,
                                        &highest_task_req_id_being_pulled_,
-                                       /*respect_quota=*/true, &objects_to_pull)) {
+                                       /*respect_quota=*/true,
+                                       &objects_to_pull)) {
   }
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
-  DeactivateUntilMarginAvailable(
-      "task args request", task_argument_bundles_, /*retain_min=*/1, /*quota_margin=*/0L,
-      &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
-  DeactivateUntilMarginAvailable("wait request", wait_request_bundles_, /*retain_min=*/1,
-                                 /*quota_margin=*/0L, &highest_wait_req_id_being_pulled_,
+  DeactivateUntilMarginAvailable("task args request",
+                                 task_argument_bundles_,
+                                 /*retain_min=*/1,
+                                 /*quota_margin=*/0L,
+                                 &highest_task_req_id_being_pulled_,
+                                 &object_ids_to_cancel);
+  DeactivateUntilMarginAvailable("wait request",
+                                 wait_request_bundles_,
+                                 /*retain_min=*/1,
+                                 /*quota_margin=*/0L,
+                                 &highest_wait_req_id_being_pulled_,
                                  &object_ids_to_cancel);
 
   // Call the cancellation callbacks outside of the lock.
@@ -351,8 +378,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   // If the pull request was being actively pulled, deactivate it now.
   if (bundle_it->first <= *highest_req_id_being_pulled) {
     std::unordered_set<ObjectID> object_ids_to_cancel;
-    DeactivatePullBundleRequest(*request_queue, bundle_it, highest_req_id_being_pulled,
-                                &object_ids_to_cancel);
+    DeactivatePullBundleRequest(
+        *request_queue, bundle_it, highest_req_id_being_pulled, &object_ids_to_cancel);
     for (const auto &obj_id : object_ids_to_cancel) {
       // Call the cancellation callback outside of the lock.
       cancel_pull_request_(obj_id);
@@ -386,7 +413,9 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
                                    const std::string &spilled_url,
-                                   const NodeID &spilled_node_id, size_t object_size) {
+                                   const NodeID &spilled_node_id,
+                                   bool pending_creation,
+                                   size_t object_size) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
@@ -399,7 +428,15 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
+  it->second.pending_object_creation = pending_creation;
   if (!it->second.object_size_set) {
+    // TODO(swang): This assumes that the object size will be set correctly on
+    // the first location update and that locations will soon appear after the
+    // object size has been set. This can block later requests whose metadata
+    // has already arrived. Instead, we should keep track of which pull
+    // requests are still waiting for object metadata and queue requests in the
+    // order that their metadata appears.
+    // See https://github.com/ray-project/ray/issues/13689.
     it->second.object_size = object_size;
     it->second.object_size_set = true;
     for (auto &bundle_request_id : it->second.bundle_request_ids) {
@@ -448,7 +485,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   RAY_CHECK(it != object_pull_requests_.end());
   auto &request = it->second;
-  if (request.next_pull_time > get_time_()) {
+  if (request.next_pull_time > get_time_seconds_()) {
     return;
   }
 
@@ -471,19 +508,34 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
-    restore_spilled_object_(object_id, direct_restore_url,
-                            [object_id](const ray::Status &status) {
-                              if (!status.ok()) {
-                                RAY_LOG(ERROR) << "Object restore for " << object_id
-                                               << " failed, will retry later: " << status;
-                              }
-                            });
+    restore_spilled_object_(
+        object_id, direct_restore_url, [object_id](const ray::Status &status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Object restore for " << object_id
+                           << " failed, will retry later: " << status;
+          }
+        });
     return;
   }
 
-  // TODO(swang): Store an error if this times out and the object is not
-  // pending reconstruction.
-  RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
+  if (request.expiration_time_seconds == 0) {
+    RAY_LOG(WARNING) << "Object neither in memory nor external storage "
+                     << object_id.Hex();
+    request.expiration_time_seconds =
+        get_time_seconds_() +
+        RayConfig::instance().fetch_fail_timeout_milliseconds() / 1e3;
+  } else if (request.pending_object_creation) {
+    // Object is pending creation, wait for the task that creates the object to
+    // finish.
+    RAY_LOG(INFO) << "Object pending creation " << object_id.Hex();
+    request.expiration_time_seconds =
+        get_time_seconds_() +
+        RayConfig::instance().fetch_fail_timeout_milliseconds() / 1e3;
+  } else if (get_time_seconds_() > request.expiration_time_seconds) {
+    // Object has no locations and is not being reconstructed by its owner.
+    fail_pull_request_(object_id);
+    request.expiration_time_seconds = 0;
+  }
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
@@ -546,14 +598,15 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it != object_pull_requests_.end()) {
-    it->second.next_pull_time = get_time_();
+    it->second.next_pull_time = get_time_seconds_();
     it->second.num_retries = 0;
+    it->second.expiration_time_seconds = 0;
   }
 }
 
 void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
                                    const ObjectID &object_id) {
-  const auto time = get_time_();
+  const auto time = get_time_seconds_();
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
   if (retry_timeout_len > max_timeout_) {
@@ -568,6 +621,8 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
 
   // Bound the retry time at 10 * 1024 seconds.
   request.num_retries = std::min(request.num_retries + 1, 10);
+  // Also reset the fetch expiration timer, since we just tried this pull.
+  request.expiration_time_seconds = 0;
 }
 
 void PullManager::Tick() {
@@ -709,6 +764,26 @@ int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
   }
 
   return bytes_needed_calculated;
+}
+
+void PullManager::RecordMetrics() const {
+  absl::MutexLock lock(&active_objects_mu_);
+  ray::stats::STATS_pull_manager_usage_bytes.Record(num_bytes_available_, "Available");
+  ray::stats::STATS_pull_manager_usage_bytes.Record(num_bytes_being_pulled_,
+                                                    "BeingPulled");
+  ray::stats::STATS_pull_manager_usage_bytes.Record(pinned_objects_size_, "Pinned");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(get_request_bundles_.size(),
+                                                          "Get");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(wait_request_bundles_.size(),
+                                                          "Wait");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(task_argument_bundles_.size(),
+                                                          "TaskArgs");
+  ray::stats::STATS_pull_manager_requests.Record(object_pull_requests_.size(), "Queued");
+  ray::stats::STATS_pull_manager_requests.Record(active_object_pull_requests_.size(),
+                                                 "Active");
+  ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
+  ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
+  ray::stats::STATS_pull_manager_retries_total.Record(num_retries_total_);
 }
 
 std::string PullManager::DebugString() const {

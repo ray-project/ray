@@ -1,12 +1,2 @@
-Pygments==2.3.1
-setuptools==41.0.1
-docutils==0.15
-mock==1.0.1
-pillow==8.3.2
-alabaster>=0.7,<0.8,!=0.7.5
-commonmark==0.8.1
-recommonmark==0.5.0
-sphinx==3.0.4
-readthedocs-sphinx-ext<1.1
-sphinx-book-theme==0.0.42
-sphinx-sitemap==2.2.0
+# CI requirements: this is the file buildkite needs.
+-r requirements-doc.txt

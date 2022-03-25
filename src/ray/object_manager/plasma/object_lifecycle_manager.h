@@ -42,7 +42,8 @@ class IObjectLifecycleManager {
   ///   - nullptr and error message, including ObjectExists/OutOfMemory
   /// TODO(scv119): use RAII instead of pointer for returned object.
   virtual std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
-      const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
+      const ray::ObjectInfo &object_info,
+      plasma::flatbuf::ObjectSource source,
       bool fallback_allocator) = 0;
 
   /// Get object by id.
@@ -103,7 +104,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
                          ray::DeleteObjectCallback delete_object_callback);
 
   std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
-      const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
+      const ray::ObjectInfo &object_info,
+      plasma::flatbuf::ObjectSource source,
       bool fallback_allocator) override;
 
   const LocalObject *GetObject(const ObjectID &object_id) const override;
@@ -136,6 +138,8 @@ class ObjectLifecycleManager : public IObjectLifecycleManager {
   int64_t GetNumBytesUnsealed() const;
 
   int64_t GetNumObjectsUnsealed() const;
+
+  void RecordMetrics() const;
 
   void GetDebugDump(std::stringstream &buffer) const;
 

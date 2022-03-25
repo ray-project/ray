@@ -89,7 +89,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q setuptools_scm==3.1.0
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.15
+    $PIP_CMD install -q numpy=="$NUMPY_VERSION" cython==0.29.26
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in __init__.py.

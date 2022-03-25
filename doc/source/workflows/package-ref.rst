@@ -1,5 +1,5 @@
-Workflows API Reference
-=======================
+Ray Workflows API
+=================
 
 Core API
 ---------
@@ -21,5 +21,6 @@ Management API
 .. autofunction:: ray.workflow.list_all
 .. autofunction:: ray.workflow.get_status
 .. autofunction:: ray.workflow.get_output
+.. autofunction:: ray.workflow.get_metadata
 .. autofunction:: ray.workflow.get_actor
 .. autofunction:: ray.workflow.cancel

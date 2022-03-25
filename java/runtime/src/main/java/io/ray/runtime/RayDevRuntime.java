@@ -2,12 +2,15 @@ package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
+import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
+import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
@@ -83,6 +86,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
+  public GcsClient getGcsClient() {
+    throw new UnsupportedOperationException("Ray doesn't have gcs client in local mode.");
+  }
+
+  @Override
   public Object getAsyncContext() {
     return new AsyncContext(((LocalModeWorkerContext) workerContext).getCurrentTask());
   }
@@ -98,6 +106,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
   @Override
   public Map<String, List<ResourceValue>> getAvailableResourceIds() {
     throw new UnsupportedOperationException("Ray doesn't support get resources ids in local mode.");
+  }
+
+  @Override
+  List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId) {
+    return null;
   }
 
   @Override

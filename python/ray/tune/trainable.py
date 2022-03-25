@@ -8,19 +8,35 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Optional, Union, Callable
+from typing import Any, Dict, Optional, Union, Callable, List
 import uuid
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.cloud import TrialCheckpoint
 from ray.tune.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
-    DEBUG_METRICS, DEFAULT_RESULTS_DIR, HOSTNAME, NODE_IP, PID,
-    SHOULD_CHECKPOINT, TIME_THIS_ITER_S, TIME_TOTAL_S, TIMESTEPS_THIS_ITER,
-    DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL,
-    TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_ID, TRIAL_INFO, STDOUT_FILE,
-    STDERR_FILE)
+    DEBUG_METRICS,
+    DEFAULT_RESULTS_DIR,
+    HOSTNAME,
+    NODE_IP,
+    PID,
+    SHOULD_CHECKPOINT,
+    TIME_THIS_ITER_S,
+    TIME_TOTAL_S,
+    TIMESTEPS_THIS_ITER,
+    DONE,
+    TIMESTEPS_TOTAL,
+    EPISODES_THIS_ITER,
+    EPISODES_TOTAL,
+    TRAINING_ITERATION,
+    RESULT_DUPLICATE,
+    TRIAL_ID,
+    TRIAL_INFO,
+    STDOUT_FILE,
+    STDERR_FILE,
+)
 from ray.tune.sync_client import get_sync_client, get_cloud_sync_client
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -55,19 +71,29 @@ class Trainable:
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
-    directory of this process to ``self.logdir``.
+    directory of this process to ``self.logdir``. This is designed so that
+    different trials that run on the same physical node won't accidently
+    write to the same location and overstep each other.
+
+    If you want to know the orginal working directory path on the driver node,
+    you can do so through env variable "TUNE_ORIG_WORKING_DIR".
+    It is advised that you access this path for read only purposes and you
+    need to make sure that the path exists on the remote nodes.
 
     This class supports checkpointing to and restoring from remote storage.
 
 
     """
+
     _sync_function_tpl = None
 
-    def __init__(self,
-                 config: Dict[str, Any] = None,
-                 logger_creator: Callable[[Dict[str, Any]], Logger] = None,
-                 remote_checkpoint_dir: Optional[str] = None,
-                 sync_function_tpl: Optional[str] = None):
+    def __init__(
+        self,
+        config: Dict[str, Any] = None,
+        logger_creator: Callable[[Dict[str, Any]], Logger] = None,
+        remote_checkpoint_dir: Optional[str] = None,
+        sync_function_tpl: Optional[str] = None,
+    ):
         """Initialize an Trainable.
 
         Sets up logging and points ``self.logdir`` to a directory in which
@@ -77,12 +103,14 @@ class Trainable:
         ``__init__()`` directly.
 
         Args:
-            config (dict): Trainable-specific configuration data. By default
+            config: Trainable-specific configuration data. By default
                 will be saved as ``self.config``.
-            logger_creator (func): Function that creates a ray.tune.Logger
+            logger_creator: Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
-            remote_checkpoint_dir (str): Upload directory (S3 or GS path).
-            sync_function_tpl (str): Sync function template to use. Defaults
+            remote_checkpoint_dir: Upload directory (S3 or GS path).
+                This is **per trial** directory,
+                which is different from **per checkpoint** directory.
+            sync_function_tpl: Sync function template to use. Defaults
               to `cls._sync_function` (which defaults to `None`).
         """
 
@@ -121,11 +149,15 @@ class Trainable:
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
         if setup_time > SETUP_TIME_THRESHOLD:
-            logger.info("Trainable.setup took {:.3f} seconds. If your "
-                        "trainable is slow to initialize, consider setting "
-                        "reuse_actors=True to reduce actor creation "
-                        "overheads.".format(setup_time))
+            logger.info(
+                "Trainable.setup took {:.3f} seconds. If your "
+                "trainable is slow to initialize, consider setting "
+                "reuse_actors=True to reduce actor creation "
+                "overheads.".format(setup_time)
+            )
         log_sys_usage = self.config.get("log_sys_usage", False)
+        self._start_time = start_time
+        self._warmup_time = None
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
@@ -141,17 +173,20 @@ class Trainable:
 
     def _create_storage_client(self):
         """Returns a storage client."""
-        return get_sync_client(
-            self.sync_function_tpl) or get_cloud_sync_client(
-                self.remote_checkpoint_dir)
+        return get_sync_client(self.sync_function_tpl) or get_cloud_sync_client(
+            self.remote_checkpoint_dir
+        )
 
     def _storage_path(self, local_path):
+        """Converts a `local_path` to be based off of
+        `self.remote_checkpoint_dir`."""
         rel_local_path = os.path.relpath(local_path, self.logdir)
         return os.path.join(self.remote_checkpoint_dir, rel_local_path)
 
     @classmethod
-    def default_resource_request(cls, config: Dict[str, Any]) -> \
-            Union[Resources, PlacementGroupFactory]:
+    def default_resource_request(
+        cls, config: Dict[str, Any]
+    ) -> Union[Resources, PlacementGroupFactory]:
         """Provides a static resource requirement for the given configuration.
 
         This can be overridden by sub-classes to set the correct trial resource
@@ -174,11 +209,11 @@ class Trainable:
         return None
 
     @classmethod
-    def resource_help(cls, config):
+    def resource_help(cls, config: Dict):
         """Returns a help string for configuring this trainable's resources.
 
         Args:
-            config (dict): The Trainer's config dict.
+            config: The Trainer's config dict.
         """
         return ""
 
@@ -186,10 +221,12 @@ class Trainable:
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
 
-    def get_auto_filled_metrics(self,
-                                now: Optional[datetime] = None,
-                                time_this_iter: Optional[float] = None,
-                                debug_metrics_only: bool = False) -> dict:
+    def get_auto_filled_metrics(
+        self,
+        now: Optional[datetime] = None,
+        time_this_iter: Optional[float] = None,
+        debug_metrics_only: bool = False,
+    ) -> dict:
         """Return a dict with metrics auto-filled by the trainable.
 
         If ``debug_metrics_only`` is True, only metrics that don't
@@ -211,13 +248,11 @@ class Trainable:
             "config": self.config,
             "time_since_restore": self._time_since_restore,
             "timesteps_since_restore": self._timesteps_since_restore,
-            "iterations_since_restore": self._iterations_since_restore
+            "iterations_since_restore": self._iterations_since_restore,
+            "warmup_time": self._warmup_time,
         }
         if debug_metrics_only:
-            autofilled = {
-                k: v
-                for k, v in autofilled.items() if k in DEBUG_METRICS
-            }
+            autofilled = {k: v for k, v in autofilled.items() if k in DEBUG_METRICS}
         return autofilled
 
     def is_actor(self):
@@ -228,9 +263,7 @@ class Trainable:
             # If global_worker is not instantiated, we're not in an actor
             return False
 
-    def train_buffered(self,
-                       buffer_time_s: float,
-                       max_buffer_length: int = 1000):
+    def train_buffered(self, buffer_time_s: float, max_buffer_length: int = 1000):
         """Runs multiple iterations of training.
 
         Calls ``train()`` internally. Collects and combines multiple results.
@@ -241,10 +274,10 @@ class Trainable:
         block until at least one result is received.
 
         Args:
-            buffer_time_s (float): Maximum time to buffer. The next result
+            buffer_time_s: Maximum time to buffer. The next result
                 received after this amount of time has passed will return
                 the whole buffer.
-            max_buffer_length (int): Maximum number of results to buffer.
+            max_buffer_length: Maximum number of results to buffer.
 
         """
         results = []
@@ -310,6 +343,8 @@ class Trainable:
         Returns:
             A dict that describes training progress.
         """
+        if self._warmup_time is None:
+            self._warmup_time = time.time() - self._start_time
         start = time.time()
         result = self.step()
         assert isinstance(result, dict), "step() needs to return a dict."
@@ -380,7 +415,7 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir=None):
+    def save(self, checkpoint_dir: Optional[str] = None) -> str:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -390,31 +425,41 @@ class Trainable:
         storage.
 
         Args:
-            checkpoint_dir (str): Optional dir to place the checkpoint.
+            checkpoint_dir: Optional dir to place the checkpoint.
 
         Returns:
-            str: Checkpoint path or prefix that may be passed to restore().
+            str: path that points to xxx.pkl file.
+
+        Note the return path should match up with what is expected of
+        `restore()`.
         """
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
-            checkpoint_dir or self.logdir, index=self.iteration)
+            checkpoint_dir or self.logdir, index=self.iteration
+        )
         checkpoint = self.save_checkpoint(checkpoint_dir)
         trainable_state = self.get_state()
         checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint,
-            parent_dir=checkpoint_dir,
-            trainable_state=trainable_state)
+            checkpoint, parent_dir=checkpoint_dir, trainable_state=trainable_state
+        )
+
+        self._postprocess_checkpoint(checkpoint_dir)
 
         # Maybe sync to cloud
-        self._maybe_save_to_cloud()
+        self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_path
 
-    def _maybe_save_to_cloud(self):
+    def _postprocess_checkpoint(self, checkpoint_path: str):
+        """Run extra postprocessing before the checkpoint is saved to cloud."""
+        pass
+
+    def _maybe_save_to_cloud(self, checkpoint_dir):
         # Derived classes like the FunctionRunner might call this
         if self.uses_cloud_checkpointing:
-            self.storage_client.sync_up(self.logdir,
-                                        self.remote_checkpoint_dir)
-            self.storage_client.wait()
+            self.storage_client.sync_up(
+                checkpoint_dir, self._storage_path(checkpoint_dir)
+            )
+            self.storage_client.wait_or_retry()
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -436,14 +481,36 @@ class Trainable:
 
         These checkpoints are returned from calls to save().
 
-        Subclasses should override ``_restore()`` instead to restore state.
+        Subclasses should override ``load_checkpoint()`` instead to
+        restore state.
         This method restores additional metadata saved with the checkpoint.
+
+        `checkpoint_path` should match with the return from ``save()``.
+
+        `checkpoint_path` can be
+        `~/ray_results/exp/MyTrainable_abc/
+        checkpoint_00000/checkpoint`. Or,
+        `~/ray_results/exp/MyTrainable_abc/checkpoint_00000`.
+
+        `self.logdir` should generally be corresponding to `checkpoint_path`,
+        for example, `~/ray_results/exp/MyTrainable_abc`.
+
+        `self.remote_checkpoint_dir` in this case, is something like,
+        `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
         """
-        # Maybe sync from cloud
         if self.uses_cloud_checkpointing:
-            self.storage_client.sync_down(self.remote_checkpoint_dir,
-                                          self.logdir)
-            self.storage_client.wait()
+            rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
+                self.logdir, checkpoint_path
+            )
+            self.storage_client.sync_down(
+                os.path.join(self.remote_checkpoint_dir, rel_checkpoint_dir),
+                os.path.join(self.logdir, rel_checkpoint_dir),
+            )
+            self.storage_client.wait_or_retry()
+
+        # Ensure TrialCheckpoints are converted
+        if isinstance(checkpoint_path, TrialCheckpoint):
+            checkpoint_path = checkpoint_path.local_path
 
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
@@ -464,8 +531,9 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored on %s from checkpoint: %s",
-                    self.get_current_ip(), checkpoint_path)
+        logger.info(
+            "Restored on %s from checkpoint: %s", self.get_current_ip(), checkpoint_path
+        )
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
@@ -484,12 +552,16 @@ class Trainable:
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
 
-    def delete_checkpoint(self, checkpoint_path):
+    def delete_checkpoint(self, checkpoint_path: str):
         """Deletes local copy of checkpoint.
 
         Args:
-            checkpoint_path (str): Path to checkpoint.
+            checkpoint_path: Path to checkpoint.
         """
+        # Ensure TrialCheckpoints are converted
+        if isinstance(checkpoint_path, TrialCheckpoint):
+            checkpoint_path = checkpoint_path.local_path
+
         try:
             checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         except FileNotFoundError:
@@ -497,25 +569,29 @@ class Trainable:
             # trial was rescheduled to another worker.
             logger.debug(
                 f"Local checkpoint not found during garbage collection: "
-                f"{self.trial_id} - {checkpoint_path}")
+                f"{self.trial_id} - {checkpoint_path}"
+            )
             return
         else:
             if self.uses_cloud_checkpointing:
                 self.storage_client.delete(self._storage_path(checkpoint_dir))
+                self.storage_client.wait_or_retry()
 
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
 
-    def export_model(self, export_formats, export_dir=None):
+    def export_model(
+        self, export_formats: Union[List[str], str], export_dir: Optional[str] = None
+    ):
         """Exports model based on export_formats.
 
         Subclasses should override _export_model() to actually
         export model to local directory.
 
         Args:
-            export_formats (Union[list,str]): Format or list of (str) formats
+            export_formats: Format or list of (str) formats
                 that should be exported.
-            export_dir (str): Optional dir to place the exported model.
+            export_dir: Optional dir to place the exported model.
                 Defaults to self.logdir.
 
         Returns:
@@ -544,8 +620,10 @@ class Trainable:
             logger.debug("Logger reset.")
             self._create_logger(new_config.copy(), logger_creator)
         else:
-            logger.debug("Did not reset logger. Got: "
-                         f"trainable.reset(logger_creator={logger_creator}).")
+            logger.debug(
+                "Did not reset logger. Got: "
+                f"trainable.reset(logger_creator={logger_creator})."
+            )
 
         stdout_file = new_config.pop(STDOUT_FILE, None)
         stderr_file = new_config.pop(STDERR_FILE, None)
@@ -570,7 +648,7 @@ class Trainable:
 
         return True
 
-    def reset_config(self, new_config):
+    def reset_config(self, new_config: Dict):
         """Resets configuration without restarting the trial.
 
         This method is optional, but can be implemented to speed up algorithms
@@ -578,7 +656,7 @@ class Trainable:
         experiments with reuse_actors=True.
 
         Args:
-            new_config (dict): Updated hyperparameter configuration
+            new_config: Updated hyperparameter configuration
                 for the trainable.
 
         Returns:
@@ -586,35 +664,16 @@ class Trainable:
         """
         return False
 
-    def _update_resources(
-            self, new_resources: Union[PlacementGroupFactory, Resources]):
-        """Internal version of ``update_resources``."""
-        self._trial_info.trial_resources = new_resources
-        return self.update_resources(new_resources)
-
-    def update_resources(
-            self, new_resources: Union[PlacementGroupFactory, Resources]):
-        """Fires whenever Trainable resources are changed.
-
-        This method will be called before the checkpoint is loaded.
-
-        The current trial resources can also be obtained through
-        ``self.trial_resources``.
-
-        Args:
-            new_resources (PlacementGroupFactory|Resources):
-                Updated resources. Will be a PlacementGroupFactory if
-                trial uses placement groups and Resources otherwise.
-        """
-        return
-
     def _create_logger(
-            self,
-            config: Dict[str, Any],
-            logger_creator: Callable[[Dict[str, Any]], Logger] = None):
+        self,
+        config: Dict[str, Any],
+        logger_creator: Callable[[Dict[str, Any]], Logger] = None,
+    ):
         """Create logger from logger creator.
 
         Sets _logdir and _result_logger.
+
+        `_logdir` is the **per trial** directory for the Trainable.
         """
         if logger_creator:
             self._result_logger = logger_creator(config)
@@ -625,34 +684,33 @@ class Trainable:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             ray._private.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
             self._logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(
-                config, self._logdir, loggers=None)
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR
+            )
+            self._result_logger = UnifiedLogger(config, self._logdir, loggers=None)
 
     def _open_logfiles(self, stdout_file, stderr_file):
         """Create loggers. Open stdout and stderr logfiles."""
         if stdout_file:
-            stdout_path = os.path.expanduser(
-                os.path.join(self._logdir, stdout_file))
+            stdout_path = os.path.expanduser(os.path.join(self._logdir, stdout_file))
             self._stdout_fp = open(stdout_path, "a+")
             self._stdout_stream = Tee(sys.stdout, self._stdout_fp)
             self._stdout_context = redirect_stdout(self._stdout_stream)
             self._stdout_context.__enter__()
 
         if stderr_file:
-            stderr_path = os.path.expanduser(
-                os.path.join(self._logdir, stderr_file))
+            stderr_path = os.path.expanduser(os.path.join(self._logdir, stderr_file))
             self._stderr_fp = open(stderr_path, "a+")
             self._stderr_stream = Tee(sys.stderr, self._stderr_fp)
             self._stderr_context = redirect_stderr(self._stderr_stream)
             self._stderr_context.__enter__()
 
             # Add logging handler to root ray logger
-            formatter = logging.Formatter("[%(levelname)s %(asctime)s] "
-                                          "%(filename)s: %(lineno)d  "
-                                          "%(message)s")
-            self._stderr_logging_handler = logging.StreamHandler(
-                self._stderr_fp)
+            formatter = logging.Formatter(
+                "[%(levelname)s %(asctime)s] "
+                "%(filename)s: %(lineno)d  "
+                "%(message)s"
+            )
+            self._stderr_logging_handler = logging.StreamHandler(self._stderr_fp)
             self._stderr_logging_handler.setFormatter(formatter)
             ray.logger.addHandler(self._stderr_logging_handler)
 
@@ -786,10 +844,11 @@ class Trainable:
         if self._implements_method("_train") and log_once("_train"):
             raise DeprecationWarning(
                 "Trainable._train is deprecated and is now removed. Override "
-                "Trainable.step instead.")
+                "Trainable.step instead."
+            )
         raise NotImplementedError
 
-    def save_checkpoint(self, tmp_checkpoint_dir):
+    def save_checkpoint(self, tmp_checkpoint_dir: str):
         """Subclasses should override this to implement ``save()``.
 
         Warning:
@@ -800,13 +859,15 @@ class Trainable:
         ``Trainable.load_checkpoint`` errors before execution.
 
         >>> from ray.tune.utils import validate_save_restore
-        >>> validate_save_restore(MyTrainableClass)
-        >>> validate_save_restore(MyTrainableClass, use_object_store=True)
+        >>> MyTrainableClass = ... # doctest: +SKIP
+        >>> validate_save_restore(MyTrainableClass) # doctest: +SKIP
+        >>> validate_save_restore( # doctest: +SKIP
+        ...     MyTrainableClass, use_object_store=True)
 
         .. versionadded:: 0.8.7
 
         Args:
-            tmp_checkpoint_dir (str): The directory where the checkpoint
+            tmp_checkpoint_dir: The directory where the checkpoint
                 file must be stored. In a Tune run, if the trial is paused,
                 the provided path may be temporary and moved.
 
@@ -816,22 +877,23 @@ class Trainable:
             be automatically serialized by Tune and
             passed to ``Trainable.load_checkpoint()``.
 
-        Examples:
-            >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1"))
+        Example:
+            >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
+            >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1")) # doctest: +SKIP
             "/tmp/checkpoint_1/my_checkpoint_file"
-            >>> print(trainable2.save_checkpoint("/tmp/checkpoint_2"))
+            >>> print(trainable2.save_checkpoint("/tmp/checkpoint_2")) # doctest: +SKIP
             {"some": "data"}
-
-            >>> trainable.save_checkpoint("/tmp/bad_example")
+            >>> trainable.save_checkpoint("/tmp/bad_example") # doctest: +SKIP
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
         if self._implements_method("_save") and log_once("_save"):
             raise DeprecationWarning(
                 "Trainable._save is deprecated and is now removed. Override "
-                "Trainable.save_checkpoint instead.")
+                "Trainable.save_checkpoint instead."
+            )
         raise NotImplementedError
 
-    def load_checkpoint(self, checkpoint):
+    def load_checkpoint(self, checkpoint: Union[Dict, str]):
         """Subclasses should override this to implement restore().
 
         Warning:
@@ -849,26 +911,26 @@ class Trainable:
 
         See the example below.
 
-        .. code-block:: python
-
-            class Example(Trainable):
-                def save_checkpoint(self, checkpoint_path):
-                    print(checkpoint_path)
-                    return os.path.join(checkpoint_path, "my/check/point")
-
-                def load_checkpoint(self, checkpoint):
-                    print(checkpoint)
-
+        Example:
+            >>> from ray.tune.trainable import Trainable
+            >>> class Example(Trainable):
+            ...    def save_checkpoint(self, checkpoint_path):
+            ...        print(checkpoint_path)
+            ...        return os.path.join(checkpoint_path, "my/check/point")
+            ...    def load_checkpoint(self, checkpoint):
+            ...        print(checkpoint)
             >>> trainer = Example()
-            >>> obj = trainer.save_to_object()  # This is used when PAUSED.
+            >>> # This is used when PAUSED.
+            >>> obj = trainer.save_to_object() # doctest: +SKIP
             <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
-            >>> trainer.restore_from_object(obj)  # Note the different prefix.
+            >>> # Note the different prefix.
+            >>> trainer.restore_from_object(obj) # doctest: +SKIP
             <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
 
         .. versionadded:: 0.8.7
 
         Args:
-            checkpoint (str|dict): If dict, the return value is as
+            checkpoint: If dict, the return value is as
                 returned by `save_checkpoint`. If a string, then it is
                 a checkpoint path that may have a different prefix than that
                 returned by `save_checkpoint`. The directory structure
@@ -877,26 +939,28 @@ class Trainable:
         if self._implements_method("_restore") and log_once("_restore"):
             raise DeprecationWarning(
                 "Trainable._restore is deprecated and is now removed. "
-                "Override Trainable.load_checkpoint instead.")
+                "Override Trainable.load_checkpoint instead."
+            )
         raise NotImplementedError
 
-    def setup(self, config):
+    def setup(self, config: Dict):
         """Subclasses should override this for custom initialization.
 
         .. versionadded:: 0.8.7
 
         Args:
-            config (dict): Hyperparameters and other configs given.
+            config: Hyperparameters and other configs given.
                 Copy of `self.config`.
 
         """
         if self._implements_method("_setup") and log_once("_setup"):
             raise DeprecationWarning(
                 "Trainable._setup is deprecated and is now removed. Override "
-                "Trainable.setup instead.")
+                "Trainable.setup instead."
+            )
         pass
 
-    def log_result(self, result):
+    def log_result(self, result: Dict):
         """Subclasses can optionally override this to customize logging.
 
         The logging here is done on the worker process rather than
@@ -906,12 +970,13 @@ class Trainable:
         .. versionadded:: 0.8.7
 
         Args:
-            result (dict): Training result returned by step().
+            result: Training result returned by step().
         """
         if self._implements_method("_log_result") and log_once("_log_result"):
             raise DeprecationWarning(
                 "Trainable._log_result is deprecated and is now removed. "
-                "Override Trainable.log_result instead.")
+                "Override Trainable.log_result instead."
+            )
         self._result_logger.on_result(result)
 
     def cleanup(self):
@@ -928,15 +993,16 @@ class Trainable:
         if self._implements_method("_stop") and log_once("_stop"):
             raise DeprecationWarning(
                 "Trainable._stop is deprecated and is now removed. Override "
-                "Trainable.cleanup instead.")
+                "Trainable.cleanup instead."
+            )
         pass
 
-    def _export_model(self, export_formats, export_dir):
+    def _export_model(self, export_formats: List[str], export_dir: str):
         """Subclasses should override this to export model.
 
         Args:
-            export_formats (list): List of formats that should be exported.
-            export_dir (str): Directory to place exported models.
+            export_formats: List of formats that should be exported.
+            export_dir: Directory to place exported models.
 
         Return:
             A dict that maps ExportFormats to successfully exported models.

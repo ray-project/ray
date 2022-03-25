@@ -10,41 +10,44 @@ from torch.nn import DataParallel
 from torchvision import models
 import numpy as np
 import os
+
 # Apex
 from apex import amp
 
 # Benchmark settings
 parser = argparse.ArgumentParser(
     description="PyTorch DP Synthetic Benchmark",
-    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+)
 
-parser.add_argument(
-    "--model", type=str, default="resnet50", help="model to benchmark")
-parser.add_argument(
-    "--batch-size", type=int, default=32, help="input batch size")
+parser.add_argument("--model", type=str, default="resnet50", help="model to benchmark")
+parser.add_argument("--batch-size", type=int, default=32, help="input batch size")
 parser.add_argument("--num-gpus", type=int, default=1, help="number of gpus")
 
 parser.add_argument(
     "--num-warmup-batches",
     type=int,
     default=10,
-    help="number of warm-up batches that don\"t count towards benchmark")
+    help='number of warm-up batches that don"t count towards benchmark',
+)
 parser.add_argument(
     "--num-batches-per-iter",
     type=int,
     default=10,
-    help="number of batches per benchmark iteration")
+    help="number of batches per benchmark iteration",
+)
 parser.add_argument(
-    "--num-iters", type=int, default=10, help="number of benchmark iterations")
+    "--num-iters", type=int, default=10, help="number of benchmark iterations"
+)
 parser.add_argument(
     "--amp-fp16",
     action="store_true",
     default=False,
-    help="Enables FP16 training with Apex.")
+    help="Enables FP16 training with Apex.",
+)
 
 args = parser.parse_args()
-os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-    str(i) for i in range(args.num_gpus))
+os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in range(args.num_gpus))
 
 cudnn.benchmark = True
 
@@ -95,8 +98,12 @@ for x in range(args.num_iters):
 img_sec_mean = np.mean(img_secs)
 img_sec_conf = 1.96 * np.std(img_secs)
 print(f"Img/sec per {device}: {img_sec_mean:.1f} +-{img_sec_conf:.1f}")
-print("Total img/sec on %d %s(s): %.1f +-%.1f" % (
-    args.num_gpus,
-    device,
-    img_sec_mean,  # we do NOT scale this by number workers
-    args.num_gpus * img_sec_conf))
+print(
+    "Total img/sec on %d %s(s): %.1f +-%.1f"
+    % (
+        args.num_gpus,
+        device,
+        img_sec_mean,  # we do NOT scale this by number workers
+        args.num_gpus * img_sec_conf,
+    )
+)

@@ -33,8 +33,13 @@ class NeuralNetwork(nn.Module):
         super(NeuralNetwork, self).__init__()
         self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
-            nn.Linear(28 * 28, 512), nn.ReLU(), nn.Linear(512, 512), nn.ReLU(),
-            nn.Linear(512, 10), nn.ReLU())
+            nn.Linear(28 * 28, 512),
+            nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, 10),
+            nn.ReLU(),
+        )
 
     def forward(self, x):
         x = self.flatten(x)
@@ -43,7 +48,8 @@ class NeuralNetwork(nn.Module):
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset)
+    size = len(dataloader.dataset) // train.world_size()
+    model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Compute prediction error
         pred = model(X)
@@ -60,7 +66,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
 
 
 def validate_epoch(dataloader, model, loss_fn):
-    size = len(dataloader.dataset)
+    size = len(dataloader.dataset) // train.world_size()
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -71,9 +77,11 @@ def validate_epoch(dataloader, model, loss_fn):
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
     test_loss /= num_batches
     correct /= size
-    print(f"Test Error: \n "
-          f"Accuracy: {(100 * correct):>0.1f}%, "
-          f"Avg loss: {test_loss:>8f} \n")
+    print(
+        f"Test Error: \n "
+        f"Accuracy: {(100 * correct):>0.1f}%, "
+        f"Avg loss: {test_loss:>8f} \n"
+    )
     return test_loss
 
 
@@ -82,9 +90,11 @@ def train_func(config: Dict):
     lr = config["lr"]
     epochs = config["epochs"]
 
+    worker_batch_size = batch_size // train.world_size()
+
     # Create data loaders.
-    train_dataloader = DataLoader(training_data, batch_size=batch_size)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+    train_dataloader = DataLoader(training_data, batch_size=worker_batch_size)
+    test_dataloader = DataLoader(test_data, batch_size=worker_batch_size)
 
     train_dataloader = train.torch.prepare_data_loader(train_dataloader)
     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
@@ -108,17 +118,13 @@ def train_func(config: Dict):
 
 
 def train_fashion_mnist(num_workers=2, use_gpu=False):
-    trainer = Trainer(
-        backend="torch", num_workers=num_workers, use_gpu=use_gpu)
+    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
     result = trainer.run(
         train_func=train_func,
-        config={
-            "lr": 1e-3,
-            "batch_size": 64,
-            "epochs": 4
-        },
-        callbacks=[JsonLoggerCallback()])
+        config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
+        callbacks=[JsonLoggerCallback()],
+    )
     trainer.shutdown()
     print(f"Loss results: {result}")
 
@@ -126,33 +132,22 @@ def train_fashion_mnist(num_workers=2, use_gpu=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
         default=2,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Enables GPU training")
-    parser.add_argument(
-        "--smoke-test",
-        action="store_true",
-        default=False,
-        help="Finish quickly for testing.")
+        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+    )
 
     args, _ = parser.parse_known_args()
 
     import ray
 
-    if args.smoke_test:
-        ray.init(num_cpus=2)
-    else:
-        ray.init(address=args.address)
+    ray.init(address=args.address)
     train_fashion_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)

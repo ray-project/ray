@@ -3,10 +3,11 @@ import logging
 import aiohttp.web
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class LogHead(dashboard_utils.DashboardHeadModule):
@@ -18,10 +19,8 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         self._proxy_session = aiohttp.ClientSession(auto_decompress=False)
         log_utils.register_mimetypes()
         routes.static("/logs", self._dashboard_head.log_dir, show_index=True)
-        GlobalSignals.node_info_fetched.append(
-            self.insert_log_url_to_node_info)
-        GlobalSignals.node_summary_fetched.append(
-            self.insert_log_url_to_node_info)
+        GlobalSignals.node_info_fetched.append(self.insert_log_url_to_node_info)
+        GlobalSignals.node_summary_fetched.append(self.insert_log_url_to_node_info)
 
     async def insert_log_url_to_node_info(self, node_info):
         node_id = node_info.get("raylet", {}).get("nodeId")
@@ -32,7 +31,8 @@ class LogHead(dashboard_utils.DashboardHeadModule):
             return
         agent_http_port, _ = agent_port
         log_url = self.LOG_URL_TEMPLATE.format(
-            ip=node_info.get("ip"), port=agent_http_port)
+            ip=node_info.get("ip"), port=agent_http_port
+        )
         node_info["logUrl"] = log_url
 
     @routes.get("/log_index")
@@ -42,15 +42,16 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         for node_id, ports in DataSource.agents.items():
             ip = DataSource.node_id_to_ip[node_id]
             agent_ips.append(ip)
-            url_list.append(
-                self.LOG_URL_TEMPLATE.format(ip=ip, port=str(ports[0])))
+            url_list.append(self.LOG_URL_TEMPLATE.format(ip=ip, port=str(ports[0])))
         if self._dashboard_head.ip not in agent_ips:
             url_list.append(
                 self.LOG_URL_TEMPLATE.format(
-                    ip=self._dashboard_head.ip,
-                    port=self._dashboard_head.http_port))
+                    ip=self._dashboard_head.ip, port=self._dashboard_head.http_port
+                )
+            )
         return aiohttp.web.Response(
-            text=self._directory_as_html(url_list), content_type="text/html")
+            text=self._directory_as_html(url_list), content_type="text/html"
+        )
 
     @routes.get("/log_proxy")
     async def get_log_from_proxy(self, req) -> aiohttp.web.StreamResponse:
@@ -59,9 +60,11 @@ class LogHead(dashboard_utils.DashboardHeadModule):
             raise Exception("url is None.")
         body = await req.read()
         async with self._proxy_session.request(
-                req.method, url, data=body, headers=req.headers) as r:
+            req.method, url, data=body, headers=req.headers
+        ) as r:
             sr = aiohttp.web.StreamResponse(
-                status=r.status, reason=r.reason, headers=req.headers)
+                status=r.status, reason=r.reason, headers=req.headers
+            )
             sr.content_length = r.content_length
             sr.content_type = r.content_type
             sr.charset = r.charset
@@ -93,3 +96,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         pass
+
+    @staticmethod
+    def is_minimal_module():
+        return False

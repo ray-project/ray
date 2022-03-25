@@ -34,16 +34,20 @@ def run_http_benchmark(url, num_queries):
 @click.option("--num-queries", type=int, required=False)
 @click.option("--num-replicas", type=int, default=1)
 @click.option("--max-concurrent-queries", type=int, required=False)
-def main(num_replicas: int, num_queries: Optional[int],
-         max_concurrent_queries: Optional[int], blocking: bool):
+def main(
+    num_replicas: int,
+    num_queries: Optional[int],
+    max_concurrent_queries: Optional[int],
+    blocking: bool,
+):
     serve.start()
 
     print(f"num_replicas={num_replicas}")
     print(f"max_concurrent_queries={max_concurrent_queries}")
 
     @serve.deployment(
-        num_replicas=num_replicas,
-        max_concurrent_queries=max_concurrent_queries)
+        num_replicas=num_replicas, max_concurrent_queries=max_concurrent_queries
+    )
     def noop(_):
         return "hello world"
 

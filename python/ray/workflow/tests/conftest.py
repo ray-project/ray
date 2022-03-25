@@ -19,9 +19,11 @@ def aws_credentials():
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
-    yield (f"aws_access_key_id={os.environ['AWS_ACCESS_KEY_ID']}&"
-           f"aws_secret_access_key={os.environ['AWS_SECRET_ACCESS_KEY']}&"
-           f"aws_session_token={os.environ['AWS_SESSION_TOKEN']}")
+    yield (
+        f"aws_access_key_id={os.environ['AWS_ACCESS_KEY_ID']}&"
+        f"aws_secret_access_key={os.environ['AWS_SECRET_ACCESS_KEY']}&"
+        f"aws_session_token={os.environ['AWS_SESSION_TOKEN']}"
+    )
     os.environ = old_env
 
 
@@ -43,15 +45,15 @@ def filesystem_storage():
 
 @contextmanager
 def s3_storage():
-    with moto_s3_server() as s3_server, aws_credentials() as aws_cred, mock_s3(
-    ):
-        client = boto3.client(
-            "s3", region_name="us-west-2", endpoint_url=s3_server)
+    with moto_s3_server() as s3_server, aws_credentials() as aws_cred, mock_s3():
+        client = boto3.client("s3", region_name="us-west-2", endpoint_url=s3_server)
         bucket = str(uuid.uuid1())
         client.create_bucket(Bucket=bucket)
-        url = (f"s3://{bucket}/workflow"
-               f"?region_name=us-west-2&endpoint_url={s3_server}"
-               f"&{aws_cred}")
+        url = (
+            f"s3://{bucket}/workflow"
+            f"?region_name=us-west-2&endpoint_url={s3_server}"
+            f"&{aws_cred}"
+        )
         yield url
 
 
@@ -89,7 +91,8 @@ def _workflow_start(storage_url, shared, **kwargs):
 def workflow_start_regular(storage_type, request):
     param = getattr(request, "param", {})
     with storage(storage_type) as storage_url, _workflow_start(
-            storage_url, False, **param) as res:
+        storage_url, False, **param
+    ) as res:
         yield res
 
 
@@ -104,7 +107,8 @@ def reset_workflow():
 def workflow_start_regular_shared(storage_type, request):
     param = getattr(request, "param", {})
     with storage(storage_type) as storage_url, _workflow_start(
-            storage_url, True, **param) as res:
+        storage_url, True, **param
+    ) as res:
         yield res
 
 

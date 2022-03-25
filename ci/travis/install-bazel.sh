@@ -144,6 +144,9 @@ EOF
       cat <<EOF >> ~/.bazelrc
 build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
 EOF
+      if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then
+        echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+      fi
     fi
 
   else

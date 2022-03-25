@@ -98,7 +98,7 @@ setup_commands:
     - git clone https://github.com/ray-project/ray || true
     - ray/ci/travis/install-bazel.sh
     - cd ray/python/ray/dashboard/client; npm ci; npm run build
-    - pip install boto3==1.4.8 cython==0.29.0 aiohttp grpcio psutil setproctitle
+    - pip install boto3==1.4.8 cython==0.29.26 aiohttp grpcio psutil setproctitle
     - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.

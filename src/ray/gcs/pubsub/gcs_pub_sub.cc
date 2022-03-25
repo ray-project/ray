@@ -19,8 +19,10 @@
 namespace ray {
 namespace gcs {
 
-Status GcsPubSub::Publish(std::string_view channel, const std::string &id,
-                          const std::string &data, const StatusCallback &done) {
+Status GcsPubSub::Publish(std::string_view channel,
+                          const std::string &id,
+                          const std::string &data,
+                          const StatusCallback &done) {
   rpc::PubSubMessage message;
   message.set_id(id);
   message.set_data(data);
@@ -35,12 +37,15 @@ Status GcsPubSub::Publish(std::string_view channel, const std::string &id,
       GenChannelPattern(channel, id), message.SerializeAsString(), on_done);
 }
 
-Status GcsPubSub::Subscribe(std::string_view channel, const std::string &id,
-                            const Callback &subscribe, const StatusCallback &done) {
+Status GcsPubSub::Subscribe(std::string_view channel,
+                            const std::string &id,
+                            const Callback &subscribe,
+                            const StatusCallback &done) {
   return SubscribeInternal(channel, subscribe, done, id);
 }
 
-Status GcsPubSub::SubscribeAll(std::string_view channel, const Callback &subscribe,
+Status GcsPubSub::SubscribeAll(std::string_view channel,
+                               const Callback &subscribe,
                                const StatusCallback &done) {
   return SubscribeInternal(channel, subscribe, done, std::nullopt);
 }
@@ -60,7 +65,8 @@ Status GcsPubSub::Unsubscribe(std::string_view channel_name, const std::string &
 }
 
 Status GcsPubSub::SubscribeInternal(std::string_view channel_name,
-                                    const Callback &subscribe, const StatusCallback &done,
+                                    const Callback &subscribe,
+                                    const StatusCallback &done,
                                     const std::optional<std::string_view> &id) {
   std::string pattern = GenChannelPattern(channel_name, id);
 
@@ -93,7 +99,10 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
         ray::gcs::RedisCallbackManager::instance().AllocateCallbackIndex();
     const auto &command_done_callback = command.done_callback;
     const auto &command_subscribe_callback = command.subscribe_callback;
-    auto callback = [this, channel_key, command_done_callback, command_subscribe_callback,
+    auto callback = [this,
+                     channel_key,
+                     command_done_callback,
+                     command_subscribe_callback,
                      callback_index](std::shared_ptr<CallbackReply> reply) {
       if (reply->IsNil()) {
         return;
@@ -146,11 +155,11 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
     };
 
     if (command.is_sub_or_unsub_all) {
-      status = redis_client_->GetPrimaryContext()->PSubscribeAsync(channel_key, callback,
-                                                                   callback_index);
+      status = redis_client_->GetPrimaryContext()->PSubscribeAsync(
+          channel_key, callback, callback_index);
     } else {
-      status = redis_client_->GetPrimaryContext()->SubscribeAsync(channel_key, callback,
-                                                                  callback_index);
+      status = redis_client_->GetPrimaryContext()->SubscribeAsync(
+          channel_key, callback, callback_index);
     }
     channel.pending_reply = true;
     channel.command_queue.pop_front();
@@ -205,7 +214,8 @@ std::string GcsPubSub::DebugString() const {
   return stream.str();
 }
 
-Status GcsPublisher::PublishActor(const ActorID &id, const rpc::ActorTableData &message,
+Status GcsPublisher::PublishActor(const ActorID &id,
+                                  const rpc::ActorTableData &message,
                                   const StatusCallback &done) {
   if (publisher_ != nullptr) {
     rpc::PubMessage msg;
@@ -221,7 +231,8 @@ Status GcsPublisher::PublishActor(const ActorID &id, const rpc::ActorTableData &
   return pubsub_->Publish(ACTOR_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
-Status GcsPublisher::PublishJob(const JobID &id, const rpc::JobTableData &message,
+Status GcsPublisher::PublishJob(const JobID &id,
+                                const rpc::JobTableData &message,
                                 const StatusCallback &done) {
   if (publisher_ != nullptr) {
     rpc::PubMessage msg;
@@ -237,7 +248,8 @@ Status GcsPublisher::PublishJob(const JobID &id, const rpc::JobTableData &messag
   return pubsub_->Publish(JOB_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
-Status GcsPublisher::PublishNodeInfo(const NodeID &id, const rpc::GcsNodeInfo &message,
+Status GcsPublisher::PublishNodeInfo(const NodeID &id,
+                                     const rpc::GcsNodeInfo &message,
                                      const StatusCallback &done) {
   if (publisher_ != nullptr) {
     rpc::PubMessage msg;
@@ -267,8 +279,8 @@ Status GcsPublisher::PublishNodeResource(const NodeID &id,
     }
     return Status::OK();
   }
-  return pubsub_->Publish(NODE_RESOURCE_CHANNEL, id.Hex(), message.SerializeAsString(),
-                          done);
+  return pubsub_->Publish(
+      NODE_RESOURCE_CHANNEL, id.Hex(), message.SerializeAsString(), done);
 }
 
 Status GcsPublisher::PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
@@ -291,12 +303,6 @@ Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
     return Status::OK();
   }
   return pubsub_->Publish(WORKER_CHANNEL, id.Hex(), message.SerializeAsString(), done);
-}
-
-Status GcsPublisher::PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData &message,
-                                      const StatusCallback &done) {
-  return pubsub_->Publish(TASK_LEASE_CHANNEL, id.Hex(), message.SerializeAsString(),
-                          done);
 }
 
 Status GcsPublisher::PublishError(const std::string &id,
@@ -334,12 +340,13 @@ Status GcsSubscriber::SubscribeAllJobs(
       const JobID id = JobID::FromBinary(msg.key_id());
       subscribe(id, msg.job_message());
     };
-    // TODO: Improve error handling, e.g. try to resubscribe automatically.
+    // TODO(mwtian): Improve error handling, e.g. try to resubscribe automatically.
     auto subscription_failure_callback = [](const std::string &, const Status &status) {
       RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
     };
     if (!subscriber_->SubscribeChannel(
-            std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_JOB_CHANNEL,
+            std::make_unique<rpc::SubMessage>(),
+            rpc::ChannelType::GCS_JOB_CHANNEL,
             gcs_address_,
             [done](Status status) {
               if (done != nullptr) {
@@ -365,7 +372,8 @@ Status GcsSubscriber::SubscribeAllJobs(
 }
 
 Status GcsSubscriber::SubscribeActor(
-    const ActorID &id, const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const ActorID &id,
+    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
@@ -382,14 +390,17 @@ Status GcsSubscriber::SubscribeActor(
                        << " failed: " << status.ToString();
     };
     if (!subscriber_->Subscribe(
-            std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_ACTOR_CHANNEL,
-            gcs_address_, id.Binary(),
+            std::make_unique<rpc::SubMessage>(),
+            rpc::ChannelType::GCS_ACTOR_CHANNEL,
+            gcs_address_,
+            id.Binary(),
             [done](Status status) {
               if (done != nullptr) {
                 done(status);
               }
             },
-            std::move(subscription_callback), std::move(subscription_failure_callback))) {
+            std::move(subscription_callback),
+            std::move(subscription_failure_callback))) {
       return Status::ObjectExists(
           "Actor already subscribed. Please unsubscribe first if it needs to be "
           "resubscribed.");
@@ -408,8 +419,8 @@ Status GcsSubscriber::SubscribeActor(
 
 Status GcsSubscriber::UnsubscribeActor(const ActorID &id) {
   if (subscriber_ != nullptr) {
-    subscriber_->Unsubscribe(rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_,
-                             id.Binary());
+    subscriber_->Unsubscribe(
+        rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
     return Status::OK();
   }
   return pubsub_->Unsubscribe(ACTOR_CHANNEL, id.Hex());
@@ -417,8 +428,8 @@ Status GcsSubscriber::UnsubscribeActor(const ActorID &id) {
 
 bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
   if (subscriber_ != nullptr) {
-    return !subscriber_->IsSubscribed(rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_,
-                                      id.Binary());
+    return !subscriber_->IsSubscribed(
+        rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
   }
   return pubsub_->IsUnsubscribed(ACTOR_CHANNEL, id.Hex());
 }
@@ -437,7 +448,8 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
                        << status.ToString();
     };
     if (!subscriber_->SubscribeChannel(
-            std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+            std::make_unique<rpc::SubMessage>(),
+            rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
             gcs_address_,
             [done](Status status) {
               if (done != nullptr) {
@@ -477,7 +489,8 @@ Status GcsSubscriber::SubscribeAllNodeResources(
     };
     if (!subscriber_->SubscribeChannel(
             std::make_unique<rpc::SubMessage>(),
-            rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL, gcs_address_,
+            rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+            gcs_address_,
 
             [done](Status status) {
               if (done != nullptr) {
@@ -505,32 +518,17 @@ Status GcsSubscriber::SubscribeAllNodeResources(
 Status GcsSubscriber::SubscribeResourcesBatch(
     const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
     const StatusCallback &done) {
+  if (subscriber_ != nullptr) {
+    // This channel is not used.
+    // TODO (iycheng) remove legacy code
+    return Status::OK();
+  }
   auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
     rpc::ResourceUsageBatchData resources_batch_data;
     resources_batch_data.ParseFromString(data);
     subscribe(resources_batch_data);
   };
   return pubsub_->Subscribe(RESOURCES_BATCH_CHANNEL, "", on_subscribe, done);
-}
-
-Status GcsSubscriber::SubscribeTaskLease(
-    const TaskID &id,
-    const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
-    const StatusCallback &done) {
-  auto on_subscribe = [id, subscribe](const std::string &, const std::string &data) {
-    rpc::TaskLeaseData task_lease_data;
-    task_lease_data.ParseFromString(data);
-    subscribe(id, task_lease_data);
-  };
-  return pubsub_->Subscribe(TASK_LEASE_CHANNEL, id.Hex(), on_subscribe, done);
-}
-
-Status GcsSubscriber::UnsubscribeTaskLease(const TaskID &id) {
-  return pubsub_->Unsubscribe(TASK_LEASE_CHANNEL, id.Hex());
-}
-
-bool GcsSubscriber::IsTaskLeaseUnsubscribed(const TaskID &id) {
-  return pubsub_->IsUnsubscribed(TASK_LEASE_CHANNEL, id.Hex());
 }
 
 Status GcsSubscriber::SubscribeAllWorkerFailures(
@@ -547,7 +545,8 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
     };
     if (!subscriber_->SubscribeChannel(
             std::make_unique<rpc::SubMessage>(),
-            rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL, gcs_address_,
+            rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+            gcs_address_,
             /*subscribe_done_callback=*/
             [done](Status status) {
               if (done != nullptr) {

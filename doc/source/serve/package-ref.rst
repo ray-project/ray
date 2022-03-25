@@ -1,5 +1,5 @@
-Serve API Reference
-===================
+Ray Serve API
+=============
 
 Core APIs
 ---------
@@ -27,10 +27,3 @@ ServeHandle API
 Batching Requests
 -----------------
 .. autofunction:: ray.serve.batch(max_batch_size=10, batch_wait_timeout_s=0.0)
-
-Serve Pipeline API
-------------------
-
-.. autoclass:: ray.serve.pipeline.PipelineStep
-
-.. autoclass:: ray.serve.pipeline.ExecutionMode

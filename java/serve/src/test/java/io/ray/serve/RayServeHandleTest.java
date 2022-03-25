@@ -6,6 +6,8 @@ import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
 import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.util.CommonUtil;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,7 +20,9 @@ public class RayServeHandleTest {
 
     try {
       String deploymentName = "RayServeHandleTest";
-      String controllerName = deploymentName + "_controller";
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
@@ -26,6 +30,12 @@ public class RayServeHandleTest {
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
+
+      // Set ReplicaContext
+      Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.getReplicaContext()
+          .setRayServeConfig(
+              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
 
       // Replica
       DeploymentConfig deploymentConfig =
@@ -47,7 +57,7 @@ public class RayServeHandleTest {
                   deploymentInfo,
                   replicaTag,
                   controllerName,
-                  (RayServeConfig) null)
+                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());

@@ -12,7 +12,10 @@ from ray.tune.utils import merge_dicts
 from ray.util.data.examples.mlp_identity_torch import make_train_operator
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.examples.train_example import (
-    model_creator, optimizer_creator, data_creator)
+    model_creator,
+    optimizer_creator,
+    data_creator,
+)
 from ray.util.sgd.torch.training_operator import TrainingOperator
 from ray.util.sgd.utils import BATCH_COUNT
 
@@ -40,13 +43,13 @@ def ray_start_4_cpus():
 
 
 Operator = TrainingOperator.from_creators(
-    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
+    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss
+)
 
 
 @pytest.mark.parametrize("num_workers", [2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
-def test_tune_custom_train(ray_start_4_cpus, num_workers,
-                           use_local):  # noqa: F811
+def test_tune_custom_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
     def custom_train_func(trainer, info):
         train_stats = trainer.train(profile=True)
         val_stats = trainer.validate(profile=True)
@@ -61,17 +64,13 @@ def test_tune_custom_train(ray_start_4_cpus, num_workers,
             "use_gpu": False,
             "backend": "gloo",
             "use_local": use_local,
-            "config": {
-                "batch_size": 512,
-                "lr": 0.001
-            }
-        })
+            "config": {"batch_size": 512, "lr": 0.001},
+        }
+    )
 
     analysis = tune.run(
-        TorchTrainable,
-        num_samples=2,
-        stop={"training_iteration": 2},
-        verbose=1)
+        TorchTrainable, num_samples=2, stop={"training_iteration": 2}, verbose=1
+    )
 
     # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():
@@ -108,8 +107,7 @@ def test_multi_input_model(ray_start_2_cpus, use_local):
                 self.z = torch.tensor(a * (x + y) + 2 * b, dtype=torch.float32)
 
             def __getitem__(self, index):
-                return (self.x[index, None], self.y[index, None],
-                        self.z[index, None])
+                return (self.x[index, None], self.y[index, None], self.z[index, None])
 
             def __len__(self):
                 return len(self.x)
@@ -125,10 +123,12 @@ def test_multi_input_model(ray_start_2_cpus, use_local):
         model_creator,
         optimizer_creator,
         data_creator,
-        loss_creator=lambda config: nn.MSELoss())
+        loss_creator=lambda config: nn.MSELoss(),
+    )
 
     trainer = TorchTrainer(
-        training_operator_cls=Operator, num_workers=1, use_local=use_local)
+        training_operator_cls=Operator, num_workers=1, use_local=use_local
+    )
 
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
@@ -150,7 +150,8 @@ def test_torch_dataset(ray_start_4_cpus, use_local):
         num_workers=2,
         use_local=use_local,
         add_dist_sampler=False,
-        config={"batch_size": 32})
+        config={"batch_size": 32},
+    )
     for i in range(10):
         trainer.train(num_steps=100)
 

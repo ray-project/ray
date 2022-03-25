@@ -11,8 +11,6 @@ from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.tests.test_object_spilling import is_dir_empty, assert_no_thrashing
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
 def test_delete_objects(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
@@ -25,7 +23,8 @@ def test_delete_objects(object_spilling_config, shutdown_only):
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
-        })
+        },
+    )
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
 
@@ -40,13 +39,10 @@ def test_delete_objects(object_spilling_config, shutdown_only):
     del replay_buffer
     del ref
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on Windows.")
-def test_delete_objects_delete_while_creating(object_spilling_config,
-                                              shutdown_only):
+def test_delete_objects_delete_while_creating(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
 
@@ -58,7 +54,8 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
-        })
+        },
+    )
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
 
@@ -81,13 +78,11 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
     del replay_buffer
     del ref
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on Windows.")
-def test_delete_objects_on_worker_failure(object_spilling_config,
-                                          shutdown_only):
+@pytest.mark.skipif(platform.system() in ["Windows"], reason="Failing on Windows.")
+def test_delete_objects_on_worker_failure(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
 
@@ -99,7 +94,8 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
-        })
+        },
+    )
 
     arr = np.random.rand(1024 * 1024)  # 8 MB data
 
@@ -143,13 +139,15 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
 
     # After all, make sure all objects are deleted upon worker failures.
     wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on Windows and MacOS.")
-def test_delete_objects_multi_node(multi_node_object_spilling_config,
-                                   ray_start_cluster):
+    platform.system() in ["Windows"], reason="Failing on Windows and MacOS."
+)
+def test_delete_objects_multi_node(
+    multi_node_object_spilling_config, ray_start_cluster
+):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = multi_node_object_spilling_config
 
@@ -164,7 +162,8 @@ def test_delete_objects_multi_node(multi_node_object_spilling_config,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
-        })
+        },
+    )
     ray.init(address=cluster.address)
     # Add 2 worker nodes.
     for _ in range(2):
@@ -216,10 +215,9 @@ def test_delete_objects_multi_node(multi_node_object_spilling_config,
     assert_no_thrashing(cluster.address)
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Flaky on Windows.")
-def test_fusion_objects(object_spilling_config, shutdown_only):
+def test_fusion_objects(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    object_spilling_config, temp_folder = object_spilling_config
+    object_spilling_config, temp_folder = fs_only_object_spilling_config
     min_spilling_size = 10 * 1024 * 1024
     address = ray.init(
         object_store_memory=75 * 1024 * 1024,
@@ -229,7 +227,8 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": min_spilling_size,
-        })
+        },
+    )
     replay_buffer = []
     solution_buffer = []
     buffer_length = 100
@@ -265,12 +264,10 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
         if file_size >= min_spilling_size:
             is_test_passing = True
     assert is_test_passing
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
 # https://github.com/ray-project/ray/issues/12912
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
 def test_release_resource(object_spilling_config, shutdown_only):
     object_spilling_config, temp_folder = object_spilling_config
     address = ray.init(
@@ -280,7 +277,8 @@ def test_release_resource(object_spilling_config, shutdown_only):
             "max_io_workers": 1,
             "automatic_object_spilling_enabled": True,
             "object_spilling_config": object_spilling_config,
-        })
+        },
+    )
     plasma_obj = ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))
     for _ in range(5):
         ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))  # Force spilling
@@ -301,17 +299,16 @@ def test_release_resource(object_spilling_config, shutdown_only):
     canary = sneaky_task_tries_to_steal_released_resources.remote()
     ready, _ = ray.wait([canary], timeout=2)
     assert not ready
-    assert_no_thrashing(address["redis_address"])
+    assert_no_thrashing(address["address"])
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_objects_on_object_transfer(object_spilling_config,
-                                          ray_start_cluster):
+def test_spill_objects_on_object_transfer(
+    object_spilling_config, ray_start_cluster_enabled
+):
     object_spilling_config, _ = object_spilling_config
     # This test checks that objects get spilled to make room for transferred
     # objects.
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     object_size = int(1e7)
     num_objects = 10
     num_tasks = 10
@@ -324,14 +321,14 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
             "automatic_object_spilling_enabled": True,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 0
-        })
+            "min_spilling_size": 0,
+        },
+    )
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
     # Worker node can fit 1 tasks at a time.
-    cluster.add_node(
-        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.add_node(num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
     cluster.wait_for_nodes()
 
     @ray.remote
@@ -351,8 +348,7 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
     args = []
     for _ in range(num_tasks):
         task_args = [
-            ray.put(np.zeros(object_size, dtype=np.uint8))
-            for _ in range(num_objects)
+            ray.put(np.zeros(object_size, dtype=np.uint8)) for _ in range(num_objects)
         ]
         args.append(task_args)
 
@@ -364,8 +360,8 @@ def test_spill_objects_on_object_transfer(object_spilling_config,
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on "
-    "Windows and Mac.")
+    platform.system() in ["Windows"], reason="Failing on Windows and Mac."
+)
 def test_file_deleted_when_driver_exits(tmp_path, shutdown_only):
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
@@ -411,9 +407,7 @@ os.kill(os.getpid(), sig)
     # Run a driver with sigint.
     print("Sending sigint...")
     with pytest.raises(subprocess.CalledProcessError):
-        print(
-            run_string_as_driver(
-                driver.format(temp_dir=str(temp_folder), signum=2)))
+        print(run_string_as_driver(driver.format(temp_dir=str(temp_folder), signum=2)))
     wait_for_condition(lambda: is_dir_empty(temp_folder, append_path=""))
 
 

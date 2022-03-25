@@ -9,7 +9,7 @@ TuneGridSearchCV
 ----------------
 
 .. autoclass:: ray.tune.sklearn.TuneGridSearchCV
-	:inherited-members:
+	:members:
 
 .. _tunesearchcv-docs:
 
@@ -17,4 +17,4 @@ TuneSearchCV
 ------------
 
 .. autoclass:: ray.tune.sklearn.TuneSearchCV
-	:inherited-members:
+	:members:

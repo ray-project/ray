@@ -18,56 +18,59 @@ namespace ray {
 namespace core {
 
 GcsServerAddressUpdater::GcsServerAddressUpdater(
-    const std::string raylet_ip_address, const int port,
+    const std::string raylet_ip_address,
+    const int port,
     std::function<void(std::string, int)> update_func)
-    : update_func_(update_func) {
-  // Init updater thread and run its io service.
-  updater_thread_.reset(new std::thread([this] {
-    SetThreadName("gcs_address_updater");
-    /// The asio work to keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(updater_io_service_);
-    updater_io_service_.run();
-  }));
-  client_call_manager_.reset(new rpc::ClientCallManager(updater_io_service_));
-  auto grpc_client =
-      rpc::NodeManagerWorkerClient::make(raylet_ip_address, port, *client_call_manager_);
-  raylet_client_ = std::make_shared<raylet::RayletClient>(grpc_client);
-  // Init updater runner.
-  updater_runner_.reset(new PeriodicalRunner(updater_io_service_));
+    : client_call_manager_(updater_io_service_),
+      raylet_client_(rpc::NodeManagerWorkerClient::make(
+          raylet_ip_address, port, client_call_manager_)),
+      update_func_(update_func),
+      updater_runner_(updater_io_service_),
+      updater_thread_([this] {
+        SetThreadName("gcs_addr_updater");
+        std::thread::id this_id = std::this_thread::get_id();
+        RAY_LOG(INFO) << "GCS Server updater thread id: " << this_id;
+        /// The asio work to keep io_service_ alive.
+        boost::asio::io_service::work io_service_work_(updater_io_service_);
+        updater_io_service_.run();
+      }) {
   // Start updating gcs server address.
-  updater_runner_->RunFnPeriodically(
+  updater_runner_.RunFnPeriodically(
       [this] { UpdateGcsServerAddress(); },
-      RayConfig::instance().gcs_service_address_check_interval_milliseconds());
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
+      "GcsServerAddressUpdater.UpdateGcsServerAddress");
 }
 
 GcsServerAddressUpdater::~GcsServerAddressUpdater() {
-  updater_runner_.reset();
   updater_io_service_.stop();
-  if (updater_thread_->joinable()) {
-    updater_thread_->join();
+  if (updater_thread_.joinable()) {
+    updater_thread_.join();
+  } else {
+    RAY_LOG(WARNING)
+        << "Could not join updater thread. This can cause segfault upon destruction.";
   }
-  updater_thread_.reset();
-  raylet_client_.reset();
+  RAY_LOG(DEBUG) << "GcsServerAddressUpdater is destructed";
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
-  RAY_LOG(DEBUG) << "Getting gcs server address from raylet.";
-  raylet_client_->GetGcsServerAddress([this](const Status &status,
-                                             const rpc::GetGcsServerAddressReply &reply) {
+  raylet_client_.GetGcsServerAddress([this](const Status &status,
+                                            const rpc::GetGcsServerAddressReply &reply) {
+    const int64_t max_retries =
+        RayConfig::instance().gcs_rpc_server_reconnect_timeout_s() * 1000 /
+        RayConfig::instance().gcs_service_address_check_interval_milliseconds();
     if (!status.ok()) {
       failed_ping_count_ += 1;
-      auto warning_threshold =
-          RayConfig::instance().ping_gcs_rpc_server_max_retries() / 2;
+      auto warning_threshold = max_retries / 2;
       RAY_LOG_EVERY_N(WARNING, warning_threshold)
           << "Failed to get the gcs server address from raylet " << failed_ping_count_
           << " times in a row. If it keeps failing to obtain the address, "
              "the worker might crash. Connection status "
           << status;
-      if (failed_ping_count_ == RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
+      if (failed_ping_count_ >= max_retries) {
         std::stringstream os;
         os << "Failed to receive the GCS address for " << failed_ping_count_
            << " times without success. The worker will exit ungracefully. It is because ";
-        if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+        if (status.IsGrpcUnavailable()) {
           RAY_LOG(WARNING) << os.str()
                            << "raylet has died, and it couldn't obtain the GCS address "
                               "from the raylet anymore. Please check the log from "

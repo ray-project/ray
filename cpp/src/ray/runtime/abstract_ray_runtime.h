@@ -54,7 +54,8 @@ class AbstractRayRuntime : public RayRuntime {
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> Get(const std::vector<std::string> &ids);
 
-  std::vector<bool> Wait(const std::vector<std::string> &ids, int num_objects,
+  std::vector<bool> Wait(const std::vector<std::string> &ids,
+                         int num_objects,
                          int timeout_ms);
 
   std::string Call(const RemoteFunctionHolder &remote_function_holder,
@@ -89,7 +90,7 @@ class AbstractRayRuntime : public RayRuntime {
 
   const JobID &GetCurrentJobID();
 
-  const std::unique_ptr<WorkerContext> &GetWorkerContext();
+  virtual const WorkerContext &GetWorkerContext();
 
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
   static std::shared_ptr<AbstractRayRuntime> DoInit();
@@ -107,7 +108,6 @@ class AbstractRayRuntime : public RayRuntime {
   virtual PlacementGroup GetPlacementGroup(const std::string &name);
 
  protected:
-  std::unique_ptr<WorkerContext> worker_;
   std::unique_ptr<TaskSubmitter> task_submitter_;
   std::unique_ptr<TaskExecutor> task_executor_;
   std::unique_ptr<ObjectStore> object_store_;

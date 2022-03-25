@@ -41,10 +41,10 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeGetActorCreationTaskFunctionDe
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
  * Method:    nativeSerialize
- * Signature: ([B)[B
+ * Signature: ([B[B)[B
  */
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(JNIEnv *, jclass, jbyteArray);
+JNIEXPORT jbyteArray JNICALL Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(
+    JNIEnv *, jclass, jbyteArray, jbyteArray);
 
 /*
  * Class:     io_ray_runtime_actor_NativeActorHandle
@@ -52,8 +52,20 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeSerialize(JNIEnv *, jclass, jb
  * Signature: ([B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *, jclass,
+Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *,
+                                                              jclass,
                                                               jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_actor_NativeActorHandle
+ * Method:    nativeRemoveActorHandleReference
+ * Signature: ([B[B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_actor_NativeActorHandle_nativeRemoveActorHandleReference(JNIEnv *,
+                                                                             jclass,
+                                                                             jbyteArray,
+                                                                             jbyteArray);
 
 #ifdef __cplusplus
 }

@@ -2,8 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.ars as ars
-from ray.rllib.utils.test_utils import framework_iterator, \
-    check_compute_single_action
+from ray.rllib.utils.test_utils import framework_iterator, check_compute_single_action
 
 
 class TestARS(unittest.TestCase):
@@ -22,7 +21,8 @@ class TestARS(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = None
         config["noise_size"] = 2500000
-        # Test eval workers ("normal" Trainer eval WorkerSet, unusual for ARS).
+        # Test eval workers ("normal" WorkerSet, unlike ARS' list of
+        # RolloutWorkers used for collecting train batches).
         config["evaluation_interval"] = 1
         config["evaluation_num_workers"] = 1
 
@@ -42,4 +42,5 @@ class TestARS(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

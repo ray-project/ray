@@ -18,8 +18,11 @@ def test_replica_name_from_str():
     actor_name = f"{ReplicaName.prefix}DeploymentA#{replica_suffix}"
 
     replica_name = ReplicaName.from_str(actor_name)
-    assert str(replica_name) == replica_name.replica_tag == actor_name.replace(
-        ReplicaName.prefix, "")
+    assert (
+        str(replica_name)
+        == replica_name.replica_tag
+        == actor_name.replace(ReplicaName.prefix, "")
+    )
 
 
 def test_invalid_name_from_str():
@@ -41,9 +44,11 @@ def test_is_replica_name():
     assert not ReplicaName.is_replica_name(f"DeploymentA##{replica_suffix}")
     assert not ReplicaName.is_replica_name(f"DeploymentA#{replica_suffix}")
     assert ReplicaName.is_replica_name(
-        f"{ReplicaName.prefix}DeploymentA#{replica_suffix}")
+        f"{ReplicaName.prefix}DeploymentA#{replica_suffix}"
+    )
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

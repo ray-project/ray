@@ -1,3 +1,5 @@
+from functools import wraps
+import importlib
 from itertools import groupby
 import json
 import logging
@@ -5,8 +7,12 @@ import pickle
 import random
 import string
 import time
-from typing import Iterable, Tuple
+from typing import Iterable, List, Tuple
 import os
+import traceback
+from enum import Enum
+import __main__
+from ray.actor import ActorHandle
 
 import requests
 import numpy as np
@@ -14,11 +20,20 @@ import pydantic
 
 import ray
 import ray.serialization_addons
+from ray.exceptions import RayTaskError
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
+from ray.serve.constants import (
+    HTTP_PROXY_TIMEOUT,
+)
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
+
+
+# Use a global singleton enum to emulate default options. We cannot use None
+# for those option because None is a valid new value.
+class DEFAULT(Enum):
+    VALUE = 1
 
 
 def parse_request_item(request_item):
@@ -27,7 +42,7 @@ def parse_request_item(request_item):
         if request_item.metadata.http_arg_is_pickled:
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
-            return (build_starlette_request(arg.scope, arg.body), ), {}
+            return (build_starlette_request(arg.scope, arg.body),), {}
 
     return request_item.args, request_item.kwargs
 
@@ -71,10 +86,10 @@ logger = _get_logger()
 
 class ServeEncoder(json.JSONEncoder):
     """Ray.Serve's utility JSON encoder. Adds support for:
-        - bytes
-        - Pydantic types
-        - Exceptions
-        - numpy.ndarray
+    - bytes
+    - Pydantic types
+    - Exceptions
+    - numpy.ndarray
     """
 
     def default(self, o):  # pylint: disable=E0202
@@ -94,10 +109,12 @@ class ServeEncoder(json.JSONEncoder):
 
 
 @ray.remote(num_cpus=0)
-def block_until_http_ready(http_endpoint,
-                           backoff_time_s=1,
-                           check_ready=None,
-                           timeout=HTTP_PROXY_TIMEOUT):
+def block_until_http_ready(
+    http_endpoint,
+    backoff_time_s=1,
+    check_ready=None,
+    timeout=HTTP_PROXY_TIMEOUT,
+):
     http_is_ready = False
     start_time = time.time()
 
@@ -113,8 +130,7 @@ def block_until_http_ready(http_endpoint,
             pass
 
         if 0 < timeout < time.time() - start_time:
-            raise TimeoutError(
-                "HTTP proxy not ready after {} seconds.".format(timeout))
+            raise TimeoutError("HTTP proxy not ready after {} seconds.".format(timeout))
 
         time.sleep(backoff_time_s)
 
@@ -158,15 +174,14 @@ def get_all_node_ids():
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
-    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"][
-        "NodeID"]
+    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
 
 
-def compute_iterable_delta(old: Iterable,
-                           new: Iterable) -> Tuple[set, set, set]:
+def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_iterable_delta
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
         >>> compute_iterable_delta(old, new)
@@ -183,20 +198,19 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     """Given two dicts, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_dict_delta
         >>> old = {"a": 1, "b": 2}
         >>> new = {"a": 3, "d": 4}
         >>> compute_dict_delta(old, new)
         ({"d": 4}, {"b": 2}, {"a": 3})
     """
     added_keys, removed_keys, updated_keys = compute_iterable_delta(
-        old_dict.keys(), new_dict.keys())
+        old_dict.keys(), new_dict.keys()
+    )
     return (
-        {k: new_dict[k]
-         for k in added_keys},
-        {k: old_dict[k]
-         for k in removed_keys},
-        {k: new_dict[k]
-         for k in updated_keys},
+        {k: new_dict[k] for k in added_keys},
+        {k: old_dict[k] for k in removed_keys},
+        {k: new_dict[k] for k in updated_keys},
     )
 
 
@@ -221,3 +235,133 @@ def ensure_serialization_context():
     been started."""
     ctx = StandaloneSerializationContext()
     ray.serialization_addons.apply(ctx)
+
+
+def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
+    """Utility method to wrap exceptions in user code."""
+
+    try:
+        # Raise and catch so we can access traceback.format_exc()
+        raise exception
+    except Exception as e:
+        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
+        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
+
+
+def msgpack_serialize(obj):
+    ctx = ray.worker.global_worker.get_serialization_context()
+    buffer = ctx.serialize(obj)
+    serialized = buffer.to_bytes()
+    return serialized
+
+
+def get_deployment_import_path(deployment, replace_main=False):
+    """
+    Gets the import path for deployment's func_or_class.
+
+    deployment: A deployment object whose import path should be returned
+    replace_main: If this is True, the function will try to replace __main__
+        with __main__'s file name if the deployment's module is __main__
+    """
+
+    body = deployment._func_or_class
+
+    if isinstance(body, str):
+        # deployment's func_or_class is already an import path
+        return body
+    elif hasattr(body, "__ray_actor_class__"):
+        # If ActorClass, get the class or function inside
+        body = body.__ray_actor_class__
+
+    import_path = f"{body.__module__}.{body.__qualname__}"
+
+    if replace_main:
+
+        # Replaces __main__ with its file name. E.g. suppose the import path
+        # is __main__.classname and classname is defined in filename.py.
+        # Its import path becomes filename.classname.
+
+        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
+            file_name = os.path.basename(__main__.__file__)
+            extensionless_file_name = file_name.split(".")[0]
+            attribute_name = import_path.split(".")[-1]
+            import_path = f"{extensionless_file_name}.{attribute_name}"
+
+    return import_path
+
+
+def parse_import_path(import_path: str):
+    """
+    Takes in an import_path of form:
+
+    [subdirectory 1].[subdir 2]...[subdir n].[file name].[attribute name]
+
+    Parses this path and returns the module name (everything before the last
+    dot) and attribute name (everything after the last dot), such that the
+    attribute can be imported using "from module_name import attr_name".
+    """
+
+    nodes = import_path.split(".")
+    if len(nodes) < 2:
+        raise ValueError(
+            f"Got {import_path} as import path. The import path "
+            f"should at least specify the file name and "
+            f"attribute name connected by a dot."
+        )
+
+    return ".".join(nodes[:-1]), nodes[-1]
+
+
+class JavaActorHandleProxy:
+    """Wraps actor handle and translate snake_case to camelCase."""
+
+    def __init__(self, handle: ActorHandle):
+        self.handle = handle
+        self._available_attrs = set(dir(self.handle))
+
+    def __getattr__(self, key: str):
+        if key in self._available_attrs:
+            camel_case_key = key
+        else:
+            components = key.split("_")
+            camel_case_key = components[0] + "".join(x.title() for x in components[1:])
+        return getattr(self.handle, camel_case_key)
+
+
+def require_packages(packages: List[str]):
+    """Decorator making sure function run in specified environments
+
+    Examples:
+        >>> from ray.serve.utils import require_packages
+        >>> @require_packages(["numpy", "package_a"]) # doctest: +SKIP
+        ... def func(): # doctest: +SKIP
+        ...     import numpy as np # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        >>> func() # doctest: +SKIP
+        ImportError: func requires ["numpy", "package_a"] but
+        ["package_a"] are not available, please pip install them.
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            if not hasattr(func, "_require_packages_checked"):
+                missing_packages = []
+                for package in packages:
+                    try:
+                        importlib.import_module(package)
+                    except ModuleNotFoundError:
+                        missing_packages.append(package)
+                if len(missing_packages) > 0:
+                    raise ImportError(
+                        f"{func} requires packages {packages} to run but "
+                        f"{missing_packages} are missing. Please "
+                        "`pip install` them or add them to "
+                        "`runtime_env`."
+                    )
+                setattr(func, "_require_packages_checked", True)
+            return func(*args, **kwargs)
+
+        return wrapped
+
+    return decorator

@@ -23,6 +23,7 @@ num_classes = 10
 
 def fetch_keras_data():
     import tensorflow as tf
+
     # The data, split between train and test sets:
     with FileLock(os.path.expanduser("~/.cifar.lock")):
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
@@ -44,6 +45,7 @@ input_shape = x_train.shape[1:]
 
 def create_model(config):
     import tensorflow as tf
+
     model = Sequential()
     model.add(Conv2D(32, (3, 3), padding="same", input_shape=input_shape))
     model.add(Activation("relu"))
@@ -70,21 +72,20 @@ def create_model(config):
     opt = tf.keras.optimizers.RMSprop(lr=0.001, decay=1e-6)
 
     # Let"s train the model using RMSprop
-    model.compile(
-        loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"])
+    model.compile(loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"])
     return model
 
 
 def data_creator(config):
     import tensorflow as tf
+
     batch_size = config["batch_size"]
     (x_train, y_train), (x_test, y_test) = fetch_keras_data()
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
     # Repeat is needed to avoid
-    train_dataset = train_dataset.repeat().shuffle(
-        len(x_train)).batch(batch_size)
+    train_dataset = train_dataset.repeat().shuffle(len(x_train)).batch(batch_size)
     test_dataset = test_dataset.repeat().batch(batch_size)
     return train_dataset, test_dataset
 
@@ -105,12 +106,12 @@ def _make_generator(x_train, y_train, batch_size):
         width_shift_range=0.1,
         # randomly shift images vertically (fraction of total height)
         height_shift_range=0.1,
-        shear_range=0.,  # set range for random shear
-        zoom_range=0.,  # set range for random zoom
-        channel_shift_range=0.,  # set range for random channel shifts
+        shear_range=0.0,  # set range for random shear
+        zoom_range=0.0,  # set range for random zoom
+        channel_shift_range=0.0,  # set range for random channel shifts
         # set mode for filling points outside the input boundaries
         fill_mode="nearest",
-        cval=0.,  # value used for fill_mode = "constant"
+        cval=0.0,  # value used for fill_mode = "constant"
         horizontal_flip=True,  # randomly flip images
         vertical_flip=False,  # randomly flip images
         # set rescaling factor (applied before any other transformation)
@@ -120,7 +121,8 @@ def _make_generator(x_train, y_train, batch_size):
         # image data format, either "channels_first" or "channels_last"
         data_format=None,
         # fraction of images reserved for validation (strictly between 0 and 1)
-        validation_split=0.0)
+        validation_split=0.0,
+    )
 
     # Compute quantities required for feature-wise normalization
     # (std, mean, and principal components if ZCA whitening is applied).
@@ -130,14 +132,18 @@ def _make_generator(x_train, y_train, batch_size):
 
 def data_augmentation_creator(config):
     import tensorflow as tf
+
     batch_size = config["batch_size"]
     (x_train, y_train), (x_test, y_test) = fetch_keras_data()
     trainset = tf.data.Dataset.from_generator(
         lambda: _make_generator(x_train, y_train, batch_size),
         output_types=(tf.float32, tf.float32),
         # https://github.com/tensorflow/tensorflow/issues/24520
-        output_shapes=(tf.TensorShape((None, None, None, None)),
-                       tf.TensorShape((None, 10))))
+        output_shapes=(
+            tf.TensorShape((None, None, None, None)),
+            tf.TensorShape((None, 10)),
+        ),
+    )
     trainset = trainset.repeat()
 
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
@@ -145,11 +151,7 @@ def data_augmentation_creator(config):
     return trainset, test_dataset
 
 
-def main(smoke_test,
-         num_replicas,
-         use_gpu=False,
-         augment_data=False,
-         batch_size=32):
+def main(smoke_test, num_replicas, use_gpu=False, augment_data=False, batch_size=32):
     data_size = 60000
     test_size = 10000
     batch_size = batch_size
@@ -159,8 +161,7 @@ def main(smoke_test,
 
     trainer = TFTrainer(
         model_creator=create_model,
-        data_creator=(data_augmentation_creator
-                      if augment_data else data_creator),
+        data_creator=(data_augmentation_creator if augment_data else data_creator),
         num_replicas=num_replicas,
         use_gpu=use_gpu,
         verbose=True,
@@ -171,8 +172,9 @@ def main(smoke_test,
             },
             "evaluate_config": {
                 "steps": num_eval_steps,
-            }
-        })
+            },
+        },
+    )
 
     training_start = time.time()
     num_epochs = 1 if smoke_test else 3
@@ -187,12 +189,11 @@ def main(smoke_test,
 
     model = trainer.get_model()
     trainer.shutdown()
-    dataset, test_dataset = data_augmentation_creator(
-        dict(batch_size=batch_size))
+    dataset, test_dataset = data_augmentation_creator(dict(batch_size=batch_size))
 
     training_start = time.time()
     model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
-    dt = (time.time() - training_start)
+    dt = time.time() - training_start
     print(f"Training on workers takes: {dt:.3f} seconds/epoch")
 
     scores = model.evaluate(test_dataset, steps=num_eval_steps)
@@ -203,33 +204,31 @@ def main(smoke_test,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--num-replicas",
         "-n",
         type=int,
         default=1,
-        help="Sets number of replicas for training.")
+        help="Sets number of replicas for training.",
+    )
+    parser.add_argument("--batch-size", type=int, default=32, help="Sets batch size.")
     parser.add_argument(
-        "--batch-size", type=int, default=32, help="Sets batch size.")
-    parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Enables GPU training")
+        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+    )
     parser.add_argument(
         "--augment-data",
         action="store_true",
         default=False,
-        help="Sets data augmentation.")
+        help="Sets data augmentation.",
+    )
     parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing. Assume False for users.")
+        help="Finish quickly for testing. Assume False for users.",
+    )
 
     args, _ = parser.parse_known_args()
     if args.smoke_test:
@@ -242,4 +241,5 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         augment_data=args.augment_data,
         use_gpu=args.use_gpu,
-        num_replicas=args.num_replicas)
+        num_replicas=args.num_replicas,
+    )

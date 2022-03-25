@@ -6,6 +6,7 @@ from ray.tune.trainable import Trainable
 from ray.util import log_once
 
 from ray.util.annotations import Deprecated
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +22,8 @@ class DurableTrainable(Trainable):
                 "if you provide an `upload_dir`. You'll likely only need to "
                 "remove the call to `tune.durable()` or directly inherit from "
                 "`Trainable` instead of `DurableTrainable` for class "
-                "trainables to make your code forward-compatible.")
+                "trainables to make your code forward-compatible."
+            )
         super(DurableTrainable, self).__init__(*args, **kwargs)
 
 
@@ -33,5 +35,6 @@ def durable(trainable: Union[str, Type[Trainable], Callable]):
             "Instead, all Trainables are durable by default if "
             "you provide an `upload_dir`. You'll likely only need to remove "
             "the call to `tune.durable()` to make your code "
-            "forward-compatible.")
+            "forward-compatible."
+        )
     return trainable

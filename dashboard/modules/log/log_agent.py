@@ -2,9 +2,10 @@ import logging
 
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.optional_utils as dashboard_optional_utils
 
 logger = logging.getLogger(__name__)
-routes = dashboard_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class LogAgent(dashboard_utils.DashboardAgentModule):
@@ -15,3 +16,7 @@ class LogAgent(dashboard_utils.DashboardAgentModule):
 
     async def run(self, server):
         pass
+
+    @staticmethod
+    def is_minimal_module():
+        return False

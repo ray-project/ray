@@ -25,9 +25,7 @@ def perform_check(raw_xml_string: str):
     missing_owners = []
     for rule in tree.findall("rule"):
         test_name = rule.attrib["name"]
-        tags = [
-            child.attrib["value"] for child in rule.find("list").getchildren()
-        ]
+        tags = [child.attrib["value"] for child in rule.find("list").getchildren()]
         team_owner = [t for t in tags if t.startswith("team")]
         if len(team_owner) == 0:
             missing_owners.append(test_name)
@@ -36,7 +34,8 @@ def perform_check(raw_xml_string: str):
     if len(missing_owners):
         raise Exception(
             f"Cannot find owner for tests {missing_owners}, please add "
-            "`team:*` to the tags.")
+            "`team:*` to the tags."
+        )
 
     print(owners)
 

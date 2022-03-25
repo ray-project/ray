@@ -1,5 +1,4 @@
 import asyncio
-import time
 import os
 
 import requests
@@ -9,6 +8,7 @@ import starlette.responses
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve.api import Application
 
 
 def test_e2e(serve_instance):
@@ -28,8 +28,7 @@ def test_e2e(serve_instance):
 def test_starlette_response(serve_instance):
     @serve.deployment(name="basic")
     def basic(_):
-        return starlette.responses.Response(
-            "Hello, world!", media_type="text/plain")
+        return starlette.responses.Response("Hello, world!", media_type="text/plain")
 
     basic.deploy()
     assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
@@ -37,37 +36,35 @@ def test_starlette_response(serve_instance):
     @serve.deployment(name="html")
     def html(_):
         return starlette.responses.HTMLResponse(
-            "<html><body><h1>Hello, world!</h1></body></html>")
+            "<html><body><h1>Hello, world!</h1></body></html>"
+        )
 
     html.deploy()
-    assert requests.get(
-        "http://127.0.0.1:8000/html"
-    ).text == "<html><body><h1>Hello, world!</h1></body></html>"
+    assert (
+        requests.get("http://127.0.0.1:8000/html").text
+        == "<html><body><h1>Hello, world!</h1></body></html>"
+    )
 
     @serve.deployment(name="plain_text")
     def plain_text(_):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
     plain_text.deploy()
-    assert requests.get(
-        "http://127.0.0.1:8000/plain_text").text == "Hello, world!"
+    assert requests.get("http://127.0.0.1:8000/plain_text").text == "Hello, world!"
 
     @serve.deployment(name="json")
     def json(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
     json.deploy()
-    assert requests.get("http://127.0.0.1:8000/json").json()[
-        "hello"] == "world"
+    assert requests.get("http://127.0.0.1:8000/json").json()["hello"] == "world"
 
     @serve.deployment(name="redirect")
     def redirect(_):
-        return starlette.responses.RedirectResponse(
-            url="http://127.0.0.1:8000/basic")
+        return starlette.responses.RedirectResponse(url="http://127.0.0.1:8000/basic")
 
     redirect.deploy()
-    assert requests.get(
-        "http://127.0.0.1:8000/redirect").text == "Hello, world!"
+    assert requests.get("http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
     @serve.deployment(name="streaming")
     def streaming(_):
@@ -77,7 +74,8 @@ def test_starlette_response(serve_instance):
                 await asyncio.sleep(0.01)
 
         return starlette.responses.StreamingResponse(
-            slow_numbers(), media_type="text/plain", status_code=418)
+            slow_numbers(), media_type="text/plain", status_code=418
+        )
 
     streaming.deploy()
     resp = requests.get("http://127.0.0.1:8000/streaming")
@@ -143,21 +141,13 @@ def test_deploy_async_class_no_params(serve_instance):
     serve.start()
     AsyncCounter.deploy()
 
-    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {
-        "count": 1
-    }
-    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {
-        "count": 2
-    }
+    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {"count": 1}
+    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {"count": 2}
     assert ray.get(AsyncCounter.get_handle().remote()) == {"count": 3}
 
 
 def test_user_config(serve_instance):
-    @serve.deployment(
-        "counter", num_replicas=2, user_config={
-            "count": 123,
-            "b": 2
-        })
+    @serve.deployment("counter", num_replicas=2, user_config={"count": 123, "b": 2})
     class Counter:
         def __init__(self):
             self.count = 10
@@ -189,26 +179,6 @@ def test_user_config(serve_instance):
     Counter = Counter.options(user_config={"count": 456})
     Counter.deploy()
     wait_for_condition(lambda: check("456", 3))
-
-
-def test_call_method(serve_instance):
-    @serve.deployment(name="method")
-    class CallMethod:
-        def method(self, *args):
-            return "hello"
-
-    CallMethod.deploy()
-
-    # Test HTTP path.
-    resp = requests.get(
-        "http://127.0.0.1:8000/method",
-        timeout=1,
-        headers={"X-SERVE-CALL-METHOD": "method"})
-    assert resp.text == "hello"
-
-    # Test serve handle path.
-    handle = CallMethod.get_handle()
-    assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_reject_duplicate_route(serve_instance):
@@ -269,14 +239,46 @@ def test_delete_deployment(serve_instance):
 
     function2.deploy()
 
-    for _ in range(10):
-        try:
-            assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
-            break
-        except AssertionError:
-            time.sleep(0.5)  # Wait for the change to propagate.
-    else:
-        assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
+    wait_for_condition(
+        lambda: requests.get("http://127.0.0.1:8000/delete").text == "olleh", timeout=6
+    )
+
+
+@pytest.mark.parametrize("blocking", [False, True])
+def test_delete_deployment_group(serve_instance, blocking):
+    @serve.deployment(num_replicas=1)
+    def f(*args):
+        return "got f"
+
+    @serve.deployment(num_replicas=2)
+    def g(*args):
+        return "got g"
+
+    # Check redeploying after deletion
+    for _ in range(2):
+        f.deploy()
+        g.deploy()
+
+        wait_for_condition(
+            lambda: requests.get("http://127.0.0.1:8000/f").text == "got f", timeout=5
+        )
+        wait_for_condition(
+            lambda: requests.get("http://127.0.0.1:8000/g").text == "got g", timeout=5
+        )
+
+        # Check idempotence
+        for _ in range(2):
+
+            serve_instance.delete_deployments(["f", "g"], blocking=blocking)
+
+            wait_for_condition(
+                lambda: requests.get("http://127.0.0.1:8000/f").status_code == 404,
+                timeout=5,
+            )
+            wait_for_condition(
+                lambda: requests.get("http://127.0.0.1:8000/g").status_code == 404,
+                timeout=5,
+            )
 
 
 def test_starlette_request(serve_instance):
@@ -332,6 +334,89 @@ def test_shutdown_destructor(serve_instance):
     B.delete()
 
 
+def test_run_get_ingress_app(serve_instance):
+    """Check that serve.run() with an app returns the ingress."""
+
+    @serve.deployment(route_prefix=None)
+    def f():
+        return "got f"
+
+    @serve.deployment(route_prefix="/g")
+    def g():
+        return "got g"
+
+    app = Application([f, g])
+    ingress_handle = serve.run(app)
+
+    assert ray.get(ingress_handle.remote()) == "got g"
+    serve_instance.delete_deployments(["f", "g"])
+
+    no_ingress_app = Application([f.options(route_prefix="/f"), g])
+    ingress_handle = serve.run(no_ingress_app)
+    assert ingress_handle is None
+
+
+def test_run_get_ingress_node(serve_instance):
+    """Check that serve.run() with a node returns the ingress."""
+
+    @serve.deployment
+    class Driver:
+        def __init__(self, dag):
+            self.dag = dag
+
+        async def __call__(self, *args):
+            return await self.dag.remote()
+
+    @serve.deployment
+    class f:
+        def __call__(self, *args):
+            return "got f"
+
+    dag = Driver.bind(f.bind())
+    ingress_handle = serve.run(dag)
+
+    assert ray.get(ingress_handle.remote()) == "got f"
+
+
+class TestSetOptions:
+    def test_set_options_basic(self):
+        @serve.deployment(
+            num_replicas=4,
+            max_concurrent_queries=3,
+            prev_version="abcd",
+            ray_actor_options={"num_cpus": 2},
+            _health_check_timeout_s=17,
+        )
+        def f():
+            pass
+
+        f.set_options(
+            num_replicas=9,
+            prev_version="abcd",
+            version="efgh",
+            ray_actor_options={"num_gpus": 3},
+        )
+
+        assert f.num_replicas == 9
+        assert f.max_concurrent_queries == 3
+        assert f.prev_version == "abcd"
+        assert f.version == "efgh"
+        assert f.ray_actor_options == {"num_gpus": 3}
+        assert f._config.health_check_timeout_s == 17
+
+    def test_set_options_validation(self):
+        @serve.deployment
+        def f():
+            pass
+
+        with pytest.raises(TypeError):
+            f.set_options(init_args=-4)
+
+        with pytest.raises(ValueError):
+            f.set_options(max_concurrent_queries=-4)
+
+
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

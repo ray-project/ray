@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -73,14 +74,15 @@ void GcsHeartbeatManager::AddNode(const NodeID &node_id) {
 }
 
 void GcsHeartbeatManager::HandleReportHeartbeat(
-    const rpc::ReportHeartbeatRequest &request, rpc::ReportHeartbeatReply *reply,
+    const rpc::ReportHeartbeatRequest &request,
+    rpc::ReportHeartbeatReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.heartbeat().node_id());
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
     // Reply the raylet with an error so the raylet can crash itself.
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply,
-                       Status::Disconnected("Node has been dead"));
+    GCS_RPC_SEND_REPLY(
+        send_reply_callback, reply, Status::Disconnected("Node has been dead"));
     return;
   }
 

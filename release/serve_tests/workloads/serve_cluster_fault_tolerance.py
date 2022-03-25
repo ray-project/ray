@@ -11,12 +11,15 @@ import click
 import time
 import requests
 import uuid
-import os
+
 from pathlib import Path
 
 from serve_test_cluster_utils import setup_local_single_node_cluster
 
-from serve_test_utils import (save_test_results)
+from serve_test_utils import (
+    save_test_results,
+    is_smoke_test,
+)
 
 import ray
 from ray import serve
@@ -31,8 +34,7 @@ def request_with_retries(endpoint, timeout=3):
     start = time.time()
     while True:
         try:
-            return requests.get(
-                "http://127.0.0.1:8000" + endpoint, timeout=timeout)
+            return requests.get("http://127.0.0.1:8000" + endpoint, timeout=timeout)
         except requests.RequestException:
             if time.time() - start > timeout:
                 raise TimeoutError
@@ -48,17 +50,19 @@ def main():
     namespace = uuid.uuid4().hex
 
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
-    if smoke_test == "1":
+    if is_smoke_test():
         path = Path("checkpoint.db")
         checkpoint_path = f"file://{path}"
         if path.exists():
             path.unlink()
     else:
-        checkpoint_path = "s3://serve-nightly-tests/fault-tolerant-test-checkpoint"  # noqa: E501
+        checkpoint_path = (
+            "s3://serve-nightly-tests/fault-tolerant-test-checkpoint"  # noqa: E501
+        )
 
     _, cluster = setup_local_single_node_cluster(
-        1, checkpoint_path=checkpoint_path, namespace=namespace)
+        1, checkpoint_path=checkpoint_path, namespace=namespace
+    )
 
     # Deploy for the first time
     @serve.deployment(num_replicas=DEFAULT_NUM_REPLICAS)
@@ -85,15 +89,17 @@ def main():
     # Start another ray cluster with same namespace to resume from previous
     # checkpoints with no new deploy() call.
     setup_local_single_node_cluster(
-        1, checkpoint_path=checkpoint_path, namespace=namespace)
+        1, checkpoint_path=checkpoint_path, namespace=namespace
+    )
 
     for name in ["hello", "world"]:
         for _ in range(5):
             response = request_with_retries(f"/{name}/", timeout=3)
             assert response.text == name
 
-    logger.info("Deployment recovery from s3 checkpoint is successful "
-                "with working endpoint.")
+    logger.info(
+        "Deployment recovery from s3 checkpoint is successful " "with working endpoint."
+    )
 
     # Delete dangling checkpoints. If script failed before this step, it's up
     # to the TTL policy on s3 to clean up, but won't lead to collision with
@@ -107,14 +113,14 @@ def main():
 
     # Save results
     save_test_results(
-        {
-            "result": "success"
-        },
-        default_output_file="/tmp/serve_cluster_fault_tolerance.json")
+        {"result": "success"},
+        default_output_file="/tmp/serve_cluster_fault_tolerance.json",
+    )
 
 
 if __name__ == "__main__":
     main()
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

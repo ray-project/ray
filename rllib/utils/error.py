@@ -4,12 +4,14 @@ from ray.rllib.utils.annotations import PublicAPI
 @PublicAPI
 class UnsupportedSpaceException(Exception):
     """Error for an unsupported action or observation space."""
+
     pass
 
 
 @PublicAPI
 class EnvError(Exception):
     """Error if we encounter an error during RL environment validation."""
+
     pass
 
 
@@ -19,14 +21,12 @@ class EnvError(Exception):
 
 # Message explaining there are no GPUs available for the
 # num_gpus=n or num_gpus_per_worker=m settings.
-ERR_MSG_NO_GPUS = \
-    """Found {} GPUs on your machine (GPU devices found: {})! If your machine
+ERR_MSG_NO_GPUS = """Found {} GPUs on your machine (GPU devices found: {})! If your machine
     does not have any GPUs, you should set the config keys `num_gpus` and
     `num_gpus_per_worker` to 0 (they may be set to 1 by default for your
     particular RL algorithm)."""
 
-ERR_MSG_INVALID_ENV_DESCRIPTOR = \
-    """The env string you provided ('{}') is:
+ERR_MSG_INVALID_ENV_DESCRIPTOR = """The env string you provided ('{}') is:
 a) Not a supported/installed environment.
 b) Not a tune-registered environment creator.
 c) Not a valid env class string.

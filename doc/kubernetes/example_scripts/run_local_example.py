@@ -2,6 +2,7 @@ from collections import Counter
 import sys
 import time
 import ray
+
 """ Run this script locally to execute a Ray program on your Ray cluster on
 Kubernetes.
 
@@ -18,8 +19,9 @@ LOCAL_PORT = 10001
 def gethostname(x):
     import platform
     import time
+
     time.sleep(0.01)
-    return x + (platform.node(), )
+    return x + (platform.node(),)
 
 
 def wait_for_nodes(expected):
@@ -29,8 +31,11 @@ def wait_for_nodes(expected):
         node_keys = [key for key in resources if "node" in key]
         num_nodes = sum(resources[node_key] for node_key in node_keys)
         if num_nodes < expected:
-            print("{} nodes have joined so far, waiting for {} more.".format(
-                num_nodes, expected - num_nodes))
+            print(
+                "{} nodes have joined so far, waiting for {} more.".format(
+                    num_nodes, expected - num_nodes
+                )
+            )
             sys.stdout.flush()
             time.sleep(1)
         else:
@@ -43,9 +48,7 @@ def main():
     # Check that objects can be transferred from each node to each other node.
     for i in range(10):
         print("Iteration {}".format(i))
-        results = [
-            gethostname.remote(gethostname.remote(())) for _ in range(100)
-        ]
+        results = [gethostname.remote(gethostname.remote(())) for _ in range(100)]
         print(Counter(ray.get(results)))
         sys.stdout.flush()
 

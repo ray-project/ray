@@ -30,12 +30,6 @@ namespace ray {
 /// divide to convert from internal to actual.
 constexpr double kResourceConversionFactor = 10000;
 
-const std::string kCPU_ResourceLabel = "CPU";
-const std::string kGPU_ResourceLabel = "GPU";
-const std::string kObjectStoreMemory_ResourceLabel = "object_store_memory";
-const std::string kMemory_ResourceLabel = "memory";
-const std::string kBundle_ResourceLabel = "bundle";
-
 /// \class ResourceSet
 /// \brief Encapsulates and operates on a set of resources, including CPUs,
 /// GPUs, and custom labels.
@@ -146,6 +140,11 @@ class ResourceSet {
   ///
   /// \return Number of CPUs.
   const ResourceSet GetNumCpus() const;
+
+  /// Return the number of CPUs.
+  ///
+  /// \return Number of CPUs.
+  double GetNumCpusAsDouble() const;
 
   /// Return true if the resource set is empty. False otherwise.
   ///

@@ -1,6 +1,5 @@
 import gym
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union, \
-    TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -14,8 +13,12 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import (
+    AgentID,
+    ModelGradients,
+    TensorType,
+    TrainerConfigDict,
+)
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode
@@ -25,57 +28,73 @@ tf1, tf, tfv = try_import_tf()
 
 @DeveloperAPI
 def build_tf_policy(
-        name: str,
-        *,
-        loss_fn: Callable[[
-            Policy, ModelV2, Type[TFActionDistribution], SampleBatch
-        ], Union[TensorType, List[TensorType]]],
-        get_default_config: Optional[Callable[[None],
-                                              TrainerConfigDict]] = None,
-        postprocess_fn: Optional[Callable[[
-            Policy, SampleBatch, Optional[Dict[AgentID, SampleBatch]],
-            Optional["Episode"]
-        ], SampleBatch]] = None,
-        stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
-            str, TensorType]]] = None,
-        optimizer_fn: Optional[Callable[[
-            Policy, TrainerConfigDict
-        ], "tf.keras.optimizers.Optimizer"]] = None,
-        compute_gradients_fn: Optional[Callable[[
-            Policy, "tf.keras.optimizers.Optimizer", TensorType
-        ], ModelGradients]] = None,
-        apply_gradients_fn: Optional[Callable[[
-            Policy, "tf.keras.optimizers.Optimizer", ModelGradients
-        ], "tf.Operation"]] = None,
-        grad_stats_fn: Optional[Callable[[Policy, SampleBatch, ModelGradients],
-                                         Dict[str, TensorType]]] = None,
-        extra_action_out_fn: Optional[Callable[[Policy], Dict[
-            str, TensorType]]] = None,
-        extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
-            str, TensorType]]] = None,
-        validate_spaces: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        before_init: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        before_loss_init: Optional[Callable[[
-            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], None]] = None,
-        after_init: Optional[Callable[
-            [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
-        make_model: Optional[Callable[[
-            Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], ModelV2]] = None,
-        action_sampler_fn: Optional[Callable[[TensorType, List[
-            TensorType]], Tuple[TensorType, TensorType]]] = None,
-        action_distribution_fn: Optional[Callable[[
-            Policy, ModelV2, TensorType, TensorType, TensorType
-        ], Tuple[TensorType, type, List[TensorType]]]] = None,
-        mixins: Optional[List[type]] = None,
-        get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        # Deprecated args.
-        obs_include_prev_action_reward=DEPRECATED_VALUE,
-        extra_action_fetches_fn=None,  # Use `extra_action_out_fn`.
-        gradients_fn=None,  # Use `compute_gradients_fn`.
+    name: str,
+    *,
+    loss_fn: Callable[
+        [Policy, ModelV2, Type[TFActionDistribution], SampleBatch],
+        Union[TensorType, List[TensorType]],
+    ],
+    get_default_config: Optional[Callable[[None], TrainerConfigDict]] = None,
+    postprocess_fn: Optional[
+        Callable[
+            [
+                Policy,
+                SampleBatch,
+                Optional[Dict[AgentID, SampleBatch]],
+                Optional["Episode"],
+            ],
+            SampleBatch,
+        ]
+    ] = None,
+    stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[str, TensorType]]] = None,
+    optimizer_fn: Optional[
+        Callable[[Policy, TrainerConfigDict], "tf.keras.optimizers.Optimizer"]
+    ] = None,
+    compute_gradients_fn: Optional[
+        Callable[[Policy, "tf.keras.optimizers.Optimizer", TensorType], ModelGradients]
+    ] = None,
+    apply_gradients_fn: Optional[
+        Callable[
+            [Policy, "tf.keras.optimizers.Optimizer", ModelGradients], "tf.Operation"
+        ]
+    ] = None,
+    grad_stats_fn: Optional[
+        Callable[[Policy, SampleBatch, ModelGradients], Dict[str, TensorType]]
+    ] = None,
+    extra_action_out_fn: Optional[Callable[[Policy], Dict[str, TensorType]]] = None,
+    extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[str, TensorType]]] = None,
+    validate_spaces: Optional[
+        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+    ] = None,
+    before_init: Optional[
+        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+    ] = None,
+    before_loss_init: Optional[
+        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None]
+    ] = None,
+    after_init: Optional[
+        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+    ] = None,
+    make_model: Optional[
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+        ]
+    ] = None,
+    action_sampler_fn: Optional[
+        Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
+    ] = None,
+    action_distribution_fn: Optional[
+        Callable[
+            [Policy, ModelV2, TensorType, TensorType, TensorType],
+            Tuple[TensorType, type, List[TensorType]],
+        ]
+    ] = None,
+    mixins: Optional[List[type]] = None,
+    get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
+    # Deprecated args.
+    obs_include_prev_action_reward=DEPRECATED_VALUE,
+    extra_action_fetches_fn=None,  # Use `extra_action_out_fn`.
+    gradients_fn=None,  # Use `compute_gradients_fn`.
 ) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
@@ -194,23 +213,23 @@ def build_tf_policy(
 
     if extra_action_fetches_fn is not None:
         deprecation_warning(
-            old="extra_action_fetches_fn",
-            new="extra_action_out_fn",
-            error=False)
+            old="extra_action_fetches_fn", new="extra_action_out_fn", error=False
+        )
         extra_action_out_fn = extra_action_fetches_fn
 
     if gradients_fn is not None:
-        deprecation_warning(
-            old="gradients_fn", new="compute_gradients_fn", error=False)
+        deprecation_warning(old="gradients_fn", new="compute_gradients_fn", error=False)
         compute_gradients_fn = gradients_fn
 
     class policy_cls(base):
-        def __init__(self,
-                     obs_space,
-                     action_space,
-                     config,
-                     existing_model=None,
-                     existing_inputs=None):
+        def __init__(
+            self,
+            obs_space,
+            action_space,
+            config,
+            existing_model=None,
+            existing_inputs=None,
+        ):
             if get_default_config:
                 config = dict(get_default_config(), **config)
 
@@ -220,8 +239,7 @@ def build_tf_policy(
             if before_init:
                 before_init(self, obs_space, action_space, config)
 
-            def before_loss_init_wrapper(policy, obs_space, action_space,
-                                         config):
+            def before_loss_init_wrapper(policy, obs_space, action_space, config):
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
 
@@ -259,15 +277,13 @@ def build_tf_policy(
             self.global_timestep = 0
 
         @override(Policy)
-        def postprocess_trajectory(self,
-                                   sample_batch,
-                                   other_agent_batches=None,
-                                   episode=None):
+        def postprocess_trajectory(
+            self, sample_batch, other_agent_batches=None, episode=None
+        ):
             # Call super's postprocess_trajectory first.
             sample_batch = Policy.postprocess_trajectory(self, sample_batch)
             if postprocess_fn:
-                return postprocess_fn(self, sample_batch, other_agent_batches,
-                                      episode)
+                return postprocess_fn(self, sample_batch, other_agent_batches, episode)
             return sample_batch
 
         @override(TFPolicy)
@@ -278,8 +294,7 @@ def build_tf_policy(
                 optimizers = base.optimizer(self)
             optimizers = force_list(optimizers)
             if getattr(self, "exploration", None):
-                optimizers = self.exploration.get_exploration_optimizer(
-                    optimizers)
+                optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
             # No optimizers produced -> Return None.
             if not optimizers:
@@ -318,8 +333,8 @@ def build_tf_policy(
         @override(TFPolicy)
         def extra_compute_action_fetches(self):
             return dict(
-                base.extra_compute_action_fetches(self),
-                **self._extra_action_fetches)
+                base.extra_compute_action_fetches(self), **self._extra_action_fetches
+            )
 
         @override(TFPolicy)
         def extra_compute_grad_fetches(self):
@@ -331,9 +346,7 @@ def build_tf_policy(
                 #  the handling of LEARNER_STATS_KEY inside the multi-GPU
                 #  train op.
                 # Auto-add empty learner stats dict if needed.
-                return dict({
-                    LEARNER_STATS_KEY: {}
-                }, **extra_learn_fetches_fn(self))
+                return dict({LEARNER_STATS_KEY: {}}, **extra_learn_fetches_fn(self))
             else:
                 return base.extra_compute_grad_fetches(self)
 

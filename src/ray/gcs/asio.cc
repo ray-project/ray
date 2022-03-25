@@ -64,16 +64,18 @@ RedisAsioClient::RedisAsioClient(instrumented_io_context &io_service,
 void RedisAsioClient::operate() {
   if (read_requested_ && !read_in_progress_) {
     read_in_progress_ = true;
-    socket_.async_read_some(boost::asio::null_buffers(),
-                            boost::bind(&RedisAsioClient::handle_io, this,
-                                        boost::asio::placeholders::error, false));
+    socket_.async_read_some(
+        boost::asio::null_buffers(),
+        boost::bind(
+            &RedisAsioClient::handle_io, this, boost::asio::placeholders::error, false));
   }
 
   if (write_requested_ && !write_in_progress_) {
     write_in_progress_ = true;
-    socket_.async_write_some(boost::asio::null_buffers(),
-                             boost::bind(&RedisAsioClient::handle_io, this,
-                                         boost::asio::placeholders::error, true));
+    socket_.async_write_some(
+        boost::asio::null_buffers(),
+        boost::bind(
+            &RedisAsioClient::handle_io, this, boost::asio::placeholders::error, true));
   }
 }
 
@@ -98,10 +100,12 @@ void RedisAsioClient::handle_io(boost::system::error_code error_code, bool write
 
 void RedisAsioClient::add_io(bool write) {
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
-  io_service_.dispatch([this, write]() {
-    (write ? write_requested_ : read_requested_) = true;
-    operate();
-  });
+  io_service_.dispatch(
+      [this, write]() {
+        (write ? write_requested_ : read_requested_) = true;
+        operate();
+      },
+      "RedisAsioClient.add_io");
 }
 
 void RedisAsioClient::del_io(bool write) {

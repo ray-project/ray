@@ -127,9 +127,11 @@ class GcsTableStorageTestBase : public ::testing::Test {
   }
 
   template <typename TABLE, typename KEY, typename VALUE>
-  int GetByJobId(TABLE &table, const JobID &job_id, const KEY &key,
+  int GetByJobId(TABLE &table,
+                 const JobID &job_id,
+                 const KEY &key,
                  std::vector<VALUE> &values) {
-    auto on_done = [this, &values](const std::unordered_map<KEY, VALUE> &result) {
+    auto on_done = [this, &values](const absl::flat_hash_map<KEY, VALUE> &result) {
       values.clear();
       if (!result.empty()) {
         for (auto &item : result) {

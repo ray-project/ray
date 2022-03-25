@@ -38,22 +38,23 @@ class Queue:
             need to pass in custom resource requirements, for example.
 
     Examples:
-        >>> q = Queue()
-        >>> items = list(range(10))
-        >>> for item in items:
-        >>>     q.put(item)
-        >>> for item in items:
-        >>>     assert item == q.get()
+        >>> from ray.util.queue import Queue
+        >>> q = Queue() # doctest: +SKIP
+        >>> items = list(range(10)) # doctest: +SKIP
+        >>> for item in items: # doctest: +SKIP
+        ...     q.put(item) # doctest: +SKIP
+        >>> for item in items: # doctest: +SKIP
+        ...     assert item == q.get() # doctest: +SKIP
         >>> # Create Queue with the underlying actor reserving 1 CPU.
-        >>> q = Queue(actor_options={"num_cpus": 1})
+        >>> q = Queue(actor_options={"num_cpus": 1}) # doctest: +SKIP
     """
 
-    def __init__(self, maxsize: int = 0,
-                 actor_options: Optional[Dict] = None) -> None:
+    def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
         actor_options = actor_options or {}
         self.maxsize = maxsize
-        self.actor = ray.remote(_QueueActor).options(**actor_options).remote(
-            self.maxsize)
+        self.actor = (
+            ray.remote(_QueueActor).options(**actor_options).remote(self.maxsize)
+        )
 
     def __len__(self) -> int:
         return self.size()
@@ -74,10 +75,9 @@ class Queue:
         """Whether the queue is full."""
         return ray.get(self.actor.full.remote())
 
-    def put(self,
-            item: Any,
-            block: bool = True,
-            timeout: Optional[float] = None) -> None:
+    def put(
+        self, item: Any, block: bool = True, timeout: Optional[float] = None
+    ) -> None:
         """Adds an item to the queue.
 
         If block is True and the queue is full, blocks until the queue is no
@@ -102,10 +102,9 @@ class Queue:
             else:
                 ray.get(self.actor.put.remote(item, timeout))
 
-    async def put_async(self,
-                        item: Any,
-                        block: bool = True,
-                        timeout: Optional[float] = None) -> None:
+    async def put_async(
+        self, item: Any, block: bool = True, timeout: Optional[float] = None
+    ) -> None:
         """Adds an item to the queue.
 
         If block is True and the queue is full,
@@ -158,9 +157,9 @@ class Queue:
             else:
                 return ray.get(self.actor.get.remote(timeout))
 
-    async def get_async(self,
-                        block: bool = True,
-                        timeout: Optional[float] = None) -> Any:
+    async def get_async(
+        self, block: bool = True, timeout: Optional[float] = None
+    ) -> Any:
         """Gets an item from the queue.
 
         There is no guarantee of order if multiple consumers get from the
@@ -282,8 +281,10 @@ class _QueueActor:
     def put_nowait_batch(self, items):
         # If maxsize is 0, queue is unbounded, so no need to check size.
         if self.maxsize > 0 and len(items) + self.qsize() > self.maxsize:
-            raise Full(f"Cannot add {len(items)} items to queue of size "
-                       f"{self.qsize()} and maxsize {self.maxsize}.")
+            raise Full(
+                f"Cannot add {len(items)} items to queue of size "
+                f"{self.qsize()} and maxsize {self.maxsize}."
+            )
         for item in items:
             self.queue.put_nowait(item)
 
@@ -292,6 +293,7 @@ class _QueueActor:
 
     def get_nowait_batch(self, num_items):
         if num_items > self.qsize():
-            raise Empty(f"Cannot get {num_items} items from queue of size "
-                        f"{self.qsize()}.")
+            raise Empty(
+                f"Cannot get {num_items} items from queue of size " f"{self.qsize()}."
+            )
         return [self.queue.get_nowait() for _ in range(num_items)]

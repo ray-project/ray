@@ -5,9 +5,8 @@ import requests
 @workflow.step
 def compute_large_fib(M: int, n: int = 1, fib: int = 1):
     next_fib = requests.post(
-        "https://nemo.api.stdlib.com/fibonacci@0.0.1/", data={
-            "nth": n
-        }).json()
+        "https://nemo.api.stdlib.com/fibonacci@0.0.1/", data={"nth": n}
+    ).json()
     if next_fib > M:
         return fib
     else:

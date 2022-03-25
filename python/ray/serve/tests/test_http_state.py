@@ -34,23 +34,22 @@ def test_node_selection(patch_get_namespace):
         assert state._get_target_nodes() == []
 
         # Test HeadOnly
-        with patch("ray.serve.http_state.get_current_node_resource_key"
-                   ) as get_current_node:
+        with patch(
+            "ray.serve.http_state.get_current_node_resource_key"
+        ) as get_current_node:
             get_current_node.return_value = "node-id-1"
 
-            state = _make_http_state(
-                HTTPOptions(location=DeploymentMode.HeadOnly))
+            state = _make_http_state(HTTPOptions(location=DeploymentMode.HeadOnly))
             assert state._get_target_nodes() == all_nodes[:1]
 
         # Test EveryNode
-        state = _make_http_state(
-            HTTPOptions(location=DeploymentMode.EveryNode))
+        state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
         assert state._get_target_nodes() == all_nodes
 
         # Test FixedReplica
         state = _make_http_state(
-            HTTPOptions(
-                location=DeploymentMode.FixedNumber, fixed_number_replicas=5))
+            HTTPOptions(location=DeploymentMode.FixedNumber, fixed_number_replicas=5)
+        )
         selected_nodes = state._get_target_nodes()
 
         # it should have selection a subset of 5 nodes.
@@ -65,7 +64,9 @@ def test_node_selection(patch_get_namespace):
             HTTPOptions(
                 location=DeploymentMode.FixedNumber,
                 fixed_number_replicas=5,
-                fixed_number_selection_seed=42))._get_target_nodes()
+                fixed_number_selection_seed=42,
+            )
+        )._get_target_nodes()
         assert len(another_seed) == 5
         assert set(all_nodes).issuperset(set(another_seed))
         assert set(another_seed) != set(selected_nodes)
@@ -73,4 +74,5 @@ def test_node_selection(patch_get_namespace):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -28,17 +28,17 @@ class RelativePositionEmbedding(nn.Module):
         self.out_dim = out_dim
 
         out_range = torch.arange(0, self.out_dim, 2.0)
-        inverse_freq = 1 / (10000**(out_range / self.out_dim))
+        inverse_freq = 1 / (10000 ** (out_range / self.out_dim))
         self.register_buffer("inverse_freq", inverse_freq)
 
     def forward(self, seq_length):
-        pos_input = torch.arange(
-            seq_length - 1, -1, -1.0,
-            dtype=torch.float).to(self.inverse_freq.device)
+        pos_input = torch.arange(seq_length - 1, -1, -1.0, dtype=torch.float).to(
+            self.inverse_freq.device
+        )
         sinusoid_input = torch.einsum("i,j->ij", pos_input, self.inverse_freq)
         pos_embeddings = torch.cat(
-            [torch.sin(sinusoid_input),
-             torch.cos(sinusoid_input)], dim=-1)
+            [torch.sin(sinusoid_input), torch.cos(sinusoid_input)], dim=-1
+        )
         return pos_embeddings[:, None, :]
 
 
@@ -48,14 +48,16 @@ class RelativeMultiHeadAttention(nn.Module):
     Uses segment level recurrence with state reuse.
     """
 
-    def __init__(self,
-                 in_dim: int,
-                 out_dim: int,
-                 num_heads: int,
-                 head_dim: int,
-                 input_layernorm: bool = False,
-                 output_activation: Union[str, callable] = None,
-                 **kwargs):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        num_heads: int,
+        head_dim: int,
+        input_layernorm: bool = False,
+        output_activation: Union[str, callable] = None,
+        **kwargs
+    ):
         """Initializes a RelativeMultiHeadAttention nn.Module object.
 
         Args:
@@ -81,13 +83,15 @@ class RelativeMultiHeadAttention(nn.Module):
 
         # 3=Query, key, and value inputs.
         self._qkv_layer = SlimFC(
-            in_size=in_dim, out_size=3 * num_heads * head_dim, use_bias=False)
+            in_size=in_dim, out_size=3 * num_heads * head_dim, use_bias=False
+        )
 
         self._linear_layer = SlimFC(
             in_size=num_heads * head_dim,
             out_size=out_dim,
             use_bias=False,
-            activation_fn=output_activation)
+            activation_fn=output_activation,
+        )
 
         self._uvar = nn.Parameter(torch.zeros(num_heads, head_dim))
         self._vvar = nn.Parameter(torch.zeros(num_heads, head_dim))
@@ -97,15 +101,15 @@ class RelativeMultiHeadAttention(nn.Module):
         self.register_parameter("_vvar", self._vvar)
 
         self._pos_proj = SlimFC(
-            in_size=in_dim, out_size=num_heads * head_dim, use_bias=False)
+            in_size=in_dim, out_size=num_heads * head_dim, use_bias=False
+        )
         self._rel_pos_embedding = RelativePositionEmbedding(out_dim)
 
         self._input_layernorm = None
         if input_layernorm:
             self._input_layernorm = torch.nn.LayerNorm(in_dim)
 
-    def forward(self, inputs: TensorType,
-                memory: TensorType = None) -> TensorType:
+    def forward(self, inputs: TensorType, memory: TensorType = None) -> TensorType:
         T = list(inputs.size())[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
         d = self._head_dim  # attention head dimension
@@ -139,15 +143,15 @@ class RelativeMultiHeadAttention(nn.Module):
         score = torch.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
         pos_score = torch.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
-        score = score / d**0.5
+        score = score / d ** 0.5
 
         # causal mask of the same length as the sequence
-        mask = sequence_mask(
-            torch.arange(Tau + 1, Tau + T + 1),
-            dtype=score.dtype).to(score.device)
+        mask = sequence_mask(torch.arange(Tau + 1, Tau + T + 1), dtype=score.dtype).to(
+            score.device
+        )
         mask = mask[None, :, :, None]
 
-        masked_score = score * mask + 1e30 * (mask.float() - 1.)
+        masked_score = score * mask + 1e30 * (mask.float() - 1.0)
         wmat = nn.functional.softmax(masked_score, dim=2)
 
         out = torch.einsum("bijh,bjhd->bihd", wmat, values)

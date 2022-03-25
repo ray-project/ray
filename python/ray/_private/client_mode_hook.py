@@ -116,14 +116,18 @@ def client_mode_should_convert(*, auto_init: bool):
     """
     if auto_init:
         import ray
-        if os.environ.get("RAY_ENABLE_AUTO_CONNECT",
-                          "") != "0" and not ray.is_initialized():
+
+        if (
+            os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
+            and not ray.is_initialized()
+        ):
             ray.init()
 
     # `is_client_mode_enabled_by_default` is used for testing with
     # `RAY_CLIENT_MODE=1`. This flag means all tests run with client mode.
-    return (is_client_mode_enabled or is_client_mode_enabled_by_default) and \
-        _get_client_hook_status_on_thread()
+    return (
+        is_client_mode_enabled or is_client_mode_enabled_by_default
+    ) and _get_client_hook_status_on_thread()
 
 
 def client_mode_wrap(func):

@@ -1,13 +1,11 @@
 import os
-import sys
 import tempfile
 from typing import Optional
 
 import pytest
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray.serve.storage.checkpoint_path import make_kv_store
-from ray.serve.storage.kv_store import (RayInternalKVStore, RayLocalKVStore,
-                                        RayS3KVStore)
+from ray.serve.storage.kv_store import RayInternalKVStore, RayLocalKVStore, RayS3KVStore
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore
 
@@ -76,7 +74,8 @@ def _test_operations(kv_store):
 
 def test_external_kv_local_disk():
     kv_store = RayLocalKVStore(
-        "namespace", os.path.join(tempfile.gettempdir(), "test_kv_store.db"))
+        "namespace", os.path.join(tempfile.gettempdir(), "test_kv_store.db")
+    )
 
     _test_operations(kv_store)
 
@@ -128,16 +127,17 @@ class MyCustomStorageCls(KVStoreBase):
         return super().put(key, val)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Using tmp dir.")
 def test_make_kv_store(serve_instance):
     namespace = "ns"
     assert isinstance(
-        make_kv_store(DEFAULT_CHECKPOINT_PATH, namespace), RayInternalKVStore)
+        make_kv_store(DEFAULT_CHECKPOINT_PATH, namespace), RayInternalKVStore
+    )
     assert isinstance(
-        make_kv_store("file:///tmp/deep/dir/my_path", namespace),
-        RayLocalKVStore)
+        make_kv_store("file:///tmp/deep/dir/my_path", namespace), RayLocalKVStore
+    )
     assert isinstance(
-        make_kv_store("s3://object_store/my_path", namespace), RayS3KVStore)
+        make_kv_store("s3://object_store/my_path", namespace), RayS3KVStore
+    )
 
     with pytest.raises(ValueError, match="shouldn't be empty"):
         # Empty path
@@ -150,8 +150,8 @@ def test_make_kv_store(serve_instance):
     module_name = "ray.serve.tests.storage_tests.test_kv_store"
     with pytest.raises(ValueError, match="doesn't inherit"):
         make_kv_store(
-            f"custom://{module_name}.MyNonCompliantStoreCls",
-            namespace=namespace)
+            f"custom://{module_name}.MyNonCompliantStoreCls", namespace=namespace
+        )
 
     store = make_kv_store(
         f"custom://{module_name}.MyCustomStorageCls?arg1=val1&arg2=val2",

@@ -32,72 +32,14 @@ The Serve Pipeline has the following features:
 - Each model in the DAG can be scaled to many replicas across the Ray cluster.
   You can fine-tune the resource usage to achieve maximum throughput and utilization.
 
-Compare to ServeHandle, Serve Pipeline is more explicit about the dependencies
+Compared to ServeHandle, Serve Pipeline is more explicit about the dependencies
 of each model in the pipeline and let you deploy the entire DAG at once.
 
-Compare to KServe (formerly KFServing), Serve Pipeline enables writing pipeline
+Compared to KServe (formerly KFServing), Serve Pipeline enables writing pipeline
 as code and arbitrary control flow operation using Python.
 
-Compare to building your own orchestration micro-services, Serve Pipeline helps
+Compared to building your own orchestration micro-services, Serve Pipeline helps
 you to be productive in building scalable pipeline in hours.
-
-
-Basic API
----------
-
-Serve Pipeline is a standalone package that can be used without Ray Serve.
-However, the expected usage is to use it inside your Serve deployment.
-
-You can import it as:
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_pipeline.py
-    :language: python
-    :start-after: __import_start__
-    :end-before: __import_end__
-
-You can decorate any function or class using ``pipeline.step``. You can then
-combine these steps into a pipeline by calling the decorated steps. In
-the example below, we have a single step that takes the special node ``pipeline.INPUT``,
-, which is a placeholder for the arguments that will be passed into the pipeline.
-
-Once you have defined the pipeline by combining one or more steps, you can call ``.deploy()`` to instantiate it.
-Once you have instantiated the pipeline, you can call ``.call(inp)`` to invoke synchronously.
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_pipeline.py
-    :language: python
-    :start-after: __simple_pipeline_start__
-    :end-before: __simple_pipeline_end__
-
-The input to a pipeline node can be the ``pipeline.INPUT`` special node or
-one or more other pipeline nodes. Here is an example of simple chaining pipeline.
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_pipeline.py
-    :language: python
-    :start-after: __simple_chain_start__
-    :end-before: __simple_chain_end__
-
-For classes, you need to instantiate them with init args first, then pass in their
-upstream nodes. This allows you to have the same code definition but pass different
-arguments, like URIs for model weights (you can see an example of this in the
-:ref:`ensemble example <serve-pipeline-ensemble-api>` section.)
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_pipeline.py
-    :language: python
-    :start-after: __class_node_start__
-    :end-before: __class_node_end__
-
-The decorator also takes two arguments to configure where the node will be executed.
-
-.. autofunction:: ray.serve.pipeline.step
-
-Here is an example pipeline that uses actors instead of local execution mode. The local
-execution mode is the default running mode. It runs the node directly within the process
-instead of distributing them out. This mode is useful for local testing and development.
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_pipeline.py
-    :language: python
-    :start-after: __pipeline_configuration_start__
-    :end-before: __pipeline_configuration_end__
 
 
 Chaining Example
@@ -109,12 +51,6 @@ steps are CPU bounded and hard to parallelize. The actual inference steps can ru
 on GPU and batched (batching helps improving throughput without sacrificing latency,
 you can learn more in our :ref:`batching tutorial <serve-batch-tutorial>`).
 They are often split up into separate stages and scaled separately to increase throughput.
-
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_pipeline.py
-    :language: python
-    :start-after: __preprocessing_pipeline_example_start__
-    :end-before: __preprocessing_pipeline_example_end__
 
 
 .. _serve-pipeline-ensemble-api:
@@ -130,11 +66,6 @@ pattern easily with Pipeline. The below code snippet shows how to construct a pi
 looks like: preprocess -> [resnet18, resnet34] -> combine_output.
 
 
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_pipeline.py
-    :language: python
-    :start-after: __ensemble_pipeline_example_start__
-    :end-before: __ensemble_pipeline_example_end__
-
 More Use Case Examples
 ----------------------
 
@@ -149,12 +80,6 @@ Combining business logic + ML models
 
 Based off the previous ensemble example, you can put arbitrary business logic
 in your pipeline step.
-
-.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_pipeline.py
-    :language: python
-    :start-after: __biz_logic_start__
-    :end-before: __biz_logic_end__
-
 
 
 .. _`Forum`: https://discuss.ray.io/

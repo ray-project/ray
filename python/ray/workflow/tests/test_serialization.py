@@ -11,12 +11,12 @@ import subprocess
 import time
 
 
-@workflow.step
+@ray.remote
 def identity(x):
     return x
 
 
-@workflow.step
+@ray.remote
 def gather(*args):
     return args
 
@@ -29,7 +29,8 @@ def get_num_uploads():
 
 @pytest.mark.skip(
     reason="TODO (Alex): After removing the special casing for"
-    "objectrefs in `WorkflowInputs` we can enable this stronger test.")
+    "objectrefs in `WorkflowInputs` we can enable this stronger test."
+)
 def test_dedupe_serialization(workflow_start_regular_shared):
     @ray.remote(num_cpus=0)
     class Counter:
@@ -56,10 +57,10 @@ def test_dedupe_serialization(workflow_start_regular_shared):
     # One for the ray.put
     assert ray.get(counter.get_count.remote()) == 1
 
-    single = identity.step((ref, ))
-    double = identity.step(list_of_refs)
+    single = identity.bind((ref,))
+    double = identity.bind(list_of_refs)
 
-    gather.step(single, double).run()
+    workflow.create(gather.bind(single, double)).run()
 
     # One more for hashing the ref, and for uploading.
     assert ray.get(counter.get_count.remote()) == 3
@@ -71,10 +72,10 @@ def test_dedupe_serialization_2(workflow_start_regular_shared):
 
     assert get_num_uploads() == 0
 
-    single = identity.step((ref, ))
-    double = identity.step(list_of_refs)
+    single = identity.bind((ref,))
+    double = identity.bind(list_of_refs)
 
-    result_ref, result_list = gather.step(single, double).run()
+    result_ref, result_list = workflow.create(gather.bind(single, double)).run()
 
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
@@ -89,14 +90,14 @@ def test_same_object_many_workflows(workflow_start_regular_shared):
     since different workflows shouldn't look in each others object directories.
     """
 
-    @ray.workflow.step
+    @ray.remote
     def f(a):
         return [a[0]]
 
     x = {0: ray.put(10)}
 
-    result1 = f.step(x).run()
-    result2 = f.step(x).run()
+    result1 = workflow.create(f.bind(x)).run()
+    result2 = workflow.create(f.bind(x)).run()
     print(result1)
     print(result2)
 
@@ -129,7 +130,7 @@ import ray
 from ray import workflow
 from filelock import FileLock
 
-@workflow.step
+@ray.remote
 def foo(objrefs):
     with FileLock("{str(lock_file)}"):
         return objrefs
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     workflow.init("{str(workflow_dir)}")
     arg = ray.put("hello world")
 
-    foo.step([arg, arg]).run()
+    workflow.create(foo.bind([arg, arg])).run()
     assert False
     """
 
@@ -177,8 +178,7 @@ def test_embedded_objectrefs(workflow_start_regular):
 
     wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
 
-    promise = serialization.dump_to_storage(["key"], wrapped, workflow_id,
-                                            base_storage)
+    promise = serialization.dump_to_storage(["key"], wrapped, workflow_id, base_storage)
     workflow_storage.asyncio_run(promise)
 
     # Be extremely explicit about shutting down. We want to make sure the
@@ -197,4 +197,5 @@ def test_embedded_objectrefs(workflow_start_regular):
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

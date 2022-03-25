@@ -1,5 +1,9 @@
-from ray.util.client.common import (_id_is_newer, ResponseCache,
-                                    OrderedResponseCache, INT32_MAX)
+from ray.util.client.common import (
+    _id_is_newer,
+    ResponseCache,
+    OrderedResponseCache,
+    INT32_MAX,
+)
 import threading
 import time
 
@@ -215,4 +219,5 @@ def test_response_cache_invalidate():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

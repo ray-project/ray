@@ -11,9 +11,14 @@ from contextlib import contextmanager
 filter_pattern = os.environ.get("TESTS_TO_RUN", "")
 
 
-def timeit(name, fn, multiplier=1) -> List[Optional[Tuple[str, float, float]]]:
+def timeit(
+    name, fn, multiplier=1, warmup_time_sec=10
+) -> List[Optional[Tuple[str, float, float]]]:
     if filter_pattern not in name:
         return [None]
+    # sleep for a while to avoid noisy neigbhors.
+    # related issue: https://github.com/ray-project/ray/issues/22045
+    time.sleep(warmup_time_sec)
     # warmup
     start = time.perf_counter()
     count = 0

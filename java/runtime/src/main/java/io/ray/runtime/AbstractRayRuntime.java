@@ -12,6 +12,7 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayFuncR;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
@@ -20,6 +21,7 @@ import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
@@ -28,17 +30,19 @@ import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
-import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.generated.Common;
 import io.ray.runtime.generated.Common.Language;
 import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectStore;
+import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
+import io.ray.runtime.util.ConcurrencyGroupUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
@@ -54,7 +58,6 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
   protected RuntimeContext runtimeContext;
-  protected GcsClient gcsClient;
 
   protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
@@ -76,7 +79,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       LOGGER.debug("Putting Object in Task {}.", workerContext.getCurrentTaskId());
     }
     ObjectId objectId = objectStore.put(obj);
-    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(
+        objectId,
+        (Class<T>) (obj == null ? Object.class : obj.getClass()),
+        /*skipAddingLocalRef=*/ true);
   }
 
   @Override
@@ -88,7 +94,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
           ownerActor.getId());
     }
     ObjectId objectId = objectStore.put(obj, ownerActor.getId());
-    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(
+        objectId,
+        (Class<T>) (obj == null ? Object.class : obj.getClass()),
+        /*skipAddingLocalRef=*/ true);
   }
 
   @Override
@@ -217,19 +226,19 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public PlacementGroup getPlacementGroup(PlacementGroupId id) {
-    return gcsClient.getPlacementGroupInfo(id);
+    return getGcsClient().getPlacementGroupInfo(id);
   }
 
   @Override
   public PlacementGroup getPlacementGroup(String name, String namespace) {
     return namespace == null
-        ? gcsClient.getPlacementGroupInfo(name, runtimeContext.getNamespace())
-        : gcsClient.getPlacementGroupInfo(name, namespace);
+        ? getGcsClient().getPlacementGroupInfo(name, runtimeContext.getNamespace())
+        : getGcsClient().getPlacementGroupInfo(name, namespace);
   }
 
   @Override
   public List<PlacementGroup> getAllPlacementGroups() {
-    return gcsClient.getAllPlacementGroupInfo();
+    return getGcsClient().getAllPlacementGroupInfo();
   }
 
   @Override
@@ -274,6 +283,16 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     return new ConcurrencyGroupImpl(name, maxConcurrency, funcs);
   }
 
+  @Override
+  public List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda) {
+    return ConcurrencyGroupUtils.extractConcurrencyGroupsByAnnotations(actorConstructorLambda);
+  }
+
+  @Override
+  public RuntimeEnv createRuntimeEnv(Map<String, String> envVars) {
+    return new RuntimeEnvImpl(envVars);
+  }
+
   private ObjectRef callNormalFunction(
       FunctionDescriptor functionDescriptor,
       Object[] args,
@@ -284,13 +303,23 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (options == null) {
       options = new CallOptions.Builder().build();
     }
+
+    ObjectRefImpl<?> impl = new ObjectRefImpl<>();
+    /// Mapping the object id to the object ref.
+    List<ObjectId> preparedReturnIds = getCurrentReturnIds(numReturns, ActorId.NIL);
+    if (rayConfig.runMode == RunMode.CLUSTER && numReturns > 0) {
+      ObjectRefImpl.registerObjectRefImpl(preparedReturnIds.get(0), impl);
+    }
+
     List<ObjectId> returnIds =
         taskSubmitter.submitTask(functionDescriptor, functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns);
+    validatePreparedReturnIds(preparedReturnIds, returnIds);
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get());
+      impl.init(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
+      return impl;
     }
   }
 
@@ -305,6 +334,13 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       LOGGER.debug("Submitting Actor Task {}.", functionDescriptor);
     }
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
+
+    ObjectRefImpl<?> impl = new ObjectRefImpl<>();
+    /// Mapping the object id to the object ref.
+    List<ObjectId> preparedReturnIds = getCurrentReturnIds(numReturns, rayActor.getId());
+    if (rayConfig.runMode == RunMode.CLUSTER && numReturns > 0) {
+      ObjectRefImpl.registerObjectRefImpl(preparedReturnIds.get(0), impl);
+    }
     List<ObjectId> returnIds =
         taskSubmitter.submitActorTask(
             rayActor, functionDescriptor, functionArgs, numReturns, options);
@@ -312,7 +348,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (returnIds.isEmpty()) {
       return null;
     } else {
-      return new ObjectRefImpl(returnIds.get(0), returnType.get());
+      validatePreparedReturnIds(preparedReturnIds, returnIds);
+      impl.init(returnIds.get(0), returnType.get(), /*skipAddingLocalRef=*/ true);
+      return impl;
     }
   }
 
@@ -335,6 +373,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
     }
+
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }
@@ -367,6 +406,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     }
   }
 
+  abstract List<ObjectId> getCurrentReturnIds(int numReturns, ActorId actorId);
+
   @Override
   public WorkerContext getWorkerContext() {
     return workerContext;
@@ -397,12 +438,23 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public GcsClient getGcsClient() {
-    return gcsClient;
-  }
-
-  @Override
   public void setIsContextSet(boolean isContextSet) {
     this.isContextSet.set(isContextSet);
+  }
+
+  /// A helper to validate if the prepared return ids is as expected.
+  void validatePreparedReturnIds(List<ObjectId> preparedReturnIds, List<ObjectId> realReturnIds) {
+    if (rayConfig.runMode == RunMode.CLUSTER) {
+      Preconditions.checkState(realReturnIds.size() == preparedReturnIds.size());
+      for (int i = 0; i < preparedReturnIds.size(); ++i) {
+        ObjectId prepared = preparedReturnIds.get(i);
+        Object real = realReturnIds.get(i);
+        Preconditions.checkState(
+            prepared.equals(real),
+            "The prepared object id {} is not equal to the real return id {}",
+            prepared,
+            real);
+      }
+    }
   }
 }

@@ -4,6 +4,12 @@ from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
 
 
+# TODO(SongGuyang): This function exists in both C++ and Python.
+# We should make this logic clearly.
+def encode_plugin_uri(plugin: str, uri: str) -> str:
+    return plugin + "|" + uri
+
+
 @DeveloperAPI
 class RuntimeEnvPlugin(ABC):
     @abstractstaticmethod
@@ -24,8 +30,9 @@ class RuntimeEnvPlugin(ABC):
         """
         raise NotImplementedError()
 
-    def create(uri: str, runtime_env_dict: dict,
-               ctx: RuntimeEnvContext) -> float:
+    def create(
+        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+    ) -> float:
         """Create and install the runtime environment.
 
         Gets called in the runtime env agent at install time. The URI can be
@@ -33,7 +40,7 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri(str): a URI uniquely describing this resource.
-            runtime_env_dict(dict): the entire dictionary passed in by user.
+            runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
 
         Returns:
@@ -43,8 +50,9 @@ class RuntimeEnvPlugin(ABC):
         """
         return 0
 
-    def modify_context(uri: str, runtime_env_dict: dict,
-                       ctx: RuntimeEnvContext) -> None:
+    def modify_context(
+        uri: str, runtime_env: "RuntimeEnv", ctx: RuntimeEnvContext  # noqa: F821
+    ) -> None:
         """Modify context to change worker startup behavior.
 
         For example, you can use this to preprend "cd <dir>" command to worker
@@ -52,7 +60,7 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri(str): a URI uniquely describing this resource.
-            runtime_env_dict(dict): the entire dictionary passed in by user.
+            runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
         """
         return

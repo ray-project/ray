@@ -41,8 +41,8 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
   // record when it reaches the upper limit. When we receive a record, we update the
   // `cursor_` and get the corresponding id through it. Put operation will directly cover
   // the previous data, so that we can avoid a delete operation.
-  Status status = gcs_table_storage_->ProfileTable().Put(ids_[cursor_++ % ids_.size()],
-                                                         *profile_table_data, on_done);
+  Status status = gcs_table_storage_->ProfileTable().Put(
+      ids_[cursor_++ % ids_.size()], *profile_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -51,12 +51,13 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
 }
 
 void DefaultStatsHandler::HandleGetAllProfileInfo(
-    const rpc::GetAllProfileInfoRequest &request, rpc::GetAllProfileInfoReply *reply,
+    const rpc::GetAllProfileInfoRequest &request,
+    rpc::GetAllProfileInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all profile info.";
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<UniqueID, ProfileTableData> &result) {
-    for (auto &data : result) {
+                     const absl::flat_hash_map<UniqueID, ProfileTableData> &result) {
+    for (const auto &data : result) {
       reply->add_profile_info_list()->CopyFrom(data.second);
     }
     RAY_LOG(DEBUG) << "Finished getting all profile info.";
@@ -65,7 +66,7 @@ void DefaultStatsHandler::HandleGetAllProfileInfo(
 
   Status status = gcs_table_storage_->ProfileTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(std::unordered_map<UniqueID, ProfileTableData>());
+    on_done(absl::flat_hash_map<UniqueID, ProfileTableData>());
   }
 }
 

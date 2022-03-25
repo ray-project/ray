@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any, Dict
+
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
@@ -18,7 +19,8 @@ def _check_docker_file_mounts(file_mounts: Dict[str, str]) -> None:
         if Path(local).is_file():
             cli_logger.warning(
                 f"File Mount: ({remote}:{local}) refers to a file.\n To ensure"
-                " this mount updates properly, please use a directory.")
+                " this mount updates properly, please use a directory."
+            )
 
 
 def validate_docker_config(config: Dict[str, Any]) -> None:
@@ -44,31 +46,28 @@ def validate_docker_config(config: Dict[str, Any]) -> None:
     return None
 
 
-def with_docker_exec(cmds,
-                     container_name,
-                     docker_cmd,
-                     env_vars=None,
-                     with_interactive=False):
+def with_docker_exec(
+    cmds, container_name, docker_cmd, env_vars=None, with_interactive=False
+):
     assert docker_cmd, "Must provide docker command"
     env_str = ""
     if env_vars:
-        env_str = " ".join(
-            ["-e {env}=${env}".format(env=env) for env in env_vars])
+        env_str = " ".join(["-e {env}=${env}".format(env=env) for env in env_vars])
     return [
-        "docker exec {interactive} {env} {container} /bin/bash -c {cmd} ".
-        format(
+        "docker exec {interactive} {env} {container} /bin/bash -c {cmd} ".format(
             interactive="-it" if with_interactive else "",
             env=env_str,
             container=container_name,
-            cmd=quote(cmd)) for cmd in cmds
+            cmd=quote(cmd),
+        )
+        for cmd in cmds
     ]
 
 
 def _check_helper(cname, template, docker_cmd):
-    return " ".join([
-        docker_cmd, "inspect", "-f", "'{{" + template + "}}'", cname, "||",
-        "true"
-    ])
+    return " ".join(
+        [docker_cmd, "inspect", "-f", "'{{" + template + "}}'", cname, "||", "true"]
+    )
 
 
 def check_docker_running_cmd(cname, docker_cmd):
@@ -83,28 +82,48 @@ def check_docker_image(cname, docker_cmd):
     return _check_helper(cname, ".Config.Image", docker_cmd)
 
 
-def docker_start_cmds(user, image, mount_dict, container_name, user_options,
-                      cluster_name, home_directory, docker_cmd):
+def docker_start_cmds(
+    user,
+    image,
+    mount_dict,
+    container_name,
+    user_options,
+    cluster_name,
+    home_directory,
+    docker_cmd,
+):
     # Imported here due to circular dependency.
     from ray.autoscaler.sdk import get_docker_host_mount_location
+
     docker_mount_prefix = get_docker_host_mount_location(cluster_name)
     mount = {f"{docker_mount_prefix}/{dst}": dst for dst in mount_dict}
 
-    mount_flags = " ".join([
-        "-v {src}:{dest}".format(
-            src=k, dest=v.replace("~/", home_directory + "/"))
-        for k, v in mount.items()
-    ])
+    mount_flags = " ".join(
+        [
+            "-v {src}:{dest}".format(src=k, dest=v.replace("~/", home_directory + "/"))
+            for k, v in mount.items()
+        ]
+    )
 
     # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
     env_flags = " ".join(
-        ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
+        ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()]
+    )
 
     user_options_str = " ".join(user_options)
     docker_run = [
-        docker_cmd, "run", "--rm", "--name {}".format(container_name), "-d",
-        "-it", mount_flags, env_flags, user_options_str, "--net=host", image,
-        "bash"
+        docker_cmd,
+        "run",
+        "--rm",
+        "--name {}".format(container_name),
+        "-d",
+        "-it",
+        mount_flags,
+        env_flags,
+        user_options_str,
+        "--net=host",
+        image,
+        "bash",
     ]
     return " ".join(docker_run)

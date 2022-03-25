@@ -64,7 +64,7 @@ public class ReplicaSetTest {
                   deploymentInfo,
                   replicaTag,
                   controllerName,
-                  (RayServeConfig) null)
+                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());

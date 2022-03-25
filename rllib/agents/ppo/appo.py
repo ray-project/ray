@@ -12,16 +12,20 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.impala.impala import validate_config
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.ppo.ppo import UpdateKL
 from ray.rllib.agents import impala
 from ray.rllib.policy.policy import Policy
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, _get_shared_metrics
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.execution.common import (
+    STEPS_SAMPLED_COUNTER,
+    LAST_TARGET_UPDATE_TS,
+    NUM_TARGET_UPDATES,
+    _get_shared_metrics,
+)
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 
 # Adds the following updates to the `IMPALATrainer` config in
@@ -54,7 +58,7 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
         # == IMPALA optimizer params (see documentation in impala.py) ==
         "rollout_fragment_length": 50,
         "train_batch_size": 500,
-        "min_iter_time_s": 10,
+        "min_time_s_per_reporting": 10,
         "num_workers": 2,
         "num_gpus": 0,
         "num_multi_gpu_tower_stacks": 1,
@@ -81,7 +85,7 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
 )
 
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class UpdateTargetAndKL:
@@ -89,8 +93,9 @@ class UpdateTargetAndKL:
         self.workers = workers
         self.config = config
         self.update_kl = UpdateKL(workers)
-        self.target_update_freq = config["num_sgd_iter"] \
-            * config["minibatch_buffer_size"]
+        self.target_update_freq = (
+            config["num_sgd_iter"] * config["minibatch_buffer_size"]
+        )
 
     def __call__(self, fetches):
         metrics = _get_shared_metrics()
@@ -100,58 +105,42 @@ class UpdateTargetAndKL:
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
             # Update Target Network
-            self.workers.local_worker().foreach_trainable_policy(
-                lambda p, _: p.update_target())
+            self.workers.local_worker().foreach_policy_to_train(
+                lambda p, _: p.update_target()
+            )
             # Also update KL Coeff
             if self.config["use_kl_loss"]:
                 self.update_kl(fetches)
 
 
-def add_target_callback(config: TrainerConfigDict):
-    """Add the update target and kl hook.
+class APPOTrainer(impala.ImpalaTrainer):
+    def __init__(self, config, *args, **kwargs):
+        # Before init: Add the update target and kl hook.
+        # This hook is called explicitly after each learner step in the
+        # execution setup for IMPALA.
+        config["after_train_step"] = UpdateTargetAndKL
 
-    This hook is called explicitly after each learner step in the execution
-    setup for IMPALA.
+        super().__init__(config, *args, **kwargs)
 
-    Args:
-        config (TrainerConfigDict): The APPO config dict.
-    """
-    config["after_train_step"] = UpdateTargetAndKL
-    validate_config(config)
+        # After init: Initialize target net.
+        self.workers.local_worker().foreach_policy_to_train(
+            lambda p, _: p.update_target()
+        )
 
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+    @override(Trainer)
+    def get_default_policy_class(
+        self, config: PartialTrainerConfigDict
+    ) -> Optional[Type[Policy]]:
+        if config["framework"] == "torch":
+            from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
 
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
-        return AsyncPPOTorchPolicy
-
-
-def initialize_target(trainer: Trainer) -> None:
-    """Updates target network on startup by synching it with the policy net.
-
-    Args:
-        trainer (Trainer): The Trainer object.
-    """
-    trainer.workers.local_worker().foreach_trainable_policy(
-        lambda p, _: p.update_target())
-
-
-# Build a child class of `Trainer`, based on ImpalaTrainer's setup.
-# Note: The generated class is NOT a sub-class of ImpalaTrainer, but directly
-# of the `Trainer` class.
-APPOTrainer = impala.ImpalaTrainer.with_updates(
-    name="APPO",
-    default_config=DEFAULT_CONFIG,
-    validate_config=add_target_callback,
-    default_policy=AsyncPPOTFPolicy,
-    get_policy_class=get_policy_class,
-    after_init=initialize_target)
+            return AsyncPPOTorchPolicy
+        elif config["framework"] == "tf":
+            return AsyncPPOTFPolicy
+        elif config["framework"] in ["tf2", "tfe"]:
+            return AsyncPPOTFPolicy.as_eager()
