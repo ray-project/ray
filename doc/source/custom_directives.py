@@ -1,6 +1,7 @@
 import urllib
 import mock
 import sys
+import re
 
 # Note: the scipy import has to stay here, it's used implicitly down the line
 import scipy.stats  # noqa: F401
@@ -10,6 +11,7 @@ __all__ = [
     "fix_xgb_lgbm_docs",
     "mock_modules",
     "update_context",
+    "download_and_preprocess_ecosystem_docs",
 ]
 
 try:
@@ -174,3 +176,70 @@ def mock_modules():
 
     for mod_name in CHILD_MOCK_MODULES:
         sys.modules[mod_name] = ChildClassMock()
+
+
+# Add doc files from external repositories to be downloaded during build here
+# (repo, ref, path to get, path to save on disk)
+EXTERNAL_MARKDOWN_FILES = [
+    ("Yard1/xgboost_ray", "adjust_readme", "README.md", "ray-more-libs/xgboost-ray.md"),
+]
+
+
+def preprocess_markdown_file(path: str):
+    """
+    Preprocesses GitHub Markdown files by:
+        - Uncommenting all ``<!-- -->`` comments in which opening tag is immediately
+          succeded by ``$UNCOMMENT``(eg. ``<!--$UNCOMMENTthis will be uncommented-->``)
+        - Removing text between ``<!--$REMOVE-->`` and ``<!--$END_REMOVE-->``
+
+    This is to enable translation between GitHub Markdown and MyST Markdown used
+    in docs. For more details, see ``doc/README.md``.
+    """
+    with open(path, "r") as f:
+        text = f.read()
+    # $UNCOMMENT
+    text = re.sub(r"<!--\s*\$UNCOMMENT(.*?)(-->)", r"\1", text, flags=re.DOTALL)
+    # $REMOVE
+    text = re.sub(
+        r"(<!--\s*\$REMOVE\s*-->)(.*?)(<!--\s*\$END_REMOVE\s*-->)",
+        r"",
+        text,
+        flags=re.DOTALL,
+    )
+    with open(path, "w") as f:
+        f.write(text)
+
+
+def download_and_preprocess_ecosystem_docs():
+    """
+    This function downloads markdown readme files for various
+    ecosystem libraries, saves them in correct places and preprocesses
+    them before sphinx build starts.
+
+    If you have ecosystem libraries that live in a separate repo from Ray,
+    adding them here will allow for their docs to be present in Ray docs
+    without the need for duplicate files. For more details, see ``doc/README.md``.
+    """
+
+    import urllib.request
+    import requests
+
+    def get_latest_release_tag(repo: str) -> str:
+        """repo is just the repo name, eg. ray-project/ray"""
+        response = requests.get(f"https://api.github.com/repos/{repo}/releases/latest")
+        return response.json()["tag_name"]
+
+    def get_file_from_github(
+        repo: str, ref: str, path_to_get: str, path_to_save_on_disk: str
+    ) -> None:
+        """If ``ref == "latest"``, use latest release"""
+        if ref == "latest":
+            ref = get_latest_release_tag(repo)
+        urllib.request.urlretrieve(
+            f"https://raw.githubusercontent.com/{repo}/{ref}/{path_to_get}",
+            path_to_save_on_disk,
+        )
+
+    for x in EXTERNAL_MARKDOWN_FILES:
+        get_file_from_github(*x)
+        preprocess_markdown_file(x[-1])

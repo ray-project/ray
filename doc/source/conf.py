@@ -9,6 +9,9 @@ from datetime import datetime
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
 
+# Download docs from ecosystem library repos
+download_and_preprocess_ecosystem_docs()
+
 assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
