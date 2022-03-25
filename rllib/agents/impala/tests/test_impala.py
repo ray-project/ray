@@ -63,12 +63,14 @@ class TestIMPALA(unittest.TestCase):
     def test_impala_lr_schedule(self):
         config = impala.DEFAULT_CONFIG.copy()
         config["num_gpus"] = 0
+        config["train_batch_size"] = 100
+        config["num_envs_per_worker"] = 2
         # Test whether we correctly ignore the "lr" setting.
         # The first lr should be 0.05.
         config["lr"] = 0.1
         config["lr_schedule"] = [
             [0, 0.05],
-            [10000, 0.000001],
+            [100000, 0.000001],
         ]
         config["num_gpus"] = 0  # Do not use any (fake) GPUs.
         config["env"] = "CartPole-v0"
@@ -87,9 +89,12 @@ class TestIMPALA(unittest.TestCase):
                     check(policy.get_session().run(policy.cur_lr), 0.05)
                 else:
                     check(policy.cur_lr, 0.05)
-                r1 = trainer.train()
-                r2 = trainer.train()
-                r3 = trainer.train()
+                for _ in range(1):
+                    r1 = trainer.train()
+                for _ in range(2):
+                    r2 = trainer.train()
+                for _ in range(2):
+                    r3 = trainer.train()
                 # Due to the asynch'ness of IMPALA, learner-stats metrics
                 # could be delayed by one iteration. Do 3 train() calls here
                 # and measure guaranteed decrease in lr between 1st and 3rd.

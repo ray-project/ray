@@ -1,3 +1,4 @@
+import copy
 import logging
 import platform
 import random
@@ -609,10 +610,9 @@ class ImpalaTrainer(Trainer):
                     learner_infos.append(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
-
+        results_have_same_structure = True
         for result1, result2 in zip(learner_infos, learner_infos[1:]):
             try:
-                results_have_same_structure = True
                 tree.assert_same_structure(result1, result2)
             except (ValueError, TypeError):
                 results_have_same_structure = False
@@ -624,7 +624,7 @@ class ImpalaTrainer(Trainer):
         elif len(learner_infos) == 1:
             learner_info = learner_infos[0]
         else:
-            return {}
+            return copy.deepcopy(self._learner_thread.learner_info)
 
         # Update the steps trained counters.
         self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
