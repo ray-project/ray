@@ -9,14 +9,21 @@ from ray_release.config import Test
 def filter_tests(
     test_collection: List[Test],
     frequency: Frequency,
-    test_attr_regex_filters: Dict[str, str] = {},
+    test_attr_regex_filters: Optional[Dict[str, str]] = None,
 ) -> List[Tuple[Test, bool]]:
+    if test_attr_regex_filters is None:
+        test_attr_regex_filters = {}
+
     tests_to_run = []
     for test in test_collection:
         # First, filter by string attributes
+        attr_mismatch = False
         for attr, regex in test_attr_regex_filters.items():
             if not re.match(regex, test[attr]):
-                continue
+                attr_mismatch = True
+                break
+        if attr_mismatch:
+            continue
 
         test_frequency = get_frequency(test["frequency"])
         if test_frequency == Frequency.DISABLED:
