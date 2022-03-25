@@ -13,8 +13,9 @@ if [ -d "/tmp/artifacts" ]; then
     echo "Artifact directory contents before cleanup:"
     find /tmp/artifacts -print || true
 
-    rm -rf /tmp/artifacts/* || true
-    rm -rf /tmp/artifacts/.* || true
+    # Need sudo because artifacts were created by root
+    # within the docker container
+    sudo rm -rf /tmp/artifacts/{,.[!.],..?}* || true
 
     echo "Artifact directory contents after cleanup:"
     find /tmp/artifacts -print || true
