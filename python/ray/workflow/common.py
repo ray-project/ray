@@ -467,23 +467,23 @@ class Workflow(Generic[T]):
         If the workflow with the given id already exists, it will be resumed.
 
         Examples:
-            >>> @workflow.step
-            ... def book_flight(origin: str, dest: str) -> Flight:
-            ...    return Flight(...)
+            >>> from ray import workflow
+            >>> Flight, Reservation, Trip = ... # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+            ...    return Flight(...) # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
+            ...    return Reservation(...) # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
+            ...    return Trip(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def book_hotel(location: str) -> Reservation:
-            ...    return Reservation(...)
-
-            >>> @workflow.step
-            ... def finalize_trip(bookings: List[Any]) -> Trip:
-            ...    return Trip(...)
-
-            >>> flight1 = book_flight.step("OAK", "SAN")
-            >>> flight2 = book_flight.step("SAN", "OAK")
-            >>> hotel = book_hotel.step("SAN")
-            >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> result = trip.run()
+            >>> flight1 = book_flight.step("OAK", "SAN") # doctest: +SKIP
+            >>> flight2 = book_flight.step("SAN", "OAK") # doctest: +SKIP
+            >>> hotel = book_hotel.step("SAN") # doctest: +SKIP
+            >>> trip = finalize_trip.step([flight1, flight2, hotel]) # doctest: +SKIP
+            >>> result = trip.run() # doctest: +SKIP
 
         Args:
             workflow_id: A unique identifier that can be used to resume the
@@ -507,23 +507,25 @@ class Workflow(Generic[T]):
         If the workflow with the given id already exists, it will be resumed.
 
         Examples:
-            >>> @workflow.step
-            ... def book_flight(origin: str, dest: str) -> Flight:
-            ...    return Flight(...)
+            >>> from ray import workflow
+            >>> Flight, Reservation, Trip = ... # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+            ...    return Flight(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def book_hotel(location: str) -> Reservation:
-            ...    return Reservation(...)
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
+            ...    return Reservation(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def finalize_trip(bookings: List[Any]) -> Trip:
-            ...    return Trip(...)
+            >>> @workflow.step # doctest: +SKIP
+            ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
+            ...    return Trip(...) # doctest: +SKIP
 
-            >>> flight1 = book_flight.step("OAK", "SAN")
-            >>> flight2 = book_flight.step("SAN", "OAK")
-            >>> hotel = book_hotel.step("SAN")
-            >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> result = ray.get(trip.run_async())
+            >>> flight1 = book_flight.step("OAK", "SAN") # doctest: +SKIP
+            >>> flight2 = book_flight.step("SAN", "OAK") # doctest: +SKIP
+            >>> hotel = book_hotel.step("SAN") # doctest: +SKIP
+            >>> trip = finalize_trip.step([flight1, flight2, hotel]) # doctest: +SKIP
+            >>> result = ray.get(trip.run_async()) # doctest: +SKIP
 
         Args:
             workflow_id: A unique identifier that can be used to resume the

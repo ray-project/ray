@@ -859,8 +859,10 @@ class Trainable:
         ``Trainable.load_checkpoint`` errors before execution.
 
         >>> from ray.tune.utils import validate_save_restore
-        >>> validate_save_restore(MyTrainableClass)
-        >>> validate_save_restore(MyTrainableClass, use_object_store=True)
+        >>> MyTrainableClass = ... # doctest: +SKIP
+        >>> validate_save_restore(MyTrainableClass) # doctest: +SKIP
+        >>> validate_save_restore( # doctest: +SKIP
+        ...     MyTrainableClass, use_object_store=True)
 
         .. versionadded:: 0.8.7
 
@@ -875,13 +877,13 @@ class Trainable:
             be automatically serialized by Tune and
             passed to ``Trainable.load_checkpoint()``.
 
-        Examples:
-            >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1"))
+        Example:
+            >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
+            >>> print(trainable1.save_checkpoint("/tmp/checkpoint_1")) # doctest: +SKIP
             "/tmp/checkpoint_1/my_checkpoint_file"
-            >>> print(trainable2.save_checkpoint("/tmp/checkpoint_2"))
+            >>> print(trainable2.save_checkpoint("/tmp/checkpoint_2")) # doctest: +SKIP
             {"some": "data"}
-
-            >>> trainable.save_checkpoint("/tmp/bad_example")
+            >>> trainable.save_checkpoint("/tmp/bad_example") # doctest: +SKIP
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
         if self._implements_method("_save") and log_once("_save"):
@@ -909,20 +911,20 @@ class Trainable:
 
         See the example below.
 
-        .. code-block:: python
-
-            class Example(Trainable):
-                def save_checkpoint(self, checkpoint_path):
-                    print(checkpoint_path)
-                    return os.path.join(checkpoint_path, "my/check/point")
-
-                def load_checkpoint(self, checkpoint):
-                    print(checkpoint)
-
+        Example:
+            >>> from ray.tune.trainable import Trainable
+            >>> class Example(Trainable):
+            ...    def save_checkpoint(self, checkpoint_path):
+            ...        print(checkpoint_path)
+            ...        return os.path.join(checkpoint_path, "my/check/point")
+            ...    def load_checkpoint(self, checkpoint):
+            ...        print(checkpoint)
             >>> trainer = Example()
-            >>> obj = trainer.save_to_object()  # This is used when PAUSED.
+            >>> # This is used when PAUSED.
+            >>> obj = trainer.save_to_object() # doctest: +SKIP
             <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
-            >>> trainer.restore_from_object(obj)  # Note the different prefix.
+            >>> # Note the different prefix.
+            >>> trainer.restore_from_object(obj) # doctest: +SKIP
             <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
 
         .. versionadded:: 0.8.7
