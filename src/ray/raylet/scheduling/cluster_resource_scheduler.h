@@ -124,6 +124,10 @@ class ClusterResourceScheduler {
   }
 
  private:
+  void Init(const NodeResources &local_node_resources,
+            std::function<int64_t(void)> get_used_object_store_memory,
+            std::function<bool(void)> get_pull_manager_at_capacity);
+
   bool NodeAlive(scheduling::NodeID node_id) const;
 
   /// Decrease the available resources of a node when a resource request is

@@ -16,6 +16,7 @@
 
 #include <vector>
 
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/scorer.h"
@@ -23,26 +24,22 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
+/// Base class for scheduling policies that implement different placement group
+/// strategies.
 class BundleSchedulingPolicy : public ISchedulingPolicy {
  public:
   explicit BundleSchedulingPolicy(
-      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-      std::function<bool(scheduling::NodeID)> is_node_available,
-      std::function<bool(scheduling::NodeID, const ResourceRequest &)>
-          add_node_available_resources_fn,
-      std::function<bool(scheduling::NodeID, const ResourceRequest &)>
-          subtract_node_available_resources_fn)
-      : node_scorer_(new LeastResourceScorer()),
-        nodes_(nodes),
+      ClusterResourceManager &cluster_resource_manager,
+      std::function<bool(scheduling::NodeID)> is_node_available)
+      : cluster_resource_manager_(cluster_resource_manager),
         is_node_available_(is_node_available),
-        add_node_available_resources_fn_(add_node_available_resources_fn),
-        subtract_node_available_resources_fn_(subtract_node_available_resources_fn) {}
+        node_scorer_(new LeastResourceScorer()) {}
 
  protected:
   /// Filter out candidate nodes which can be used for scheduling.
   ///
   /// \return The candidate nodes which can be used for scheduling.
-  virtual absl::flat_hash_map<scheduling::NodeID, const Node *> FilterCandidateNodes(
+  virtual absl::flat_hash_map<scheduling::NodeID, const Node *> SelectCandidateNodes(
       const SchedulingContext *context) const;
 
   /// Sort required resources according to the scarcity and capacity of resources.
@@ -50,8 +47,8 @@ class BundleSchedulingPolicy : public ISchedulingPolicy {
   /// to improve the scheduling success rate.
   ///
   /// \param required_resources The resources to be scheduled.
-  /// \return The Sorted resources.
-  std::vector<int> SortRequiredResources(
+  /// \return The pair of sorted resources index and sorted resource request.
+  std::pair<std::vector<int>, std::vector<const ResourceRequest *>> SortRequiredResources(
       const std::vector<const ResourceRequest *> &resource_request_list);
 
   /// Score all nodes according to the specified resources.
@@ -64,17 +61,12 @@ class BundleSchedulingPolicy : public ISchedulingPolicy {
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const;
 
  protected:
-  /// Scorer to make a grade to the node.
-  std::unique_ptr<NodeScorer> node_scorer_;
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
-  const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
+  /// The cluster resource manager.
+  ClusterResourceManager &cluster_resource_manager_;
   /// Function Checks if node is alive.
   std::function<bool(scheduling::NodeID)> is_node_available_;
-  std::function<bool(scheduling::NodeID, const ResourceRequest &)>
-      add_node_available_resources_fn_;
-  std::function<bool(scheduling::NodeID, const ResourceRequest &)>
-      subtract_node_available_resources_fn_;
+  /// Scorer to make a grade to the node.
+  std::unique_ptr<NodeScorer> node_scorer_;
 };
 
 class BundlePackSchedulingPolicy : public BundleSchedulingPolicy {
@@ -120,7 +112,7 @@ class BundleStrictSpreadSchedulingPolicy : public BundleSchedulingPolicy {
   /// Filter out candidate nodes which can be used for scheduling.
   ///
   /// \return The candidate nodes which can be used for scheduling.
-  absl::flat_hash_map<scheduling::NodeID, const Node *> FilterCandidateNodes(
+  absl::flat_hash_map<scheduling::NodeID, const Node *> SelectCandidateNodes(
       const SchedulingContext *context) const override;
 };
 }  // namespace raylet_scheduling_policy

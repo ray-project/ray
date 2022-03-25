@@ -31,9 +31,9 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
 }
 
 absl::flat_hash_map<scheduling::NodeID, const Node *>
-BundleSchedulingPolicy::FilterCandidateNodes(const SchedulingContext *context) const {
+BundleSchedulingPolicy::SelectCandidateNodes(const SchedulingContext *context) const {
   absl::flat_hash_map<scheduling::NodeID, const Node *> result;
-  for (const auto &entry : nodes_) {
+  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
     if (is_node_available_ == nullptr || is_node_available_(entry.first)) {
       result.emplace(entry.first, &entry.second);
     }
@@ -41,7 +41,8 @@ BundleSchedulingPolicy::FilterCandidateNodes(const SchedulingContext *context) c
   return result;
 }
 
-std::vector<int> BundleSchedulingPolicy::SortRequiredResources(
+std::pair<std::vector<int>, std::vector<const ResourceRequest *>>
+BundleSchedulingPolicy::SortRequiredResources(
     const std::vector<const ResourceRequest *> &resource_request_list) {
   std::vector<int> sorted_index(resource_request_list.size());
   std::iota(sorted_index.begin(), sorted_index.end(), 0);
@@ -97,7 +98,14 @@ std::vector<int> BundleSchedulingPolicy::SortRequiredResources(
     }
     return false;
   });
-  return sorted_index;
+
+  std::vector<const ResourceRequest *> sorted_resource_request_list(
+      resource_request_list);
+  for (size_t i = 0; i < sorted_index.size(); i++) {
+    sorted_resource_request_list[i] = resource_request_list[sorted_index[i]];
+  }
+
+  return {std::move(sorted_index), std::move(sorted_resource_request_list)};
 }
 
 std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
@@ -130,7 +138,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     SchedulingContext *context) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = FilterCandidateNodes(context);
+  auto candidate_nodes = SelectCandidateNodes(context);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -138,12 +146,9 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
 
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
-  const auto &sorted_index = SortRequiredResources(resource_request_list);
-  std::vector<const ResourceRequest *> sorted_resource_request_list(
-      resource_request_list);
-  for (int i = 0; i < (int)sorted_index.size(); i++) {
-    sorted_resource_request_list[i] = resource_request_list[sorted_index[i]];
-  }
+  auto sorted_result = SortRequiredResources(resource_request_list);
+  const auto &sorted_index = sorted_result.first;
+  const auto &sorted_resource_request_list = sorted_result.second;
 
   std::vector<scheduling::NodeID> result_nodes;
   result_nodes.resize(sorted_resource_request_list.size());
@@ -162,8 +167,8 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
       break;
     }
 
-    RAY_CHECK(
-        subtract_node_available_resources_fn_(best_node.first, *required_resources));
+    RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
+        best_node.first, *required_resources));
     result_nodes[required_resources_index] = best_node.first;
     required_resources_list_copy.pop_front();
 
@@ -171,7 +176,8 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     for (auto iter = required_resources_list_copy.begin();
          iter != required_resources_list_copy.end();) {
       if (best_node.second->GetLocalView().IsAvailable(*iter->second)) {
-        RAY_CHECK(subtract_node_available_resources_fn_(best_node.first, *iter->second));
+        RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
+            best_node.first, *iter->second));
         result_nodes[iter->first] = best_node.first;
         required_resources_list_copy.erase(iter++);
       } else {
@@ -185,8 +191,8 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   for (size_t index = 0; index < result_nodes.size(); index++) {
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!result_nodes[index].IsNil()) {
-      RAY_CHECK(add_node_available_resources_fn_(result_nodes[index],
-                                                 *sorted_resource_request_list[index]));
+      RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
+          result_nodes[index], *sorted_resource_request_list[index]));
     }
   }
 
@@ -205,7 +211,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     SchedulingContext *context) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = FilterCandidateNodes(context);
+  auto candidate_nodes = SelectCandidateNodes(context);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -213,12 +219,9 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
 
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
-  const auto &sorted_index = SortRequiredResources(resource_request_list);
-  std::vector<const ResourceRequest *> sorted_resource_request_list(
-      resource_request_list);
-  for (int i = 0; i < (int)sorted_index.size(); i++) {
-    sorted_resource_request_list[i] = resource_request_list[sorted_index[i]];
-  }
+  auto sorted_result = SortRequiredResources(resource_request_list);
+  const auto &sorted_index = sorted_result.first;
+  const auto &sorted_resource_request_list = sorted_result.second;
 
   std::vector<scheduling::NodeID> result_nodes;
   absl::flat_hash_map<scheduling::NodeID, const Node *> selected_nodes;
@@ -229,8 +232,8 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     // There are nodes to meet the scheduling requirements.
     if (!best_node.first.IsNil()) {
       result_nodes.emplace_back(best_node.first);
-      RAY_CHECK(
-          subtract_node_available_resources_fn_(best_node.first, *resource_request));
+      RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
+          best_node.first, *resource_request));
       candidate_nodes.erase(result_nodes.back());
       selected_nodes.emplace(best_node);
     } else {
@@ -238,8 +241,8 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
       auto best_node = GetBestNode(*resource_request, selected_nodes);
       if (!best_node.first.IsNil()) {
         result_nodes.emplace_back(best_node.first);
-        RAY_CHECK(
-            subtract_node_available_resources_fn_(best_node.first, *resource_request));
+        RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
+            best_node.first, *resource_request));
       } else {
         break;
       }
@@ -250,8 +253,8 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
   for (size_t index = 0; index < result_nodes.size(); index++) {
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!result_nodes[index].IsNil()) {
-      RAY_CHECK(add_node_available_resources_fn_(result_nodes[index],
-                                                 *sorted_resource_request_list[index]));
+      RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
+          result_nodes[index], *sorted_resource_request_list[index]));
     }
   }
 
@@ -270,7 +273,7 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     SchedulingContext *context) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = FilterCandidateNodes(context);
+  auto candidate_nodes = SelectCandidateNodes(context);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -331,7 +334,7 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   RAY_CHECK(!resource_request_list.empty());
 
   // Filter candidate nodes.
-  auto candidate_nodes = FilterCandidateNodes(context);
+  auto candidate_nodes = SelectCandidateNodes(context);
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -346,12 +349,9 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
 
   // First schedule scarce resources (such as GPU) and large capacity resources to improve
   // the scheduling success rate.
-  auto sorted_index = SortRequiredResources(resource_request_list);
-  std::vector<const ResourceRequest *> sorted_resource_request_list(
-      resource_request_list);
-  for (size_t i = 0; i < sorted_index.size(); i++) {
-    sorted_resource_request_list[i] = resource_request_list[sorted_index[i]];
-  }
+  auto sorted_result = SortRequiredResources(resource_request_list);
+  const auto &sorted_index = sorted_result.first;
+  const auto &sorted_resource_request_list = sorted_result.second;
 
   std::vector<scheduling::NodeID> result_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
@@ -377,7 +377,7 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
 }
 
 absl::flat_hash_map<scheduling::NodeID, const Node *>
-BundleStrictSpreadSchedulingPolicy::FilterCandidateNodes(
+BundleStrictSpreadSchedulingPolicy::SelectCandidateNodes(
     const SchedulingContext *context) const {
   auto bundle_scheduling_context = dynamic_cast<const BundleSchedulingContext *>(context);
 
@@ -393,7 +393,7 @@ BundleStrictSpreadSchedulingPolicy::FilterCandidateNodes(
   }
 
   absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
-  for (const auto &entry : nodes_) {
+  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
     if (is_node_available_ && !is_node_available_(entry.first)) {
       continue;
     }
