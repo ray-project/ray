@@ -988,7 +988,7 @@ class RayServeDAGHandle:
     """Resolved from a DeploymentNode at runtime.
 
     This can be used to call the DAG from a driver deployment to efficiently
-    orchestrate a multi-deployment pipeline.
+    orchestrate a deployment graph.
     """
 
     def __init__(self, dag_node_json: str) -> None:
@@ -1040,7 +1040,7 @@ class DeploymentNode(ClassNode):
     The bound deployment can be run using serve.run().
 
     A bound deployment can be passed as an argument to other bound deployments
-    to build a multi-deployment application. When the application is deployed, the
+    to build a deployment graph. When the graph is deployed, the
     bound deployments passed into a constructor will be converted to
     RayServeHandles that can be used to send requests.
 
@@ -1226,7 +1226,7 @@ class Deployment:
         """Bind the provided arguments and return a DeploymentNode.
 
         The returned bound deployment can be deployed or bound to other
-        deployments to create a multi-deployment application.
+        deployments to create a deployment graph.
         """
         copied_self = copy(self)
         copied_self._init_args = []
