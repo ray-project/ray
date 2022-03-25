@@ -181,8 +181,8 @@ def mock_modules():
 # Add doc files from external repositories to be downloaded during build here
 # (repo, ref, path to get, path to save on disk)
 EXTERNAL_MARKDOWN_FILES = [
-    ("ray-project/xgboost_ray", "latest", "README.md", "ray-more-libs/xgboost-ray.md"),
-    ("ray-project/lightgbm_ray", "latest", "README.md", "ray-more-libs/lightgbm-ray.md"),
+    ("ray-project/xgboost_ray", "master", "README.md", "ray-more-libs/xgboost-ray.md"),
+    ("ray-project/lightgbm_ray", "master", "README.md", "ray-more-libs/lightgbm-ray.md"),
 ]
 
 
