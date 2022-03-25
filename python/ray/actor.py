@@ -64,7 +64,11 @@ def method(*args, **kwargs):
     )
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
-        assert key in valid_kwargs, error_string
+        key_error_string = (
+            f"Unexpected keyword argument to @ray.method: '{key}'. The "
+            f"supported keyword arguments are {valid_kwargs}"
+        )
+        assert key in valid_kwargs, key_error_string
 
     def annotate_method(method):
         if "num_returns" in kwargs:
