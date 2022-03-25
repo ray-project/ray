@@ -175,4 +175,5 @@ def cpp_actor_class(create_function_name, class_name):
         resources=None,
         accelerator_type=None,
         runtime_env=None,
+        enable_task_fast_fail=None,
     )

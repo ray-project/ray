@@ -247,7 +247,7 @@ class CoreWorkerDirectActorTaskSubmitter
   void ReplyCallback(const Status &status,
                      const rpc::PushTaskReply &reply,
                      const rpc::Address &addr,
-                     const TaskSpecification &task_spec) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                     const TaskSpecification &task_spec) LOCKS_EXCLUDED(mu_);
 
   /// Send all pending tasks for an actor.
   ///
