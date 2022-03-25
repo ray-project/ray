@@ -32,6 +32,7 @@ import psutil
 resource = None
 if sys.platform != "win32":
     import resource
+
     _timeout = 30
 else:
     _timeout = 60
