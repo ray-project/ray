@@ -19,9 +19,7 @@ np.random.seed(1234)
 
 # We will run inference with this test batch
 test_data = {
-    "obs": np.random.uniform(0, 1., size=(10, 4)).astype(np.float32),
-    "prev_rewards": np.array([0.], dtype=np.float32),
-    "prev_actions": np.array([0.], dtype=np.int),
+    "obs": np.random.uniform(0, 1.0, size=(10, 4)).astype(np.float32),
 }
 
 # Start Ray and initialize a PPO trainer
@@ -33,7 +31,7 @@ trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
 # Let's run inference on the tensorflow model
 policy = trainer.get_policy()
-result_tf, _ = policy.model.from_batch(test_data)
+result_tf, _ = policy.model(test_data)
 
 # Evaluate tensor to fetch numpy array
 with policy._sess.as_default():
@@ -51,13 +49,11 @@ session = onnxruntime.InferenceSession(exported_model_file, None)
 # Pass the same test batch to the ONNX model (rename to match tensor names)
 onnx_test_data = {f"default_policy/{k}:0": v for k, v in test_data.items()}
 
-result_onnx = session.run(["default_policy/model/fc_out/BiasAdd:0"],
-                          onnx_test_data)
+result_onnx = session.run(["default_policy/model/fc_out/BiasAdd:0"], onnx_test_data)
 
 # These results should be equal!
 print("TENSORFLOW", result_tf)
 print("ONNX", result_onnx)
 
-assert np.allclose(result_tf, result_onnx), \
-   "Model outputs are NOT equal. FAILED"
+assert np.allclose(result_tf, result_onnx), "Model outputs are NOT equal. FAILED"
 print("Model outputs are equal. PASSED")

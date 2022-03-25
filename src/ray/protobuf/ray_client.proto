@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -40,11 +41,11 @@ message Arg {
 // TODO(barakmich): In the longer term, if everything were a client,
 // this message could be the actual standard for which options are
 // allowed in the API. Today, however, it's a bit flexible and defined in the
-// Python code. So for now, it's a stand-in message with a json field, but
+// Python code. So for now, it's a stand-in message with a pickle field, but
 // this is forwards-compatible with deprecating that field and instituting
 // strongly defined and typed fields, without migrating the original ClientTask.
 message TaskOptions {
-  string json_options = 1;
+  bytes pickled_options = 1;
 }
 
 // Represents one unit of work to be executed by the server.
@@ -61,8 +62,6 @@ message ClientTask {
   // A name parameter, if the payload can be called in more than one way
   // (like a method on a payload object).
   string name = 2;
-  // A namespace parameter.
-  string namespace = 9;
   // A reference to the payload.
   bytes payload_id = 3;
   // Positional parameters to pass to this call.
@@ -76,6 +75,8 @@ message ClientTask {
   TaskOptions options = 7;
   // Options passed to create the default remote task excution environment.
   TaskOptions baseline_options = 8;
+  // A namespace parameter.
+  string namespace = 9;
 }
 
 message ClientTaskTicket {
@@ -100,6 +101,12 @@ message PutRequest {
   //
   // Empty if no late binding is possible, as in a normal put().
   bytes client_ref_id = 2;
+  // Identifies which chunk the data belongs to
+  int32 chunk_id = 3;
+  // Total number of chunks
+  int32 total_chunks = 4;
+  // Total size in bytes of the data being put
+  int64 total_size = 5;
 }
 
 message PutResponse {
@@ -121,6 +128,9 @@ message GetRequest {
   float timeout = 2;
   // Whether to schedule this as a callback on the server side.
   bool asynchronous = 3;
+  // The chunk_id to start retrieving data from, in case the request is interrupted
+  // after partial retrieval by a disconnect
+  int32 start_chunk_id = 5;
 
   // Deprecated fields.
   bytes id = 1 [deprecated = true];
@@ -134,6 +144,12 @@ message GetResponse {
   bytes data = 2;
   // An error blob (for example, an exception) on failure.
   bytes error = 3;
+  // Identifies which chunk the data belongs to
+  int32 chunk_id = 4;
+  // Total number of chunks
+  int32 total_chunks = 5;
+  // Total size in bytes of the data being retrieved
+  uint64 total_size = 6;
 }
 
 // Waits for data to be ready on the server, with a timeout.
@@ -259,6 +275,7 @@ message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
   string ray_init_kwargs = 2;
+  int32 reconnect_grace_period = 3;
 }
 
 message InitResponse {
@@ -285,8 +302,7 @@ service RayletDriver {
   }
   rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
   }
-  rpc GetObject(GetRequest) returns (GetResponse) {
-  }
+  rpc GetObject(GetRequest) returns (stream GetResponse) {}
   rpc PutObject(PutRequest) returns (PutResponse) {
   }
   rpc WaitObject(WaitRequest) returns (WaitResponse) {
@@ -339,6 +355,20 @@ message ConnectionInfoResponse {
   string protocol_version = 5;
 }
 
+message ConnectionCleanupRequest {
+  // Explicitly request that connection is cleaned up for graceful shutdown
+}
+
+message ConnectionCleanupResponse {
+  // Acknowledge cleanup request
+}
+
+message AcknowledgeRequest {
+  // Used to acknowledge that all requests up to the given req_id have been
+  // received
+  int32 req_id = 1;
+}
+
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -350,6 +380,11 @@ message DataRequest {
     ConnectionInfoRequest connection_info = 5;
     InitRequest init = 6;
     PrepRuntimeEnvRequest prep_runtime_env = 7;
+    ConnectionCleanupRequest connection_cleanup = 8;
+    AcknowledgeRequest acknowledge = 9;
+    ClientTask task = 10;
+    TerminateRequest terminate = 11;
+    ClientListNamedActorsRequest list_named_actors = 12;
   }
 }
 
@@ -363,7 +398,14 @@ message DataResponse {
     ConnectionInfoResponse connection_info = 5;
     InitResponse init = 6;
     PrepRuntimeEnvResponse prep_runtime_env = 7;
+    ConnectionCleanupResponse connection_cleanup = 8;
+    ClientTaskTicket task_ticket = 10;
+    TerminateResponse terminate = 11;
+    ClientListNamedActorsResponse list_named_actors = 12;
   }
+  // tag 9 is skipped, since there is no AcknowledgeResponse
+  reserved 9;
+  reserved "acknowledge";
 }
 
 service RayletDataStreamer {

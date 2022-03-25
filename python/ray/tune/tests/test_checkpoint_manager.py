@@ -16,19 +16,19 @@ class CheckpointManagerTest(unittest.TestCase):
         return {"i": i, TRAINING_ITERATION: i}
 
     def checkpoint_manager(self, keep_checkpoints_num):
-        return CheckpointManager(
-            keep_checkpoints_num, "i", delete_fn=lambda c: None)
+        return CheckpointManager(keep_checkpoints_num, "i", delete_fn=lambda c: None)
 
     def testNewestCheckpoint(self):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
-        memory_checkpoint = Checkpoint(Checkpoint.MEMORY, {0},
-                                       self.mock_result(0))
+        memory_checkpoint = Checkpoint(Checkpoint.MEMORY, {0}, self.mock_result(0))
         checkpoint_manager.on_checkpoint(memory_checkpoint)
-        persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT, {1},
-                                           self.mock_result(1))
+        persistent_checkpoint = Checkpoint(
+            Checkpoint.PERSISTENT, {1}, self.mock_result(1)
+        )
         checkpoint_manager.on_checkpoint(persistent_checkpoint)
-        self.assertEqual(checkpoint_manager.newest_persistent_checkpoint,
-                         persistent_checkpoint)
+        self.assertEqual(
+            checkpoint_manager.newest_persistent_checkpoint, persistent_checkpoint
+        )
 
     def testOnCheckpointOrdered(self):
         """
@@ -48,8 +48,8 @@ class CheckpointManagerTest(unittest.TestCase):
                 expected_deletes = 0 if j != 2 else 1
                 self.assertEqual(delete_mock.call_count, expected_deletes, j)
                 self.assertEqual(
-                    checkpoint_manager.newest_persistent_checkpoint,
-                    checkpoints[j])
+                    checkpoint_manager.newest_persistent_checkpoint, checkpoints[j]
+                )
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
@@ -74,8 +74,8 @@ class CheckpointManagerTest(unittest.TestCase):
                 expected_deletes = 0 if j != 3 else 1
                 self.assertEqual(delete_mock.call_count, expected_deletes)
                 self.assertEqual(
-                    checkpoint_manager.newest_persistent_checkpoint,
-                    checkpoints[j])
+                    checkpoint_manager.newest_persistent_checkpoint, checkpoints[j]
+                )
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
@@ -89,8 +89,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 4
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, i, self.mock_result(i))
-            for i in range(16)
+            Checkpoint(Checkpoint.PERSISTENT, i, self.mock_result(i)) for i in range(16)
         ]
         random.shuffle(checkpoints)
 
@@ -114,13 +113,14 @@ class CheckpointManagerTest(unittest.TestCase):
             checkpoint_manager.on_checkpoint(no_attr_checkpoint)
             log_error_mock.assert_called_once()
             # The newest checkpoint should still be set despite this error.
-            self.assertEqual(checkpoint_manager.newest_persistent_checkpoint,
-                             no_attr_checkpoint)
+            self.assertEqual(
+                checkpoint_manager.newest_persistent_checkpoint, no_attr_checkpoint
+            )
 
     def testOnMemoryCheckpoint(self):
         checkpoints = [
             Checkpoint(Checkpoint.MEMORY, 0, self.mock_result(0)),
-            Checkpoint(Checkpoint.MEMORY, 0, self.mock_result(0))
+            Checkpoint(Checkpoint.MEMORY, 0, self.mock_result(0)),
         ]
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
         checkpoint_manager.on_checkpoint(checkpoints[0])
@@ -132,24 +132,21 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testSameCheckpoint(self):
         checkpoint_manager = CheckpointManager(
-            1, "i", delete_fn=lambda c: os.remove(c.value))
+            1, "i", delete_fn=lambda c: os.remove(c.value)
+        )
 
         tmpfiles = []
         for i in range(3):
-            tmpfile = tempfile.mktemp()
+            _, tmpfile = tempfile.mkstemp()
             with open(tmpfile, "wt") as fp:
                 fp.write("")
             tmpfiles.append(tmpfile)
 
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[0],
-                       self.mock_result(5)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1],
-                       self.mock_result(10)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[2],
-                       self.mock_result(0)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1],
-                       self.mock_result(20))
+            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[0], self.mock_result(5)),
+            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1], self.mock_result(10)),
+            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[2], self.mock_result(0)),
+            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1], self.mock_result(20)),
         ]
         for checkpoint in checkpoints:
             checkpoint_manager.on_checkpoint(checkpoint)
@@ -162,4 +159,5 @@ class CheckpointManagerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

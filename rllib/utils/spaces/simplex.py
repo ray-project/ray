@@ -23,29 +23,23 @@ class Simplex(gym.Space):
 
     def __init__(self, shape, concentration=None, dtype=np.float32):
         assert type(shape) in [tuple, list]
-        self.shape = shape
-        self.dtype = dtype
-        self.dim = shape[-1]
+        super().__init__(shape, dtype)
+        self.dim = self.shape[-1]
 
         if concentration is not None:
             assert concentration.shape == shape[:-1]
         else:
             self.concentration = [1] * self.dim
 
-        super().__init__(shape, dtype)
-
-    def seed(self, seed=None):
-        if self.np_random is None:
-            self.np_random = np.random.RandomState()
-        self.np_random.seed(seed)
-
     def sample(self):
-        return np.random.dirichlet(
-            self.concentration, size=self.shape[:-1]).astype(self.dtype)
+        return np.random.dirichlet(self.concentration, size=self.shape[:-1]).astype(
+            self.dtype
+        )
 
     def contains(self, x):
         return x.shape == self.shape and np.allclose(
-            np.sum(x, axis=-1), np.ones_like(x[..., 0]))
+            np.sum(x, axis=-1), np.ones_like(x[..., 0])
+        )
 
     def to_jsonable(self, sample_n):
         return np.array(sample_n).tolist()
@@ -57,5 +51,7 @@ class Simplex(gym.Space):
         return "Simplex({}; {})".format(self.shape, self.concentration)
 
     def __eq__(self, other):
-        return np.allclose(self.concentration,
-                           other.concentration) and self.shape == other.shape
+        return (
+            np.allclose(self.concentration, other.concentration)
+            and self.shape == other.shape
+        )

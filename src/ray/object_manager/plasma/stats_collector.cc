@@ -17,6 +17,8 @@
 
 #include "ray/object_manager/plasma/stats_collector.h"
 
+#include "ray/stats/metric_defs.h"
+
 namespace plasma {
 
 void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
@@ -164,6 +166,10 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
       num_bytes_evictable_ += kObjectSize;
     }
   }
+}
+
+void ObjectStatsCollector::RecordMetrics() const {
+  // TODO(sang): Add metrics.
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {

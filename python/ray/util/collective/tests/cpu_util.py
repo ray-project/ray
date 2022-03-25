@@ -17,17 +17,11 @@ class Worker:
         self.list_buffer = None
 
     def init_tensors(self):
-        self.buffer = np.ones((10, ), dtype=np.float32)
-        self.list_buffer = [
-            np.ones((10, ), dtype=np.float32) for _ in range(2)
-        ]
+        self.buffer = np.ones((10,), dtype=np.float32)
+        self.list_buffer = [np.ones((10,), dtype=np.float32) for _ in range(2)]
         return True
 
-    def init_group(self,
-                   world_size,
-                   rank,
-                   backend=Backend.NCCL,
-                   group_name="default"):
+    def init_group(self, world_size, rank, backend=Backend.NCCL, group_name="default"):
         col.init_collective_group(world_size, rank, backend, group_name)
         return True
 
@@ -104,26 +98,25 @@ class Worker:
         return is_init
 
 
-def create_collective_workers(num_workers=2,
-                              group_name="default",
-                              backend="nccl"):
+def create_collective_workers(num_workers=2, group_name="default", backend="nccl"):
     actors = [None] * num_workers
     for i in range(num_workers):
         actor = Worker.remote()
         ray.get([actor.init_tensors.remote()])
         actors[i] = actor
     world_size = num_workers
-    init_results = ray.get([
-        actor.init_group.remote(world_size, i, backend, group_name)
-        for i, actor in enumerate(actors)
-    ])
+    init_results = ray.get(
+        [
+            actor.init_group.remote(world_size, i, backend, group_name)
+            for i, actor in enumerate(actors)
+        ]
+    )
     return actors, init_results
 
 
-def init_tensors_for_gather_scatter(actors,
-                                    array_size=10,
-                                    dtype=np.float32,
-                                    tensor_backend="numpy"):
+def init_tensors_for_gather_scatter(
+    actors, array_size=10, dtype=np.float32, tensor_backend="numpy"
+):
     world_size = len(actors)
     for i, a in enumerate(actors):
         if tensor_backend == "numpy":
@@ -134,13 +127,10 @@ def init_tensors_for_gather_scatter(actors,
             raise RuntimeError("Unsupported tensor backend.")
         ray.get([a.set_buffer.remote(t)])
     if tensor_backend == "numpy":
-        list_buffer = [
-            np.ones(array_size, dtype=dtype) for _ in range(world_size)
-        ]
+        list_buffer = [np.ones(array_size, dtype=dtype) for _ in range(world_size)]
     elif tensor_backend == "torch":
         list_buffer = [
-            torch.ones(array_size, dtype=torch.float32)
-            for _ in range(world_size)
+            torch.ones(array_size, dtype=torch.float32) for _ in range(world_size)
         ]
     else:
         raise RuntimeError("Unsupported tensor backend.")

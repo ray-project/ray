@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -54,6 +55,18 @@ message ActorHandle {
 
   // How many times tasks may be retried on this actor if the actor fails.
   int64 max_task_retries = 9;
+
+  // The name of the actor.
+  string name = 10;
+
+  // The namespace that this actor belongs to.
+  string ray_namespace = 11;
+
+  // Whether the actor supports out of order execution.
+  bool execute_out_of_order = 12;
+
+  // The max number of pending actor calls.
+  int32 max_pending_calls = 13;
 }
 
 message ReturnObject {
@@ -70,16 +83,6 @@ message ReturnObject {
   repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
-}
-
-message StealTasksRequest {
-  // The address of the thief that is requesting to steal tasks.
-  Address thief_addr = 1;
-}
-
-message StealTasksReply {
-  // The TaskIDs of the tasks that were stolen
-  repeated bytes stolen_tasks_ids = 2;
 }
 
 message PushTaskRequest {
@@ -105,8 +108,6 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
-  // Set to true if the task was stolen before its execution at the worker.
-  bool task_stolen = 2;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 3;
   // The references that the worker borrowed during the task execution. A
@@ -264,6 +265,8 @@ message GetCoreWorkerStatsReply {
 }
 
 message LocalGCRequest {
+  // Whether this is triggered by a global gc.
+  bool triggered_by_global_gc = 1;
 }
 
 message LocalGCReply {
@@ -329,14 +332,6 @@ message ExitReply {
   bool success = 1;
 }
 
-message RunOnUtilWorkerRequest {
-  string request = 1;
-  repeated string args = 2;
-}
-
-message RunOnUtilWorkerReply {
-}
-
 message AssignObjectOwnerRequest {
   // The ID of added object.
   bytes object_id = 1;
@@ -356,8 +351,6 @@ message AssignObjectOwnerReply {
 service CoreWorkerService {
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
-  // Steal tasks from a worker if it has a surplus of work
-  rpc StealTasks(StealTasksRequest) returns (StealTasksReply);
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
@@ -404,8 +397,6 @@ service CoreWorkerService {
   rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
-  // Run a request on io worker
-  rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.

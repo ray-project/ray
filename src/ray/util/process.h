@@ -49,6 +49,8 @@ typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvir
 typedef int pid_t;
 #endif
 
+using StartupToken = int64_t;
+
 class ProcessFD;
 
 class Process {
@@ -71,8 +73,11 @@ class Process {
   /// \param[in] decouple True iff the parent will not wait for the child to exit.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
-  explicit Process(const char *argv[], void *io_service, std::error_code &ec,
-                   bool decouple = false, const ProcessEnvironment &env = {});
+  explicit Process(const char *argv[],
+                   void *io_service,
+                   std::error_code &ec,
+                   bool decouple = false,
+                   const ProcessEnvironment &env = {});
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
@@ -86,11 +91,15 @@ class Process {
   bool IsValid() const;
   /// Forcefully kills the process. Unsafe for unowned processes.
   void Kill();
+  /// Check whether the process is alive.
+  bool IsAlive() const;
   /// Convenience function to start a process in the background.
   /// \param pid_file A file to write the PID of the spawned process in.
   static std::pair<Process, std::error_code> Spawn(
-      const std::vector<std::string> &args, bool decouple,
-      const std::string &pid_file = std::string(), const ProcessEnvironment &env = {});
+      const std::vector<std::string> &args,
+      bool decouple,
+      const std::string &pid_file = std::string(),
+      const ProcessEnvironment &env = {});
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;
@@ -99,6 +108,8 @@ class Process {
 // Get the Process ID of the parent process. If the parent process exits, the PID
 // will be 1 (this simulates POSIX getppid()).
 pid_t GetParentPID();
+
+pid_t GetPID();
 
 bool IsParentProcessAlive();
 

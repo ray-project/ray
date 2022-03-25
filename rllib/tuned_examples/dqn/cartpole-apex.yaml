@@ -21,7 +21,7 @@ cartpole-apex-dqn:
 
         num_gpus: 0
 
-        min_iter_time_s: 5
+        min_time_s_per_reporting: 5
         target_network_update_freq: 500
         learning_starts: 1000
         timesteps_per_iteration: 1000

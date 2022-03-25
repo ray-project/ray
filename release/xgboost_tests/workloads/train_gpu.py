@@ -36,12 +36,13 @@ if __name__ == "__main__":
         max_actor_restarts=2,
         num_actors=4,
         cpus_per_actor=4,
-        gpus_per_actor=1)
+        gpus_per_actor=1,
+    )
 
     start = time.time()
     train_ray(
         path="/data/classification.parquet",
-        num_workers=4,
+        num_workers=None,
         num_boost_rounds=100,
         num_files=25,
         regression=False,
@@ -54,8 +55,7 @@ if __name__ == "__main__":
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/train_gpu.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/train_gpu.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

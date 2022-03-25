@@ -28,14 +28,13 @@ class SGD(Optimizer):
         self.stepsize, self.momentum = stepsize, momentum
 
     def _compute_step(self, globalg):
-        self.v = self.momentum * self.v + (1. - self.momentum) * globalg
+        self.v = self.momentum * self.v + (1.0 - self.momentum) * globalg
         step = -self.stepsize * self.v
         return step
 
 
 class Adam(Optimizer):
-    def __init__(self, policy, stepsize, beta1=0.9, beta2=0.999,
-                 epsilon=1e-08):
+    def __init__(self, policy, stepsize, beta1=0.9, beta2=0.999, epsilon=1e-08):
         Optimizer.__init__(self, policy)
         self.stepsize = stepsize
         self.beta1 = beta1
@@ -45,8 +44,9 @@ class Adam(Optimizer):
         self.v = np.zeros(self.dim, dtype=np.float32)
 
     def _compute_step(self, globalg):
-        a = self.stepsize * (np.sqrt(1 - self.beta2**self.t) /
-                             (1 - self.beta1**self.t))
+        a = self.stepsize * (
+            np.sqrt(1 - self.beta2 ** self.t) / (1 - self.beta1 ** self.t)
+        )
         self.m = self.beta1 * self.m + (1 - self.beta1) * globalg
         self.v = self.beta2 * self.v + (1 - self.beta2) * (globalg * globalg)
         step = -a * self.m / (np.sqrt(self.v) + self.epsilon)

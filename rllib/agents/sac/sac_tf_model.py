@@ -1,6 +1,7 @@
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -37,17 +38,19 @@ class SACTFModel(TFModelV2):
         `model_out`, `actions` -> get_twin_q_values() -> Q_twin(s, a)
     """
 
-    def __init__(self,
-                 obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 num_outputs: Optional[int],
-                 model_config: ModelConfigDict,
-                 name: str,
-                 policy_model_config: ModelConfigDict = None,
-                 q_model_config: ModelConfigDict = None,
-                 twin_q: bool = False,
-                 initial_alpha: float = 1.0,
-                 target_entropy: Optional[float] = None):
+    def __init__(
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: Optional[int],
+        model_config: ModelConfigDict,
+        name: str,
+        policy_model_config: ModelConfigDict = None,
+        q_model_config: ModelConfigDict = None,
+        twin_q: bool = False,
+        initial_alpha: float = 1.0,
+        target_entropy: Optional[float] = None,
+    ):
         """Initialize a SACTFModel instance.
 
         Args:
@@ -67,8 +70,9 @@ class SACTFModel(TFModelV2):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of SACModel.
         """
-        super(SACTFModel, self).__init__(obs_space, action_space, num_outputs,
-                                         model_config, name)
+        super(SACTFModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name
+        )
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
             self.discrete = True
@@ -86,19 +90,22 @@ class SACTFModel(TFModelV2):
             q_outs = 1
 
         self.action_model = self.build_policy_model(
-            self.obs_space, action_outs, policy_model_config, "policy_model")
+            self.obs_space, action_outs, policy_model_config, "policy_model"
+        )
 
-        self.q_net = self.build_q_model(self.obs_space, self.action_space,
-                                        q_outs, q_model_config, "q")
+        self.q_net = self.build_q_model(
+            self.obs_space, self.action_space, q_outs, q_model_config, "q"
+        )
         if twin_q:
-            self.twin_q_net = self.build_q_model(self.obs_space,
-                                                 self.action_space, q_outs,
-                                                 q_model_config, "twin_q")
+            self.twin_q_net = self.build_q_model(
+                self.obs_space, self.action_space, q_outs, q_model_config, "twin_q"
+            )
         else:
             self.twin_q_net = None
 
         self.log_alpha = tf.Variable(
-            np.log(initial_alpha), dtype=tf.float32, name="log_alpha")
+            np.log(initial_alpha), dtype=tf.float32, name="log_alpha"
+        )
         self.alpha = tf.exp(self.log_alpha)
 
         # Auto-calculate the target entropy.
@@ -106,16 +113,20 @@ class SACTFModel(TFModelV2):
             # See hyperparams in [2] (README.md).
             if self.discrete:
                 target_entropy = 0.98 * np.array(
-                    -np.log(1.0 / action_space.n), dtype=np.float32)
+                    -np.log(1.0 / action_space.n), dtype=np.float32
+                )
             # See [1] (README.md).
             else:
                 target_entropy = -np.prod(action_space.shape)
         self.target_entropy = target_entropy
 
     @override(TFModelV2)
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
-                seq_lens: TensorType) -> (TensorType, List[TensorType]):
+    def forward(
+        self,
+        input_dict: Dict[str, TensorType],
+        state: List[TensorType],
+        seq_lens: TensorType,
+    ) -> (TensorType, List[TensorType]):
         """The common (Q-net and policy-net) forward pass.
 
         NOTE: It is not(!) recommended to override this method as it would
@@ -124,8 +135,7 @@ class SACTFModel(TFModelV2):
         """
         return input_dict["obs"], state
 
-    def build_policy_model(self, obs_space, num_outputs, policy_model_config,
-                           name):
+    def build_policy_model(self, obs_space, num_outputs, policy_model_config, name):
         """Builds the policy model used by this SAC.
 
         Override this method in a sub-class of SACTFModel to implement your
@@ -142,11 +152,11 @@ class SACTFModel(TFModelV2):
             num_outputs,
             policy_model_config,
             framework="tf",
-            name=name)
+            name=name,
+        )
         return model
 
-    def build_q_model(self, obs_space, action_space, num_outputs,
-                      q_model_config, name):
+    def build_q_model(self, obs_space, action_space, num_outputs, q_model_config, name):
         """Builds one of the (twin) Q-nets used by this SAC.
 
         Override this method in a sub-class of SACTFModel to implement your
@@ -166,7 +176,8 @@ class SACTFModel(TFModelV2):
                 input_space = Box(
                     float("-inf"),
                     float("inf"),
-                    shape=(orig_space.shape[0] + action_space.shape[0], ))
+                    shape=(orig_space.shape[0] + action_space.shape[0],),
+                )
                 self.concat_obs_and_actions = True
             else:
                 if isinstance(orig_space, gym.spaces.Tuple):
@@ -183,12 +194,13 @@ class SACTFModel(TFModelV2):
             num_outputs,
             q_model_config,
             framework="tf",
-            name=name)
+            name=name,
+        )
         return model
 
-    def get_q_values(self,
-                     model_out: TensorType,
-                     actions: Optional[TensorType] = None) -> TensorType:
+    def get_q_values(
+        self, model_out: TensorType, actions: Optional[TensorType] = None
+    ) -> TensorType:
         """Returns Q-values, given the output of self.__call__().
 
         This implements Q(s, a) -> [single Q-value] for the continuous case and
@@ -206,9 +218,9 @@ class SACTFModel(TFModelV2):
         """
         return self._get_q_value(model_out, actions, self.q_net)
 
-    def get_twin_q_values(self,
-                          model_out: TensorType,
-                          actions: Optional[TensorType] = None) -> TensorType:
+    def get_twin_q_values(
+        self, model_out: TensorType, actions: Optional[TensorType] = None
+    ) -> TensorType:
         """Same as get_q_values but using the twin Q net.
 
         This implements the twin Q(s, a).
@@ -241,6 +253,8 @@ class SACTFModel(TFModelV2):
             if self.concat_obs_and_actions:
                 input_dict = {"obs": tf.concat([model_out, actions], axis=-1)}
             else:
+                # TODO(junogng) : SampleBatch doesn't support list columns yet.
+                #     Use ModelInputDict.
                 input_dict = {"obs": force_list(model_out) + [actions]}
         # Discrete case -> return q-vals for all actions.
         else:
@@ -267,13 +281,19 @@ class SACTFModel(TFModelV2):
         Returns:
             TensorType: Distribution inputs for sampling actions.
         """
-        # Model outs may come as original Tuple observations, concat them
+        # Model outs may come as original Tuple/Dict observations, concat them
         # here if this is the case.
         if isinstance(self.action_model.obs_space, Box):
             if isinstance(model_out, (list, tuple)):
                 model_out = tf.concat(model_out, axis=-1)
             elif isinstance(model_out, dict):
-                model_out = tf.concat(list(model_out.values()), axis=-1)
+                model_out = tf.concat(
+                    [
+                        tf.expand_dims(val, 1) if len(val.shape) == 1 else val
+                        for val in tree.flatten(model_out.values())
+                    ],
+                    axis=-1,
+                )
         out, _ = self.action_model({"obs": model_out}, [], None)
         return out
 
@@ -285,5 +305,6 @@ class SACTFModel(TFModelV2):
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""
 
-        return self.q_net.variables() + (self.twin_q_net.variables()
-                                         if self.twin_q_net else [])
+        return self.q_net.variables() + (
+            self.twin_q_net.variables() if self.twin_q_net else []
+        )

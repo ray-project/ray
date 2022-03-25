@@ -2,14 +2,15 @@ from collections import deque
 import gym
 import os
 import pickle
+import threading
 from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import get_tf_eager_cls_if_necessary
-from ray.rllib.utils.typing import PartialTrainerConfigDict, \
-    PolicyID, TrainerConfigDict
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
+from ray.rllib.utils.threading import with_lock
+from ray.rllib.utils.typing import PartialTrainerConfigDict, PolicyID, TrainerConfigDict
 from ray.tune.utils.util import merge_dicts
 
 if TYPE_CHECKING:
@@ -27,31 +28,31 @@ class PolicyMap(dict):
     """
 
     def __init__(
-            self,
-            worker_index: int,
-            num_workers: int,
-            capacity: Optional[int] = None,
-            path: Optional[str] = None,
-            policy_config: Optional[TrainerConfigDict] = None,
-            session_creator: Optional[Callable[[], "tf1.Session"]] = None,
-            seed: Optional[int] = None,
+        self,
+        worker_index: int,
+        num_workers: int,
+        capacity: Optional[int] = None,
+        path: Optional[str] = None,
+        policy_config: Optional[TrainerConfigDict] = None,
+        session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+        seed: Optional[int] = None,
     ):
         """Initializes a PolicyMap instance.
 
         Args:
-            worker_index (int): The worker index of the RolloutWorker this map
+            worker_index: The worker index of the RolloutWorker this map
                 resides in.
-            num_workers (int): The total number of remote workers in the
+            num_workers: The total number of remote workers in the
                 WorkerSet to which this map's RolloutWorker belongs to.
-            capacity (int): The maximum number of policies to hold in memory.
+            capacity: The maximum number of policies to hold in memory.
                 The least used ones are written to disk/S3 and retrieved
                 when needed.
-            path (str): The path to store the policy pickle files to. Files
+            path: The path to store the policy pickle files to. Files
                 will have the name: [policy_id].[worker idx].policy.pkl.
-            policy_config (TrainerConfigDict): The Trainer's base config dict.
-            session_creator (Optional[Callable[[], tf1.Session]): An optional
+            policy_config: The Trainer's base config dict.
+            session_creator: An optional
                 tf1.Session creation callable.
-            seed (int): An optional seed (used to seed tf policies).
+            seed: An optional seed (used to seed tf policies).
         """
         super().__init__()
 
@@ -79,25 +80,35 @@ class PolicyMap(dict):
         # Policies.
         self.policy_specs: Dict[PolicyID, PolicySpec] = {}
 
-    def create_policy(self, policy_id: PolicyID, policy_cls: Type["Policy"],
-                      observation_space: gym.Space, action_space: gym.Space,
-                      config_override: PartialTrainerConfigDict,
-                      merged_config: TrainerConfigDict) -> None:
+        # Lock used for locking some methods on the object-level.
+        # This prevents possible race conditions when accessing the map
+        # and the underlying structures, like self.deque and others.
+        self._lock = threading.RLock()
+
+    def create_policy(
+        self,
+        policy_id: PolicyID,
+        policy_cls: Type["Policy"],
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        config_override: PartialTrainerConfigDict,
+        merged_config: TrainerConfigDict,
+    ) -> None:
         """Creates a new policy and stores it to the cache.
 
         Args:
-            policy_id (PolicyID): The policy ID. This is the key under which
+            policy_id: The policy ID. This is the key under which
                 the created policy will be stored in this map.
-            policy_cls (Type[Policy]): The (original) policy class to use.
+            policy_cls: The (original) policy class to use.
                 This may still be altered in case tf-eager (and tracing)
                 is used.
-            observation_space (gym.Space): The observation space of the
+            observation_space: The observation space of the
                 policy.
-            action_space (gym.Space): The action space of the policy.
-            config_override (PartialTrainerConfigDict): The config override
+            action_space: The action space of the policy.
+            config_override: The config override
                 dict for this policy. This is the partial dict provided by
                 the user.
-            merged_config (TrainerConfigDict): The entire config (merged
+            merged_config: The entire config (merged
                 default config + `config_override`).
         """
         framework = merged_config.get("framework", "tf")
@@ -105,8 +116,9 @@ class PolicyMap(dict):
 
         # Tf.
         if framework in ["tf2", "tf", "tfe"]:
-            var_scope = policy_id + (("_wk" + str(self.worker_index))
-                                     if self.worker_index else "")
+            var_scope = policy_id + (
+                ("_wk" + str(self.worker_index)) if self.worker_index else ""
+            )
 
             # For tf static graph, build every policy in its own graph
             # and create a new session for it.
@@ -117,24 +129,27 @@ class PolicyMap(dict):
                     else:
                         sess = tf1.Session(
                             config=tf1.ConfigProto(
-                                gpu_options=tf1.GPUOptions(allow_growth=True)))
+                                gpu_options=tf1.GPUOptions(allow_growth=True)
+                            )
+                        )
                     with sess.as_default():
                         # Set graph-level seed.
                         if self.seed is not None:
                             tf1.set_random_seed(self.seed)
                         with tf1.variable_scope(var_scope):
                             self[policy_id] = class_(
-                                observation_space, action_space, merged_config)
+                                observation_space, action_space, merged_config
+                            )
             # For tf-eager: no graph, no session.
             else:
                 with tf1.variable_scope(var_scope):
-                    self[policy_id] = \
-                        class_(observation_space, action_space, merged_config)
+                    self[policy_id] = class_(
+                        observation_space, action_space, merged_config
+                    )
         # Non-tf: No graph, no session.
         else:
             class_ = policy_cls
-            self[policy_id] = class_(observation_space, action_space,
-                                     merged_config)
+            self[policy_id] = class_(observation_space, action_space, merged_config)
 
         # Store spec (class, obs-space, act-space, and config overrides) such
         # that the map will be able to reproduce on-the-fly added policies
@@ -143,8 +158,10 @@ class PolicyMap(dict):
             policy_class=policy_cls,
             observation_space=observation_space,
             action_space=action_space,
-            config=config_override)
+            config=config_override,
+        )
 
+    @with_lock
     @override(dict)
     def __getitem__(self, item):
         # Never seen this key -> Error.
@@ -163,6 +180,7 @@ class PolicyMap(dict):
 
         return self.cache[item]
 
+    @with_lock
     @override(dict)
     def __setitem__(self, key, value):
         # Item already in cache -> Rearrange deque (least recently used).
@@ -180,6 +198,7 @@ class PolicyMap(dict):
             self.cache[key] = value
         self.valid_keys.add(key)
 
+    @with_lock
     @override(dict)
     def __delitem__(self, key):
         # Make key invalid.
@@ -196,7 +215,7 @@ class PolicyMap(dict):
 
     @override(dict)
     def __iter__(self):
-        return self.keys()
+        return iter(self.keys())
 
     @override(dict)
     def items(self):
@@ -210,20 +229,29 @@ class PolicyMap(dict):
 
     @override(dict)
     def keys(self):
+        self._lock.acquire()
+        ks = list(self.valid_keys)
+        self._lock.release()
+
         def gen():
-            for key in self.valid_keys:
+            for key in ks:
                 yield key
 
         return gen()
 
     @override(dict)
     def values(self):
+        self._lock.acquire()
+        vs = [self[k] for k in self.valid_keys]
+        self._lock.release()
+
         def gen():
-            for key in self.valid_keys:
-                yield self[key]
+            for value in vs:
+                yield value
 
         return gen()
 
+    @with_lock
     @override(dict)
     def update(self, __m, **kwargs):
         for k, v in __m.items():
@@ -231,18 +259,20 @@ class PolicyMap(dict):
         for k, v in kwargs.items():
             self[k] = v
 
+    @with_lock
     @override(dict)
     def get(self, key):
         if key not in self.valid_keys:
             return None
         return self[key]
 
+    @with_lock
     @override(dict)
     def __len__(self):
-        """Returns number of all policies, including the stashed-to-disk ones.
-        """
+        """Returns number of all policies, including the stashed-to-disk ones."""
         return len(self.valid_keys)
 
+    @with_lock
     @override(dict)
     def __contains__(self, item):
         return item in self.valid_keys
@@ -266,8 +296,7 @@ class PolicyMap(dict):
             pickle.dump(policy_state, file=f)
 
     def _read_from_disk(self, policy_id):
-        """Reads a policy ID from disk and re-adds it to the cache.
-        """
+        """Reads a policy ID from disk and re-adds it to the cache."""
         # Make sure this policy ID is not in the cache right now.
         assert policy_id not in self.cache
         # Read policy state from disk.
@@ -275,8 +304,9 @@ class PolicyMap(dict):
             policy_state = pickle.load(f)
 
         # Get class and config override.
-        merged_conf = merge_dicts(self.policy_config,
-                                  self.policy_specs[policy_id].config)
+        merged_conf = merge_dicts(
+            self.policy_config, self.policy_specs[policy_id].config
+        )
 
         # Create policy object (from its spec: cls, obs-space, act-space,
         # config).

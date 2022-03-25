@@ -13,13 +13,17 @@ from ray.util.annotations import Deprecated
 from ray.util.data import MLDataset
 
 
-def convert_to_tensor(df, feature_columns: List[Any],
-                      feature_shapes: List[Any],
-                      feature_types: List[torch.dtype], label_column: Any,
-                      label_shape: Optional[int], label_type: torch.dtype):
+def convert_to_tensor(
+    df,
+    feature_columns: List[Any],
+    feature_shapes: List[Any],
+    feature_types: List[torch.dtype],
+    label_column: Any,
+    label_shape: Optional[int],
+    label_type: torch.dtype,
+):
     feature_tensor = []
-    for col, shape, dtype in zip(feature_columns, feature_shapes,
-                                 feature_types):
+    for col, shape, dtype in zip(feature_columns, feature_shapes, feature_types):
         column = df[col].values
         if column.dtype == np.object:
             if isinstance(column[0], np.ndarray):
@@ -30,7 +34,8 @@ def convert_to_tensor(df, feature_columns: List[Any],
                 raise Exception(
                     f"Column {col}'s type: {type(column[0])} is not supported."
                     " It must be numpy built in type or numpy object of "
-                    "(ndarray, list, tuple)")
+                    "(ndarray, list, tuple)"
+                )
 
         t = torch.as_tensor(column, dtype=dtype)
         if shape is not None:
@@ -77,14 +82,16 @@ class TorchMLDataset:
         label_type (Optional[torch.dtype]): the data type for the label data
     """
 
-    def __init__(self,
-                 ds: MLDataset = None,
-                 feature_columns: List[Any] = None,
-                 feature_shapes: Optional[List[Any]] = None,
-                 feature_types: Optional[List[torch.dtype]] = None,
-                 label_column: Any = None,
-                 label_shape: Optional[int] = None,
-                 label_type: Optional[torch.dtype] = None):
+    def __init__(
+        self,
+        ds: MLDataset = None,
+        feature_columns: List[Any] = None,
+        feature_shapes: Optional[List[Any]] = None,
+        feature_types: Optional[List[torch.dtype]] = None,
+        label_column: Any = None,
+        label_shape: Optional[int] = None,
+        label_type: Optional[torch.dtype] = None,
+    ):
 
         self._feature_columns = feature_columns
         self._feature_shapes = feature_shapes
@@ -106,8 +113,9 @@ class TorchMLDataset:
             if not isinstance(self._feature_shapes, list):
                 self._feature_shapes = [self._feature_shapes]
 
-            assert len(self._feature_columns) == len(self._feature_shapes), \
-                "The feature_shapes size must match the feature_columns"
+            assert len(self._feature_columns) == len(
+                self._feature_shapes
+            ), "The feature_shapes size must match the feature_columns"
             for i in range(len(self._feature_shapes)):
                 if not isinstance(self._feature_shapes[i], Iterable):
                     self._feature_shapes[i] = [self._feature_shapes[i]]
@@ -118,12 +126,13 @@ class TorchMLDataset:
             if not isinstance(self._feature_types, list):
                 self._feature_types = [self._feature_types]
 
-            assert len(self._feature_columns) == len(self._feature_types), \
-                "The feature_types size must match the feature_columns"
+            assert len(self._feature_columns) == len(
+                self._feature_types
+            ), "The feature_types size must match the feature_columns"
             for i in range(len(self._feature_types)):
-                assert (all(isinstance(dtype, torch.dtype)
-                            for dtype in self._feature_types)), \
-                    "All value in feature_types should be torch.dtype instance"
+                assert all(
+                    isinstance(dtype, torch.dtype) for dtype in self._feature_types
+                ), "All value in feature_types should be torch.dtype instance"
         else:
             self._feature_types = [torch.float] * len(self._feature_columns)
 
@@ -136,16 +145,19 @@ class TorchMLDataset:
             logging.info("Setting num shards", num_shards)
             self._ds = self._ds.repartition(num_shards)
 
-    def get_shard(self,
-                  shard_index: int,
-                  batch_ms: int = 0,
-                  num_async: int = 1,
-                  shuffle: bool = False,
-                  shuffle_buffer_size: int = 1,
-                  seed: int = None) -> torch.utils.data.IterableDataset:
+    def get_shard(
+        self,
+        shard_index: int,
+        batch_ms: int = 0,
+        num_async: int = 1,
+        shuffle: bool = False,
+        shuffle_buffer_size: int = 1,
+        seed: int = None,
+    ) -> torch.utils.data.IterableDataset:
 
-        it = self._ds.get_repeatable_shard(shard_index, batch_ms, num_async,
-                                           shuffle, shuffle_buffer_size, seed)
+        it = self._ds.get_repeatable_shard(
+            shard_index, batch_ms, num_async, shuffle, shuffle_buffer_size, seed
+        )
         convert_fn = functools.partial(
             convert_to_tensor,
             feature_columns=self._feature_columns,
@@ -153,13 +165,13 @@ class TorchMLDataset:
             feature_types=self._feature_types,
             label_column=self._label_column,
             label_shape=self._label_shape,
-            label_type=self._label_type)
+            label_type=self._label_type,
+        )
         return TorchIterableDataset(it, convert_fn)
 
 
 class TorchIterableDataset(IterableDataset):
-    def __init__(self, it: Iterator,
-                 convert_fn: Callable[[pd.DataFrame], Any]):
+    def __init__(self, it: Iterator, convert_fn: Callable[[pd.DataFrame], Any]):
         super().__init__()
         self._it = it
         self._convert_fn = convert_fn

@@ -17,8 +17,7 @@ public class PlacementGroupTestUtils {
       int bundleSize,
       PlacementStrategy strategy,
       Double resourceSize,
-      String groupName,
-      boolean isGlobal) {
+      String groupName) {
     List<Map<String, Double>> bundles = new ArrayList<>();
 
     for (int i = 0; i < bundleSize; i++) {
@@ -28,11 +27,7 @@ public class PlacementGroupTestUtils {
     }
     PlacementGroupCreationOptions.Builder builder =
         new PlacementGroupCreationOptions.Builder().setBundles(bundles).setStrategy(strategy);
-    if (isGlobal) {
-      builder.setGlobalName(groupName);
-    } else {
-      builder.setName(groupName);
-    }
+    builder.setName(groupName);
 
     return PlacementGroups.createPlacementGroup(builder.build());
   }
@@ -44,7 +39,7 @@ public class PlacementGroupTestUtils {
       Double resourceSize,
       boolean isGlobal) {
     return createNameSpecifiedSimpleGroup(
-        resourceName, bundleSize, strategy, resourceSize, "unnamed_group", isGlobal);
+        resourceName, bundleSize, strategy, resourceSize, "unnamed_group");
   }
 
   public static PlacementGroup createSimpleGroup() {

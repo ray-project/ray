@@ -10,17 +10,22 @@ and the README for how to run with the multi-agent particle envs.
 """
 
 import logging
+from typing import Type
 
 from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
-from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Framework to run the algorithm ===
@@ -36,7 +41,7 @@ DEFAULT_CONFIG = with_common_config({
     # Evaluation interval
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 10,
+    "evaluation_duration": 10,
 
     # === Model ===
     # Apply a state preprocessor with spec given by the "model" config option
@@ -66,7 +71,11 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    "buffer_size": int(1e6),
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_buffer_config": {
+        "type": "MultiAgentReplayBuffer",
+        "capacity": int(1e6),
+    },
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
     "compress_observations": False,
@@ -111,10 +120,10 @@ DEFAULT_CONFIG = with_common_config({
     # you're using the Async or Ape-X optimizers.
     "num_workers": 1,
     # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 0,
+    "min_time_s_per_reporting": 0,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
@@ -125,8 +134,7 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
         i = p.config["agent_id"]
         keys = multi_agent_batch.policy_batches[pid].keys()
         keys = ["_".join([k, str(i)]) for k in keys]
-        samples.update(
-            dict(zip(keys, multi_agent_batch.policy_batches[pid].values())))
+        samples.update(dict(zip(keys, multi_agent_batch.policy_batches[pid].values())))
 
     # Make ops and feed_dict to get "new_obs" from target action sampler.
     new_obs_ph_n = [p.new_obs_ph for p in policies.values()]
@@ -145,26 +153,30 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
-def add_maddpg_postprocessing(config):
-    """Add the before learn on batch hook.
+class MADDPGTrainer(DQNTrainer):
+    @classmethod
+    @override(DQNTrainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    This hook is called explicitly prior to TrainOneStep() in the execution
-    setups for DQN and APEX.
-    """
+    @override(DQNTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        """Adds the `before_learn_on_batch` hook to the config.
 
-    def f(batch, workers, config):
-        policies = dict(workers.local_worker()
-                        .foreach_trainable_policy(lambda p, i: (i, p)))
-        return before_learn_on_batch(batch, policies,
-                                     config["train_batch_size"])
+        This hook is called explicitly prior to TrainOneStep() in the execution
+        setups for DQN and APEX.
+        """
+        # Call super's validation method.
+        super().validate_config(config)
 
-    config["before_learn_on_batch"] = f
-    return config
+        def f(batch, workers, config):
+            policies = dict(
+                workers.local_worker().foreach_policy_to_train(lambda p, i: (i, p))
+            )
+            return before_learn_on_batch(batch, policies, config["train_batch_size"])
 
+        config["before_learn_on_batch"] = f
 
-MADDPGTrainer = GenericOffPolicyTrainer.with_updates(
-    name="MADDPG",
-    default_config=DEFAULT_CONFIG,
-    default_policy=MADDPGTFPolicy,
-    get_policy_class=None,
-    validate_config=add_maddpg_postprocessing)
+    @override(DQNTrainer)
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+        return MADDPGTFPolicy

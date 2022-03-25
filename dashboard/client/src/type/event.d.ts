@@ -4,11 +4,18 @@ export type Event = {
   nodeId: string;
   sourceType: string;
   sourceHostname: string;
+  hostName: string;
   sourcePid: number;
+  pid: number;
   label: string;
   message: string;
   timestamp: number;
+  timeStamp: number;
+  jobName: string;
   severity: string;
+  customFields: {
+    [key: string]: any;
+  };
 };
 
 export type EventRsp = {

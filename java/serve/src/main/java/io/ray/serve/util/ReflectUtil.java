@@ -2,6 +2,7 @@ package io.ray.serve.util;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -177,5 +178,18 @@ public class ReflectUtil {
       methodStrings.add(methods[i].toString());
     }
     return methodStrings;
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <T> List<T> getInstancesByClassNames(String classNames, Class<T> cls)
+      throws ClassNotFoundException, InstantiationException, IllegalAccessException,
+          IllegalArgumentException, InvocationTargetException, NoSuchMethodException,
+          SecurityException {
+    String[] classNameArray = StringUtils.split(classNames, ";");
+    List<T> isntances = new ArrayList<>();
+    for (String className : classNameArray) {
+      isntances.add((T) Class.forName(className).getConstructor().newInstance());
+    }
+    return isntances;
   }
 }

@@ -25,24 +25,24 @@ if __name__ == "__main__":
         "--exp-name",
         type=str,
         required=True,
-        help="The job name and path to logging file (exp_name.log).")
+        help="The job name and path to logging file (exp_name.log).",
+    )
     parser.add_argument(
-        "--num-nodes",
-        "-n",
-        type=int,
-        default=1,
-        help="Number of nodes to use.")
+        "--num-nodes", "-n", type=int, default=1, help="Number of nodes to use."
+    )
     parser.add_argument(
         "--node",
         "-w",
         type=str,
         help="The specified nodes to use. Same format as the "
-        "return of 'sinfo'. Default: ''.")
+        "return of 'sinfo'. Default: ''.",
+    )
     parser.add_argument(
         "--num-gpus",
         type=int,
         default=0,
-        help="Number of GPUs to use in each node. (Default: 0)")
+        help="Number of GPUs to use in each node. (Default: 0)",
+    )
     parser.add_argument(
         "--partition",
         "-p",
@@ -51,14 +51,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--load-env",
         type=str,
-        help="The script to load your environment ('module load cuda/10.1')")
+        help="The script to load your environment ('module load cuda/10.1')",
+    )
     parser.add_argument(
         "--command",
         type=str,
         required=True,
         help="The command you wish to execute. For example: "
         " --command 'python test.py'. "
-        "Note that the command must be a string.")
+        "Note that the command must be a string.",
+    )
     args = parser.parse_args()
 
     if args.node:
@@ -67,11 +69,13 @@ if __name__ == "__main__":
     else:
         node_info = ""
 
-    job_name = "{}_{}".format(args.exp_name,
-                              time.strftime("%m%d-%H%M", time.localtime()))
+    job_name = "{}_{}".format(
+        args.exp_name, time.strftime("%m%d-%H%M", time.localtime())
+    )
 
-    partition_option = "#SBATCH --partition={}".format(
-        args.partition) if args.partition else ""
+    partition_option = (
+        "#SBATCH --partition={}".format(args.partition) if args.partition else ""
+    )
 
     # ===== Modified the template script =====
     with open(template_file, "r") as f:
@@ -84,10 +88,10 @@ if __name__ == "__main__":
     text = text.replace(LOAD_ENV, str(args.load_env))
     text = text.replace(GIVEN_NODE, node_info)
     text = text.replace(
-        "# THIS FILE IS A TEMPLATE AND IT SHOULD NOT BE DEPLOYED TO "
-        "PRODUCTION!",
+        "# THIS FILE IS A TEMPLATE AND IT SHOULD NOT BE DEPLOYED TO " "PRODUCTION!",
         "# THIS FILE IS MODIFIED AUTOMATICALLY FROM TEMPLATE AND SHOULD BE "
-        "RUNNABLE!")
+        "RUNNABLE!",
+    )
 
     # ===== Save the script =====
     script_file = "{}.sh".format(job_name)
@@ -99,5 +103,7 @@ if __name__ == "__main__":
     subprocess.Popen(["sbatch", script_file])
     print(
         "Job submitted! Script file is at: <{}>. Log file is at: <{}>".format(
-            script_file, "{}.log".format(job_name)))
+            script_file, "{}.log".format(job_name)
+        )
+    )
     sys.exit(0)

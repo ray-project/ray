@@ -13,28 +13,34 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
-#include "ray/stats/stats.h"
+
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace gcs {
 
 void GcsWorkerManager::HandleReportWorkerFailure(
-    const rpc::ReportWorkerFailureRequest &request, rpc::ReportWorkerFailureReply *reply,
+    const rpc::ReportWorkerFailureRequest &request,
+    rpc::ReportWorkerFailureReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const rpc::Address worker_address = request.worker_failure().worker_address();
   const auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
   const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
-  std::stringstream log_stream;
-  log_stream << "Reporting worker failure, worker id = " << worker_id
-             << ", node id = " << node_id << ", address = " << worker_address.ip_address()
-             << ", exit_type = "
-             << rpc::WorkerExitType_Name(request.worker_failure().exit_type())
-             << ", has creation task exception = "
-             << request.worker_failure().has_creation_task_exception();
-  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT) {
-    RAY_LOG(INFO) << log_stream.str();
+  std::string message =
+      absl::StrCat("Reporting worker exit, worker id = ",
+                   worker_id.Hex(),
+                   ", node id = ",
+                   node_id.Hex(),
+                   ", address = ",
+                   worker_address.ip_address(),
+                   ", exit_type = ",
+                   rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
+                   request.worker_failure().has_creation_task_exception());
+  if (request.worker_failure().exit_type() == rpc::WorkerExitType::INTENDED_EXIT ||
+      request.worker_failure().exit_type() == rpc::WorkerExitType::IDLE_EXIT) {
+    RAY_LOG(DEBUG) << message;
   } else {
-    RAY_LOG(WARNING) << log_stream.str()
+    RAY_LOG(WARNING) << message
                      << ". Unintentional worker failures have been reported. If there "
                         "are lots of this logs, that might indicate there are "
                         "unexpected failures in the cluster.";
@@ -47,7 +53,12 @@ void GcsWorkerManager::HandleReportWorkerFailure(
     listener(worker_failure_data);
   }
 
-  auto on_done = [this, worker_address, worker_id, node_id, worker_failure_data, reply,
+  auto on_done = [this,
+                  worker_address,
+                  worker_id,
+                  node_id,
+                  worker_failure_data,
+                  reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report worker failure, worker id = " << worker_id
@@ -57,14 +68,11 @@ void GcsWorkerManager::HandleReportWorkerFailure(
       stats::UnintentionalWorkerFailures.Record(1);
       // Only publish worker_id and raylet_id in address as they are the only fields used
       // by sub clients.
-      auto worker_failure_delta = std::make_shared<rpc::WorkerDeltaData>();
-      worker_failure_delta->set_worker_id(
-          worker_failure_data->worker_address().worker_id());
-      worker_failure_delta->set_raylet_id(
-          worker_failure_data->worker_address().raylet_id());
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(WORKER_CHANNEL, worker_id.Hex(),
-                                         worker_failure_delta->SerializeAsString(),
-                                         nullptr));
+      rpc::WorkerDeltaData worker_failure;
+      worker_failure.set_worker_id(worker_failure_data->worker_address().worker_id());
+      worker_failure.set_raylet_id(worker_failure_data->worker_address().raylet_id());
+      RAY_CHECK_OK(
+          gcs_publisher_->PublishWorkerFailure(worker_id, worker_failure, nullptr));
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -103,11 +111,12 @@ void GcsWorkerManager::HandleGetWorkerInfo(const rpc::GetWorkerInfoRequest &requ
 }
 
 void GcsWorkerManager::HandleGetAllWorkerInfo(
-    const rpc::GetAllWorkerInfoRequest &request, rpc::GetAllWorkerInfoReply *reply,
+    const rpc::GetAllWorkerInfoRequest &request,
+    rpc::GetAllWorkerInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all worker info.";
   auto on_done = [reply, send_reply_callback](
-                     const std::unordered_map<WorkerID, WorkerTableData> &result) {
+                     const absl::flat_hash_map<WorkerID, WorkerTableData> &result) {
     for (auto &data : result) {
       reply->add_worker_table_data()->CopyFrom(data.second);
     }
@@ -116,7 +125,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
   };
   Status status = gcs_table_storage_->WorkerTable().GetAll(on_done);
   if (!status.ok()) {
-    on_done(std::unordered_map<WorkerID, WorkerTableData>());
+    on_done(absl::flat_hash_map<WorkerID, WorkerTableData>());
   }
 }
 
@@ -128,15 +137,15 @@ void GcsWorkerManager::HandleAddWorkerInfo(const rpc::AddWorkerInfoRequest &requ
   auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
   RAY_LOG(DEBUG) << "Adding worker " << worker_id;
 
-  auto on_done = [worker_id, worker_data, reply,
-                  send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to add worker information, "
-                     << worker_data->DebugString();
-    }
-    RAY_LOG(DEBUG) << "Finished adding worker " << worker_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
+  auto on_done =
+      [worker_id, worker_data, reply, send_reply_callback](const Status &status) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to add worker information, "
+                         << worker_data->DebugString();
+        }
+        RAY_LOG(DEBUG) << "Finished adding worker " << worker_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      };
 
   Status status = gcs_table_storage_->WorkerTable().Put(worker_id, *worker_data, on_done);
   if (!status.ok()) {

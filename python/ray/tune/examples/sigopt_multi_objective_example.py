@@ -32,7 +32,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     args, _ = parser.parse_known_args()
 
     if "SIGOPT_KEY" not in os.environ:
@@ -42,16 +43,14 @@ if __name__ == "__main__":
         else:
             raise ValueError(
                 "SigOpt API Key not found. Please set the SIGOPT_KEY "
-                "environment variable.")
+                "environment variable."
+            )
 
     space = [
         {
             "name": "w1",
             "type": "double",
-            "bounds": {
-                "min": 0,
-                "max": 1
-            },
+            "bounds": {"min": 0, "max": 1},
         },
     ]
 
@@ -61,13 +60,16 @@ if __name__ == "__main__":
         observation_budget=4 if args.smoke_test else 100,
         max_concurrent=1,
         metric=["average", "std", "sharpe"],
-        mode=["max", "min", "obs"])
+        mode=["max", "min", "obs"],
+    )
 
     analysis = tune.run(
         easy_objective,
         name="my_exp",
         search_alg=algo,
         num_samples=4 if args.smoke_test else 100,
-        config={"total_weight": 1})
-    print("Best hyperparameters found were: ",
-          analysis.get_best_config("average", "min"))
+        config={"total_weight": 1},
+    )
+    print(
+        "Best hyperparameters found were: ", analysis.get_best_config("average", "min")
+    )

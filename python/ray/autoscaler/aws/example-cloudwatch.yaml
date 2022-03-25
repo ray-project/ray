@@ -1,0 +1,112 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: cloudwatch
+
+# The maximum number of workers nodes to launch in addition to the head node.
+max_workers: 2
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    # Start by defining a `cloudwatch` section to enable CloudWatch integration with your Ray cluster.
+    cloudwatch:
+        # We depend on AWS Systems Manager (SSM) to deploy CloudWatch configuration updates to your cluster,
+        # with relevant configuration created or updated in the SSM Parameter Store during `ray up`.
+
+        # We support three CloudWatch related config type under this cloudwatch section: agent, dashboard and alarm.
+        # The `AmazonCloudWatch-ray_{config_type}_config_{cluster_name}` SSM Parameter Store Config Key is used to
+        # store a remote cache of the last Unified CloudWatch config applied.
+
+        # Every time you run `ray up` to update your cluster, we compare your local CloudWatch config file contents
+        # to the SSM Parameter Store's contents for that config and, if they differ, then the associated CloudWatch
+        # config will be applied and uploaded to the SSM Parameter Store.
+        # For CloudWatch Unified Agent config files, we will also replace references to
+        # `{instance_id}` with your head node's EC2 instance ID, `{region}` with your cluster's region name, and `{cluster_name}` with your cluster name.
+        agent:
+            # The Unified CloudWatch Agent is configured via the config file described
+            # at https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Agent-Configuration-File-Details.html.
+            # We've configured our `example-cloudwatch-agent-config.json` file to ship the following log files to CloudWatch:
+            # 1. `/tmp/ray/session_*/logs/**.out` are shipped to the `{cluster_name}-ray_logs_out` CloudWatch Log Group.
+            # 2. `/tmp/ray/session_*/logs/**.err` are shipped to the `{cluster_name}-ray_logs_err` CloudWatch Log Group.
+            # If enabled, Prometheus metrics can be found in the CloudWatch > Metrics > `{cluster-name}-ray-prometheus` namespace.
+            # CloudWatch Log Stream names will be the same as your cluster head node's EC2 instance ID.
+            # See https://docs.ray.io/en/master/ray-logging.html for ray logging system details.
+
+            # Path to Unified CloudWatch Agent config file
+            config: "cloudwatch/example-cloudwatch-agent-config.json"
+            retryer:
+                # Max allowed Unified CloudWatch Agent SSM config update attempts on any host.
+                max_attempts: 120
+                # Seconds to wait between each Unified CloudWatch Agent SSM config update attempt.
+                delay_seconds: 30
+        # For CloudWatch Dashboard config files, we will also replace references to
+        # `{region}` with your cluster's region name, and `{cluster_name}` with your cluster name.
+        dashboard:
+            # CloudWatch Dashboard name
+            # Per-cluster level dashboard is created and dashboard name will be
+            # `{your_cluster_name}-example-dashboard-name` as default
+            name: "example-dashboard-name"
+            # The CloudWatch Dashboard is defined via the config file described
+            # at https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/CloudWatch-Dashboard-Body-Structure.html.
+            # Path to the CloudWatch Dashboard config file
+            config: "cloudwatch/example-cloudwatch-dashboard-config.json"
+        # For CloudWatch Alarm config files, we will also replace references to
+        # `{instance_id}` with every cluster node's EC2 instance ID, `{region}` with your cluster's region name, and `{cluster_name}` with your cluster name.
+        alarm:
+          # The CloudWatch Alarm config file is defined via the config file described
+          # at https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_PutMetricAlarm.html.
+          # To allow per-node alarm being created and updated, `{instance_id}` is included as part of `AlarmName` in the following json config.
+          # Replace `AlarmActions` in the `example-cloudwatch-alarm-config.json` with actions you want to take described at
+          # https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html
+
+          # Path to CloudWatch Alarm config file
+          config: "cloudwatch/example-cloudwatch-alarm-config.json"
+
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+available_node_types:
+  ray.head.default:
+      node_config:
+        InstanceType: c5a.large
+        # Disclaimer: CloudWatch integration with Ray requires an AMI (or Docker image) with the Unified CloudWatch Agent pre-installed.
+        # The AMI below is provided by the Amazon Ray Team, is based on version 48 of the Ubuntu 18.04 AWS Deep Learning AMI,
+        # and ships with Unified CloudWatch Agent v1.247348.0b251302.
+        # Please direct any questions, comments, or issues to the Amazon Ray Team at https://github.com/amzn/amazon-ray/issues/new/choose.
+        # Up-to-date versions of this AMI and AMIs for other regions can be found at https://github.com/amzn/amazon-ray.
+        ImageId: ami-0d88d9cbe28fac870
+      resources: {}
+  ray.worker.default:
+      node_config:
+        InstanceType: c5a.large
+        ImageId: ami-0d88d9cbe28fac870
+        # Note: IamInstanceProfile is needed to grant worker nodes required permission to make boto3 call for Cloudwatch setup.
+        # Default IamInstanceProfile is `arn:aws:iam::{your_aws_account_number}:instance-profile/ray-autoscaler-cloudwatch-v1`.
+        IamInstanceProfile:
+          Name: ray-autoscaler-cloudwatch-v1
+      resources: {}
+      min_workers: 0
+      max_workers: 2
+head_node_type: ray.head.default
+
+# If you want to export Ray's Prometheus system metrics to CloudWatch, you should first ensure that your cluster has the
+# Unified CloudWatch Agent and Ray Dashboard installed, then uncomment the `head_setup_commands` section below.
+# Note that this relies on CloudWatch's Embedded Metric Format (EMF), and will thus incur CloudWatch log and metric costs in
+# accordance with https://aws.amazon.com/cloudwatch/pricing/. Also note that we use the following files to enable this feature:
+# 1. prometheus.yml: The configuration file that tells Prometheus which metrics to scrape. In this case, we've configured
+# it to scrape all available Ray system metrics. For more information, see:
+# https://prometheus.io/docs/prometheus/latest/configuration/configuration/.
+# 2. ray_prometheus_waiter.sh: A bash script that waits for the Ray Prometheus service discovery file to appear at
+# `/tmp/ray/prom_metrics_service_discovery.json`, then restarts the CloudWatch Agent to start capturing all scraped
+# Prometheus metrics.
+# See https://docs.ray.io/en/latest/ray-metrics.html for more details about exporting Ray Prometheus metrics.
+#head_setup_commands:
+#  # Make `ray_prometheus_waiter.sh` executable.
+#  - RAY_INSTALL_DIR=`pip show ray | grep -Po "(?<=Location:).*"` && sudo chmod +x $RAY_INSTALL_DIR/ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh
+#  # Copy `prometheus.yml` to Unified CloudWatch Agent folder
+#  - RAY_INSTALL_DIR=`pip show ray | grep -Po "(?<=Location:).*"` && sudo cp -f $RAY_INSTALL_DIR/ray/autoscaler/aws/cloudwatch/prometheus.yml /opt/aws/amazon-cloudwatch-agent/etc
+#  # First get current cluster name, then let the Unified CloudWatch Agent restart and use `AmazonCloudWatch-ray_agent_config_{cluster_name}` parameter at SSM Parameter Store.
+#  - nohup sudo sh -c "`pip show ray | grep -Po "(?<=Location:).*"`/ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh `cat ~/ray_bootstrap_config.yaml | jq '.cluster_name'` >> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.out' 2>> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.err'" &

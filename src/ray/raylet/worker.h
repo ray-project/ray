@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "gtest/gtest_prod.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -48,10 +49,9 @@ class WorkerInterface {
   virtual WorkerID WorkerId() const = 0;
   /// Return the worker process.
   virtual Process GetProcess() const = 0;
+  /// Return the worker process's startup token
+  virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
-  /// Return the worker shim process.
-  virtual Process GetShimProcess() const = 0;
-  virtual void SetShimProcess(Process proc) = 0;
   virtual Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;
   /// Connect this worker's gRPC client.
@@ -75,16 +75,6 @@ class WorkerInterface {
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
-
-  virtual const ResourceIdSet &GetLifetimeResourceIds() const = 0;
-  virtual void SetLifetimeResourceIds(ResourceIdSet &resource_ids) = 0;
-  virtual void ResetLifetimeResourceIds() = 0;
-
-  virtual const ResourceIdSet &GetTaskResourceIds() const = 0;
-  virtual void SetTaskResourceIds(ResourceIdSet &resource_ids) = 0;
-  virtual void ResetTaskResourceIds() = 0;
-  virtual ResourceIdSet ReleaseTaskCpuResources() = 0;
-  virtual void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) = 0;
 
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
@@ -112,6 +102,18 @@ class WorkerInterface {
   virtual bool IsRegistered() = 0;
 
   virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
+
+  /// Return True if the worker is available for scheduling a task or actor.
+  virtual bool IsAvailableForScheduling() const = 0;
+
+ protected:
+  virtual void SetStartupToken(StartupToken startup_token) = 0;
+
+  FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingWithExitDelay);
+  FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
@@ -121,10 +123,15 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
-         const Language &language, rpc::WorkerType worker_type,
-         const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager);
+  Worker(const JobID &job_id,
+         const int runtime_env_hash,
+         const WorkerID &worker_id,
+         const Language &language,
+         rpc::WorkerType worker_type,
+         const std::string &ip_address,
+         std::shared_ptr<ClientConnection> connection,
+         rpc::ClientCallManager &client_call_manager,
+         StartupToken startup_token);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   rpc::WorkerType GetWorkerType() const;
@@ -137,10 +144,9 @@ class Worker : public WorkerInterface {
   WorkerID WorkerId() const;
   /// Return the worker process.
   Process GetProcess() const;
+  /// Return the worker process's startup token
+  StartupToken GetStartupToken() const;
   void SetProcess(Process proc);
-  /// Return this worker shim process.
-  Process GetShimProcess() const;
-  void SetShimProcess(Process proc);
   Language GetLanguage() const;
   const std::string IpAddress() const;
   /// Connect this worker's gRPC client.
@@ -164,16 +170,6 @@ class Worker : public WorkerInterface {
   const std::shared_ptr<ClientConnection> Connection() const;
   void SetOwnerAddress(const rpc::Address &address);
   const rpc::Address &GetOwnerAddress() const;
-
-  const ResourceIdSet &GetLifetimeResourceIds() const;
-  void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
-  void ResetLifetimeResourceIds();
-
-  const ResourceIdSet &GetTaskResourceIds() const;
-  void SetTaskResourceIds(ResourceIdSet &resource_ids);
-  void ResetTaskResourceIds();
-  ResourceIdSet ReleaseTaskCpuResources();
-  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
   void DirectActorCallArgWaitComplete(int64_t tag);
 
@@ -209,19 +205,28 @@ class Worker : public WorkerInterface {
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
+  bool IsAvailableForScheduling() const {
+    return !IsDead()                        // Not dead
+           && !GetAssignedTaskId().IsNil()  // No assigned task
+           && !IsBlocked()                  // Not blocked
+           && GetActorId().IsNil();         // No assigned actor
+  }
+
   rpc::CoreWorkerClientInterface *rpc_client() {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
+
+ protected:
+  void SetStartupToken(StartupToken startup_token);
 
  private:
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
   Process proc_;
-  /// The worker's shim process. The shim process PID is the same with worker process PID,
-  /// except starting worker process in container.
-  Process shim_proc_;
+  /// The worker's process's startup_token
+  StartupToken startup_token_;
   /// The language type of this worker.
   Language language_;
   /// The type of the worker.
@@ -240,7 +245,7 @@ class Worker : public WorkerInterface {
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
-  JobID assigned_job_id_;
+  const JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.  We use this in the worker
   /// pool to cache and reuse workers with the same runtime env, because
   /// installing runtime envs from scratch can be slow.
@@ -255,12 +260,6 @@ class Worker : public WorkerInterface {
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
-  /// The specific resource IDs that this worker owns for its lifetime. This is
-  /// only used for actors.
-  ResourceIdSet lifetime_resource_ids_;
-  /// The specific resource IDs that this worker currently owns for the duration
-  // of a task.
-  ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.

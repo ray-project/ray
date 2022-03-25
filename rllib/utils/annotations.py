@@ -1,28 +1,35 @@
-import inspect
-
-from ray.util import log_once
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated
 
 
 def override(cls):
-    """Annotation for documenting method overrides.
+    """Decorator for documenting method overrides.
 
     Args:
         cls (type): The superclass that provides the overridden method. If this
             cls does not actually have the method, an error is raised.
+
+    Examples:
+        >>> from ray.rllib.policy import Policy
+        >>> class TorchPolicy(Policy): # doctest: +SKIP
+        ...     ...
+        ...     # Indicates that `TorchPolicy.loss()` overrides the parent
+        ...     # Policy class' own `loss method. Leads to an error if Policy
+        ...     # does not have a `loss` method.
+        ...     @override(Policy) # doctest: +SKIP
+        ...     def loss(self, model, action_dist, train_batch): # doctest: +SKIP
+        ...         ... # doctest: +SKIP
     """
 
     def check_override(method):
         if method.__name__ not in dir(cls):
-            raise NameError("{} does not override any method of {}".format(
-                method, cls))
+            raise NameError("{} does not override any method of {}".format(method, cls))
         return method
 
     return check_override
 
 
 def PublicAPI(obj):
-    """Annotation for documenting public APIs.
+    """Decorator for documenting public APIs.
 
     Public APIs are classes and methods exposed to end users of RLlib. You
     can expect these APIs to remain stable across RLlib releases.
@@ -33,13 +40,21 @@ def PublicAPI(obj):
 
     In addition, you can assume all trainer configurations are part of their
     public API as well.
+
+    Examples:
+        >>> # Indicates that the `Trainer` class is exposed to end users
+        >>> # of RLlib and will remain stable across RLlib releases.
+        >>> from ray import tune
+        >>> @PublicAPI # doctest: +SKIP
+        >>> class Trainer(tune.Trainable): # doctest: +SKIP
+        ...     ... # doctest: +SKIP
     """
 
     return obj
 
 
 def DeveloperAPI(obj):
-    """Annotation for documenting developer APIs.
+    """Decorator for documenting developer APIs.
 
     Developer APIs are classes and methods explicitly exposed to developers
     for the purposes of building custom algorithms or advanced training
@@ -48,60 +63,85 @@ def DeveloperAPI(obj):
 
     Subclasses that inherit from a ``@DeveloperAPI`` base class can be
     assumed part of the RLlib developer API as well.
+
+    Examples:
+        >>> # Indicates that the `TorchPolicy` class is exposed to end users
+        >>> # of RLlib and will remain (relatively) stable across RLlib
+        >>> # releases.
+        >>> from ray.rllib.policy import Policy
+        >>> @DeveloperAPI # doctest: +SKIP
+        ... class TorchPolicy(Policy): # doctest: +SKIP
+        ...     ... # doctest: +SKIP
     """
 
     return obj
 
 
-def Deprecated(old=None, *, new=None, help=None, error):
-    """Annotation for documenting a (soon-to-be) deprecated method.
+def ExperimentalAPI(obj):
+    """Decorator for documenting experimental APIs.
 
-    Methods tagged with this decorator should produce a
-    `ray.rllib.utils.deprecation.deprecation_warning(old=..., error=False)`
-    to not break existing code at this point.
-    In a next major release, this warning can then be made an error
-    (error=True), which means at this point that the method is already
-    no longer supported but will still inform the user about the
-    deprecation event.
-    In a further major release, the method should be erased.
+    Experimental APIs are classes and methods that are in development and may
+    change at any time in their development process. You should not expect
+    these APIs to be stable until their tag is changed to `DeveloperAPI` or
+    `PublicAPI`.
+
+    Subclasses that inherit from a ``@ExperimentalAPI`` base class can be
+    assumed experimental as well.
+
+    Examples:
+        >>> from ray.rllib.policy import Policy
+        >>> class TorchPolicy(Policy): # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        ...     # Indicates that the `TorchPolicy.loss` method is a new and
+        ...     # experimental API and may change frequently in future
+        ...     # releases.
+        ...     @ExperimentalAPI # doctest: +SKIP
+        ...     def loss(self, model, action_dist, train_batch): # doctest: +SKIP
+        ...         ... # doctest: +SKIP
     """
 
-    def _inner(obj):
-        # A deprecated class.
-        if inspect.isclass(obj):
-            # Patch the class' init method to raise the warning/error.
-            obj_init = obj.__init__
+    return obj
 
-            def patched_init(*args, **kwargs):
-                if log_once(old or obj.__name__):
-                    deprecation_warning(
-                        old=old or obj.__name__,
-                        new=new,
-                        help=help,
-                        error=error,
-                    )
-                return obj_init(*args, **kwargs)
 
-            obj.__init__ = patched_init
-            # Return the patched class (with the warning/error when
-            # instantiated).
-            return obj
+def OverrideToImplementCustomLogic(obj):
+    """Users should override this in their sub-classes to implement custom logic.
 
-        # A deprecated class method or function.
-        # Patch with the warning/error at the beginning.
-        def _ctor(*args, **kwargs):
-            if log_once(old or obj.__name__):
-                deprecation_warning(
-                    old=old or obj.__name__,
-                    new=new,
-                    help=help,
-                    error=error,
-                )
-            # Call the deprecated method/function.
-            return obj(*args, **kwargs)
+    Used in Trainer and Policy to tag methods that need overriding, e.g.
+    `Policy.loss()`.
 
-        # Return the patched class method/function.
-        return _ctor
+    Examples:
+        >>> from ray.rllib.policy.torch_policy import TorchPolicy
+        >>> @overrides(TorchPolicy) # doctest: +SKIP
+        ... @OverrideToImplementCustomLogic # doctest: +SKIP
+        ... def loss(self, ...): # doctest: +SKIP
+        ...     # implement custom loss function here ...
+        ...     # ... w/o calling the corresponding `super().loss()` method.
+        ...     ... # doctest: +SKIP
+    """
+    return obj
 
-    # Return the prepared decorator.
-    return _inner
+
+def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
+    """Users should override this in their sub-classes to implement custom logic.
+
+    Thereby, it is recommended (but not required) to call the super-class'
+    corresponding method.
+
+    Used in Trainer and Policy to tag methods that need overriding, but the
+    super class' method should still be called, e.g.
+    `Trainer.setup()`.
+
+    Examples:
+        >>> from ray import tune
+        >>> @overrides(tune.Trainable) # doctest: +SKIP
+        ... @OverrideToImplementCustomLogic_CallToSuperRecommended # doctest: +SKIP
+        ... def setup(self, config): # doctest: +SKIP
+        ...     # implement custom setup logic here ...
+        ...     super().setup(config) # doctest: +SKIP
+        ...     # ... or here (after having called super()'s setup method.
+    """
+    return obj
+
+
+# Backward compatibility.
+Deprecated = Deprecated

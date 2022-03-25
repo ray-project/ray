@@ -1,3 +1,5 @@
+from enum import Enum
+
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
@@ -12,6 +14,9 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
+
+#: Controller checkpoint path
+DEFAULT_CHECKPOINT_PATH = "ray://"
 
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
@@ -44,10 +49,38 @@ DEFAULT_LATENCY_BUCKET_MS = [
     5000,
 ]
 
-#: Name of backend reconfiguration method implemented by user.
-BACKEND_RECONFIGURE_METHOD = "reconfigure"
+#: Name of deployment health check method implemented by user.
+HEALTH_CHECK_METHOD = "check_health"
+
+#: Name of deployment reconfiguration method implemented by user.
+RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Number of historically deleted deployments to store in the checkpoint.
 MAX_NUM_DELETED_DEPLOYMENTS = 1000
+
+#: Limit the number of cached handles because each handle has long poll
+#: overhead. See https://github.com/ray-project/ray/issues/18980
+MAX_CACHED_HANDLES = 100
+
+#: Because ServeController will accept one long poll request per handle, its
+#: concurrency needs to scale as O(num_handles)
+CONTROLLER_MAX_CONCURRENCY = 15000
+
+DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
+DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
+DEFAULT_HEALTH_CHECK_PERIOD_S = 10
+DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
+
+#: Number of times in a row that a replica must fail the health check before
+#: being marked unhealthy.
+REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
+
+# Key used to idenfity given json represents a serialized RayServeHandle
+SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
+
+
+class ServeHandleType(str, Enum):
+    SYNC = "SYNC"
+    ASYNC = "ASYNC"

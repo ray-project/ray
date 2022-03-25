@@ -18,7 +18,7 @@ namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   // There are 6 kinds of table data need to be loaded.
-  auto count_down = std::make_shared<int>(6);
+  auto count_down = std::make_shared<int>(5);
   auto on_load_finished = [count_down, on_done] {
     if (--(*count_down) == 0) {
       if (on_done) {
@@ -31,8 +31,6 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
 
   AsyncLoadNodeTableData(on_load_finished);
 
-  AsyncLoadObjectTableData(on_load_finished);
-
   AsyncLoadResourceTableData(on_load_finished);
 
   AsyncLoadActorTableData(on_load_finished);
@@ -43,8 +41,8 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
 void GcsInitData::AsyncLoadJobTableData(const EmptyCallback &on_done) {
   RAY_LOG(INFO) << "Loading job table data.";
   auto load_job_table_data_callback =
-      [this, on_done](const std::unordered_map<JobID, rpc::JobTableData> &result) {
-        job_table_data_ = result;
+      [this, on_done](absl::flat_hash_map<JobID, rpc::JobTableData> &&result) {
+        job_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading job table data, size = "
                       << job_table_data_.size();
         on_done();
@@ -55,8 +53,8 @@ void GcsInitData::AsyncLoadJobTableData(const EmptyCallback &on_done) {
 void GcsInitData::AsyncLoadNodeTableData(const EmptyCallback &on_done) {
   RAY_LOG(INFO) << "Loading node table data.";
   auto load_node_table_data_callback =
-      [this, on_done](const std::unordered_map<NodeID, rpc::GcsNodeInfo> &result) {
-        node_table_data_ = result;
+      [this, on_done](absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &&result) {
+        node_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading node table data, size = "
                       << node_table_data_.size();
         on_done();
@@ -64,24 +62,11 @@ void GcsInitData::AsyncLoadNodeTableData(const EmptyCallback &on_done) {
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(load_node_table_data_callback));
 }
 
-void GcsInitData::AsyncLoadObjectTableData(const EmptyCallback &on_done) {
-  RAY_LOG(INFO) << "Loading object table data.";
-  auto load_object_table_data_callback =
-      [this,
-       on_done](const std::unordered_map<ObjectID, rpc::ObjectLocationInfo> &result) {
-        object_table_data_ = result;
-        RAY_LOG(INFO) << "Finished loading object table data, size = "
-                      << object_table_data_.size();
-        on_done();
-      };
-  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(load_object_table_data_callback));
-}
-
 void GcsInitData::AsyncLoadResourceTableData(const EmptyCallback &on_done) {
   RAY_LOG(INFO) << "Loading cluster resources table data.";
   auto load_resource_table_data_callback =
-      [this, on_done](const std::unordered_map<NodeID, rpc::ResourceMap> &result) {
-        resource_table_data_ = result;
+      [this, on_done](absl::flat_hash_map<NodeID, rpc::ResourceMap> &&result) {
+        resource_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading cluster resources table data, size = "
                       << resource_table_data_.size();
         on_done();
@@ -93,9 +78,9 @@ void GcsInitData::AsyncLoadResourceTableData(const EmptyCallback &on_done) {
 void GcsInitData::AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done) {
   RAY_LOG(INFO) << "Loading placement group table data.";
   auto load_placement_group_table_data_callback =
-      [this, on_done](const std::unordered_map<PlacementGroupID,
-                                               rpc::PlacementGroupTableData> &result) {
-        placement_group_table_data_ = result;
+      [this, on_done](
+          absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData> &&result) {
+        placement_group_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading placement group table data, size = "
                       << placement_group_table_data_.size();
         on_done();
@@ -107,8 +92,8 @@ void GcsInitData::AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done)
 void GcsInitData::AsyncLoadActorTableData(const EmptyCallback &on_done) {
   RAY_LOG(INFO) << "Loading actor table data.";
   auto load_actor_table_data_callback =
-      [this, on_done](const std::unordered_map<ActorID, ActorTableData> &result) {
-        actor_table_data_ = result;
+      [this, on_done](absl::flat_hash_map<ActorID, ActorTableData> &&result) {
+        actor_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading actor table data, size = "
                       << actor_table_data_.size();
         on_done();

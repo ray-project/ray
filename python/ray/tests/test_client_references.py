@@ -1,9 +1,13 @@
+from concurrent.futures import Future
+
 import pytest
 from ray.util.client import _ClientContext
 from ray.util.client.common import ClientActorRef, ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
-    ray_start_client_server_pair, ray_start_cluster_client_server_pair)
+    ray_start_client_server_pair,
+    ray_start_cluster_client_server_pair,
+)
 from ray._private.test_utils import wait_for_condition, object_memory_usage
 import ray as real_ray
 from ray.core.generated.gcs_pb2 import ActorTableData
@@ -22,16 +26,30 @@ def test_client_object_ref_basics(ray_start_regular):
         with pytest.raises(Exception):
             ClientObjectRef(b"\0")
 
-        # Test __eq__()
-        id = b"\0" * 28
-        assert ClientObjectRef(id) == ClientObjectRef(id)
-        assert ClientObjectRef(id) != ref
-        assert ClientObjectRef(id) != ObjectRef(id)
+        obj_id = b"\0" * 28
+        fut = Future()
+        fut.set_result(obj_id)
+        server_ref = ObjectRef(obj_id)
+        for client_ref in [ClientObjectRef(obj_id), ClientObjectRef(fut)]:
+            client_members = set(client_ref.__dir__())
+            server_members = set(server_ref.__dir__())
+            client_members = {m for m in client_ref.__dir__() if not m.startswith("_")}
+            server_members = {m for m in server_ref.__dir__() if not m.startswith("_")}
+            assert client_members.difference(server_members) == {"id"}
+            assert server_members.difference(client_members) == set()
 
-        assert ClientObjectRef(id).__repr__() == f"ClientObjectRef({id.hex()})"
-        assert ClientObjectRef(id).binary() == id
-        assert ClientObjectRef(id).hex() == id.hex()
-        assert not ClientObjectRef(id).is_nil()
+            # Test __eq__()
+            assert client_ref == ClientObjectRef(obj_id)
+            assert client_ref != ref
+            assert client_ref != server_ref
+
+            # Test other methods
+            assert client_ref.__repr__() == f"ClientObjectRef({obj_id.hex()})"
+            assert client_ref.binary() == obj_id
+            assert client_ref.hex() == obj_id.hex()
+            assert not client_ref.is_nil()
+            assert client_ref.task_id() == server_ref.task_id()
+            assert client_ref.job_id() == server_ref.job_id()
 
 
 def test_client_actor_ref_basics(ray_start_regular):
@@ -60,16 +78,26 @@ def test_client_actor_ref_basics(ray_start_regular):
         with pytest.raises(Exception):
             ClientActorRef(b"\0")
 
-        # Test __eq__()
-        id = b"\0" * 16
-        assert ClientActorRef(id) == ClientActorRef(id)
-        assert ClientActorRef(id) != ref
-        assert ClientActorRef(id) != ActorID(id)
+        actor_id = b"\0" * 16
+        fut = Future()
+        fut.set_result(actor_id)
+        server_ref = ActorID(actor_id)
+        for client_ref in [ClientActorRef(actor_id), ClientActorRef(fut)]:
+            client_members = {m for m in client_ref.__dir__() if not m.startswith("_")}
+            server_members = {m for m in server_ref.__dir__() if not m.startswith("_")}
+            assert client_members.difference(server_members) == {"id"}
+            assert server_members.difference(client_members) == set()
 
-        assert ClientActorRef(id).__repr__() == f"ClientActorRef({id.hex()})"
-        assert ClientActorRef(id).binary() == id
-        assert ClientActorRef(id).hex() == id.hex()
-        assert not ClientActorRef(id).is_nil()
+            # Test __eq__()
+            assert client_ref == ClientActorRef(actor_id)
+            assert client_ref != ref
+            assert client_ref != server_ref
+
+            # Test other methods
+            assert client_ref.__repr__() == f"ClientActorRef({actor_id.hex()})"
+            assert client_ref.binary() == actor_id
+            assert client_ref.hex() == actor_id.hex()
+            assert not client_ref.is_nil()
 
 
 def server_object_ref_count(server, n):
@@ -98,10 +126,15 @@ def server_actor_ref_count(server, n):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 1,
-        "do_init": False,
-    }], indirect=True)
+    "ray_start_cluster",
+    [
+        {
+            "num_nodes": 1,
+            "do_init": False,
+        }
+    ],
+    indirect=True,
+)
 def test_delete_refs_on_disconnect(ray_start_cluster):
     cluster = ray_start_cluster
     with ray_start_cluster_client_server_pair(cluster.address) as pair:
@@ -128,8 +161,7 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
-        real_ray.init(
-            address=cluster.address, namespace="default_test_namespace")
+        real_ray.init(address=cluster.address, namespace="default_test_namespace")
 
         def test_cond():
             return object_memory_usage() == 0
@@ -151,10 +183,8 @@ def test_delete_ref_on_object_deletion(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 1,
-        "do_init": False
-    }], indirect=True)
+    "ray_start_cluster", [{"num_nodes": 1, "do_init": False}], indirect=True
+)
 def test_delete_actor_on_disconnect(ray_start_cluster):
     cluster = ray_start_cluster
     with ray_start_cluster_client_server_pair(cluster.address) as pair:
@@ -184,15 +214,15 @@ def test_delete_actor_on_disconnect(ray_start_cluster):
 
         def test_cond():
             alive_actors = [
-                v for v in real_ray.state.actors().values()
+                v
+                for v in real_ray.state.actors().values()
                 if v["State"] != ActorTableData.DEAD
             ]
             return len(alive_actors) == 0
 
         # Connect to the real ray again, since we disconnected
         # upon num_clients = 0.
-        real_ray.init(
-            address=cluster.address, namespace="default_test_namespace")
+        real_ray.init(address=cluster.address, namespace="default_test_namespace")
 
         wait_for_condition(test_cond, timeout=10)
 
@@ -266,7 +296,8 @@ def test_named_actor_refcount(ray_start_regular):
 
         def check_owners(size):
             return size == sum(
-                len(x) for x in server.task_servicer.actor_owners.values())
+                len(x) for x in server.task_servicer.actor_owners.values()
+            )
 
         apis = [connect_api() for i in range(3)]
         assert check_owners(3)
@@ -294,4 +325,5 @@ def test_named_actor_refcount(ray_start_regular):
 if __name__ == "__main__":
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

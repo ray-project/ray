@@ -1,7 +1,7 @@
 .. _mars-on-ray:
 
-Mars on Ray
-============
+Using Mars on Ray
+=================
 
 .. _`issue on GitHub`: https://github.com/mars-project/mars/issues
 

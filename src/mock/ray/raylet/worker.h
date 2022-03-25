@@ -26,12 +26,12 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(WorkerID, WorkerId, (), (const, override));
   MOCK_METHOD(Process, GetProcess, (), (const, override));
   MOCK_METHOD(void, SetProcess, (Process proc), (override));
-  MOCK_METHOD(Process, GetShimProcess, (), (const, override));
-  MOCK_METHOD(void, SetShimProcess, (Process proc), (override));
   MOCK_METHOD(Language, GetLanguage, (), (const, override));
   MOCK_METHOD(const std::string, IpAddress, (), (const, override));
   MOCK_METHOD(void, Connect, (int port), (override));
-  MOCK_METHOD(void, Connect, (std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client),
+  MOCK_METHOD(void,
+              Connect,
+              (std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client),
               (override));
   MOCK_METHOD(int, Port, (), (const, override));
   MOCK_METHOD(int, AssignedPort, (), (const, override));
@@ -40,7 +40,9 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(const TaskID &, GetAssignedTaskId, (), (const, override));
   MOCK_METHOD(bool, AddBlockedTaskId, (const TaskID &task_id), (override));
   MOCK_METHOD(bool, RemoveBlockedTaskId, (const TaskID &task_id), (override));
-  MOCK_METHOD(const std::unordered_set<TaskID> &, GetBlockedTaskIds, (),
+  MOCK_METHOD(const std::unordered_set<TaskID> &,
+              GetBlockedTaskIds,
+              (),
               (const, override));
   MOCK_METHOD(const JobID &, GetAssignedJobId, (), (const, override));
   MOCK_METHOD(int, GetRuntimeEnvHash, (), (const, override));
@@ -51,28 +53,25 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(const std::shared_ptr<ClientConnection>, Connection, (), (const, override));
   MOCK_METHOD(void, SetOwnerAddress, (const rpc::Address &address), (override));
   MOCK_METHOD(const rpc::Address &, GetOwnerAddress, (), (const, override));
-  MOCK_METHOD(const ResourceIdSet &, GetLifetimeResourceIds, (), (const, override));
-  MOCK_METHOD(void, SetLifetimeResourceIds, (ResourceIdSet & resource_ids), (override));
-  MOCK_METHOD(void, ResetLifetimeResourceIds, (), (override));
-  MOCK_METHOD(const ResourceIdSet &, GetTaskResourceIds, (), (const, override));
-  MOCK_METHOD(void, SetTaskResourceIds, (ResourceIdSet & resource_ids), (override));
-  MOCK_METHOD(void, ResetTaskResourceIds, (), (override));
-  MOCK_METHOD(ResourceIdSet, ReleaseTaskCpuResources, (), (override));
-  MOCK_METHOD(void, AcquireTaskCpuResources, (const ResourceIdSet &cpu_resources),
-              (override));
   MOCK_METHOD(void, DirectActorCallArgWaitComplete, (int64_t tag), (override));
   MOCK_METHOD(const BundleID &, GetBundleId, (), (const, override));
   MOCK_METHOD(void, SetBundleId, (const BundleID &bundle_id), (override));
-  MOCK_METHOD(void, SetAllocatedInstances,
+  MOCK_METHOD(void,
+              SetAllocatedInstances,
               (const std::shared_ptr<TaskResourceInstances> &allocated_instances),
               (override));
-  MOCK_METHOD(std::shared_ptr<TaskResourceInstances>, GetAllocatedInstances, (),
+  MOCK_METHOD(std::shared_ptr<TaskResourceInstances>,
+              GetAllocatedInstances,
+              (),
               (override));
   MOCK_METHOD(void, ClearAllocatedInstances, (), (override));
-  MOCK_METHOD(void, SetLifetimeAllocatedInstances,
+  MOCK_METHOD(void,
+              SetLifetimeAllocatedInstances,
               (const std::shared_ptr<TaskResourceInstances> &allocated_instances),
               (override));
-  MOCK_METHOD(std::shared_ptr<TaskResourceInstances>, GetLifetimeAllocatedInstances, (),
+  MOCK_METHOD(std::shared_ptr<TaskResourceInstances>,
+              GetLifetimeAllocatedInstances,
+              (),
               (override));
   MOCK_METHOD(void, ClearLifetimeAllocatedInstances, (), (override));
   MOCK_METHOD(RayTask &, GetAssignedTask, (), (override));

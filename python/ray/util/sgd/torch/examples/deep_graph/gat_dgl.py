@@ -24,8 +24,19 @@ torch.manual_seed(42)
 
 # define the model class
 class GAT(nn.Module):
-    def __init__(self, in_feats, n_hidden, n_classes, n_layers, n_heads,
-                 activation, feat_drop, attn_drop, negative_slope, residual):
+    def __init__(
+        self,
+        in_feats,
+        n_hidden,
+        n_classes,
+        n_layers,
+        n_heads,
+        activation,
+        feat_drop,
+        attn_drop,
+        negative_slope,
+        residual,
+    ):
         super().__init__()
 
         self.n_layers = n_layers
@@ -37,25 +48,50 @@ class GAT(nn.Module):
 
         # input layer
         self.convs.append(
-            GATConv((in_feats, in_feats), n_hidden, n_heads, feat_drop,
-                    attn_drop, negative_slope, residual, self.activation))
+            GATConv(
+                (in_feats, in_feats),
+                n_hidden,
+                n_heads,
+                feat_drop,
+                attn_drop,
+                negative_slope,
+                residual,
+                self.activation,
+            )
+        )
         # hidden layer
         for _ in range(1, n_layers - 1):
             # due to multi-head, the in_dim = num_hidden * num_heads
             self.convs.append(
-                GATConv((n_hidden * n_heads, n_hidden * n_heads), n_hidden,
-                        n_heads, feat_drop, attn_drop, negative_slope,
-                        residual, self.activation))
+                GATConv(
+                    (n_hidden * n_heads, n_hidden * n_heads),
+                    n_hidden,
+                    n_heads,
+                    feat_drop,
+                    attn_drop,
+                    negative_slope,
+                    residual,
+                    self.activation,
+                )
+            )
         # output layer
         self.convs.append(
-            GATConv((n_hidden * n_heads, n_hidden * n_heads), n_classes,
-                    n_heads, feat_drop, attn_drop, negative_slope, residual,
-                    None))
+            GATConv(
+                (n_hidden * n_heads, n_hidden * n_heads),
+                n_classes,
+                n_heads,
+                feat_drop,
+                attn_drop,
+                negative_slope,
+                residual,
+                None,
+            )
+        )
 
     def forward(self, blocks, x):
         h = x
         for i, (layer, block) in enumerate(zip(self.convs, blocks)):
-            h_dst = h[:block.number_of_dst_nodes()]
+            h_dst = h[: block.number_of_dst_nodes()]
             if i != len(self.convs) - 1:
                 h = layer(block, (h, h_dst)).flatten(1)
                 h = F.dropout(h, p=0.5, training=self.training)
@@ -96,7 +132,8 @@ class CustomTrainingOperator(TrainingOperator):
 
         # Create sampler
         sampler = dgl.dataloading.MultiLayerNeighborSampler(
-            [int(fanout) for fanout in config["fan_out"].split(",")])
+            [int(fanout) for fanout in config["fan_out"].split(",")]
+        )
         # Create PyTorch DataLoader for constructing blocks
         collator = NodeCollator(g, train_nid, sampler)
         train_dataloader = DataLoader(
@@ -105,18 +142,26 @@ class CustomTrainingOperator(TrainingOperator):
             batch_size=config["batch_size"],
             shuffle=False,
             drop_last=False,
-            num_workers=config["sampling_num_workers"])
+            num_workers=config["sampling_num_workers"],
+        )
         # Define model and optimizer, residual is set to True
-        model = GAT(self.in_feats, config["n_hidden"], self.n_classes,
-                    config["n_layers"], config["n_heads"], F.elu,
-                    config["feat_drop"], config["attn_drop"],
-                    config["negative_slope"], True)
+        model = GAT(
+            self.in_feats,
+            config["n_hidden"],
+            self.n_classes,
+            config["n_layers"],
+            config["n_heads"],
+            F.elu,
+            config["feat_drop"],
+            config["attn_drop"],
+            config["negative_slope"],
+            True,
+        )
         self.convs = model.convs
         # Define optimizer.
         optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
         # Register model, optimizer, and loss.
-        self.model, self.optimizer = self.register(
-            models=model, optimizers=optimizer)
+        self.model, self.optimizer = self.register(models=model, optimizers=optimizer)
         # Register data loaders.
         self.register_data(train_loader=train_dataloader)
 
@@ -142,14 +187,23 @@ class CustomTrainingOperator(TrainingOperator):
             iter_tput.append(len(seeds) / (time.time() - tic_step))
             if step % 20 == 0:
                 acc = compute_acc(batch_pred, batch_labels)
-                gpu_mem_alloc = torch.cuda.max_memory_allocated(
-                ) / 1000000 if torch.cuda.is_available() else 0
-                print("Epoch {:05d} | Step {:05d} | Loss {:.4f} | "
-                      "Train Acc {:.4f} | Speed (samples/sec) {:.4f} | GPU "
-                      "{:.1f} MB".format(info["epoch_idx"] + 1, step,
-                                         loss.item(), acc.item(),
-                                         np.mean(iter_tput[3:]),
-                                         gpu_mem_alloc))
+                gpu_mem_alloc = (
+                    torch.cuda.max_memory_allocated() / 1000000
+                    if torch.cuda.is_available()
+                    else 0
+                )
+                print(
+                    "Epoch {:05d} | Step {:05d} | Loss {:.4f} | "
+                    "Train Acc {:.4f} | Speed (samples/sec) {:.4f} | GPU "
+                    "{:.1f} MB".format(
+                        info["epoch_idx"] + 1,
+                        step,
+                        loss.item(),
+                        acc.item(),
+                        np.mean(iter_tput[3:]),
+                        gpu_mem_alloc,
+                    )
+                )
         status = meter_collection.summary()
         return status
 
@@ -172,22 +226,26 @@ class CustomTrainingOperator(TrainingOperator):
             for i, layer in enumerate(self.convs):
                 if i < n_layers - 1:
                     y = torch.zeros(
-                        g.number_of_nodes(), n_hidden * n_heads
-                        if i != len(self.convs) - 1 else self.n_classes)
+                        g.number_of_nodes(),
+                        n_hidden * n_heads
+                        if i != len(self.convs) - 1
+                        else self.n_classes,
+                    )
                 else:
                     y = torch.zeros(
-                        g.number_of_nodes(), n_hidden
-                        if i != len(self.convs) - 1 else self.n_classes)
+                        g.number_of_nodes(),
+                        n_hidden if i != len(self.convs) - 1 else self.n_classes,
+                    )
                 sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
-                collator = NodeCollator(g, torch.arange(g.number_of_nodes()),
-                                        sampler)
+                collator = NodeCollator(g, torch.arange(g.number_of_nodes()), sampler)
                 dataloader = DataLoader(
                     collator.dataset,
                     collate_fn=collator.collate,
                     batch_size=batch_size,
                     shuffle=False,
                     drop_last=False,
-                    num_workers=num_workers)
+                    num_workers=num_workers,
+                )
                 for input_nodes, output_nodes, blocks in dataloader:
                     block = blocks[0]
                     # print("block:",block)
@@ -203,23 +261,37 @@ class CustomTrainingOperator(TrainingOperator):
                 x = y
             pred = y
         labels = g.ndata["labels"]
-        _, val_acc, test_acc = compute_acc(pred[train_nid], labels[
-            train_nid]), compute_acc(pred[val_nid], labels[val_nid]), \
-            compute_acc(pred[test_nid], labels[test_nid])
+        _, val_acc, test_acc = (
+            compute_acc(pred[train_nid], labels[train_nid]),
+            compute_acc(pred[val_nid], labels[val_nid]),
+            compute_acc(pred[test_nid], labels[test_nid]),
+        )
 
         metrics = {
             "num_samples": pred.size(0),
             "val_acc": val_acc.item(),
-            "test_acc": test_acc.item()
+            "test_acc": test_acc.item(),
         }
         meter_collection.update(metrics, n=metrics.pop("num_samples", 1))
         status = meter_collection.summary()
         return status
 
 
-def run(num_workers, use_gpu, num_epochs, lr, batch_size, n_hidden, n_layers,
-        n_heads, fan_out, feat_drop, attn_drop, negative_slope,
-        sampling_num_workers):
+def run(
+    num_workers,
+    use_gpu,
+    num_epochs,
+    lr,
+    batch_size,
+    n_hidden,
+    n_layers,
+    n_heads,
+    fan_out,
+    feat_drop,
+    attn_drop,
+    negative_slope,
+    sampling_num_workers,
+):
     trainer = TorchTrainer(
         training_operator_cls=CustomTrainingOperator,
         num_workers=num_workers,
@@ -235,8 +307,9 @@ def run(num_workers, use_gpu, num_epochs, lr, batch_size, n_hidden, n_layers,
             "feat_drop": feat_drop,
             "attn_drop": attn_drop,
             "negative_slope": negative_slope,
-            "sampling_num_workers": sampling_num_workers
-        })
+            "sampling_num_workers": sampling_num_workers,
+        },
+    )
 
     for i in range(num_epochs):
         trainer.train()
@@ -258,23 +331,23 @@ if __name__ == "__main__":
     argparser.add_argument("--n-layers", type=int, default=2)
     argparser.add_argument("--n-heads", type=int, default=4)
     argparser.add_argument("--fan-out", type=str, default="10,25")
-    argparser.add_argument("--feat-drop", type=float, default=0.)
-    argparser.add_argument("--attn-drop", type=float, default=0.)
+    argparser.add_argument("--feat-drop", type=float, default=0.0)
+    argparser.add_argument("--attn-drop", type=float, default=0.0)
     argparser.add_argument("--negative-slope", type=float, default=0.2)
     argparser.add_argument(
         "--sampling-num-workers",
         type=int,
         default=0,
-        help="Number of sampling processes. Use 0 for no extra process.")
+        help="Number of sampling processes. Use 0 for no extra process.",
+    )
     argparser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="The address to use for ray")
+        "--address", required=False, type=str, help="The address to use for ray"
+    )
 
     args = argparser.parse_args()
     ray.init(address=args.address)
-    run(num_workers=args.num_workers,
+    run(
+        num_workers=args.num_workers,
         use_gpu=args.use_gpu,
         num_epochs=args.num_epochs,
         lr=args.lr,
@@ -286,4 +359,5 @@ if __name__ == "__main__":
         feat_drop=args.feat_drop,
         attn_drop=args.attn_drop,
         negative_slope=args.negative_slope,
-        sampling_num_workers=args.sampling_num_workers)
+        sampling_num_workers=args.sampling_num_workers,
+    )

@@ -1,0 +1,37 @@
+long-term-satisfaction-recsim-env-slateq:
+    env: ray.rllib.examples.env.recommender_system_envs_with_recsim.LongTermSatisfactionRecSimEnv
+    run: SlateQ
+    stop:
+        # Random baseline rewards:
+        # num_candidates=20; slate_size=2; resample=true: ~951
+        # num_candidates=50; slate_size=3; resample=true: ~946
+        evaluation/episode_reward_mean: 1000.0
+        timesteps_total: 200000
+    config:
+        # Works for both tf and torch.
+        framework: tf
+
+        metrics_num_episodes_for_smoothing: 200
+
+        # RLlib/RecSim wrapper specific settings:
+        env_config:
+            config:
+                # Each step, sample `num_candidates` documents using the env-internal
+                # document sampler model (a logic that creates n documents to select
+                # the slate from).
+                resample_documents: true
+                num_candidates: 50
+                # How many documents to recommend (out of `num_candidates`) each
+                # timestep?
+                slate_size: 2
+                # Should the action space be purely Discrete? Useful for algos that
+                # don't support MultiDiscrete (e.g. DQN or Bandits).
+                # SlateQ handles MultiDiscrete action spaces.
+                convert_to_discrete_action_space: false
+                seed: 42
+
+        exploration_config:
+            warmup_timesteps: 10000
+            epsilon_timesteps: 60000
+
+        target_network_update_freq: 3200

@@ -1,10 +1,7 @@
 import json
 import pathlib
-import platform
 from pprint import pformat
-import sys
 import os
-import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,8 +11,12 @@ from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Counter, Histogram, Gauge
-from ray._private.test_utils import (wait_for_condition, SignalActor,
-                                     fetch_prometheus)
+from ray._private.test_utils import (
+    wait_for_condition,
+    SignalActor,
+    fetch_prometheus,
+    get_log_batch,
+)
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -28,11 +29,6 @@ except ImportError:
 # NOTE: Commented out metrics are not available in this test.
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
-    "ray_gcs_latency_sum",
-    # "ray_local_available_resource",
-    # "ray_local_total_resource",
-    # "ray_live_actors",
-    # "ray_restarting_actors",
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
@@ -45,35 +41,62 @@ _METRICS = [
     "ray_heartbeat_report_ms_sum",
     "ray_process_startup_time_ms_sum",
     "ray_internal_num_processes_started",
-    "ray_internal_num_received_tasks",
-    "ray_internal_num_dispatched_tasks",
     "ray_internal_num_spilled_tasks",
-    "ray_internal_num_infeasible_tasks",
-    # "ray_object_spilling_bandwidth_mb",
-    # "ray_object_restoration_bandwidth_mb",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_pending_actors",
-    "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
+    "ray_grpc_server_req_process_time_ms",
+    "ray_grpc_server_req_new_total",
+    "ray_grpc_server_req_handling_total",
+    "ray_grpc_server_req_finished_total",
+    "ray_object_manager_received_chunks",
+    "ray_pull_manager_usage_bytes",
+    "ray_pull_manager_requested_bundles",
+    "ray_pull_manager_requests",
+    "ray_pull_manager_active_bundles",
+    "ray_pull_manager_retries_total",
+    "ray_push_manager_in_flight_pushes",
+    "ray_push_manager_chunks",
+    "ray_scheduler_failed_worker_startup_total",
+    "ray_scheduler_tasks",
+    "ray_scheduler_unscheduleable_tasks",
+    "ray_spill_manager_objects",
+    "ray_spill_manager_objects_bytes",
+    "ray_spill_manager_request_total",
+    # "ray_spill_manager_throughput_mb",
+    "ray_gcs_placement_group_creation_latency_ms_sum",
+    "ray_gcs_placement_group_scheduling_latency_ms_sum",
+    "ray_gcs_placement_group_count",
+    "ray_gcs_new_resource_creation_latency_ms_sum",
+    "ray_gcs_actors_count",
 ]
 
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
 _AUTOSCALER_METRICS = [
     "autoscaler_config_validation_exceptions",
-    "autoscaler_node_launch_exceptions", "autoscaler_pending_nodes",
-    "autoscaler_reset_exceptions", "autoscaler_running_workers",
-    "autoscaler_started_nodes", "autoscaler_stopped_nodes",
-    "autoscaler_update_loop_exceptions", "autoscaler_worker_create_node_time",
-    "autoscaler_worker_update_time", "autoscaler_updating_nodes",
-    "autoscaler_successful_updates", "autoscaler_failed_updates",
-    "autoscaler_failed_create_nodes", "autoscaler_recovering_nodes",
-    "autoscaler_successful_recoveries", "autoscaler_failed_recoveries"
+    "autoscaler_node_launch_exceptions",
+    "autoscaler_pending_nodes",
+    "autoscaler_reset_exceptions",
+    "autoscaler_running_workers",
+    "autoscaler_started_nodes",
+    "autoscaler_stopped_nodes",
+    "autoscaler_update_loop_exceptions",
+    "autoscaler_worker_create_node_time",
+    "autoscaler_worker_update_time",
+    "autoscaler_updating_nodes",
+    "autoscaler_successful_updates",
+    "autoscaler_failed_updates",
+    "autoscaler_failed_create_nodes",
+    "autoscaler_recovering_nodes",
+    "autoscaler_successful_recoveries",
+    "autoscaler_failed_recoveries",
+    "autoscaler_drain_node_exceptions",
+    "autoscaler_update_time",
 ]
 
 
@@ -82,7 +105,13 @@ def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
+    cluster.add_node(
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "event_stats_print_interval_ms": 500,
+            "event_stats": True,
+        }
+    )
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -104,17 +133,27 @@ def _setup_cluster_for_test(ray_start_cluster):
         counter.inc(2)
         ray.get(worker_should_exit.wait.remote())
 
+    # Generate some metrics for the placement group.
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    ray.get(pg.ready())
+    print(ray.util.placement_group_table())
+    ray.util.remove_placement_group(pg)
+
     @ray.remote
     class A:
         async def ping(self):
             histogram = Histogram(
-                "test_histogram", description="desc", boundaries=[0.1, 1.6])
+                "test_histogram", description="desc", boundaries=[0.1, 1.6]
+            )
             histogram = ray.get(ray.put(histogram))  # Test serialization.
             histogram.record(1.5)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
     obj_refs = [f.remote(), a.ping.remote()]
+    # Infeasible task
+    b = f.options(resources={"a": 1})
+    print(b)
 
     node_info_list = ray.nodes()
     prom_addresses = []
@@ -122,8 +161,9 @@ def _setup_cluster_for_test(ray_start_cluster):
         metrics_export_port = node_info["MetricsExportPort"]
         addr = node_info["NodeManagerAddress"]
         prom_addresses.append(f"{addr}:{metrics_export_port}")
-    autoscaler_export_addr = "{}:{}".format(cluster.head_node.node_ip_address,
-                                            AUTOSCALER_METRIC_PORT)
+    autoscaler_export_addr = "{}:{}".format(
+        cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT
+    )
     yield prom_addresses, autoscaler_export_addr
 
     ray.get(worker_should_exit.send.remote())
@@ -132,45 +172,38 @@ def _setup_cluster_for_test(ray_start_cluster):
     cluster.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.skipif(
-    prometheus_client is None, reason="Prometheus not installed")
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 20
+    TEST_TIMEOUT_S = 30
 
     prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 
     def test_cases():
-        components_dict, metric_names, metric_samples = fetch_prometheus(
-            prom_addresses)
+        components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
 
         # Raylet should be on every node
-        assert all(
-            "raylet" in components for components in components_dict.values())
+        assert all("raylet" in components for components in components_dict.values())
 
         # GCS server should be on one node
-        assert any("gcs_server" in components
-                   for components in components_dict.values())
+        assert any(
+            "gcs_server" in components for components in components_dict.values()
+        )
 
         # Core worker should be on at least on node
-        assert any("core_worker" in components
-                   for components in components_dict.values())
+        assert any(
+            "core_worker" in components for components in components_dict.values()
+        )
 
         # Make sure our user defined metrics exist
-        for metric_name in [
-                "test_counter", "test_histogram", "test_driver_counter"
-        ]:
+        for metric_name in ["test_counter", "test_histogram", "test_driver_counter"]:
             assert any(metric_name in full_name for full_name in metric_names)
 
         # Make sure metrics are recorded.
         for metric in _METRICS:
-            assert metric in metric_names, \
-                f"metric {metric} not in {metric_names}"
+            assert metric in metric_names, f"metric {metric} not in {metric_names}"
 
         # Make sure the numeric values are correct
-        test_counter_sample = [
-            m for m in metric_samples if "test_counter" in m.name
-        ][0]
+        test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]
         assert test_counter_sample.value == 4.0
 
         test_driver_counter_sample = [
@@ -183,28 +216,26 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         ]
         buckets = {
             m.labels["le"]: m.value
-            for m in test_histogram_samples if "_bucket" in m.name
+            for m in test_histogram_samples
+            if "_bucket" in m.name
         }
         # We recorded value 1.5 for the histogram. In Prometheus data model
         # the histogram is cumulative. So we expect the count to appear in
         # <1.1 and <+Inf buckets.
         assert buckets == {"0.1": 0.0, "1.6": 1.0, "+Inf": 1.0}
-        hist_count = [m for m in test_histogram_samples
-                      if "_count" in m.name][0].value
-        hist_sum = [m for m in test_histogram_samples
-                    if "_sum" in m.name][0].value
+        hist_count = [m for m in test_histogram_samples if "_count" in m.name][0].value
+        hist_sum = [m for m in test_histogram_samples if "_sum" in m.name][0].value
         assert hist_count == 1
         assert hist_sum == 1.5
 
         # Autoscaler metrics
-        _, autoscaler_metric_names, _ = fetch_prometheus(
-            [autoscaler_export_addr])
+        _, autoscaler_metric_names, _ = fetch_prometheus([autoscaler_export_addr])
         for metric in _AUTOSCALER_METRICS:
             # Metric name should appear with some suffix (_count, _total,
             # etc...) in the list of all names
-            assert any(name.startswith(metric) for name in
-                       autoscaler_metric_names), \
-                    f"{metric} not in {autoscaler_metric_names}"
+            assert any(
+                name.startswith(metric) for name in autoscaler_metric_names
+            ), f"{metric} not in {autoscaler_metric_names}"
 
     def wrap_test_case_for_retry():
         try:
@@ -220,8 +251,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             retry_interval_ms=1000,  # Yield resource for other processes
         )
     except RuntimeError:
-        print(
-            f"The components are {pformat(fetch_prometheus(prom_addresses))}")
+        print(f"The components are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
 
 
@@ -233,9 +263,10 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     nodes = [cluster.add_node() for _ in range(NUM_NODES)]
     cluster.wait_for_nodes()
     addr = ray.init(address=cluster.address)
-    redis_address = addr["redis_address"]
     writer = PrometheusServiceDiscoveryWriter(
-        redis_address, ray.ray_constants.REDIS_DEFAULT_PASSWORD, "/tmp/ray")
+        addr["gcs_address"],
+        "/tmp/ray",
+    )
 
     def get_metrics_export_address_from_node(nodes):
         node_export_addrs = [
@@ -244,12 +275,14 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         ]
         # monitor should be run on head node for `ray_start_cluster` fixture
         autoscaler_export_addr = "{}:{}".format(
-            cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT)
+            cluster.head_node.node_ip_address, AUTOSCALER_METRIC_PORT
+        )
         return node_export_addrs + [autoscaler_export_addr]
 
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
-    assert (set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]))
+    assert set(get_metrics_export_address_from_node(nodes)) == set(
+        loaded_json_data["targets"]
+    )
 
     # Let's update nodes.
     for _ in range(3):
@@ -257,12 +290,11 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
     # Make sure service discovery file content is correctly updated.
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
-    assert (set(get_metrics_export_address_from_node(nodes)) == set(
-        loaded_json_data["targets"]))
+    assert set(get_metrics_export_address_from_node(nodes)) == set(
+        loaded_json_data["targets"]
+    )
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
 def test_prome_file_discovery_run_by_dashboard(shutdown_only):
     ray.init(num_cpus=0)
     global_node = ray.worker._global_node
@@ -292,7 +324,7 @@ Unit test custom metrics.
 def test_basic_custom_metrics(metric_mock):
     # Make sure each of metric works as expected.
     # -- Counter --
-    count = Counter("count", tag_keys=("a", ))
+    count = Counter("count", tag_keys=("a",))
     with pytest.raises(TypeError):
         count.inc("hi")
     with pytest.raises(ValueError):
@@ -311,7 +343,8 @@ def test_basic_custom_metrics(metric_mock):
 
     # -- Histogram
     histogram = Histogram(
-        "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
+        "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b")
+    )
     histogram._metric = metric_mock
     tags = {"a": "10", "b": "b"}
     histogram.observe(8, tags=tags)
@@ -321,7 +354,8 @@ def test_basic_custom_metrics(metric_mock):
 def test_custom_metrics_info(metric_mock):
     # Make sure .info public method works.
     histogram = Histogram(
-        "hist", description="hist", boundaries=[1.0, 2.0], tag_keys=("a", "b"))
+        "hist", description="hist", boundaries=[1.0, 2.0], tag_keys=("a", "b")
+    )
     assert histogram.info["name"] == "hist"
     assert histogram.info["description"] == "hist"
     assert histogram.info["boundaries"] == [1.0, 2.0]
@@ -333,10 +367,8 @@ def test_custom_metrics_info(metric_mock):
 
 def test_custom_metrics_default_tags(metric_mock):
     histogram = Histogram(
-        "hist", description="hist", boundaries=[1.0, 2.0],
-        tag_keys=("a", "b")).set_default_tags({
-            "b": "b"
-        })
+        "hist", description="hist", boundaries=[1.0, 2.0], tag_keys=("a", "b")
+    ).set_default_tags({"b": "b"})
     histogram._metric = metric_mock
 
     # Check specifying non-default tags.
@@ -379,18 +411,11 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
     ray.get(override.remote())
 
     # Check the stderr from the worker.
-    start = time.time()
-    while True:
-        if (time.time() - start) > 5:
-            break
-        msg = log_pubsub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
+    def matcher(log_batch):
+        return any("Attempt to register measure" in line for line in log_batch["lines"])
 
-        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
-        for line in log_lines:
-            assert "Attempt to register measure" not in line
+    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
+    assert len(match) == 0, match
 
 
 def test_custom_metrics_validation(ray_start_regular_shared):
@@ -408,7 +433,7 @@ def test_custom_metrics_validation(ray_start_regular_shared):
         metric.inc(1.0, {"a": "2"})
 
     # Extra tag not in tag_keys.
-    metric = Counter("name", tag_keys=("a", ))
+    metric = Counter("name", tag_keys=("a",))
     with pytest.raises(ValueError):
         metric.inc(1.0, {"a": "1", "b": "2"})
 
@@ -417,9 +442,9 @@ def test_custom_metrics_validation(ray_start_regular_shared):
         Counter("name", tag_keys="a")
     # tag_keys must be strs.
     with pytest.raises(TypeError):
-        Counter("name", tag_keys=(1, ))
+        Counter("name", tag_keys=(1,))
 
-    metric = Counter("name", tag_keys=("a", ))
+    metric = Counter("name", tag_keys=("a",))
     # Set default tag that isn't in tag_keys.
     with pytest.raises(ValueError):
         metric.set_default_tags({"a": "1", "c": "2"})
@@ -433,5 +458,6 @@ def test_custom_metrics_validation(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
     # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-v", __file__]))

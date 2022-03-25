@@ -12,16 +12,18 @@ from opencensus.stats import measure as measure_module
 from opencensus.stats import stats as stats_module
 from opencensus.stats.view import View
 from opencensus.stats.view_data import ViewData
-from opencensus.stats.aggregation_data import (CountAggregationData,
-                                               DistributionAggregationData,
-                                               LastValueAggregationData)
+from opencensus.stats.aggregation_data import (
+    CountAggregationData,
+    DistributionAggregationData,
+    LastValueAggregationData,
+)
 from opencensus.metrics.export.value import ValueDouble
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
-from ray._private import services
+from ray._private.gcs_utils import GcsClient
 
 import ray._private.prometheus_exporter as prometheus_exporter
 from ray.core.generated.metrics_pb2 import Metric
@@ -39,8 +41,9 @@ class Gauge(View):
     def __init__(self, name, description, unit, tags: List[str]):
         self._measure = measure_module.MeasureInt(name, description, unit)
         tags = [tag_key_module.TagKey(tag) for tag in tags]
-        self._view = View(name, description, tags, self.measure,
-                          aggregation.LastValueAggregation())
+        self._view = View(
+            name, description, tags, self.measure, aggregation.LastValueAggregation()
+        )
 
     @property
     def measure(self):
@@ -59,7 +62,7 @@ Record = namedtuple("Record", ["gauge", "value", "tags"])
 
 
 class MetricsAgent:
-    def __init__(self, metrics_export_port):
+    def __init__(self, metrics_export_address, metrics_export_port):
         assert metrics_export_port is not None
         # OpenCensus classes.
         self.view_manager = stats_module.stats.view_manager
@@ -71,12 +74,29 @@ class MetricsAgent:
         self._lock = threading.Lock()
 
         # Configure exporter. (We currently only support prometheus).
-        self.view_manager.register_exporter(
-            prometheus_exporter.new_stats_exporter(
+        try:
+            stats_exporter = prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
-                    namespace="ray", port=metrics_export_port)))
+                    namespace="ray",
+                    port=metrics_export_port,
+                    address=metrics_export_address,
+                )
+            )
+        except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
+            logger.exception(
+                "Failed to start prometheus stats exporter. Agent will stay "
+                "alive but disable the stats."
+            )
+            self.view_manager = None
+        else:
+            self.view_manager.register_exporter(stats_exporter)
 
     def record_reporter_stats(self, records: List[Record]):
+        if not self.view_manager:
+            return
         with self._lock:
             for record in records:
                 gauge = record.gauge
@@ -103,6 +123,8 @@ class MetricsAgent:
 
     def record_metric_points_from_protobuf(self, metrics: List[Metric]):
         """Record metrics from Opencensus Protobuf"""
+        if not self.view_manager:
+            return
         with self._lock:
             self._record_metrics(metrics)
 
@@ -124,20 +146,23 @@ class MetricsAgent:
 
             # Create the view and view_data
             measure = measure_module.BaseMeasure(
-                descriptor.name, descriptor.description, descriptor.unit)
-            view = self.view_manager.measure_to_view_map.get_view(
-                descriptor.name, None)
+                descriptor.name, descriptor.description, descriptor.unit
+            )
+            view = self.view_manager.measure_to_view_map.get_view(descriptor.name, None)
             if not view:
                 view = View(
                     descriptor.name,
                     descriptor.description,
                     columns,
                     measure,
-                    aggregation=None)
-                self.view_manager.measure_to_view_map.register_view(
-                    view, start_time)
-            view_data = (self.view_manager.measure_to_view_map.
-                         _measure_to_view_data_list_map[measure.name][-1])
+                    aggregation=None,
+                )
+                self.view_manager.measure_to_view_map.register_view(view, start_time)
+            view_data = (
+                self.view_manager.measure_to_view_map._measure_to_view_data_list_map[
+                    measure.name
+                ][-1]
+            )
             view_data_changed.append(view_data)
 
             # Create the aggregation and fill it in the our stats
@@ -147,20 +172,20 @@ class MetricsAgent:
                     if point.HasField("int64_value"):
                         data = CountAggregationData(point.int64_value)
                     elif point.HasField("double_value"):
-                        data = LastValueAggregationData(
-                            ValueDouble, point.double_value)
+                        data = LastValueAggregationData(ValueDouble, point.double_value)
                     elif point.HasField("distribution_value"):
                         dist_value = point.distribution_value
                         counts_per_bucket = [
                             bucket.count for bucket in dist_value.buckets
                         ]
-                        bucket_bounds = (
-                            dist_value.bucket_options.explicit.bounds)
+                        bucket_bounds = dist_value.bucket_options.explicit.bounds
                         data = DistributionAggregationData(
                             dist_value.sum / dist_value.count,
                             dist_value.count,
                             dist_value.sum_of_squared_deviation,
-                            counts_per_bucket, bucket_bounds)
+                            counts_per_bucket,
+                            bucket_bounds,
+                        )
                     else:
                         raise ValueError("Summary is not supported")
 
@@ -177,17 +202,16 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     https://prometheus.io/docs/guides/file-sd/ for more details.
 
     Args:
-        redis_address(str): Ray's redis address.
-        redis_password(str): Ray's redis password.
+        gcs_address(str): Gcs address for this cluster.
         temp_dir(str): Temporary directory used by
             Ray to store logs and metadata.
     """
 
-    def __init__(self, redis_address, redis_password, temp_dir):
-        ray.state.state._initialize_global_state(
-            redis_address=redis_address, redis_password=redis_password)
-        self.redis_address = redis_address
-        self.redis_password = redis_password
+    def __init__(self, gcs_address, temp_dir):
+        gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
+        self.gcs_address = gcs_address
+
+        ray.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
         super().__init__()
@@ -196,21 +220,17 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         """Return the content for Prometheus service discovery."""
         nodes = ray.nodes()
         metrics_export_addresses = [
-            "{}:{}".format(node["NodeManagerAddress"],
-                           node["MetricsExportPort"]) for node in nodes
+            "{}:{}".format(node["NodeManagerAddress"], node["MetricsExportPort"])
+            for node in nodes
             if node["alive"] is True
         ]
-        redis_client = services.create_redis_client(self.redis_address,
-                                                    self.redis_password)
-        autoscaler_addr = redis_client.get("AutoscalerMetricsAddress")
+        gcs_client = GcsClient(address=self.gcs_address)
+        autoscaler_addr = gcs_client.internal_kv_get(b"AutoscalerMetricsAddress", None)
         if autoscaler_addr:
             metrics_export_addresses.append(autoscaler_addr.decode("utf-8"))
-        return json.dumps([{
-            "labels": {
-                "job": "ray"
-            },
-            "targets": metrics_export_addresses
-        }])
+        return json.dumps(
+            [{"labels": {"job": "ray"}, "targets": metrics_export_addresses}]
+        )
 
     def write(self):
         # Write a file based on https://prometheus.io/docs/guides/file-sd/
@@ -221,18 +241,20 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         temp_file_name = self.get_temp_file_name()
         with open(temp_file_name, "w") as json_file:
             json_file.write(self.get_file_discovery_content())
-        # NOTE: os.rename is atomic, so we won't have race condition reading
-        # this file.
-        os.rename(temp_file_name, self.get_target_file_name())
+        # NOTE: os.replace is atomic on both Linux and Windows, so we won't
+        # have race condition reading this file.
+        os.replace(temp_file_name, self.get_target_file_name())
 
     def get_target_file_name(self):
         return os.path.join(
-            self.temp_dir, ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE)
+            self.temp_dir, ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
+        )
 
     def get_temp_file_name(self):
         return os.path.join(
-            self.temp_dir, "{}_{}".format(
-                "tmp", ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE))
+            self.temp_dir,
+            "{}_{}".format("tmp", ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE),
+        )
 
     def run(self):
         while True:
@@ -240,9 +262,10 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             try:
                 self.write()
             except Exception as e:
-                logger.warning("Writing a service discovery file, {},"
-                               "failed."
-                               .format(self.writer.get_target_file_name()))
+                logger.warning(
+                    "Writing a service discovery file, {},"
+                    "failed.".format(self.get_target_file_name())
+                )
                 logger.warning(traceback.format_exc())
                 logger.warning(f"Error message: {e}")
             time.sleep(self.default_service_discovery_flush_period)

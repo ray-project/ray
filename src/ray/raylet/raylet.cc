@@ -15,7 +15,7 @@
 #include "ray/raylet/raylet.h"
 
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <iostream>
 
@@ -25,7 +25,8 @@
 namespace {
 
 const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_ptr,
-                                                 int start_index, int end_index) {
+                                                 int start_index,
+                                                 int end_index) {
   std::vector<std::string> enum_names;
   for (int i = 0; i < start_index; ++i) {
     enum_names.push_back("EmptyMessageType");
@@ -54,17 +55,24 @@ namespace ray {
 
 namespace raylet {
 
-Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_name,
-               const std::string &node_ip_address, const std::string &redis_address,
-               int redis_port, const std::string &redis_password,
+Raylet::Raylet(instrumented_io_context &main_service,
+               const std::string &socket_name,
+               const std::string &node_ip_address,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
+               std::shared_ptr<gcs::GcsClient> gcs_client,
+               int metrics_export_port)
     : main_service_(main_service),
-      self_node_id_(NodeID::FromRandom()),
+      self_node_id_(
+          !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
+              ? NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
+              : NodeID::FromRandom()),
       gcs_client_(gcs_client),
-      node_manager_(main_service, self_node_id_, node_manager_config,
-                    object_manager_config, gcs_client_),
+      node_manager_(main_service,
+                    self_node_id_,
+                    node_manager_config,
+                    object_manager_config,
+                    gcs_client_),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -77,6 +85,9 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
+  const auto &resource_map = node_manager_config.resource_config.GetResourceMap();
+  self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
+                                                    resource_map.end());
 }
 
 Raylet::~Raylet() {}
@@ -89,7 +100,7 @@ void Raylet::Start() {
 }
 
 void Raylet::Stop() {
-  RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf());
+  RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
   node_manager_.Stop();
   acceptor_.close();
 }
@@ -104,19 +115,6 @@ ray::Status Raylet::RegisterGcs() {
                   << " object_manager address: " << self_node_info_.node_manager_address()
                   << ":" << self_node_info_.object_manager_port()
                   << " hostname: " << self_node_info_.node_manager_address();
-
-    // Add resource information.
-    const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
-    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resources;
-    for (const auto &resource_pair :
-         node_manager_config.resource_config.GetResourceMap()) {
-      auto resource = std::make_shared<rpc::ResourceTableData>();
-      resource->set_resource_capacity(resource_pair.second);
-      resources.emplace(resource_pair.first, resource);
-    }
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(self_node_id_,
-                                                                   resources, nullptr));
-
     RAY_CHECK_OK(node_manager_.RegisterGcs());
   };
 
@@ -126,8 +124,9 @@ ray::Status Raylet::RegisterGcs() {
 }
 
 void Raylet::DoAccept() {
-  acceptor_.async_accept(socket_, boost::bind(&Raylet::HandleAccept, this,
-                                              boost::asio::placeholders::error));
+  acceptor_.async_accept(
+      socket_,
+      boost::bind(&Raylet::HandleAccept, this, boost::asio::placeholders::error));
 }
 
 void Raylet::HandleAccept(const boost::system::error_code &error) {
@@ -149,9 +148,13 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
                                       fbb.GetBufferPointer() + fbb.GetSize());
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ClientConnection::Create(
-        client_handler, message_handler, std::move(socket_), "worker",
+        client_handler,
+        message_handler,
+        std::move(socket_),
+        "worker",
         node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient), message_data);
+        static_cast<int64_t>(protocol::MessageType::DisconnectClient),
+        message_data);
   }
   // We're ready to accept another client.
   DoAccept();

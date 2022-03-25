@@ -1,20 +1,25 @@
-from typing import Any, List, Dict
+from typing import Any, Dict, List, Optional
 import time
 
 from ray.actor import ActorHandle
 from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
-    STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, _get_shared_metrics
+from ray.rllib.execution.common import (
+    AGENT_STEPS_SAMPLED_COUNTER,
+    STEPS_SAMPLED_COUNTER,
+    STEPS_TRAINED_COUNTER,
+    STEPS_TRAINED_THIS_ITER_COUNTER,
+    _get_shared_metrics,
+)
 from ray.rllib.evaluation.worker_set import WorkerSet
 
 
 def StandardMetricsReporting(
-        train_op: LocalIterator[Any],
-        workers: WorkerSet,
-        config: dict,
-        selected_workers: List[ActorHandle] = None,
-        by_steps_trained: bool = False,
+    train_op: LocalIterator[Any],
+    workers: WorkerSet,
+    config: dict,
+    selected_workers: List[ActorHandle] = None,
+    by_steps_trained: bool = False,
 ) -> LocalIterator[dict]:
     """Operator to periodically collect and report metrics.
 
@@ -33,21 +38,35 @@ def StandardMetricsReporting(
         LocalIterator[dict]: A local iterator over training results.
 
     Examples:
-        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
-        >>> metrics_op = StandardMetricsReporting(train_op, workers, config)
-        >>> next(metrics_op)
+        >>> from ray.rllib.execution import ParallelRollouts, TrainOneStep
+        >>> train_op = ParallelRollouts(...) # doctest: +SKIP
+        ...     .for_each(TrainOneStep(...))
+        >>> metrics_op = StandardMetricsReporting( # doctest: +SKIP
+        ...     train_op, workers, config)
+        >>> next(metrics_op) # doctest: +SKIP
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
-    output_op = train_op \
-        .filter(OncePerTimestepsElapsed(config["timesteps_per_iteration"],
-                                        by_steps_trained=by_steps_trained)) \
-        .filter(OncePerTimeInterval(config["min_iter_time_s"])) \
-        .for_each(CollectMetrics(
-            workers,
-            min_history=config["metrics_smoothing_episodes"],
-            timeout_seconds=config["collect_metrics_timeout"],
-            selected_workers=selected_workers))
+    output_op = (
+        train_op.filter(
+            OncePerTimestepsElapsed(
+                config["timesteps_per_iteration"], by_steps_trained=by_steps_trained
+            )
+        )
+        .filter(OncePerTimeInterval(config["min_time_s_per_reporting"]))
+        .for_each(
+            CollectMetrics(
+                workers,
+                min_history=config["metrics_num_episodes_for_smoothing"],
+                timeout_seconds=config["metrics_episode_collection_timeout_s"],
+                keep_per_episode_custom_metrics=config[
+                    "keep_per_episode_custom_metrics"
+                ],
+                selected_workers=selected_workers,
+                by_steps_trained=by_steps_trained,
+            )
+        )
+    )
     return output_op
 
 
@@ -60,22 +79,30 @@ class CollectMetrics:
     API, consider using StandardMetricsReporting instead.
 
     Examples:
-        >>> output_op = train_op.for_each(CollectMetrics(workers))
-        >>> print(next(output_op))
+        >>> from ray.rllib.execution.metric_ops import CollectMetrics
+        >>> train_op, workers = ... # doctest: +SKIP
+        >>> output_op = train_op.for_each(CollectMetrics(workers)) # doctest: +SKIP
+        >>> print(next(output_op)) # doctest: +SKIP
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
-    def __init__(self,
-                 workers: WorkerSet,
-                 min_history: int = 100,
-                 timeout_seconds: int = 180,
-                 selected_workers: List[ActorHandle] = None):
+    def __init__(
+        self,
+        workers: WorkerSet,
+        min_history: int = 100,
+        timeout_seconds: int = 180,
+        keep_per_episode_custom_metrics: bool = False,
+        selected_workers: List[ActorHandle] = None,
+        by_steps_trained: bool = False,
+    ):
         self.workers = workers
         self.episode_history = []
         self.to_be_collected = []
         self.min_history = min_history
         self.timeout_seconds = timeout_seconds
+        self.keep_custom_metrics = keep_per_episode_custom_metrics
         self.selected_workers = selected_workers
+        self.by_steps_trained = by_steps_trained
 
     def __call__(self, _: Any) -> Dict:
         # Collect worker metrics.
@@ -83,15 +110,16 @@ class CollectMetrics:
             self.workers.local_worker(),
             self.selected_workers or self.workers.remote_workers(),
             self.to_be_collected,
-            timeout_seconds=self.timeout_seconds)
+            timeout_seconds=self.timeout_seconds,
+        )
         orig_episodes = list(episodes)
         missing = self.min_history - len(episodes)
         if missing > 0:
             episodes = self.episode_history[-missing:] + episodes
             assert len(episodes) <= self.min_history
         self.episode_history.extend(orig_episodes)
-        self.episode_history = self.episode_history[-self.min_history:]
-        res = summarize_episodes(episodes, orig_episodes)
+        self.episode_history = self.episode_history[-self.min_history :]
+        res = summarize_episodes(episodes, orig_episodes, self.keep_custom_metrics)
 
         # Add in iterator metrics.
         metrics = _get_shared_metrics()
@@ -105,14 +133,25 @@ class CollectMetrics:
         for k, timer in metrics.timers.items():
             timers["{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
             if timer.has_units_processed():
-                timers["{}_throughput".format(k)] = round(
-                    timer.mean_throughput, 3)
-        res.update({
-            "num_healthy_workers": len(self.workers.remote_workers()),
-            "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
-            "agent_timesteps_total": metrics.counters.get(
-                AGENT_STEPS_SAMPLED_COUNTER, 0),
-        })
+                timers["{}_throughput".format(k)] = round(timer.mean_throughput, 3)
+        res.update(
+            {
+                "num_healthy_workers": len(self.workers.remote_workers()),
+                "timesteps_total": (
+                    metrics.counters[STEPS_TRAINED_COUNTER]
+                    if self.by_steps_trained
+                    else metrics.counters[STEPS_SAMPLED_COUNTER]
+                ),
+                # tune.Trainable uses timesteps_this_iter for tracking
+                # total timesteps.
+                "timesteps_this_iter": metrics.counters[
+                    STEPS_TRAINED_THIS_ITER_COUNTER
+                ],
+                "agent_timesteps_total": metrics.counters.get(
+                    AGENT_STEPS_SAMPLED_COUNTER, 0
+                ),
+            }
+        )
         res["timers"] = timers
         res["info"] = info
         res["info"].update(counters)
@@ -130,23 +169,29 @@ class OncePerTimeInterval:
     StandardMetricsReporting instead.
 
     Examples:
-        >>> throttled_op = train_op.filter(OncePerTimeInterval(5))
-        >>> start = time.time()
-        >>> next(throttled_op)
-        >>> print(time.time() - start)
+        >>> import time
+        >>> from ray.rllib.execution.metric_ops import OncePerTimeInterval
+        >>> train_op = ... # doctest: +SKIP
+        >>> throttled_op = train_op.filter(OncePerTimeInterval(5)) # doctest: +SKIP
+        >>> start = time.time() # doctest: +SKIP
+        >>> next(throttled_op) # doctest: +SKIP
+        >>> print(time.time() - start) # doctest: +SKIP
         5.00001  # will be greater than 5 seconds
     """
 
-    def __init__(self, delay: int):
-        self.delay = delay
-        self.last_called = 0
+    def __init__(self, delay: Optional[float] = None):
+        self.delay = delay or 0.0
+        self.last_returned_true = 0
 
     def __call__(self, item: Any) -> bool:
+        # No minimum time to wait for -> Return True.
         if self.delay <= 0.0:
             return True
+        # Return True, if time since last returned=True is larger than
+        # `self.delay`.
         now = time.time()
-        if now - self.last_called > self.delay:
-            self.last_called = now
+        if now - self.last_returned_true > self.delay:
+            self.last_returned_true = now
             return True
         return False
 
@@ -159,8 +204,11 @@ class OncePerTimestepsElapsed:
     StandardMetricsReporting instead.
 
     Examples:
-        >>> throttled_op = train_op.filter(OncePerTimestepsElapsed(1000))
-        >>> next(throttled_op)
+        >>> from ray.rllib.execution.metric_ops import OncePerTimestepsElapsed
+        >>> train_op = ... # doctest: +SKIP
+        >>> throttled_op = train_op.filter( # doctest: +SKIP
+        ...     OncePerTimestepsElapsed(1000))
+        >>> next(throttled_op) # doctest: +SKIP
         # will only return after 1000 steps have elapsed
     """
 

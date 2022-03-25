@@ -3,9 +3,11 @@ from ray.includes.function_descriptor cimport (
     CFunctionDescriptorBuilder,
     CPythonFunctionDescriptor,
     CJavaFunctionDescriptor,
+    CCppFunctionDescriptor,
     EmptyFunctionDescriptorType,
     JavaFunctionDescriptorType,
     PythonFunctionDescriptorType,
+    CppFunctionDescriptorType,
 )
 
 import hashlib
@@ -258,6 +260,21 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
             self._function_id = self._get_function_id()
         return self._function_id
 
+    @property
+    def repr(self):
+        """Get the module_name.Optional[class_name].function_name
+            of the descriptor.
+
+        Returns:
+            The value of module_name.Optional[class_name].function_name
+        """
+        if self.is_actor_method():
+            return ".".join(
+                [self.module_name, self.class_name, self.function_name])
+        else:
+            return ".".join(
+                [self.module_name, self.function_name])
+
     def _get_function_id(self):
         """Calculate the function id of current function descriptor.
 
@@ -303,3 +320,61 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
             True if it's an actor method, False if it's a normal function.
         """
         return not self.typed_descriptor.ClassName().empty()
+
+
+FunctionDescriptor_constructor_map[<int>CppFunctionDescriptorType] = \
+    CppFunctionDescriptor.from_cpp
+
+
+@cython.auto_pickle(False)
+cdef class CppFunctionDescriptor(FunctionDescriptor):
+    cdef:
+        CCppFunctionDescriptor *typed_descriptor
+
+    def __cinit__(self,
+                  function_name, caller, class_name=""):
+        self.descriptor = CFunctionDescriptorBuilder.BuildCpp(
+            function_name, caller, class_name)
+        self.typed_descriptor = <CCppFunctionDescriptor*>(
+            self.descriptor.get())
+
+    def __reduce__(self):
+        return CppFunctionDescriptor, (self.typed_descriptor.FunctionName(),
+                                       self.typed_descriptor.Caller(),
+                                       self.typed_descriptor.ClassName())
+
+    @staticmethod
+    cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
+        cdef CCppFunctionDescriptor *typed_descriptor = \
+            <CCppFunctionDescriptor*>(c_function_descriptor.get())
+        return CppFunctionDescriptor(typed_descriptor.FunctionName(),
+                                     typed_descriptor.Caller(),
+                                     typed_descriptor.ClassName())
+
+    @property
+    def function_name(self):
+        """Get the function name of current function descriptor.
+
+        Returns:
+            The function name of the function descriptor.
+        """
+        return <str>self.typed_descriptor.FunctionName()
+
+    @property
+    def caller(self):
+        """Get the caller of current function descriptor.
+
+        Returns:
+            The caller of the function descriptor.
+        """
+        return <str>self.typed_descriptor.Caller()
+
+    @property
+    def class_name(self):
+        """Get the class name of current function descriptor,
+        when it is empty, it is a non-member function.
+
+        Returns:
+            The class name of the function descriptor.
+        """
+        return <str>self.typed_descriptor.ClassName()

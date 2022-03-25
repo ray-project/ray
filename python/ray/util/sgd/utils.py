@@ -1,8 +1,7 @@
 import collections
-from contextlib import closing, contextmanager
+from contextlib import contextmanager
 import logging
 import numpy as np
-import socket
 import time
 
 import ray
@@ -24,10 +23,11 @@ class TimerStat:
         Time a call to 'time.sleep'.
 
         >>> import time
+        >>> from ray.util.sgd.utils import TimerStat
         >>> sleep_timer = TimerStat()
         >>> with sleep_timer:
         ...     time.sleep(1)
-        >>> round(sleep_timer.mean)
+        >>> round(sleep_timer.mean) # doctest: +SKIP
         1
     """
 
@@ -148,17 +148,11 @@ class TimerCollection:
         return aggregates
 
 
-def find_free_port():
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-
 class AverageMeter:
     """Utility for computing and storing the average and most recent value.
 
     Example:
+        >>> from ray.util.sgd.utils import AverageMeter
         >>> meter = AverageMeter()
         >>> meter.update(5)
         >>> meter.val, meter.avg, meter.sum
@@ -194,13 +188,14 @@ class AverageMeterCollection:
     AverageMeter object is used for each metric.
 
     Example:
+        >>> from ray.util.sgd.utils import AverageMeterCollection
         >>> meter_collection = AverageMeterCollection()
         >>> meter_collection.update({"loss": 0.5, "acc": 0.5}, n=32)
-        >>> meter_collection.summary()
+        >>> meter_collection.summary() # doctest: +SKIP
         {'batch_count': 1, 'num_samples': 32, 'loss': 0.5,
         'last_loss': 0.5, 'acc': 0.5, 'last_acc': 0.5}
         >>> meter_collection.update({"loss": 0.1, "acc": 0.9}, n=32)
-        >>> meter_collection.summary()
+        >>> meter_collection.summary() # doctest: +SKIP
         {'batch_count': 2, 'num_samples': 64, 'loss': 0.3,
         'last_loss': 0.1, 'acc': 0.7, 'last_acc': 0.9}
     """
@@ -250,7 +245,7 @@ def check_for_failure(remote_values):
 
 def override(interface_class):
     def overrider(method):
-        assert (method.__name__ in dir(interface_class))
+        assert method.__name__ in dir(interface_class)
         return method
 
     return overrider

@@ -1,9 +1,9 @@
-from typing import Optional, Type
+from typing import Type
 
-from ray.rllib.agents.sac import SACTrainer, \
-                                 DEFAULT_CONFIG as SAC_DEFAULT_CONFIG
+from ray.rllib.agents.sac import SACTrainer, DEFAULT_CONFIG as SAC_DEFAULT_CONFIG
 from ray.rllib.agents.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
 DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
@@ -11,10 +11,6 @@ DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
     {
         # Batch mode (see common config)
         "batch_mode": "complete_episodes",
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": False,
-        # RNNSAC does not suport n-step > 1 yet!
-        "n_step": 1,
         # If True, assume a zero-initialized state input (no matter where in
         # the episode the sequence is located).
         # If False, store the initial states along with each SampleBatch, use
@@ -40,40 +36,33 @@ DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
 )
 
 
-def validate_config(config: TrainerConfigDict) -> None:
-    if config["replay_sequence_length"] != -1:
-        raise ValueError(
-            "`replay_sequence_length` is calculated automatically to be "
-            "model->max_seq_len + burn_in!")
-    # Add the `burn_in` to the Model's max_seq_len.
-    # Set the replay sequence length to the max_seq_len of the model.
-    config["replay_sequence_length"] = \
-        config["burn_in"] + config["model"]["max_seq_len"]
+class RNNSACTrainer(SACTrainer):
+    @classmethod
+    @override(SACTrainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    if config["n_step"] > 1:
-        raise ValueError("`n_step` > 1 not yet supported by RNNSAC!")
+    @override(SACTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
 
+        if config["replay_sequence_length"] != -1:
+            raise ValueError(
+                "`replay_sequence_length` is calculated automatically to be "
+                "model->max_seq_len + burn_in!"
+            )
+        # Add the `burn_in` to the Model's max_seq_len.
+        # Set the replay sequence length to the max_seq_len of the model.
+        config["replay_sequence_length"] = (
+            config["burn_in"] + config["model"]["max_seq_len"]
+        )
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+        if config["framework"] != "torch":
+            raise ValueError(
+                "Only `framework=torch` supported so far for RNNSACTrainer!"
+            )
 
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
+    @override(SACTrainer)
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return RNNSACTorchPolicy
-
-
-RNNSACTrainer = SACTrainer.with_updates(
-    name="RNNSACTrainer",
-    default_policy=RNNSACTorchPolicy,
-    get_policy_class=get_policy_class,
-    default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
-)
-
-RNNSACTrainer._allow_unknown_subkeys += ["policy_model", "Q_model"]

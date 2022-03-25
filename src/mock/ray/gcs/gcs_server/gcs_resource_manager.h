@@ -17,31 +17,27 @@ namespace gcs {
 
 class MockGcsResourceManager : public GcsResourceManager {
  public:
-  MOCK_METHOD(void, HandleGetResources,
-              (const rpc::GetResourcesRequest &request, rpc::GetResourcesReply *reply,
+  using GcsResourceManager::GcsResourceManager;
+  MOCK_METHOD(void,
+              HandleGetResources,
+              (const rpc::GetResourcesRequest &request,
+               rpc::GetResourcesReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(void, HandleUpdateResources,
-              (const rpc::UpdateResourcesRequest &request,
-               rpc::UpdateResourcesReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void, HandleDeleteResources,
-              (const rpc::DeleteResourcesRequest &request,
-               rpc::DeleteResourcesReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void, HandleGetAllAvailableResources,
+  MOCK_METHOD(void,
+              HandleGetAllAvailableResources,
               (const rpc::GetAllAvailableResourcesRequest &request,
                rpc::GetAllAvailableResourcesReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(void, HandleReportResourceUsage,
+  MOCK_METHOD(void,
+              HandleReportResourceUsage,
               (const rpc::ReportResourceUsageRequest &request,
                rpc::ReportResourceUsageReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(void, HandleGetAllResourceUsage,
+  MOCK_METHOD(void,
+              HandleGetAllResourceUsage,
               (const rpc::GetAllResourceUsageRequest &request,
                rpc::GetAllResourceUsageReply *reply,
                rpc::SendReplyCallback send_reply_callback),

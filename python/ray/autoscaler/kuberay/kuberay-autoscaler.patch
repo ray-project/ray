@@ -1,0 +1,13 @@
+diff --git a/ray-operator/config/default/kustomization.yaml b/ray-operator/config/default/kustomization.yaml
+index 333106d..fdf62d6 100644
+--- a/ray-operator/config/default/kustomization.yaml
++++ b/ray-operator/config/default/kustomization.yaml
+@@ -21,6 +21,6 @@ bases:
+ 
+ images:
+ - name: kuberay/operator
+-  newName: kuberay/operator
+-  newTag: nightly
++  newName: rayproject/kuberay-operator
++  newTag: latest
+ 

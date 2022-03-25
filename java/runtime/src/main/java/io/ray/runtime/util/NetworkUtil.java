@@ -43,4 +43,8 @@ public class NetworkUtil {
 
     return "127.0.0.1";
   }
+
+  public static String localhostIp() {
+    return "127.0.0.1";
+  }
 }

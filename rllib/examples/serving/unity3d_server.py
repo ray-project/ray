@@ -31,11 +31,9 @@ import argparse
 import os
 
 import ray
-from ray.tune import register_env
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
-from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
@@ -43,67 +41,112 @@ CHECKPOINT_FILE = "last_checkpoint_{}.out"
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
+    "--run",
+    default="PPO",
+    choices=["DQN", "PPO"],
+    help="The RLlib-registered algorithm to use.",
+)
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.",
+)
+parser.add_argument(
+    "--num-workers",
+    type=int,
+    default=2,
+    help="The number of workers to use. Each worker will create "
+    "its own listening socket for incoming experiences.",
+)
+parser.add_argument(
     "--env",
     type=str,
     default="3DBall",
-    choices=["3DBall", "SoccerStrikersVsGoalie"],
-    help="The name of the Env to run in the Unity3D editor. Either `3DBall` "
-    "or `SoccerStrikersVsGoalie` (feel free to add more to this script!)")
+    choices=[
+        "3DBall",
+        "3DBallHard",
+        "FoodCollector",
+        "GridFoodCollector",
+        "Pyramids",
+        "SoccerStrikersVsGoalie",
+        "Sorter",
+        "Tennis",
+        "VisualHallway",
+        "Walker",
+    ],
+    help="The name of the Env to run in the Unity3D editor "
+    "(feel free to add more to this script!)",
+)
 parser.add_argument(
     "--port",
     type=int,
     default=SERVER_PORT,
-    help="The Policy server's port to listen on for ExternalEnv client "
-    "conections.")
+    help="The Policy server's port to listen on for ExternalEnv client conections.",
+)
 parser.add_argument(
     "--checkpoint-freq",
     type=int,
     default=10,
     help="The frequency with which to create checkpoint files of the learnt "
-    "Policies.")
+    "Policies.",
+)
 parser.add_argument(
     "--no-restore",
     action="store_true",
-    help="Whether to load the Policy "
-    "weights from a previous checkpoint")
+    help="Whether to load the Policy weights from a previous checkpoint",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    # Create a fake-env for the server. This env will never be used (neither
-    # for sampling, nor for evaluation) and its obs/action Spaces do not
-    # matter either (multi-agent config below defines Spaces per Policy).
-    register_env("fake_unity", lambda c: RandomMultiAgentEnv(c))
+    # `InputReader` generator (returns None if no input reader is needed on
+    # the respective worker).
+    def _input(ioctx):
+        # We are remote worker or we are local worker with num_workers=0:
+        # Create a PolicyServerInput.
+        if ioctx.worker_index > 0 or ioctx.worker.num_workers == 0:
+            return PolicyServerInput(
+                ioctx,
+                SERVER_ADDRESS,
+                args.port + ioctx.worker_index - (1 if ioctx.worker_index > 0 else 0),
+            )
+        # No InputReader (PolicyServerInput) needed.
+        else:
+            return None
 
-    policies, policy_mapping_fn = \
-        Unity3DEnv.get_policy_configs_for_game(args.env)
+    # Get the multi-agent policies dict and agent->policy
+    # mapping-fn.
+    policies, policy_mapping_fn = Unity3DEnv.get_policy_configs_for_game(args.env)
 
     # The entire config will be sent to connecting clients so they can
     # build their own samplers (and also Policy objects iff
     # `inference_mode=local` on clients' command line).
     config = {
-        # Use the connector server to generate experiences.
-        "input": (
-            lambda ioctx: PolicyServerInput(ioctx, SERVER_ADDRESS, args.port)),
-        # Use a single worker process (w/ SyncSampler) to run the server.
-        "num_workers": 0,
+        # Indicate that the Trainer we setup here doesn't need an actual env.
+        # Allow spaces to be determined by user (see below).
+        "env": None,
+        # Use the `PolicyServerInput` to generate experiences.
+        "input": _input,
+        # Use n worker processes to listen on different ports.
+        "num_workers": args.num_workers,
         # Disable OPE, since the rollouts are coming from online clients.
         "input_evaluation": [],
-
         # Other settings.
         "train_batch_size": 256,
         "rollout_fragment_length": 20,
-        # Multi-agent setup for the particular env.
+        # Multi-agent setup for the given env.
         "multiagent": {
             "policies": policies,
             "policy_mapping_fn": policy_mapping_fn,
         },
-        "framework": "tf",
+        # DL framework to use.
+        "framework": args.framework,
     }
 
     # Create the Trainer used for Policy serving.
-    trainer = PPOTrainer(env="fake_unity", config=config)
+    trainer = get_trainer_class(args.run)(config=config)
 
     # Attempt to restore from checkpoint if possible.
     checkpoint_path = CHECKPOINT_FILE.format(args.env)

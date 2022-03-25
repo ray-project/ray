@@ -3,13 +3,16 @@
 Distributed PyTorch
 ===================
 
+.. warning:: This is an older version of Ray SGD. A newer, more light-weight version of Ray SGD (named Ray Train) is in alpha as of Ray 1.7.
+         See the documentation :ref:`here <train-docs>`. To migrate from v1 to v2 you can follow the :ref:`migration guide <sgd-migration>`.
+
 The RaySGD ``TorchTrainer`` simplifies distributed model training for PyTorch.
 
 
 .. image:: raysgd-actors.svg
     :align: center
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 
 The ``TorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to wrap your training code in bash scripts.
 
@@ -23,7 +26,7 @@ Basic Usage
 Setting up training
 ~~~~~~~~~~~~~~~~~~~
 
-.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* using RaySGD, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar>` and Tune's  :ref:`distributed pytorch integrations <tune-ddp-doc>`.
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using RayTune *without* using RaySGD, check out the :ref:`Tune PyTorch user guide <tune-pytorch-cifar-ref>` and Tune's  :ref:`distributed pytorch integrations <tune-ddp-doc>`.
 
 The :ref:`ref-torch-trainer`  can be constructed from a custom :ref:`ref-torch-operator` subclass that defines training components like the model, data, optimizer, loss, and ``lr_scheduler``. These components are all automatically replicated across different machines and devices so that training can be executed in parallel.
 
@@ -469,7 +472,7 @@ Then, in your program, you'll need to connect to this cluster via ``ray.init``:
 
 .. code-block:: python
 
-    ray.init(address="auto")  # or a specific redis address of the form "ip-address:port"
+    ray.init(address="auto")  # or a specific Ray address of the form "ip-address:port"
 
 After connecting, you can scale up the number of workers seamlessly across multiple nodes:
 

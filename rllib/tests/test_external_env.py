@@ -9,8 +9,7 @@ from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.evaluation.tests.test_rollout_worker import (BadPolicy,
-                                                            MockPolicy)
+from ray.rllib.evaluation.tests.test_rollout_worker import BadPolicy, MockPolicy
 from ray.rllib.examples.env.mock_env import MockEnv
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
@@ -91,8 +90,7 @@ class MultiServing(ExternalEnv):
     def __init__(self, env_creator):
         self.env_creator = env_creator
         self.env = env_creator()
-        ExternalEnv.__init__(self, self.env.action_space,
-                             self.env.observation_space)
+        ExternalEnv.__init__(self, self.env.action_space, self.env.observation_space)
 
     def run(self):
         envs = [self.env_creator() for _ in range(5)]
@@ -129,7 +127,8 @@ class TestExternalEnv(unittest.TestCase):
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_spec=MockPolicy,
             rollout_fragment_length=40,
-            batch_mode="complete_episodes")
+            batch_mode="complete_episodes",
+        )
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
@@ -139,7 +138,8 @@ class TestExternalEnv(unittest.TestCase):
             env_creator=lambda _: SimpleServing(MockEnv(25)),
             policy_spec=MockPolicy,
             rollout_fragment_length=40,
-            batch_mode="truncate_episodes")
+            batch_mode="truncate_episodes",
+        )
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 40)
@@ -149,7 +149,8 @@ class TestExternalEnv(unittest.TestCase):
             env_creator=lambda _: SimpleOffPolicyServing(MockEnv(25), 42),
             policy_spec=MockPolicy,
             rollout_fragment_length=40,
-            batch_mode="complete_episodes")
+            batch_mode="complete_episodes",
+        )
         for _ in range(3):
             batch = ev.sample()
             self.assertEqual(batch.count, 50)
@@ -162,27 +163,29 @@ class TestExternalEnv(unittest.TestCase):
             policy_spec=BadPolicy,
             sample_async=True,
             rollout_fragment_length=40,
-            batch_mode="truncate_episodes")
+            batch_mode="truncate_episodes",
+        )
         self.assertRaises(Exception, lambda: ev.sample())
 
     def test_train_cartpole_off_policy(self):
         register_env(
-            "test3", lambda _: PartOffPolicyServing(
-                gym.make("CartPole-v0"), off_pol_frac=0.2))
+            "test3",
+            lambda _: PartOffPolicyServing(gym.make("CartPole-v0"), off_pol_frac=0.2),
+        )
         config = {
             "num_workers": 0,
-            "exploration_config": {
-                "epsilon_timesteps": 100
-            },
+            "exploration_config": {"epsilon_timesteps": 100},
         }
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             dqn = DQNTrainer(env="test3", config=config)
             reached = False
             for i in range(50):
                 result = dqn.train()
-                print("Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"],
-                    result["timesteps_total"]))
+                print(
+                    "Iteration {}, reward {}, timesteps {}".format(
+                        i, result["episode_reward_mean"], result["timesteps_total"]
+                    )
+                )
                 if result["episode_reward_mean"] >= 80:
                     reached = True
                     break
@@ -197,9 +200,11 @@ class TestExternalEnv(unittest.TestCase):
             reached = False
             for i in range(80):
                 result = pg.train()
-                print("Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"],
-                    result["timesteps_total"]))
+                print(
+                    "Iteration {}, reward {}, timesteps {}".format(
+                        i, result["episode_reward_mean"], result["timesteps_total"]
+                    )
+                )
                 if result["episode_reward_mean"] >= 80:
                     reached = True
                     break
@@ -207,17 +212,18 @@ class TestExternalEnv(unittest.TestCase):
                 raise Exception("failed to improve reward")
 
     def test_train_cartpole_multi(self):
-        register_env("test2",
-                     lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
+        register_env("test2", lambda _: MultiServing(lambda: gym.make("CartPole-v0")))
         config = {"num_workers": 0}
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             pg = PGTrainer(env="test2", config=config)
             reached = False
             for i in range(80):
                 result = pg.train()
-                print("Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"],
-                    result["timesteps_total"]))
+                print(
+                    "Iteration {}, reward {}, timesteps {}".format(
+                        i, result["episode_reward_mean"], result["timesteps_total"]
+                    )
+                )
                 if result["episode_reward_mean"] >= 80:
                     reached = True
                     break
@@ -230,11 +236,13 @@ class TestExternalEnv(unittest.TestCase):
             policy_spec=MockPolicy,
             episode_horizon=20,
             rollout_fragment_length=10,
-            batch_mode="complete_episodes")
+            batch_mode="complete_episodes",
+        )
         self.assertRaises(ValueError, lambda: ev.sample())
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

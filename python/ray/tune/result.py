@@ -1,6 +1,6 @@
 import os
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
 DONE = "done"
@@ -60,12 +60,29 @@ TIME_TOTAL_S = "time_total_s"
 # (Auto-filled) The index of this training iteration.
 TRAINING_ITERATION = "training_iteration"
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
 
-DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
-                       MEAN_ACCURACY, MEAN_LOSS)
+DEFAULT_RESULT_KEYS = (
+    TRAINING_ITERATION,
+    TIME_TOTAL_S,
+    TIMESTEPS_TOTAL,
+    MEAN_ACCURACY,
+    MEAN_LOSS,
+)
+
+# Metrics that don't require at least one iteration to complete
+DEBUG_METRICS = (
+    TRIAL_ID,
+    "experiment_id",
+    "date",
+    "timestamp",
+    PID,
+    HOSTNAME,
+    NODE_IP,
+    "config",
+)
 
 # Make sure this doesn't regress
 AUTO_RESULT_KEYS = (
@@ -85,6 +102,7 @@ AUTO_RESULT_KEYS = (
     "iterations_since_restore",
     "timesteps_since_restore",
     "config",
+    "warmup_time",
 )
 
 # __duplicate__ is a magic keyword used internally to
@@ -101,9 +119,12 @@ STDOUT_FILE = "__stdout_file__"
 STDERR_FILE = "__stderr_file__"
 
 # Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = (os.environ.get("TEST_TMPDIR")
-                       or os.environ.get("TUNE_RESULT_DIR")
-                       or os.path.expanduser("~/ray_results"))
+DEFAULT_RESULTS_DIR = (
+    # This is the file system that bazel test uses.
+    os.environ.get("TEST_TMPDIR")
+    or os.environ.get("TUNE_RESULT_DIR")
+    or os.path.expanduser("~/ray_results")
+)
 
 # Meta file about status under each experiment directory, can be
 # parsed by automlboard if exists.
@@ -125,5 +146,5 @@ EXPR_PROGRESS_FILE = "progress.csv"
 # File that stores results of the trial.
 EXPR_RESULT_FILE = "result.json"
 
-# Config prefix when using Analysis.
+# Config prefix when using ExperimentAnalysis.
 CONFIG_PREFIX = "config/"

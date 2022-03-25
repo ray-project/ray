@@ -26,14 +26,19 @@ public class RayException extends RuntimeException {
     return builder.build().toByteArray();
   }
 
+  public static RayException fromRayExceptionPB(
+      io.ray.runtime.generated.Common.RayException rayExceptionPB) {
+    if (rayExceptionPB.getLanguage() == Language.JAVA) {
+      return Serializer.decode(
+          rayExceptionPB.getSerializedException().toByteArray(), RayException.class);
+    } else {
+      return new CrossLanguageException(rayExceptionPB);
+    }
+  }
+
   public static RayException fromBytes(byte[] serialized) throws InvalidProtocolBufferException {
     io.ray.runtime.generated.Common.RayException exception =
         io.ray.runtime.generated.Common.RayException.parseFrom(serialized);
-    if (exception.getLanguage() == Language.JAVA) {
-      return Serializer.decode(
-          exception.getSerializedException().toByteArray(), RayException.class);
-    } else {
-      return new CrossLanguageException(exception);
-    }
+    return fromRayExceptionPB(exception);
   }
 }

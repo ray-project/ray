@@ -12,13 +12,15 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
     Uses segment level recurrence with state reuse.
     """
 
-    def __init__(self,
-                 out_dim: int,
-                 num_heads: int,
-                 head_dim: int,
-                 input_layernorm: bool = False,
-                 output_activation: Optional["tf.nn.activation"] = None,
-                 **kwargs):
+    def __init__(
+        self,
+        out_dim: int,
+        num_heads: int,
+        head_dim: int,
+        input_layernorm: bool = False,
+        output_activation: Optional["tf.nn.activation"] = None,
+        **kwargs
+    ):
         """Initializes a RelativeMultiHeadAttention keras Layer object.
 
         Args:
@@ -41,10 +43,11 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         self._head_dim = head_dim
         # 3=Query, key, and value inputs.
         self._qkv_layer = tf.keras.layers.Dense(
-            3 * num_heads * head_dim, use_bias=False)
+            3 * num_heads * head_dim, use_bias=False
+        )
         self._linear_layer = tf.keras.layers.TimeDistributed(
-            tf.keras.layers.Dense(
-                out_dim, use_bias=False, activation=output_activation))
+            tf.keras.layers.Dense(out_dim, use_bias=False, activation=output_activation)
+        )
 
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
@@ -55,15 +58,15 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         # input: Tau + 1. For training, we prepend the memory to the input
         # sequence: Tau + T.
         self._pos_embedding = PositionalEmbedding(out_dim)
-        self._pos_proj = tf.keras.layers.Dense(
-            num_heads * head_dim, use_bias=False)
+        self._pos_proj = tf.keras.layers.Dense(num_heads * head_dim, use_bias=False)
 
         self._input_layernorm = None
         if input_layernorm:
             self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
-    def call(self, inputs: TensorType,
-             memory: Optional[TensorType] = None) -> TensorType:
+    def call(
+        self, inputs: TensorType, memory: Optional[TensorType] = None
+    ) -> TensorType:
         T = tf.shape(inputs)[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
         d = self._head_dim  # attention head dimension
@@ -99,14 +102,13 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         score = tf.einsum("bihd,bjhd->bijh", queries + self._uvar, keys)
         pos_score = tf.einsum("bihd,jhd->bijh", queries + self._vvar, R)
         score = score + self.rel_shift(pos_score)
-        score = score / d**0.5
+        score = score / d ** 0.5
 
         # Causal mask of the same length as the sequence.
-        mask = tf.sequence_mask(
-            tf.range(Tau + 1, Tau + T + 1), dtype=score.dtype)
+        mask = tf.sequence_mask(tf.range(Tau + 1, Tau + T + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
 
-        masked_score = score * mask + 1e30 * (mask - 1.)
+        masked_score = score * mask + 1e30 * (mask - 1.0)
         wmat = tf.nn.softmax(masked_score, axis=2)
 
         out = tf.einsum("bijh,bjhd->bihd", wmat, values)
@@ -131,7 +133,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
 class PositionalEmbedding(tf.keras.layers.Layer if tf else object):
     def __init__(self, out_dim, **kwargs):
         super().__init__(**kwargs)
-        self.inverse_freq = 1 / (10000**(tf.range(0, out_dim, 2.0) / out_dim))
+        self.inverse_freq = 1 / (10000 ** (tf.range(0, out_dim, 2.0) / out_dim))
 
     def call(self, seq_length):
         pos_offsets = tf.cast(tf.range(seq_length - 1, -1, -1), tf.float32)

@@ -3,35 +3,41 @@ The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
 import os
+import subprocess
 import sys
 import socket
 from typing import Optional
+from tempfile import mkstemp
 
 import pytest
+import pydantic
 import requests
 
 import ray
 from ray import serve
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
-from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
-                             format_actor_name)
+from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
 from ray.serve.config import HTTPOptions
-from ray._private.test_utils import run_string_as_driver, wait_for_condition
+from ray.serve.api import internal_get_global_client
+from ray._private.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+    convert_actor_state,
+)
 from ray._private.services import new_port
 import ray._private.gcs_utils as gcs_utils
 
-
-@pytest.fixture
-def ray_shutdown():
-    yield
-    serve.shutdown()
-    ray.shutdown()
+# Explicitly importing it here because it is a ray core tests utility (
+# not in the tree)
+from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 
 
 @pytest.fixture
 def ray_cluster():
+    if cluster_not_supported:
+        pytest.skip("Cluster not supported")
     cluster = Cluster()
     yield Cluster()
     serve.shutdown()
@@ -52,9 +58,11 @@ def test_shutdown(ray_shutdown):
     serve_controller_name = serve.api._global_client._controller_name
     actor_names = [
         serve_controller_name,
-        format_actor_name(SERVE_PROXY_NAME,
-                          serve.api._global_client._controller_name,
-                          get_all_node_ids()[0][0])
+        format_actor_name(
+            SERVE_PROXY_NAME,
+            serve.api._global_client._controller_name,
+            get_all_node_ids()[0][0],
+        ),
     ]
 
     def check_alive():
@@ -63,8 +71,8 @@ def test_shutdown(ray_shutdown):
             try:
                 if actor_name == serve_controller_name:
                     ray.get_actor(
-                        actor_name,
-                        namespace=ray.get_runtime_context().namespace)
+                        actor_name, namespace=ray.get_runtime_context().namespace
+                    )
                 else:
                     ray.get_actor(actor_name)
             except ValueError:
@@ -82,8 +90,8 @@ def test_shutdown(ray_shutdown):
             try:
                 if actor_name == serve_controller_name:
                     ray.get_actor(
-                        actor_name,
-                        namespace=ray.get_runtime_context().namespace)
+                        actor_name, namespace=ray.get_runtime_context().namespace
+                    )
                 else:
                     ray.get_actor(actor_name)
                 return False
@@ -98,36 +106,38 @@ def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
-    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
+    head_node = cluster.add_node(num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace="serve")
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
 
-    @serve.deployment
+    @serve.deployment(route_prefix="/say_hi_f")
     def f(*args):
-        return "hello"
+        return "from_f"
 
     f.deploy()
-    assert ray.get(f.get_handle().remote()) == "hello"
+    assert ray.get(f.get_handle().remote()) == "from_f"
+    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
     serve.api._global_client = None
     ray.shutdown()
 
-    # Create the second job, make sure we can still create new backends.
+    # Create the second job, make sure we can still create new deployments.
     ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().job_id != first_job_id
 
-    @serve.deployment
+    @serve.deployment(route_prefix="/say_hi_g")
     def g(*args):
-        return "world"
+        return "from_g"
 
     g.deploy()
-    assert ray.get(g.get_handle().remote()) == "world"
+    assert ray.get(g.get_handle().remote()) == "from_g"
+    assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
+    assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("detached", [True, False])
 def test_connect(detached, ray_shutdown):
     # Check that you can make API calls from within a deployment for both
@@ -144,7 +154,6 @@ def test_connect(detached, ray_shutdown):
     assert "deployment-ception" in serve.list_deployments()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("controller_cpu", [True, False])
 @pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
 def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
@@ -153,25 +162,26 @@ def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     head_node = cluster.add_node(num_cpus=num_cluster_cpus)
 
     ray.init(head_node.address)
-    wait_for_condition(
-        lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
+    wait_for_condition(lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
 
     num_cpus_used = int(controller_cpu) + num_proxy_cpus
 
     serve.start(
-        dedicated_cpu=controller_cpu,
-        http_options=HTTPOptions(num_cpus=num_proxy_cpus))
+        dedicated_cpu=controller_cpu, http_options=HTTPOptions(num_cpus=num_proxy_cpus)
+    )
     available_cpus = num_cluster_cpus - num_cpus_used
-    wait_for_condition(
-        lambda: (ray.available_resources().get("CPU") == available_cpus))
+    wait_for_condition(lambda: (ray.available_resources().get("CPU") == available_cpus))
     serve.shutdown()
     ray.shutdown()
 
 
 @pytest.mark.skipif(
     not hasattr(socket, "SO_REUSEPORT"),
-    reason=("Port sharing only works on newer verion of Linux. "
-            "This test can only be ran when port sharing is supported."))
+    reason=(
+        "Port sharing only works on newer verion of Linux. "
+        "This test can only be ran when port sharing is supported."
+    ),
+)
 def test_multiple_routers(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
@@ -186,9 +196,10 @@ def test_multiple_routers(ray_cluster):
         proxy_names = []
         for node_id, _ in get_all_node_ids():
             proxy_names.append(
-                format_actor_name(SERVE_PROXY_NAME,
-                                  serve.api._global_client._controller_name,
-                                  node_id))
+                format_actor_name(
+                    SERVE_PROXY_NAME, serve.api._global_client._controller_name, node_id
+                )
+            )
         return proxy_names
 
     wait_for_condition(lambda: len(get_proxy_names()) == 2)
@@ -245,7 +256,6 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
@@ -255,9 +265,10 @@ def test_middleware(ray_shutdown):
         http_options=dict(
             port=port,
             middlewares=[
-                Middleware(
-                    CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
-            ]))
+                Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
+            ],
+        )
+    )
     ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
 
     # Snatched several test cases from Starlette
@@ -289,6 +300,7 @@ def test_http_root_url(ray_shutdown):
     f.deploy()
     assert f.url == root_url + "/f"
     serve.shutdown()
+    ray.shutdown()
     del os.environ[SERVE_ROOT_URL_ENV_KEY]
 
     port = new_port()
@@ -297,6 +309,40 @@ def test_http_root_url(ray_shutdown):
     assert f.url != root_url + "/f"
     assert f.url == f"http://127.0.0.1:{port}/f"
     serve.shutdown()
+    ray.shutdown()
+
+    ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
+    port = new_port()
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url == root_url + "/f"
+    serve.shutdown()
+    ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_http_root_path(ray_shutdown):
+    @serve.deployment
+    def hello():
+        return "hello"
+
+    port = new_port()
+    root_path = "/serve"
+    serve.start(http_options=dict(root_path=root_path, port=port))
+    hello.deploy()
+
+    # check whether url is prefixed correctly
+    assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
+
+    # check routing works as expected
+    resp = requests.get(hello.url)
+    assert resp.status_code == 200
+    assert resp.text == "hello"
+
+    # check advertized routes are prefixed correctly
+    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
+    assert resp.status_code == 200
+    assert resp.json() == {"/hello": "hello"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -306,25 +352,12 @@ def test_http_proxy_fail_loudly(ray_shutdown):
         serve.start(http_options={"host": "bad.ip.address"})
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
-        {
-            "http_options": {
-                "host": None
-            }
-        },
-        {
-            "http_options": {
-                "location": None
-            }
-        },
-        {
-            "http_options": {
-                "location": "NoServer"
-            }
-        },
+        {"http_options": {"host": None}},
+        {"http_options": {"location": None}},
+        {"http_options": {"location": "NoServer"}},
     ]
 
     ray.init(num_cpus=16)
@@ -334,8 +367,9 @@ def test_no_http(ray_shutdown):
 
         # Only controller actor should exist
         live_actors = [
-            actor for actor in ray.state.actors().values()
-            if actor["State"] == gcs_utils.ActorTableData.ALIVE
+            actor
+            for actor in ray.state.actors().values()
+            if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
         ]
         assert len(live_actors) == 1
         controller = serve.api._global_client._controller
@@ -352,7 +386,6 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
@@ -369,10 +402,54 @@ def test_http_head_only(ray_cluster):
 
     # They should all be placed on the head node
     cpu_per_nodes = {
-        r["CPU"]
-        for r in ray.state.state._available_resources_per_node().values()
+        r["CPU"] for r in ray.state.state._available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
+
+
+@pytest.mark.skipif(
+    not hasattr(socket, "SO_REUSEPORT"),
+    reason=(
+        "Port sharing only works on newer verion of Linux. "
+        "This test can only be ran when port sharing is supported."
+    ),
+)
+def test_fixed_number_proxies(ray_cluster):
+    cluster = ray_cluster
+    head_node = cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+
+    ray.init(head_node.address)
+    node_ids = ray.state.node_ids()
+    assert len(node_ids) == 3
+
+    with pytest.raises(
+        pydantic.ValidationError,
+        match="you must specify the `fixed_number_replicas` parameter.",
+    ):
+        serve.start(
+            http_options={
+                "location": "FixedNumber",
+            }
+        )
+
+    serve.start(
+        http_options={
+            "port": new_port(),
+            "location": "FixedNumber",
+            "fixed_number_replicas": 2,
+        }
+    )
+
+    # Only the controller and two http proxy should be started.
+    controller_handle = internal_get_global_client()._controller
+    node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
+    assert len(node_to_http_actors) == 2
+
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 def test_serve_shutdown(ray_shutdown):
@@ -409,11 +486,11 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     serve.start(detached=True)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("namespace", [None, "test_namespace"])
 @pytest.mark.parametrize("detached", [True, False])
-def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
-                                    detached: bool):
+def test_serve_controller_namespace(
+    ray_shutdown, namespace: Optional[str], detached: bool
+):
     """
     Tests the serve controller is started in the current namespace if not
     anonymous or in the "serve" namespace if no namespace is specified.
@@ -431,15 +508,13 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
     else:
         controller_namespace = ray.get_runtime_context().namespace
 
-    assert ray.get_actor(
-        client._controller_name, namespace=controller_namespace)
+    assert ray.get_actor(client._controller_name, namespace=controller_namespace)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_checkpoint_isolation_namespace(ray_shutdown):
     info = ray.init(namespace="test_namespace1")
 
-    address = info["redis_address"]
+    address = info["address"]
 
     driver_template = """
 import ray
@@ -456,11 +531,145 @@ class A:
 A.deploy()"""
 
     run_string_as_driver(
-        driver_template.format(
-            address=address, namespace="test_namespace1", port=8000))
+        driver_template.format(address=address, namespace="test_namespace1", port=8000)
+    )
     run_string_as_driver(
-        driver_template.format(
-            address=address, namespace="test_namespace2", port=8001))
+        driver_template.format(address=address, namespace="test_namespace2", port=8001)
+    )
+
+
+def test_local_store_recovery(ray_shutdown):
+    _, tmp_path = mkstemp()
+
+    @serve.deployment
+    def hello(_):
+        return "hello"
+
+    # https://github.com/ray-project/ray/issues/19987
+    @serve.deployment
+    def world(_):
+        return "world"
+
+    def check(name):
+        try:
+            resp = requests.get(f"http://localhost:8000/{name}")
+            assert resp.text == name
+            return True
+        except Exception:
+            return False
+
+    # https://github.com/ray-project/ray/issues/20159
+    # https://github.com/ray-project/ray/issues/20158
+    def clean_up_leaked_processes():
+        import psutil
+
+        for proc in psutil.process_iter():
+            try:
+                cmdline = " ".join(proc.cmdline())
+                if "ray::" in cmdline:
+                    print(f"Kill {proc} {cmdline}")
+                    proc.kill()
+            except Exception:
+                pass
+
+    def crash():
+        subprocess.call(["ray", "stop", "--force"])
+        clean_up_leaked_processes()
+        ray.shutdown()
+        serve.shutdown()
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    hello.deploy()
+    world.deploy()
+    assert check("hello")
+    assert check("world")
+    crash()
+
+    # Simulate a crash
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    wait_for_condition(lambda: check("hello"))
+    # wait_for_condition(lambda: check("world"))
+    crash()
+
+
+@pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
+def test_snapshot_always_written_to_internal_kv(
+    ray_start_with_dashboard, ray_shutdown  # noqa: F811
+):
+    # https://github.com/ray-project/ray/issues/19752
+    _, tmp_path = mkstemp()
+
+    @serve.deployment()
+    def hello(_):
+        return "hello"
+
+    def check():
+        try:
+            resp = requests.get("http://localhost:8000/hello")
+            assert resp.text == "hello"
+            return True
+        except Exception:
+            return False
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    hello.deploy()
+    check()
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+
+    def get_deployment_snapshot():
+        snapshot = requests.get(f"http://{webui_url}/api/snapshot").json()["data"][
+            "snapshot"
+        ]
+        return snapshot["deployments"]
+
+    # Make sure /api/snapshot return non-empty deployment status.
+    def verify_snapshot():
+        return get_deployment_snapshot() != {}
+
+    wait_for_condition(verify_snapshot)
+
+    # Sanity check the snapshot is correct
+    snapshot = get_deployment_snapshot()
+    assert len(snapshot) == 1
+    hello_deployment = list(snapshot.values())[0]
+    assert hello_deployment["name"] == "hello"
+    assert hello_deployment["status"] == "RUNNING"
+
+
+def test_serve_start_different_http_checkpoint_options_warning(caplog):
+    import logging
+    from tempfile import mkstemp
+    from ray.serve.utils import logger
+    from ray._private.services import new_port
+
+    caplog.set_level(logging.WARNING, logger="ray.serve")
+
+    warning_msg = []
+
+    class WarningHandler(logging.Handler):
+        def emit(self, record):
+            warning_msg.append(self.format(record))
+
+    logger.addHandler(WarningHandler())
+
+    ray.init(namespace="serve-test")
+    serve.start(detached=True)
+
+    # create a different config
+    test_http = dict(host="127.1.1.8", port=new_port())
+    _, tmp_path = mkstemp()
+    test_ckpt = f"file://{tmp_path}"
+
+    serve.start(detached=True, http_options=test_http, _checkpoint_path=test_ckpt)
+
+    for test_config, msg in zip([[test_ckpt], ["host", "port"]], warning_msg):
+        for test_msg in test_config:
+            assert test_msg in msg
+
+    serve.shutdown()
+    ray.shutdown()
 
 
 if __name__ == "__main__":

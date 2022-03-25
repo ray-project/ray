@@ -5,21 +5,25 @@ import pickle
 import ray
 
 from ray.tune import Trainable
-from ray.tune.resources import Resources
+from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util.annotations import Deprecated
 from ray.util.sgd.tf.tf_runner import TFRunner
 
 logger = logging.getLogger(__name__)
 
 
+@Deprecated
 class TFTrainer:
-    def __init__(self,
-                 model_creator,
-                 data_creator,
-                 config=None,
-                 num_replicas=1,
-                 num_cpus_per_worker=1,
-                 use_gpu=False,
-                 verbose=False):
+    def __init__(
+        self,
+        model_creator,
+        data_creator,
+        config=None,
+        num_replicas=1,
+        num_cpus_per_worker=1,
+        use_gpu=False,
+        verbose=False,
+    ):
         """Sets up the TensorFlow trainer.
 
         Args:
@@ -51,8 +55,9 @@ class TFTrainer:
         # Generate actor class
         # todo: are these resource quotas right?
         # should they be exposed to the client codee?
-        Runner = ray.remote(
-            num_cpus=self.num_cpus_per_worker, num_gpus=int(use_gpu))(TFRunner)
+        Runner = ray.remote(num_cpus=self.num_cpus_per_worker, num_gpus=int(use_gpu))(
+            TFRunner
+        )
 
         # todo: should we warn about using
         # distributed training on one device only?
@@ -64,7 +69,8 @@ class TFTrainer:
                     model_creator,
                     data_creator,
                     config=self.config,
-                    verbose=self.verbose)
+                    verbose=self.verbose,
+                )
             ]
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
@@ -75,23 +81,24 @@ class TFTrainer:
                     model_creator,
                     data_creator,
                     config=self.config,
-                    verbose=self.verbose and i == 0)
+                    verbose=self.verbose and i == 0,
+                )
                 for i in range(num_replicas)
             ]
 
             # Compute URL for initializing distributed setup
-            ips = ray.get(
-                [worker.get_node_ip.remote() for worker in self.workers])
-            ports = ray.get(
-                [worker.find_free_port.remote() for worker in self.workers])
+            ips = ray.get([worker.get_node_ip.remote() for worker in self.workers])
+            ports = ray.get([worker.find_free_port.remote() for worker in self.workers])
 
             urls = [f"{ips[i]}:{ports[i]}" for i in range(len(self.workers))]
 
             # Get setup tasks in order to throw errors on failure
-            ray.get([
-                worker.setup_distributed.remote(urls, i, len(self.workers))
-                for i, worker in enumerate(self.workers)
-            ])
+            ray.get(
+                [
+                    worker.setup_distributed.remote(urls, i, len(self.workers))
+                    for i, worker in enumerate(self.workers)
+                ]
+            )
 
     def train(self):
         """Runs a training epoch."""
@@ -162,11 +169,9 @@ class TFTrainer:
 class TFTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
-        return Resources(
-            cpu=0,
-            gpu=0,
-            extra_cpu=config["num_replicas"],
-            extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
+        return PlacementGroupFactory(
+            [{}] + [{"CPU": 1, "GPU": int(config["use_gpu"])}] * config["num_replicas"]
+        )
 
     def setup(self, config):
         self._trainer = TFTrainer(
@@ -175,7 +180,8 @@ class TFTrainable(Trainable):
             config=config.get("trainer_config", {}),
             num_replicas=config["num_replicas"],
             use_gpu=config["use_gpu"],
-            num_cpus_per_worker=config.get("num_cpus_per_worker", 1))
+            num_cpus_per_worker=config.get("num_cpus_per_worker", 1),
+        )
 
     def step(self):
 

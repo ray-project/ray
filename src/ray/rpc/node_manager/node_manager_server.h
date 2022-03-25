@@ -28,6 +28,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, UpdateResourceUsage, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReport, -1)  \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, -1)     \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReportWorkerBacklog, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, -1)           \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease, -1)      \
@@ -41,7 +42,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage, -1)  \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig, -1)        \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress, -1)
+  RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress, -1)    \
+  RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -70,6 +72,10 @@ class NodeManagerServiceHandler {
                                         RequestWorkerLeaseReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleReportWorkerBacklog(const ReportWorkerBacklogRequest &request,
+                                         ReportWorkerBacklogReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleReturnWorker(const ReturnWorkerRequest &request,
                                   ReturnWorkerReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -77,6 +83,10 @@ class NodeManagerServiceHandler {
   virtual void HandleReleaseUnusedWorkers(const ReleaseUnusedWorkersRequest &request,
                                           ReleaseUnusedWorkersReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleShutdownRaylet(const ShutdownRayletRequest &request,
+                                    ShutdownRayletReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                        rpc::CancelWorkerLeaseReply *reply,
@@ -105,7 +115,8 @@ class NodeManagerServiceHandler {
                                   GetNodeStatsReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGlobalGC(const GlobalGCRequest &request, GlobalGCReply *reply,
+  virtual void HandleGlobalGC(const GlobalGCRequest &request,
+                              GlobalGCReply *reply,
                               SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleFormatGlobalMemoryInfo(const FormatGlobalMemoryInfoRequest &request,

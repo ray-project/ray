@@ -8,21 +8,23 @@ ray.init(address="auto")
 serve.start()
 
 
+# __custom_metrics_deployment_start__
 @serve.deployment
 class MyDeployment:
     def __init__(self):
         self.my_counter = metrics.Counter(
             "my_counter",
-            description=("The number of excellent requests to this backend."),
-            tag_keys=("deployment", ))
-        self.my_counter.set_default_tags({
-            "deployment": serve.get_current_deployment()
-        })
+            description=("The number of excellent reqs to this deployment."),
+            tag_keys=("deployment",),
+        )
+        self.my_counter.set_default_tags({"deployment": serve.get_current_deployment()})
 
     def call(self, excellent=False):
         if excellent:
             self.my_counter.inc()
 
+
+# __custom_metrics_deployment_end__
 
 MyDeployment.deploy()
 

@@ -14,19 +14,16 @@
 
 #pragma once
 
+#include <google/protobuf/arena.h>
 #include <grpcpp/grpcpp.h>
 
-#include <ctype.h>
 #include <boost/asio.hpp>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/stats/metric.h"
-
-DECLARE_stats(grpc_server_req_latency_ms);
-DECLARE_stats(grpc_server_req_new);
-DECLARE_stats(grpc_server_req_handling);
-DECLARE_stats(grpc_server_req_finished);
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace rpc {
@@ -38,8 +35,8 @@ namespace rpc {
 /// sent to the client.
 /// \param failure Failure callback which will be invoked when the reply fails to be
 /// sent to the client.
-using SendReplyCallback = std::function<void(Status status, std::function<void()> success,
-                                             std::function<void()> failure)>;
+using SendReplyCallback = std::function<void(
+    Status status, std::function<void()> success, std::function<void()> failure)>;
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
@@ -116,7 +113,8 @@ class ServerCallFactory {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
-using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
+using HandleRequestFunction = void (ServiceHandler::*)(const Request &,
+                                                       Reply *,
                                                        SendReplyCallback);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
@@ -135,35 +133,34 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] io_service The event loop.
   ServerCallImpl(
-      const ServerCallFactory &factory, ServiceHandler &service_handler,
+      const ServerCallFactory &factory,
+      ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      instrumented_io_context &io_service, std::string call_name)
+      instrumented_io_context &io_service,
+      std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
         io_service_(io_service),
-        call_name_(std::move(call_name)) {
+        call_name_(std::move(call_name)),
+        start_time_(0) {
+    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
-    STATS_grpc_server_req_new.Record(1.0, call_name_);
-    start_time_ = absl::GetCurrentTimeNanos();
+    ray::stats::STATS_grpc_server_req_new.Record(1.0, call_name_);
   }
 
-  ~ServerCallImpl() override {
-    STATS_grpc_server_req_finished.Record(1.0, call_name_);
-    auto end_time = absl::GetCurrentTimeNanos();
-    STATS_grpc_server_req_latency_ms.Record((end_time - start_time_) / 1000000,
-                                            call_name_);
-  }
+  ~ServerCallImpl() override = default;
 
   ServerCallState GetState() const override { return state_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    STATS_grpc_server_req_handling.Record(1.0, call_name_);
+    start_time_ = absl::GetCurrentTimeNanos();
+    ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
@@ -187,9 +184,10 @@ class ServerCallImpl : public ServerCall {
       factory.CreateCall();
     }
     (service_handler_.*handle_request_function_)(
-        request_, &reply_,
-        [this](Status status, std::function<void()> success,
-               std::function<void()> failure) {
+        request_,
+        reply_,
+        [this](
+            Status status, std::function<void()> success, std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
           // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
@@ -203,27 +201,41 @@ class ServerCallImpl : public ServerCall {
   }
 
   void OnReplySent() override {
+    ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_success_callback_);
       io_service_.post([callback]() { callback(); }, call_name_ + ".success_callback");
     }
+    LogProcessTime();
   }
 
   void OnReplyFailed() override {
+    ray::stats::STATS_grpc_server_req_finished.Record(1.0, call_name_);
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_failure_callback_);
       io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
     }
+    LogProcessTime();
   }
 
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
+  /// Log the duration this query used
+  void LogProcessTime() {
+    auto end_time = absl::GetCurrentTimeNanos();
+    ray::stats::STATS_grpc_server_req_process_time_ms.Record(
+        (end_time - start_time_) / 1000000.0, call_name_);
+  }
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
+    response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
+
+  /// The memory pool for this request. It's used for reply.
+  /// With arena, we'll be able to setup the reply without copying some field.
+  google::protobuf::Arena arena_;
 
   /// State of this call.
   ServerCallState state_;
@@ -250,8 +262,9 @@ class ServerCallImpl : public ServerCall {
   /// The request message.
   Request request_;
 
-  /// The reply message.
-  Reply reply_;
+  /// The reply message. This one is owned by arena. It's not valid beyond
+  /// the life-cycle of this call.
+  Reply *reply_;
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
@@ -275,9 +288,13 @@ class ServerCallImpl : public ServerCall {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
-using RequestCallFunction = void (GrpcService::AsyncService::*)(
-    grpc::ServerContext *, Request *, grpc::ServerAsyncResponseWriter<Reply> *,
-    grpc::CompletionQueue *, grpc::ServerCompletionQueue *, void *);
+using RequestCallFunction =
+    void (GrpcService::AsyncService::*)(grpc::ServerContext *,
+                                        Request *,
+                                        grpc::ServerAsyncResponseWriter<Reply> *,
+                                        grpc::CompletionQueue *,
+                                        grpc::ServerCompletionQueue *,
+                                        void *);
 
 /// Implementation of `ServerCallFactory`
 ///
@@ -307,7 +324,9 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
+      instrumented_io_context &io_service,
+      std::string call_name,
+      int64_t max_active_rpcs)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -324,8 +343,11 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
-    (service_.*request_call_function_)(&call->context_, &call->request_,
-                                       &call->response_writer_, cq_.get(), cq_.get(),
+    (service_.*request_call_function_)(&call->context_,
+                                       &call->request_,
+                                       &call->response_writer_,
+                                       cq_.get(),
+                                       cq_.get(),
                                        call);
   }
 

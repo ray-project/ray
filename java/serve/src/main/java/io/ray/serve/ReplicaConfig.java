@@ -10,16 +10,16 @@ public class ReplicaConfig implements Serializable {
 
   private static final long serialVersionUID = -1442657824045704226L;
 
-  private String backendDef;
+  private String deploymentDef;
 
-  private Object[] initArgs;
+  private byte[] initArgs;
 
   private Map<String, Object> rayActorOptions;
 
   private Map<String, Double> resource;
 
-  public ReplicaConfig(String backendDef, Object[] initArgs, Map<String, Object> rayActorOptions) {
-    this.backendDef = backendDef;
+  public ReplicaConfig(String deploymentDef, byte[] initArgs, Map<String, Object> rayActorOptions) {
+    this.deploymentDef = deploymentDef;
     this.initArgs = initArgs;
     this.rayActorOptions = rayActorOptions;
     this.resource = new HashMap<>();
@@ -30,7 +30,7 @@ public class ReplicaConfig implements Serializable {
   private void validate() {
     Preconditions.checkArgument(
         !rayActorOptions.containsKey("placement_group"),
-        "Providing placement_group for backend actors is not currently supported.");
+        "Providing placement_group for deployment actors is not currently supported.");
 
     Preconditions.checkArgument(
         !rayActorOptions.containsKey("lifetime"),
@@ -81,19 +81,19 @@ public class ReplicaConfig implements Serializable {
     resource.putAll((Map) customResources);
   }
 
-  public String getBackendDef() {
-    return backendDef;
+  public String getDeploymentDef() {
+    return deploymentDef;
   }
 
-  public void setBackendDef(String backendDef) {
-    this.backendDef = backendDef;
+  public void setDeploymentDef(String deploymentDef) {
+    this.deploymentDef = deploymentDef;
   }
 
-  public Object[] getInitArgs() {
+  public byte[] getInitArgs() {
     return initArgs;
   }
 
-  public void setInitArgs(Object[] initArgs) {
+  public void setInitArgs(byte[] initArgs) {
     this.initArgs = initArgs;
   }
 

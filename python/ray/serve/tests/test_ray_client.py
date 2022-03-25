@@ -1,6 +1,7 @@
 import random
 import subprocess
 import sys
+import time
 
 import pytest
 import requests
@@ -17,10 +18,17 @@ MAX_DYNAMIC_PORT = 65535
 @pytest.fixture
 def ray_client_instance(scope="module"):
     port = random.randint(MIN_DYNAMIC_PORT, MAX_DYNAMIC_PORT)
-    subprocess.check_output([
-        "ray", "start", "--head", "--num-cpus", "16",
-        "--ray-client-server-port", f"{port}"
-    ])
+    subprocess.check_output(
+        [
+            "ray",
+            "start",
+            "--head",
+            "--num-cpus",
+            "16",
+            "--ray-client-server-port",
+            f"{port}",
+        ]
+    )
     try:
         yield f"localhost:{port}"
     finally:
@@ -28,8 +36,14 @@ def ray_client_instance(scope="module"):
 
 
 @pytest.fixture
-def serve_with_client(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="default_test_namespace")
+def serve_with_client(ray_client_instance, ray_init_kwargs=None):
+    if ray_init_kwargs is None:
+        ray_init_kwargs = dict()
+    ray.init(
+        f"ray://{ray_client_instance}",
+        namespace="default_test_namespace",
+        **ray_init_kwargs,
+    )
     assert ray.util.client.ray.is_connected()
 
     yield
@@ -38,7 +52,9 @@ def serve_with_client(ray_client_instance):
     ray.util.disconnect()
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Buggy on MacOS + Windows")
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "win32", reason="Buggy on MacOS"
+)
 def test_ray_client(ray_client_instance):
     ray.util.connect(ray_client_instance, namespace="default_test_namespace")
 
@@ -49,7 +65,9 @@ ray.util.connect("{}", namespace="default_test_namespace")
 from ray import serve
 
 serve.start(detached=True)
-""".format(ray_client_instance)
+""".format(
+        ray_client_instance
+    )
     run_string_as_driver(start)
 
     deploy = """
@@ -63,7 +81,9 @@ def f(*args):
     return "hello"
 
 f.deploy()
-""".format(ray_client_instance)
+""".format(
+        ray_client_instance
+    )
     run_string_as_driver(deploy)
 
     assert "test1" in serve.list_deployments()
@@ -76,7 +96,9 @@ ray.util.connect("{}", namespace="default_test_namespace")
 from ray import serve
 
 serve.get_deployment("test1").delete()
-""".format(ray_client_instance)
+""".format(
+        ray_client_instance
+    )
     run_string_as_driver(delete)
 
     assert "test1" not in serve.list_deployments()
@@ -100,7 +122,9 @@ class A:
     pass
 
 A.deploy()
-""".format(ray_client_instance)
+""".format(
+        ray_client_instance
+    )
     run_string_as_driver(fastapi)
 
     assert requests.get("http://localhost:8000/A").json() == "hello"
@@ -109,7 +133,6 @@ A.deploy()
     ray.util.disconnect()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_quickstart_class(serve_with_client):
     serve.start()
 
@@ -125,8 +148,7 @@ def test_quickstart_class(serve_with_client):
     assert response == "Hello serve!"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_quickstart_task(serve_with_client):
+def test_quickstart_counter(serve_with_client):
     serve.start()
 
     @serve.deployment
@@ -140,12 +162,50 @@ def test_quickstart_task(serve_with_client):
 
     # Deploy our class.
     Counter.deploy()
+    print("deploy finished")
 
     # Query our endpoint in two different ways: from HTTP and from Python.
     assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
+    print("query 1 finished")
     assert ray.get(Counter.get_handle().remote()) == {"count": 2}
+    print("query 2 finished")
+
+
+@pytest.mark.parametrize(
+    "serve_with_client",
+    [
+        {
+            "runtime_env": {
+                "env_vars": {
+                    "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
+                    "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
+                }
+            }
+        }
+    ],
+    indirect=True,
+)
+def test_handle_hanging(serve_with_client):
+    # With https://github.com/ray-project/ray/issues/20971
+    # the following will hang forever.
+
+    serve.start()
+
+    @serve.deployment
+    def f():
+        return 1
+
+    f.deploy()
+
+    handle = f.get_handle()
+    for _ in range(5):
+        assert ray.get(handle.remote()) == 1
+        time.sleep(0.5)
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

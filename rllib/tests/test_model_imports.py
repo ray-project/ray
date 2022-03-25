@@ -22,30 +22,31 @@ torch, nn = try_import_torch()
 class MyKerasModel(TFModelV2):
     """Custom model for policy gradient algorithms."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        super(MyKerasModel, self).__init__(obs_space, action_space,
-                                           num_outputs, model_config, name)
-        self.inputs = tf.keras.layers.Input(
-            shape=obs_space.shape, name="observations")
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super(MyKerasModel, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name
+        )
+        self.inputs = tf.keras.layers.Input(shape=obs_space.shape, name="observations")
         layer_1 = tf.keras.layers.Dense(
             16,
             name="layer1",
             activation=tf.nn.relu,
-            kernel_initializer=normc_initializer(1.0))(self.inputs)
+            kernel_initializer=normc_initializer(1.0),
+        )(self.inputs)
         layer_out = tf.keras.layers.Dense(
             num_outputs,
             name="out",
             activation=None,
-            kernel_initializer=normc_initializer(0.01))(layer_1)
+            kernel_initializer=normc_initializer(0.01),
+        )(layer_1)
         if self.model_config["vf_share_layers"]:
             value_out = tf.keras.layers.Dense(
                 1,
                 name="value",
                 activation=None,
-                kernel_initializer=normc_initializer(0.01))(layer_1)
-            self.base_model = tf.keras.Model(self.inputs,
-                                             [layer_out, value_out])
+                kernel_initializer=normc_initializer(0.01),
+            )(layer_1)
+            self.base_model = tf.keras.Model(self.inputs, [layer_out, value_out])
         else:
             self.base_model = tf.keras.Model(self.inputs, layer_out)
 
@@ -54,8 +55,7 @@ class MyKerasModel(TFModelV2):
             model_out, self._value_out = self.base_model(input_dict["obs"])
         else:
             model_out = self.base_model(input_dict["obs"])
-            self._value_out = tf.zeros(
-                shape=(tf.shape(input_dict["obs"])[0], ))
+            self._value_out = tf.zeros(shape=(tf.shape(input_dict["obs"])[0],))
         return model_out, state
 
     def value_function(self):
@@ -69,14 +69,13 @@ class MyKerasModel(TFModelV2):
 class MyTorchModel(TorchModelV2, nn.Module):
     """Generic vision network."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        TorchModelV2.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
         nn.Module.__init__(self)
 
-        self.device = torch.device("cuda"
-                                   if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.layer_1 = nn.Linear(obs_space.shape[0], 16).to(self.device)
         self.layer_out = nn.Linear(16, num_outputs).to(self.device)
@@ -101,31 +100,43 @@ class MyTorchModel(TorchModelV2, nn.Module):
         value = f["value"][DEFAULT_POLICY_ID]["value"]
 
         try:
-            self.layer_1.load_state_dict({
-                "weight": torch.Tensor(np.transpose(layer1["kernel:0"])),
-                "bias": torch.Tensor(np.transpose(layer1["bias:0"])),
-            })
-            self.layer_out.load_state_dict({
-                "weight": torch.Tensor(np.transpose(out["kernel:0"])),
-                "bias": torch.Tensor(np.transpose(out["bias:0"])),
-            })
-            self.value_branch.load_state_dict({
-                "weight": torch.Tensor(np.transpose(value["kernel:0"])),
-                "bias": torch.Tensor(np.transpose(value["bias:0"])),
-            })
+            self.layer_1.load_state_dict(
+                {
+                    "weight": torch.Tensor(np.transpose(layer1["kernel:0"])),
+                    "bias": torch.Tensor(np.transpose(layer1["bias:0"])),
+                }
+            )
+            self.layer_out.load_state_dict(
+                {
+                    "weight": torch.Tensor(np.transpose(out["kernel:0"])),
+                    "bias": torch.Tensor(np.transpose(out["bias:0"])),
+                }
+            )
+            self.value_branch.load_state_dict(
+                {
+                    "weight": torch.Tensor(np.transpose(value["kernel:0"])),
+                    "bias": torch.Tensor(np.transpose(value["bias:0"])),
+                }
+            )
         except AttributeError:
-            self.layer_1.load_state_dict({
-                "weight": torch.Tensor(np.transpose(layer1["kernel:0"].value)),
-                "bias": torch.Tensor(np.transpose(layer1["bias:0"].value)),
-            })
-            self.layer_out.load_state_dict({
-                "weight": torch.Tensor(np.transpose(out["kernel:0"].value)),
-                "bias": torch.Tensor(np.transpose(out["bias:0"].value)),
-            })
-            self.value_branch.load_state_dict({
-                "weight": torch.Tensor(np.transpose(value["kernel:0"].value)),
-                "bias": torch.Tensor(np.transpose(value["bias:0"].value)),
-            })
+            self.layer_1.load_state_dict(
+                {
+                    "weight": torch.Tensor(np.transpose(layer1["kernel:0"].value)),
+                    "bias": torch.Tensor(np.transpose(layer1["bias:0"].value)),
+                }
+            )
+            self.layer_out.load_state_dict(
+                {
+                    "weight": torch.Tensor(np.transpose(out["kernel:0"].value)),
+                    "bias": torch.Tensor(np.transpose(out["bias:0"].value)),
+                }
+            )
+            self.value_branch.load_state_dict(
+                {
+                    "weight": torch.Tensor(np.transpose(value["kernel:0"].value)),
+                    "bias": torch.Tensor(np.transpose(value["bias:0"].value)),
+                }
+            )
 
 
 def model_import_test(algo, config, env):
@@ -136,18 +147,21 @@ def model_import_test(algo, config, env):
     agent_cls = get_trainer_class(algo)
 
     for fw in framework_iterator(config, ["tf", "torch"]):
-        config["model"]["custom_model"] = "keras_model" if fw != "torch" else \
-            "torch_model"
+        config["model"]["custom_model"] = (
+            "keras_model" if fw != "torch" else "torch_model"
+        )
 
         agent = agent_cls(config, env)
 
         def current_weight(agent):
             if fw == "tf":
                 return agent.get_weights()[DEFAULT_POLICY_ID][
-                    "default_policy/value/kernel"][0]
+                    "default_policy/value/kernel"
+                ][0]
             elif fw == "torch":
-                return float(agent.get_weights()[DEFAULT_POLICY_ID][
-                    "value_branch.weight"][0][0])
+                return float(
+                    agent.get_weights()[DEFAULT_POLICY_ID]["value_branch.weight"][0][0]
+                )
             else:
                 return agent.get_weights()[DEFAULT_POLICY_ID][4][0]
 
@@ -195,10 +209,12 @@ class TestModelImport(unittest.TestCase):
                     "vf_share_layers": True,
                 },
             },
-            env="CartPole-v0")
+            env="CartPole-v0",
+        )
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

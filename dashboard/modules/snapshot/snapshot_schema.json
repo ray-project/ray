@@ -27,6 +27,12 @@
                 "[0-9a-f]*": {
                   "type": "object",
                   "properties": {
+                    "status": {
+                      "type": ["string", "null"]
+                    },
+                    "status_message": {
+                      "type": ["string", "null"]
+                    },
                     "isDead": {
                       "type": "boolean"
                     },
@@ -39,9 +45,6 @@
                     "config": {
                       "type": "object",
                       "properties": {
-                        "envVars": {
-                          "type": "object"
-                        },
                         "namespace": {
                           "type": "string"
                         },
@@ -53,7 +56,6 @@
                         }
                       },
                       "required": [
-                        "envVars",
                         "namespace",
                         "metadata",
                         "runtimeEnv"
@@ -65,6 +67,44 @@
                     "startTime",
                     "endTime",
                     "config"
+                  ]
+                }
+              }
+            },
+            "jobSubmission": {
+              "type": "object",
+              "patternProperties": {
+                "[0-9a-f]*": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": ["string", "null"]
+                    },
+                    "entrypoint": {
+                      "type": ["string", "null"]
+                    },
+                    "message": {
+                      "type": ["string", "null"]
+                    },
+                    "errorType": {
+                      "type": ["string", "null"]
+                    },
+                    "startTime": {
+                      "type": ["integer", "null"]
+                    },
+                    "endTime": {
+                      "type": ["integer", "null"]
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "runtimeEnv": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "entrypoint"
                   ]
                 }
               }
@@ -133,7 +173,7 @@
                             "type": "string"
                           },
                           "version": {
-                            "type": "string"
+                            "type": ["string", "null"]
                           }
                         },
                         "required": [
@@ -179,7 +219,7 @@
                       "type": "integer"
                     },
                     "httpRoute": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     },
                     "name": {
                       "type": "string"
@@ -194,7 +234,7 @@
                       "type": "string"
                     },
                     "version": {
-                      "type": "string"
+                      "type": ["string", "null"]
                     }
                   },
                   "required": [
@@ -219,6 +259,7 @@
             "rayVersion",
             "rayCommit",
             "jobs",
+            "jobSubmission",
             "actors",
             "sessionName"
           ]

@@ -33,7 +33,9 @@ def f():
 {}pass  # This is a weird hack to insert some blank space.
 
 f.remote()
-""".format(cluster.address, "{str(2): 1}", "    ")
+""".format(
+        cluster.address, "{str(2): 1}", "    "
+    )
 
     run_string_as_driver(driver_script)
 
@@ -41,12 +43,11 @@ f.remote()
     cluster.add_node(resources={str(2): 100})
 
     # Make sure we can still run tasks on all nodes.
-    ray.get([
-        f._remote(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)
-    ])
+    ray.get([f._remote(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)])
 
 
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

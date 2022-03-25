@@ -1,21 +1,22 @@
-Dask on Ray
-===========
-
 .. _dask-on-ray:
+
+Using Dask on Ray
+=================
+
 
 `Dask <https://dask.org/>`__ is a Python parallel computing library geared towards scaling analytics and
 scientific computing workloads. It provides `big data collections
 <https://docs.dask.org/en/latest/user-interfaces.html>`__ that mimic the APIs of
-the familiar `NumPy <https://numpy.org/>`__ and `Pandas <https://pandas.pydata.org/>`__ libraries, 
+the familiar `NumPy <https://numpy.org/>`__ and `Pandas <https://pandas.pydata.org/>`__ libraries,
 allowing those abstractions to represent
-larger-than-memory data and/or allowing operations on that data to be run on a multi-machine cluster, 
+larger-than-memory data and/or allowing operations on that data to be run on a multi-machine cluster,
 while also providing automatic data parallelism, smart scheduling,
 and optimized operations. Operations on these collections create a task graph, which is
 executed by a scheduler.
 
 Ray provides a scheduler for Dask (`dask_on_ray`) which allows you to build data
 analyses using Dask's collections and execute
-the underlying tasks on a Ray cluster. 
+the underlying tasks on a Ray cluster.
 
 `dask_on_ray` uses Dask's scheduler API, which allows you to
 specify any callable as the scheduler that you would like Dask to use to execute your
@@ -30,8 +31,26 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
+     * - ``1.12.0``
+       - ``2022.2.0``
+     * - ``1.11.0``
+       - ``2022.1.0``
+     * - ``1.10.0``
+       - ``2021.12.0``
+     * - ``1.9.2``
+       - ``2021.11.0``
+     * - ``1.9.1``
+       - ``2021.11.0``
+     * - ``1.9.0``
+       - ``2021.11.0``
+     * - ``1.8.0``
+       - ``2021.9.1``
+     * - ``1.7.0``
+       - ``2021.9.1``
+     * - ``1.6.0``
+       - ``2021.8.1``
      * - ``1.5.0``
-       - ``2021.7.0`` 
+       - ``2021.7.0``
      * - ``1.4.1``
        - ``2021.6.1``
      * - ``1.4.0``
@@ -54,7 +73,7 @@ Here's an example:
   For execution on a Ray cluster, you should *not* use the
   `Dask.distributed <https://distributed.dask.org/en/latest/quickstart.html>`__
   client; simply use plain Dask and its collections, and pass ``ray_dask_get``
-  to ``.compute()`` calls or set the scheduler in one of the other ways detailed `here <https://docs.dask.org/en/latest/scheduling.html#configuration>`__. Follow the instructions for
+  to ``.compute()`` calls, set the scheduler in one of the other ways detailed `here <https://docs.dask.org/en/latest/scheduling.html#configuration>`__, or use our ``enable_dask_on_ray`` configuration helper. Follow the instructions for
   :ref:`using Ray on a cluster <using-ray-on-a-cluster>` to modify the
   ``ray.init()`` call.
 
@@ -80,10 +99,10 @@ In this case, there are two recommended setup.
 .. code-block:: bash
 
   # Head node. Set `num_cpus=0` to avoid tasks are being scheduled on a head node.
-  RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --head --num-cpus=0
+  RAY_scheduler_spread_threshold=0.0 ray start --head --num-cpus=0
 
-  # Worker node. 
-  RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --address=[head-node-address]
+  # Worker node.
+  RAY_scheduler_spread_threshold=0.0 ray start --address=[head-node-address]
 
 Out-of-Core Data Processing
 ---------------------------
@@ -101,10 +120,10 @@ Persist
 
 .. _dask-on-ray-persist:
 
-Dask-on-Ray patches `dask.persist() 
-<https://docs.dask.org/en/latest/api.html#dask.persist>`__  in order to match `Dask 
+Dask-on-Ray patches `dask.persist()
+<https://docs.dask.org/en/latest/api.html#dask.persist>`__  in order to match `Dask
 Distributed's persist semantics
-<https://distributed.dask.org/en/latest/manage-computation.html#client-persist>`; namely, calling `dask.persist()` with a Dask-on-Ray 
+<https://distributed.dask.org/en/latest/manage-computation.html#client-persist>`__; namely, calling `dask.persist()` with a Dask-on-Ray
 scheduler will submit the tasks to the Ray cluster and return Ray futures inlined in the
 Dask collection. This is nice if you wish to compute some base collection (such as
 a Dask array), followed by multiple different downstream computations (such as
@@ -116,12 +135,33 @@ via shared memory.
     :language: python
 
 
+Annotations, Resources, and Task Options
+----------------------------------------
+
+.. _dask-on-ray-annotations:
+
+
+Dask-on-Ray supports specifying resources or any other Ray task option via `Dask's
+annotation API <https://docs.dask.org/en/stable/api.html#dask.annotate>`__. This
+annotation context manager can be used to attach resource requests (or any other Ray task
+option) to specific Dask operations, with the annotations funneling down to the
+underlying Ray tasks. Resource requests and other Ray task options can also be specified
+globally via the ``.compute(ray_remote_args={...})`` API, which will
+serve as a default for all Ray tasks launched via the Dask workload. Annotations on
+individual Dask operations will override this global default.
+
+.. literalinclude:: ../../../python/ray/util/dask/examples/dask_ray_annotate_example.py
+    :language: python
+
+Note that you may need to disable graph optimizations since it can break annotations,
+see `this Dask issue <https://github.com/dask/dask/issues/7036>`__.
+
 Custom optimization for Dask DataFrame shuffling
 ------------------------------------------------
 
 .. _dask-on-ray-shuffle-optimization:
 
-Dask on Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
+Dask-on-Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
 execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
 Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
 

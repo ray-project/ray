@@ -83,11 +83,10 @@ def stage2(smoke=False):
     for _ in range(5):
         iteration_start = time.time()
         for i in range(20):
-            logger.info("Iteration %s. Cumulative time %s seconds", i,
-                        time.time() - start_time)
-            x_ids = [
-                f.remote(0, *x_ids) for _ in range(num_tasks_per_iteration)
-            ]
+            logger.info(
+                "Iteration %s. Cumulative time %s seconds", i, time.time() - start_time
+            )
+            x_ids = [f.remote(0, *x_ids) for _ in range(num_tasks_per_iteration)]
         ray.get(x_ids)
         stage_2_iterations.append(time.time() - iteration_start)
         logger.info("Finished after %s seconds.", time.time() - start_time)
@@ -100,8 +99,7 @@ def stage3(total_num_remote_cpus, smoke=False):
     logger.info("Creating %s actors.", total_num_remote_cpus)
     actors = [Actor.remote() for _ in range(total_num_remote_cpus)]
     stage_3_creation_time = time.time() - start_time
-    logger.info("Finished stage 3 actor creation in %s seconds.",
-                stage_3_creation_time)
+    logger.info("Finished stage 3 actor creation in %s seconds.", stage_3_creation_time)
 
     num_tasks = 1000
 
@@ -182,13 +180,13 @@ if __name__ == "__main__":
     # Wait until the expected number of nodes have joined the cluster.
     while True:
         num_nodes = len(ray.nodes())
-        logger.info("Waiting for nodes {}/{}".format(num_nodes,
-                                                     num_remote_nodes + 1))
+        logger.info("Waiting for nodes {}/{}".format(num_nodes, num_remote_nodes + 1))
         if num_nodes >= num_remote_nodes + 1:
             break
         time.sleep(5)
-    logger.info("Nodes have all joined. There are %s resources.",
-                ray.cluster_resources())
+    logger.info(
+        "Nodes have all joined. There are %s resources.", ray.cluster_resources()
+    )
 
     stage_0_time = stage0(smoke=is_smoke_test)
     logger.info("Finished stage 0 after %s seconds.", stage_0_time)
@@ -198,7 +196,8 @@ if __name__ == "__main__":
     logger.info("Finished stage 1 after %s seconds.", stage_1_time)
     result["stage_1_time"] = stage_1_time
     result["stage_1_avg_iteration_time"] = sum(stage_1_iterations) / len(
-        stage_1_iterations)
+        stage_1_iterations
+    )
     result["stage_1_max_iteration_time"] = max(stage_1_iterations)
     result["stage_1_min_iteration_time"] = min(stage_1_iterations)
 
@@ -206,12 +205,14 @@ if __name__ == "__main__":
     logger.info("Finished stage 2 after %s seconds.", stage_2_time)
     result["stage_2_time"] = stage_2_time
     result["stage_2_avg_iteration_time"] = sum(stage_2_iterations) / len(
-        stage_2_iterations)
+        stage_2_iterations
+    )
     result["stage_2_max_iteration_time"] = max(stage_2_iterations)
     result["stage_2_min_iteration_time"] = min(stage_2_iterations)
 
     stage_3_time, stage_3_creation_time = stage3(
-        total_num_remote_cpus, smoke=is_smoke_test)
+        total_num_remote_cpus, smoke=is_smoke_test
+    )
     logger.info("Finished stage 3 in %s seconds.", stage_3_time)
     result["stage_3_creation_time"] = stage_3_creation_time
     result["stage_3_time"] = stage_3_time

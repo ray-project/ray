@@ -16,7 +16,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
@@ -29,7 +28,7 @@ namespace core {
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies) {
   TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
+  task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
   for (const ObjectID &dep : dependencies) {
     task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
@@ -40,39 +39,55 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest(bool lineage_pinning_enabled = false)
+  TaskManagerTest(bool lineage_pinning_enabled = false,
+                  int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(
-            new ReferenceCounter(rpc::Address(), publisher_.get(), subscriber_.get(),
-                                 lineage_pinning_enabled))),
-        manager_(store_, reference_counter_,
-                 [this](TaskSpecification &spec, bool delay) {
-                   num_retries_++;
-                   return Status::OK();
-                 },
-                 [this](const NodeID &node_id) { return all_nodes_alive_; },
-                 [this](const ObjectID &object_id) {
-                   objects_to_recover_.push_back(object_id);
-                 },
-                 [](const JobID &job_id, const std::string &type,
-                    const std::string &error_message,
-                    double timestamp) { return Status::OK(); }) {}
+        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
+            rpc::Address(),
+            publisher_.get(),
+            subscriber_.get(),
+            [this](const NodeID &node_id) { return all_nodes_alive_; },
+            lineage_pinning_enabled))),
+        manager_(
+            store_,
+            reference_counter_,
+            [this](const RayObject &object, const ObjectID &object_id) {
+              stored_in_plasma.insert(object_id);
+            },
+            [this](TaskSpecification &spec, bool delay) {
+              num_retries_++;
+              return Status::OK();
+            },
+            [](const JobID &job_id,
+               const std::string &type,
+               const std::string &error_message,
+               double timestamp) { return Status::OK(); },
+            max_lineage_bytes) {}
+
+  virtual void TearDown() { AssertNoLeaks(); }
+
+  void AssertNoLeaks() {
+    absl::MutexLock lock(&manager_.mu_);
+    ASSERT_EQ(manager_.submissible_tasks_.size(), 0);
+    ASSERT_EQ(manager_.num_pending_tasks_, 0);
+    ASSERT_EQ(manager_.total_lineage_footprint_bytes_, 0);
+  }
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   bool all_nodes_alive_ = true;
-  std::vector<ObjectID> objects_to_recover_;
   TaskManager manager_;
   int num_retries_ = 0;
+  std::unordered_set<ObjectID> stored_in_plasma;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
  public:
-  TaskManagerLineageTest() : TaskManagerTest(true) {}
+  TaskManagerLineageTest() : TaskManagerTest(true, /*max_lineage_bytes=*/10000) {}
 };
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
@@ -86,6 +101,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -96,18 +112,19 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_FALSE(results[0]->IsException());
-  ASSERT_EQ(std::memcmp(results[0]->GetData()->Data(), return_object->data().data(),
+  ASSERT_EQ(std::memcmp(results[0]->GetData()->Data(),
+                        return_object->data().data(),
                         return_object->data().size()),
             0);
   ASSERT_EQ(num_retries_, 0);
 
   std::vector<ObjectID> removed;
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -125,12 +142,14 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   auto error = rpc::ErrorType::WORKER_DIED;
-  manager_.PendingTaskFailed(spec.TaskId(), error);
+  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
@@ -141,7 +160,6 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_EQ(num_retries_, 0);
 
   std::vector<ObjectID> removed;
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -156,7 +174,7 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
 
-  ASSERT_TRUE(objects_to_recover_.empty());
+  ASSERT_TRUE(reference_counter_->FlushObjectsToRecover().empty());
   all_nodes_alive_ = false;
 
   rpc::PushTaskReply reply;
@@ -168,9 +186,46 @@ TEST_F(TaskManagerTest, TestPlasmaConcurrentFailure) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
-  ASSERT_EQ(objects_to_recover_.size(), 1);
-  ASSERT_EQ(objects_to_recover_[0], return_id);
+  // Caller of FlushObjectsToRecover is responsible for deleting the object
+  // from the in-memory store and recovering the object.
+  ASSERT_TRUE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
+  auto objects_to_recover = reference_counter_->FlushObjectsToRecover();
+  ASSERT_EQ(objects_to_recover.size(), 1);
+  ASSERT_EQ(objects_to_recover[0], return_id);
+}
+
+TEST_F(TaskManagerTest, TestFailPendingTask) {
+  rpc::Address caller_address;
+  ObjectID dep1 = ObjectID::FromRandom();
+  ObjectID dep2 = ObjectID::FromRandom();
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  auto spec = CreateTaskHelper(1, {dep1, dep2});
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
+  auto return_id = spec.ReturnId(0);
+  WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
+
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
+  // Only the return object reference should remain.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
+  ASSERT_EQ(results.size(), 1);
+  rpc::ErrorType stored_error;
+  ASSERT_TRUE(results[0]->IsException(&stored_error));
+  ASSERT_EQ(stored_error, rpc::ErrorType::LOCAL_RAYLET_DIED);
+
+  std::vector<ObjectID> removed;
+  reference_counter_->RemoveLocalReference(return_id, &removed);
+  ASSERT_EQ(removed[0], return_id);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
 }
 
 TEST_F(TaskManagerTest, TestTaskReconstruction) {
@@ -186,22 +241,25 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0);
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
+  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   auto error = rpc::ErrorType::WORKER_DIED;
   for (int i = 0; i < num_retries; i++) {
     RAY_LOG(INFO) << "Retry " << i;
-    manager_.PendingTaskFailed(spec.TaskId(), error);
+    manager_.FailOrRetryPendingTask(spec.TaskId(), error);
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+    ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
     std::vector<std::shared_ptr<RayObject>> results;
     ASSERT_FALSE(store_->Get({return_id}, 1, 0, ctx, false, &results).ok());
     ASSERT_EQ(num_retries_, i + 1);
   }
 
-  manager_.PendingTaskFailed(spec.TaskId(), error);
+  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
@@ -211,7 +269,6 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   ASSERT_EQ(stored_error, error);
 
   std::vector<ObjectID> removed;
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, &removed);
   ASSERT_EQ(removed[0], return_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -231,7 +288,7 @@ TEST_F(TaskManagerTest, TestTaskKill) {
 
   manager_.MarkTaskCanceled(spec.TaskId());
   auto error = rpc::ErrorType::TASK_CANCELLED;
-  manager_.PendingTaskFailed(spec.TaskId(), error);
+  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));
@@ -269,7 +326,6 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
 
   // Once the return ID goes out of scope, the task spec and its dependencies
   // are released.
-  reference_counter_->AddLocalReference(return_id, "");
   reference_counter_->RemoveLocalReference(return_id, nullptr);
   ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
   ASSERT_FALSE(reference_counter_->HasReference(return_id));
@@ -288,7 +344,6 @@ TEST_F(TaskManagerLineageTest, TestLineagePinned) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   auto return_id = spec.ReturnId(0);
-  reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
@@ -327,7 +382,6 @@ TEST_F(TaskManagerLineageTest, TestDirectObjectNoLineage) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   auto return_id = spec.ReturnId(0);
-  reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
@@ -361,7 +415,6 @@ TEST_F(TaskManagerLineageTest, TestLineagePinnedOutOfOrder) {
   int num_retries = 3;
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   auto return_id = spec.ReturnId(0);
-  reference_counter_->AddLocalReference(return_id, "");
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
 
@@ -395,13 +448,11 @@ TEST_F(TaskManagerLineageTest, TestRecursiveLineagePinned) {
   rpc::Address caller_address;
 
   ObjectID dep = ObjectID::FromRandom();
-  reference_counter_->AddLocalReference(dep, "");
   for (int i = 0; i < 3; i++) {
     auto spec = CreateTaskHelper(1, {dep});
     int num_retries = 3;
     manager_.AddPendingTask(caller_address, spec, "", num_retries);
     auto return_id = spec.ReturnId(0);
-    reference_counter_->AddLocalReference(return_id, "");
 
     // The task completes.
     rpc::PushTaskReply reply;
@@ -442,7 +493,7 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
     int num_retries = 3;
     manager_.AddPendingTask(caller_address, spec, "", num_retries);
     auto return_id = spec.ReturnId(0);
-    reference_counter_->AddLocalReference(return_id, "");
+    reference_counter_->RemoveLocalReference(dep, nullptr);
 
     // The task completes.
     rpc::PushTaskReply reply;
@@ -455,15 +506,13 @@ TEST_F(TaskManagerLineageTest, TestRecursiveDirectObjectNoLineage) {
 
     // No tasks should be pinned because they returned direct objects.
     ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
-    // Only the dependency and the newest return ID should be in scope because
-    // all objects in the lineage were direct.
-    ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+    // Only the newest return ID should be in scope because all objects in the
+    // lineage were direct.
+    ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 
-    reference_counter_->RemoveLocalReference(dep, nullptr);
     dep = return_id;
   }
 
-  // The task's return ID goes out of scope before the task finishes.
   reference_counter_->RemoveLocalReference(dep, nullptr);
   ASSERT_EQ(manager_.NumSubmissibleTasks(), 0);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -477,23 +526,24 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ObjectID dep1 = ObjectID::FromRandom();
   ObjectID dep2 = ObjectID::FromRandom();
   auto spec = CreateTaskHelper(1, {dep1, dep2});
+  auto return_id = spec.ReturnId(0);
   int num_retries = 3;
 
   // Cannot resubmit a task whose spec we do not have.
   std::vector<ObjectID> resubmitted_task_deps;
-  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 0);
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   // A task that is already pending does not get resubmitted.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 0);
+  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The task completes.
-  auto return_id = spec.ReturnId(0);
-  reference_counter_->AddLocalReference(return_id, "");
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
   return_object->set_object_id(return_id.Binary());
@@ -501,30 +551,89 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   return_object->set_data(data->Data(), data->Size());
   return_object->set_in_plasma(true);
   manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The task finished, its return ID is still in scope, and the return object
   // was stored in plasma. It is okay to resubmit it now.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   resubmitted_task_deps.clear();
+  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The return ID goes out of scope.
   reference_counter_->RemoveLocalReference(return_id, nullptr);
   // The task is still pending execution.
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   // A task that is already pending does not get resubmitted.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 1);
+  // Object is out of scope, so no longer pending creation.
+  ASSERT_FALSE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The resubmitted task finishes.
   manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // The task cannot be resubmitted because its spec has been released.
-  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+}
+
+// Test resubmission for a task that was successfully executed once and stored
+// its return values in plasma. On re-execution, the task's return values
+// should be stored in plasma again, even if the worker returns its values
+// directly.
+TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(2, {});
+  auto return_id1 = spec.ReturnId(0);
+  auto return_id2 = spec.ReturnId(1);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/1);
+
+  // The task completes. Both return objects are stored in plasma.
+  {
+    rpc::PushTaskReply reply;
+    auto return_object1 = reply.add_return_objects();
+    return_object1->set_object_id(return_id1.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object1->set_data(data->Data(), data->Size());
+    return_object1->set_in_plasma(true);
+    auto return_object2 = reply.add_return_objects();
+    return_object2->set_object_id(return_id2.Binary());
+    return_object2->set_data(data->Data(), data->Size());
+    return_object2->set_in_plasma(true);
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  }
+
+  // The task finished, its return ID is still in scope, and the return object
+  // was stored in plasma. It is okay to resubmit it now.
+  ASSERT_TRUE(stored_in_plasma.empty());
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
+  ASSERT_EQ(num_retries_, 1);
+
+  // The re-executed task completes again. One of the return objects is now
+  // returned directly.
+  {
+    reference_counter_->AddLocalReference(return_id1, "");
+    reference_counter_->AddLocalReference(return_id2, "");
+    rpc::PushTaskReply reply;
+    auto return_object1 = reply.add_return_objects();
+    return_object1->set_object_id(return_id1.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object1->set_data(data->Data(), data->Size());
+    return_object1->set_in_plasma(false);
+    auto return_object2 = reply.add_return_objects();
+    return_object2->set_object_id(return_id2.Binary());
+    return_object2->set_data(data->Data(), data->Size());
+    return_object2->set_in_plasma(true);
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  }
+  ASSERT_TRUE(stored_in_plasma.count(return_id1));
+  ASSERT_FALSE(stored_in_plasma.count(return_id2));
 }
 
 }  // namespace core

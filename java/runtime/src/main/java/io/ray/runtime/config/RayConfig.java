@@ -2,21 +2,24 @@ package io.ray.runtime.config;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
-import com.typesafe.config.ConfigValue;
 import io.ray.api.id.JobId;
+import io.ray.api.options.ActorLifetime;
 import io.ray.runtime.generated.Common.WorkerType;
+import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.SystemUtils;
 
 /** Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field. */
 public class RayConfig {
@@ -35,7 +38,7 @@ public class RayConfig {
   public String sessionDir;
   public String logDir;
 
-  private String redisAddress;
+  private String bootstrapAddress;
   public final String redisPassword;
 
   // RPC socket name of object store.
@@ -46,19 +49,42 @@ public class RayConfig {
   // Listening port for node manager.
   public int nodeManagerPort;
 
+  public int startupToken;
+
+  public int runtimeEnvHash;
+
+  public RuntimeEnvImpl runtimeEnvImpl = null;
+
+  public final ActorLifetime defaultActorLifetime;
+
+  public static class LoggerConf {
+    public final String loggerName;
+    public final String fileName;
+    public final String pattern;
+
+    public LoggerConf(String loggerName, String fileName, String pattern) {
+      this.loggerName = loggerName;
+      this.fileName = fileName;
+      this.pattern = pattern;
+    }
+  }
+
+  public final List<LoggerConf> loggers;
+
   public final List<String> codeSearchPath;
 
   public final List<String> headArgs;
 
   public final int numWorkersPerProcess;
 
+  public final String namespace;
+
   public final List<String> jvmOptionsForJavaWorker;
-  public final Map<String, String> workerEnv;
 
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(
-          redisAddress != null, "Redis address must be set in worker mode.");
+          bootstrapAddress != null, "Bootstrap address must be set in worker mode.");
     }
   }
 
@@ -91,8 +117,15 @@ public class RayConfig {
     if (config.hasPath("ray.node-ip")) {
       nodeIp = config.getString("ray.node-ip");
     } else {
-      nodeIp = NetworkUtil.getIpAddress(null);
+      if (SystemUtils.IS_OS_LINUX) {
+        nodeIp = NetworkUtil.getIpAddress(null);
+      } else {
+        /// We use a localhost on MacOS or Windows to avid security popups.
+        /// See the related issue https://github.com/ray-project/ray/issues/18730
+        nodeIp = NetworkUtil.localhostIp();
+      }
     }
+
     // Job id.
     String jobId = config.getString("ray.job.id");
     if (!jobId.isEmpty()) {
@@ -101,17 +134,21 @@ public class RayConfig {
       this.jobId = JobId.NIL;
     }
 
+    // Namespace of this job.
+    String localNamespace = config.getString("ray.job.namespace");
+    if (workerMode == WorkerType.DRIVER) {
+      namespace =
+          StringUtils.isEmpty(localNamespace) ? UUID.randomUUID().toString() : localNamespace;
+    } else {
+      /// We shouldn't set it for worker.
+      namespace = null;
+    }
+
+    defaultActorLifetime = config.getEnum(ActorLifetime.class, "ray.job.default-actor-lifetime");
+    Preconditions.checkState(defaultActorLifetime != null);
+
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");
-
-    ImmutableMap.Builder<String, String> workerEnvBuilder = ImmutableMap.builder();
-    Config workerEnvConfig = config.getConfig("ray.job.worker-env");
-    if (workerEnvConfig != null) {
-      for (Map.Entry<String, ConfigValue> entry : workerEnvConfig.entrySet()) {
-        workerEnvBuilder.put(entry.getKey(), workerEnvConfig.getString(entry.getKey()));
-      }
-    }
-    workerEnv = workerEnvBuilder.build();
     updateSessionDir(null);
 
     // Object store socket name.
@@ -124,13 +161,13 @@ public class RayConfig {
       rayletSocketName = config.getString("ray.raylet.socket-name");
     }
 
-    // Redis configurations.
-    String redisAddress = config.getString("ray.address");
-    if (StringUtils.isNotBlank(redisAddress)) {
-      setRedisAddress(redisAddress);
+    // Bootstrap configurations.
+    String bootstrapAddress = config.getString("ray.address");
+    if (StringUtils.isNotBlank(bootstrapAddress)) {
+      setBootstrapAddress(bootstrapAddress);
     } else {
       // We need to start gcs using `RunManager` for local cluster
-      this.redisAddress = null;
+      this.bootstrapAddress = null;
     }
 
     redisPassword = config.getString("ray.redis.password");
@@ -155,21 +192,57 @@ public class RayConfig {
 
     numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
+    startupToken = config.getInt("ray.raylet.startup-token");
+
+    /// Driver needn't this config item.
+    if (workerMode == WorkerType.WORKER && config.hasPath("ray.internal.runtime-env-hash")) {
+      runtimeEnvHash = config.getInt("ray.internal.runtime-env-hash");
+    }
+
+    {
+      /// Runtime Env
+      final String envVarsPath = "ray.job.runtime-env.env-vars";
+      if (config.hasPath(envVarsPath)) {
+        Map<String, String> envVars = new HashMap<>();
+        Config envVarsConfig = config.getConfig(envVarsPath);
+        envVarsConfig
+            .entrySet()
+            .forEach(
+                (entry) -> {
+                  envVars.put(entry.getKey(), ((String) entry.getValue().unwrapped()));
+                });
+        runtimeEnvImpl = new RuntimeEnvImpl(envVars);
+      }
+    }
+
+    {
+      loggers = new ArrayList<>();
+      List<Config> loggerConfigs = (List<Config>) config.getConfigList("ray.logging.loggers");
+      for (Config loggerConfig : loggerConfigs) {
+        Preconditions.checkState(loggerConfig.hasPath("name"));
+        Preconditions.checkState(loggerConfig.hasPath("file-name"));
+        final String name = loggerConfig.getString("name");
+        final String fileName = loggerConfig.getString("file-name");
+        final String pattern =
+            loggerConfig.hasPath("pattern") ? loggerConfig.getString("pattern") : "";
+        loggers.add(new LoggerConf(name, fileName, pattern));
+      }
+    }
+
     headArgs = config.getStringList("ray.head-args");
 
     // Validate config.
     validate();
   }
 
-  public void setRedisAddress(String redisAddress) {
-    Preconditions.checkNotNull(redisAddress);
-    Preconditions.checkState(this.redisAddress == null, "Redis address was already set");
-
-    this.redisAddress = redisAddress;
+  public void setBootstrapAddress(String bootstrapAddress) {
+    Preconditions.checkNotNull(bootstrapAddress);
+    Preconditions.checkState(this.bootstrapAddress == null, "Bootstrap address was already set");
+    this.bootstrapAddress = bootstrapAddress;
   }
 
-  public String getRedisAddress() {
-    return redisAddress;
+  public String getBootstrapAddress() {
+    return this.bootstrapAddress;
   }
 
   public void setJobId(JobId jobId) {
@@ -182,6 +255,10 @@ public class RayConfig {
 
   public int getNodeManagerPort() {
     return nodeManagerPort;
+  }
+
+  public int getStartupToken() {
+    return startupToken;
   }
 
   public void setSessionDir(String sessionDir) {
@@ -202,7 +279,8 @@ public class RayConfig {
     dynamic.put("ray.raylet.socket-name", rayletSocketName);
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
-    dynamic.put("ray.address", redisAddress);
+    dynamic.put("ray.address", bootstrapAddress);
+    dynamic.put("ray.raylet.startup-token", startupToken);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }

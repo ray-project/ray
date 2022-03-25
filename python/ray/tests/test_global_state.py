@@ -1,4 +1,6 @@
+import os
 import pytest
+
 try:
     import pytest_timeout
 except ImportError:
@@ -8,16 +10,19 @@ import time
 import ray
 import ray.ray_constants
 import ray._private.gcs_utils as gcs_utils
-from ray._private.test_utils import wait_for_condition
-
-from ray._raylet import GlobalStateAccessor
+from ray._private.test_utils import (
+    wait_for_condition,
+    convert_actor_state,
+    make_global_state_accessor,
+)
 
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
 @pytest.mark.skipif(
     pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+    reason="Timeout package not installed; skipping test that may hang.",
+)
+@pytest.mark.timeout(30)
 def test_replenish_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
     available_resources = ray.available_resources()
@@ -32,14 +37,15 @@ def test_replenish_resources(ray_start_regular):
 
     while not resources_reset:
         available_resources = ray.available_resources()
-        resources_reset = (cluster_resources == available_resources)
+        resources_reset = cluster_resources == available_resources
     assert resources_reset
 
 
 @pytest.mark.skipif(
     pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+    reason="Timeout package not installed; skipping test that may hang.",
+)
+@pytest.mark.timeout(30)
 def test_uses_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
 
@@ -52,15 +58,17 @@ def test_uses_resources(ray_start_regular):
 
     while not resource_used:
         available_resources = ray.available_resources()
-        resource_used = available_resources.get(
-            "CPU", 0) == cluster_resources.get("CPU", 0) - 1
+        resource_used = (
+            available_resources.get("CPU", 0) == cluster_resources.get("CPU", 0) - 1
+        )
 
     assert resource_used
 
 
 @pytest.mark.skipif(
     pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.")
+    reason="Timeout package not installed; skipping test that may hang.",
+)
 @pytest.mark.timeout(120)
 def test_add_remove_cluster_resources(ray_start_cluster_head):
     """Tests that Global State API is consistent with actual cluster."""
@@ -85,30 +93,31 @@ def test_global_state_actor_table(ray_start_regular):
     @ray.remote
     class Actor:
         def ready(self):
-            pass
+            return os.getpid()
 
     # actor table should be empty at first
     assert len(ray.state.actors()) == 0
 
     # actor table should contain only one entry
+    def get_actor_table_data(field):
+        return list(ray.state.actors().values())[0][field]
+
     a = Actor.remote()
-    ray.get(a.ready.remote())
+    pid = ray.get(a.ready.remote())
     assert len(ray.state.actors()) == 1
+    assert get_actor_table_data("Pid") == pid
 
     # actor table should contain only this entry
     # even when the actor goes out of scope
     del a
 
-    def get_state():
-        return list(ray.state.actors().values())[0]["State"]
-
-    dead_state = gcs_utils.ActorTableData.DEAD
+    dead_state = convert_actor_state(gcs_utils.ActorTableData.DEAD)
     for _ in range(10):
-        if get_state() == dead_state:
+        if get_actor_table_data("State") == dead_state:
             break
         else:
             time.sleep(0.5)
-    assert get_state() == dead_state
+    assert get_actor_table_data("State") == dead_state
 
 
 def test_global_state_worker_table(ray_start_regular):
@@ -136,11 +145,13 @@ def test_global_state_actor_entry(ray_start_regular):
     a_actor_id = a._actor_id.hex()
     b_actor_id = b._actor_id.hex()
     assert ray.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
-    assert ray.state.actors(
-        actor_id=a_actor_id)["State"] == gcs_utils.ActorTableData.ALIVE
+    assert ray.state.actors(actor_id=a_actor_id)["State"] == convert_actor_state(
+        gcs_utils.ActorTableData.ALIVE
+    )
     assert ray.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
-    assert ray.state.actors(
-        actor_id=b_actor_id)["State"] == gcs_utils.ActorTableData.ALIVE
+    assert ray.state.actors(actor_id=b_actor_id)["State"] == convert_actor_state(
+        gcs_utils.ActorTableData.ALIVE
+    )
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
@@ -152,10 +163,10 @@ def test_load_report(shutdown_only, max_shapes):
         resources={resource1: 1},
         _system_config={
             "max_resource_shapes_per_load_report": max_shapes,
-        })
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+        },
+    )
+
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote
     def sleep():
@@ -176,10 +187,8 @@ def test_load_report(shutdown_only, max_shapes):
             if message is None:
                 return False
 
-            resource_usage = gcs_utils.ResourceUsageBatchData.FromString(
-                message)
-            self.report = \
-                resource_usage.resource_load_by_shape.resource_demands
+            resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
+            self.report = resource_usage.resource_load_by_shape.resource_demands
             if max_shapes == 0:
                 return True
             elif max_shapes == 2:
@@ -198,14 +207,6 @@ def test_load_report(shutdown_only, max_shapes):
     print(checker.report)
 
     if max_shapes > 0:
-        # Check that we always include the 1-CPU resource shape.
-        one_cpu_shape = {"CPU": 1}
-        one_cpu_found = False
-        for demand in checker.report:
-            if demand.shape == one_cpu_shape:
-                one_cpu_found = True
-        assert one_cpu_found
-
         # Check that we differentiate between infeasible and ready tasks.
         for demand in checker.report:
             if resource2 in demand.shape:
@@ -221,10 +222,10 @@ def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
     # Add a head node that doesn't have gpu resource.
     cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
-    global_state_accessor = GlobalStateAccessor(
-        cluster.address, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+
+    global_state_accessor = make_global_state_accessor(
+        ray.init(address=cluster.address)
+    )
 
     class PgLoadChecker:
         def nothing_is_ready(self):
@@ -259,8 +260,7 @@ def test_placement_group_load_report(ray_start_cluster):
             if message is None:
                 return False
 
-            resource_usage = gcs_utils.ResourceUsageBatchData.FromString(
-                message)
+            resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
             return resource_usage
 
     checker = PgLoadChecker()
@@ -268,8 +268,7 @@ def test_placement_group_load_report(ray_start_cluster):
     # Create 2 placement groups that are infeasible.
     pg_feasible = ray.util.placement_group([{"A": 1}])
     pg_infeasible = ray.util.placement_group([{"B": 1}])
-    _, unready = ray.wait(
-        [pg_feasible.ready(), pg_infeasible.ready()], timeout=0)
+    _, unready = ray.wait([pg_feasible.ready(), pg_infeasible.ready()], timeout=0)
     assert len(unready) == 2
     wait_for_condition(checker.nothing_is_ready)
 
@@ -287,12 +286,11 @@ def test_placement_group_load_report(ray_start_cluster):
 
 def test_backlog_report(shutdown_only):
     cluster = ray.init(
-        num_cpus=1, _system_config={
-            "report_worker_backlog": True,
-        })
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
+        num_cpus=1,
+        _system_config={"max_pending_lease_requests_per_scheduling_category": 1},
+    )
+
+    global_state_accessor = make_global_state_accessor(cluster)
 
     @ray.remote(num_cpus=1)
     def foo(x):
@@ -306,8 +304,7 @@ def test_backlog_report(shutdown_only):
             return False
 
         resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
-        aggregate_resource_load = \
-            resource_usage.resource_load_by_shape.resource_demands
+        aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
             backlog_size = aggregate_resource_load[0].backlog_size
             print(backlog_size)
@@ -333,14 +330,8 @@ def test_backlog_report(shutdown_only):
 
 
 def test_heartbeat_ip(shutdown_only):
-    cluster = ray.init(
-        num_cpus=1, _system_config={
-            "report_worker_backlog": True,
-        })
-    global_state_accessor = GlobalStateAccessor(
-        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    global_state_accessor.connect()
-
+    cluster = ray.init(num_cpus=1)
+    global_state_accessor = make_global_state_accessor(cluster)
     self_ip = ray.util.get_node_ip_address()
 
     def self_ip_is_set():
@@ -365,4 +356,5 @@ def test_next_job_id(ray_start_regular):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

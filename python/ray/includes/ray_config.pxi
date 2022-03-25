@@ -89,14 +89,6 @@ cdef class Config:
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
 
     @staticmethod
-    def put_small_object_in_memory_store():
-        return RayConfig.instance().put_small_object_in_memory_store()
-
-    @staticmethod
-    def max_tasks_in_flight_per_worker():
-        return RayConfig.instance().max_tasks_in_flight_per_worker()
-
-    @staticmethod
     def metrics_report_interval_ms():
         return RayConfig.instance().metrics_report_interval_ms()
 
@@ -111,3 +103,7 @@ cdef class Config:
     @staticmethod
     def record_ref_creation_sites():
         return RayConfig.instance().record_ref_creation_sites()
+
+    @staticmethod
+    def start_python_importer_thread():
+        return RayConfig.instance().start_python_importer_thread()

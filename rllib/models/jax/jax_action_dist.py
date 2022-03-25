@@ -52,12 +52,12 @@ class JAXCategorical(JAXDistribution):
     @override(ActionDistribution)
     def __init__(self, inputs, model=None, temperature=1.0):
         if temperature != 1.0:
-            assert temperature > 0.0, \
-                "Categorical `temperature` must be > 0.0!"
+            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             inputs /= temperature
         super().__init__(inputs, model)
         self.dist = tfp.experimental.substrates.jax.distributions.Categorical(
-            logits=self.inputs)
+            logits=self.inputs
+        )
 
     @override(ActionDistribution)
     def deterministic_sample(self):

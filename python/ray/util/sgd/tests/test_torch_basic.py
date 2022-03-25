@@ -6,12 +6,16 @@ import torch.nn as nn
 from ray import tune
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.examples.train_example import (
-    model_creator, optimizer_creator, data_creator)
+    model_creator,
+    optimizer_creator,
+    data_creator,
+)
 from ray.util.sgd.torch.training_operator import TrainingOperator
 from ray.util.sgd.utils import BATCH_COUNT
 
 Operator = TrainingOperator.from_creators(
-    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
+    model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss
+)
 
 
 @pytest.fixture
@@ -42,7 +46,8 @@ def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
         training_operator_cls=Operator,
         num_workers=1,
         use_local=use_local,
-        use_gpu=False)
+        use_gpu=False,
+    )
     metrics = trainer.train(num_steps=1)
     assert metrics[BATCH_COUNT] == 1
 
@@ -54,8 +59,7 @@ def test_single_step(ray_start_2_cpus, use_local):  # noqa: F811
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
 @pytest.mark.parametrize("use_fp16", [False, True])
-def test_train(ray_start_2_cpus, num_workers, use_local,
-               use_fp16):  # noqa: F811
+def test_train(ray_start_2_cpus, num_workers, use_local, use_fp16):  # noqa: F811
     trainer = TorchTrainer(
         training_operator_cls=Operator,
         num_workers=num_workers,
@@ -74,8 +78,7 @@ def test_train(ray_start_2_cpus, num_workers, use_local,
     validation_loss2 = trainer.validate()["val_loss"]
 
     assert train_loss2 <= train_loss1, (train_loss2, train_loss1)
-    assert validation_loss2 <= validation_loss1, (validation_loss2,
-                                                  validation_loss1)
+    assert validation_loss2 <= validation_loss1, (validation_loss2, validation_loss1)
     trainer.shutdown()
 
 
@@ -89,17 +92,13 @@ def test_tune_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
             "use_gpu": False,
             "backend": "gloo",
             "use_local": use_local,
-            "config": {
-                "batch_size": 512,
-                "lr": 0.001
-            }
-        })
+            "config": {"batch_size": 512, "lr": 0.001},
+        }
+    )
 
     analysis = tune.run(
-        TorchTrainable,
-        num_samples=2,
-        stop={"training_iteration": 2},
-        verbose=1)
+        TorchTrainable, num_samples=2, stop={"training_iteration": 2}, verbose=1
+    )
 
     # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():

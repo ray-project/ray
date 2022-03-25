@@ -14,7 +14,7 @@ class Threshold:
 
     def reconfigure(self, config):
         # This will be called when the class is created and when
-        # the user_config field of BackendConfig is updated.
+        # the user_config is updated.
         self.threshold = config["threshold"]
 
     def __call__(self, request):
