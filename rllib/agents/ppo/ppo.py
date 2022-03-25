@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class PPOConfig(TrainerConfig):
-    """Defines a PPOTrainer configuration from the given configuration.
+    """Defines a PPOTrainer configuration class.
 
     Example:
         >>> config = PPOConfig(kl_coeff=0.3).training(gamma=0.9, lr=0.01)\
@@ -59,10 +59,10 @@ class PPOConfig(TrainerConfig):
         >>> # Use to_dict() to get the old-style python config dict
         >>> # when running with tune.
         >>> tune.run(
-                "PPO",
-                stop={"episode_reward_mean": 200},
-                config=config.to_dict(),
-            )
+        ...     "PPO",
+        ...     stop={"episode_reward_mean": 200},
+        ...     config=config.to_dict(),
+        ... )
     """
 
     def __init__(
