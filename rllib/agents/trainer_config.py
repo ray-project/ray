@@ -1,15 +1,22 @@
 import copy
 import gym
 from typing import (
+    Any,
     Callable,
     Optional,
     Union,
 )
 
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.utils.typing import EnvConfigDict, EnvType, PartialTrainerConfigDict, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import (
+    EnvConfigDict,
+    EnvType,
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+)
 from ray.tune.logger import Logger
 
 
@@ -17,11 +24,12 @@ class TrainerConfig:
     """A RLlib TrainerConfig builds an RLlib trainer from a given configuration.
 
     Example:
-       >>> from ray.rllib.agents.trainer_config import TrainerConfig
+       >>> from ray.rllib.agents.callbacks import MemoryTrackingCallbacks
        >>> config = TrainerConfig.training(gamma=0.9, lr=0.01)
-                        .environment(env="CartPole-v1")
-                        .resources(num_gpus=0)
-                        .rollouts(num_rollout_workers=4)
+       ...              .environment(env="CartPole-v1")
+       ...              .resources(num_gpus=0)
+       ...              .rollouts(num_rollout_workers=4)
+       ...              .callbacks(MemoryTrackingCallbacks)
     """
 
     def __init__(self, trainer_class=None):
@@ -29,16 +37,13 @@ class TrainerConfig:
 
         # Define the default RLlib Trainer class that this TrainerConfig will be
         # applied to.
-        self.trainer_class = trainer_class or Trainer
+        if trainer_class is None:
+            from ray.rllib.agents.trainer import Trainer
 
-        #TODO: define all properties with default values below:
+            trainer_class = Trainer
+        self.trainer_class = trainer_class
 
-        # `self.training()`
-        self.gamma = 0.99
-        self.lr = 0.001
-        self.train_batch_size = 32
-        self.model = MODEL_DEFAULTS
-        self.optimizer = {}
+        # TODO: define all properties with default values below:
 
         # `self.resources()`
         self.num_gpus = 0
@@ -46,12 +51,25 @@ class TrainerConfig:
         self.num_gpus_per_worker = 0
         self._fake_gpus = False
         self.num_cpus_for_local_worker = 1
+        self.custom_resources_per_worker = {}
+        self.placement_strategy = "PACK"
+
+        # `self.framework()`
+        self.framework_str = "tf"
+        self.eager_tracing = False
+        self.eager_max_retraces = 20
 
         # `self.environment()`
         self.env = None
         self.env_config = {}
         self.observation_space = None
         self.action_space = None
+        self.env_task_fn = None
+        self.render_env = False
+        self.record_env = False
+        self.clip_rewards = None
+        self.normalize_actions = True
+        self.clip_actions = False
 
         # `self.rollouts()`
         self.num_workers = 2
@@ -61,6 +79,22 @@ class TrainerConfig:
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0
+        self.ignore_worker_failures = False
+        self.horizon = None
+        self.soft_horizon = False
+        self.no_done_at_end = False
+        self.preprocessor_pref = "deepmind"
+        self.compress_observations = False
+
+        # `self.training()`
+        self.gamma = 0.99
+        self.lr = 0.001
+        self.train_batch_size = 32
+        self.model = MODEL_DEFAULTS
+        self.optimizer = {}
+
+        # `self.callbacks()`
+        self.callbacks_class = DefaultCallbacks
 
         # `self.explore()`
         self.explore = True
@@ -74,6 +108,28 @@ class TrainerConfig:
             # Add constructor kwargs here (if any).
         }
 
+        # `self.multi_agent()`
+        self.policies = {}
+        self.policy_map_capacity = 100
+        self.policy_map_cache = None
+        self.policy_mapping_fn = None
+        self.policies_to_train = None
+        self.observation_fn = None
+        self.replay_mode = "independent"
+        self.count_steps_by = "env_steps"
+
+        # `self.offline_data()`
+        self.input_ = "sampler"
+        self.input_config = {}
+        self.actions_in_input_normalized = False
+        self.input_evaluation = ["is", "wis"]
+        self.postprocess_inputs = False
+        self.shuffle_buffer_size = 0
+        self.output = None
+        self.output_config = {}
+        self.output_compress_columns = ["obs", "new_obs"]
+        self.output_max_file_size = 64 * 1024 * 1024
+
         # `self.evaluation()`
         self.evaluation_interval = 0
         self.evaluation_duration = 10
@@ -84,6 +140,18 @@ class TrainerConfig:
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
 
+        # `self.debugging()`
+        self.logger_config = None
+        self.log_level = "WARN"
+        self.log_sys_usage = True
+        self.fake_sampler = False
+
+        # `self.experimental()`
+        self._tf_policy_handles_more_than_one_loss = False
+        self._disable_preprocessor_api = False
+        self._disable_action_flattening = False
+        self._disable_execution_plan_api = False
+
     def to_dict(self) -> TrainerConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
 
@@ -91,35 +159,41 @@ class TrainerConfig:
             A complete TrainerConfigDict, usable in backward-compatible Tune/RLlib
             use cases, e.g. w/ `tune.run()`.
         """
-        extra_config = copy.deepcopy(vars(self))
-        extra_config.pop("trainer_class")
+        config = copy.deepcopy(vars(self))
+        config.pop("trainer_class")
 
         # Worst naming convention ever: NEVER EVER use reserved key-words...
-        if "lambda_" in extra_config:
+        if "lambda_" in config:
             assert hasattr(self, "lambda_")
-            extra_config["lambda"] = getattr(self, "lambda_")
-            extra_config.pop("lambda_")
+            config["lambda"] = getattr(self, "lambda_")
+            config.pop("lambda_")
+        if "input_" in config:
+            assert hasattr(self, "input_")
+            config["input"] = getattr(self, "input_")
+            config.pop("input_")
 
         # Switch out deprecated vs new config keys.
-        extra_config["create_env_on_driver"] = \
-            extra_config.pop("create_env_on_local_worker", 1)
-        extra_config["custom_eval_function"] = \
-            extra_config.pop("custom_evaluation_function", None)
-        extra_config["num_cpus_for_driver"] = \
-            extra_config.pop("num_cpus_for_local_worker", 1)
+        config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
+        config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
+        config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
+        config["framework"] = config.pop("framework_str", None)
+        config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
 
         # Get our Trainer class' default config.
-        base_config = self.trainer_class.get_default_config()
-        base_config.pop("in_evaluation", None)
+        from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 
         # Add our overrides to the default config.
         return Trainer.merge_trainer_configs(
-            base_config, extra_config, _allow_unknown_configs=True
+            COMMON_CONFIG, config, _allow_unknown_configs=True
         )
+        return config
 
-    def build(self, env: Optional[Union[str, EnvType]] = None,
-              logger_creator: Optional[Callable[[], Logger]] = None,):
-        """ Builds a Trainer from the TrainerConfig.
+    def build(
+        self,
+        env: Optional[Union[str, EnvType]] = None,
+        logger_creator: Optional[Callable[[], Logger]] = None,
+    ):
+        """Builds a Trainer from the TrainerConfig.
 
         Args:
             env: Name of the environment to use (e.g. a gym-registered str),
@@ -144,50 +218,214 @@ class TrainerConfig:
             logger_creator=logger_creator,
         )
 
+    def resources(
+        self,
+        *,
+        num_gpus: Optional[Union[float, int]] = None,
+        _fake_gpus: Optional[bool] = None,
+        num_cpus_per_worker: Optional[int] = None,
+        num_gpus_per_worker: Optional[Union[float, int]] = None,
+        num_cpus_for_local_worker: Optional[int] = None,
+        custom_resources_per_worker: Optional[dict] = None,
+        placement_strategy: Optional[str] = None,
+    ) -> "TrainerConfig":
+        """Specifies resources allocated for a Trainer and its ray actors/workers.
 
-
-    def training(self,
-                 gamma: Optional[float] = None,
-                 lr: Optional[float] = None,
-                 train_batch_size: Optional[int] = None,
-                 model: Optional[dict] = None,
-                 optimizer: Optional[dict] = None) -> "TrainerConfig":
-        """
         Args:
-            gamma: Float specifying the discount factor of the Markov Decision process.
-            lr: The default learning rate.
-            train_batch_size: Training batch size, if applicable.
-            model: Arguments passed into the policy model. See models/catalog.py for a full
-                   list of the available model options.
-            optimizer: Arguments to pass to the policy optimizer.
+            num_gpus: Number of GPUs to allocate to the trainer process.
+                Note that not all algorithms can take advantage of trainer GPUs.
+                Support for multi-GPU is currently only available for
+                tf-[PPO/IMPALA/DQN/PG]. This can be fractional (e.g., 0.3 GPUs).
+            _fake_gpus: Set to True for debugging (multi-)?GPU funcitonality on a
+                CPU machine. GPU towers will be simulated by graphs located on
+                CPUs in this case. Use `num_gpus` to test for different numbers of
+                fake GPUs.
+            num_cpus_per_worker: Number of CPUs to allocate per worker.
+            num_gpus_per_worker: Number of GPUs to allocate per worker. This can be
+                fractional. This is usually needed only if your env itself requires a
+                GPU (i.e., it is a GPU-intensive video game), or model inference is
+                unusually expensive.
+            custom_resources_per_worker: Any custom Ray resources to allocate per
+                worker.
+            num_cpus_for_local_worker: Number of CPUs to allocate for the trainer.
+                Note: this only takes effect when running in Tune. Otherwise,
+                the trainer runs in the main program (driver).
+            custom_resources_per_worker: Any custom Ray resources to allocate per
+                worker.
+            placement_strategy: The strategy for the placement group factory returned by
+                `Trainer.default_resource_request()`. A PlacementGroup defines, which
+                devices (resources) should always be co-located on the same node.
+                For example, a Trainer with 2 rollout workers, running with
+                num_gpus=1 will request a placement group with the bundles:
+                [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle
+                is for the driver and the other 2 bundles are for the two workers.
+                These bundles can now be "placed" on the same or different
+                nodes depending on the value of `placement_strategy`:
+                "PACK": Packs bundles into as few nodes as possible.
+                "SPREAD": Places bundles across distinct nodes as even as possible.
+                "STRICT_PACK": Packs bundles into one node. The group is not allowed
+                    to span multiple nodes.
+                "STRICT_SPREAD": Packs bundles across distinct nodes.
 
         Returns:
             This updated TrainerConfig object.
         """
-        if gamma is not None:
-            self.gamma = gamma
-        if lr is not None:
-            self.lr = lr
-        if train_batch_size is not None:
-            self.train_batch_size = train_batch_size
-        if model is not None:
-            self.model = model
-        if optimizer is not None:
-            self.optimizer = optimizer
+        if num_gpus is not None:
+            self.num_gpus = num_gpus
+        if _fake_gpus is not None:
+            self._fake_gpus = _fake_gpus
+        if num_cpus_per_worker is not None:
+            self.num_cpus_per_worker = num_cpus_per_worker
+        if num_gpus_per_worker is not None:
+            self.num_gpus_per_worker = num_gpus_per_worker
+        if num_cpus_for_local_worker is not None:
+            self.num_cpus_for_local_worker = num_cpus_for_local_worker
+        if custom_resources_per_worker is not None:
+            self.custom_resources_per_worker = custom_resources_per_worker
+        if placement_strategy is not None:
+            self.placement_strategy = placement_strategy
 
         return self
 
-    def rollouts(self,
-                 *,
-                 num_rollout_workers: Optional[int] = None,
-                 num_envs_per_worker: Optional[int] = None,
-                 create_env_on_local_worker: Optional[bool] = None,
-                 rollout_fragment_length: Optional[int] = None,
-                 batch_mode: Optional[str] = None,
-                 remote_worker_envs: Optional[bool] = None,
-                 remote_env_batch_wait_ms: Optional[float] = None,
-                 ) -> "TrainerConfig":
-        """ Sets the rollout worker configuration.
+    def framework(
+        self,
+        framework: Optional[str] = None,
+        *,
+        eager_tracing: Optional[bool] = None,
+        eager_max_retraces: Optional[int] = None,
+    ) -> "TrainerConfig":
+        """Sets the config's DL framework settings.
+
+        Args:
+            framework: tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
+                (eager or traced, if eager_tracing=True); torch: PyTorch
+            eager_tracing: Enable tracing in eager mode. This greatly improves
+                performance (speedup ~2x), but makes it slightly harder to debug
+                since Python code won't be evaluated after the initial eager pass.
+                Only possible if framework=tf2.
+            eager_max_retraces: Maximum number of tf.function re-traces before a
+                runtime error is raised. This is to prevent unnoticed retraces of
+                methods inside the `..._eager_traced` Policy, which could slow down
+                execution by a factor of 4, without the user noticing what the root
+                cause for this slowdown could be.
+                Only necessary for framework=[tf2|tfe].
+                Set to None to ignore the re-trace count and never throw an error.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        if framework is not None:
+            self.framework_str = framework
+        if eager_tracing is not None:
+            self.eager_tracing = eager_tracing
+        if eager_max_retraces is not None:
+            self.eager_max_retraces = eager_max_retraces
+
+        return self
+
+    # TODO type for env.
+    def environment(
+        self,
+        *,
+        env: Optional[Union[str, EnvType]] = None,
+        env_config: Optional[EnvConfigDict] = None,
+        observation_space: Optional[gym.spaces.Space] = None,
+        action_space: Optional[gym.spaces.Space] = None,
+        env_task_fn: Optional[Callable[[ResultDict, EnvType, EnvContext], Any]] = None,
+        render_env: Optional[bool] = None,
+        record_env: Optional[bool] = None,
+        clip_rewards: Optional[Union[bool, float]] = None,
+        normalize_actions: Optional[bool] = None,
+        clip_actions: Optional[bool] = None,
+    ) -> "TrainerConfig":
+        """Sets the config's environment settings.
+
+        Args:
+            env: The environment specifier. This can either be a tune-registered env,
+                via `tune.register_env([name], lambda env_ctx: [env object])`,
+                or a string specifier of an RLlib supported type. In the latter case,
+                RLlib will try to interpret the specifier as either an openAI gym env,
+                a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
+                Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
+            env_config: Arguments dict passed to the env creator as an EnvContext
+                object (which is a dict plus the properties: num_workers, worker_index,
+                vector_index, and remote).
+            observation_space: The observation space for the Policies of this Trainer.
+            action_space: The action space for the Policies of this Trainer.
+            env_task_fn: A callable taking the last train results, the base env and the
+                env context as args and returning a new task to set the env to.
+                The env must be a `TaskSettableEnv` sub-class for this to work.
+                See `examples/curriculum_learning.py` for an example.
+            render_env: If True, try to render the environment on the local worker or on
+                worker 1 (if num_workers > 0). For vectorized envs, this usually means
+                that only the first sub-environment will be rendered.
+                In order for this to work, your env will have to implement the
+                `render()` method which either:
+                a) handles window generation and rendering itself (returning True) or
+                b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
+            record_env: If True, stores videos in this relative directory inside the
+                default output dir (~/ray_results/...). Alternatively, you can
+                specify an absolute path (str), in which the env recordings should be
+                stored instead. Set to False for not recording anything.
+                Note: This setting replaces the deprecated `monitor` key.
+            clip_rewards: Whether to clip rewards during Policy's postprocessing.
+                None (default): Clip for Atari only (r=sign(r)).
+                True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
+                False: Never clip.
+                [float value]: Clip at -value and + value.
+                Tuple[value1, value2]: Clip at value1 and value2.
+            normalize_actions: If True, RLlib will learn entirely inside a normalized
+                action space (0.0 centered with small stddev; only affecting Box
+                components). We will unsquash actions (and clip, just in case) to the
+                bounds of the env's action space before sending actions back to the env.
+            clip_actions: If True, RLlib will clip actions according to the env's bounds
+                before sending them back to the env.
+                TODO: (sven) This option should be deprecated and always be False.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        if env is not None:
+            self.env = env
+        if env_config is not None:
+            self.env_config = env_config
+        if observation_space is not None:
+            self.observation_space = observation_space
+        if action_space is not None:
+            self.action_space = action_space
+        if env_task_fn is not None:
+            self.env_task_fn = env_task_fn
+        if render_env is not None:
+            self.render_env = render_env
+        if record_env is not None:
+            self.record_env = record_env
+        if clip_rewards is not None:
+            self.clip_rewards = clip_rewards
+        if normalize_actions is not None:
+            self.normalize_actions = normalize_actions
+        if clip_actions is not None:
+            self.clip_actions = clip_actions
+
+        return self
+
+    def rollouts(
+        self,
+        *,
+        num_rollout_workers: Optional[int] = None,
+        num_envs_per_worker: Optional[int] = None,
+        create_env_on_local_worker: Optional[bool] = None,
+        rollout_fragment_length: Optional[int] = None,
+        batch_mode: Optional[str] = None,
+        remote_worker_envs: Optional[bool] = None,
+        remote_env_batch_wait_ms: Optional[float] = None,
+        ignore_worker_failures: Optional[bool] = None,
+        horizon: Optional[int] = None,
+        soft_horizon: Optional[bool] = None,
+        no_done_at_end: Optional[bool] = None,
+        preprocessor_pref: Optional[str] = None,
+        compress_observations: Optional[bool] = None,
+    ) -> "TrainerConfig":
+        """Sets the rollout worker configuration.
 
         Args:
             num_rollout_workers: Number of rollout worker actors to create for
@@ -205,7 +443,8 @@ class TrainerConfig:
                 each during rollouts. Sample batches of this size are collected from
                 rollout workers and combined into a larger batch of `train_batch_size`
                 for learning.
-                For example, given rollout_fragment_length=100 and train_batch_size=1000:
+                For example, given rollout_fragment_length=100 and
+                train_batch_size=1000:
                 1. RLlib collects 10 fragments of 100 steps each from rollout workers.
                 2. These fragments are concatenated and we perform an epoch of SGD.
                 When using multiple envs per worker, the fragment size is multiplied by
@@ -235,6 +474,32 @@ class TrainerConfig:
                 polling environments. 0 (continue when at least one env is ready) is
                 a reasonable default, but optimal value could be obtained by measuring
                 your environment step / reset and model inference perf.
+            ignore_worker_failures: Whether to attempt to continue training if a worker
+                crashes. The number of currently healthy workers is reported as the
+                "num_healthy_workers" metric.
+            horizon: Number of steps after which the episode is forced to terminate.
+                Defaults to `env.spec.max_episode_steps` (if present) for Gym envs.
+            soft_horizon: Calculate rewards but don't reset the environment when the
+                horizon is hit. This allows value estimation and RNN state to span
+                across logical episodes denoted by horizon. This only has an effect
+                if horizon != inf.
+            no_done_at_end: Don't set 'done' at the end of the episode.
+                In combination with `soft_horizon`, this works as follows:
+                - no_done_at_end=False soft_horizon=False:
+                Reset env and add `done=True` at end of each episode.
+                - no_done_at_end=True soft_horizon=False:
+                Reset env, but do NOT add `done=True` at end of the episode.
+                - no_done_at_end=False soft_horizon=True:
+                Do NOT reset env at horizon, but add `done=True` at the horizon
+                (pretending the episode has terminated).
+                - no_done_at_end=True soft_horizon=True:
+                Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
+            preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
+                default. Set to None for using no preprocessor. In this case, the
+                model will have to handle possibly complex observations from the
+                environment.
+            compress_observations: Whether to LZ4 compress individual observations
+                in the SampleBatches collected during rollouts.
 
         Returns:
             This updated TrainerConfig object.
@@ -253,160 +518,77 @@ class TrainerConfig:
             self.remote_worker_envs = remote_worker_envs
         if remote_env_batch_wait_ms is not None:
             self.remote_env_batch_wait_ms = remote_env_batch_wait_ms
+        if ignore_worker_failures is not None:
+            self.ignore_worker_failures = ignore_worker_failures
+        if horizon is not None:
+            self.horizon = horizon
+        if soft_horizon is not None:
+            self.soft_horizon = soft_horizon
+        if no_done_at_end is not None:
+            self.no_done_at_end = no_done_at_end
+        if preprocessor_pref is not None:
+            self.preprocessor_pref = preprocessor_pref
+        if compress_observations is not None:
+            self.compress_observations = compress_observations
 
         return self
 
-    # TODO type for env.
-    def environment(self,
-                    *,
-                    env: Optional[Union[str, EnvType]] = None,
-                    env_config: Optional[EnvConfigDict] = None,
-                    observation_space: Optional[gym.spaces.Space] = None,
-                    action_space: Optional[gym.spaces.Space] = None,
-
-                    ) -> "TrainerConfig":
-        """Sets the config's environment settings.
+    def training(
+        self,
+        gamma: Optional[float] = None,
+        lr: Optional[float] = None,
+        train_batch_size: Optional[int] = None,
+        model: Optional[dict] = None,
+        optimizer: Optional[dict] = None,
+    ) -> "TrainerConfig":
+        """Sets the training related configuration.
 
         Args:
-            env: The environment specifier. This can either be a tune-registered env, via
-                 `tune.register_env([name], lambda env_ctx: [env object])`,
-                 or a string specifier of an RLlib supported type. In the latter case,
-                 RLlib will try to interpret the specifier as either an openAI gym env,
-                 a PyBullet env, a ViZDoomGym env, or a fully qualified classpath to an
-                 Env class, e.g. "ray.rllib.examples.env.random_env.RandomEnv".
-            env_config: Arguments dict passed to the env creator as an EnvContext
-                object (which is a dict plus the properties: num_workers, worker_index,
-                vector_index, and remote).
-            observation_space: The observation space for the Policies of this Trainer.
-            action_space: The action space for the Policies of this Trainer.
+            gamma: Float specifying the discount factor of the Markov Decision process.
+            lr: The default learning rate.
+            train_batch_size: Training batch size, if applicable.
+            model: Arguments passed into the policy model. See models/catalog.py for a
+                full list of the available model options.
+            optimizer: Arguments to pass to the policy optimizer.
 
         Returns:
             This updated TrainerConfig object.
         """
-        if env is not None:
-            self.env = env
-        if env_config is not None:
-            self.env_config = env_config
-        if observation_space is not None:
-            self.observation_space = observation_space
-        if action_space is not None:
-            self.action_space = action_space
+        if gamma is not None:
+            self.gamma = gamma
+        if lr is not None:
+            self.lr = lr
+        if train_batch_size is not None:
+            self.train_batch_size = train_batch_size
+        if model is not None:
+            self.model = model
+        if optimizer is not None:
+            self.optimizer = optimizer
 
         return self
 
-    #TODO: move these into `rollouts`
-    # # === Environment Settings ===
-    # # Number of steps after which the episode is forced to terminate. Defaults
-    # # to `env.spec.max_episode_steps` (if present) for Gym envs.
-    # "horizon": None,
-    # # Calculate rewards but don't reset the environment when the horizon is
-    # # hit. This allows value estimation and RNN state to span across logical
-    # # episodes denoted by horizon. This only has an effect if horizon != inf.
-    # "soft_horizon": False,
-    # # Don't set 'done' at the end of the episode.
-    # # In combination with `soft_horizon`, this works as follows:
-    # # - no_done_at_end=False soft_horizon=False:
-    # #   Reset env and add `done=True` at end of each episode.
-    # # - no_done_at_end=True soft_horizon=False:
-    # #   Reset env, but do NOT add `done=True` at end of the episode.
-    # # - no_done_at_end=False soft_horizon=True:
-    # #   Do NOT reset env at horizon, but add `done=True` at the horizon
-    # #   (pretending the episode has terminated).
-    # # - no_done_at_end=True soft_horizon=True:
-    # #   Do NOT reset env at horizon and do NOT add `done=True` at the horizon.
-    # "no_done_at_end": False,
+    def callbacks(self, callbacks_class) -> "TrainerConfig":
+        """Sets the callbacks configuration.
 
-    #TODO: move these into environment()
-    # # A callable taking the last train results, the base env and the env
-    # # context as args and returning a new task to set the env to.
-    # # The env must be a `TaskSettableEnv` sub-class for this to work.
-    # # See `examples/curriculum_learning.py` for an example.
-    # "env_task_fn": None,
-    # # If True, try to render the environment on the local worker or on worker
-    # # 1 (if num_workers > 0). For vectorized envs, this usually means that only
-    # # the first sub-environment will be rendered.
-    # # In order for this to work, your env will have to implement the
-    # # `render()` method which either:
-    # # a) handles window generation and rendering itself (returning True) or
-    # # b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
-    # "render_env": False,
-    # # If True, stores videos in this relative directory inside the default
-    # # output dir (~/ray_results/...). Alternatively, you can specify an
-    # # absolute path (str), in which the env recordings should be
-    # # stored instead.
-    # # Set to False for not recording anything.
-    # # Note: This setting replaces the deprecated `monitor` key.
-    # "record_env": False,
-    # # Whether to clip rewards during Policy's postprocessing.
-    # # None (default): Clip for Atari only (r=sign(r)).
-    # # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
-    # # False: Never clip.
-    # # [float value]: Clip at -value and + value.
-    # # Tuple[value1, value2]: Clip at value1 and value2.
-    # "clip_rewards": None,
-    # # If True, RLlib will learn entirely inside a normalized action space
-    # # (0.0 centered with small stddev; only affecting Box components).
-    # # We will unsquash actions (and clip, just in case) to the bounds of
-    # # the env's action space before sending actions back to the env.
-    # "normalize_actions": True,
-    # # If True, RLlib will clip actions according to the env's bounds
-    # # before sending them back to the env.
-    # # TODO: (sven) This option should be obsoleted and always be False.
-    # "clip_actions": False,
-    # # Whether to use "rllib" or "deepmind" preprocessors by default
-    # # Set to None for using no preprocessor. In this case, the model will have
-    # # to handle possibly complex observations from the environment.
-    # "preprocessor_pref": "deepmind",
+        Args:
+            callbacks_class: Callbacks class, whose methods will be run during
+                various phases of training and environment sample collection.
+                See the `DefaultCallbacks` class and
+                `examples/custom_metrics_and_callbacks.py` for more usage information.
 
-    # TODO def debug()
-    # # === Debug Settings ===
-    # # Set the ray.rllib.* log level for the agent process and its workers.
-    # # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
-    # # periodically print out summaries of relevant internal dataflow (this is
-    # # also printed out once at startup at the INFO level). When using the
-    # # `rllib train` command, you can also use the `-v` and `-vv` flags as
-    # # shorthand for INFO and DEBUG.
-    # "log_level": "WARN",
-    # # Callbacks that will be run during various phases of training. See the
-    # # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
-    # # for more usage information.
-    # "callbacks": DefaultCallbacks,
-    # # Whether to attempt to continue training if a worker crashes. The number
-    # # of currently healthy workers is reported as the "num_healthy_workers"
-    # # metric.
-    # "ignore_worker_failures": False,
-    # # Log system resource metrics to results. This requires `psutil` to be
-    # # installed for sys stats, and `gputil` for GPU metrics.
-    # "log_sys_usage": True,
-    # # Use fake (infinite speed) sampler. For testing only.
-    # "fake_sampler": False,
+        Returns:
+            This updated TrainerConfig object.
+        """
+        self.callbacks_class = callbacks_class
 
-    # TODO: def framework()
-    # # === Deep Learning Framework Settings ===
-    # # tf: TensorFlow (static-graph)
-    # # tf2: TensorFlow 2.x (eager or traced, if eager_tracing=True)
-    # # tfe: TensorFlow eager (or traced, if eager_tracing=True)
-    # # torch: PyTorch
-    # "framework": "tf",
-    # # Enable tracing in eager mode. This greatly improves performance
-    # # (speedup ~2x), but makes it slightly harder to debug since Python
-    # # code won't be evaluated after the initial eager pass.
-    # # Only possible if framework=[tf2|tfe].
-    # "eager_tracing": False,
-    # # Maximum number of tf.function re-traces before a runtime error is raised.
-    # # This is to prevent unnoticed retraces of methods inside the
-    # # `..._eager_traced` Policy, which could slow down execution by a
-    # # factor of 4, without the user noticing what the root cause for this
-    # # slowdown could be.
-    # # Only necessary for framework=[tf2|tfe].
-    # # Set to None to ignore the re-trace count and never throw an error.
-    # "eager_max_retraces": 20,
+        return self
 
-    def exploration(self,
-                    *,
-                    explore: Optional[bool] = None,
-                    exploration_config: Optional[dict] = None
-                    ):
+    def exploration(
+        self,
+        *,
+        explore: Optional[bool] = None,
+        exploration_config: Optional[dict] = None,
+    ) -> "TrainerConfig":
         """Sets the config's exploration settings.
 
         Args:
@@ -425,18 +607,20 @@ class TrainerConfig:
 
         return self
 
-    def evaluation(self,
-                   *,
-                   evaluation_interval: Optional[int] = None,
-                   evaluation_duration: Optional[int] = None,
-                   evaluation_duration_unit: Optional[str] = None,
-                   evaluation_parallel_to_training: Optional[bool] = None,
-                   evaluation_config: Optional[
-                       Union["TrainerConfig", PartialTrainerConfigDict]] = None,
-                   evaluation_num_workers: Optional[int] = None,
-                   custom_evaluation_function: Optional[Callable] = None,
-                   always_attach_evaluation_results: Optional[bool] = None,
-                   ):
+    def evaluation(
+        self,
+        *,
+        evaluation_interval: Optional[int] = None,
+        evaluation_duration: Optional[int] = None,
+        evaluation_duration_unit: Optional[str] = None,
+        evaluation_parallel_to_training: Optional[bool] = None,
+        evaluation_config: Optional[
+            Union["TrainerConfig", PartialTrainerConfigDict]
+        ] = None,
+        evaluation_num_workers: Optional[int] = None,
+        custom_evaluation_function: Optional[Callable] = None,
+        always_attach_evaluation_results: Optional[bool] = None,
+    ) -> "TrainerConfig":
         """Sets the config's evaluation settings.
 
         Args:
@@ -510,7 +694,7 @@ class TrainerConfig:
 
         return self
 
-    #TODO
+    # TODO
     # # Store raw custom metrics without calculating max, min, mean
     # "keep_per_episode_custom_metrics": False,
 
@@ -582,199 +766,250 @@ class TrainerConfig:
     # # The extra python environments need to set for worker processes.
     # "extra_python_environs_for_worker": {},
 
-    def resources(self,
-                  *,
-                  num_gpus: Optional[Union[float, int]] =  None,
-                  _fake_gpus: Optional[bool] = None,
-                  num_cpus_per_worker: Optional[int] = None,
-                  num_gpus_per_worker: Optional[Union[float, int]] = None,
-                  num_cpus_for_local_worker: Optional[int] = None,
-                  ):
-        """Specifies resources allocated for a Trainer and its ray actors/workers.
+    def offline_data(
+        self,
+        *,
+        input_=None,
+        input_config=None,
+        actions_in_input_normalized=None,
+        input_evaluation=None,
+        postprocess_inputs=None,
+        shuffle_buffer_size=None,
+        output=None,
+        output_config=None,
+        output_compress_columns=None,
+        output_max_file_size=None,
+    ) -> "TrainerConfig":
+        """Sets the config's offline data settings.
 
         Args:
-            num_gpus: Number of GPUs to allocate to the trainer process.
-                Note that not all algorithms can take advantage of trainer GPUs.
-                Support for multi-GPU is currently only available for
-                tf-[PPO/IMPALA/DQN/PG]. This can be fractional (e.g., 0.3 GPUs).
-            _fake_gpus: Set to True for debugging (multi-)?GPU funcitonality on a
-                CPU machine. GPU towers will be simulated by graphs located on
-                CPUs in this case. Use `num_gpus` to test for different numbers of
-                fake GPUs.
-            num_cpus_per_worker: Number of CPUs to allocate per worker.
-            num_gpus_per_worker: Number of GPUs to allocate per worker. This can be
-                fractional. This is usually needed only if your env itself requires a
-                GPU (i.e., it is a GPU-intensive video game), or model inference is
-                unusually expensive.
-            custom_resources_per_worker: Any custom Ray resources to allocate per
-                worker.
-            num_cpus_for_local_worker: Number of CPUs to allocate for the trainer.
-                Note: this only takes effect when running in Tune. Otherwise,
-                the trainer runs in the main program (driver).
+            input_: Specify how to generate experiences:
+             - "sampler": Generate experiences via online (env) simulation (default).
+             - A local directory or file glob expression (e.g., "/tmp/*.json").
+             - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+               "s3://bucket/2.json"]).
+             - A dict with string keys and sampling probabilities as values (e.g.,
+               {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
+             - A callable that takes an `IOContext` object as only arg and returns a
+               ray.rllib.offline.InputReader.
+             - A string key that indexes a callable with tune.registry.register_input
+            input_config: Arguments accessible from the IOContext for configuring custom
+                input.
+            actions_in_input_normalized: True, if the actions in a given offline "input"
+                are already normalized (between -1.0 and 1.0). This is usually the case
+                when the offline file has been generated by another RLlib algorithm
+                (e.g. PPO or SAC), while "normalize_actions" was set to True.
+            input_evaluation: Specify how to evaluate the current policy. This only has
+                an effect when reading offline experiences ("input" is not "sampler").
+                Available options:
+                - "wis": the weighted step-wise importance sampling estimator.
+                - "is": the step-wise importance sampling estimator.
+                - "simulation": run the environment in the background, but use
+                this data for evaluation only and not for learning.
+            postprocess_inputs: Whether to run postprocess_trajectory() on the
+                trajectory fragments from offline inputs. Note that postprocessing will
+                be done using the *current* policy, not the *behavior* policy, which
+                is typically undesirable for on-policy algorithms.
+            shuffle_buffer_size: If positive, input batches will be shuffled via a
+                sliding window buffer of this number of batches. Use this if the input
+                data is not in random enough order. Input is delayed until the shuffle
+                buffer is filled.
+            output: Specify where experiences should be saved:
+                 - None: don't save any experiences
+                 - "logdir" to save to the agent log dir
+                 - a path/URI to save to a custom output directory (e.g., "s3://bckt/")
+                 - a function that returns a rllib.offline.OutputWriter
+            output_config: Arguments accessible from the IOContext for configuring
+                custom output.
+            output_compress_columns: What sample batch columns to LZ4 compress in the
+                output data.
+            output_max_file_size: Max output file size before rolling over to a
+                new file.
 
         Returns:
             This updated TrainerConfig object.
         """
-        if num_gpus is not None:
-            self.num_gpus = num_gpus
-        if _fake_gpus is not None:
-            self._fake_gpus = _fake_gpus
-        if num_cpus_per_worker is not None:
-            self.num_cpus_per_worker = num_cpus_per_worker
-        if num_gpus_per_worker is not None:
-            self.num_gpus_per_worker = num_gpus_per_worker
-        if num_cpus_for_local_worker is not None:
-            self.num_cpus_for_local_worker = num_cpus_for_local_worker
+        if input is not None:
+            self.input_ = input_
+        if input_config is not None:
+            self.input_config = input_config
+        if actions_in_input_normalized is not None:
+            self.actions_in_input_normalized = actions_in_input_normalized
+        if input_evaluation is not None:
+            self.input_evaluation = input_evaluation
+        if postprocess_inputs is not None:
+            self.postprocess_inputs = postprocess_inputs
+        if shuffle_buffer_size is not None:
+            self.shuffle_buffer_size = shuffle_buffer_size
+        if output is not None:
+            self.output = output
+        if output_config is not None:
+            self.output_config = output_config
+        if output_compress_columns is not None:
+            self.output_compress_columns = output_compress_columns
+        if output_max_file_size is not None:
+            self.output_max_file_size = output_max_file_size
 
         return self
 
-    # TODO remaining: `resources()`
-    # "custom_resources_per_worker": {},
-    # # The strategy for the placement group factory returned by
-    # # `Trainer.default_resource_request()`. A PlacementGroup defines, which
-    # # devices (resources) should always be co-located on the same node.
-    # # For example, a Trainer with 2 rollout workers, running with
-    # # num_gpus=1 will request a placement group with the bundles:
-    # # [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle is
-    # # for the driver and the other 2 bundles are for the two workers.
-    # # These bundles can now be "placed" on the same or different
-    # # nodes depending on the value of `placement_strategy`:
-    # # "PACK": Packs bundles into as few nodes as possible.
-    # # "SPREAD": Places bundles across distinct nodes as even as possible.
-    # # "STRICT_PACK": Packs bundles into one node. The group is not allowed
-    # #   to span multiple nodes.
-    # # "STRICT_SPREAD": Packs bundles across distinct nodes.
-    # "placement_strategy": "PACK",
+    def multi_agent(
+        self,
+        *,
+        policies=None,
+        policy_map_capacity=None,
+        policy_map_cache=None,
+        policy_mapping_fn=None,
+        policies_to_train=None,
+        observation_fn=None,
+        replay_mode=None,
+        count_steps_by=None,
+    ) -> "TrainerConfig":
+        """Sets the config's multi-agent settings.
 
-    # TODO def offline_data()
-    # # === Offline Datasets ===
-    # # Specify how to generate experiences:
-    # #  - "sampler": Generate experiences via online (env) simulation (default).
-    # #  - A local directory or file glob expression (e.g., "/tmp/*.json").
-    # #  - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
-    # #    "s3://bucket/2.json"]).
-    # #  - A dict with string keys and sampling probabilities as values (e.g.,
-    # #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    # #  - A callable that takes an `IOContext` object as only arg and returns a
-    # #    ray.rllib.offline.InputReader.
-    # #  - A string key that indexes a callable with tune.registry.register_input
-    # "input": "sampler",
-    # # Arguments accessible from the IOContext for configuring custom input
-    # "input_config": {},
-    # # True, if the actions in a given offline "input" are already normalized
-    # # (between -1.0 and 1.0). This is usually the case when the offline
-    # # file has been generated by another RLlib algorithm (e.g. PPO or SAC),
-    # # while "normalize_actions" was set to True.
-    # "actions_in_input_normalized": False,
-    # # Specify how to evaluate the current policy. This only has an effect when
-    # # reading offline experiences ("input" is not "sampler").
-    # # Available options:
-    # #  - "wis": the weighted step-wise importance sampling estimator.
-    # #  - "is": the step-wise importance sampling estimator.
-    # #  - "simulation": run the environment in the background, but use
-    # #    this data for evaluation only and not for learning.
-    # "input_evaluation": ["is", "wis"],
-    # # Whether to run postprocess_trajectory() on the trajectory fragments from
-    # # offline inputs. Note that postprocessing will be done using the *current*
-    # # policy, not the *behavior* policy, which is typically undesirable for
-    # # on-policy algorithms.
-    # "postprocess_inputs": False,
-    # # If positive, input batches will be shuffled via a sliding window buffer
-    # # of this number of batches. Use this if the input data is not in random
-    # # enough order. Input is delayed until the shuffle buffer is filled.
-    # "shuffle_buffer_size": 0,
-    # # Specify where experiences should be saved:
-    # #  - None: don't save any experiences
-    # #  - "logdir" to save to the agent log dir
-    # #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
-    # #  - a function that returns a rllib.offline.OutputWriter
-    # "output": None,
-    # # Arguments accessible from the IOContext for configuring custom output
-    # "output_config": {},
-    # # What sample batch columns to LZ4 compress in the output data.
-    # "output_compress_columns": ["obs", "new_obs"],
-    # # Max output file size before rolling over to a new file.
-    # "output_max_file_size": 64 * 1024 * 1024,
+        Args:
+            policies: Map of type MultiAgentPolicyConfigDict from policy ids to tuples
+                of (policy_cls, obs_space, act_space, config). This defines the
+                observation and action spaces of the policies and any extra config.
+            policy_map_capacity: Keep this many policies in the "policy_map" (before
+                writing least-recently used ones to disk/S3).
+            policy_map_cache: Where to store overflowing (least-recently used) policies?
+                Could be a directory (str) or an S3 location. None for using the
+                default output dir.
+            policy_mapping_fn: Function mapping agent ids to policy ids.
+            policies_to_train: Determines those policies that should be updated.
+                Options are:
+                - None, for all policies.
+                - An iterable of PolicyIDs that should be updated.
+                - A callable, taking a PolicyID and a SampleBatch or MultiAgentBatch
+                and returning a bool (indicating whether the given policy is trainable
+                or not, given the particular batch). This allows you to have a policy
+                trained only on certain data (e.g. when playing against a certain
+                opponent).
+            observation_fn: Optional function that can be used to enhance the local
+                agent observations to include more state. See
+                rllib/evaluation/observation_function.py for more info.
+            replay_mode: When replay_mode=lockstep, RLlib will replay all the agent
+                transitions at a particular timestep together in a batch. This allows
+                the policy to implement differentiable shared computations between
+                agents it controls at that timestep. When replay_mode=independent,
+                transitions are replayed independently per policy.
+            count_steps_by: Which metric to use as the "batch size" when building a
+                MultiAgentBatch. The two supported values are:
+                "env_steps": Count each time the env is "stepped" (no matter how many
+                multi-agent actions are passed/how many multi-agent observations
+                have been returned in the previous step).
+                "agent_steps": Count each individual agent step as one step.
 
-    #def multi_agent(self, *, policies=None, policy_map_capacity=None):
-    #    pass
+        Returns:
+            This updated TrainerConfig object.
+        """
+        if policies is not None:
+            self.policies = policies
+        if policy_map_capacity is not None:
+            self.policy_map_capacity = policy_map_capacity
+        if policy_map_cache is not None:
+            self.policy_map_cache = policy_map_cache
+        if policy_mapping_fn is not None:
+            self.policy_mapping_fn = policy_mapping_fn
+        if policies_to_train is not None:
+            self.policies_to_train = policies_to_train
+        if observation_fn is not None:
+            self.observation_fn = observation_fn
+        if replay_mode is not None:
+            self.replay_mode = replay_mode
+        if count_steps_by is not None:
+            self.count_steps_by = count_steps_by
 
-    # # === Settings for Multi-Agent Environments ===
-    # "multiagent": {
-    #     # Map of type MultiAgentPolicyConfigDict from policy ids to tuples
-    #     # of (policy_cls, obs_space, act_space, config). This defines the
-    #     # observation and action spaces of the policies and any extra config.
-    #     "policies": {},
-    #     # Keep this many policies in the "policy_map" (before writing
-    #     # least-recently used ones to disk/S3).
-    #     "policy_map_capacity": 100,
-    #     # Where to store overflowing (least-recently used) policies?
-    #     # Could be a directory (str) or an S3 location. None for using
-    #     # the default output dir.
-    #     "policy_map_cache": None,
-    #     # Function mapping agent ids to policy ids.
-    #     "policy_mapping_fn": None,
-    #     # Determines those policies that should be updated.
-    #     # Options are:
-    #     # - None, for all policies.
-    #     # - An iterable of PolicyIDs that should be updated.
-    #     # - A callable, taking a PolicyID and a SampleBatch or MultiAgentBatch
-    #     #   and returning a bool (indicating whether the given policy is trainable
-    #     #   or not, given the particular batch). This allows you to have a policy
-    #     #   trained only on certain data (e.g. when playing against a certain
-    #     #   opponent).
-    #     "policies_to_train": None,
-    #     # Optional function that can be used to enhance the local agent
-    #     # observations to include more state.
-    #     # See rllib/evaluation/observation_function.py for more info.
-    #     "observation_fn": None,
-    #     # When replay_mode=lockstep, RLlib will replay all the agent
-    #     # transitions at a particular timestep together in a batch. This allows
-    #     # the policy to implement differentiable shared computations between
-    #     # agents it controls at that timestep. When replay_mode=independent,
-    #     # transitions are replayed independently per policy.
-    #     "replay_mode": "independent",
-    #     # Which metric to use as the "batch size" when building a
-    #     # MultiAgentBatch. The two supported values are:
-    #     # env_steps: Count each time the env is "stepped" (no matter how many
-    #     #   multi-agent actions are passed/how many multi-agent observations
-    #     #   have been returned in the previous step).
-    #     # agent_steps: Count each individual agent step as one step.
-    #     "count_steps_by": "env_steps",
-    # },
+        return self
 
-    # TODO either create def logging() or merge this with debug() above
-    # # === Logger ===
-    # # Define logger-specific configuration to be used inside Logger
-    # # Default value None allows overwriting with nested dicts
-    # "logger_config": None,
-    #
+    def debugging(
+        self,
+        *,
+        logger_config: Optional[dict] = None,
+        log_level: Optional[str] = None,
+        log_sys_usage: Optional[bool] = None,
+        fake_sampler: Optional[bool] = None,
+    ) -> "TrainerConfig":
+        """Sets the config's debugging settings.
+
+        Args:
+            logger_config: Define logger-specific configuration to be used inside Logger
+                Default value None allows overwriting with nested dicts.
+            log_level: Set the ray.rllib.* log level for the agent process and its
+                workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
+                will also periodically print out summaries of relevant internal dataflow
+                (this is also printed out once at startup at the INFO level). When using
+                the `rllib train` command, you can also use the `-v` and `-vv` flags as
+                shorthand for INFO and DEBUG.
+            log_sys_usage: Log system resource metrics to results. This requires
+                `psutil` to be installed for sys stats, and `gputil` for GPU metrics.
+            fake_sampler: Use fake (infinite speed) sampler. For testing only.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        if logger_config is not None:
+            self.logger_config = logger_config
+        if log_level is not None:
+            self.log_level = log_level
+        if log_sys_usage is not None:
+            self.log_sys_usage = log_sys_usage
+        if fake_sampler is not None:
+            self.fake_sampler = fake_sampler
+
+        return self
+
+    def experimental(
+        self,
+        *,
+        _tf_policy_handles_more_than_one_loss=None,
+        _disable_preprocessor_api=None,
+        _disable_action_flattening=None,
+        _disable_execution_plan_api=None,
+    ) -> "TrainerConfig":
+        """Sets the config's experimental settings.
+
+        Args:
+            _tf_policy_handles_more_than_one_loss: Experimental flag.
+                If True, TFPolicy will handle more than one loss/optimizer.
+                Set this to True, if you would like to return more than
+                one loss term from your `loss_fn` and an equal number of optimizers
+                from your `optimizer_fn`. In the future, the default for this will be
+                True.
+            _disable_preprocessor_api: Experimental flag.
+                If True, no (observation) preprocessor will be created and
+                observations will arrive in model as they are returned by the env.
+                In the future, the default for this will be True.
+            _disable_action_flattening: Experimental flag.
+                If True, RLlib will no longer flatten the policy-computed actions into
+                a single tensor (for storage in SampleCollectors/output files/etc..),
+                but leave (possibly nested) actions as-is. Disabling flattening affects:
+                - SampleCollectors: Have to store possibly nested action structs.
+                - Models that have the previous action(s) as part of their input.
+                - Algorithms reading from offline files (incl. action information).
+            _disable_execution_plan_api: Experimental flag.
+                If True, the execution plan API will not be used. Instead,
+                a Trainer's `training_iteration` method will be called as-is each
+                training iteration.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        if _tf_policy_handles_more_than_one_loss is not None:
+            self._tf_policy_handles_more_than_one_loss = (
+                _tf_policy_handles_more_than_one_loss
+            )
+        if _disable_preprocessor_api is not None:
+            self._disable_preprocessor_api = _disable_preprocessor_api
+        if _disable_action_flattening is not None:
+            self._disable_action_flattening = _disable_action_flattening
+        if _disable_execution_plan_api is not None:
+            self._disable_execution_plan_api = _disable_execution_plan_api
+
+        return self
+
+    # TODO
     # # === API deprecations/simplifications/changes ===
-    # # Experimental flag.
-    # # If True, TFPolicy will handle more than one loss/optimizer.
-    # # Set this to True, if you would like to return more than
-    # # one loss term from your `loss_fn` and an equal number of optimizers
-    # # from your `optimizer_fn`.
-    # # In the future, the default for this will be True.
-    # "_tf_policy_handles_more_than_one_loss": False,
-    # # Experimental flag.
-    # # If True, no (observation) preprocessor will be created and
-    # # observations will arrive in model as they are returned by the env.
-    # # In the future, the default for this will be True.
-    # "_disable_preprocessor_api": False,
-    # # Experimental flag.
-    # # If True, RLlib will no longer flatten the policy-computed actions into
-    # # a single tensor (for storage in SampleCollectors/output files/etc..),
-    # # but leave (possibly nested) actions as-is. Disabling flattening affects:
-    # # - SampleCollectors: Have to store possibly nested action structs.
-    # # - Models that have the previous action(s) as part of their input.
-    # # - Algorithms reading from offline files (incl. action information).
-    # "_disable_action_flattening": False,
-    # # Experimental flag.
-    # # If True, the execution plan API will not be used. Instead,
-    # # a Trainer's `training_iteration` method will be called as-is each
-    # # training iteration.
-    # "_disable_execution_plan_api": False,
     #
     # # If True, disable the environment pre-checking module.
     # "disable_env_checking": False,

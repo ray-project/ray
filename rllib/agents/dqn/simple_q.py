@@ -83,7 +83,7 @@ DEFAULT_CONFIG = with_common_config({
     # === Optimization ===
     # Learning rate for adam optimizer
     "lr": 5e-4,
-    # Learning rate schedule
+    # Learning rate schedule.
     # In the format of [[timestep, value], [timestep, value], ...]
     # A schedule should normally start from timestep 0.
     "lr_schedule": None,

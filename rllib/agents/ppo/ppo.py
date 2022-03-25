@@ -10,7 +10,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 """
 
 import logging
-from typing import Optional, Type
+from typing import List, Optional, Type, Union
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
@@ -40,25 +40,28 @@ class PPOConfig(TrainerConfig):
     """Defines a PPOTrainer configuration from the given configuration.
 
     Example:
-        >>> from ray.rllib.agents.ppo import PPOConfig
         >>> config = PPOConfig(kl_coeff=0.3).training(gamma=0.9, lr=0.01)\
                         .resources(num_gpus=0)\
                         .rollouts(num_workers=4)
         >>> print(config.to_dict())
+        >>> # Build a Trainer object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
     Example:
-        >>> from ray.rllib.agents.ppo import PPOConfig
-        >>> trainer = PPOConfig().build(env="CartPole-v1")
-        >>> config_dict = trainer.get_config()
-        >>> config_dict.update({
-              "lr": tune.grid_search([0.01, 0.001, 0.0001]),
-            }),
+        >>> config = PPOConfig()
+        >>> # Print out some default values.
+        >>> print(config.clip_param)
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> # Set the config object's env.
+        >>> config.environment(env="CartPole-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
         >>> tune.run(
                 "PPO",
                 stop={"episode_reward_mean": 200},
-                config=config_dict,
+                config=config.to_dict(),
             )
     """
 
@@ -66,6 +69,7 @@ class PPOConfig(TrainerConfig):
     # __sphinx_doc_begin__
     def __init__(self,
                  *,
+                 lr_schedule: Optional[List[List[Union[int, float]]]] = None,
                  use_critic: bool = True,
                  use_gae: bool = True,
                  lambda_: float = 1.0,
@@ -75,7 +79,7 @@ class PPOConfig(TrainerConfig):
                  shuffle_sequences: bool = True,
                  vf_loss_coeff: float = 1.0,
                  entropy_coeff: float = 0.0,
-                 entropy_coeff_schedule = None,
+                 entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
                  clip_param: float = 0.3,
                  vf_clip_param: float = 10.0,
                  grad_clip: Optional[float] = None,
@@ -84,6 +88,10 @@ class PPOConfig(TrainerConfig):
         """Initializes a PPOConfig instance.
 
         Args:
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
             use_critic: Should use a critic as a baseline (otherwise don't use value
                 baseline; required for using GAE).
             use_gae: If true, use the Generalized Advantage Estimator (GAE)
@@ -112,6 +120,7 @@ class PPOConfig(TrainerConfig):
 
         super().__init__(trainer_class=PPOTrainer)
 
+        self.lr_schedule = lr_schedule
         self.use_critic = use_critic
         self.use_gae = use_gae
         self.lambda_ = lambda_
@@ -131,11 +140,10 @@ class PPOConfig(TrainerConfig):
         self.rollout_fragment_length = 200
         self.train_batch_size = 4000
         self.lr = 5e-5
-        self.lr_schedule = None
         self.model["vf_share_layers"] = False
 
 
-# Deprecated: Use ray.rllib.agents.ppo.PPOConfig() instead!
+# Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(with_common_config({
@@ -155,7 +163,7 @@ class _deprecated_default_config(dict):
             "vf_clip_param": 10.0,
             "grad_clip": None,
             "kl_target": 0.01,
-    }))
+        }))
 
     @Deprecated(
         old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
@@ -243,10 +251,12 @@ def warn_about_bad_reward_scales(config, result):
 
 
 class PPOTrainer(Trainer):
+    # TODO: Change the return value of this method to return a TrainerConfig object
+    #  instead.
     @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return PPOConfig().to_dict()
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
