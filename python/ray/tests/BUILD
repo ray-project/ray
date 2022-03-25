@@ -129,6 +129,7 @@ py_test_module_list(
     "test_ray_debugger.py",
     "test_worker_capping.py",
     "test_object_manager.py",
+    "test_object_manager_2.py",
     "test_multi_tenancy.py",
     "test_namespace.py",
     "test_scheduling.py",
