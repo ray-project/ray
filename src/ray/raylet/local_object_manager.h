@@ -146,8 +146,9 @@ class LocalObjectManager {
   /// In that case, the URL is supposed to be obtained by the object directory.
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
-  /// Get the current pinned object store memory usage.
-  int64_t GetPinnedBytes() const { return pinned_objects_size_; }
+  /// Get the current pinned object store memory usage to help node scale down decisions.
+  /// A node can only be safely drained when this function reports zero.
+  int64_t GetPinnedBytes() const;
 
   std::string DebugString() const;
 

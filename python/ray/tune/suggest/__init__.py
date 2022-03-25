@@ -128,6 +128,7 @@ def create_searcher(
     Returns:
         ray.tune.suggest.Searcher: The search algorithm.
     Example:
+        >>> from ray import tune
         >>> search_alg = tune.create_searcher('ax')
     """
 
