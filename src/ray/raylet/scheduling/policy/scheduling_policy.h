@@ -40,7 +40,7 @@ struct SchedulingResultStatus {
     INFEASIBLE = 1,
     // Scheduling successful.
     SUCCESS = 2,
-    // Only part of nodes succeed when batch scheduling.
+    // Only part of the requested resources succeed when batch scheduling.
     PARTIAL_SUCCESS = 3,
   };
   SchedulingResultStatusCode code = SchedulingResultStatusCode::SUCCESS;
@@ -123,6 +123,7 @@ class ISingleSchedulingPolicy : public ISchedulingPolicy {
       if (!node_id.IsNil()) {
         ++success_count;
       }
+      // TODO(Shanly): We should deduct the resource temporarily.
       selected_nodes.emplace_back(node_id);
     }
 
