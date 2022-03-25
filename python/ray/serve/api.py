@@ -1037,8 +1037,7 @@ class DeploymentMethodNode(DAGNode):
 class DeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
-    The bound deployment can be run, deployed, or built to a production config
-    using serve.run, serve.deploy, and serve.build, respectively.
+    The bound deployment can be run using serve.run().
 
     A bound deployment can be passed as an argument to other bound deployments
     to build a multi-deployment application. When the application is deployed, the
@@ -1952,7 +1951,6 @@ def run(
         return ingress.get_handle()
 
 
-@PublicAPI(stability="alpha")
 def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
@@ -1973,7 +1971,7 @@ def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
 
     if in_interactive_shell():
         raise RuntimeError(
-            "serve.build cannot be called from an interactive shell like "
+            "build cannot be called from an interactive shell like "
             "IPython or Jupyter because it requires all deployments to be "
             "importable to run the app after building."
         )

@@ -23,7 +23,7 @@ def maybe_build(
     node: DeploymentNode, use_build: bool
 ) -> Union[Application, DeploymentNode]:
     if use_build:
-        return Application.from_dict(serve.build(node).to_dict())
+        return Application.from_dict(pipeline_build(node).to_dict())
     else:
         return node
 

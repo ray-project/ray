@@ -28,6 +28,7 @@ from ray.serve.api import (
     get_deployment_statuses,
     serve_application_status_to_schema,
 )
+from ray.serve.api import build as build_app
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -419,7 +420,7 @@ def build(app_dir: str, output_path: Optional[str], import_path: str):
             f"DeploymentFunctionNode, but got {type(node)}."
         )
 
-    app = serve.build(node)
+    app = build_app(node)
 
     if output_path is not None:
         if not output_path.endswith(".yaml"):

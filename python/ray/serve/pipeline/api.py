@@ -56,8 +56,9 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
         Assuming we have non-JSON serializable or inline defined class or
         function in local pipeline development.
 
-        >>> deployments = serve.build(ray_dag) # it can be method node
-        >>> deployments = serve.build(m1) # or just a regular node.
+        >>> from ray.serve.api import build_app
+        >>> deployments = build_app(ray_dag) # it can be method node
+        >>> deployments = build_app(m1) # or just a regular node.
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
