@@ -16,6 +16,7 @@ from ray._private.utils import init_grpc_channel
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_worker_stats(shutdown_only):
     ray.init(num_cpus=1, include_dashboard=True)
     raylet = ray.nodes()[0]
