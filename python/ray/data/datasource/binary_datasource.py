@@ -11,9 +11,12 @@ class BinaryDatasource(FileBasedDatasource):
     """Binary datasource, for reading and writing binary files.
 
     Examples:
-        >>> source = BinaryDatasource()
-        >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... [b"file_data", ...]
+        >>> import ray
+        >>> from ray.data.datasource import BinaryDatasource
+        >>> source = BinaryDatasource() # doctest: +SKIP
+        >>> ray.data.read_datasource( # doctest: +SKIP
+        ...     source, paths="/path/to/dir").take()
+        [b"file_data", ...]
     """
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):

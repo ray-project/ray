@@ -173,12 +173,8 @@ Search Algorithm Examples
   Example script showing usage of :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
 - :doc:`/tune/examples/includes/nevergrad_example`:
   Example script showing usage of :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
-- :doc:`/tune/examples/includes/optuna_example`:
+- :doc:`/tune/examples/optuna_example`:
   Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
-- :doc:`/tune/examples/includes/optuna_define_by_run_example`:
-  Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__] with a define-by-run function
-- :doc:`/tune/examples/includes/optuna_multiobjective_example`:
-  Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__] for multi-objective optimization
 - :doc:`/tune/examples/includes/zoopt_example`:
   Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
 - :doc:`/tune/examples/includes/sigopt_example`:
