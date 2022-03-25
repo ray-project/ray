@@ -67,6 +67,7 @@ class RandomParametriclPolicy(Policy, ABC):
 # Create a new Trainer using the Policy and config defined above and a new
 # execution plan.
 class RandomParametricTrainer(Trainer):
+    @classmethod
     def get_default_config(cls):
         return DEFAULT_CONFIG
 
