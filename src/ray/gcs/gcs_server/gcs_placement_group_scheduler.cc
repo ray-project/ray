@@ -80,7 +80,7 @@ ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
     const std::vector<scheduling::NodeID> &selected_nodes,
     const SchedulingResultStatus &status) {
   ScheduleMap schedule_map;
-  if (status == SchedulingResultStatus::SUCCESS && !selected_nodes.empty()) {
+  if (status.IsSuccess() && !selected_nodes.empty()) {
     RAY_CHECK(bundles.size() == selected_nodes.size());
     int index = 0;
     for (const auto &bundle : bundles) {
@@ -99,7 +99,7 @@ ScheduleResult GcsStrictPackStrategy::Schedule(
   const auto &scheduling_result = cluster_resource_scheduler.Schedule(
       required_resources, SchedulingType::STRICT_PACK);
   return GenerateScheduleResult(
-      bundles, scheduling_result.second, scheduling_result.first);
+      bundles, scheduling_result.selected_nodes, scheduling_result.status);
 }
 
 ScheduleResult GcsPackStrategy::Schedule(
@@ -113,7 +113,7 @@ ScheduleResult GcsPackStrategy::Schedule(
   const auto &scheduling_result =
       cluster_resource_scheduler.Schedule(required_resources, SchedulingType::PACK);
   return GenerateScheduleResult(
-      bundles, scheduling_result.second, scheduling_result.first);
+      bundles, scheduling_result.selected_nodes, scheduling_result.status);
 }
 
 ScheduleResult GcsSpreadStrategy::Schedule(
@@ -124,7 +124,7 @@ ScheduleResult GcsSpreadStrategy::Schedule(
   const auto &scheduling_result =
       cluster_resource_scheduler.Schedule(required_resources, SchedulingType::SPREAD);
   return GenerateScheduleResult(
-      bundles, scheduling_result.second, scheduling_result.first);
+      bundles, scheduling_result.selected_nodes, scheduling_result.status);
 }
 
 ScheduleResult GcsStrictSpreadStrategy::Schedule(
@@ -152,7 +152,7 @@ ScheduleResult GcsStrictSpreadStrategy::Schedule(
         return nodes_in_use.count(node_id) == 0;
       });
   return GenerateScheduleResult(
-      bundles, scheduling_result.second, scheduling_result.first);
+      bundles, scheduling_result.selected_nodes, scheduling_result.status);
 }
 
 void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
@@ -184,11 +184,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto result_status = scheduling_result.first;
   auto selected_nodes = scheduling_result.second;
 
-  if (result_status != SchedulingResultStatus::SUCCESS) {
+  if (!result_status.IsSuccess()) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
                    << ", id: " << placement_group->GetPlacementGroupID()
                    << ", because current reource can't satisfy the required resource.";
-    bool infeasible = result_status == SchedulingResultStatus::INFEASIBLE;
+    bool infeasible = result_status.IsInfeasible();
     // If the placement group creation has failed,
     // but if it is not infeasible, it is retryable to create.
     failure_callback(placement_group, /*is_feasible*/ !infeasible);

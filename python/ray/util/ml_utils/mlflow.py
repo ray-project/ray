@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import logging
 from typing import Dict, Optional, TYPE_CHECKING
@@ -21,6 +22,17 @@ class MLflowLoggerUtil:
 
         self._mlflow = mlflow
         self.experiment_id = None
+
+    def __deepcopy__(self, memo=None):
+        # mlflow is a module, and thus cannot be copied
+        _mlflow = self._mlflow
+        self.__dict__.pop("_mlflow")
+        dict_copy = deepcopy(self.__dict__, memo)
+        copied_object = MLflowLoggerUtil()
+        copied_object.__dict__.update(dict_copy)
+        self._mlflow = _mlflow
+        copied_object._mlflow = _mlflow
+        return copied_object
 
     def setup_mlflow(
         self,

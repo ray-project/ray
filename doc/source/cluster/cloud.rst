@@ -371,7 +371,7 @@ To run a distributed Ray program, you'll need to execute your program on the sam
 
 .. tabbed:: Python
 
-    Within your program/script, you must call ``ray.init`` and add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``). This causes Ray to connect to the existing cluster. For example:
+    Within your program/script, you must call ``ray.init`` and add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``). This causes your script to connect to the existing Ray runtime on the cluster. For example:
 
     .. code-block:: python
 
