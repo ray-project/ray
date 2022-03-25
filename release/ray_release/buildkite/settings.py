@@ -105,6 +105,8 @@ def get_default_settings() -> Dict:
     settings = {
         "frequency": Frequency.ANY,
         "test_name_filter": None,
+        "test_group_filter": None,
+        "test_team_filter": None,
         "ray_wheels": None,
         "ray_test_repo": None,
         "ray_test_branch": None,
@@ -131,6 +133,12 @@ def update_settings_from_environment(settings: Dict) -> Dict:
     if "TEST_NAME" in os.environ:
         settings["test_name_filter"] = os.environ["TEST_NAME"]
 
+    if "TEST_GROUP" in os.environ:
+        settings["test_group_filter"] = os.environ["TEST_GROUP"]
+
+    if "TEST_TEAM" in os.environ:
+        settings["test_team_filter"] = os.environ["TEST_TEAM"]
+
     if "RELEASE_PRIORITY" in os.environ:
         settings["priority"] = get_priority(os.environ["RELEASE_PRIORITY"])
 
@@ -156,8 +164,16 @@ def update_settings_from_buildkite(settings: Dict):
         settings["ray_wheels"] = ray_wheels
 
     test_name_filter = get_buildkite_prompt_value("release-test-name")
-    if ray_wheels:
+    if test_name_filter:
         settings["test_name_filter"] = test_name_filter
+
+    test_group_filter = get_buildkite_prompt_value("release-test-group")
+    if test_group_filter:
+        settings["test_group_filter"] = test_group_filter
+
+    test_team_filter = get_buildkite_prompt_value("release-test-team")
+    if test_team_filter:
+        settings["test_team_filter"] = test_team_filter
 
     test_priority = get_buildkite_prompt_value("release-priority")
     if test_priority:

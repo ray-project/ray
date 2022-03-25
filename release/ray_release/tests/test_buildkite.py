@@ -101,6 +101,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
         os.environ["RAY_TEST_BRANCH"] = "sub/branch"
         os.environ["RAY_WHEELS"] = "custom-wheels"
         os.environ["TEST_NAME"] = "name_filter"
+        os.environ["TEST_TEAM"] = "team_filter"
+        os.environ["TEST_GROUP"] = "group_filter"
         os.environ["RELEASE_PRIORITY"] = "manual"
         updated_settings = settings.copy()
         update_settings_from_environment(updated_settings)
@@ -110,6 +112,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
             {
                 "frequency": Frequency.NIGHTLY,
                 "test_name_filter": "name_filter",
+                "test_team_filter": "team_filter",
+                "test_group_filter": "group_filter",
                 "ray_wheels": "custom-wheels",
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
@@ -148,6 +152,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
             self.buildkite["release-ray-test-repo-branch"] = "user:sub/branch"
             self.buildkite["release-ray-wheels"] = "custom-wheels"
             self.buildkite["release-test-name"] = "name_filter"
+            self.buildkite["release-test-team"] = "team_filter"
+            self.buildkite["release-test-group"] = "group_filter"
             self.buildkite["release-priority"] = "manual"
             updated_settings = settings.copy()
             update_settings_from_buildkite(updated_settings)
@@ -157,6 +163,8 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 {
                     "frequency": Frequency.NIGHTLY,
                     "test_name_filter": "name_filter",
+                    "test_team_filter": "team_filter",
+                    "test_group_filter": "group_filter",
                     "ray_wheels": "custom-wheels",
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
@@ -224,7 +232,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertSequenceEqual(filtered, [("test_2", False), ("other_1", False)])
 
         filtered = self._filter_names_smoke(
-            tests, frequency=Frequency.NIGHTLY, test_name_filter="other"
+            tests,
+            frequency=Frequency.NIGHTLY,
+            test_attr_regex_filters={"name": "other"},
         )
         self.assertSequenceEqual(
             filtered,
@@ -234,7 +244,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         filtered = self._filter_names_smoke(
-            tests, frequency=Frequency.NIGHTLY, test_name_filter="test"
+            tests, frequency=Frequency.NIGHTLY, test_attr_regex_filters={"name": "test"}
         )
         self.assertSequenceEqual(
             filtered, [("test_1", False), ("test_2", True), ("test_3", False)]
