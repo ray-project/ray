@@ -149,6 +149,7 @@ install_miniconda() {
       set +x
       echo "Resetting Anaconda Python ${python_version}..."
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y --rev 0
+      pip uninstall -y requests || true
     )
   fi
 
