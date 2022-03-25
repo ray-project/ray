@@ -249,6 +249,31 @@ class InvalidValuesTest(unittest.TestCase):
         best_trial = out.best_trial
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
+    def testOptunaReportTooOften(self):
+        from ray.tune.suggest.optuna import OptunaSearch
+        from optuna.samplers import RandomSampler
+
+        searcher = OptunaSearch(
+            sampler=RandomSampler(seed=1234),
+            space=OptunaSearch.convert_search_space(self.config),
+            metric="metric",
+            mode="max",
+        )
+        searcher.suggest("trial_1")
+        searcher.on_trial_result("trial_1", {"training_iteration": 1, "metric": 1})
+        searcher.on_trial_complete("trial_1", {"training_iteration": 2, "metric": 1})
+
+        # Report after complete should not fail
+        with self.assertLogs("ray.tune.suggest.optuna", level="WARN") as w:
+            searcher.on_trial_result("trial_1", {"training_iteration": 3, "metric": 1})
+            self.assertIn("Received additional result", w.output[0])
+
+        with self.assertLogs("ray.tune.suggest.optuna", level="WARN") as w:
+            searcher.on_trial_complete(
+                "trial_1", {"training_iteration": 4, "metric": 1}
+            )
+            self.assertIn("Received additional completion", w.output[0])
+
     def testSkopt(self):
         from ray.tune.suggest.skopt import SkOptSearch
 
