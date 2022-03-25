@@ -134,8 +134,10 @@ class warn_if_slow:
     """Prints a warning if a given operation is slower than 500ms.
 
     Example:
-        >>> with warn_if_slow("some_operation"):
-        ...    ray.get(something)
+        >>> from ray.tune.utils.util import warn_if_slow
+        >>> something = ... # doctest: +SKIP
+        >>> with warn_if_slow("some_operation"): # doctest: +SKIP
+        ...    ray.get(something) # doctest: +SKIP
     """
 
     DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))

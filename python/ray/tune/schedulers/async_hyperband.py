@@ -176,12 +176,17 @@ class _Bracket:
     the correct rung corresponding to the current iteration of the result.
 
     Example:
-        >>> b = _Bracket(1, 10, 2, 0)
-        >>> b.on_result(trial1, 1, 2)  # CONTINUE
-        >>> b.on_result(trial2, 1, 4)  # CONTINUE
-        >>> b.cutoff(b._rungs[-1][1]) == 3.0  # rungs are reversed
-        >>> b.on_result(trial3, 1, 1)  # STOP
-        >>> b.cutoff(b._rungs[3][1]) == 2.0
+        >>> trial1, trial2, trial3 = ... # doctest: +SKIP
+        >>> b = _Bracket(1, 10, 2, 0) # doctest: +SKIP
+        >>> # CONTINUE
+        >>> b.on_result(trial1, 1, 2) # doctest: +SKIP
+        >>> # CONTINUE
+        >>> b.on_result(trial2, 1, 4) # doctest: +SKIP
+        >>> # rungs are reversed
+        >>> b.cutoff(b._rungs[-1][1]) == 3.0 # doctest: +SKIP
+         # STOP
+        >>> b.on_result(trial3, 1, 1) # doctest: +SKIP
+        >>> b.cutoff(b._rungs[3][1]) == 2.0 # doctest: +SKIP
     """
 
     def __init__(self, min_t: int, max_t: int, reduction_factor: float, s: int):

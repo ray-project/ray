@@ -831,7 +831,6 @@ class Trainer(Trainable):
             config, logger_creator, remote_checkpoint_dir, sync_function_tpl
         )
 
-    @ExperimentalAPI
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
         return cls._default_config or COMMON_CONFIG
@@ -907,7 +906,7 @@ class Trainer(Trainable):
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
-            # should no longer be used.
+            # has been deprecated.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -1034,7 +1033,6 @@ class Trainer(Trainable):
     def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
-    @ExperimentalAPI
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
@@ -1107,7 +1105,6 @@ class Trainer(Trainable):
 
         return result
 
-    @ExperimentalAPI
     def step_attempt(self) -> ResultDict:
         """Attempts a single training step, including evaluation, if required.
 
@@ -1389,7 +1386,7 @@ class Trainer(Trainable):
         # Also return the results here for convenience.
         return self.evaluation_metrics
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def training_iteration(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
@@ -1966,11 +1963,13 @@ class Trainer(Trainable):
                 If None, the output format will be DL framework specific.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> for _ in range(10):
-            >>>     trainer.train()
-            >>> trainer.export_policy_model("/tmp/dir")
-            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1)
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> # Use a Trainer from RLlib or define your own.
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
+            >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
+            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
@@ -1989,10 +1988,12 @@ class Trainer(Trainable):
             policy_id: Optional policy id to export.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> for _ in range(10):
-            >>>     trainer.train()
-            >>> trainer.export_policy_checkpoint("/tmp/export_dir")
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> # Use a Trainer from RLlib or define your own.
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
+            >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
 
@@ -2009,10 +2010,11 @@ class Trainer(Trainable):
             policy_id: Optional policy id to import into.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
-            >>> for _ in range(10):
-            >>>     trainer.train()
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
         """
         self.get_policy(policy_id).import_model_from_h5(import_file)
         # Sync new weights to remote workers.
@@ -2303,7 +2305,7 @@ class Trainer(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
 
@@ -2704,14 +2706,10 @@ class Trainer(Trainable):
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
 
-    # TODO: Deprecate this method (`build_trainer` should no longer be used).
     @staticmethod
-    def with_updates(**overrides) -> Type["Trainer"]:
-        raise NotImplementedError(
-            "`with_updates` may only be called on Trainer sub-classes "
-            "that were generated via the `ray.rllib.agents.trainer_template."
-            "build_trainer()` function (which has been deprecated)!"
-        )
+    @Deprecated(error=True)
+    def with_updates(*args, **kwargs):
+        pass
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
