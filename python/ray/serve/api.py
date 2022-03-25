@@ -874,9 +874,13 @@ def get_replica_context() -> ReplicaContext:
 
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
+
     Example:
-        >>> serve.get_replica_context().deployment # deployment_name
-        >>> serve.get_replica_context().replica_tag # deployment_name#krcwoa
+        >>> from ray import serve
+        >>> # deployment_name
+        >>> serve.get_replica_context().deployment # doctest: +SKIP
+        >>> # deployment_name#krcwoa
+        >>> serve.get_replica_context().replica_tag # doctest: +SKIP
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException(
@@ -897,12 +901,15 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             object.
 
     Example:
-    >>> app = FastAPI()
-    >>> @serve.deployment
-        @serve.ingress(app)
-        class App:
-            pass
-    >>> App.deploy()
+        >>> from fastapi import FastAPI
+        >>> from ray import serve
+        >>> app = FastAPI() # doctest: +SKIP
+        >>> app = FastAPI() # doctest: +SKIP
+        >>> @serve.deployment # doctest: +SKIP
+        ... @serve.ingress(app) # doctest: +SKIP
+        ... class App: # doctest: +SKIP
+        ...     pass # doctest: +SKIP
+        >>> App.deploy() # doctest: +SKIP
     """
 
     def decorator(cls):
@@ -1559,13 +1566,14 @@ def deployment(
             a response. Defaults to 100.
 
     Example:
+    >>> from ray import serve
+    >>> @serve.deployment(name="deployment1", version="v1") # doctest: +SKIP
+    ... class MyDeployment: # doctest: +SKIP
+    ...     pass # doctest: +SKIP
 
-    >>> @serve.deployment(name="deployment1", version="v1")
-        class MyDeployment:
-            pass
-
-    >>> MyDeployment.deploy(*init_args)
-    >>> MyDeployment.options(num_replicas=2, init_args=init_args).deploy()
+    >>> MyDeployment.deploy(*init_args) # doctest: +SKIP
+    >>> MyDeployment.options( # doctest: +SKIP
+    ...     num_replicas=2, init_args=init_args).deploy()
 
     Returns:
         Deployment
@@ -1629,9 +1637,9 @@ def get_deployment(name: str) -> Deployment:
     the original definition.
 
     Example:
-
-    >>> MyDeployment = serve.get_deployment("name")
-    >>> MyDeployment.options(num_replicas=10).deploy()
+    >>> from ray import serve
+    >>> MyDeployment = serve.get_deployment("name")  # doctest: +SKIP
+    >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
 
     Args:
         name(str): name of the deployment. This must have already been
@@ -1693,11 +1701,11 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     A deployment's status is one of {UPDATING, UNHEALTHY, and HEALTHY}.
 
     Example:
-
-    >>> statuses = get_deployment_statuses()
-    >>> status_info = statuses["deployment_name"]
-    >>> status = status_info.status
-    >>> message = status_info.message
+    >>> from ray.serve.api import get_deployment_statuses
+    >>> statuses = get_deployment_statuses() # doctest: +SKIP
+    >>> status_info = statuses["deployment_name"] # doctest: +SKIP
+    >>> status = status_info.status # doctest: +SKIP
+    >>> message = status_info.message # doctest: +SKIP
 
     Returns:
             Dict[str, DeploymentStatus]: This dictionary maps the running

@@ -181,6 +181,7 @@ def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_iterable_delta
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
         >>> compute_iterable_delta(old, new)
@@ -197,6 +198,7 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     """Given two dicts, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_dict_delta
         >>> old = {"a": 1, "b": 2}
         >>> new = {"a": 3, "d": 4}
         >>> compute_dict_delta(old, new)
@@ -330,12 +332,14 @@ def require_packages(packages: List[str]):
     """Decorator making sure function run in specified environments
 
     Examples:
-        >>> @require_packages(["numpy", "package_a"])
-            def func():
-                import numpy as np
-        >>> func()
-            ImportError: func requires ["numpy", "package_a"] but
-            ["package_a"] are not available, please pip install them.
+        >>> from ray.serve.utils import require_packages
+        >>> @require_packages(["numpy", "package_a"]) # doctest: +SKIP
+        ... def func(): # doctest: +SKIP
+        ...     import numpy as np # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        >>> func() # doctest: +SKIP
+        ImportError: func requires ["numpy", "package_a"] but
+        ["package_a"] are not available, please pip install them.
     """
 
     def decorator(func):

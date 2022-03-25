@@ -18,9 +18,10 @@ class ViewRequirement:
     options to build the view.
 
     Examples:
+        >>> from ray.rllib.models.modelv2 import ModelV2
         >>> # The default ViewRequirement for a Model is:
-        >>> req = [ModelV2].view_requirements
-        >>> print(req)
+        >>> req = ModelV2(...).view_requirements # doctest: +SKIP
+        >>> print(req) # doctest: +SKIP
         {"obs": ViewRequirement(shift=0)}
     """
 
