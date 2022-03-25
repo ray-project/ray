@@ -1,6 +1,5 @@
 import pytest
 import sys
-import time
 
 try:
     import pytest_timeout
@@ -134,8 +133,8 @@ def test_schedule_placement_groups_at_the_same_time(connect_to_client):
     ray.shutdown()
 
 
-def test_detached_placement_group(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_detached_placement_group(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     for _ in range(2):
         cluster.add_node(num_cpus=3)
     cluster.wait_for_nodes()
@@ -246,8 +245,8 @@ ray.shutdown()
     assert assert_alive_num_actor(4)
 
 
-def test_named_placement_group(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_named_placement_group(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     for _ in range(2):
         cluster.add_node(num_cpus=3)
     cluster.wait_for_nodes()
@@ -330,8 +329,10 @@ ray.shutdown()
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_synchronous_registration(ray_start_cluster, connect_to_client):
-    cluster = ray_start_cluster
+def test_placement_group_synchronous_registration(
+    ray_start_cluster_enabled, connect_to_client
+):
+    cluster = ray_start_cluster_enabled
     # One node which only has one CPU.
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -358,8 +359,8 @@ def test_placement_group_synchronous_registration(ray_start_cluster, connect_to_
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
-    cluster = ray_start_cluster
+def test_placement_group_gpu_set(ray_start_cluster_enabled, connect_to_client):
+    cluster = ray_start_cluster_enabled
     # One node which only has one CPU.
     cluster.add_node(num_cpus=1, num_gpus=1)
     cluster.add_node(num_cpus=1, num_gpus=1)
@@ -391,8 +392,8 @@ def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
-    cluster = ray_start_cluster
+def test_placement_group_gpu_assigned(ray_start_cluster_enabled, connect_to_client):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_gpus=2)
     ray.init(address=cluster.address)
     gpu_ids_res = set()
@@ -414,273 +415,6 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
         gpu_ids_res.add(ray.get(f.options(placement_group=pg2).remote()))
 
         assert len(gpu_ids_res) == 2
-
-
-def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
-    """Tests the scheduling of lots of actors will not be blocked
-    when using placement groups.
-
-    For more detailed information please refer to:
-    https://github.com/ray-project/ray/issues/15801.
-    """
-
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=1)
-    class A:
-        def ready(self):
-            pass
-
-    actor_num = 1000
-    pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(actor_num)]
-    actors = [A.options(placement_group=pg).remote() for pg in pgs]
-    refs = [actor.ready.remote() for actor in actors]
-
-    expected_created_num = 1
-
-    def is_actor_created_number_correct():
-        ready, not_ready = ray.wait(refs, num_returns=len(refs), timeout=1)
-        return len(ready) == expected_created_num
-
-    def is_pg_created_number_correct():
-        created_pgs = [
-            pg
-            for _, pg in ray.util.placement_group_table().items()
-            if pg["state"] == "CREATED"
-        ]
-        return len(created_pgs) == expected_created_num
-
-    wait_for_condition(is_pg_created_number_correct, timeout=3)
-    wait_for_condition(is_actor_created_number_correct, timeout=30, retry_interval_ms=0)
-
-    # NOTE: we don't need to test all the actors create successfully.
-    for _ in range(20):
-        expected_created_num += 1
-        cluster.add_node(num_cpus=1)
-
-        wait_for_condition(is_pg_created_number_correct, timeout=10)
-        # Make sure the node add event will cause a waiting actor
-        # to create successfully in time.
-        wait_for_condition(
-            is_actor_created_number_correct, timeout=30, retry_interval_ms=0
-        )
-
-
-@pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_client):
-    cluster = ray_start_cluster
-    cluster.add_node(num_gpus=4, num_cpus=4)
-    ray.init(address=cluster.address)
-    gpu_ids_res = set()
-
-    # Create placement group with 4 bundles using 1 GPU each.
-    num_gpus = 4
-    bundles = [{"GPU": 1, "CPU": 1} for _ in range(num_gpus)]
-    pg = placement_group(bundles)
-    ray.get(pg.ready())
-
-    # Actor using 1 GPU that has a method to get
-    #  $CUDA_VISIBLE_DEVICES env variable.
-    @ray.remote(num_gpus=1, num_cpus=1)
-    class Actor:
-        def get_gpu(self):
-            import os
-
-            return os.environ["CUDA_VISIBLE_DEVICES"]
-
-    # Create actors out of order.
-    actors = []
-    actors.append(
-        Actor.options(placement_group=pg, placement_group_bundle_index=0).remote()
-    )
-    actors.append(
-        Actor.options(placement_group=pg, placement_group_bundle_index=3).remote()
-    )
-    actors.append(
-        Actor.options(placement_group=pg, placement_group_bundle_index=2).remote()
-    )
-    actors.append(
-        Actor.options(placement_group=pg, placement_group_bundle_index=1).remote()
-    )
-
-    for actor in actors:
-        gpu_ids = ray.get(actor.get_gpu.remote())
-        assert len(gpu_ids) == 1
-        gpu_ids_res.add(gpu_ids)
-
-    assert len(gpu_ids_res) == 4
-
-
-def test_placement_group_status_no_bundle_demand(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f():
-        pass
-
-    pg = ray.util.placement_group([{"CPU": 1}])
-    ray.get(pg.ready())
-    ray.util.remove_placement_group(pg)
-    wait_for_condition(lambda: is_placement_group_removed(pg))
-    # Create a ready task after the placement group is removed.
-    # This shouldn't be reported to the resource demand.
-    r = pg.ready()  # noqa
-
-    # Wait until the usage is updated, which is
-    # when the demand is also updated.
-    def is_usage_updated():
-        demand_output = get_ray_status_output(cluster.address)
-        return demand_output["usage"] != ""
-
-    wait_for_condition(is_usage_updated)
-    # The output shouldn't include the pg.ready task demand.
-    demand_output = get_ray_status_output(cluster.address)
-    assert demand_output["demand"] == "(no resource demands)"
-
-
-def test_placement_group_status(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=1)
-    class A:
-        def ready(self):
-            pass
-
-    pg = ray.util.placement_group([{"CPU": 1}])
-    ray.get(pg.ready())
-
-    # Wait until the usage is updated, which is
-    # when the demand is also updated.
-    def is_usage_updated():
-        demand_output = get_ray_status_output(cluster.address)
-        return demand_output["usage"] != ""
-
-    wait_for_condition(is_usage_updated)
-    demand_output = get_ray_status_output(cluster.address)
-    cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
-    assert cpu_usage == expected
-
-    # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
-    actors = [A.remote() for _ in range(2)]
-    actors_in_pg = [A.options(placement_group=pg).remote() for _ in range(1)]
-
-    ray.get([actor.ready.remote() for actor in actors])
-    ray.get([actor.ready.remote() for actor in actors_in_pg])
-    # Wait long enough until the usage is propagated to GCS.
-    time.sleep(5)
-    demand_output = get_ray_status_output(cluster.address)
-    cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
-    assert cpu_usage == expected
-
-
-def test_placement_group_removal_leak_regression(ray_start_cluster):
-    """Related issue:
-    https://github.com/ray-project/ray/issues/19131
-    """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=5)
-    ray.init(address=cluster.address)
-
-    TOTAL_CPUS = 8
-    bundles = [{"CPU": 1, "GPU": 1}]
-    bundles += [{"CPU": 1} for _ in range(TOTAL_CPUS - 1)]
-
-    pg = placement_group(bundles, strategy="PACK")
-    # Here, we simulate that the ready task is queued and
-    # the new node is up. As soon as the new node is up,
-    # the ready task is scheduled.
-    # See https://github.com/ray-project/ray/pull/19138
-    # for more details about the test.
-    o = pg.ready()
-    # Add an artificial delay until the new node is up.
-    time.sleep(3)
-    cluster.add_node(num_cpus=5, num_gpus=1)
-    ray.get(o)
-    bundle_resource_name = f"bundle_group_{pg.id.hex()}"
-    expected_bundle_wildcard_val = TOTAL_CPUS * 1000
-
-    # This should fail if there's a leakage
-    # because the bundle resources are never returned properly.
-    def check_bundle_leaks():
-        bundle_resources = ray.available_resources()[bundle_resource_name]
-        return expected_bundle_wildcard_val == bundle_resources
-
-    wait_for_condition(check_bundle_leaks)
-
-
-def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
-    """Please refer to https://github.com/ray-project/ray/pull/19911
-    for more details.
-    """
-    with monkeypatch.context() as m:
-        # Increase broadcasting interval so that node resource will arrive
-        # at raylet after local resource all being allocated.
-        m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
-        m.setenv("RAY_grpc_based_resource_broadcast", "true")
-        cluster = ray_start_cluster
-
-        cluster.add_node(num_cpus=16, object_store_memory=1e9)
-        cluster.wait_for_nodes()
-        # We need to init here so that we can make sure it's connecting to
-        # the raylet where it only has cpu resources.
-        # This is a hacky way to prevent scheduling hanging which will
-        # schedule <CPU:1> job to the node with GPU and for <GPU:1, CPU:1> task
-        # there is no node has this resource.
-        ray.init(address="auto")
-        cluster.add_node(num_cpus=16, num_gpus=1)
-        cluster.wait_for_nodes()
-        NUM_CPU_BUNDLES = 30
-
-        @ray.remote(num_cpus=1)
-        class Worker(object):
-            def __init__(self, i):
-                self.i = i
-
-            def work(self):
-                time.sleep(0.1)
-                print("work ", self.i)
-
-        @ray.remote(num_cpus=1, num_gpus=1)
-        class Trainer(object):
-            def __init__(self, i):
-                self.i = i
-
-            def train(self):
-                time.sleep(0.2)
-                print("train ", self.i)
-
-        bundles = [{"CPU": 1, "GPU": 1}]
-        bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
-        pg = placement_group(bundles, strategy="PACK")
-        ray.get(pg.ready())
-
-        # Local resource will be allocated and here we are to ensure
-        # local view is consistent and node resouce updates are discarded
-        workers = [
-            Worker.options(placement_group=pg).remote(i) for i in range(NUM_CPU_BUNDLES)
-        ]
-        trainer = Trainer.options(placement_group=pg).remote(0)
-        ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
-        ray.get(trainer.train.remote())
-
-
-def test_fractional_resources_handle_correct(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1000)
-    ray.init(address=cluster.address)
-
-    bundles = [{"CPU": 0.01} for _ in range(5)]
-    pg = placement_group(bundles, strategy="SPREAD")
-
-    ray.get(pg.ready(), timeout=10)
 
 
 if __name__ == "__main__":

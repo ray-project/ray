@@ -235,6 +235,7 @@ def ray_start_cluster_head(request):
 @pytest.fixture
 def ray_start_cluster_head_with_external_redis(request, external_redis):
     param = getattr(request, "param", {})
+    param["skip_cluster"] = False
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
 
