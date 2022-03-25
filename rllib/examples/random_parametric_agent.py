@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.rllib import Policy
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, SelectExperiences
@@ -64,24 +64,28 @@ class RandomParametriclPolicy(Policy, ABC):
         pass
 
 
-def execution_plan(
-    workers: WorkerSet, config: TrainerConfigDict, **kwargs
-) -> LocalIterator[dict]:
-    rollouts = ParallelRollouts(workers, mode="async")
+# Create a new Trainer using the Policy and config defined above and a new
+# execution plan.
+class RandomParametricTrainer(Trainer):
+    def get_default_config(cls):
+        return DEFAULT_CONFIG
 
-    # Collect batches for the trainable policies.
-    rollouts = rollouts.for_each(SelectExperiences(local_worker=workers.local_worker()))
+    def get_default_policy_class(self, config):
+        return RandomParametriclPolicy
 
-    # Return training metrics.
-    return StandardMetricsReporting(rollouts, workers, config)
+    @staticmethod
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        rollouts = ParallelRollouts(workers, mode="async")
 
+        # Collect batches for the trainable policies.
+        rollouts = rollouts.for_each(
+            SelectExperiences(local_worker=workers.local_worker())
+        )
 
-RandomParametricTrainer = build_trainer(
-    name="RandomParametric",
-    default_config=DEFAULT_CONFIG,
-    default_policy=RandomParametriclPolicy,
-    execution_plan=execution_plan,
-)
+        # Return training metrics.
+        return StandardMetricsReporting(rollouts, workers, config)
 
 
 def main():
