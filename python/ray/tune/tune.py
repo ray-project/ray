@@ -740,12 +740,14 @@ def run_experiments(
 ):
     """Runs and blocks until all trials finish.
 
-    Examples:
-        >>> experiment_spec = Experiment("experiment", my_func)
-        >>> run_experiments(experiments=experiment_spec)
-
-        >>> experiment_spec = {"experiment": {"run": my_func}}
-        >>> run_experiments(experiments=experiment_spec)
+    Example:
+        >>> from ray.tune.experiment import Experiment
+        >>> from ray.tune.tune import run_experiments
+        >>> def my_func(config): return {"score": 0}
+        >>> experiment_spec = Experiment("experiment", my_func) # doctest: +SKIP
+        >>> run_experiments(experiments=experiment_spec) # doctest: +SKIP
+        >>> experiment_spec = {"experiment": {"run": my_func}} # doctest: +SKIP
+        >>> run_experiments(experiments=experiment_spec) # doctest: +SKIP
 
     Returns:
         List of Trial objects, holding data for each executed trial.

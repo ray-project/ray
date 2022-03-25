@@ -161,6 +161,7 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
+      -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -263,8 +264,9 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -E -W -T -b html source _build/html
+      make html
       make linkcheck
+      make doctest
     fi
   )
 }

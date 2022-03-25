@@ -38,9 +38,12 @@ def StandardMetricsReporting(
         LocalIterator[dict]: A local iterator over training results.
 
     Examples:
-        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
-        >>> metrics_op = StandardMetricsReporting(train_op, workers, config)
-        >>> next(metrics_op)
+        >>> from ray.rllib.execution import ParallelRollouts, TrainOneStep
+        >>> train_op = ParallelRollouts(...) # doctest: +SKIP
+        ...     .for_each(TrainOneStep(...))
+        >>> metrics_op = StandardMetricsReporting( # doctest: +SKIP
+        ...     train_op, workers, config)
+        >>> next(metrics_op) # doctest: +SKIP
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
@@ -76,8 +79,10 @@ class CollectMetrics:
     API, consider using StandardMetricsReporting instead.
 
     Examples:
-        >>> output_op = train_op.for_each(CollectMetrics(workers))
-        >>> print(next(output_op))
+        >>> from ray.rllib.execution.metric_ops import CollectMetrics
+        >>> train_op, workers = ... # doctest: +SKIP
+        >>> output_op = train_op.for_each(CollectMetrics(workers)) # doctest: +SKIP
+        >>> print(next(output_op)) # doctest: +SKIP
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
 
@@ -164,10 +169,13 @@ class OncePerTimeInterval:
     StandardMetricsReporting instead.
 
     Examples:
-        >>> throttled_op = train_op.filter(OncePerTimeInterval(5))
-        >>> start = time.time()
-        >>> next(throttled_op)
-        >>> print(time.time() - start)
+        >>> import time
+        >>> from ray.rllib.execution.metric_ops import OncePerTimeInterval
+        >>> train_op = ... # doctest: +SKIP
+        >>> throttled_op = train_op.filter(OncePerTimeInterval(5)) # doctest: +SKIP
+        >>> start = time.time() # doctest: +SKIP
+        >>> next(throttled_op) # doctest: +SKIP
+        >>> print(time.time() - start) # doctest: +SKIP
         5.00001  # will be greater than 5 seconds
     """
 
@@ -196,8 +204,11 @@ class OncePerTimestepsElapsed:
     StandardMetricsReporting instead.
 
     Examples:
-        >>> throttled_op = train_op.filter(OncePerTimestepsElapsed(1000))
-        >>> next(throttled_op)
+        >>> from ray.rllib.execution.metric_ops import OncePerTimestepsElapsed
+        >>> train_op = ... # doctest: +SKIP
+        >>> throttled_op = train_op.filter( # doctest: +SKIP
+        ...     OncePerTimestepsElapsed(1000))
+        >>> next(throttled_op) # doctest: +SKIP
         # will only return after 1000 steps have elapsed
     """
 
