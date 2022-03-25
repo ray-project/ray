@@ -417,7 +417,7 @@ build_wheels() {
         cp -r .whl /artifact-mount/.whl
         chown -R 1000 /artifact-mount/.whl
 
-      validate_wheels_commit_str
+        validate_wheels_commit_str
       fi
       ;;
     darwin*)
