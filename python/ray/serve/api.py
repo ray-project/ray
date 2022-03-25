@@ -67,6 +67,7 @@ from ray.serve.utils import (
     get_current_node_resource_key,
     get_random_letters,
     get_deployment_import_path,
+    in_interactive_shell,
     DEFAULT,
 )
 from ray.util.annotations import PublicAPI
@@ -875,9 +876,13 @@ def get_replica_context() -> ReplicaContext:
 
     Raises:
         RayServeException: if not called from within a Ray Serve deployment.
+
     Example:
-        >>> serve.get_replica_context().deployment # deployment_name
-        >>> serve.get_replica_context().replica_tag # deployment_name#krcwoa
+        >>> from ray import serve
+        >>> # deployment_name
+        >>> serve.get_replica_context().deployment # doctest: +SKIP
+        >>> # deployment_name#krcwoa
+        >>> serve.get_replica_context().replica_tag # doctest: +SKIP
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException(
@@ -898,12 +903,15 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
             object.
 
     Example:
-    >>> app = FastAPI()
-    >>> @serve.deployment
-        @serve.ingress(app)
-        class App:
-            pass
-    >>> App.deploy()
+        >>> from fastapi import FastAPI
+        >>> from ray import serve
+        >>> app = FastAPI() # doctest: +SKIP
+        >>> app = FastAPI() # doctest: +SKIP
+        >>> @serve.deployment # doctest: +SKIP
+        ... @serve.ingress(app) # doctest: +SKIP
+        ... class App: # doctest: +SKIP
+        ...     pass # doctest: +SKIP
+        >>> App.deploy() # doctest: +SKIP
     """
 
     def decorator(cls):
@@ -1560,13 +1568,14 @@ def deployment(
             a response. Defaults to 100.
 
     Example:
+    >>> from ray import serve
+    >>> @serve.deployment(name="deployment1", version="v1") # doctest: +SKIP
+    ... class MyDeployment: # doctest: +SKIP
+    ...     pass # doctest: +SKIP
 
-    >>> @serve.deployment(name="deployment1", version="v1")
-        class MyDeployment:
-            pass
-
-    >>> MyDeployment.deploy(*init_args)
-    >>> MyDeployment.options(num_replicas=2, init_args=init_args).deploy()
+    >>> MyDeployment.deploy(*init_args) # doctest: +SKIP
+    >>> MyDeployment.options( # doctest: +SKIP
+    ...     num_replicas=2, init_args=init_args).deploy()
 
     Returns:
         Deployment
@@ -1630,9 +1639,9 @@ def get_deployment(name: str) -> Deployment:
     the original definition.
 
     Example:
-
-    >>> MyDeployment = serve.get_deployment("name")
-    >>> MyDeployment.options(num_replicas=10).deploy()
+    >>> from ray import serve
+    >>> MyDeployment = serve.get_deployment("name")  # doctest: +SKIP
+    >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
 
     Args:
         name(str): name of the deployment. This must have already been
@@ -1694,11 +1703,11 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     A deployment's status is one of {UPDATING, UNHEALTHY, and HEALTHY}.
 
     Example:
-
-    >>> statuses = get_deployment_statuses()
-    >>> status_info = statuses["deployment_name"]
-    >>> status = status_info.status
-    >>> message = status_info.message
+    >>> from ray.serve.api import get_deployment_statuses
+    >>> statuses = get_deployment_statuses() # doctest: +SKIP
+    >>> status_info = statuses["deployment_name"] # doctest: +SKIP
+    >>> status = status_info.status # doctest: +SKIP
+    >>> message = status_info.message # doctest: +SKIP
 
     Returns:
             Dict[str, DeploymentStatus]: This dictionary maps the running
@@ -1785,9 +1794,7 @@ class Application:
         Returns:
             Dict: The Application's deployments formatted in a dictionary.
         """
-        return ServeApplicationSchema(
-            deployments=[deployment_to_schema(d) for d in self._deployments.values()]
-        ).dict()
+        return serve_application_to_schema(self._deployments.values()).dict()
 
     @classmethod
     def from_dict(cls, d: Dict) -> "Application":
@@ -1804,8 +1811,7 @@ class Application:
             Application: a new application object containing the deployments.
         """
 
-        schema = ServeApplicationSchema.parse_obj(d)
-        return cls([schema_to_deployment(s) for s in schema.deployments])
+        return cls(schema_to_serve_application(ServeApplicationSchema.parse_obj(d)))
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
         """Returns this application's deployments as a YAML string.
@@ -1827,6 +1833,7 @@ class Application:
             Optional[String]: The deployments' YAML string. The output is from
                 yaml.safe_dump(). Returned only if no file pointer is passed in.
         """
+
         return yaml.safe_dump(
             self.to_dict(), stream=f, default_flow_style=False, sort_keys=False
         )
@@ -1865,7 +1872,7 @@ def run(
     *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-) -> RayServeHandle:
+) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
     Either a DeploymentNode, DeploymentFunctionNode, or a pre-built application
@@ -1947,13 +1954,13 @@ def run(
 
 
 @PublicAPI(stability="alpha")
-def build(target: DeploymentNode) -> Application:
+def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
-    Takes in a DeploymentNode and converts it to a Serve application
-    consisting of one or more deployments. This is intended to be used for
-    production scenarios and deployed via the Serve REST API or CLI, so there
-    are some restrictions placed on the deployments:
+    Takes in a DeploymentNode or DeploymentFunctionNode and converts it to a
+    Serve application consisting of one or more deployments. This is intended
+    to be used for production scenarios and deployed via the Serve REST API or
+    CLI, so there are some restrictions placed on the deployments:
         1) All of the deployments must be importable. That is, they cannot be
            defined in __main__ or inline defined. The deployments will be
            imported in production using the same import path they were here.
@@ -1962,9 +1969,19 @@ def build(target: DeploymentNode) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
+    # TODO (jiaodong): Resolve circular reference in pipeline codebase and serve
+    from ray.serve.pipeline.api import build as pipeline_build
+
+    if in_interactive_shell():
+        raise RuntimeError(
+            "serve.build cannot be called from an interactive shell like "
+            "IPython or Jupyter because it requires all deployments to be "
+            "importable to run the app after building."
+        )
+
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    raise NotImplementedError()
+    return Application(pipeline_build(target))
 
 
 def deployment_to_schema(d: Deployment) -> DeploymentSchema:
@@ -1976,6 +1993,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     init_args and init_kwargs must also be JSON-serializable or this call will
     fail.
     """
+    from ray.serve.pipeline.json_serde import convert_to_json_safe_obj
 
     if d.ray_actor_options is not None:
         ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
@@ -1984,9 +2002,11 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
 
     return DeploymentSchema(
         name=d.name,
-        import_path=get_deployment_import_path(d),
-        init_args=d.init_args,
-        init_kwargs=d.init_kwargs,
+        import_path=get_deployment_import_path(
+            d, enforce_importable=True, replace_main=True
+        ),
+        init_args=convert_to_json_safe_obj(d.init_args, err_key="init_args"),
+        init_kwargs=convert_to_json_safe_obj(d.init_kwargs, err_key="init_kwargs"),
         num_replicas=d.num_replicas,
         route_prefix=d.route_prefix,
         max_concurrent_queries=d.max_concurrent_queries,
@@ -2010,12 +2030,12 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
 
     return deployment(
         name=s.name,
-        init_args=convert_from_json_safe_obj(s.init_args),
-        init_kwargs=convert_from_json_safe_obj(s.init_kwargs),
+        init_args=convert_from_json_safe_obj(s.init_args, err_key="init_args"),
+        init_kwargs=convert_from_json_safe_obj(s.init_kwargs, err_key="init_kwargs"),
         num_replicas=s.num_replicas,
         route_prefix=s.route_prefix,
         max_concurrent_queries=s.max_concurrent_queries,
-        user_config=convert_from_json_safe_obj(s.user_config),
+        user_config=s.user_config,
         _autoscaling_config=s.autoscaling_config,
         _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
@@ -2028,8 +2048,9 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
 def serve_application_to_schema(
     deployments: List[Deployment],
 ) -> ServeApplicationSchema:
-    schemas = [deployment_to_schema(d) for d in deployments]
-    return ServeApplicationSchema(deployments=schemas)
+    return ServeApplicationSchema(
+        deployments=[deployment_to_schema(d) for d in deployments]
+    )
 
 
 def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:

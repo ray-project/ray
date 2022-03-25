@@ -552,12 +552,14 @@ def test_local_store_recovery(ray_shutdown):
     def world(_):
         return "world"
 
-    def check(name):
+    def check(name, raise_error=False):
         try:
             resp = requests.get(f"http://localhost:8000/{name}")
             assert resp.text == name
             return True
-        except Exception:
+        except Exception as e:
+            if raise_error:
+                raise e
             return False
 
     # https://github.com/ray-project/ray/issues/20159
@@ -583,8 +585,8 @@ def test_local_store_recovery(ray_shutdown):
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     hello.deploy()
     world.deploy()
-    assert check("hello")
-    assert check("world")
+    assert check("hello", raise_error=True)
+    assert check("world", raise_error=True)
     crash()
 
     # Simulate a crash
