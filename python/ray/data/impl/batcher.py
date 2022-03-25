@@ -63,7 +63,7 @@ class Batcher:
                 leftover.append(block)
             elif accessor.num_rows() <= needed:
                 # We need this entire block to fill out a batch.
-                output.add_block(block)
+                output.add_block(accessor.to_arrow())
                 needed -= accessor.num_rows()
             else:
                 # We only need part of the block to fill out a batch.
