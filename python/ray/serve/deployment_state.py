@@ -2,6 +2,7 @@ from collections import defaultdict, OrderedDict
 from enum import Enum
 import itertools
 import json
+import logging
 import math
 import os
 import pickle
@@ -13,6 +14,8 @@ import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
+from ray.util.placement_group import PlacementGroup
+
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -35,11 +38,9 @@ from ray.serve.utils import (
     JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,
-    logger,
     msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
-from ray.util.placement_group import PlacementGroup
 
 
 class ReplicaState(Enum):
@@ -73,7 +74,7 @@ USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
 _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
 
 
-def print_verbose_scaling_log():
+def print_verbose_scaling_log(logger: logging.Logger):
     assert _SCALING_LOG_ENABLED
 
     log_path = "/tmp/ray/session_latest/logs/monitor.log"
@@ -219,13 +220,6 @@ class ActorReplicaWrapper:
         if self._placement_group:
             return self._placement_group
 
-        logger.debug(
-            "Creating placement group '{}' for deployment '{}'".format(
-                placement_group_name, self.deployment_name
-            )
-            + f" component=serve deployment={self.deployment_name}"
-        )
-
         self._placement_group = ray.util.placement_group(
             [actor_resources],
             lifetime="detached" if self._detached else None,
@@ -270,12 +264,6 @@ class ActorReplicaWrapper:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources
             )
-
-        logger.debug(
-            f"Starting replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag}"
-        )
 
         actor_def = deployment_info.actor_def
         init_args = (
@@ -339,13 +327,6 @@ class ActorReplicaWrapper:
         Update user config of existing actor behind current
         DeploymentReplica instance.
         """
-        logger.debug(
-            f"Updating replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag} "
-            f"with user_config {user_config}"
-        )
-
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
 
     def recover(self):
@@ -353,12 +334,6 @@ class ActorReplicaWrapper:
         Recover states in DeploymentReplica instance by fetching running actor
         status
         """
-        logger.debug(
-            f"Recovering replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag}"
-        )
-
         self._actor_handle = self.actor_handle
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.get_placement_group(self._placement_group_name)
@@ -1461,7 +1436,7 @@ class DeploymentState:
                     f"component=serve deployment={self._name}"
                 )
                 if _SCALING_LOG_ENABLED:
-                    print_verbose_scaling_log()
+                    print_verbose_scaling_log(self._logger)
 
             if len(pending_initialization) > 0:
                 logger.warning(

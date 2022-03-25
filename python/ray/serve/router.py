@@ -1,18 +1,21 @@
-import sys
 import asyncio
-import pickle
-import itertools
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+import itertools
+import logging
+import pickle
 import random
-
-from ray.actor import ActorHandle
-from ray.serve.common import RunningReplicaInfo
-from ray.serve.long_poll import LongPollClient, LongPollNamespace
-from ray.serve.utils import compute_iterable_delta, logger
+import sys
+from typing import Any, Dict, List, Optional
 
 import ray
+from ray.actor import ActorHandle
 from ray.util import metrics
+
+from ray.serve.common import RunningReplicaInfo
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
+from ray.serve.utils import compute_iterable_delta
+
+logger = logging.getLogger("ray.serve")
 
 
 @dataclass

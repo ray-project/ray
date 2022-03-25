@@ -2,7 +2,6 @@ from functools import wraps
 import importlib
 from itertools import groupby
 import json
-import logging
 import pickle
 import random
 import string
@@ -68,20 +67,6 @@ class LoggingContext:
     def __exit__(self, et, ev, tb):
         if self.level is not None:
             self.logger.setLevel(self.old_level)
-
-
-def _get_logger():
-    logger = logging.getLogger("ray.serve")
-    # TODO(simon): Make logging level configurable.
-    log_level = os.environ.get("SERVE_LOG_DEBUG")
-    if log_level and int(log_level):
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-    return logger
-
-
-logger = _get_logger()
 
 
 class ServeEncoder(json.JSONEncoder):

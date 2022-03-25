@@ -1,38 +1,38 @@
+import aiorwlock
 import asyncio
+from importlib import import_module
+import inspect
 import logging
 import pickle
-import inspect
-from typing import Any, Callable, Optional, Tuple, Dict
 import time
-import aiorwlock
-from importlib import import_module
+from typing import Any, Callable, Optional, Tuple, Dict
 
 import starlette.responses
 
 import ray
 from ray import cloudpickle
-from ray.remote_function import RemoteFunction
 from ray.actor import ActorClass, ActorHandle
+from ray.remote_function import RemoteFunction
+from ray.util import metrics
 from ray._private.async_compat import sync_to_async
 
+from ray.serve.api import Deployment
 from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import ReplicaTag
 from ray.serve.config import DeploymentConfig
-from ray.serve.http_util import ASGIHTTPSender
-from ray.serve.utils import parse_request_item, _get_logger
-from ray.serve.exceptions import RayServeException
-from ray.util import metrics
-from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     HEALTH_CHECK_METHOD,
     RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
+from ray.serve.exceptions import RayServeException
+from ray.serve.http_util import ASGIHTTPSender
+from ray.serve.logging_utils import configure_logger
+from ray.serve.router import Query, RequestMetadata
+from ray.serve.utils import parse_import_path, parse_request_item, wrap_to_ray_error
 from ray.serve.version import DeploymentVersion
-from ray.serve.utils import wrap_to_ray_error, parse_import_path
-from ray.serve.api import Deployment
 
-logger = _get_logger()
+logger = logging.getLogger("ray.serve")
 
 
 def create_replica_wrapper(
@@ -70,6 +70,7 @@ def create_replica_wrapper(
             controller_namespace: str,
             detached: bool,
         ):
+            configure_logger(component=deployment_name, component_id=replica_tag)
 
             if import_path is not None:
                 module_name, attr_name = parse_import_path(import_path)
@@ -312,16 +313,6 @@ class RayServeReplica:
                 interval_s=config.metrics_interval_s,
                 collection_callback=self._collect_autoscaling_metrics,
                 controller_handle=controller_handle,
-            )
-
-        ray_logger = logging.getLogger("ray")
-        for handler in ray_logger.handlers:
-            handler.setFormatter(
-                logging.Formatter(
-                    handler.formatter._fmt
-                    + f" component=serve deployment={self.deployment_name} "
-                    f"replica={self.replica_tag}"
-                )
             )
 
     async def check_health(self):

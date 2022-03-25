@@ -1,15 +1,17 @@
 import asyncio
-import json
-import time
 from collections import defaultdict
+from copy import copy
+import json
+import logging
+import time
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
-from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
-from copy import copy
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
+
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatusInfo,
@@ -20,13 +22,13 @@ from ray.serve.common import (
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
+from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.storage.checkpoint_path import make_kv_store
+from ray.serve.logging_utils import get_component_logger
 from ray.serve.long_poll import LongPollHost
+from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import logger
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -69,13 +71,19 @@ class ServeController:
         detached: bool = False,
         _override_controller_namespace: Optional[str] = None,
     ):
+        self.logger = get_component_logger(
+            component="controller", component_id=str(os.getpid())
+        )
+
         # Used to read/write checkpoints.
         self.controller_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
         self.checkpoint_path = checkpoint_path
         kv_store_namespace = f"{self.controller_name}-{self.controller_namespace}"
         self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
-        self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
+        self.snapshot_store = RayInternalKVStore(
+            namespace=kv_store_namespace, logger=self.logger
+        )
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
@@ -91,6 +99,7 @@ class ServeController:
             detached,
             http_config,
             _override_controller_namespace=_override_controller_namespace,
+            logger=self.logger,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         # Fetch all running actors in current cluster as source of current
@@ -103,6 +112,7 @@ class ServeController:
             self.long_poll_host,
             all_current_actor_names,
             _override_controller_namespace=_override_controller_namespace,
+            logger=self.logger,
         )
 
         # TODO(simon): move autoscaling related stuff into a manager.
@@ -202,23 +212,23 @@ class ServeController:
             try:
                 self.autoscale()
             except Exception:
-                logger.exception("Exception in autoscaling.")
+                self.logger.exception("Exception in autoscaling.")
 
             async with self.write_lock:
                 try:
                     self.http_state.update()
                 except Exception:
-                    logger.exception("Exception updating HTTP state.")
+                    self.logger.exception("Exception updating HTTP state.")
 
                 try:
                     self.deployment_state_manager.update()
                 except Exception:
-                    logger.exception("Exception updating deployment state.")
+                    self.logger.exception("Exception updating deployment state.")
 
             try:
                 self._put_serve_snapshot()
             except Exception:
-                logger.exception("Exception putting serve snapshot.")
+                self.logger.exception("Exception putting serve snapshot.")
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:

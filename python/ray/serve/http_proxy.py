@@ -1,8 +1,9 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import logging
+import pickle
 import socket
 import time
-import pickle
 from typing import Callable, List, Dict, Optional, Tuple
 
 import uvicorn
@@ -10,12 +11,10 @@ import starlette.responses
 import starlette.routing
 
 import ray
-from ray import serve
 from ray.exceptions import RayActorError, RayTaskError
-from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
-from ray.serve.utils import logger
+
+from ray import serve
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import (
     HTTPRequestWrapper,
@@ -23,7 +22,12 @@ from ray.serve.http_util import (
     receive_http_body,
     Response,
 )
+from ray.serve.common import EndpointInfo, EndpointTag
+from ray.serve.long_poll import LongPollNamespace
+from ray.serve.logging_utils import configure_logger
 from ray.serve.long_poll import LongPollClient
+
+logger = logging.getLogger("ray.serve")
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
@@ -313,8 +317,11 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         controller_namespace: str,
+        node_id: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
+        configure_logger(component="http_proxy", component_id=node_id)
+
         if http_middlewares is None:
             http_middlewares = []
 

@@ -67,7 +67,6 @@ from ray.serve.utils import (
     get_current_node_resource_key,
     get_random_letters,
     get_deployment_import_path,
-    logger,
     DEFAULT,
 )
 from ray.util.annotations import PublicAPI
@@ -80,6 +79,8 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeApplicationStatusSchema,
 )
+
+logger = logging.getLogger("ray.serve")
 
 
 _INTERNAL_REPLICA_CONTEXT = None

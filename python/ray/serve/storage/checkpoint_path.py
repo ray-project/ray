@@ -1,11 +1,13 @@
 from urllib.parse import parse_qsl, urlparse
+import logging
 
-from ray.serve.utils import logger
+from ray._private.utils import import_attr
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray.serve.storage.kv_store import RayInternalKVStore, RayLocalKVStore, RayS3KVStore
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore
-from ray._private.utils import import_attr
+
+logger = logging.getLogger("ray.serve")
 
 
 def make_kv_store(checkpoint_path, namespace):

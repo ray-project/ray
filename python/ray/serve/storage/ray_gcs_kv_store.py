@@ -1,13 +1,16 @@
+import io
+import logging
+from typing import Optional
+
 try:
     from google.cloud import storage
     from google.cloud.exceptions import NotFound
 except ImportError:
     storage = None
-import io
-from typing import Optional
 
 from ray.serve.storage.kv_store_base import KVStoreBase
-from ray.serve.utils import logger
+
+logger = logging.getLogger("ray.serve")
 
 
 class RayGcsKVStore(KVStoreBase):
