@@ -54,7 +54,6 @@ class TunerInternal:
                 str,
                 Callable,
                 Type[Trainable],
-                Type[Trainer],
                 Trainer,
             ]
         ] = None,
@@ -132,7 +131,7 @@ class TunerInternal:
         return path
 
     # This has to be done through a function signature (@property won't do).
-    def experiment_checkpoint_dir(self) -> str:
+    def get_experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
     @staticmethod
@@ -151,7 +150,7 @@ class TunerInternal:
             analysis = self._fit_internal(trainable, param_space)
         else:
             analysis = self._fit_resume(trainable)
-        analysis._legacy_checkpoint = False
+
         return ResultGrid(analysis)
 
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
@@ -166,6 +165,9 @@ class TunerInternal:
             scheduler=self._tune_config.scheduler,
             name=self._run_config.name,
             callbacks=self._run_config.callbacks,
+            max_failures=(
+                self._run_config.failure.max_failures if self._run_config.failure else 0
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
         )
@@ -179,6 +181,9 @@ class TunerInternal:
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
+            max_failures=(
+                self._run_config.failure.max_failures if self._run_config.failure else 0
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
         )
