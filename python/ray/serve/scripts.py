@@ -156,6 +156,7 @@ def shutdown(address: str, namespace: str):
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
+    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
@@ -191,6 +192,7 @@ def deploy(config_file_name: str, address: str):
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
+    hidden=True,
 )
 @click.argument("config_or_import_path")
 @click.option(
@@ -314,6 +316,7 @@ def run(
 
 @cli.command(
     help="Get the current config of the running Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -358,6 +361,7 @@ def status(address: str):
 
 @cli.command(
     help="Deletes all deployments in the Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -391,6 +395,7 @@ def delete(address: str, yes: bool):
         "and generates a structured config for it that can be used by "
         "`serve deploy` or the REST API. "
     ),
+    hidden=True,
 )
 @click.option(
     "--app-dir",
