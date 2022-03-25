@@ -195,7 +195,9 @@ struct SyncerServer {
       auto snapshot_received = [this](std::shared_ptr<const RaySyncMessage> message) {
         auto iter = received_versions.find(message->node_id());
         if (iter == received_versions.end()) {
-          received_versions[message->node_id()].fill(0);
+          for (auto &v : received_versions[message->node_id()]) {
+            v = 0;
+          }
           iter = received_versions.find(message->node_id());
         }
 
@@ -280,12 +282,16 @@ struct SyncerServer {
   std::array<int64_t, kComponentArraySize> GetReceivedVersions(
       const std::string &node_id) const {
     auto iter = received_versions.find(node_id);
+    std::array<int64_t, kComponentArraySize> versions;
     if (iter == received_versions.end()) {
-      std::array<int64_t, kComponentArraySize> versions;
       versions.fill(-1);
       return versions;
     }
-    return iter->second;
+    for (size_t i = 0; i < versions.size(); ++i) {
+      versions[i] = iter->second[i];
+    }
+
+    return versions;
   }
   std::unique_ptr<RaySyncerService> service;
   std::unique_ptr<RaySyncer> syncer;
@@ -298,36 +304,36 @@ struct SyncerServer {
       nullptr};
   int64_t snapshot_taken = 0;
 
-  std::unordered_map<std::string, std::array<int64_t, kComponentArraySize>>
+  std::unordered_map<std::string, std::array<std::atomic<int64_t>, kComponentArraySize>>
       received_versions;
-  std::unordered_map<std::string, int64_t> message_consumed;
+  std::unordered_map<std::string, std::atomic<int64_t>> message_consumed;
   std::array<std::unique_ptr<MockReceiverInterface>, kComponentArraySize> receivers = {
       nullptr};
 };
 
 // Useful for debugging
-std::ostream &operator<<(std::ostream &os, const SyncerServer &server) {
-  auto dump_array = [&os](const std::array<int64_t, kComponentArraySize> &v,
-                          std::string label,
-                          int indent) mutable -> std::ostream & {
-    os << std::string('\t', indent);
-    os << label << ": ";
-    for (size_t i = 0; i < v.size(); ++i) {
-      os << v[i];
-      if (i + 1 != v.size()) {
-        os << ", ";
-      }
-    }
-    return os;
-  };
-  os << "NodeID: " << NodeID::FromBinary(server.syncer->GetNodeId()) << std::endl;
-  dump_array(server.local_versions, "LocalVersions:", 1) << std::endl;
-  for (auto [node_id, versions] : server.received_versions) {
-    os << "\tFromNodeID: " << NodeID::FromBinary(node_id) << std::endl;
-    dump_array(versions, "RemoteVersions:", 2) << std::endl;
-  }
-  return os;
-}
+// std::ostream &operator<<(std::ostream &os, const SyncerServer &server) {
+//   auto dump_array = [&os](const std::array<int64_t, kComponentArraySize> &v,
+//                           std::string label,
+//                           int indent) mutable -> std::ostream & {
+//     os << std::string('\t', indent);
+//     os << label << ": ";
+//     for (size_t i = 0; i < v.size(); ++i) {
+//       os << v[i];
+//       if (i + 1 != v.size()) {
+//         os << ", ";
+//       }
+//     }
+//     return os;
+//   };
+//   os << "NodeID: " << NodeID::FromBinary(server.syncer->GetNodeId()) << std::endl;
+//   dump_array(server.local_versions, "LocalVersions:", 1) << std::endl;
+//   for (auto [node_id, versions] : server.received_versions) {
+//     os << "\tFromNodeID: " << NodeID::FromBinary(node_id) << std::endl;
+//     dump_array(versions, "RemoteVersions:", 2) << std::endl;
+//   }
+//   return os;
+// }
 
 std::shared_ptr<grpc::Channel> MakeChannel(std::string port) {
   grpc::ChannelArguments argument;
@@ -451,11 +457,6 @@ TEST(SyncerTest, Test1To1) {
 
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, &s2]() {
-        std::stringstream ss;
-        ss << "---" << std::endl;
-        ss << s1 << std::endl;
-        ss << s2 << std::endl;
-        RAY_LOG(INFO) << ss.str();
         return s1.GetReceivedVersions(s2.syncer->GetNodeId()) == s2.local_versions &&
                s2.GetReceivedVersions(s1.syncer->GetNodeId())[0] == s1.local_versions[0];
       },
