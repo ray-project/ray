@@ -537,7 +537,6 @@ class Trial:
             checkpoint_metadata = (
                 TrainableUtil.load_checkpoint_metadata(self.restore_path) or {}
             )
-
             checkpoint = _TuneCheckpoint(
                 _TuneCheckpoint.PERSISTENT,
                 self.restore_path,
