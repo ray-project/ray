@@ -34,7 +34,6 @@ DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_string(redis_address, "", "The IP address of redis server.");
-DEFINE_int32(redis_port, -1, "The port of redis server.");
 DEFINE_int32(min_worker_port,
              0,
              "The lowest port that workers' gRPC servers will bind on.");
@@ -92,7 +91,6 @@ int main(int argc, char *argv[]) {
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string redis_address = FLAGS_redis_address;
-  const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const std::string worker_port_list = FLAGS_worker_port_list;
