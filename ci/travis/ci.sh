@@ -417,8 +417,9 @@ build_wheels() {
         # Sync the directory to buildkite artifacts
         rm -rf /artifact-mount/.whl || true
         cp -r .whl /artifact-mount/.whl
+        chmod -R 777 /artifact-mount/.whl
 
-      validate_wheels_commit_str
+        validate_wheels_commit_str
       fi
       ;;
     darwin*)
