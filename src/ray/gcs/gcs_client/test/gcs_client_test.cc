@@ -28,7 +28,7 @@ namespace ray {
 
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
-  GcsClientTest() : enable_gcs_bootstrap_(GetParam()) {
+  GcsClientTest() : no_redis_(GetParam()) {
     RayConfig::instance().initialize(
         absl::Substitute(R"(
 {
@@ -37,26 +37,24 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   "maximum_gcs_dead_node_cached_count": 10,
   "gcs_grpc_based_pubsub": $0,
   "gcs_storage": $1,
-  "bootstrap_with_gcs": $2
 }
   )",
-                         enable_gcs_bootstrap_ ? "true" : "false",
-                         enable_gcs_bootstrap_ ? "\"memory\"" : "\"redis\"",
-                         enable_gcs_bootstrap_ ? "true" : "false"));
-    if (!enable_gcs_bootstrap_) {
+                         no_redis_ ? "true" : "false",
+                         no_redis_ ? "\"memory\"" : "\"redis\""));
+    if (!no_redis_) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }
   }
 
   virtual ~GcsClientTest() {
-    if (!enable_gcs_bootstrap_) {
+    if (!no_redis_) {
       TestSetupUtil::ShutDownRedisServers();
     }
   }
 
  protected:
   void SetUp() override {
-    if (enable_gcs_bootstrap_) {
+    if (no_redis_) {
       config_.grpc_server_port = 5397;
       config_.redis_port = 0;
       config_.redis_address = "";
@@ -72,7 +70,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
     // test targets.
-    config_.grpc_pubsub_enabled = enable_gcs_bootstrap_;
+    config_.grpc_pubsub_enabled = no_redis_;
 
     client_io_service_ = std::make_unique<instrumented_io_context>();
     client_io_service_thread_ = std::make_unique<std::thread>([this] {
@@ -96,7 +94,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client.
-    if (enable_gcs_bootstrap_) {
+    if (no_redis_) {
       gcs::GcsClientOptions options("127.0.0.1:5397");
       gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     } else {
@@ -116,7 +114,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
-    if (!enable_gcs_bootstrap_) {
+    if (!no_redis_) {
       TestSetupUtil::FlushAllRedisServers();
     }
   }
@@ -437,7 +435,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   // Test parameter, whether to use GCS without redis.
-  const bool enable_gcs_bootstrap_;
+  const bool no_redis_;
 
   // GCS server.
   gcs::GcsServerConfig config_;
@@ -852,7 +850,7 @@ TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
 
 TEST_P(GcsClientTest, TestGcsTableReload) {
   // Restart gcs only work with redis.
-  if (RayConfig::instance().bootstrap_with_gcs()) {
+  if (no_redis_) {
     return;
   }
   // Register node to GCS.
@@ -869,7 +867,7 @@ TEST_P(GcsClientTest, TestGcsTableReload) {
 
 TEST_P(GcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
-  if (RayConfig::instance().bootstrap_with_gcs()) {
+  if (no_redis_) {
     return;
   }
   TestSetupUtil::ShutDownRedisServers();
