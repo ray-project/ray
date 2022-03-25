@@ -86,7 +86,7 @@ class NodeSyncConnection {
 
   /// Push a message to the sending queue to be sent later. Some message
   /// might be dropped if the module think the target node has already got the
-  /// information. Usually it'll happen when the message has the same node id
+  /// information. Usually it'll happen when the message has the source node id
   /// as the target or the message is sent from this node.
   ///
   /// \param message The message to be sent.
@@ -149,6 +149,7 @@ class NodeSyncConnection {
       node_versions_;
 };
 
+/// SyncConnection for gRPC server side. It has customized logic for sending.
 class ServerSyncConnection : public NodeSyncConnection {
  public:
   ServerSyncConnection(RaySyncer &instance,
@@ -176,6 +177,7 @@ class ServerSyncConnection : public NodeSyncConnection {
   grpc::ServerUnaryReactor *unary_reactor_ = nullptr;
 };
 
+/// SyncConnection for gRPC client side. It has customized logic for sending.
 class ClientSyncConnection : public NodeSyncConnection {
  public:
   ClientSyncConnection(RaySyncer &instance,
