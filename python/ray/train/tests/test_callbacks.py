@@ -2,6 +2,7 @@ import glob
 import io
 import json
 from collections import defaultdict
+from copy import deepcopy
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -60,11 +61,15 @@ def test_print(ray_start_4_cpus):
     def train_func():
         train.report(rank=train.world_rank())
 
+    callback = PrintCallback()
+    # also testing if the callback can be deepcopied
+    deepcopy(callback)
+
     stream = io.StringIO()
     with redirect_stdout(stream):
         trainer = Trainer(TestConfig(), num_workers=num_workers)
         trainer.start()
-        trainer.run(train_func, callbacks=[PrintCallback()])
+        trainer.run(train_func, callbacks=[callback])
         trainer.shutdown()
 
     output = stream.getvalue()
@@ -137,6 +142,8 @@ def test_json(
         callback = JsonLoggerCallback(workers_to_log=workers_to_log)
     else:
         callback = JsonLoggerCallback(filename=filename, workers_to_log=workers_to_log)
+    # also testing if the callback can be deepcopied
+    deepcopy(callback)
     trainer = Trainer(config, num_workers=num_workers, logdir=str(tmp_path))
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
@@ -204,6 +211,8 @@ def test_TBX(ray_start_4_cpus, tmp_path):
         return 1
 
     callback = TBXLoggerCallback(temp_dir)
+    # also testing if the callback can be deepcopied
+    deepcopy(callback)
     trainer = Trainer(config, num_workers=num_workers)
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
@@ -226,6 +235,8 @@ def test_mlflow(ray_start_4_cpus, tmp_path):
         return 1
 
     callback = MLflowLoggerCallback(experiment_name="test_exp", logdir=temp_dir)
+    # also testing if the callback can be deepcopied
+    deepcopy(callback)
     trainer = Trainer(config, num_workers=num_workers)
     trainer.start()
     trainer.run(train_func, config=params, callbacks=[callback])
@@ -288,6 +299,8 @@ def test_torch_tensorboard_profiler_callback(ray_start_4_cpus, tmp_path):
                 train.report(epoch=epoch, **profile_results)
 
     callback = TorchTensorboardProfilerCallback(temp_dir)
+    # also testing if the callback can be deepcopied
+    deepcopy(callback)
     trainer = Trainer(config, num_workers=num_workers)
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
