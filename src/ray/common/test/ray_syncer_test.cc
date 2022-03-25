@@ -179,8 +179,9 @@ struct SyncerServer {
     bool has_scheduler_receiver = !has_scheduler_reporter;
     // Setup io context
     auto node_id = NodeID::FromRandom();
-    local_versions.fill(0);
-
+    for (auto &v : local_versions) {
+      v = 0;
+    }
     // Setup syncer and grpc server
     syncer = std::make_unique<RaySyncer>(io_context, node_id.Binary());
 
@@ -279,19 +280,17 @@ struct SyncerServer {
     }
   }
 
-  std::array<int64_t, kComponentArraySize> GetReceivedVersions(
-      const std::string &node_id) const {
+  std::array<std::atomic<int64_t>, kComponentArraySize> _v;
+  const std::array<std::atomic<int64_t>, kComponentArraySize> &GetReceivedVersions(
+      const std::string &node_id) {
     auto iter = received_versions.find(node_id);
-    std::array<int64_t, kComponentArraySize> versions;
     if (iter == received_versions.end()) {
-      versions.fill(-1);
-      return versions;
+      for (auto &v : _v) {
+        v.store(-1);
+      }
+      return _v;
     }
-    for (size_t i = 0; i < versions.size(); ++i) {
-      versions[i] = iter->second[i];
-    }
-
-    return versions;
+    return iter->second;
   }
   std::unique_ptr<RaySyncerService> service;
   std::unique_ptr<RaySyncer> syncer;
@@ -299,7 +298,7 @@ struct SyncerServer {
   std::unique_ptr<std::thread> thread;
   instrumented_io_context io_context;
   std::string server_port;
-  std::array<int64_t, kComponentArraySize> local_versions;
+  std::array<std::atomic<int64_t>, kComponentArraySize> local_versions;
   std::array<std::unique_ptr<MockReporterInterface>, kComponentArraySize> reporters = {
       nullptr};
   int64_t snapshot_taken = 0;
