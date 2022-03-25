@@ -1,4 +1,5 @@
 import sys
+import os
 import subprocess
 from tempfile import NamedTemporaryFile
 import requests
@@ -150,22 +151,28 @@ def test_shutdown_remote(start_and_shutdown_ray_cli):
         "serve.shutdown()\n"
     )
 
-    with NamedTemporaryFile(mode="w+", suffix=".py") as deploy_file:
-        with NamedTemporaryFile(mode="w+", suffix=".py") as shutdown_file:
+    # Cannot use context manager due to tmp file's delete flag issue in Windows
+    # https://stackoverflow.com/a/15590253
+    deploy_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
+    shutdown_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
 
-            deploy_file.write(deploy_serve_script)
-            deploy_file.flush()
+    try:
+        deploy_file.write(deploy_serve_script)
+        deploy_file.close()
 
-            shutdown_file.write(shutdown_serve_script)
-            shutdown_file.flush()
+        shutdown_file.write(shutdown_serve_script)
+        shutdown_file.close()
 
-            # Ensure Serve can be restarted and shutdown with for loop
-            for _ in range(2):
-                subprocess.check_output(["python", deploy_file.name])
-                assert requests.get("http://localhost:8000/f").text == "got f"
-                subprocess.check_output(["python", shutdown_file.name])
-                with pytest.raises(requests.exceptions.ConnectionError):
-                    requests.get("http://localhost:8000/f")
+        # Ensure Serve can be restarted and shutdown with for loop
+        for _ in range(2):
+            subprocess.check_output(["python", deploy_file.name])
+            assert requests.get("http://localhost:8000/f").text == "got f"
+            subprocess.check_output(["python", shutdown_file.name])
+            with pytest.raises(requests.exceptions.ConnectionError):
+                requests.get("http://localhost:8000/f")
+    finally:
+        os.unlink(deploy_file.name)
+        os.unlink(shutdown_file.name)
 
 
 def test_autoscaler_shutdown_node_http_everynode(
