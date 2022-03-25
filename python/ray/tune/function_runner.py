@@ -125,9 +125,11 @@ class StatusReporter:
     """Object passed into your function that you can report status through.
 
     Example:
-        >>> def trainable_function(config, reporter):
-        >>>     assert isinstance(reporter, StatusReporter)
-        >>>     reporter(timesteps_this_iter=1)
+        >>> from ray.tune.function_runner import StatusReporter
+        >>> reporter = StatusReporter(...) # doctest: +SKIP
+        >>> def trainable_function(config, reporter): # doctest: +SKIP
+        >>>     assert isinstance(reporter, StatusReporter) # doctest: +SKIP
+        >>>     reporter(timesteps_this_iter=1) # doctest: +SKIP
     """
 
     def __init__(
@@ -168,8 +170,12 @@ class StatusReporter:
             kwargs: Latest training result status.
 
         Example:
-            >>> reporter(mean_accuracy=1, training_iteration=4)
-            >>> reporter(mean_accuracy=1, training_iteration=4, done=True)
+            >>> from ray.tune.function_runner import StatusReporter
+            >>> reporter = StatusReporter(...) # doctest: +SKIP
+            >>> reporter(mean_accuracy=1, training_iteration=4) # doctest: +SKIP
+            >>> reporter( # doctest: +SKIP
+            ...     mean_accuracy=1, training_iteration=4, done=True
+            ... )
 
         Raises:
             StopIteration: A StopIteration exception is raised if the trial has

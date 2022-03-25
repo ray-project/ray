@@ -258,11 +258,18 @@ class Trial:
         log_to_file: Optional[str] = None,
         max_failures: int = 0,
         stub: bool = False,
+        _setup_default_resource: bool = True,
     ):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
+
+        Args:
+            _setup_default_resource: Whether to set up default resources.
+                When initializing trials from checkpoints, this field is set to false,
+                so that setting up default resources can be delayed till after
+                ``trial.config`` is loaded from checkpoints.
         """
         # If this is set, trainables are not validated or looked up.
         # This can be used e.g. to initialize Trial objects from checkpoints
@@ -280,8 +287,9 @@ class Trial:
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
+        self.location = Location()
         trainable_cls = self.get_trainable_cls()
-        if trainable_cls:
+        if trainable_cls and _setup_default_resource:
             default_resources = trainable_cls.default_resource_request(self.config)
 
             # If Trainable returns resources, do not allow manual override via
@@ -302,7 +310,6 @@ class Trial:
                 else:
                     placement_group_factory = None
                     resources = default_resources
-        self.location = Location()
 
         self.placement_group_factory = _to_pg_factory(
             resources, placement_group_factory
@@ -826,8 +833,10 @@ class Trial:
         if not self.stub:
             validate_trainable(self.trainable_name)
 
+        assert self.placement_group_factory
+
         # Avoid creating logdir in client mode for returned trial results,
-        # since the dir might not be creatable locally. TODO(ekl) thsi is kind
-        # of a hack.
+        # since the dir might not be creatable locally.
+        # TODO(ekl) this is kind of a hack.
         if not ray.util.client.ray.is_connected():
             self.init_logdir()  # Create logdir if it does not exist

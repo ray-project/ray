@@ -329,25 +329,23 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   SchedulingResources local_resources(config.resource_config);
-  cluster_resource_scheduler_ =
-      std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
-          scheduling::NodeID(self_node_id_.Binary()),
-          local_resources.GetTotalResources().GetResourceMap(),
-          /*is_node_available_fn*/
-          [this](scheduling::NodeID node_id) {
-            return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) !=
-                   nullptr;
-          },
-          /*get_used_object_store_memory*/
-          [this]() {
-            if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
-              return local_object_manager_.GetPinnedBytes();
-            } else {
-              return object_manager_.GetUsedMemory();
-            }
-          },
-          /*get_pull_manager_at_capacity*/
-          [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
+  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      scheduling::NodeID(self_node_id_.Binary()),
+      local_resources.GetTotalResources().GetResourceMap(),
+      /*is_node_available_fn*/
+      [this](scheduling::NodeID node_id) {
+        return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+      },
+      /*get_used_object_store_memory*/
+      [this]() {
+        if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
+          return local_object_manager_.GetPinnedBytes();
+        } else {
+          return object_manager_.GetUsedMemory();
+        }
+      },
+      /*get_pull_manager_at_capacity*/
+      [this]() { return object_manager_.PullManagerHasPullsQueued(); });
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -1661,29 +1659,31 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
           Status status, std::function<void()> success, std::function<void()> failure) {
-        // If resources are not enough due to normal tasks' preemption
-        // for GCS based actor scheduling, return a rejection
-        // with normal task resource usages so GCS can update
-        // its resource view of this raylet.
         if (reply->rejected() && is_actor_creation_task) {
-          ResourceSet normal_task_resources =
-              local_task_manager_->CalcNormalTaskResources();
-          RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
-                         << " actor_id = " << actor_id << ", normal_task_resources = "
-                         << normal_task_resources.ToString() << ", local_resoruce_view = "
-                         << cluster_resource_scheduler_->GetClusterResourceManager()
-                                .GetNodeResourceViewString(
-                                    scheduling::NodeID(self_node_id_.Binary()));
           auto resources_data = reply->mutable_resources_data();
           resources_data->set_node_id(self_node_id_.Binary());
-          resources_data->set_resources_normal_task_changed(true);
-          auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-          normal_task_map = {normal_task_resources.GetResourceMap().begin(),
-                             normal_task_resources.GetResourceMap().end()};
-          resources_data->set_resources_normal_task_timestamp(
-              absl::GetCurrentTimeNanos());
+          // If resources are not enough due to normal tasks' preemption
+          // for GCS based actor scheduling, return
+          // with normal task resource usages so GCS can fast update
+          // its resource view of this raylet.
+          if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+            ResourceSet normal_task_resources =
+                local_task_manager_->CalcNormalTaskResources();
+            RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
+                           << " actor_id = " << actor_id << ", normal_task_resources = "
+                           << normal_task_resources.ToString()
+                           << ", local_resoruce_view = "
+                           << cluster_resource_scheduler_->GetClusterResourceManager()
+                                  .GetNodeResourceViewString(
+                                      scheduling::NodeID(self_node_id_.Binary()));
+            resources_data->set_resources_normal_task_changed(true);
+            auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
+            normal_task_map = {normal_task_resources.GetResourceMap().begin(),
+                               normal_task_resources.GetResourceMap().end()};
+            resources_data->set_resources_normal_task_timestamp(
+                absl::GetCurrentTimeNanos());
+          }
         }
-
         send_reply_callback(status, success, failure);
       };
 

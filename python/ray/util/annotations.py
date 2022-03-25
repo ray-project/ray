@@ -18,13 +18,14 @@ def PublicAPI(*args, **kwargs):
         stability: One of {"stable", "beta", "alpha"}.
 
     Examples:
+        >>> from ray.util.annotations import PublicAPI
         >>> @PublicAPI
-        >>> def func(x):
-        >>>     return x
+        ... def func(x):
+        ...     return x
 
         >>> @PublicAPI(stability="beta")
-        >>> def func(y):
-        >>>     return y
+        ... def func(y):
+        ...     return y
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return PublicAPI(stability="stable")(args[0])
@@ -60,9 +61,10 @@ def DeveloperAPI(obj):
     Ray releases.
 
     Examples:
+        >>> from ray.util.annotations import DeveloperAPI
         >>> @DeveloperAPI
-        >>> def func(x):
-        >>>     return x
+        ... def func(x):
+        ...     return x
     """
 
     if not obj.__doc__:
@@ -81,14 +83,15 @@ def Deprecated(*args, **kwargs):
             deprecation, and provide a migration path.
 
     Examples:
+        >>> from ray.util.annotations import Deprecated
         >>> @Deprecated
-        >>> def func(x):
-        >>>     return x
+        ... def func(x):
+        ...     return x
 
         >>> @Deprecated(message="g() is deprecated because the API is error "
-        "prone. Please call h() instead.")
-        >>> def g(y):
-        >>>     return y
+        ...   "prone. Please call h() instead.")
+        ... def g(y):
+        ...     return y
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return Deprecated()(args[0])
