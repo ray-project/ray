@@ -194,8 +194,8 @@ def test_worker_id_names(shutdown_only):
         assert count == 3
 
 
-def test_log_pid_with_hex_job_id(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_log_pid_with_hex_job_id(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
 
     def submit_job():

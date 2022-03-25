@@ -23,13 +23,13 @@ SCHEDULED = "SCHEDULED"
 FINISHED = "FINISHED"
 
 
-def test_cached_object(ray_start_cluster):
+def test_cached_object(ray_start_cluster_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 200,
     }
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
@@ -593,8 +593,7 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
             ray.get(obj)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_reconstruction_stress(ray_start_cluster):
+def test_reconstruction_stress(ray_start_cluster_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
@@ -602,7 +601,7 @@ def test_reconstruction_stress(ray_start_cluster):
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
     }
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0, _system_config=config, enable_object_reconstruction=True
@@ -647,8 +646,7 @@ def test_reconstruction_stress(ray_start_cluster):
             i += 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_reconstruction_stress_spill(ray_start_cluster):
+def test_reconstruction_stress_spill(ray_start_cluster_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
@@ -656,7 +654,7 @@ def test_reconstruction_stress_spill(ray_start_cluster):
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
     }
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0, _system_config=config, enable_object_reconstruction=True
@@ -748,8 +746,7 @@ def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
             ray.get(x)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_reconstruction_hangs(ray_start_cluster):
+def test_reconstruction_hangs(ray_start_cluster_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
@@ -758,7 +755,7 @@ def test_reconstruction_hangs(ray_start_cluster):
         "object_timeout_milliseconds": 200,
         "fetch_warn_timeout_milliseconds": 1000,
     }
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0, _system_config=config, enable_object_reconstruction=True
@@ -792,7 +789,7 @@ def test_reconstruction_hangs(ray_start_cluster):
         ray.get(x)
 
 
-def test_lineage_evicted(ray_start_cluster):
+def test_lineage_evicted(ray_start_cluster_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
@@ -800,7 +797,7 @@ def test_lineage_evicted(ray_start_cluster):
         "max_lineage_bytes": 10_000,
     }
 
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,
@@ -1021,14 +1018,14 @@ def test_spilled(ray_start_cluster, reconstruction_enabled):
             ray.get(obj, timeout=60)
 
 
-def test_memory_util(ray_start_cluster):
+def test_memory_util(ray_start_cluster_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 200,
     }
 
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Head node with no resources.
     cluster.add_node(
         num_cpus=0,

@@ -66,8 +66,8 @@ def test_load_balancing_under_constrained_memory(
     ray.get(tasks)
 
 
-def test_critical_object_store_mem_resource_utilization(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_critical_object_store_mem_resource_utilization(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(
         _system_config={
             "scheduler_spread_threshold": 0.0,

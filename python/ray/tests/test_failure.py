@@ -454,10 +454,10 @@ def test_put_error2(ray_start_object_store_memory):
     # get_error_message(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
-def test_version_mismatch(ray_start_cluster):
+def test_version_mismatch(ray_start_cluster_enabled):
     ray_version = ray.__version__
     try:
-        cluster = ray_start_cluster
+        cluster = ray_start_cluster_enabled
         cluster.add_node(num_cpus=1)
 
         # Test the driver.
