@@ -465,7 +465,9 @@ class ReporterAgent(
         if gpus_available:
             gpus_utilization, gram_used, gram_total = 0, 0, 0
             for gpu in gpus:
-                gpus_utilization += gpu["utilization_gpu"]
+                # Consume GPU may not report its utilization.
+                if gpu["utilization_gpu"] is not None:
+                    gpus_utilization += gpu["utilization_gpu"]
                 gram_used += gpu["memory_used"]
                 gram_total += gpu["memory_total"]
 
