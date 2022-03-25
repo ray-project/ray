@@ -65,27 +65,29 @@ class PPOConfig(TrainerConfig):
             )
     """
 
-    # fmt: off
-    # __sphinx_doc_begin__
-    def __init__(self,
-                 *,
-                 lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-                 use_critic: bool = True,
-                 use_gae: bool = True,
-                 lambda_: float = 1.0,
-                 kl_coeff: float = 0.2,
-                 sgd_minibatch_size: int = 128,
-                 num_sgd_iter: int = 30,
-                 shuffle_sequences: bool = True,
-                 vf_loss_coeff: float = 1.0,
-                 entropy_coeff: float = 0.0,
-                 entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
-                 clip_param: float = 0.3,
-                 vf_clip_param: float = 10.0,
-                 grad_clip: Optional[float] = None,
-                 kl_target: float = 0.01,
-                 ):
+    def __init__(
+        self,
+        *,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        use_critic: bool = True,
+        use_gae: bool = True,
+        lambda_: float = 1.0,
+        kl_coeff: float = 0.2,
+        sgd_minibatch_size: int = 128,
+        num_sgd_iter: int = 30,
+        shuffle_sequences: bool = True,
+        vf_loss_coeff: float = 1.0,
+        entropy_coeff: float = 0.0,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
+        clip_param: float = 0.3,
+        vf_clip_param: float = 10.0,
+        grad_clip: Optional[float] = None,
+        kl_target: float = 0.01,
+    ):
         """Initializes a PPOConfig instance.
+
+        # fmt: off
+        # __sphinx_doc_begin__
 
         Args:
             lr_schedule: Learning rate schedule. In the format of
@@ -114,9 +116,10 @@ class PPOConfig(TrainerConfig):
                 increase this.
             grad_clip: If specified, clip the global norm of gradients by this amount.
             kl_target: Target value for KL divergence.
+
+        # __sphinx_doc_end__
+        # fmt: on
         """
-    # __sphinx_doc_end__
-    # fmt: on
 
         super().__init__(trainer_class=PPOTrainer)
 
@@ -146,29 +149,34 @@ class PPOConfig(TrainerConfig):
 # Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
-        super().__init__(with_common_config({
-            "use_critic": True,
-            "use_gae": True,
-            "lambda": 1.0,
-            "kl_coeff": 0.2,
-            "sgd_minibatch_size": 128,
-            "shuffle_sequences": True,
-            "num_sgd_iter": 30,
-            "lr": 5e-5,
-            "lr_schedule": None,
-            "vf_loss_coeff": 1.0,
-            "entropy_coeff": 0.0,
-            "entropy_coeff_schedule": None,
-            "clip_param": 0.3,
-            "vf_clip_param": 10.0,
-            "grad_clip": None,
-            "kl_target": 0.01,
-        }))
+        super().__init__(
+            with_common_config(
+                {
+                    "use_critic": True,
+                    "use_gae": True,
+                    "lambda": 1.0,
+                    "kl_coeff": 0.2,
+                    "sgd_minibatch_size": 128,
+                    "shuffle_sequences": True,
+                    "num_sgd_iter": 30,
+                    "lr": 5e-5,
+                    "lr_schedule": None,
+                    "vf_loss_coeff": 1.0,
+                    "entropy_coeff": 0.0,
+                    "entropy_coeff_schedule": None,
+                    "clip_param": 0.3,
+                    "vf_clip_param": 10.0,
+                    "grad_clip": None,
+                    "kl_target": 0.01,
+                }
+            )
+        )
 
     @Deprecated(
         old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
         new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
-        error=False)
+        error=False,
+    )
     def __getitem__(self, item):
         return super().__getitem__(item)
 
