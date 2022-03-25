@@ -11,7 +11,6 @@ import time
 import traceback
 from contextlib import contextmanager
 from typing import (
-    Any,
     Callable,
     Dict,
     Iterable,
@@ -161,13 +160,23 @@ class ExecutorEventType(Enum):
 
 
 class ExecutorEvent:
-    """A struct that describes the event to be processed by TrialRunner."""
+    """A struct that describes the event to be processed by TrialRunner.
+
+    Attributes:
+        result: A dict with keys of "future_result" and "exception".
+            "future_result" is the corresponding result when future returns
+            successfully.
+            "exception" is the exception as caught during ``ray.get(future)``.
+    """
+
+    KEY_FUTURE_RESULT = "future_result"
+    KEY_EXCEPTION = "exception"
 
     def __init__(
         self,
         event_type: ExecutorEventType,
         trial: Optional[Trial] = None,
-        result: Optional[Any] = None,
+        result: Optional[Dict] = None,
     ):
         self.type = event_type
         self.trial = trial
@@ -425,7 +434,9 @@ class RayTrialExecutor(TrialExecutor):
             self._train(trial)
         return True
 
-    def _stop_trial(self, trial: Trial, error=False, error_msg=None):
+    def _stop_trial(
+        self, trial: Trial, error=False, error_msg=None, exc: Optional[Exception] = None
+    ):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -442,7 +453,7 @@ class RayTrialExecutor(TrialExecutor):
         trial.set_location(Location())
 
         try:
-            trial.write_error_log(error_msg)
+            trial.write_error_log(error_msg, exc=exc)
             if hasattr(trial, "runner") and trial.runner:
                 if (
                     not error
@@ -529,10 +540,14 @@ class RayTrialExecutor(TrialExecutor):
         return out
 
     def stop_trial(
-        self, trial: Trial, error: bool = False, error_msg: Optional[str] = None
+        self,
+        trial: Trial,
+        error: bool = False,
+        error_msg: Optional[str] = None,
+        exc: Optional[Exception] = None,
     ) -> None:
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg)
+        self._stop_trial(trial, error=error, error_msg=error_msg, exc=exc)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             out = self._find_future(trial)
@@ -908,10 +923,16 @@ class RayTrialExecutor(TrialExecutor):
                         ExecutorEventType.RESTORING_RESULT,
                     ):
                         logger.debug(f"Returning [{result_type}] for trial {trial}")
-                        return ExecutorEvent(result_type, trial, result=future_result)
+                        return ExecutorEvent(
+                            result_type,
+                            trial,
+                            result={ExecutorEvent.KEY_FUTURE_RESULT: future_result},
+                        )
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
                 except Exception as e:
                     return ExecutorEvent(
-                        ExecutorEventType.ERROR, trial, (e, traceback.format_exc())
+                        ExecutorEventType.ERROR,
+                        trial,
+                        result={ExecutorEvent.KEY_EXCEPTION: e},
                     )

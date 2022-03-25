@@ -10,13 +10,18 @@ import traceback
 import warnings
 
 import ray
+from ray.tune.error import get_tb_from_exception
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.experiment import Experiment
 from ray.tune.insufficient_resources_manager import InsufficientResourcesManager
-from ray.tune.ray_trial_executor import RayTrialExecutor, ExecutorEventType
+from ray.tune.ray_trial_executor import (
+    RayTrialExecutor,
+    ExecutorEventType,
+    ExecutorEvent,
+)
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_METRIC,
@@ -712,33 +717,37 @@ class TrialRunner:
     def _wait_and_handle_event(self, next_trial: Optional[Trial]):
         try:
             # Single wait of entire tune loop.
-            future_result = self.trial_executor.get_next_executor_event(
+            event = self.trial_executor.get_next_executor_event(
                 self._live_trials, next_trial is not None
             )
-            if future_result.type == ExecutorEventType.PG_READY:
+            if event.type == ExecutorEventType.PG_READY:
                 self._on_pg_ready(next_trial)
-            elif future_result.type == ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT:
+            elif event.type == ExecutorEventType.NO_RUNNING_TRIAL_TIMEOUT:
                 self._insufficient_resources_manager.on_no_available_trials(
                     self.get_trials()
                 )
-            elif future_result.type == ExecutorEventType.YIELD:
+            elif event.type == ExecutorEventType.YIELD:
                 pass
             else:
-                trial = future_result.trial
-                result = future_result.result
-                if future_result.type == ExecutorEventType.ERROR:
-                    self._on_executor_error(trial, result)
-                elif future_result.type == ExecutorEventType.RESTORING_RESULT:
+                trial = event.trial
+                result = event.result
+                if event.type == ExecutorEventType.ERROR:
+                    self._on_executor_error(trial, result[ExecutorEvent.KEY_EXCEPTION])
+                elif event.type == ExecutorEventType.RESTORING_RESULT:
                     self._on_restoring_result(trial)
                 else:
-                    assert future_result.type in (
+                    assert event.type in (
                         ExecutorEventType.SAVING_RESULT,
                         ExecutorEventType.TRAINING_RESULT,
-                    ), f"Unexpected future type - {future_result.type}"
-                    if future_result.type == ExecutorEventType.TRAINING_RESULT:
-                        self._on_training_result(trial, result)
+                    ), f"Unexpected future type - {event.type}"
+                    if event.type == ExecutorEventType.TRAINING_RESULT:
+                        self._on_training_result(
+                            trial, result[ExecutorEvent.KEY_FUTURE_RESULT]
+                        )
                     else:
-                        self._on_saving_result(trial, result)
+                        self._on_saving_result(
+                            trial, result[ExecutorEvent.KEY_FUTURE_RESULT]
+                        )
                     self._post_process_on_training_saving_result(trial)
         except Exception as e:
             if e is TuneError or self._fail_fast == TrialRunner.RAISE:
@@ -819,9 +828,9 @@ class TrialRunner:
                     self.get_trials()
                 )
 
-    def _on_saving_result(self, trial, result):
+    def _on_saving_result(self, trial, checkpoint_value: Union[ray.ObjectRef, str]):
         with warn_if_slow("process_trial_save") as _profile:
-            self._process_trial_save(trial, result)
+            self._process_trial_save(trial, checkpoint_value)
         with warn_if_slow("callbacks.on_trial_save"):
             self._callbacks.on_trial_save(
                 iteration=self._iteration, trials=self._trials, trial=trial
@@ -866,16 +875,16 @@ class TrialRunner:
             if final_decision:
                 self._execute_action(trial, final_decision)
 
-    def _on_executor_error(self, trial, result):
+    def _on_executor_error(self, trial, e: Exception):
         error_msg = f"Trial {trial}: Error processing event."
         if self._fail_fast == TrialRunner.RAISE:
             logger.error(error_msg)
-            assert isinstance(result[0], Exception)
-            raise result[0]
+            raise e
         else:
             logger.exception(error_msg)
-            assert isinstance(result[1], str)
-            self._process_trial_failure(trial, result[1])
+            self._process_trial_failure(
+                trial, error_msg=get_tb_from_exception(e), exc=e
+            )
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -1111,7 +1120,9 @@ class TrialRunner:
                     )
                 )
 
-    def _process_trial_save(self, trial, result):
+    def _process_trial_save(
+        self, trial: Trial, checkpoint_value: Union[ray.ObjectRef, str]
+    ):
         """Processes a trial save.
 
         Acts on the decision cached during the last `_process_trial` call.
@@ -1122,7 +1133,7 @@ class TrialRunner:
         logger.debug("Trial %s: Processing trial save.", trial)
 
         try:
-            trial.saving_to.value = result
+            trial.saving_to.value = checkpoint_value
             self._callbacks.on_checkpoint(
                 iteration=self._iteration,
                 trials=self._trials,
@@ -1133,13 +1144,15 @@ class TrialRunner:
             if trial.checkpoint.storage != Checkpoint.MEMORY:
                 self.trial_executor.mark_trial_to_checkpoint(trial)
         except Exception:
-            logger.exception("Trial %s: Error handling checkpoint %s", trial, result)
+            logger.exception(
+                "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
+            )
             if self._fail_fast == TrialRunner.RAISE:
                 raise
 
         trial.saving_to = None
         decision = self._cached_trial_decisions.pop(trial.trial_id, None)
-        if decision and result:
+        if decision and checkpoint_value:
             self._queue_decision(trial, decision)
 
     def _process_trial_restore(self, trial):
@@ -1155,7 +1168,9 @@ class TrialRunner:
         self.trial_executor.continue_training(trial)
         self._live_trials.add(trial)
 
-    def _process_trial_failure(self, trial, error_msg):
+    def _process_trial_failure(
+        self, trial: Trial, error_msg: str, exc: Optional[Exception] = None
+    ):
         """Handle trial failure.
 
         Attempt trial recovery if possible, clean up state otherwise.
@@ -1174,7 +1189,9 @@ class TrialRunner:
                 self._callbacks.on_trial_error(
                     iteration=self._iteration, trials=self._trials, trial=trial
                 )
-                self.trial_executor.stop_trial(trial, error=True, error_msg=error_msg)
+                self.trial_executor.stop_trial(
+                    trial, error=True, error_msg=error_msg, exc=exc
+                )
 
     def _queue_decision(self, trial, decision):
         # Get old decision, setting it to the current decision if it isn't set

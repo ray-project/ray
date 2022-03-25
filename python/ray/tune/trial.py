@@ -342,6 +342,7 @@ class Trial:
         self.runner = None
         self.last_debug = 0
         self.error_file = None
+        self.pickled_error_file = None
         self.error_msg = None
         self.trial_name_creator = trial_name_creator
         self.custom_trial_name = None
@@ -584,10 +585,15 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
-    def write_error_log(self, error_msg):
+    def write_error_log(self, error_msg, exc: Optional[Exception] = None):
         if error_msg and self.logdir:
             self.num_failures += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
+            if exc:
+                # Piping through the actual error to result grid.
+                self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
+                with open(self.pickled_error_file, "wb") as f:
+                    f.write(cloudpickle.dumps(exc))
             with open(self.error_file, "a+") as f:
                 f.write(
                     "Failure # {} (occurred at {})\n".format(
