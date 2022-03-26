@@ -182,7 +182,12 @@ def mock_modules():
 # (repo, ref, path to get, path to save on disk)
 EXTERNAL_MARKDOWN_FILES = [
     ("ray-project/xgboost_ray", "master", "README.md", "ray-more-libs/xgboost-ray.md"),
-    ("ray-project/lightgbm_ray", "master", "README.md", "ray-more-libs/lightgbm-ray.md"),
+    (
+        "ray-project/lightgbm_ray",
+        "master",
+        "README.md",
+        "ray-more-libs/lightgbm-ray.md",
+    ),
 ]
 
 
@@ -214,7 +219,7 @@ def preprocess_markdown_file(path: str):
 def download_and_preprocess_ecosystem_docs():
     """
     This function downloads markdown readme files for various
-    ecosystem libraries, saves them in correct places and preprocesses
+    ecosystem libraries, saves them in specified locations and preprocesses
     them before sphinx build starts.
 
     If you have ecosystem libraries that live in a separate repo from Ray,

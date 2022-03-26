@@ -92,7 +92,9 @@ In order to do that, simply edit the `EXTERNAL_MARKDOWN_FILES` list in `source/c
 using the format in the comment. Before build process, the specified files will be downloaded, preprocessed
 and saved to given paths. The build process will then proceed as normal.
 
-Because GitHub Markdown and MyST differ in syntax, simple preprocessing is performed to allow for differences
+While both GitHub Markdown and MyST are supersets of Common Markdown, there are differences in syntax.
+Furthermore, some contents such as Sphinx headers are not desirable to be displayed on GitHub.
+In order to deal with this, simple preprocessing is performed to allow for differences
 in rendering on GitHub and in docs. You can use two commands (`$UNCOMMENT` and `$REMOVE`/`$END_REMOVE`)
 in the Markdown file, specified in the following way:
 
