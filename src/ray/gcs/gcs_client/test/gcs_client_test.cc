@@ -35,11 +35,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
-  "gcs_grpc_based_pubsub": $0,
-  "gcs_storage": $1,
+  "gcs_storage": $1
 }
   )",
-                         no_redis_ ? "true" : "false",
                          no_redis_ ? "\"memory\"" : "\"redis\""));
     if (!no_redis_) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
@@ -54,15 +52,15 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
  protected:
   void SetUp() override {
-    if (no_redis_) {
-      config_.grpc_server_port = 5397;
-      config_.redis_port = 0;
-      config_.redis_address = "";
-    } else {
-      config_.grpc_server_port = 0;
+    config_.grpc_server_port = 5397;
+    if(!no_redis_) {
       config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
       config_.redis_address = "127.0.0.1";
+    } else {
+      config_.redis_port = 0;
+      config_.redis_address = "";
     }
+
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.node_ip_address = "127.0.0.1";
@@ -94,14 +92,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client.
-    if (no_redis_) {
-      gcs::GcsClientOptions options("127.0.0.1:5397");
-      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-    } else {
-      gcs::GcsClientOptions options(
-          config_.redis_address, config_.redis_port, config_.redis_password);
-      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-    }
+    gcs::GcsClientOptions options("127.0.0.1:5397");
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
