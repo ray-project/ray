@@ -230,7 +230,8 @@ class ResourceRequest {
   bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
   /// Check whether this set is a subset of another one.
-  /// If A <= B, each resource in A is less than or equal to the corresponding resource in B.
+  /// If A <= B, each resource in A is less than or equal to the corresponding resource in
+  /// B.
   bool operator<=(const ResourceRequest &other) const {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       if (predefined_resources_[i] > other.predefined_resources_[i]) {
@@ -252,7 +253,8 @@ class ResourceRequest {
   }
 
   /// Check whether this set is a super set of another one.
-  /// If A >= B, each resource in A is more than or equal to the corresponding resource in B.
+  /// If A >= B, each resource in A is more than or equal to the corresponding resource in
+  /// B.
   bool operator>=(const ResourceRequest &other) const { return other <= *this; }
 
   /// Return a human-readable string for this set.
@@ -303,6 +305,9 @@ class ResourceRequest {
 };
 
 /// Represents a resource set that contains the per-instance resource values.
+/// NOTE, unlike ResourceRequest, zero values won't be automatically removed in this
+/// class. Because otherwise we will lose the number of instances the set originally had
+/// for the particular resource.
 /// TODO(hchen): due to the same reason of ResourceRequest, we should rename it to
 /// ResourceInstanceSet.
 class TaskResourceInstances {
