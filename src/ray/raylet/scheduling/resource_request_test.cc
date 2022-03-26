@@ -75,42 +75,66 @@ TEST_F(ResourceRequestTest, TestBasic) {
 TEST_F(ResourceRequestTest, TestOperators) {
   auto cpu_id = ResourceID::CPU();
   auto custom_id1 = ResourceID("custom1");
-
-  ResourceRequest r1;
-  r1.Set(cpu_id, 1);
-  r1.Set(custom_id1, 2);
-
-  // Test operator=, operator==, and operator!=
+  auto custom_id2 = ResourceID("custom2");
+  ResourceRequest r1 = ResourceRequest({{cpu_id, 1}, {custom_id1, 2}});
   ResourceRequest r2 = r1;
+
+  // === Test comparison operators ===
+  // r1 = {CPU: 1, custom1: 2}, r2 = {CPU: 1, custom1: 2}
   ASSERT_TRUE(r1 == r2);
+  ASSERT_TRUE(r1 <= r2);
+  ASSERT_TRUE(r2 <= r1);
+  ASSERT_TRUE(r1 >= r2);
+  ASSERT_TRUE(r2 >= r1);
+
+  // r1 = {CPU: 1, custom1: 2}, r2 = {CPU: 2, custom1: 2}
   r2.Set(cpu_id, 2);
   ASSERT_TRUE(r1 != r2);
-
-  // Test operator<= and operator>=
-  // r1 = {CPU: 1, custom1: 2}, r2 = {CPU: 2, custom1:2}
   ASSERT_TRUE(r1 <= r2);
   ASSERT_TRUE(r2 >= r1);
+
+  // r1 = {CPU: 1, custom1: 2}, r2 = {CPU: 2, custom1: 2, custom2: 2}
+  r2.Set(custom_id2, 2);
+  ASSERT_TRUE(r1 != r2);
+  ASSERT_TRUE(r1 <= r2);
+  ASSERT_TRUE(r2 >= r1);
+
+  // r1 = {CPU: 1, custom1: 2}, r2 = {CPU: 2, custom1: 1, custom2: 2}
   r2.Set(custom_id1, 1);
+  ASSERT_TRUE(r1 != r2);
   ASSERT_FALSE(r1 <= r2);
+  ASSERT_FALSE(r2 >= r1);
 
-  // Test operator+ and operator+=
-  // r1 = {CPU: 1, custom1: 2}, r3 = {CPU: 2, custom1: 4}
-  ResourceRequest r3 = r1 + r1;
-  absl::flat_hash_map<ResourceID, FixedPoint> expected = {{cpu_id, 2}, {custom_id1, 4}};
+  // r1 = {custom1: -2}, r2 = {}
+  r1 = ResourceRequest({{custom_id1, -2}});
+  r2.Clear();
+  ASSERT_TRUE(r1 != r2);
+  ASSERT_TRUE(r1 <= r2);
+  ASSERT_TRUE(r2 >= r1);
+
+  ResourceRequest r3, r4;
+  absl::flat_hash_map<ResourceID, FixedPoint> expected;
+
+  // === Test algebra operators ===
+  //
+  // r1 = {CPU: 1, custom1: 2}, r2 = {CPU: -1, custom2: 2}
+  // r3 = r1 + r2 = {custom1: 2, custom2: 2}
+  r1 = ResourceRequest({{cpu_id, 1}, {custom_id1, 2}});
+  r2 = ResourceRequest({{cpu_id, -1}, {custom_id2, 2}});
+  r3 = r1 + r2;
+  expected = {{custom_id1, 2}, {custom_id2, 2}};
   ASSERT_EQ(r3.ToMap(), expected);
-  r3 += r1;
-  expected = {{cpu_id, 3}, {custom_id1, 6}};
+  r3 = r1;
+  r3 += r2;
   ASSERT_EQ(r3.ToMap(), expected);
 
-  // Test operator- and operator-=
-  // r1 = {CPU: 1, custom1: 2}, r3 = {CPU: 3, custom1: 6}
-  ResourceRequest r4 = r3 - r1;
-  expected = {{cpu_id, 2}, {custom_id1, 4}};
+  // r4 = r1 - r2 = {cpu: 2, custom1: 2, custom2: -2}
+  r4 = r1 - r2;
+  expected = {{cpu_id, 2}, {custom_id1, 2}, {custom_id2, -2}};
   ASSERT_EQ(r4.ToMap(), expected);
-
-  r1 -= r4;
-  expected = {{cpu_id, -1}, {custom_id1, -2}};
-  ASSERT_EQ(r1.ToMap(), expected);
+  r4 = r1;
+  r4 -= r2;
+  ASSERT_EQ(r4.ToMap(), expected);
 }
 
 class TaskResourceInstancesTest : public ::testing::Test {};

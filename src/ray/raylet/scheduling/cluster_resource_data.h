@@ -47,10 +47,8 @@ class ResourceRequest {
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory)
-      : requires_object_store_memory_(requires_object_store_memory) {
-    for (int i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      predefined_resources_.push_back(0);
-    }
+      : predefined_resources_(PredefinedResourcesEnum_MAX, 0),
+        requires_object_store_memory_(requires_object_store_memory) {
     for (auto entry : resource_map) {
       Set(entry.first, entry.second);
     }
@@ -198,6 +196,8 @@ class ResourceRequest {
         if (it->second == 0) {
           custom_resources_.erase(it);
         }
+      } else {
+        custom_resources_.emplace(entry.first, entry.second);
       }
     }
     return *this;
@@ -215,6 +215,8 @@ class ResourceRequest {
         if (it->second == 0) {
           custom_resources_.erase(it);
         }
+      } else {
+        custom_resources_.emplace(entry.first, -entry.second);
       }
     }
     return *this;
@@ -228,24 +230,29 @@ class ResourceRequest {
   bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
   /// Check whether this set is a subset of another one.
+  /// If A <= B, each resource in A is less than or equal to the corresponding resource in B.
   bool operator<=(const ResourceRequest &other) const {
-    if (Size() > other.Size()) {
-      return false;
-    }
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       if (predefined_resources_[i] > other.predefined_resources_[i]) {
         return false;
       }
     }
     for (auto &entry : custom_resources_) {
+      auto &this_value = entry.second;
+      auto other_value = FixedPoint(0);
       auto it = other.custom_resources_.find(entry.first);
-      if (it == other.custom_resources_.end() || entry.second > it->second) {
+      if (it != other.custom_resources_.end()) {
+        other_value = it->second;
+      }
+      if (this_value > other_value) {
         return false;
       }
     }
     return true;
   }
 
+  /// Check whether this set is a super set of another one.
+  /// If A >= B, each resource in A is more than or equal to the corresponding resource in B.
   bool operator>=(const ResourceRequest &other) const { return other <= *this; }
 
   /// Return a human-readable string for this set.
