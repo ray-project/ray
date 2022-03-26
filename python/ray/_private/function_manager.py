@@ -389,6 +389,7 @@ class FunctionActorManager:
                 if this times out.
         """
         start_time = time.time()
+        retry = False
         while time.time() - start_time < _IMPORT_TIMEOUT:
             with self.lock:
                 if self._worker.actor_id.is_nil() and (
@@ -401,8 +402,11 @@ class FunctionActorManager:
                     return
             # Try importing in case the worker did not get notified, or the
             # importer thread is not running.
+            if retry:
+                time.sleep(random.uniform(1.0, 2.0))
+            else:
+                retry = True
             self._worker.import_thread._do_importing()
-            time.sleep(random.uniform(1.0, 2.0))
 
         warning_message = (
             "This worker was asked to execute a function "
@@ -611,14 +615,17 @@ class FunctionActorManager:
         # the class for `ray.get_actor()`.
         if job_id.binary() == self._worker.current_job_id.binary():
             start_time = time.time()
+            retry = False
             while time.time() - start_time < _IMPORT_TIMEOUT:
                 if key in self.imported_actor_classes:
                     break
                 # Try importing in case the worker did not get notified, or the
                 # importer thread is not running.
+                if retry:
+                    time.sleep(random.uniform(1.0, 2.0))
+                else:
+                    retry = True
                 self._worker.import_thread._do_importing()
-                time.sleep(random.uniform(1.0, 2.0))
-
             if key not in self.imported_actor_classes:
                 warning_message = (
                     "This worker was asked to start an actor "
