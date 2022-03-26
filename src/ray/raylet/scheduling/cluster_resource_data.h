@@ -230,14 +230,15 @@ class ResourceRequest {
   bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
   /// Check whether this set is a subset of another one.
-  /// If A <= B, each resource in A is less than or equal to the corresponding resource in
-  /// B.
+  /// If A <= B, it means for each resource, its value in A is less than or equqal to that
+  /// in B.
   bool operator<=(const ResourceRequest &other) const {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
       if (predefined_resources_[i] > other.predefined_resources_[i]) {
         return false;
       }
     }
+    // Check all resources that exist in this.
     for (auto &entry : custom_resources_) {
       auto &this_value = entry.second;
       auto other_value = FixedPoint(0);
@@ -249,12 +250,20 @@ class ResourceRequest {
         return false;
       }
     }
+    // Check all resources that exist in other, but not in this.
+    for (auto &entry : other.custom_resources_) {
+      if (!custom_resources_.contains(entry.first)) {
+        if (entry.second < 0) {
+          return false;
+        }
+      }
+    }
     return true;
   }
 
   /// Check whether this set is a super set of another one.
-  /// If A >= B, each resource in A is more than or equal to the corresponding resource in
-  /// B.
+  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// that in B.
   bool operator>=(const ResourceRequest &other) const { return other <= *this; }
 
   /// Return a human-readable string for this set.

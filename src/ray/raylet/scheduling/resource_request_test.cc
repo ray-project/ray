@@ -112,6 +112,13 @@ TEST_F(ResourceRequestTest, TestOperators) {
   ASSERT_TRUE(r1 <= r2);
   ASSERT_TRUE(r2 >= r1);
 
+  // r1 = {}, r2 = {custom1: -2}
+  r1.Clear();
+  r2 = ResourceRequest({{custom_id1, -2}});
+  ASSERT_TRUE(r1 != r2);
+  ASSERT_FALSE(r1 <= r2);
+  ASSERT_FALSE(r2 >= r1);
+
   ResourceRequest r3, r4;
   absl::flat_hash_map<ResourceID, FixedPoint> expected;
 
