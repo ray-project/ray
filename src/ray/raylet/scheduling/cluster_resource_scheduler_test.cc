@@ -575,7 +575,7 @@ TEST_F(ClusterResourceSchedulerTest, GetCPUInstancesDoubleTest) {
   std::vector<FixedPoint> cpu_instances = task_resources.Get(ResourceID::CPU());
   std::vector<FixedPoint> expected_cpu_instances{1., 1., 1.};
 
-  ASSERT_EQ(FixedPointVectorEqual(cpu_instances, expected_cpu_instances), true);
+  ASSERT_EQ(cpu_instances, expected_cpu_instances);
 }
 
 TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
@@ -592,18 +592,18 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
   cluster.GetLocalResourceManager().AddAvailableResourceInstances(a, total, available);
   cluster.GetLocalResourceManager().SubtractAvailableResourceInstances(a, available);
 
-  ASSERT_EQ(FixedPointVectorEqual(available, old_available), true);
+  ASSERT_EQ(available, old_available);
 
   a = {10., 1., 1.};
   cluster.GetLocalResourceManager().AddAvailableResourceInstances(a, total, available);
   std::vector<FixedPoint> expected_available{6., 3., 6.};
 
-  ASSERT_EQ(FixedPointVectorEqual(available, expected_available), true);
+  ASSERT_EQ(available, expected_available);
 
   a = {10., 1., 1.};
   cluster.GetLocalResourceManager().SubtractAvailableResourceInstances(a, available);
   expected_available = {0., 2., 5.};
-  ASSERT_EQ(FixedPointVectorEqual(available, expected_available), true);
+  ASSERT_EQ(available, expected_available);
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
@@ -970,7 +970,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   vector<FixedPoint> gpu_instances = task_allocation->Get(ResourceID::GPU());
   vector<FixedPoint> expect_gpu_instance{1., 0.5, 0., 0.};
 
-  ASSERT_TRUE(FixedPointVectorEqual(gpu_instances, expect_gpu_instance));
+  ASSERT_TRUE(gpu_instances, expect_gpu_instance);
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
@@ -993,7 +993,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
   vector<FixedPoint> cpu_instances = task_allocation->Get(ResourceID::CPU());
   vector<FixedPoint> expect_cpu_instance{2};
 
-  ASSERT_TRUE(FixedPointVectorEqual(cpu_instances, expect_cpu_instance));
+  ASSERT_TRUE(cpu_instances, expect_cpu_instance);
 }
 
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {

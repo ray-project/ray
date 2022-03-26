@@ -16,11 +16,6 @@
 
 #include <sstream>
 
-bool FixedPointVectorEqual(const std::vector<FixedPoint> &v1,
-                           const std::vector<FixedPoint> &v2) {
-  return (v1.size() == v2.size() && std::equal(v1.begin(), v1.end(), v2.begin()));
-}
-
 std::vector<FixedPoint> FixedPointVectorFromDouble(const std::vector<double> &vector) {
   std::vector<FixedPoint> vector_fp(vector.size());
   for (size_t i = 0; i < vector.size(); i++) {

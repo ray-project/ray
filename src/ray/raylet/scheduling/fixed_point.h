@@ -116,10 +116,6 @@ inline std::ostream &operator<<(std::ostream &out, FixedPoint const &ru1) {
 
 // Helper functions for FixedPoint vectors.
 
-/// Compare two FixedPoint vectors.
-bool FixedPointVectorEqual(const std::vector<FixedPoint> &v1,
-                           const std::vector<FixedPoint> &v2);
-
 /// Construct a FixedPoint vector from a double vector.
 std::vector<FixedPoint> FixedPointVectorFromDouble(const std::vector<double> &vector);
 

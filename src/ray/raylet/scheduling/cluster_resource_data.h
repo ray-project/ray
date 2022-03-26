@@ -223,7 +223,7 @@ class ResourceRequest {
   }
 
   bool operator==(const ResourceRequest &other) const {
-    return FixedPointVectorEqual(predefined_resources_, other.predefined_resources_) &&
+    return predefined_resources_ == other.predefined_resources_ &&
            this->custom_resources_ == other.custom_resources_;
   }
 
@@ -454,8 +454,7 @@ class TaskResourceInstances {
 
   bool operator==(const TaskResourceInstances &other) const {
     for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
-      if (!FixedPointVectorEqual(this->predefined_resources_[i],
-                                 other.predefined_resources_[i])) {
+      if (this->predefined_resources_[i] != other.predefined_resources_[i]) {
         return false;
       }
     }
