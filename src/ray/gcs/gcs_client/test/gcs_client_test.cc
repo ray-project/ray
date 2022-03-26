@@ -53,7 +53,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     config_.grpc_server_port = 5397;
-    if(!no_redis_) {
+    if (!no_redis_) {
       config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
       config_.redis_address = "127.0.0.1";
     } else {
