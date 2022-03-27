@@ -1283,7 +1283,7 @@
     script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1372,7 +1372,7 @@
     script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1937,6 +1937,34 @@
   alert: default
 
 ########################
+# Train tests
+########################
+
+- name: train_horovod_multi_node_test
+  group: Train tests
+  working_dir: train_tests/horovod
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 3000
+    script: python train_horovod_multi_node_test.py
+
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+########################
 # RLLib tests
 ########################
 
@@ -2094,7 +2122,7 @@
   run:
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
-    
+
     type: sdk_command
     file_manager: sdk
 
@@ -2909,28 +2937,18 @@
     type: sdk_command
     file_manager: sdk
 
-- name: many_tasks_smoke_test
-  group: core-scalability-test
-  working_dir: benchmarks
-  legacy:
-    test_name: many_tasks_smoke_test
-    test_suite: benchmark_tests
+  smoke_test:
+    frequency: multi
+    cluster:
+      cluster_env: app_config.yaml
+      cluster_compute: distributed_smoke_test.yaml
+    run:
+      timeout: 3600
+      script: python distributed/test_many_tasks.py --num-tasks=100
+      wait_for_nodes:
+        num_nodes: 2
+        timeout: 600
 
-  frequency: multi
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: distributed_smoke_test.yaml
-
-  run:
-    timeout: 3600
-    script: python distributed/test_many_tasks.py --num-tasks=100
-    wait_for_nodes:
-      num_nodes: 2
-      timeout: 600
-
-    type: sdk_command
-    file_manager: sdk
 
 - name: many_pgs
   group: core-scalability-test
@@ -3526,31 +3544,21 @@
 
     type: job
     file_manager: job
-  stable: false
 
-- name: k8s_many_tasks_smoke_test
-  group: core-scalability-test
-  working_dir: benchmarks
-  legacy:
-    test_name: many_tasks_smoke_test
-    test_suite: benchmark_tests
+  smoke_test:
+    frequency: multi
+    cluster:
+      cluster_env: app_config.yaml
+      cluster_compute: distributed_smoke_test.yaml
+    run:
+      timeout: 3600
+      script: python distributed/test_many_tasks.py --num-tasks=100
+      wait_for_nodes:
+        num_nodes: 2
+        timeout: 600
 
-  frequency: multi
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: distributed_smoke_test.yaml
-    cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
-
-  run:
-    timeout: 3600
-    script: python distributed/test_many_tasks.py --num-tasks=100
-    wait_for_nodes:
-      num_nodes: 2
-      timeout: 600
-
-    type: job
-    file_manager: job
+      type: job
+      file_manager: job
   stable: false
 
 - name: k8s_many_pgs

@@ -14,9 +14,12 @@ class NumpyDatasource(FileBasedDatasource):
     """Numpy datasource, for reading and writing Numpy files.
 
     Examples:
-        >>> source = NumpyDatasource()
-        >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... [array([0., 1., 2.]), ...]
+        >>> import ray
+        >>> from ray.data.datasource import NumpyDatasource
+        >>> source = NumpyDatasource() # doctest: +SKIP
+        >>> ray.data.read_datasource( # doctest: +SKIP
+        ...     source, paths="/path/to/dir").take()
+        [array([0., 1., 2.]), ...]
 
     """
 

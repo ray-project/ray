@@ -165,9 +165,12 @@ class ParquetDatasource(FileBasedDatasource):
     """Parquet datasource, for reading and writing Parquet files.
 
     Examples:
-        >>> source = ParquetDatasource()
-        >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... [{"a": 1, "b": "foo"}, ...]
+        >>> import ray
+        >>> from ray.data.datasource import ParquetDatasource
+        >>> source = ParquetDatasource() # doctest: +SKIP
+        >>> ray.data.read_datasource( # doctest: +SKIP
+        ...     source, paths="/path/to/dir").take()
+        [{"a": 1, "b": "foo"}, ...]
     """
 
     def prepare_read(

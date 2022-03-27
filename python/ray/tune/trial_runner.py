@@ -68,7 +68,9 @@ def load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        new_trial = Trial(trial_cp["trainable_name"], stub=stub)
+        new_trial = Trial(
+            trial_cp["trainable_name"], stub=stub, _setup_default_resource=False
+        )
         new_trial.__setstate__(trial_cp)
         trials.append(new_trial)
 
@@ -339,7 +341,6 @@ class TrialRunner:
         self._live_trials = set()  # Set of non-terminated trials
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
-        self._updated_queue = False
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
@@ -692,22 +693,24 @@ class TrialRunner:
         Returns:
             next_trial: Trial
         """
-        self._updated_queue = False
+        wait_for_trial = True  # wait for new trials when all trials are finished
+        num_pending_trials = 0
+        for trial in self._live_trials:
+            if not trial.is_finished():
+                wait_for_trial = False
+                if trial.status == Trial.PENDING:
+                    num_pending_trials += 1
 
-        # This will contain the next trial to start
-        next_trial = self._get_next_trial()  # blocking
-        # Create pending trials. If the queue was updated before, only
-        # continue updating if this was successful (next_trial is not None)
-        if not self._updated_queue or (self._updated_queue and next_trial):
-            num_pending_trials = len(
-                [t for t in self._live_trials if t.status == Trial.PENDING]
-            )
+        if not self._search_alg.is_finished():
+            # Create pending trials until it fails.
             while num_pending_trials < self._max_pending_trials:
-                if not self._update_trial_queue(blocking=False):
+                if not self._update_trial_queue(blocking=wait_for_trial):
                     break
+                wait_for_trial = False  # wait at most one trial
                 num_pending_trials += 1
 
-        return next_trial
+        with warn_if_slow("choose_trial_to_run"):
+            return self._scheduler_alg.choose_trial_to_run(self)
 
     def _wait_and_handle_event(self, next_trial: Optional[Trial]):
         try:
@@ -763,6 +766,8 @@ class TrialRunner:
             )
 
         next_trial = self._update_trial_queue_and_get_next_trial()
+        if next_trial:
+            logger.debug(f"Running trial {next_trial}")
 
         self._wait_and_handle_event(next_trial)
 
@@ -931,31 +936,6 @@ class TrialRunner:
                 for t in self._trials
                 if t.status is not Trial.ERROR
             ]
-
-    def _get_next_trial(self):
-        """Replenishes queue.
-
-        Blocks if all trials queued have finished, but search algorithm is
-        still not finished.
-        """
-        no_trials_unfinished = True
-        no_trials_pending = True
-        for trial in self._live_trials:
-            if not trial.is_finished():
-                no_trials_unfinished = False
-            if trial.status == Trial.PENDING:
-                no_trials_pending = False
-            if not no_trials_unfinished and not no_trials_pending:
-                break
-        wait_for_trial = no_trials_unfinished and not self._search_alg.is_finished()
-        # Only fetch a new trial if we have no pending trial
-        if wait_for_trial or no_trials_pending:
-            self._update_trial_queue(blocking=wait_for_trial)
-        with warn_if_slow("choose_trial_to_run"):
-            trial = self._scheduler_alg.choose_trial_to_run(self)
-            if trial:
-                logger.debug("Running trial {}".format(trial))
-        return trial
 
     def _process_trial_results(self, trial, results):
         logger.debug(f"process_trial_results {results}")
@@ -1304,8 +1284,6 @@ class TrialRunner:
         Returns:
             Boolean indicating if a new trial was created or not.
         """
-        self._updated_queue = True
-
         trial = self._search_alg.next_trial()
         if blocking and not trial:
             start = time.time()
