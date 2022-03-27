@@ -107,6 +107,7 @@ class WorkflowStepFunction:
         metadata: Dict[str, Any] = None,
         allow_inplace: bool = False,
         checkpoint: "Optional[CheckpointModeType]" = None,
+        _with_resumable: bool = False,
         **ray_options,
     ) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
@@ -141,6 +142,7 @@ class WorkflowStepFunction:
             max_retries=max_retries,
             allow_inplace=allow_inplace,
             checkpoint=_inherit_checkpoint_option(checkpoint),
+            _with_resumable=_with_resumable,
             ray_options=ray_options,
         )
         return WorkflowStepFunction(

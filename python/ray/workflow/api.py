@@ -92,7 +92,6 @@ def make_step_decorator(
 
     return decorator
 
-
 @PublicAPI(stability="beta")
 def step(*args, **kwargs):
     """A decorator used for creating workflow steps.
@@ -118,6 +117,7 @@ def step(*args, **kwargs):
     metadata = kwargs.pop("metadata", None)
     allow_inplace = kwargs.pop("allow_inplace", False)
     checkpoint = kwargs.pop("checkpoint", None)
+    _with_resumable = kwargs.pop("_with_resumable", False)
     ray_options = kwargs
 
     options = WorkflowStepRuntimeOptions.make(
@@ -127,8 +127,31 @@ def step(*args, **kwargs):
         allow_inplace=allow_inplace,
         checkpoint=checkpoint,
         ray_options=ray_options,
+        _with_resumable=_with_resumable,
     )
     return make_step_decorator(options, name, metadata)
+
+def get(ws):
+    import unthrow
+    if isinstance(ws, list):
+        for w in ws:
+            w.data.step_options.catch_exceptions = True
+        def f(*args):
+            rets = []
+            for (ret, err) in args:
+                if err is not None:
+                    raise err
+                rets.append(ret)
+            return rets
+        w = step(f).step(*ws)
+    else:
+        w = ws
+    w.data.step_options.catch_exceptions = True
+
+    (ret, err) = unthrow.stop(w)
+    if err is not None:
+        raise err
+    return ret
 
 
 @PublicAPI(stability="beta")

@@ -210,6 +210,7 @@ class WorkflowStepRuntimeOptions:
     # ray_remote options
     ray_options: Dict[str, Any]
 
+    _with_resumable: bool
     @classmethod
     def make(
         cls,
@@ -219,6 +220,7 @@ class WorkflowStepRuntimeOptions:
         max_retries=None,
         allow_inplace=False,
         checkpoint=True,
+        _with_resumable=False,
         ray_options=None,
     ):
         if max_retries is None:
@@ -240,6 +242,7 @@ class WorkflowStepRuntimeOptions:
             allow_inplace=allow_inplace,
             checkpoint=checkpoint,
             ray_options=ray_options,
+            _with_resumable=_with_resumable,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -250,6 +253,7 @@ class WorkflowStepRuntimeOptions:
             "allow_inplace": self.allow_inplace,
             "checkpoint": self.checkpoint,
             "ray_options": self.ray_options,
+            "_with_resumable": False,
         }
 
     @classmethod
@@ -261,6 +265,7 @@ class WorkflowStepRuntimeOptions:
             allow_inplace=value["allow_inplace"],
             checkpoint=value["checkpoint"],
             ray_options=value["ray_options"],
+            _with_resumable=value["_with_resumable"],
         )
 
 

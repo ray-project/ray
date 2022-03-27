@@ -15,6 +15,8 @@ from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.workflow.step_function import WorkflowStepFunction
 
+from pathlib import Path
+failure_flag = Path("/tmp/failure")
 
 class WorkflowStepNotRecoverableError(Exception):
     """Raise the exception when we find a workflow step cannot be recovered
@@ -35,8 +37,6 @@ class WorkflowNotResumableError(Exception):
 
 @WorkflowStepFunction
 def _recover_workflow_step(
-    input_workflows: List[Any],
-    input_workflow_refs: List[WorkflowRef],
     *args,
     **kwargs,
 ):
@@ -154,8 +154,6 @@ def _construct_resume_workflow_from_step(
         # Note: we must uppack args and kwargs, so the refs in the args/kwargs can get
         # resolved consistently like in Ray.
         recovery_workflow: Workflow = _recover_workflow_step.step(
-            input_workflows,
-            workflow_refs,
             *args,
             **kwargs,
         )
@@ -223,7 +221,7 @@ def resume_workflow_step(
     else:
         current_output = [current_output]
 
-    persisted_output, volatile_output = _resume_workflow_step_executor.remote(
+    persisted_output, volatile_output = _resume_workflow_step_executor.options(max_retries=0).remote(
         workflow_id, step_id, store_url, current_output
     )
     return WorkflowExecutionResult(persisted_output, volatile_output)

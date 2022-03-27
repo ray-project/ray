@@ -1,6 +1,7 @@
 import time
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 import functools
 import logging
 from typing import List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING, Union
@@ -30,6 +31,7 @@ from ray.workflow.common import (
     asyncio_run,
     CheckpointMode,
 )
+failure_flag = Path("/tmp/failure")
 
 if TYPE_CHECKING:
     from ray.workflow.common import (
@@ -325,6 +327,7 @@ def commit_step(
     )
 
 
+
 def _wrap_run(
     func: Callable, runtime_options: "WorkflowStepRuntimeOptions", *args, **kwargs
 ) -> Tuple[Any, Any]:
@@ -360,6 +363,7 @@ def _wrap_run(
     # max_retries are for application level failure.
     # For ray failure, we should use max_retries.
     i = 0
+    runtime_options.max_retries = 0
     while not done:
         if i == 0:
             logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
@@ -373,11 +377,43 @@ def _wrap_run(
                 f"{get_step_status_info(WorkflowStatus.RUNNING)}"
                 f"\tretries: [{i}/{total_retries}]"
             )
+
+        logger.debug(f"OPTIONS {failure_flag.exists()} {workflow_context.get_current_step_id()}")
+        r = None
         try:
-            result = func(*args, **kwargs)
+            import unthrow
+            # retry is not allowed here because we need to restore r
+            def continuation(r, xfunc, w, *args, **kwargs):
+                logger.debug(f"INSIDE CONTINUATION {failure_flag.exists()} {w}")
+                r.resume_ret = w
+                c = r.run_once(xfunc, *args, **kwargs)
+                if r.finished != True:
+                    logger.debug(f"NNNNNNNNNNNNNNNNNNNNNNNNNNNNot finished {failure_flag.exists()}")
+                    w = ray.workflow.step(continuation).options(_with_resumable=True, max_retries=0).step(r, xfunc, c, *args, **kwargs)
+                    return w
+                else:
+                    return c
+
+            if runtime_options._with_resumable:
+                logger.debug(f"ALREADY IN RESUMABLE (!) {failure_flag.exists()}  - {func} - {args} {kwargs}")
+                result = func(*args, **kwargs)
+            elif len(args) > 1 and isinstance(args[0], unthrow.Resumer):
+                #(<unthrow.Resumer object at 0x7f18c87f40d0>, <function _recover_workflow_step at 0x7f18c877c8b0>, (None, RuntimeError()), 10)
+                logger.debug(f"HACK FOR CONTINUATION (!) {failure_flag.exists()}  - {func} - {args} {kwargs}")
+                result = continuation(*args, **kwargs)
+                logger.debug(f"HACK RESULT {result}")
+            else:
+                logger.debug(f"NEW RESUMABLE (!) {failure_flag.exists()} - {func} - {args} {kwargs}")
+                r = unthrow.Resumer()
+                result = r.run_once(func, *args, **kwargs)
+                logger.debug(f"RESUMABLE FINISHED {r.finished}")
+                if r.finished != True:
+                    result = ray.workflow.step(continuation).options(_with_resumable=True, max_retries=0).step(r, func, result, *args, **kwargs)
+                    assert result.data.step_options._with_resumable
+
             exception = None
             done = True
-        except BaseException as e:
+        except Exception as e:
             if i == runtime_options.max_retries:
                 retry_msg = "Maximum retry reached, stop retry."
                 exception = e
@@ -387,7 +423,7 @@ def _wrap_run(
                 i += 1
             logger.error(
                 f"{workflow_context.get_name()} failed with error message"
-                f" {e}. {retry_msg}"
+                f" #{type(e)}# {e}. {retry_msg}, {runtime_options.catch_exceptions}"
             )
     step_type = runtime_options.step_type
     if runtime_options.catch_exceptions:
@@ -413,6 +449,7 @@ def _wrap_run(
                 status = WorkflowStatus.FAILED
                 _record_step_status(workflow_context.get_current_step_id(), status)
                 logger.info(get_step_status_info(status))
+            print("?????", type(exception), failure_flag.exists())
             raise exception
         if step_type == StepType.FUNCTION:
             persisted_output, volatile_output = result, None
@@ -491,6 +528,7 @@ def _workflow_step_executor(
                 exception=None,
             )
         if isinstance(persisted_output, Workflow):
+            # print(">>>> DYNAMIC WORKFLOW", persisted_output)
             sub_workflow = persisted_output
             outer_most_step_id = context.outer_most_step_id
             assert volatile_output is None
@@ -526,6 +564,7 @@ def _workflow_step_executor(
             with workflow_context.fork_workflow_step_context(
                 outer_most_step_id=outer_most_step_id
             ):
+                # print(">>>> EXECUTE SUB", sub_workflow)
                 result = execute_workflow(sub_workflow)
             # When virtual actor returns a workflow in the method,
             # the volatile_output and persisted_output will be put together
