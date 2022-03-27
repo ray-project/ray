@@ -28,10 +28,8 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   GlobalStateAccessorTest() {
     if (GetParam()) {
       RayConfig::instance().gcs_storage() = "memory";
-      RayConfig::instance().gcs_grpc_based_pubsub() = true;
     } else {
       RayConfig::instance().gcs_storage() = "redis";
-      RayConfig::instance().gcs_grpc_based_pubsub() = false;
     }
 
     if (!GetParam()) {
@@ -48,6 +46,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
+
     config.grpc_server_port = 6379;
     config.grpc_pubsub_enabled = true;
 
@@ -55,6 +54,11 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
 
+    if(!GetParam()) {
+      config.redis_address = "127.0.0.1";
+      config.enable_sharding_conn = false;
+      config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    }
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
