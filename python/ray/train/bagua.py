@@ -1,45 +1,26 @@
-import tempfile
 from dataclasses import dataclass
-import functools
-import io
 import logging
 import os
-import random
-import types
 
-from datetime import timedelta
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import ray
-from ray import train
 from ray.train.torch import (
     TorchAccelerator,
     TorchBackend,
 )
-from ray.train.accelerator import Accelerator
-from ray.train.backend import BackendConfig, Backend, EncodedData
-from ray.train.constants import PYTORCH_PROFILER_KEY
-from torch.optim import Optimizer
+
+from ray.train.backend import BackendConfig
 from ray.train.session import get_accelerator, set_accelerator
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
 
-import numpy as np
 import torch
-from torch.cuda.amp import autocast, GradScaler
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import (
-    DistributedSampler,
-    DataLoader,
-    IterableDataset,
-    SequentialSampler,
-    RandomSampler,
-)
+from torch.utils.data import DistributedSampler
 
-import bagua.torch_api as bagua
+import bagua.torch_api
 from bagua.torch_api.algorithms import gradient_allreduce
 
 try:
@@ -51,14 +32,15 @@ logger = logging.getLogger(__name__)
 
 
 def _get_torch_distributed_sampler(dataset, shuffle):
-    return DistributedSampler(dataset,
-                              num_replicas=bagua.get_world_size(),  # equivalent to ray.train.size()
-                              rank=bagua.get_rank(),  # equivalent to ray.train.world_rank()
-                              shuffle=shuffle)
+    return DistributedSampler(
+        dataset,
+        num_replicas=bagua.torch_api.get_world_size(),  # equivalent to ray.train.size()
+        rank=bagua.torch_api.get_rank(),  # equivalent to ray.train.world_rank()
+        shuffle=shuffle,
+    )
 
 
 class BaguaAccelerator(TorchAccelerator):
-
     def __init__(self, amp: bool = False):
         super().__init__(amp=amp)
 
@@ -70,6 +52,7 @@ class BaguaAccelerator(TorchAccelerator):
     ) -> torch.nn.Module:
 
         device = self.get_device()
+        model = model.to(device)
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
@@ -77,9 +60,8 @@ class BaguaAccelerator(TorchAccelerator):
         if self.amp_is_enabled:
             model = self._patch_model_forward_and_state(model)
 
-        if train.world_size() > 1:
-            logger.info("Wrapping provided model in BaguaDDP.")
-            model = model.with_bagua([optimizer], algorithm)
+        logger.info("Wrapping provided model in BaguaDDP.")
+        model = model.with_bagua([optimizer], algorithm)
 
         return model
 
@@ -96,8 +78,9 @@ class BaguaConfig(BackendConfig):
 
 
 def setup_torch_process_group(store: Optional[torch.distributed.Store] = None):
-    torch.cuda.set_device(bagua.get_local_rank())
-    bagua.init_process_group(store)
+    torch.cuda.set_device(bagua.torch_api.get_local_rank())
+    # init_process_group() is different from ray.train.torch approach
+    bagua.torch_api.init_process_group(store)
 
 
 class BaguaBackend(TorchBackend):
@@ -126,7 +109,7 @@ class BaguaBackend(TorchBackend):
                     worker_group.execute_single_async(
                         i,
                         setup_torch_process_group,
-                        store = store,
+                        store=store,
                     )
                 )
             ray.get(setup_futures)
@@ -143,8 +126,13 @@ def get_device() -> torch.device:
 def prepare_model(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    algorithm: bagua.torch_api.algorithms.Algorithm = gradient_allreduce.GradientAllReduceAlgorithm()
+    algorithm: bagua.torch_api.algorithms.Algorithm = None,
 ) -> torch.nn.Module:
+    algorithm = (
+        gradient_allreduce.GradientAllReduceAlgorithm()
+        if algorithm is None
+        else algorithm
+    )
     return get_accelerator(BaguaAccelerator).prepare_model(model, optimizer, algorithm)
 
 
