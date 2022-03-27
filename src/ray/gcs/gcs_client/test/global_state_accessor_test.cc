@@ -54,7 +54,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
 
-    if(!GetParam()) {
+    if (!GetParam()) {
       config.redis_address = "127.0.0.1";
       config.enable_sharding_conn = false;
       config.redis_port = TEST_REDIS_SERVER_PORTS.front();
