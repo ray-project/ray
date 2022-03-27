@@ -49,11 +49,22 @@ public class ParallelActorTest extends BaseTest {
     Assert.assertEquals(1000000, (int) obj1.get());
     Assert.assertEquals(1000000, (int) obj2.get());
 
-    ParallelInstance<A> instance = actor.getInstance(/*index=*/2);
+    {
+      ParallelInstance<A> instance = actor.getInstance(/*index=*/2);
 
-    Preconditions.checkNotNull(instance);
-    /// We haven't impled this, but it's the same implementation as above.
-    int res = instance.task(A::f1, 100, 200).remote().get();   // Executed in instance 2
-    Assert.assertEquals(res, 300);
+      Preconditions.checkNotNull(instance);
+      /// We haven't impled this, but it's the same implementation as above.
+      int res = instance.task(A::f1, 100, 200).remote().get();   // Executed in instance 2
+      Assert.assertEquals(res, 300);
+    }
+
+    {
+      ParallelInstance<A> instance = actor.getInstance(/*index=*/3);
+
+      Preconditions.checkNotNull(instance);
+      /// We haven't impled this, but it's the same implementation as above.
+      int res = instance.task(A::f1, 100, 200).remote().get();   // Executed in instance 2
+      Assert.assertEquals(res, 300);
+    }
   }
 }

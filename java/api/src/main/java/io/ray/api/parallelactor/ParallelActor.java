@@ -32,15 +32,4 @@ public class ParallelActor<A> implements ParallelActorCall<A> {
     return parallelNum;
   }
 
-  public int getNextIndex() {
-    if (strategy == ParallelStrategy.ALWAYS_FIRST) {
-      return 0;
-    }
-
-    if (strategy == ParallelStrategy.ROUND_ROBIN) {
-      return (lastIndex++ + 1) % parallelNum;
-    }
-
-    return 0;
-  }
 }

@@ -6,6 +6,7 @@ import io.ray.api.function.RayFuncR;
 
 public class ParallelActorTaskCaller<R> {
 
+  private ParallelInstance instance;
   private ParallelActor parallelActor;
 
   private RayFuncR<R> func;
@@ -18,11 +19,16 @@ public class ParallelActorTaskCaller<R> {
     this.args = args;
   }
 
+  public ParallelActorTaskCaller(ParallelInstance instance, RayFuncR<R> func, Object[] args) {
+    this.instance = instance;
+    this.func = func;
+    this.args = args;
+  }
+
   public ObjectRef<R> remote() {
 
     ParallelContext ctx = Ray.internal().getParallelContext();
-    /// TODO(qwang): Select a instance index.
-    ObjectRef<R> ret = ctx.submitTask(parallelActor, 0, func, args);
+    ObjectRef<R> ret = ctx.submitTask(parallelActor, func, args);
     return (ObjectRef<R>) ret;
   }
 
