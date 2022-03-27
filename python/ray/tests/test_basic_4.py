@@ -154,8 +154,19 @@ def test_function_import_without_importer_thread(shutdown_only):
     def g():
         ray.get(f.remote())
 
+    @ray.remote
+    class A:
+        def __init__(self, v):
+            self.v = v
+
+        def val(self):
+            return self.v
+
     ray.get(g.remote())
     ray.get([g.remote() for _ in range(5)])
+
+    a = A.remote(5)
+    assert ray.get(a.val.remote()) == 5
 
 
 @pytest.mark.skipif(
