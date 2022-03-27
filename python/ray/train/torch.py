@@ -43,6 +43,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _get_torch_distributed_sampler(dataset, shuffle):
+    return DistributedSampler(dataset, shuffle=shuffle)
+
+
 class TorchAccelerator(Accelerator):
     """A utility that implements methods to accelerate PyTorch training.
 
@@ -92,6 +96,21 @@ class TorchAccelerator(Accelerator):
             logger.info(f"Moving model to device: {device}")
             model = model.to(device)
 
+        if self.amp_is_enabled:
+            model = self._patch_model_forward_and_state(model)
+
+        if wrap_ddp and train.world_size() > 1:
+            logger.info("Wrapping provided model in DDP.")
+            if torch.cuda.is_available():
+                model = DistributedDataParallel(
+                    model, device_ids=[rank], output_device=rank, **ddp_kwargs
+                )
+            else:
+                model = DistributedDataParallel(model, **ddp_kwargs)
+
+        return model
+
+    def _patch_model_forward_and_state(self, model):
         def wrap_forward(forward):
             @functools.wraps(forward)
             def wrapper(*args, **kwargs):
@@ -112,24 +131,14 @@ class TorchAccelerator(Accelerator):
             del state["__getstate__"]
             return state
 
-        if self.amp_is_enabled:
-            # Pickle cannot serialize the wrapped forward method. As a workaround,
-            # define a custom `__getstate__` method that unwraps the forward method.
-            model._unwrapped_forward = model.forward
-            model.forward = wrap_forward(model.forward)
-            # `__getstate__` must be a bound method rather than an callable attribute.
-            # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
-            assert not hasattr(model, "__getstate__")
-            model.__getstate__ = types.MethodType(model_get_state, model)
-
-        if wrap_ddp and train.world_size() > 1:
-            logger.info("Wrapping provided model in DDP.")
-            if torch.cuda.is_available():
-                model = DistributedDataParallel(
-                    model, device_ids=[rank], output_device=rank, **ddp_kwargs
-                )
-            else:
-                model = DistributedDataParallel(model, **ddp_kwargs)
+        # Pickle cannot serialize the wrapped forward method. As a workaround,
+        # define a custom `__getstate__` method that unwraps the forward method.
+        model._unwrapped_forward = model.forward
+        model.forward = wrap_forward(model.forward)
+        # `__getstate__` must be a bound method rather than an callable attribute.
+        # See https://stackoverflow.com/questions/972/adding-a-method-to-an-existing-object-instance.  # noqa: E501
+        assert not hasattr(model, "__getstate__")
+        model.__getstate__ = types.MethodType(model_get_state, model)
 
         return model
 
@@ -226,7 +235,7 @@ class TorchAccelerator(Accelerator):
                     "timeout": loader.timeout,
                     "worker_init_fn": worker_init_fn,
                     "generator": generator,
-                    "sampler": DistributedSampler(loader.dataset, shuffle=shuffle),
+                    "sampler": _get_torch_distributed_sampler(loader.dataset, shuffle),
                 }
                 return DataLoader(**data_loader_args)
 
