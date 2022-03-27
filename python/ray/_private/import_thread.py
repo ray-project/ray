@@ -114,7 +114,7 @@ class ImportThread:
 
     def _process_key(self, key):
         """Process the given export key from redis."""
-        if self.mode != ray.WORKER_MODE:
+        if self.mode == ray.SCRIPT_MODE:
             # If the same remote function or actor definition appears to be
             # exported many times, then print a warning. We only issue this
             # warning from the driver so that it is only triggered once instead
