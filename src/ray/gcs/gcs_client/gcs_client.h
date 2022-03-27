@@ -170,7 +170,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
 
  private:
-
   /// Fire a periodic timer to check if GCS sever address has changed.
   void PeriodicallyCheckGcsServerAddress();
 
