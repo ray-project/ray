@@ -52,15 +52,17 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
  protected:
   void SetUp() override {
-    config_.grpc_server_port = 5397;
     if (!no_redis_) {
-      config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
       config_.redis_address = "127.0.0.1";
+      config_.enable_sharding_conn = false;
+      config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
     } else {
       config_.redis_port = 0;
       config_.redis_address = "";
     }
 
+    config_.grpc_pubsub_enabled = true;
+    config_.grpc_server_port = 5397;
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.node_ip_address = "127.0.0.1";
@@ -68,8 +70,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
     // test targets.
-    config_.grpc_pubsub_enabled = no_redis_;
-
     client_io_service_ = std::make_unique<instrumented_io_context>();
     client_io_service_thread_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
