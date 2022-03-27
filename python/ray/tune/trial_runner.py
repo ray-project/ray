@@ -764,7 +764,6 @@ class TrialRunner:
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
-
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):

@@ -1,6 +1,7 @@
-from typing import Optional
+from typing import Optional, Union
 
 from ray.cloudpickle import cloudpickle
+from ray.exceptions import RayTaskError
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
@@ -58,11 +59,14 @@ class ResultGrid:
         return self._trial_to_result(self._experiment_analysis.trials[i])
 
     @staticmethod
-    def _populate_exception(trial: Trial) -> Optional[TuneError]:
+    def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
         if trial.pickled_error_file:
             with open(trial.pickled_error_file, "rb") as f:
                 e = cloudpickle.loads(f.read())
                 return e
+        elif trial.error_file:
+            with open(trial.error_file, "r") as f:
+                return TuneError(f.read())
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:

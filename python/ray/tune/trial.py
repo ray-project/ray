@@ -13,7 +13,7 @@ import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 
@@ -597,7 +597,7 @@ class Trial:
         if error_msg and self.logdir:
             self.num_failures += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
-            if exc:
+            if exc and isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
                 self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
                 with open(self.pickled_error_file, "wb") as f:
