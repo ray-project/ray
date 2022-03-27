@@ -85,10 +85,6 @@ GcsClient::GcsClient(
 
 Status GcsClient::Connect(instrumented_io_context &io_service) {
   RAY_CHECK(!is_connected_);
-  if (options_.gcs_address_.empty()) {
-    RAY_LOG(ERROR) << "Failed to connect, server ip and gcs address both are empty.";
-    return Status::Invalid("gcs service address is invalid!");
-  }
 
   // Setup gcs server address fetcher
   if (get_server_address_func_ == nullptr) {
