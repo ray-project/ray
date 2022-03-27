@@ -20,10 +20,6 @@
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
 
-extern "C" {
-#include "hiredis/hiredis.h"
-}
-
 namespace ray {
 namespace gcs {
 namespace {
@@ -96,17 +92,10 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
 
   // Setup gcs server address fetcher
   if (get_server_address_func_ == nullptr) {
-    if (!options_.gcs_address_.empty()) {
-      get_server_address_func_ = [this](std::pair<std::string, int> *addr) {
-        *addr = std::make_pair(options_.gcs_address_, options_.gcs_port_);
-        return true;
-      };
-    } else {
-      get_server_address_func_ = [this](std::pair<std::string, int> *address) {
-        return GetGcsServerAddressFromRedis(
-            redis_client_->GetPrimaryContext()->sync_context(), address);
-      };
-    }
+    get_server_address_func_ = [this](std::pair<std::string, int> *addr) {
+      *addr = std::make_pair(options_.gcs_address_, options_.gcs_port_);
+      return true;
+    };
   }
 
   // Get gcs address
@@ -161,7 +150,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
 
   // Init GCS subscriber instance.
   gcs_subscriber_ =
-      std::make_unique<GcsSubscriber>(redis_client_, gcs_address, std::move(subscriber));
+      std::make_unique<GcsSubscriber>(nullptr, gcs_address, std::move(subscriber));
 
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
@@ -197,46 +186,6 @@ void GcsClient::Disconnect() {
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() {
   return current_gcs_server_address_;
-}
-
-bool GcsClient::GetGcsServerAddressFromRedis(redisContext *context,
-                                             std::pair<std::string, int> *address,
-                                             int max_attempts) {
-  // Get gcs server address.
-  int num_attempts = 0;
-  redisReply *reply = nullptr;
-  while (num_attempts < max_attempts) {
-    reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET GcsServerAddress"));
-    if ((reply != nullptr) && reply->type != REDIS_REPLY_NIL) {
-      break;
-    }
-
-    // Sleep for a little, and try again if the entry isn't there yet.
-    freeReplyObject(reply);
-    num_attempts++;
-
-    if (num_attempts < max_attempts) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(
-          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()));
-    }
-  }
-
-  if (num_attempts < max_attempts) {
-    RAY_CHECK(reply) << "Redis did not reply to GcsServerAddress. Is redis running?";
-    RAY_CHECK(reply->type == REDIS_REPLY_STRING)
-        << "Expected string, found Redis type " << reply->type << " for GcsServerAddress";
-    std::string result(reply->str);
-    freeReplyObject(reply);
-
-    RAY_CHECK(!result.empty()) << "Gcs service address is empty";
-    size_t pos = result.find(':');
-    RAY_CHECK(pos != std::string::npos)
-        << "Gcs service address format is erroneous: " << result;
-    address->first = result.substr(0, pos);
-    address->second = std::stoi(result.substr(pos + 1));
-    return true;
-  }
-  return false;
 }
 
 void GcsClient::PeriodicallyCheckGcsServerAddress() {

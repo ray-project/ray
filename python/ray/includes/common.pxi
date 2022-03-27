@@ -14,26 +14,6 @@ cdef class GcsClientOptions:
         unique_ptr[CGcsClientOptions] inner
 
     @classmethod
-    def from_redis_address(
-            cls, redis_address,
-            redis_password,
-            c_bool enable_sync_conn=True,
-            c_bool enable_async_conn=True,
-            c_bool enable_subscribe_conn=True):
-        if not redis_password:
-            redis_password = ""
-        redis_ip, redis_port = redis_address.split(":")
-        self = GcsClientOptions()
-        self.inner.reset(
-            new CGcsClientOptions(redis_ip.encode("ascii"),
-                                  int(redis_port),
-                                  redis_password.encode("ascii"),
-                                  enable_sync_conn,
-                                  enable_async_conn,
-                                  enable_subscribe_conn))
-        return self
-
-    @classmethod
     def from_gcs_address(cls, gcs_address):
         self = GcsClientOptions()
         self.inner.reset(

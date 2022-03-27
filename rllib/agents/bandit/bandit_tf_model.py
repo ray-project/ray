@@ -5,11 +5,12 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
 
-class OnlineLinearRegression(tf.Module):
+class OnlineLinearRegression(tf.Module if tf else object):
     def __init__(self, feature_dim, alpha=1, lambda_=1):
         super(OnlineLinearRegression, self).__init__()
 
@@ -59,7 +60,7 @@ class OnlineLinearRegression(tf.Module):
         theta = self.dist.sample()
         return theta
 
-    def get_ucbs(self, x: tf.Tensor):
+    def get_ucbs(self, x: TensorType):
         """Calculate upper confidence bounds using covariance matrix according
         to algorithm 1: LinUCB
         (http://proceedings.mlr.press/v15/chu11a/chu11a.pdf).
@@ -90,7 +91,7 @@ class OnlineLinearRegression(tf.Module):
             batch_dots = tf.reshape(batch_dots, [B, C])
         return batch_dots
 
-    def __call__(self, x: tf.Tensor, sample_theta=False):
+    def __call__(self, x: TensorType, sample_theta=False):
         """Predict scores on input batch using the underlying linear model.
 
         Args:
