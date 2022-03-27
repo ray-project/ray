@@ -139,10 +139,7 @@ int main(int argc, char *argv[]) {
     // `enable_async_conn` as false.
     ray::gcs::GcsClientOptions client_options(redis_address,
                                               redis_port,
-                                              redis_password,
-                                              /*enable_sync_conn=*/true,
-                                              /*enable_async_conn=*/false,
-                                              /*enable_subscribe_conn=*/true);
+                                              redis_password;
     gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
   }
 
