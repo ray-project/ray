@@ -63,7 +63,7 @@ def train_func(config):
     model = nn.Linear(1, hidden_size)
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    # need optimizer when converting model to a bagua module.
+    # need the optimizer when converting model to a BaguaModule.
     model = train.bagua.prepare_model(model, optimizer)
 
     loss_fn = nn.MSELoss()

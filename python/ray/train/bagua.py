@@ -58,9 +58,12 @@ class BaguaAccelerator(TorchAccelerator):
             torch.cuda.set_device(device)
 
         if self.amp_is_enabled:
+            # move wrap_forward() and model_get_state() to a new function
             model = self._patch_model_forward_and_state(model)
 
         logger.info("Wrapping provided model in BaguaDDP.")
+        # we need the optimizer when preparing the model
+        # with_bagua() returns a BaguaModule not torch.nn.Module
         model = model.with_bagua([optimizer], algorithm)
 
         return model
@@ -80,6 +83,10 @@ class BaguaConfig(BackendConfig):
 def setup_torch_process_group(store: Optional[torch.distributed.Store] = None):
     torch.cuda.set_device(bagua.torch_api.get_local_rank())
     # init_process_group() is different from ray.train.torch approach
+    # https://github.com/BaguaSys/bagua/blob/master/bagua/torch_api/communication.py#L524-L529
+    # 1. backend is nccl in Bagua
+    # 2. init_method is the default value provided in torch
+    # 3. users can only set the store argument
     bagua.torch_api.init_process_group(store)
 
 
