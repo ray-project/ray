@@ -152,6 +152,7 @@ def shutdown(address: str, namespace: str):
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
+    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
@@ -310,6 +311,7 @@ def run(
 
 @cli.command(
     help="Get the current config of the running Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -354,6 +356,7 @@ def status(address: str):
 
 @cli.command(
     help="Deletes all deployments in the Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
