@@ -147,11 +147,15 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
         checkpoint_context=checkpoint_context,
     ):
         for w in inputs.workflows:
+
+            logger.info(f"******execute_workflow---- workflow.step_id w.step_id {workflow.step_id} {w.step_id} {w.data.step_options.step_type}")
+
             static_ref = w.ref
             if static_ref is None:
                 # The input workflow is not a reference to an executed
                 # workflow .
-                logger.info(f"******execute_workflow--------- {w.data.step_options.step_type}")
+                logger.info(f"******execute_workflow---- workflow.step_id w.step_id {workflow.step_id} {w.step_id} {w.data.step_options.step_type}")
+
                 output = execute_workflow(w).persisted_output
                 static_ref = WorkflowStaticRef(step_id=w.step_id, ref=output)
             workflow_outputs.append(static_ref)

@@ -378,11 +378,6 @@ def wait_for_event_revised(
     event_listener_type: EventListenerType, *args, **kwargs
 ) -> Workflow[Event]:
 
-    from ray._private import signature
-    from ray.workflow import serialization_context
-    from ray.workflow.common import WorkflowData
-    logger.info("wait_for_event_revised entry")
-
     # revised to support event step suspend
     if not issubclass(event_listener_type, EventListener):
         raise TypeError(
@@ -391,32 +386,13 @@ def wait_for_event_revised(
         )
 
     @step
-    def construction(event_listener_type):
+    def constructor(event_listener_type, *args, **kwargs):
         pass
 
-    w = construction.step(event_listener_type)
-
+    w = constructor.step(event_listener_type, *args, **kwargs)
     w.data.step_options.step_type=StepType.EVENT
 
     return w
-
-    '''
-    event_inputs = serialization_context.make_workflow_inputs([event_listener_type, None])
-
-    step_options = WorkflowStepRuntimeOptions.make(
-        step_type=StepType.EVENT
-    )
-    workflow_data = WorkflowData(
-        func_body=lambda: None,
-        inputs=event_inputs,
-        step_options=step_options,
-        name=None,
-        user_metadata={},
-    )
-
-    logger.info(f"wait_for_event_revised exit")
-    return Workflow(workflow_data)
-    '''
 
 @PublicAPI(stability="beta")
 def sleep(duration: float) -> Workflow[Event]:
