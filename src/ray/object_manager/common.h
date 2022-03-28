@@ -31,7 +31,9 @@ using SpaceReleasedCallback = std::function<void()>;
 
 /// A callback to call when a spilled object needs to be returned to the object store.
 using RestoreSpilledObjectCallback = std::function<void(
-    const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
+    const ObjectID &,
+    int64_t size,
+    const std::string &, std::function<void(const ray::Status &)>)>;
 
 /// A struct that includes info about the object.
 struct ObjectInfo {
