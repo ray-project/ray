@@ -619,9 +619,9 @@ def _env_runner(
         episode = Episode(
             worker.policy_map,
             worker.policy_mapping_fn,
-            # SimpleListCollector will find or create a simple_list_collector._PolicyCollector as
-            # batch_builder for this episode later.
-            # Here we simply provide a None factory.
+            # SimpleListCollector will find or create a
+            # simple_list_collector._PolicyCollector as batch_builder
+            # for this episode later. Here we simply provide a None factory.
             lambda: None,  # batch_builder_factory
             extra_batch_callback,
             env_id=env_id,
