@@ -66,6 +66,7 @@ DECLARE_stats(pull_manager_requested_bundles);
 DECLARE_stats(pull_manager_requests);
 DECLARE_stats(pull_manager_active_bundles);
 DECLARE_stats(pull_manager_retries_total);
+DECLARE_stats(pull_manager_object_pull_time_ms);
 
 /// Push Manager
 DECLARE_stats(push_manager_in_flight_pushes);

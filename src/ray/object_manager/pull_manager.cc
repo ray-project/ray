@@ -83,8 +83,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       objects_to_locate->push_back(ref);
       // The first pull request doesn't need to be special case. Instead we can just let
       // the retry timer fire immediately.
-      it = object_pull_requests_
-               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_seconds_()))
+      it = object_pull_requests_.emplace(obj_id, ObjectPullRequest(get_time_seconds_()))
                .first;
     } else {
       if (it->second.object_size_set) {
@@ -653,6 +652,11 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
     if (ref != nullptr) {
       pinned_objects_size_ += ref->GetSize();
       pinned_objects_[object_id] = std::move(ref);
+
+      auto it = object_pull_requests_.find(object_id);
+      RAY_CHECK(it != object_pull_requests_.end());
+      ray::stats::STATS_pull_manager_object_pull_time_ms.Record(
+          absl::GetCurrentTimeNanos() / 1e3 - it->second.pull_start_time_ms);
     }
   }
   return pinned_objects_.count(object_id) > 0;

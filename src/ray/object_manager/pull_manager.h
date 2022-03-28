@@ -187,6 +187,7 @@ class PullManager {
     // The pull will timeout at this time if there are still no locations for
     // the object.
     double expiration_time_seconds = 0;
+    int64_t pull_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
     uint8_t num_retries;
     bool object_size_set = false;
     size_t object_size = 0;
