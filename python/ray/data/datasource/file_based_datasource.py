@@ -1,4 +1,5 @@
 import logging
+import posixpath
 from typing import (
     Callable,
     Optional,
@@ -12,6 +13,8 @@ from typing import (
     TYPE_CHECKING,
 )
 import urllib.parse
+
+from ray.data.datasource.partitioning import PathPartitionParser
 
 if TYPE_CHECKING:
     import pyarrow
@@ -114,7 +117,7 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         # Use forward slashes for cross-filesystem compatibility, since PyArrow
         # FileSystem paths are always forward slash separated, see:
         # https://arrow.apache.org/docs/python/filesystems.html
-        return f"{base_path}/{suffix}"
+        return posixpath.join(base_path, suffix)
 
 
 @DeveloperAPI
@@ -254,6 +257,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
         meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        partitioning: PathPartitionParser = None,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
@@ -264,6 +268,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         paths, file_sizes = meta_provider.expand_paths(paths, filesystem)
+        if partitioning is not None:
+            paths = partitioning.filter_paths(paths, filesystem)
 
         read_stream = self._read_stream
 
@@ -588,8 +594,9 @@ def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
-    parsed = urllib.parse.urlparse(path)
-    return parsed.netloc + parsed.path
+    parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
+    query = parsed.query or ""  # support '?' in path
+    return parsed.netloc + parsed.path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
