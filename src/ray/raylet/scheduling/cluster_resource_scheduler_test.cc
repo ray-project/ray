@@ -970,7 +970,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   vector<FixedPoint> gpu_instances = task_allocation->Get(ResourceID::GPU());
   vector<FixedPoint> expect_gpu_instance{1., 0.5, 0., 0.};
 
-  ASSERT_TRUE(gpu_instances, expect_gpu_instance);
+  ASSERT_EQ(gpu_instances, expect_gpu_instance);
 }
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
@@ -993,7 +993,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
   vector<FixedPoint> cpu_instances = task_allocation->Get(ResourceID::CPU());
   vector<FixedPoint> expect_cpu_instance{2};
 
-  ASSERT_TRUE(cpu_instances, expect_cpu_instance);
+  ASSERT_EQ(cpu_instances, expect_cpu_instance);
 }
 
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
