@@ -24,8 +24,7 @@ Ray Serve is an easy-to-use scalable model serving library built on Ray.  Ray Se
   :ref:`Tensorflow, and Keras <serve-tensorflow-tutorial>`, to :ref:`Scikit-Learn <serve-sklearn-tutorial>` models, to arbitrary Python business logic.
 - **Python-first**: Configure your model serving declaratively in pure Python, without needing YAML or JSON configs.
 
-Ray Serve enables :ref:`seamless deployment graph (also known as model composition) <serve-deployment-graph>`. You can
-write your inference deployment graph all in code and integrate business logic with ML.
+Ray Serve enables composing multiple ML models into a :ref:`deployment graph <serve-deployment-graph>`. This allows you to write a complex inference service consisting of multiple ML models and business logic all in Python code.
 
 Since Ray Serve is built on Ray, it allows you to easily scale to many machines, both in your datacenter and in the cloud.
 
