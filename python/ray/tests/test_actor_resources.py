@@ -533,7 +533,6 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")
 def test_lifetime_and_transient_resources(ray_start_regular):
     # This actor acquires resources only when running methods.
     @ray.remote

@@ -2,7 +2,7 @@ base_image: "anyscale/ray-ml:nightly-py37-gpu"
 
 python:
   pip_packages:
-    - pyarrow
+    - pyarrow<7.0.0
     - cmake
   conda_packages: []
 

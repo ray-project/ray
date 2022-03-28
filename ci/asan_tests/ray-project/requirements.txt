@@ -8,8 +8,8 @@ dm-tree==0.1.5
 feather-format
 flask
 frozenlist
-grpcio
-gym
+grpcio >= 1.28.1, <= 1.43.0
+gym==0.21
 kubernetes
 lxml
 networkx

@@ -2,7 +2,6 @@ import ray
 import copy
 
 from ray.tests.aws.utils import helpers
-from ray.tests.aws.utils.mocks import mock_path_exists_key_pair
 from ray.tests.aws.utils.constants import (
     DEFAULT_INSTANCE_PROFILE,
     DEFAULT_KEY_PAIR,
@@ -11,6 +10,7 @@ from ray.tests.aws.utils.constants import (
     DEFAULT_LT,
     TWENTY_SUBNETS_IN_DIFFERENT_AZS,
 )
+from ray.autoscaler._private.aws.config import key_pair
 
 from unittest import mock
 
@@ -27,17 +27,24 @@ def configure_iam_role_default(iam_client_stub):
     )
 
 
-def configure_key_pair_default(ec2_client_stub):
+def configure_key_pair_default(
+    ec2_client_stub, region="us-west-2", expected_key_pair=DEFAULT_KEY_PAIR
+):
     patcher = mock.patch("os.path.exists")
+
+    def mock_path_exists_key_pair(path):
+        _, key_path = key_pair(0, region, expected_key_pair["KeyName"])
+        return path == key_path
+
     os_path_exists_mock = patcher.start()
     os_path_exists_mock.side_effect = mock_path_exists_key_pair
 
     ec2_client_stub.add_response(
         "describe_key_pairs",
         expected_params={
-            "Filters": [{"Name": "key-name", "Values": [DEFAULT_KEY_PAIR["KeyName"]]}]
+            "Filters": [{"Name": "key-name", "Values": [expected_key_pair["KeyName"]]}]
         },
-        service_response={"KeyPairs": [DEFAULT_KEY_PAIR]},
+        service_response={"KeyPairs": [expected_key_pair]},
     )
 
 

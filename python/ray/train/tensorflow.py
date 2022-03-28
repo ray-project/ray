@@ -6,7 +6,6 @@ from typing import List
 
 import ray
 from ray.train.backend import BackendConfig, Backend
-from ray.train.session import shutdown_session
 from ray.train.utils import get_address_and_port
 from ray.train.worker_group import WorkerGroup
 from ray.util import PublicAPI
@@ -58,25 +57,6 @@ class TensorflowBackend(Backend):
                 )
             )
         ray.get(setup_futures)
-
-    def handle_failure(
-        self,
-        worker_group: WorkerGroup,
-        failed_worker_indexes: List[int],
-        backend_config: BackendConfig,
-    ):
-        """Failure handling for Tensorflow.
-
-        Instead of restarting all workers, the failed workers are
-        removed from the ``WorkerGroup``. The backend and session are
-        shutdown on the remaining workers. Then new workers are added back in.
-        """
-        worker_group.remove_workers(failed_worker_indexes)
-        if len(worker_group) > 0:
-            self.on_shutdown(worker_group, backend_config)
-            worker_group.execute(shutdown_session)
-        worker_group.add_workers(len(failed_worker_indexes))
-        self.on_start(worker_group, backend_config)
 
 
 @PublicAPI(stability="beta")

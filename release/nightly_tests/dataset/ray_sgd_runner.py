@@ -218,16 +218,14 @@ def create_dataset_pipeline(files, epochs, num_windows):
                     raise StopIteration()
                 split = file_splits[self.i % num_windows]
                 self.i += 1
-                return lambda: ray.data.read_parquet(
-                    list(split), _spread_resource_prefix="node:"
-                )
+                return lambda: ray.data.read_parquet(list(split))
 
         pipe = DatasetPipeline.from_iterable(Windower())
-        pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
+        pipe = pipe.random_shuffle_each_window()
     else:
-        ds = ray.data.read_parquet(files, _spread_resource_prefix="node:")
+        ds = ray.data.read_parquet(files)
         pipe = ds.repeat(epochs)
-        pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
+        pipe = pipe.random_shuffle_each_window()
     return pipe
 
 

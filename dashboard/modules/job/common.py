@@ -1,12 +1,15 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union
+import time
+from typing import Any, Dict, Optional, Tuple
 import pickle
+from pathlib import Path
 
 from ray import ray_constants
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
+    _internal_kv_list,
     _internal_kv_put,
 )
 from ray._private.runtime_env.packaging import parse_uri
@@ -21,20 +24,55 @@ CURRENT_VERSION = "1"
 
 
 class JobStatus(str, Enum):
-    def __str__(self):
+    """An enumeration for describing the status of a job."""
+
+    #: The job has not started yet, likely waiting for the runtime_env to be set up.
+    PENDING = "PENDING"
+    #: The job is currently running.
+    RUNNING = "RUNNING"
+    #: The job was intentionally stopped by the user.
+    STOPPED = "STOPPED"
+    #: The job finished successfully.
+    SUCCEEDED = "SUCCEEDED"
+    #: The job failed.
+    FAILED = "FAILED"
+
+    def __str__(self) -> str:
         return f"{self.value}"
 
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    STOPPED = "STOPPED"
-    SUCCEEDED = "SUCCEEDED"
-    FAILED = "FAILED"
+    def is_terminal(self) -> bool:
+        """Return whether or not this status is terminal.
+
+        A terminal status is one that cannot transition to any other status.
+        The terminal statuses are "STOPPED", "SUCCEEDED", and "FAILED".
+
+        Returns:
+            True if this status is terminal, otherwise False.
+        """
+        return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
 @dataclass
-class JobStatusInfo:
+class JobInfo:
+    """A class for recording information associated with a job and its execution."""
+
+    #: The status of the job.
     status: JobStatus
+    #: The entrypoint command for this job.
+    entrypoint: str
+    #: A message describing the status in more detail.
     message: Optional[str] = None
+    # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
+    # Internal error, user script error
+    error_type: Optional[str] = None
+    #: The time when the job was started.  A Unix timestamp in seconds.
+    start_time: Optional[int] = None
+    #: The time when the job moved into a terminal state.  A Unix timestamp in seconds.
+    end_time: Optional[int] = None
+    #: Arbitrary user-provided metadata for the job.
+    metadata: Optional[Dict[str, str]] = None
+    #: The runtime environment for the job.
+    runtime_env: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.message is None:
@@ -53,52 +91,88 @@ class JobStatusInfo:
                 self.message = "Job failed."
 
 
-class JobStatusStorageClient:
+class JobInfoStorageClient:
     """
-    Handles formatting of status storage key given job id.
+    Interface to put and get job data from the Internal KV store.
     """
 
-    JOB_STATUS_KEY = "_ray_internal_job_status_{job_id}"
+    JOB_DATA_KEY_PREFIX = "_ray_internal_job_info_"
+    JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
     def __init__(self):
         assert _internal_kv_initialized()
 
-    def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
-        if isinstance(status, JobStatus):
-            status = JobStatusInfo(status=status)
-        elif not isinstance(status, JobStatusInfo):
-            assert False, "status must be JobStatus or JobStatusInfo."
-
+    def put_info(self, job_id: str, data: JobInfo):
         _internal_kv_put(
-            self.JOB_STATUS_KEY.format(job_id=job_id),
-            pickle.dumps(status),
+            self.JOB_DATA_KEY.format(job_id=job_id),
+            pickle.dumps(data),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
 
-    def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
-        pickled_status = _internal_kv_get(
-            self.JOB_STATUS_KEY.format(job_id=job_id),
+    def get_info(self, job_id: str) -> Optional[JobInfo]:
+        pickled_info = _internal_kv_get(
+            self.JOB_DATA_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
-        if pickled_status is None:
+        if pickled_info is None:
             return None
         else:
-            return pickle.loads(pickled_status)
+            return pickle.loads(pickled_info)
+
+    def put_status(self, job_id: str, status: JobStatus, message: Optional[str] = None):
+        """Puts or updates job status.  Sets end_time if status is terminal."""
+
+        old_info = self.get_info(job_id)
+
+        if old_info is not None:
+            if status != old_info.status and old_info.status.is_terminal():
+                assert False, "Attempted to change job status from a terminal state."
+            new_info = replace(old_info, status=status, message=message)
+        else:
+            new_info = JobInfo(
+                entrypoint="Entrypoint not found.", status=status, message=message
+            )
+
+        if status.is_terminal():
+            new_info.end_time = int(time.time())
+
+        self.put_info(job_id, new_info)
+
+    def get_status(self, job_id: str) -> Optional[JobStatus]:
+        job_info = self.get_info(job_id)
+        if job_info is None:
+            return None
+        else:
+            return job_info.status
+
+    def get_all_jobs(self) -> Dict[str, JobInfo]:
+        raw_job_ids_with_prefixes = _internal_kv_list(
+            self.JOB_DATA_KEY_PREFIX, namespace=ray_constants.KV_NAMESPACE_JOB
+        )
+        job_ids_with_prefixes = [
+            job_id.decode() for job_id in raw_job_ids_with_prefixes
+        ]
+        job_ids = []
+        for job_id_with_prefix in job_ids_with_prefixes:
+            assert job_id_with_prefix.startswith(
+                self.JOB_DATA_KEY_PREFIX
+            ), "Unexpected format for internal_kv key for Job submission"
+            job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
+        return {job_id: self.get_info(job_id) for job_id in job_ids}
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
-    if not package_uri.endswith(".zip"):
-        raise ValueError(f"package_uri ({package_uri}) does not end in .zip")
-    # We need to strip the gcs:// prefix and .zip suffix to make it
-    # possible to pass the package_uri over HTTP.
+    suffix = Path(package_uri).suffix
+    if suffix not in {".zip", ".whl"}:
+        raise ValueError(f"package_uri ({package_uri}) does not end in .zip or .whl")
+    # We need to strip the <protocol>:// prefix to make it possible to pass
+    # the package_uri over HTTP.
     protocol, package_name = parse_uri(package_uri)
-    return protocol.value, package_name[: -len(".zip")]
+    return protocol.value, package_name
 
 
 def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
-    if package_name.endswith(".zip"):
-        raise ValueError(f"package_name ({package_name}) should not end in .zip")
-    return f"{protocol}://{package_name}.zip"
+    return f"{protocol}://{package_name}"
 
 
 def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) -> Any:
@@ -168,12 +242,6 @@ class JobSubmitResponse:
 @dataclass
 class JobStopResponse:
     stopped: bool
-
-
-@dataclass
-class JobStatusResponse:
-    status: JobStatus
-    message: Optional[str]
 
 
 # TODO(jiaodong): Support log streaming #19415

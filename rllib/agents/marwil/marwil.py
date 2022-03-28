@@ -14,7 +14,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Input settings ===
@@ -73,7 +73,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class MARWILTrainer(Trainer):

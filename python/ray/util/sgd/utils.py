@@ -23,10 +23,11 @@ class TimerStat:
         Time a call to 'time.sleep'.
 
         >>> import time
+        >>> from ray.util.sgd.utils import TimerStat
         >>> sleep_timer = TimerStat()
         >>> with sleep_timer:
         ...     time.sleep(1)
-        >>> round(sleep_timer.mean)
+        >>> round(sleep_timer.mean) # doctest: +SKIP
         1
     """
 
@@ -151,6 +152,7 @@ class AverageMeter:
     """Utility for computing and storing the average and most recent value.
 
     Example:
+        >>> from ray.util.sgd.utils import AverageMeter
         >>> meter = AverageMeter()
         >>> meter.update(5)
         >>> meter.val, meter.avg, meter.sum
@@ -186,13 +188,14 @@ class AverageMeterCollection:
     AverageMeter object is used for each metric.
 
     Example:
+        >>> from ray.util.sgd.utils import AverageMeterCollection
         >>> meter_collection = AverageMeterCollection()
         >>> meter_collection.update({"loss": 0.5, "acc": 0.5}, n=32)
-        >>> meter_collection.summary()
+        >>> meter_collection.summary() # doctest: +SKIP
         {'batch_count': 1, 'num_samples': 32, 'loss': 0.5,
         'last_loss': 0.5, 'acc': 0.5, 'last_acc': 0.5}
         >>> meter_collection.update({"loss": 0.1, "acc": 0.9}, n=32)
-        >>> meter_collection.summary()
+        >>> meter_collection.summary() # doctest: +SKIP
         {'batch_count': 2, 'num_samples': 64, 'loss': 0.3,
         'last_loss': 0.1, 'acc': 0.7, 'last_acc': 0.9}
     """

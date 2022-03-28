@@ -126,6 +126,8 @@ message ReturnWorkerRequest {
   // If true, there was some unrecoverable error and the raylet should
   // disconnect the worker.
   bool disconnect_worker = 3;
+  // Whether the worker is exiting and cannot be reused.
+  bool worker_exiting = 4;
 }
 
 message ReturnWorkerReply {

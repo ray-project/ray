@@ -9,7 +9,7 @@ class ActionMaskEnv(RandomEnv):
 
     def __init__(self, config):
         super().__init__(config)
-
+        self._skip_env_checking = True
         # Masking only works for Discrete actions.
         assert isinstance(self.action_space, Discrete)
         # Add action_mask to observations.

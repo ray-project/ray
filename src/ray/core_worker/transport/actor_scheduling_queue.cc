@@ -18,10 +18,13 @@ namespace ray {
 namespace core {
 
 ActorSchedulingQueue::ActorSchedulingQueue(
-    instrumented_io_context &main_io_service, DependencyWaiter &waiter,
+    instrumented_io_context &main_io_service,
+    DependencyWaiter &waiter,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-    bool is_asyncio, int fiber_max_concurrency,
-    const std::vector<ConcurrencyGroup> &concurrency_groups, int64_t reorder_wait_seconds)
+    bool is_asyncio,
+    int fiber_max_concurrency,
+    const std::vector<ConcurrencyGroup> &concurrency_groups,
+    int64_t reorder_wait_seconds)
     : reorder_wait_seconds_(reorder_wait_seconds),
       wait_timer_(main_io_service),
       main_thread_id_(boost::this_thread::get_id()),
@@ -45,6 +48,9 @@ void ActorSchedulingQueue::Stop() {
   if (pool_manager_) {
     pool_manager_->Stop();
   }
+  if (fiber_state_manager_) {
+    fiber_state_manager_->Stop();
+  }
 }
 
 bool ActorSchedulingQueue::TaskQueueEmpty() const {
@@ -62,7 +68,8 @@ size_t ActorSchedulingQueue::Size() const {
 }
 
 /// Add a new actor task's callbacks to the worker queue.
-void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
+void ActorSchedulingQueue::Add(int64_t seq_no,
+                               int64_t client_processed_up_to,
                                std::function<void(rpc::SendReplyCallback)> accept_request,
                                std::function<void(rpc::SendReplyCallback)> reject_request,
                                rpc::SendReplyCallback send_reply_callback,
@@ -81,10 +88,13 @@ void ActorSchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
-  pending_actor_tasks_[seq_no] =
-      InboundRequest(std::move(accept_request), std::move(reject_request),
-                     std::move(send_reply_callback), task_id, dependencies.size() > 0,
-                     concurrency_group_name, function_descriptor);
+  pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
+                                                std::move(reject_request),
+                                                std::move(send_reply_callback),
+                                                task_id,
+                                                dependencies.size() > 0,
+                                                concurrency_group_name,
+                                                function_descriptor);
 
   if (dependencies.size() > 0) {
     waiter_.Wait(dependencies, [seq_no, this]() {

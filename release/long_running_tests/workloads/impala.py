@@ -41,11 +41,12 @@ if "RAY_ADDRESS" in os.environ:
 ray.init(num_cpus=10)
 # Run the workload.
 
+# Whitespace diff to test things.
 run_experiments(
     {
         "impala": {
             "run": "IMPALA",
-            "env": "CartPole-v0",
+            "env": "CartPole-v1",
             "config": {
                 "num_workers": 8,
                 "num_gpus": 0,

@@ -10,11 +10,23 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
-    "test_actor.py",
+    "test_dashboard.py",
+    "test_ray_cluster_with_external_redis.py",
+    "test_k8s_cluster_launcher.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "manual", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_actor_pool.py",
     "test_async.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
+    "test_actor_lifetime.py",
     "test_advanced.py",
     "test_advanced_2.py",
     "test_advanced_3.py",
@@ -23,7 +35,6 @@ py_test_module_list(
     "test_autoscaling_policy.py",
     "test_basic.py",
     "test_basic_2.py",
-    "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
     "test_cancel.py",
@@ -60,7 +71,7 @@ py_test_module_list(
   tags = ["exclusive", "client_tests", "team:serverless"],
   deps = ["//:ray_lib"],
 )
-    
+
 py_test_module_list(
   files = [
     "test_client_builder.py",
@@ -81,7 +92,9 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_usage_stats.py",
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_logging.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
@@ -94,9 +107,12 @@ py_test_module_list(
     "test_placement_group.py",
     "test_placement_group_2.py",
     "test_placement_group_3.py",
+    "test_placement_group_4.py",
+    "test_placement_group_5.py",
     "test_ray_init.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
+    "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
@@ -104,6 +120,7 @@ py_test_module_list(
     "test_serialization.py",
     "test_shuffle.py",
     "test_stress.py",
+    "test_storage.py",
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
@@ -111,10 +128,9 @@ py_test_module_list(
     "test_tls_auth.py",
     "test_ray_debugger.py",
     "test_worker_capping.py",
-    "test_object_spilling_2.py",
-    "test_object_spilling_3.py",
     "test_object_manager.py",
     "test_multi_tenancy.py",
+    "test_namespace.py",
     "test_scheduling.py",
     "test_scheduling_2.py",
     "test_traceback.py",
@@ -131,6 +147,7 @@ py_test_module_list(
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
+    "test_concurrency_group.py",
     "test_component_failures.py",
     "test_debug_tools.py",
     "test_distributed_sort.py",
@@ -143,6 +160,15 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
+    "test_list_actors_2.py",
+    "test_list_actors_3.py",
+    "test_list_actors_4.py",
+    "test_actor_out_of_order.py",
+    "test_cross_language.py",
+    "test_environ.py",
+    "test_raylet_output.py",
+    "test_scheduling_performance.py",
+    "test_get_or_create_actor.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -161,10 +187,10 @@ py_test_module_list(
     "test_client_terminate.py",
     "test_command_runner.py",
     "test_coordinator_server.py",
-    "test_dataclient_disconnect.py",
     "test_k8s_operator_unit_tests.py",
     "test_monitor.py",
     "test_response_cache.py",
+    "kuberay/test_autoscaling_config.py"
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -174,11 +200,23 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_dataclient_disconnect.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serverless"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_actor.py",
     "test_cli.py",
     "test_failure.py",
     "test_actor_advanced.py",
     "test_stress_failure.py",
     "test_reconstruction.py",
+    "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",
     "test_reference_counting_2.py",
@@ -191,10 +229,12 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_basic_3.py",
     "test_output.py",
-    "test_failure_2.py",
     "test_failure_4.py",
     "test_object_spilling.py",
+    "test_object_spilling_2.py",
+    "test_object_spilling_3.py",
     "test_plasma_unlimited.py",
     "test_placement_group_mini_integration.py",
   ],
@@ -207,8 +247,10 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_runtime_env.py",
+    "test_runtime_env_2.py",
     "test_runtime_env_working_dir.py",
     "test_runtime_env_working_dir_2.py",
+    "test_runtime_env_working_dir_3.py",
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
@@ -222,6 +264,8 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip.py",
     "test_runtime_env_conda_and_pip_2.py",
     "test_runtime_env_conda_and_pip_3.py",
+    "test_runtime_env_conda_and_pip_4.py",
+    "test_runtime_env_conda_and_pip_5.py",
     "test_runtime_env_complicated.py"
   ],
   size = "large",
@@ -268,8 +312,9 @@ py_test(
 #    because they requires globs and it might be refactored in the future.
 py_test(
     name = "test_typing",
-    size = "small",
-    srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
+    size = "medium",
+    srcs = SRCS + ["test_typing.py", "typing_files/check_typing_bad.py",
+                   "typing_files/check_typing_good.py"],
     tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib"],
 )
@@ -315,6 +360,14 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "kuberay/test_autoscaling_e2e",
+    size = "medium",
+    srcs = SRCS + ["kuberay/test_autoscaling_e2e.py"],
+    tags = ["exclusive", "kuberay_operator", "team:serverless"],
+    deps = ["//:ray_lib"],
+)
+
 # TODO(ekl) we can't currently support tagging these as flaky since there's
 # no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
@@ -329,8 +382,11 @@ py_test_module_list(
     "test_asyncio.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
+    "test_list_actors_2.py",
+    "test_list_actors_3.py",
+    "test_list_actors_4.py",
   ],
-  size = "medium",
+  size = "large",
   extra_srcs = SRCS,
   name_suffix = "_client_mode",
   env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},

@@ -2,7 +2,6 @@ import asyncio
 import io
 import fnmatch
 import os
-import json
 import pathlib
 import subprocess
 import sys
@@ -31,13 +30,13 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray._private.gcs_pubsub import (
-    gcs_pubsub_enabled,
     GcsErrorSubscriber,
     GcsLogSubscriber,
 )
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
+from ray.internal.internal_api import memory_summary
 
 try:
     from prometheus_client.parser import text_string_to_metric_families
@@ -57,12 +56,7 @@ class RayTestTimeoutException(Exception):
 
 
 def make_global_state_accessor(address_info):
-    if not gcs_utils.use_gcs_for_bootstrap():
-        gcs_options = GcsClientOptions.from_redis_address(
-            address_info["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD
-        )
-    else:
-        gcs_options = GcsClientOptions.from_gcs_address(address_info["gcs_address"])
+    gcs_options = GcsClientOptions.from_gcs_address(address_info["gcs_address"])
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
     return global_state_accessor
@@ -207,7 +201,7 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str, env: Dict = None):
+def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
     """Run a driver as a separate process.
 
     Args:
@@ -217,16 +211,6 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     Returns:
         The script's output.
     """
-    if env is not None and gcs_utils.use_gcs_for_bootstrap():
-        env.update(
-            {
-                "RAY_bootstrap_with_gcs": "1",
-                "RAY_gcs_grpc_based_pubsub": "1",
-                "RAY_gcs_storage": "memory",
-                "RAY_bootstrap_with_gcs": "1",
-            }
-        )
-
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
@@ -235,13 +219,13 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
         env=env,
     )
     with proc:
-        output = proc.communicate(driver_script.encode("ascii"))[0]
+        output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output))
+            print(ray._private.utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output)
+        out = ray._private.utils.decode(output, encode_type=encode)
     return out
 
 
@@ -371,6 +355,34 @@ def wait_for_condition(
         except Exception as ex:
             last_ex = ex
         time.sleep(retry_interval_ms / 1000.0)
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
+
+
+async def async_wait_for_condition(
+    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+):
+    """Wait until a condition is met or time out with an exception.
+
+    Args:
+        condition_predictor: A function that predicts the condition.
+        timeout: Maximum timeout in seconds.
+        retry_interval_ms: Retry interval in milliseconds.
+
+    Raises:
+        RuntimeError: If the condition is not met before the timeout expires.
+    """
+    start = time.time()
+    last_ex = None
+    while time.time() - start <= timeout:
+        try:
+            if condition_predictor(**kwargs):
+                return
+        except Exception as ex:
+            last_ex = ex
+        await asyncio.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
         message += f" Last exception: {last_ex}"
@@ -523,15 +535,6 @@ def put_object(obj, use_ray_put):
         return _put.remote(obj)
 
 
-def put_unpinned_object(obj):
-    value = ray.worker.global_worker.get_serialization_context().serialize(obj)
-    return ray.ObjectRef(
-        ray.worker.global_worker.core_worker.put_serialized_object(
-            value, pin_object=False
-        )
-    )
-
-
 def wait_until_server_available(address, timeout_ms=5000, retry_interval_ms=100):
     ip_port = address.split(":")
     ip = ip_port[0]
@@ -569,18 +572,14 @@ def get_non_head_nodes(cluster):
 
 
 def init_error_pubsub():
-    """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    """Initialize error info pub/sub"""
+    s = GcsErrorSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
 def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
-    """Gets errors from GCS / Redis subscriber.
+    """Gets errors from GCS subscriber.
 
     Returns maximum `num` error strings within `timeout`.
     Only returns errors of `error_type` if specified.
@@ -588,18 +587,10 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, GcsErrorSubscriber):
-            _, error_data = subscriber.poll(timeout=deadline - time.time())
-            if not error_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+        _, error_data = subscriber.poll(timeout=deadline - time.time())
+        if not error_data:
+            # Timed out before any data is received.
+            break
         if error_type is None or error_type == error_data.type:
             msgs.append(error_data)
         else:
@@ -609,13 +600,9 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 
 def init_log_pubsub():
-    """Initialize redis error info pub/sub"""
-    if gcs_pubsub_enabled():
-        s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
-        s.subscribe()
-    else:
-        s = ray.worker.global_worker.redis_client.pubsub(ignore_subscribe_messages=True)
-        s.psubscribe(gcs_utils.LOG_FILE_CHANNEL)
+    """Initialize log pub/sub"""
+    s = GcsLogSubscriber(address=ray.worker.global_worker.gcs_client.address)
+    s.subscribe()
     return s
 
 
@@ -625,22 +612,14 @@ def get_log_data(
     timeout: float = 20,
     job_id: Optional[str] = None,
     matcher=None,
-) -> List[str]:
+) -> List[dict]:
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, GcsLogSubscriber):
-            logs_data = subscriber.poll(timeout=deadline - time.time())
-            if not logs_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
-
+        logs_data = subscriber.poll(timeout=deadline - time.time())
+        if not logs_data:
+            # Timed out before any data is received.
+            break
         if job_id and job_id != logs_data["job"]:
             continue
         if matcher and all(not matcher(line) for line in logs_data["lines"]):
@@ -655,10 +634,10 @@ def get_log_message(
     timeout: float = 20,
     job_id: Optional[str] = None,
     matcher=None,
-) -> List[str]:
-    """Gets log lines through GCS / Redis subscriber.
+) -> List[List[str]]:
+    """Gets log lines through GCS subscriber.
 
-    Returns maximum `num` lines of log messages, within `timeout`.
+    Returns maximum `num` of log messages, within `timeout`.
 
     If `job_id` or `match` is specified, only returns log lines from `job_id`
     or when `matcher` is true.
@@ -686,7 +665,7 @@ def get_log_batch(
     job_id: Optional[str] = None,
     matcher=None,
 ) -> List[str]:
-    """Gets log batches through GCS / Redis subscriber.
+    """Gets log batches through GCS subscriber.
 
     Returns maximum `num` batches of logs. Each batch is a dict that includes
     metadata such as `pid`, `job_id`, and `lines` of log messages.
@@ -697,18 +676,10 @@ def get_log_batch(
     deadline = time.time() + timeout
     batches = []
     while time.time() < deadline and len(batches) < num:
-        if isinstance(subscriber, GcsLogSubscriber):
-            logs_data = subscriber.poll(timeout=deadline - time.time())
-            if not logs_data:
-                # Timed out before any data is received.
-                break
-        else:
-            msg = subscriber.get_message()
-            if msg is None:
-                time.sleep(0.01)
-                continue
-            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
-
+        logs_data = subscriber.poll(timeout=deadline - time.time())
+        if not logs_data:
+            # Timed out before any data is received.
+            break
         if job_id and job_id != logs_data["job"]:
             continue
         if matcher and not matcher(logs_data):
@@ -1158,8 +1129,10 @@ def get_and_run_node_killer(
 def chdir(d: str):
     old_dir = os.getcwd()
     os.chdir(d)
-    yield
-    os.chdir(old_dir)
+    try:
+        yield
+    finally:
+        os.chdir(old_dir)
 
 
 def test_get_directory_size_bytes():
@@ -1219,3 +1192,41 @@ def generate_runtime_env_dict(field, spec_format, tmp_path, pip_list=None):
             pip = pip_list
         runtime_env = {"pip": pip}
     return runtime_env
+
+
+def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
+    def ok():
+        s = memory_summary(address=address["address"], stats_only=True)
+        print(s)
+        if restored:
+            if "Restored {} MiB".format(restored) not in s:
+                return False
+        else:
+            if "Restored" in s:
+                return False
+        if spilled:
+            if "Spilled {} MiB".format(spilled) not in s:
+                return False
+        else:
+            if "Spilled" in s:
+                return False
+        if fallback:
+            if "Plasma filesystem mmap usage: {} MiB".format(fallback) not in s:
+                return False
+        else:
+            if "Plasma filesystem mmap usage:" in s:
+                return False
+        return True
+
+    wait_for_condition(ok, timeout=3, retry_interval_ms=1000)
+
+
+def no_resource_leaks_excluding_node_resources():
+    cluster_resources = ray.cluster_resources()
+    available_resources = ray.available_resources()
+    for r in ray.cluster_resources():
+        if "node" in r:
+            del cluster_resources[r]
+            del available_resources[r]
+
+    return cluster_resources == available_resources

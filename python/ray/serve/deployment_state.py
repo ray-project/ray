@@ -1,20 +1,23 @@
-import math
-import json
-import pickle
-import time
 from collections import defaultdict, OrderedDict
 from enum import Enum
+import itertools
+import json
+import math
 import os
+import pickle
+import random
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.serve.async_goal_manager import AsyncGoalManager
+from ray.exceptions import RayActorError, RayError
 from ray.serve.common import (
     DeploymentInfo,
+    DeploymentStatus,
+    DeploymentStatusInfo,
     Duration,
-    GoalId,
     ReplicaTag,
     ReplicaName,
     RunningReplicaInfo,
@@ -23,14 +26,17 @@ from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (
+    JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,
     logger,
-    wrap_to_ray_error,
+    msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
@@ -51,12 +57,11 @@ class ReplicaStartupStatus(Enum):
     FAILED = 4
 
 
-class GoalStatus(Enum):
+class ReplicaHealthCheckResponse(Enum):
     NONE = 1
-    PENDING = 2
-    SUCCEEDED = 3
-    SUCCESSFULLY_DELETED = 4
-    FAILED = 5
+    SUCCEEDED = 2
+    APP_FAILURE = 3
+    ACTOR_CRASHED = 4
 
 
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
@@ -87,6 +92,34 @@ def print_verbose_scaling_log():
     logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
 
 
+def rank_replicas_for_stopping(
+    all_available_replicas: List["DeploymentReplica"],
+) -> List["DeploymentReplica"]:
+    """Prioritize replicas that have fewest copies on a node.
+
+    This algorithm helps to scale down more intelligently because it can
+    relinquish node faster. Note that this algorithm doesn't consider other
+    deployments or other actors on the same node. See more at
+    https://github.com/ray-project/ray/issues/20599.
+    """
+    # Categorize replicas to node they belong to.
+    node_to_replicas = defaultdict(list)
+    for replica in all_available_replicas:
+        node_to_replicas[replica.actor_node_id].append(replica)
+
+    # Replicas not in running state might have _node_id = None.
+    # We will prioritize those first.
+    node_to_replicas.setdefault(None, [])
+    return list(
+        itertools.chain.from_iterable(
+            [
+                node_to_replicas.pop(None),
+            ]
+            + sorted(node_to_replicas.values(), key=lambda lst: len(lst))
+        )
+    )
+
+
 class ActorReplicaWrapper:
     """Wraps a Ray actor for a deployment replica.
 
@@ -103,12 +136,15 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(detached)
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached, _override_controller_namespace=_override_controller_namespace
+        )
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name
@@ -120,14 +156,24 @@ class ActorReplicaWrapper:
         self._actor_resources: Dict[str, float] = None
         self._max_concurrent_queries: int = None
         self._graceful_shutdown_timeout_s: float = 0.0
-        self._health_check_ref: ObjectRef = None
+        self._healthy: bool = True
+        self._health_check_period_s: float = 0.0
+        self._health_check_timeout_s: float = 0.0
+        self._health_check_ref: Optional[ObjectRef] = None
+        self._last_health_check_time: float = 0.0
+        self._consecutive_health_check_failures = 0
         # NOTE: storing these is necessary to keep the actor and PG alive in
         # the non-detached case.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
 
+        # Populated after replica is allocated.
+        self._node_id: str = None
+
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
+
+        self._is_cross_language = False
 
     @property
     def replica_tag(self) -> str:
@@ -147,11 +193,24 @@ class ActorReplicaWrapper:
             except ValueError:
                 self._actor_handle = None
 
+        if self._is_cross_language:
+            assert isinstance(self._actor_handle, JavaActorHandleProxy)
+            return self._actor_handle.handle
+
         return self._actor_handle
 
     @property
     def max_concurrent_queries(self) -> int:
         return self._max_concurrent_queries
+
+    @property
+    def node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._node_id
+
+    def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
+        ready, _ = ray.wait([obj_ref], timeout=0)
+        return len(ready) == 1
 
     def create_placement_group(
         self, placement_group_name: str, actor_resources: dict
@@ -196,6 +255,12 @@ class ActorReplicaWrapper:
         self._graceful_shutdown_timeout_s = (
             deployment_info.deployment_config.graceful_shutdown_timeout_s
         )
+        self._health_check_period_s = (
+            deployment_info.deployment_config.health_check_period_s
+        )
+        self._health_check_timeout_s = (
+            deployment_info.deployment_config.health_check_timeout_s
+        )
 
         self._actor_resources = deployment_info.replica_config.resource_dict
         # it is currently not possiible to create a placement group
@@ -212,14 +277,8 @@ class ActorReplicaWrapper:
             f"{self.deployment_name} replica={self.replica_tag}"
         )
 
-        self._actor_handle = deployment_info.actor_def.options(
-            name=self._actor_name,
-            namespace=self._controller_namespace,
-            lifetime="detached" if self._detached else None,
-            placement_group=self._placement_group,
-            placement_group_capture_child_tasks=False,
-            **deployment_info.replica_config.ray_actor_options,
-        ).remote(
+        actor_def = deployment_info.actor_def
+        init_args = (
             self.deployment_name,
             self.replica_tag,
             deployment_info.replica_config.init_args,
@@ -227,8 +286,48 @@ class ActorReplicaWrapper:
             deployment_info.deployment_config.to_proto_bytes(),
             version,
             self._controller_name,
+            self._controller_namespace,
             self._detached,
         )
+        # TODO(simon): unify the constructor arguments across language
+        if (
+            deployment_info.deployment_config.deployment_language
+            == DeploymentLanguage.JAVA
+        ):
+            self._is_cross_language = True
+            actor_def = ray.cross_language.java_actor_class(
+                "io.ray.serve.RayServeWrappedReplica"
+            )
+            init_args = (
+                # String deploymentName,
+                self.deployment_name,
+                # String replicaTag,
+                self.replica_tag,
+                # String deploymentDef
+                deployment_info.replica_config.func_or_class_name,
+                # byte[] initArgsbytes
+                msgpack_serialize(deployment_info.replica_config.init_args),
+                # byte[] deploymentConfigBytes,
+                deployment_info.deployment_config.to_proto_bytes(),
+                # byte[] deploymentVersionBytes,
+                version.to_proto().SerializeToString(),
+                # String controllerName
+                self._controller_name,
+            )
+
+        self._actor_handle = actor_def.options(
+            name=self._actor_name,
+            namespace=self._controller_namespace,
+            lifetime="detached" if self._detached else None,
+            placement_group=self._placement_group,
+            placement_group_capture_child_tasks=False,
+            **deployment_info.replica_config.ray_actor_options,
+        ).remote(*init_args)
+
+        # Perform auto method name translation for java handles.
+        # See https://github.com/ray-project/ray/issues/21474
+        if self._is_cross_language:
+            self._actor_handle = JavaActorHandleProxy(self._actor_handle)
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
@@ -294,24 +393,30 @@ class ActorReplicaWrapper:
                     - replica __init__() and reconfigure() succeeded.
         """
 
-        # check whether the replica has been allocated
-        ready, _ = ray.wait([self._allocated_obj_ref], timeout=0)
-        if len(ready) == 0:
+        # Check whether the replica has been allocated.
+        if not self._check_obj_ref_ready(self._allocated_obj_ref):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
-        # check whether relica initialization has completed
-        ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
+        # Check whether relica initialization has completed.
+        replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
-        if len(ready) == 0:
+        if not replica_ready:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
-        elif len(ready) > 0:
+        else:
             try:
-                deployment_config, version = ray.get(ready)[0]
+                # TODO(simon): fully implement reconfigure for Java replicas.
+                if self._is_cross_language:
+                    return ReplicaStartupStatus.SUCCEEDED, None
+
+                deployment_config, version = ray.get(self._ready_obj_ref)
                 self._max_concurrent_queries = deployment_config.max_concurrent_queries
                 self._graceful_shutdown_timeout_s = (
                     deployment_config.graceful_shutdown_timeout_s
                 )
+                self._health_check_period_s = deployment_config.health_check_period_s
+                self._health_check_timeout_s = deployment_config.health_check_timeout_s
+                self._node_id = ray.get(self._allocated_obj_ref)
             except Exception:
                 logger.exception(f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
@@ -343,8 +448,7 @@ class ActorReplicaWrapper:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name)
-            ready, _ = ray.wait([self._graceful_shutdown_ref], timeout=0)
-            stopped = len(ready) == 1
+            stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
         except ValueError:
@@ -352,14 +456,126 @@ class ActorReplicaWrapper:
 
         return stopped
 
-    def check_health(self) -> bool:
-        """Check if the actor is healthy."""
+    def _check_active_health_check(self) -> ReplicaHealthCheckResponse:
+        """Check the active health check (if any).
+
+        self._health_check_ref will be reset to `None` when the active health
+        check is deemed to have succeeded or failed. This method *does not*
+        start a new health check, that's up to the caller.
+
+        Returns:
+            - NONE if there's no active health check, or it hasn't returned
+              yet and the timeout is not up.
+            - SUCCEEDED if the active health check succeeded.
+            - APP_FAILURE if the active health check failed (or didn't return
+              before the timeout).
+            - ACTOR_CRASHED if the underlying actor crashed.
+        """
         if self._health_check_ref is None:
-            self._health_check_ref = self._actor_handle.run_forever.remote()
+            # There is no outstanding health check.
+            response = ReplicaHealthCheckResponse.NONE
+        elif self._check_obj_ref_ready(self._health_check_ref):
+            # Object ref is ready, ray.get it to check for exceptions.
+            try:
+                ray.get(self._health_check_ref)
+                # Health check succeeded without exception.
+                response = ReplicaHealthCheckResponse.SUCCEEDED
+            except RayActorError:
+                # Health check failed due to actor crashing.
+                # logger.info(f"Actor for replica {self._replica_tag} crashed.")
+                response = ReplicaHealthCheckResponse.ACTOR_CRASHED
+            except RayError as e:
+                # Health check failed due to application-level exception.
+                logger.info(f"Health check for replica {self._replica_tag} failed: {e}")
+                response = ReplicaHealthCheckResponse.APP_FAILURE
+        elif time.time() - self._last_health_check_time > self._health_check_timeout_s:
+            # Health check hasn't returned and the timeout is up, consider it failed.
+            logger.info(
+                "Didn't receive health check response for replica "
+                f"{self._replica_tag} after "
+                f"{self._health_check_timeout_s}s, marking it unhealthy."
+            )
+            response = ReplicaHealthCheckResponse.APP_FAILURE
+        else:
+            # Health check hasn't returned and the timeout isn't up yet.
+            response = ReplicaHealthCheckResponse.NONE
 
-        ready, _ = ray.wait([self._health_check_ref], timeout=0)
+        if response is not ReplicaHealthCheckResponse.NONE:
+            self._health_check_ref = None
 
-        return len(ready) == 0
+        return response
+
+    def _should_start_new_health_check(self) -> bool:
+        """Determines if a new health check should be kicked off.
+
+        A health check will be started if:
+            1) There is not already an active health check.
+            2) It has been more than self._health_check_period_s since the
+               previous health check was *started*.
+
+        This assumes that self._health_check_ref is reset to `None` when an
+        active health check succeeds or fails (due to returning or timeout).
+        """
+        if self._health_check_ref is not None:
+            # There's already an active health check.
+            return False
+
+        # If there's no active health check, kick off another and reset
+        # the timer if it's been long enough since the last health
+        # check. Add some randomness to avoid synchronizing across all
+        # replicas.
+        time_since_last = time.time() - self._last_health_check_time
+        randomized_period = self._health_check_period_s * random.uniform(0.9, 1.1)
+        return time_since_last > randomized_period
+
+    def check_health(self) -> bool:
+        """Check if the actor is healthy.
+
+        self._healthy should *only* be modified in this method.
+
+        This is responsible for:
+            1) Checking the outstanding health check (if any).
+            2) Determining the replica health based on the health check results.
+            3) Kicking off a new health check if needed.
+        """
+        response: ReplicaHealthCheckResponse = self._check_active_health_check()
+        if response is ReplicaHealthCheckResponse.NONE:
+            # No info; don't update replica health.
+            pass
+        elif response is ReplicaHealthCheckResponse.SUCCEEDED:
+            # Health check succeeded. Reset the consecutive failure counter
+            # and mark the replica healthy.
+            self._consecutive_health_check_failures = 0
+            self._healthy = True
+        elif response is ReplicaHealthCheckResponse.APP_FAILURE:
+            # Health check failed. If it has failed more than N times in a row,
+            # mark the replica unhealthy.
+            self._consecutive_health_check_failures += 1
+            if (
+                self._consecutive_health_check_failures
+                >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+            ):
+                logger.info(
+                    f"Replica {self._replica_tag} failed the health "
+                    f"check {self._consecutive_health_check_failures}"
+                    "times in a row, marking it unhealthy."
+                )
+                self._healthy = False
+        elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
+            # Actor crashed, mark the replica unhealthy immediately.
+            logger.info(
+                f"Actor for replica {self._replica_tag} crashed, marking "
+                "it unhealthy immediately."
+            )
+            self._healthy = False
+        else:
+            assert False, f"Unknown response type: {response}."
+
+        if self._should_start_new_health_check():
+            self._last_health_check_time = time.time()
+            self._health_check_ref = self._actor_handle.check_health.remote()
+
+        return self._healthy
 
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
@@ -396,6 +612,7 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
@@ -403,6 +620,7 @@ class DeploymentReplica(VersionedReplica):
             controller_name,
             replica_tag,
             deployment_name,
+            _override_controller_namespace=_override_controller_namespace,
         )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
@@ -434,6 +652,11 @@ class DeploymentReplica(VersionedReplica):
     @property
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
+
+    @property
+    def actor_node_id(self) -> Optional[str]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._actor.node_id
 
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
         """
@@ -515,7 +738,7 @@ class DeploymentReplica(VersionedReplica):
         return False
 
     def check_health(self) -> bool:
-        """Check if the replica is still alive.
+        """Check if the replica is healthy.
 
         Returns `True` if the replica is healthy, else `False`.
         """
@@ -580,6 +803,9 @@ class ReplicaStateContainer:
         exclude_version: Optional[DeploymentVersion] = None,
         states: Optional[List[ReplicaState]] = None,
         max_replicas: Optional[int] = math.inf,
+        ranking_function: Optional[
+            Callable[[List["DeploymentReplica"]], List["DeploymentReplica"]]
+        ] = None,
     ) -> List[VersionedReplica]:
         """Get and remove all replicas of the given states.
 
@@ -593,6 +819,9 @@ class ReplicaStateContainer:
                 are considered.
             max_replicas (int): max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
+            ranking_function (callable): optional function to sort the replicas
+                within each state before they are truncated to max_replicas and
+                returned.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -604,7 +833,12 @@ class ReplicaStateContainer:
         for state in states:
             popped = []
             remaining = []
-            for replica in self._replicas[state]:
+
+            replicas_to_process = self._replicas[state]
+            if ranking_function:
+                replicas_to_process = ranking_function(replicas_to_process)
+
+            for replica in replicas_to_process:
                 if len(replicas) + len(popped) == max_replicas:
                     remaining.append(replica)
                 elif exclude_version is not None and replica.version == exclude_version:
@@ -677,29 +911,30 @@ class DeploymentState:
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
-        goal_manager: AsyncGoalManager,
         _save_checkpoint_func: Callable,
+        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._name = name
         self._controller_name: str = controller_name
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
-        self._goal_manager: AsyncGoalManager = goal_manager
         self._save_checkpoint_func = _save_checkpoint_func
+        self._override_controller_namespace: Optional[
+            str
+        ] = _override_controller_namespace
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
-        # In case the new deployment goal failed to complete, we keep track of
-        # previous DeploymentInfo and rollback to it.
         self._target_info: DeploymentInfo = None
-        self._rollback_info: DeploymentInfo = None
         self._target_replicas: int = -1
-        self._curr_goal: Optional[GoalId] = None
         self._target_version: DeploymentVersion = None
         self._prev_startup_warning: float = time.time()
         self._replica_constructor_retry_counter: int = 0
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
+        self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
+            DeploymentStatus.UPDATING
+        )
 
     def get_target_state_checkpoint_data(self):
         """
@@ -747,6 +982,7 @@ class DeploymentState:
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 None,
+                _override_controller_namespace=self._override_controller_namespace,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
@@ -765,8 +1001,8 @@ class DeploymentState:
         return self._target_info
 
     @property
-    def curr_goal(self) -> Optional[GoalId]:
-        return self._curr_goal
+    def curr_status_info(self) -> DeploymentStatusInfo:
+        return self._curr_status_info
 
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
@@ -789,9 +1025,6 @@ class DeploymentState:
                 replica config, if passed in as None, we're marking
                 target deployment as shutting down.
         """
-        existing_goal_id = self._curr_goal
-        new_goal_id = self._goal_manager.create_goal()
-
         if deployment_info is not None:
             self._target_info = deployment_info
             self._target_replicas = deployment_info.deployment_config.num_replicas
@@ -804,23 +1037,21 @@ class DeploymentState:
         else:
             self._target_replicas = 0
 
-        self._curr_goal = new_goal_id
+        self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.UPDATING)
+
         version_str = (
             deployment_info if deployment_info is None else deployment_info.version
         )
-        logger.debug(f"Set deployment goal for {self._name} with version {version_str}")
-        return new_goal_id, existing_goal_id
+        logger.debug(f"Deploying new version of {self._name}: {version_str}")
 
-    def deploy(self, deployment_info: DeploymentInfo) -> Tuple[Optional[GoalId], bool]:
+    def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version and config,
-        this is a no-op and returns the GoalId corresponding to the existing
-        update if there is one.
+        this is a no-op and returns False.
 
         Returns:
-            GoalId, bool: The GoalId for the client to wait for and whether or
-            not the deployment is being updated.
+            bool: Whether or not the deployment is being updated.
         """
         # Ensures this method is idempotent.
         existing_info = self._target_info
@@ -833,33 +1064,23 @@ class DeploymentState:
                 and deployment_info.version is not None
                 and existing_info.version == deployment_info.version
             ):
-                return self._curr_goal, False
-
-        # Keep a copy of previous deployment info in case goal failed to
-        # complete to initiate rollback.
-        self._rollback_info = self._target_info
+                return False
 
         # Reset constructor retry counter.
         self._replica_constructor_retry_counter = 0
 
-        new_goal_id, existing_goal_id = self._set_deployment_goal(deployment_info)
+        self._set_deployment_goal(deployment_info)
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
         # crash while making the change.
         self._save_checkpoint_func()
 
-        if existing_goal_id is not None:
-            self._goal_manager.complete_goal(existing_goal_id)
-        return new_goal_id, True
+        return True
 
-    def delete(self) -> Optional[GoalId]:
-        new_goal_id, existing_goal_id = self._set_deployment_goal(None)
-
+    def delete(self) -> None:
+        self._set_deployment_goal(None)
         self._save_checkpoint_func()
-        if existing_goal_id is not None:
-            self._goal_manager.complete_goal(existing_goal_id)
-        return new_goal_id
 
     def _stop_wrong_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
@@ -911,6 +1132,7 @@ class DeploymentState:
             exclude_version=self._target_version,
             states=[ReplicaState.STARTING, ReplicaState.RUNNING],
             max_replicas=max_to_stop,
+            ranking_function=rank_replicas_for_stopping,
         )
 
         replicas_stopped = False
@@ -961,9 +1183,9 @@ class DeploymentState:
     def _scale_deployment_replicas(self) -> bool:
         """Scale the given deployment to the number of replicas."""
 
-        assert self._target_replicas >= 0, (
-            "Number of replicas must be" " greater than or equal to 0."
-        )
+        assert (
+            self._target_replicas >= 0
+        ), "Number of replicas must be greater than or equal to 0."
 
         replicas_stopped = self._stop_wrong_version_replicas()
 
@@ -998,6 +1220,7 @@ class DeploymentState:
                     replica_name.replica_tag,
                     replica_name.deployment_tag,
                     self._target_version,
+                    _override_controller_namespace=self._override_controller_namespace,
                 )
                 new_deployment_replica.start(self._target_info, self._target_version)
 
@@ -1023,6 +1246,7 @@ class DeploymentState:
                     ReplicaState.RUNNING,
                 ],
                 max_replicas=to_remove,
+                ranking_function=rank_replicas_for_stopping,
             )
 
             for replica in replicas_to_stop:
@@ -1035,18 +1259,21 @@ class DeploymentState:
 
         return replicas_stopped
 
-    def _check_curr_goal_status(self) -> GoalStatus:
-        """
-        In each update() cycle, upon finished calling _scale_all_deployments(),
-        check difference between target vs. running relica count for each
-        deployment and return whether or not the current goal is complete.
+    def _check_curr_status(self) -> bool:
+        """Check the current deployment status.
+
+        Checks the difference between the target vs. running replica count for
+        the target version.
+
+        This will update the current deployment status depending on the state
+        of the replicas.
 
         Returns:
-            AsyncGoalStatus
+            was_deleted
         """
-
-        if self._curr_goal is None:
-            return GoalStatus.NONE
+        # TODO(edoakes): we could make this more efficient in steady-state by
+        # having a "healthy" flag that gets flipped if an update or replica
+        # failure happens.
 
         target_version = self._target_version
         target_replica_count = self._target_replicas
@@ -1076,7 +1303,15 @@ class DeploymentState:
                 # reached target replica count
                 self._replica_constructor_retry_counter = -1
             else:
-                return GoalStatus.FAILED
+                self._curr_status_info = DeploymentStatusInfo(
+                    status=DeploymentStatus.UNHEALTHY,
+                    message=(
+                        "The Deployment constructor failed "
+                        f"{failed_to_start_count} times in a row. See "
+                        "logs for details."
+                    ),
+                )
+                return False
 
         # If we have pending ops, the current goal is *not* ready.
         if (
@@ -1092,13 +1327,14 @@ class DeploymentState:
         ):
             # Check for deleting.
             if target_replica_count == 0 and all_running_replica_cnt == 0:
-                return GoalStatus.SUCCESSFULLY_DELETED
+                return True
 
             # Check for a non-zero number of deployments.
             elif target_replica_count == running_at_target_version_replica_cnt:
-                return GoalStatus.SUCCEEDED
+                self._curr_status_info = DeploymentStatusInfo(DeploymentStatus.HEALTHY)
+                return False
 
-        return GoalStatus.PENDING
+        return False
 
     def _check_startup_replicas(
         self, original_state: ReplicaState, stop_on_slow=False
@@ -1170,6 +1406,13 @@ class DeploymentState:
                 )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
+                # If this is a replica of the target version, the deployment
+                # enters the "UNHEALTHY" status until the replica is
+                # recovered or a new deploy happens.
+                if replica.version == self._target_version:
+                    self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
+                        DeploymentStatus.UNHEALTHY
+                    )
 
         slow_start_replicas = []
         slow_start, starting_to_running = self._check_startup_replicas(
@@ -1239,7 +1482,15 @@ class DeploymentState:
         return running_replicas_changed
 
     def update(self) -> bool:
-        """Updates the state of all deployments to match their goal state."""
+        """Attempts to reconcile this deployment to match its goal state.
+
+        This is an asynchronous call; it's expected to be called repeatedly.
+
+        Also updates the internal DeploymentStatusInfo based on the current
+        state of the system.
+
+        Returns true if this deployment was successfully deleted.
+        """
         try:
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
@@ -1252,60 +1503,15 @@ class DeploymentState:
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
 
-            status = self._check_curr_goal_status()
-            exception = None
+            deleted = self._check_curr_status()
         except Exception as e:
-            status = GoalStatus.FAILED
-            exception = e
+            self._curr_status_info = DeploymentStatusInfo(
+                status=DeploymentStatus.UNHEALTHY,
+                message=f"Failed to update deployment:\n{e}.",
+            )
+            deleted = False
 
-        if status == GoalStatus.SUCCEEDED:
-            # Deployment successul, complete the goal and clear the
-            # backup deployment_info.
-            self._goal_manager.complete_goal(self._curr_goal)
-            self._rollback_info = None
-        elif status == GoalStatus.FAILED:
-            if exception is None:
-                # report a generic exception if none was caught
-                # TODO: in which cases can we get the exception
-                # that caused the failure?
-                exception = RuntimeError(
-                    "Failed to reach deployment goal. "
-                    "Check the serve logs for details."
-                )
-            # wrap this exception so that it can be sent across the cluster
-            exception = wrap_to_ray_error("unknown", exception)
-
-            # Roll back or delete the deployment if it failed.
-            if self._rollback_info is None:
-                # No info to roll back to, delete it.
-                self._goal_manager.complete_goal(
-                    self._curr_goal,
-                    exception,
-                )
-                logger.info(
-                    f"Deployment '{self._name}' failed, deleting it. "
-                    f"component=serve deployment={self._name}"
-                )
-                self.delete()
-            else:
-                # Roll back to the previous version.
-                rollback_info = self._rollback_info
-                self._goal_manager.complete_goal(
-                    self._curr_goal,
-                    exception,
-                )
-                self._curr_goal = None
-                self._rollback_info = None
-                logger.info(
-                    f"Updating deployment '{self._name}' failed, rolling "
-                    f"back to version {rollback_info.version}. "
-                    f"component=serve deployment={self._name}"
-                )
-                self.deploy(rollback_info)
-        elif status == GoalStatus.SUCCESSFULLY_DELETED:
-            self._goal_manager.complete_goal(self._curr_goal)
-
-        return status == GoalStatus.SUCCESSFULLY_DELETED
+        return deleted
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -1329,22 +1535,21 @@ class DeploymentStateManager:
         detached: bool,
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
-        goal_manager: AsyncGoalManager,
         all_current_actor_names: List[str],
+        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._controller_name = controller_name
         self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
-        self._goal_manager = goal_manager
         self._create_deployment_state: Callable = lambda name: DeploymentState(
             name,
             controller_name,
             detached,
             long_poll_host,
-            goal_manager,
             self._save_checkpoint_func,
+            _override_controller_namespace=_override_controller_namespace,
         )
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
@@ -1415,7 +1620,7 @@ class DeploymentStateManager:
                     )
                 self._deployment_states[deployment_tag] = deployment_state
 
-    def shutdown(self) -> List[GoalId]:
+    def shutdown(self):
         """
         Shutdown all running replicas by notifying the controller, and leave
         it to the controller event loop to take actions afterwards.
@@ -1427,11 +1632,8 @@ class DeploymentStateManager:
         difference compare to calling it once.
         """
 
-        shutdown_goals = []
         for deployment_state in self._deployment_states.values():
-            goal = deployment_state.delete()
-            if goal is not None:
-                shutdown_goals.append(goal)
+            deployment_state.delete()
 
         # TODO(jiaodong): This might not be 100% safe since we deleted
         # everything without ensuring all shutdown goals are completed
@@ -1440,7 +1642,6 @@ class DeploymentStateManager:
 
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
-        return shutdown_goals
 
     def _save_checkpoint_func(self) -> None:
         deployment_state_info = {
@@ -1457,14 +1658,11 @@ class DeploymentStateManager:
 
     def get_running_replica_infos(
         self,
-        filter_tag: Optional[str] = None,
     ) -> Dict[str, List[RunningReplicaInfo]]:
-        replicas = {}
-        for deployment_name, deployment_state in self._deployment_states.items():
-            if filter_tag is None or deployment_name == filter_tag:
-                replicas[deployment_name] = deployment_state.get_running_replica_infos()
-
-        return replicas
+        return {
+            name: deployment_state.get_running_replica_infos()
+            for name, deployment_state in self._deployment_states.items()
+        }
 
     def get_deployment_configs(
         self, filter_tag: Optional[str] = None, include_deleted: Optional[bool] = False
@@ -1493,18 +1691,20 @@ class DeploymentStateManager:
         else:
             return None
 
-    def deploy(
-        self, deployment_name: str, deployment_info: DeploymentInfo
-    ) -> Tuple[Optional[GoalId], bool]:
+    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
+        return {
+            name: state.curr_status_info
+            for name, state in self._deployment_states.items()
+        }
+
+    def deploy(self, deployment_name: str, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version and config,
-        this is a no-op and returns the GoalId corresponding to the existing
-        update if there is one.
+        this is a no-op and returns False.
 
         Returns:
-            GoalId, bool: The GoalId for the client to wait for and whether or
-            not the deployment is being updated.
+            bool: Whether or not the deployment is being updated.
         """
         if deployment_name in self._deleted_deployment_metadata:
             del self._deleted_deployment_metadata[deployment_name]
@@ -1516,16 +1716,13 @@ class DeploymentStateManager:
 
         return self._deployment_states[deployment_name].deploy(deployment_info)
 
-    def delete_deployment(self, deployment_name: str) -> Optional[GoalId]:
+    def delete_deployment(self, deployment_name: str):
         # This method must be idempotent. We should validate that the
         # specified deployment exists on the client.
-        if deployment_name not in self._deployment_states:
-            return None
+        if deployment_name in self._deployment_states:
+            self._deployment_states[deployment_name].delete()
 
-        deployment_state = self._deployment_states[deployment_name]
-        return deployment_state.delete()
-
-    def update(self) -> bool:
+    def update(self):
         """Updates the state of all deployments to match their goal state."""
         deleted_tags = []
         for deployment_name, deployment_state in self._deployment_states.items():

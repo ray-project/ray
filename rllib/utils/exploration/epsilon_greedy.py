@@ -33,6 +33,7 @@ class EpsilonGreedy(Exploration):
         framework: str,
         initial_epsilon: float = 1.0,
         final_epsilon: float = 0.05,
+        warmup_timesteps: int = 0,
         epsilon_timesteps: int = int(1e5),
         epsilon_schedule: Optional[Schedule] = None,
         **kwargs,
@@ -44,8 +45,12 @@ class EpsilonGreedy(Exploration):
             framework: The framework specifier.
             initial_epsilon: The initial epsilon value to use.
             final_epsilon: The final epsilon value to use.
-            epsilon_timesteps: The time step after which epsilon should
-                always be `final_epsilon`.
+            warmup_timesteps: The timesteps over which to not change epsilon in the
+                beginning.
+            epsilon_timesteps: The timesteps (additional to `warmup_timesteps`)
+                after which epsilon should always be `final_epsilon`.
+                E.g.: warmup_timesteps=20k epsilon_timesteps=50k -> After 70k timesteps,
+                epsilon will reach its final value.
             epsilon_schedule: An optional Schedule object
                 to use (instead of constructing one from the given parameters).
         """
@@ -55,7 +60,11 @@ class EpsilonGreedy(Exploration):
         self.epsilon_schedule = from_config(
             Schedule, epsilon_schedule, framework=framework
         ) or PiecewiseSchedule(
-            endpoints=[(0, initial_epsilon), (epsilon_timesteps, final_epsilon)],
+            endpoints=[
+                (0, initial_epsilon),
+                (warmup_timesteps, initial_epsilon),
+                (warmup_timesteps + epsilon_timesteps, final_epsilon),
+            ],
             outside_value=final_epsilon,
             framework=self.framework,
         )

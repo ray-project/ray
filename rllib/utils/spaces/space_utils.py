@@ -27,7 +27,7 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
             for s in space_:
                 _helper_flatten(s, return_list)
         elif isinstance(space_, (Dict, FlexDict)):
-            for k in space_.spaces:
+            for k in sorted(space_.spaces):
                 _helper_flatten(space_[k], return_list)
         else:
             return_list.append(space_)
@@ -336,8 +336,9 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
                 elem = elem.astype(s.dtype)
 
         elif isinstance(s, int):
-            if isinstance(elem, float):
+            if isinstance(elem, float) and elem.is_integer():
                 elem = int(elem)
+
         return elem
 
     return tree.map_structure(map_, element, sampled_element, check_types=False)

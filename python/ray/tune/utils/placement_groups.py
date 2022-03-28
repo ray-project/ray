@@ -204,8 +204,11 @@ class PlacementGroupFactory:
         # Call with bounded *args and **kwargs
         return placement_group(*self._bound.args, **kwargs)
 
-    def __eq__(self, other):
-        return self._bound == other._bound
+    def __eq__(self, other: "PlacementGroupFactory"):
+        return (
+            self._bound == other._bound
+            and self.head_bundle_is_empty == other.head_bundle_is_empty
+        )
 
     def __hash__(self):
         if not self._hash:
@@ -284,7 +287,7 @@ class PlacementGroupManager:
     placement groups with their factory methods.
 
     Args:
-        prefix (str): Prefix for the placement group names that are created.
+        prefix: Prefix for the placement group names that are created.
     """
 
     def __init__(self, prefix: str = "__tune__", max_staging: int = 1000):
@@ -316,15 +319,15 @@ class PlacementGroupManager:
         self._cached_pgs: Dict[PlacementGroup, PlacementGroupFactory] = {}
 
         # Placement groups scheduled for delayed removal.
+        # This is used as a damper to filter out some high frequency change
+        # in resources request.
+        # Only PGs that have never been used go here.
+        # TODO(xwjiang): `self._pgs_for_removal` and `self._unstaged_xxx`
+        #  are really the same now. We should consolidate to using one.
+        #  Also `remove_placement_group` method should just be combined with
+        #  `unstage_unused_xxx`.
         self._pgs_for_removal: Dict[PlacementGroup, float] = {}
         self._removal_delay = TUNE_PLACEMENT_GROUP_REMOVAL_DELAY
-
-        # Latest PG staging time to check if still in grace period.
-        self._latest_staging_start_time = time.time()
-
-        # Seconds we wait for a trial to come up before we make blocking calls
-        # to process events
-        self._grace_period = float(os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.0))
 
         self._max_staging = max_staging
 
@@ -335,7 +338,7 @@ class PlacementGroupManager:
         """Schedule placement group for (delayed) removal.
 
         Args:
-            pg (PlacementGroup): Placement group object.
+            pg: Placement group object.
 
         """
         self._pgs_for_removal[pg] = time.time()
@@ -349,7 +352,7 @@ class PlacementGroupManager:
         groups are removed instead.
 
         Args:
-            force (bool): If True, all placement groups scheduled for removal
+            force: If True, all placement groups scheduled for removal
                 will be removed, disregarding any removal conditions.
 
         """
@@ -379,7 +382,7 @@ class PlacementGroupManager:
         same driver script.
 
         Args:
-            block (bool): If True, will wait until all placement groups are
+            block: If True, will wait until all placement groups are
                 shut down.
         """
         should_cleanup = not int(
@@ -414,7 +417,7 @@ class PlacementGroupManager:
         placement groups is not exhausted.
 
         Args:
-            trial (Trial): Trial whose placement group to stage.
+            trial: Trial whose placement group to stage.
 
         Returns:
             False if placement group has not been staged, True otherwise.
@@ -440,7 +443,6 @@ class PlacementGroupManager:
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
-        self._latest_staging_start_time = time.time()
 
         return True
 
@@ -461,10 +463,16 @@ class PlacementGroupManager:
             ready, _ = ray.wait(list(self._staging_futures.keys()), timeout=0)
 
             for ready_fut in ready:
-                ready_pgf, ready_pg = self._staging_futures.pop(ready_fut)
+                self.handle_ready_future(ready_fut)
 
-                self._staging[ready_pgf].remove(ready_pg)
-                self._ready[ready_pgf].add(ready_pg)
+    def handle_ready_future(self, ready_fut):
+        ready_pgf, ready_pg = self._staging_futures.pop(ready_fut)
+
+        self._staging[ready_pgf].remove(ready_pg)
+        self._ready[ready_pgf].add(ready_pg)
+
+    def get_staging_future_list(self):
+        return list(self._staging_futures.keys())
 
     def get_full_actor_cls(
         self, trial: "Trial", actor_cls: ActorClass
@@ -476,7 +484,7 @@ class PlacementGroupManager:
         `self._ready`.
 
         Args:
-            trial ("Trial"): "Trial" object to start
+            trial: "Trial" object to start
             actor_cls: Ray actor class.
 
         Returns:
@@ -524,8 +532,8 @@ class PlacementGroupManager:
         """Return True if placement group for trial is ready.
 
         Args:
-            trial (Trial): :obj:`Trial` object.
-            update (bool): Update status first.
+            trial: :obj:`Trial` object.
+            update: Update status first.
 
         Returns:
             Boolean.
@@ -555,7 +563,7 @@ class PlacementGroupManager:
         cached and None will be returned.
 
         Args:
-            trial (Trial): Trial object with the (currently in use) placement
+            trial: Trial object with the (currently in use) placement
                 group that should be cached.
 
         Returns:
@@ -602,17 +610,17 @@ class PlacementGroupManager:
     def clean_cached_pg(self, pg: PlacementGroup):
         self._cached_pgs.pop(pg)
 
-    def return_pg(self, trial: "Trial"):
+    def remove_from_in_use(self, trial: "Trial") -> PlacementGroup:
         """Return pg back to Core scheduling.
 
         Args:
-            trial (Trial): Return placement group of this trial.
+            trial: Return placement group of this trial.
         """
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
-        self.remove_pg(pg)
+        return pg
 
     def _unstage_unused_pg(
         self, pgf: PlacementGroupFactory
@@ -628,7 +636,7 @@ class PlacementGroupManager:
         group directly, but sometimes we would like to enqueue removal.)
 
         Args:
-            pgf (PlacementGroupFactory): Placement group factory object.
+            pgf: Placement group factory object.
                 This method will try to remove a staged PG of this factory
                 first, then settle for a ready but unused. If none exist,
                 no placement group will be removed and None will be returned.
@@ -664,13 +672,6 @@ class PlacementGroupManager:
 
         return trial_pg
 
-    def in_staging_grace_period(self):
-        return (
-            self._staging_futures
-            and self._grace_period
-            and time.time() <= self._latest_staging_start_time + self._grace_period
-        )
-
     def reconcile_placement_groups(self, trials: List["Trial"]):
         """Reconcile placement groups to match requirements.
 
@@ -683,7 +684,7 @@ class PlacementGroupManager:
         (paused+running+pending) should be in staging, use, or the cache.
 
         Args:
-            trials (List[Trial]): List of trials.
+            trials: List of trials.
 
         """
         # Keep track of the currently tracked placement groups

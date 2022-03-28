@@ -71,7 +71,9 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
   ray::stats::STATS_operation_count.Record(curr_count, name);
   ray::stats::STATS_operation_active_count.Record(curr_count, name);
   return std::make_shared<StatsHandle>(
-      name, absl::GetCurrentTimeNanos() + expected_queueing_delay_ns, stats,
+      name,
+      absl::GetCurrentTimeNanos() + expected_queueing_delay_ns,
+      std::move(stats),
       global_stats_);
 }
 
@@ -92,18 +94,18 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
   // Update event-specific stats.
   ray::stats::STATS_operation_run_time_ms.Record(execution_time_ns / 1000000,
                                                  handle->event_name);
+  int64_t curr_count;
   {
     auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));
     // Event-specific execution stats.
     stats->stats.cum_execution_time += execution_time_ns;
     // Event-specific current count.
-    stats->stats.curr_count--;
-    ray::stats::STATS_operation_active_count.Record(stats->stats.curr_count,
-                                                    handle->event_name);
+    curr_count = --stats->stats.curr_count;
     // Event-specific running count.
     stats->stats.running_count--;
   }
+  ray::stats::STATS_operation_active_count.Record(curr_count, handle->event_name);
   // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;
   ray::stats::STATS_operation_queue_time_ms.Record(queue_time_ns / 1000000,
@@ -137,14 +139,7 @@ std::shared_ptr<GuardedEventStats> EventTracker::GetOrCreate(const std::string &
     absl::WriterMutexLock lock(&mutex_);
     const auto pair =
         post_handler_stats_.try_emplace(name, std::make_shared<GuardedEventStats>());
-    if (pair.second) {
-      it = pair.first;
-    } else {
-      it = post_handler_stats_.find(name);
-      // If try_emplace failed to insert the item, the item is guaranteed to exist in
-      // the table.
-      RAY_CHECK(it != post_handler_stats_.end());
-    }
+    it = pair.first;
     result = it->second;
   } else {
     result = it->second;
@@ -172,7 +167,8 @@ std::vector<std::pair<std::string, EventStats>> EventTracker::get_event_stats() 
   absl::ReaderMutexLock lock(&mutex_);
   std::vector<std::pair<std::string, EventStats>> stats;
   stats.reserve(post_handler_stats_.size());
-  std::transform(post_handler_stats_.begin(), post_handler_stats_.end(),
+  std::transform(post_handler_stats_.begin(),
+                 post_handler_stats_.end(),
                  std::back_inserter(stats),
                  [](const std::pair<std::string, std::shared_ptr<GuardedEventStats>> &p) {
                    return std::make_pair(p.first, to_event_stats_view(p.second));
@@ -188,7 +184,8 @@ std::string EventTracker::StatsString() const {
   }
   auto stats = get_event_stats();
   // Sort stats by cumulative count, outside of the table lock.
-  sort(stats.begin(), stats.end(),
+  sort(stats.begin(),
+       stats.end(),
        [](const std::pair<std::string, EventStats> &a,
           const std::pair<std::string, EventStats> &b) {
          return a.second.cum_count > b.second.cum_count;

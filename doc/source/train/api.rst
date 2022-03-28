@@ -46,6 +46,21 @@ HorovodConfig
 
 .. autoclass:: ray.train.horovod.HorovodConfig
 
+.. _train-api-backend-interfaces:
+
+Backend interfaces (for developers only)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Backend
++++++++
+
+.. autoclass:: ray.train.backend.Backend
+
+BackendConfig
++++++++++++++
+
+.. autoclass:: ray.train.backend.BackendConfig
+
 
 Callbacks
 ---------
@@ -86,6 +101,14 @@ MLflowLoggerCallback
 
 .. autoclass:: ray.train.callbacks.MLflowLoggerCallback
 
+
+.. _train-api-torch-tensorboard-profiler-callback:
+
+TorchTensorboardProfilerCallback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.callbacks.TorchTensorboardProfilerCallback
+
 ResultsPreprocessors
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -122,6 +145,8 @@ CheckpointStrategy
 
 .. autoclass:: ray.train.CheckpointStrategy
 
+.. _train-api-func-utils:
+
 Training Function Utilities
 ---------------------------
 
@@ -139,6 +164,11 @@ train.save_checkpoint
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction::  ray.train.save_checkpoint
+
+train.get_dataset_shard
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction::  ray.train.get_dataset_shard
 
 train.world_rank
 ~~~~~~~~~~~~~~~~
@@ -165,15 +195,49 @@ train.torch.prepare_model
 
 .. autofunction:: ray.train.torch.prepare_model
 
+.. _train-api-torch-prepare-data-loader:
+
 train.torch.prepare_data_loader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.prepare_data_loader
 
+train.torch.prepare_optimizer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_optimizer
+
+
+train.torch.backward
+~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.backward
+
+
 train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.get_device
+
+train.torch.enable_reproducibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.enable_reproducibility
+
+.. _train-api-torch-worker-profiler:
+
+train.torch.accelerate
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.accelerate
+
+train.torch.TorchWorkerProfiler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ray.train.torch.TorchWorkerProfiler
+    :members:
+
+.. _train-api-tensorflow-utils:
 
 TensorFlow Training Function Utilities
 --------------------------------------

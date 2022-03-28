@@ -551,6 +551,7 @@ cc_library(
         ":node_manager_rpc",
         ":pubsub_lib",
         ":raylet_client_lib",
+        ":scheduler",
         ":worker_rpc",
         "@com_google_absl//absl/container:btree",
     ],
@@ -596,6 +597,7 @@ cc_library(
     srcs = [
         "src/ray/stats/metric.cc",
         "src/ray/stats/metric_defs.cc",
+        "src/ray/stats/tag_defs.cc",
     ],
     hdrs = [
         "src/ray/stats/metric.h",
@@ -649,6 +651,53 @@ cc_library(
 )
 
 cc_library(
+    name = "scheduler",
+    srcs = glob(
+        [
+            "src/ray/raylet/scheduling/**/*.cc",
+        ],
+        exclude = [
+            "src/ray/raylet/scheduling/**/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/raylet/scheduling/**/*.h",
+            "src/ray/core_worker/common.h",
+        ],
+    ),
+    copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gcs_client_lib",
+        ":ray_common",
+        ":ray_util",
+        ":stats_lib",
+        "//src/ray/protobuf:common_cc_proto",
+        "@boost//:asio",
+        "@boost//:filesystem",
+        "@boost//:system",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
+    ],
+)
+
+cc_library(
     name = "raylet_lib",
     srcs = glob(
         [
@@ -656,13 +705,17 @@ cc_library(
         ],
         exclude = [
             "src/ray/raylet/**/*_test.cc",
+            "src/ray/raylet/scheduling/**/*.cc",
             "src/ray/raylet/main.cc",
         ],
     ),
     hdrs = glob(
         [
             "src/ray/raylet/**/*.h",
-            "src/ray/core_worker/common.h",
+        ],
+        exclude = [
+            "src/ray/raylet/scheduling/**/*.h",
+            "src/ray/raylet/main.cc",
         ],
     ),
     copts = COPTS,
@@ -687,6 +740,7 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":runtime_env_rpc",
+        ":scheduler",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:common_cc_proto",
@@ -818,9 +872,10 @@ cc_test(
     deps = [
         ":core_worker_lib",
         ":gcs",
+        "//src/ray/protobuf:runtime_env_common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1025,7 +1080,7 @@ cc_test(
     name = "scheduling_policy_test",
     size = "small",
     srcs = [
-        "src/ray/raylet/scheduling/scheduling_policy_test.cc",
+        "src/ray/raylet/scheduling/policy/scheduling_policy_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -1051,6 +1106,34 @@ cc_test(
 )
 
 cc_test(
+    name = "cluster_resource_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_resource_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "scheduling_ids_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/scheduling_ids_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "local_object_manager_test",
     size = "small",
     srcs = [
@@ -1069,6 +1152,20 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/object_manager/test/pull_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "object_buffer_pool_test",
+    size = "small",
+    srcs = [
+        "src/ray/object_manager/test/object_buffer_pool_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -2051,6 +2148,7 @@ cc_library(
         "@boost//:asio",
         "@boost//:filesystem",
         "@com_github_spdlog//:spdlog",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",

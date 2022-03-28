@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import random
 
 from ray.actor import ActorHandle
-from ray.serve.common import str, RunningReplicaInfo
+from ray.serve.common import RunningReplicaInfo
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
 

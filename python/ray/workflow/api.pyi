@@ -1,4 +1,4 @@
-# yapf: disable
+# fmt: off
 from typing import Callable, Generic, Optional, TypeVar, Union, overload, Any
 from types import FunctionType
 

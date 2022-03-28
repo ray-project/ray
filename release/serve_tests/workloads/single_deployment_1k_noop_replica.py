@@ -35,15 +35,15 @@ from serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
     save_test_results,
+    is_smoke_test,
 )
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
-    warm_up_one_cluster,
     NUM_CPU_PER_NODE,
     NUM_CONNECTIONS,
 )
-from typing import Optional
+from typing import List, Optional
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
@@ -57,8 +57,10 @@ DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
-def deploy_replicas(num_replicas, max_batch_size):
-    @serve.deployment(name="echo", num_replicas=num_replicas)
+def deploy_replicas(num_replicas, max_batch_size) -> List[str]:
+    name = "echo"
+
+    @serve.deployment(name=name, num_replicas=num_replicas)
     class Echo:
         @serve.batch(max_batch_size=max_batch_size)
         async def handle_batch(self, requests):
@@ -68,6 +70,7 @@ def deploy_replicas(num_replicas, max_batch_size):
             return await self.handle_batch(request)
 
     Echo.deploy()
+    return [name]
 
 
 def save_results(final_result, default_name):
@@ -90,8 +93,7 @@ def main(
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
-    if smoke_test == "1":
+    if is_smoke_test():
         num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
         logger.info(f"Running local / smoke test with {num_replicas} replicas ..\n")
@@ -114,15 +116,21 @@ def main(
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
     logger.info(f"Deploying with {num_replicas} target replicas ....\n")
-    deploy_replicas(num_replicas, max_batch_size)
+    all_endpoints = deploy_replicas(num_replicas, max_batch_size)
 
-    logger.info("Warming up cluster ....\n")
-    warm_up_one_cluster.remote(10, http_host, http_port, "echo")
+    logger.info("Warming up cluster ...\n")
+    run_wrk_on_all_nodes(
+        DEFAULT_SMOKE_TEST_TRIAL_LENGTH,
+        NUM_CONNECTIONS,
+        http_host,
+        http_port,
+        all_endpoints=all_endpoints,
+        ignore_output=True,
+    )
 
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_deployments().keys())
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
     )

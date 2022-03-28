@@ -75,6 +75,7 @@ from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
+    TRAINING_ITERATION_TIMER,
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
@@ -116,7 +117,7 @@ logger = logging.getLogger(__name__)
 # times in a row since that would indicate a persistent cluster issue.
 MAX_WORKER_FAILURE_RETRIES = 3
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 COMMON_CONFIG: TrainerConfigDict = {
     # === Settings for Rollout Worker processes ===
@@ -548,7 +549,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "output_config": {},
     # What sample batch columns to LZ4 compress in the output data.
     "output_compress_columns": ["obs", "new_obs"],
-    # Max output file size before rolling over to a new file.
+    # Max output file size (in bytes) before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
 
     # === Settings for Multi-Agent Environments ===
@@ -627,6 +628,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # training iteration.
     "_disable_execution_plan_api": False,
 
+    # If True, disable the environment pre-checking module.
+    "disable_env_checking": False,
+
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
     # usually slower, but you might want to try it if you run into issues with
@@ -649,7 +653,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "collect_metrics_timeout": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 @DeveloperAPI
@@ -766,7 +770,7 @@ class Trainer(Trainable):
 
         # The env creator callable, taking an EnvContext (config dict)
         # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: EnvCreator = None
+        self.env_creator: Optional[EnvCreator] = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -827,7 +831,6 @@ class Trainer(Trainable):
             config, logger_creator, remote_checkpoint_dir, sync_function_tpl
         )
 
-    @ExperimentalAPI
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
         return cls._default_config or COMMON_CONFIG
@@ -903,20 +906,23 @@ class Trainer(Trainable):
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
-            # should no longer be used.
-            self.workers = self._make_workers(
+            # has been deprecated.
+            self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
                 policy_class=self.get_default_policy_class(self.config),
-                config=self.config,
+                trainer_config=self.config,
                 num_workers=self.config["num_workers"],
+                local_worker=True,
+                logdir=self.logdir,
             )
 
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
-                # Ensure remote workers are initially in sync with the
+                # TODO: Ensure remote workers are initially in sync with the
                 # local worker.
-                self.workers.sync_weights()
+                # self.workers.sync_weights()
+                pass  # TODO: Uncommenting line above breaks tf2+eager_tracing for A3C.
             # LocalIterator-creating "execution plan".
             # Only call this once here to create `self.train_exec_impl`,
             # which is a ray.util.iter.LocalIterator that will be `next`'d
@@ -998,19 +1004,26 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
+            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
+            env_creator = self._get_env_creator_from_env_id(env_id)
+
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
-            self.evaluation_workers: WorkerSet = self._make_workers(
-                env_creator=self.env_creator,
+            self.evaluation_workers: WorkerSet = WorkerSet(
+                env_creator=env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
-                config=eval_config,
+                trainer_config=eval_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
+                logdir=self.logdir,
             )
+
+        # Run any callbacks after trainer initialization is done.
+        self.callbacks.on_trainer_init(trainer=self)
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
@@ -1020,7 +1033,6 @@ class Trainer(Trainable):
     def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
-    @ExperimentalAPI
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
@@ -1093,7 +1105,6 @@ class Trainer(Trainable):
 
         return result
 
-    @ExperimentalAPI
     def step_attempt(self) -> ResultDict:
         """Attempts a single training step, including evaluation, if required.
 
@@ -1375,7 +1386,7 @@ class Trainer(Trainable):
         # Also return the results here for convenience.
         return self.evaluation_metrics
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def training_iteration(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
@@ -1732,9 +1743,14 @@ class Trainer(Trainable):
             state = [np.stack(s) for s in state]
 
         input_dict = {SampleBatch.OBS: obs_batch}
-        if prev_action:
+
+        # prev_action and prev_reward can be None, np.ndarray, or tensor-like structure.
+        # Explicitly check for None here to avoid the error message "The truth value of
+        # an array with more than one element is ambiguous.", when np arrays are passed
+        # as arguments.
+        if prev_action is not None:
             input_dict[SampleBatch.PREV_ACTIONS] = prev_action
-        if prev_reward:
+        if prev_reward is not None:
             input_dict[SampleBatch.PREV_REWARDS] = prev_reward
         if info:
             input_dict[SampleBatch.INFOS] = info
@@ -1863,7 +1879,7 @@ class Trainer(Trainable):
             config=config,
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=list(policies_to_train),
+            policies_to_train=list(policies_to_train) if policies_to_train else None,
         )
 
         def fn(worker: RolloutWorker):
@@ -1947,11 +1963,13 @@ class Trainer(Trainable):
                 If None, the output format will be DL framework specific.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> for _ in range(10):
-            >>>     trainer.train()
-            >>> trainer.export_policy_model("/tmp/dir")
-            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1)
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> # Use a Trainer from RLlib or define your own.
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
+            >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
+            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
@@ -1970,10 +1988,12 @@ class Trainer(Trainable):
             policy_id: Optional policy id to export.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> for _ in range(10):
-            >>>     trainer.train()
-            >>> trainer.export_policy_checkpoint("/tmp/export_dir")
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> # Use a Trainer from RLlib or define your own.
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
+            >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
 
@@ -1990,10 +2010,11 @@ class Trainer(Trainable):
             policy_id: Optional policy id to import into.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
-            >>> for _ in range(10):
-            >>>     trainer.train()
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
         """
         self.get_policy(policy_id).import_model_from_h5(import_file)
         # Sync new weights to remote workers.
@@ -2122,52 +2143,6 @@ class Trainer(Trainable):
         else:
             return lambda env_config: None
 
-    @DeveloperAPI
-    def _make_workers(
-        self,
-        *,
-        env_creator: EnvCreator,
-        validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-        policy_class: Type[Policy],
-        config: TrainerConfigDict,
-        num_workers: int,
-        local_worker: bool = True,
-    ) -> WorkerSet:
-        """Default factory method for a WorkerSet running under this Trainer.
-
-        Override this method by passing a custom `make_workers` into
-        `build_trainer`.
-
-        Args:
-            env_creator: A function that return and Env given an env
-                config.
-            validate_env: Optional callable to validate the generated
-                environment. The env to be checked is the one returned from
-                the env creator, which may be a (single, not-yet-vectorized)
-                gym.Env or your custom RLlib env type (e.g. MultiAgentEnv,
-                VectorEnv, BaseEnv, etc..).
-            policy_class: The Policy class to use for creating the policies
-                of the workers.
-            config: The Trainer's config.
-            num_workers: Number of remote rollout workers to create.
-                0 for local only.
-            local_worker: Whether to create a local (non @ray.remote) worker
-                in the returned set as well (default: True). If `num_workers`
-                is 0, always create a local worker.
-
-        Returns:
-            The created WorkerSet.
-        """
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
-            num_workers=num_workers,
-            local_worker=local_worker,
-            logdir=self.logdir,
-        )
-
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
@@ -2194,10 +2169,11 @@ class Trainer(Trainable):
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     def _exec_plan_or_training_iteration_fn(self):
-        if self.config["_disable_execution_plan_api"]:
-            results = self.training_iteration()
-        else:
-            results = next(self.train_exec_impl)
+        with self._timers[TRAINING_ITERATION_TIMER]:
+            if self.config["_disable_execution_plan_api"]:
+                results = self.training_iteration()
+            else:
+                results = next(self.train_exec_impl)
         return results
 
     @classmethod
@@ -2329,7 +2305,7 @@ class Trainer(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
 
@@ -2465,15 +2441,7 @@ class Trainer(Trainable):
                 "complete_episodes]! Got {}".format(config["batch_mode"])
             )
 
-        # Check multi-agent batch count mode.
-        if config["multiagent"].get("count_steps_by", "env_steps") not in [
-            "env_steps",
-            "agent_steps",
-        ]:
-            raise ValueError(
-                "`count_steps_by` must be one of [env_steps|agent_steps]! "
-                "Got {}".format(config["multiagent"]["count_steps_by"])
-            )
+        # Store multi-agent batch count mode.
         self._by_agent_steps = (
             self.config["multiagent"].get("count_steps_by") == "agent_steps"
         )
@@ -2518,24 +2486,13 @@ class Trainer(Trainable):
                 "timesteps_per_iteration"
             ]
 
-        # Metrics settings.
-        if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="metrics_smoothing_episodes",
-                new="metrics_num_episodes_for_smoothing",
-                error=False,
-            )
-            config["metrics_num_episodes_for_smoothing"] = config[
-                "metrics_smoothing_episodes"
-            ]
-
         # Evaluation settings.
 
         # Deprecated setting: `evaluation_num_episodes`.
         if config["evaluation_num_episodes"] != DEPRECATED_VALUE:
             deprecation_warning(
                 old="evaluation_num_episodes",
-                new="`evaluation_duration` and `evaluation_duration_unit=" "episodes`",
+                new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
                 error=False,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]
@@ -2721,6 +2678,11 @@ class Trainer(Trainable):
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
+            if self.evaluation_workers:
+                # If evaluation workers are used, also restore the policies
+                # there in case they are used for evaluation purpose.
+                for r in self.evaluation_workers.remote_workers():
+                    r.restore.remote(remote_state)
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay
@@ -2744,14 +2706,10 @@ class Trainer(Trainable):
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
 
-    # TODO: Deprecate this method (`build_trainer` should no longer be used).
     @staticmethod
-    def with_updates(**overrides) -> Type["Trainer"]:
-        raise NotImplementedError(
-            "`with_updates` may only be called on Trainer sub-classes "
-            "that were generated via the `ray.rllib.agents.trainer_template."
-            "build_trainer()` function (which has been deprecated)!"
-        )
+    @Deprecated(error=True)
+    def with_updates(*args, **kwargs):
+        pass
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
@@ -3014,13 +2972,34 @@ class Trainer(Trainable):
     def __repr__(self):
         return type(self).__name__
 
+    @Deprecated(new="Trainer.compute_single_action()", error=False)
+    def compute_action(self, *args, **kwargs):
+        return self.compute_single_action(*args, **kwargs)
+
     @Deprecated(new="Trainer.evaluate()", error=True)
     def _evaluate(self) -> dict:
         return self.evaluate()
 
-    @Deprecated(new="Trainer.compute_single_action()", error=False)
-    def compute_action(self, *args, **kwargs):
-        return self.compute_single_action(*args, **kwargs)
+    @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
+    def _make_workers(
+        self,
+        *,
+        env_creator: EnvCreator,
+        validate_env: Optional[Callable[[EnvType, EnvContext], None]],
+        policy_class: Type[Policy],
+        config: TrainerConfigDict,
+        num_workers: int,
+        local_worker: bool = True,
+    ) -> WorkerSet:
+        return WorkerSet(
+            env_creator=env_creator,
+            validate_env=validate_env,
+            policy_class=policy_class,
+            trainer_config=config,
+            num_workers=num_workers,
+            local_worker=local_worker,
+            logdir=self.logdir,
+        )
 
     @Deprecated(new="Trainer.try_recover_from_step_attempt()", error=False)
     def _try_recover(self):

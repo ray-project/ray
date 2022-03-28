@@ -1,15 +1,17 @@
 import os
 import sys
+import platform
 import pytest
 import tempfile
 import time
 import random
 from collections import defaultdict
 import queue
+import math
 
 import ray
 from ray._private.test_utils import SignalActor
-from ray.util.multiprocessing import Pool, TimeoutError
+from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 
 
 def teardown_function(function):
@@ -44,6 +46,14 @@ def pool_4_processes_python_multiprocessing_lib():
     yield pool
     pool.terminate()
     pool.join()
+
+
+@pytest.fixture
+def ray_start_1_cpu():
+    address_info = ray.init(num_cpus=1)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 def test_ray_init(shutdown_only):
@@ -361,9 +371,9 @@ def test_starmap(pool):
     assert pool.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Hangs in windows")
 def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib):
-    callback_queue = queue.Queue()
+    Queue = JoinableQueue if platform.system() == "Windows" else queue.Queue
+    callback_queue = Queue()
 
     def callback(result):
         callback_queue.put(result)
@@ -396,7 +406,7 @@ def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib
         for callback_type in test_callback_types:
             # Reinitialize queue to track number of callback calls made by
             # the current process_pool and callback_type in map_async
-            callback_queue = queue.Queue()
+            callback_queue = Queue()
 
             indices, error_indices = list(range(100)), []
             if callback_type == "error callback":
@@ -560,6 +570,19 @@ def test_maxtasksperchild(shutdown_only):
     assert len(set(pool.map(f, range(20)))) == 20
     pool.terminate()
     pool.join()
+
+
+def test_deadlock_avoidance_in_recursive_tasks(ray_start_1_cpu):
+    def poolit_a(_):
+        with Pool(ray_address="auto") as pool:
+            return list(pool.map(math.sqrt, range(0, 2, 1)))
+
+    def poolit_b():
+        with Pool(ray_address="auto") as pool:
+            return list(pool.map(poolit_a, range(2, 4, 1)))
+
+    result = poolit_b()
+    assert result == [[0.0, 1.0], [0.0, 1.0]]
 
 
 if __name__ == "__main__":

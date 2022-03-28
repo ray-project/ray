@@ -48,7 +48,6 @@ def test_initial_workers(shutdown_only):
 # all the PIDs don't overlap. If overlapped, it means that tasks owned by
 # different drivers were scheduled to the same worker process, that is, tasks
 # of different jobs were not correctly isolated during execution.
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_multi_drivers(shutdown_only):
     info = ray.init(num_cpus=10)
 

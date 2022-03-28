@@ -27,8 +27,8 @@ class DatasetWriter(OutputWriter):
 
         Examples:
         config = {
-            "output"="dataset",
-            "output_config"={
+            "output": "dataset",
+            "output_config": {
                 "format": "json",
                 "path": "/tmp/test_samples/",
                 "max_num_samples_per_file": 100000,

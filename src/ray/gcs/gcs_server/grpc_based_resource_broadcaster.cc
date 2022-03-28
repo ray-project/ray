@@ -21,53 +21,22 @@ namespace gcs {
 
 GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    std::function<void(rpc::ResourceUsageBroadcastData &)>
-        get_resource_usage_batch_for_broadcast,
     std::function<void(const rpc::Address &,
-                       std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                       std::shared_ptr<rpc::NodeManagerClientPool> &,
+                       std::string &,
                        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
         send_batch
 
     )
     : seq_no_(absl::GetCurrentTimeNanos()),
-      ticker_(broadcast_service_),
       raylet_client_pool_(raylet_client_pool),
-      get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
-      send_batch_(send_batch),
-      broadcast_period_ms_(
-          RayConfig::instance().raylet_report_resources_period_milliseconds()) {}
+      send_batch_(send_batch) {}
 
 GrpcBasedResourceBroadcaster::~GrpcBasedResourceBroadcaster() {}
 
 void GrpcBasedResourceBroadcaster::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &pair : gcs_init_data.Nodes()) {
     HandleNodeAdded(pair.second);
-  }
-}
-
-void GrpcBasedResourceBroadcaster::Start() {
-  broadcast_thread_.reset(new std::thread{[this]() {
-    SetThreadName("resource_report_broadcaster");
-    boost::asio::io_service::work work(broadcast_service_);
-
-    broadcast_service_.run();
-    RAY_LOG(DEBUG)
-        << "GCSResourceReportBroadcaster has stopped. This should only happen if "
-           "the cluster has stopped";
-  }});
-  ticker_.RunFnPeriodically(
-      [this] { SendBroadcast(); }, broadcast_period_ms_,
-      "GrpcBasedResourceBroadcaster.deadline_timer.pull_resource_report");
-}
-
-void GrpcBasedResourceBroadcaster::Stop() {
-  if (broadcast_thread_ != nullptr) {
-    // TODO (Alex): There's technically a race condition here if we start and stop the
-    // thread in rapid succession.
-    broadcast_service_.stop();
-    if (broadcast_thread_->joinable()) {
-      broadcast_thread_->join();
-    }
   }
 }
 
@@ -102,10 +71,7 @@ std::string GrpcBasedResourceBroadcaster::DebugString() {
   return absl::StrCat("GrpcBasedResourceBroadcaster:\n- Tracked nodes: ", node_num);
 }
 
-void GrpcBasedResourceBroadcaster::SendBroadcast() {
-  rpc::ResourceUsageBroadcastData batch;
-  get_resource_usage_batch_for_broadcast_(batch);
-
+void GrpcBasedResourceBroadcaster::SendBroadcast(rpc::ResourceUsageBroadcastData batch) {
   if (batch.batch_size() == 0) {
     return;
   }

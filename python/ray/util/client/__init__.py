@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-12-07"
+CURRENT_PROTOCOL_VERSION = "2022-03-16"
 
 
 class _ClientContext:
@@ -167,7 +167,7 @@ class _ClientContext:
             return lambda: False
         else:
             raise Exception(
-                "Ray Client is not connected. " "Please connect by calling `ray.init`."
+                "Ray Client is not connected. Please connect by calling `ray.init`."
             )
 
     def is_connected(self) -> bool:

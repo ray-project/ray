@@ -111,15 +111,27 @@ def test_replica_config_validation():
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"object_store_memory": -1})
     with pytest.raises(TypeError):
-        ReplicaConfig(Class, ray_actor_options={"resources": None})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"name": None})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"lifetime": None})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"max_restarts": None})
-    with pytest.raises(ValueError):
-        ReplicaConfig(Class, ray_actor_options={"placement_group": None})
+        ReplicaConfig(Class, ray_actor_options={"resources": []})
+
+    disallowed_ray_actor_options = {
+        "args",
+        "kwargs",
+        "max_concurrency",
+        "max_restarts",
+        "max_task_retries",
+        "name",
+        "namespace",
+        "lifetime",
+        "placement_group",
+        "placement_group_bundle_index",
+        "placement_group_capture_child_tasks",
+        "max_pending_calls",
+        "scheduling_strategy",
+    }
+
+    for option in disallowed_ray_actor_options:
+        with pytest.raises(ValueError):
+            ReplicaConfig(Class, ray_actor_options={option: None})
 
 
 def test_http_options():

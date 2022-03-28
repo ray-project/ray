@@ -26,6 +26,21 @@ RayConfig &RayConfig::instance() {
   return config;
 }
 
+void RayConfig::initialize(const std::string &config_list) {
+#define RAY_CONFIG(type, name, default_value) \
+  name##_ = ReadEnv<type>("RAY_" #name, #type, default_value);
+
+#include "ray/common/ray_config_def.h"
+#undef RAY_CONFIG
+
+  if (config_list.empty()) {
+    return;
+  }
+
+  try {
+    // Parse the configuration list.
+    json config_map = json::parse(config_list);
+
 /// -----------Include ray_config_def.h to set config items.-------------------
 /// A helper macro that helps to set a value to a config item.
 #define RAY_CONFIG(type, name, default_value) \
@@ -34,13 +49,6 @@ RayConfig &RayConfig::instance() {
     continue;                                 \
   }
 
-void RayConfig::initialize(const std::string &config_list) {
-  if (config_list.empty()) {
-    return;
-  }
-  try {
-    // Parse the configuration list.
-    json config_map = json::parse(config_list);
     for (const auto &pair : config_map.items()) {
       // We use a big chain of if else statements because C++ doesn't allow
       // switch statements on strings.
@@ -49,6 +57,10 @@ void RayConfig::initialize(const std::string &config_list) {
       // because it contains Ray internal settings.
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.key();
     }
+
+/// ---------------------------------------------------------------------
+#undef RAY_CONFIG
+
     if (RAY_LOG_ENABLED(DEBUG)) {
       std::ostringstream oss;
       oss << "RayConfig is initialized with: ";
@@ -62,5 +74,3 @@ void RayConfig::initialize(const std::string &config_list) {
                    << " The config string is: " << config_list;
   }
 }
-/// ---------------------------------------------------------------------
-#undef RAY_CONFIG

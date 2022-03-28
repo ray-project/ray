@@ -5,7 +5,6 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
-      - file: ray-overview/learn-more
       - file: ray-overview/ray-libraries
 
   - caption: Ray ML
@@ -14,9 +13,11 @@ parts:
         title: Ray Data
         sections:
           - file: data/getting-started
-          - file: data/user-guide
           - file: data/key-concepts
+          - file: data/user-guide
           - file: data/examples/big_data_ingestion
+          - file: data/package-ref
+          - file: data/integrations
 
       - file: train/train
         title: Ray Train
@@ -27,30 +28,43 @@ parts:
           - file: train/migration-guide
           - file: raysgd/raysgd
             title: "RaySGD v1: Distributed Training Wrappers"
+          - file: train/api
+
       - file: tune/index
         title: Ray Tune
         sections:
+          - file: tune/getting-started
           - file: tune/key-concepts
-          - file: tune/user-guide
           - file: tune/tutorials/overview
             sections:
-              - file: tune/tutorials/tune-tutorial.rst
-              - file: tune/tutorials/tune-advanced-tutorial.rst
-              - file: tune/tutorials/tune-distributed.rst
-              - file: tune/tutorials/tune-lifecycle.rst
-              - file: tune/tutorials/tune-mlflow.rst
-              - file: tune/tutorials/tune-pytorch-cifar.rst
-              - file: tune/tutorials/tune-pytorch-lightning.rst
-              - file: tune/tutorials/tune-serve-integration-mnist.rst
-              - file: tune/tutorials/tune-sklearn.rst
-              - file: tune/tutorials/tune-xgboost.rst
-              - file: tune/tutorials/tune-wandb.rst
+              - file: tune/tutorials/tune-lifecycle
+                title: "How Tune Works"
+              - file: tune/tutorials/tune-stopping
+                title: "How to Stop and Resume"
+              - file: tune/tutorials/tune-metrics
+                title: "Using Callbacks and Metrics"
+              - file: tune/tutorials/tune-distributed
+                title: "Distributed Tuning"
+              - file: tune/tutorials/tune-output
+                title: "Logging Tune Runs"
+              - file: tune/tutorials/tune-resources
+                title: "Managing Resources"
+              - file: tune/tutorials/tune-checkpoints
+                title: "Working with Checkpoints"
+              - file: tune/tutorials/tune-search-spaces
+                title: "Using Search Spaces"
+              - file: tune/tutorials/tune-advanced-tutorial
+                title: "Understanding PBT"
+              - file: tune/tutorials/tune-scalability
+                title: "Scalability Benchmarks"
           - file: tune/examples/index
-          - file: tune/contrib
+          - file: tune/faq
+          - file: tune/api_docs/overview.rst
+
       - file: serve/index
         title: Ray Serve
         sections:
-          - file: serve/end_to_end_tutorial.rst
+          - file: serve/end_to_end_tutorial
           - file: serve/core-apis
           - file: serve/http-servehandle
           - file: serve/deployment
@@ -60,20 +74,25 @@ parts:
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq
+          - file: serve/package-ref
+
       - file: rllib/index
         title: Ray RLlib
         sections:
-          - file: rllib/rllib-toc
           - file: rllib/core-concepts
           - file: rllib/rllib-training
           - file: rllib/rllib-env
-          - file: rllib/rllib-models
           - file: rllib/rllib-algorithms
-          - file: rllib/rllib-sample-collection
-          - file: rllib/rllib-offline
-          - file: rllib/rllib-concepts
+          - file: rllib/user-guides
+            sections:
+              - file: rllib/rllib-models
+              - file: rllib/rllib-concepts
+              - file: rllib/rllib-sample-collection
+              - file: rllib/rllib-offline
+              - file: rllib/rllib-dev
           - file: rllib/rllib-examples
-          - file: rllib/rllib-dev
+          - file: rllib/package_ref/index
+
       - file: workflows/concepts
         title: Ray Workflows
         sections:
@@ -84,6 +103,7 @@ parts:
           - file: workflows/events
           - file: workflows/comparison
           - file: workflows/advanced
+          - file: workflows/package-ref
       - file: ray-more-libs/index
         title: More Ray ML Libraries
 
@@ -91,10 +111,20 @@ parts:
     chapters:
       - file: ray-core/walkthrough
         title: Getting Started
-      - file: ray-core/using-ray
-        title: "User Guide"
+      - file: ray-core/key-concepts
+        title: "Key Concepts"
+      - file: ray-core/user-guide
+        title: "User Guides"
       - file: ray-core/examples/overview
-        title: "Tutorials and Examples"
+        title: "Examples"
+        sections:
+          - file: ray-core/examples/plot_example-a3c
+          - file: ray-core/examples/plot_example-lm
+          - file: ray-core/examples/plot_hyperparameter
+          - file: ray-core/examples/plot_lbfgs
+          - file: ray-core/examples/plot_parameter_server
+          - file: ray-core/examples/plot_pong_example
+      - file: ray-core/package-ref
 
   - caption: Ray Clusters
     chapters:
@@ -102,21 +132,22 @@ parts:
       - file: cluster/user-guide
       - file: cluster/cloud
       - file: cluster/deploy
+      - file: cluster/api
 
   - caption: References
     chapters:
       - file: ray-references/api
-      - file: ray-references/faq
 
   - caption: Developer Guides
     chapters:
       - file: ray-contribute/getting-involved
         sections:
           - file: ray-contribute/development
+          - file: ray-contribute/docs
           - file: ray-contribute/fake-autoscaler
+          - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-observability/index
-      - file: ray-design-patterns/index
       - file: ray-contribute/whitepaper
 
 # TODO: Add examples section

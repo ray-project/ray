@@ -1,4 +1,6 @@
 import base64
+import asyncio
+
 from ray import cloudpickle
 from collections import deque
 from enum import Enum, unique
@@ -21,6 +23,15 @@ WorkflowOutputType = ObjectRef
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
+
+
+def asyncio_run(coro):
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 
 def get_module(f):
@@ -92,12 +103,19 @@ class WorkflowStaticRef:
     step_id: StepID
     # The ObjectRef of the output.
     ref: ObjectRef
+    # This tag indicates we should resolve the workflow like an ObjectRef, when
+    # included in the arguments of another workflow.
+    _resolve_like_object_ref_in_args: bool = False
 
     def __hash__(self):
         return hash(self.step_id + self.ref.hex())
 
     def __reduce__(self):
-        return WorkflowStaticRef, (self.step_id, _RefBypass(self.ref))
+        return WorkflowStaticRef, (
+            self.step_id,
+            _RefBypass(self.ref),
+            self._resolve_like_object_ref_in_args,
+        )
 
 
 @PublicAPI(stability="beta")
@@ -125,6 +143,19 @@ class StepType(str, Enum):
     ACTOR_METHOD = "ACTOR_METHOD"
     READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
     WAIT = "WAIT"
+
+
+CheckpointModeType = bool
+
+
+@unique
+class CheckpointMode(Enum):
+    """All checkpoint modes."""
+
+    # Keep the checkpoint of the workflow step.
+    SYNC = True
+    # Skip the checkpoint of the workflow step.
+    SKIP = False
 
 
 @dataclass
@@ -174,6 +205,8 @@ class WorkflowStepRuntimeOptions:
     max_retries: int
     # Run the workflow step inplace.
     allow_inplace: bool
+    # Checkpoint mode.
+    checkpoint: CheckpointModeType
     # ray_remote options
     ray_options: Dict[str, Any]
 
@@ -185,16 +218,17 @@ class WorkflowStepRuntimeOptions:
         catch_exceptions=None,
         max_retries=None,
         allow_inplace=False,
+        checkpoint=True,
         ray_options=None,
     ):
         if max_retries is None:
             max_retries = 3
-        elif not isinstance(max_retries, int) or max_retries < 1:
-            raise ValueError("max_retries should be greater or equal to 1.")
+        elif not isinstance(max_retries, int) or max_retries < -1:
+            raise ValueError("'max_retries' only accepts 0, -1 or a positive integer.")
         if catch_exceptions is None:
             catch_exceptions = False
-        if max_retries is None:
-            max_retries = 3
+        if not isinstance(checkpoint, bool) and checkpoint is not None:
+            raise ValueError("'checkpoint' should be None or a boolean.")
         if ray_options is None:
             ray_options = {}
         elif not isinstance(ray_options, dict):
@@ -204,6 +238,7 @@ class WorkflowStepRuntimeOptions:
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
             allow_inplace=allow_inplace,
+            checkpoint=checkpoint,
             ray_options=ray_options,
         )
 
@@ -213,6 +248,7 @@ class WorkflowStepRuntimeOptions:
             "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
             "allow_inplace": self.allow_inplace,
+            "checkpoint": self.checkpoint,
             "ray_options": self.ray_options,
         }
 
@@ -223,6 +259,7 @@ class WorkflowStepRuntimeOptions:
             max_retries=value["max_retries"],
             catch_exceptions=value["catch_exceptions"],
             allow_inplace=value["allow_inplace"],
+            checkpoint=value["checkpoint"],
             ray_options=value["ray_options"],
         )
 
@@ -308,7 +345,10 @@ class Workflow(Generic[T]):
     def __init__(
         self, workflow_data: WorkflowData, prepare_inputs: Optional[Callable] = None
     ):
-        if workflow_data.step_options.ray_options.get("num_returns", 1) > 1:
+        num_returns = workflow_data.step_options.ray_options.get("num_returns", 1)
+        if num_returns is None:  # ray could use `None` as default value
+            num_returns = 1
+        if num_returns > 1:
             raise ValueError("Workflow steps can only have one return.")
         self._data: WorkflowData = workflow_data
         self._prepare_inputs: Callable = prepare_inputs
@@ -427,23 +467,23 @@ class Workflow(Generic[T]):
         If the workflow with the given id already exists, it will be resumed.
 
         Examples:
-            >>> @workflow.step
-            ... def book_flight(origin: str, dest: str) -> Flight:
-            ...    return Flight(...)
+            >>> from ray import workflow
+            >>> Flight, Reservation, Trip = ... # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+            ...    return Flight(...) # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
+            ...    return Reservation(...) # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
+            ...    return Trip(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def book_hotel(location: str) -> Reservation:
-            ...    return Reservation(...)
-
-            >>> @workflow.step
-            ... def finalize_trip(bookings: List[Any]) -> Trip:
-            ...    return Trip(...)
-
-            >>> flight1 = book_flight.step("OAK", "SAN")
-            >>> flight2 = book_flight.step("SAN", "OAK")
-            >>> hotel = book_hotel.step("SAN")
-            >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> result = trip.run()
+            >>> flight1 = book_flight.step("OAK", "SAN") # doctest: +SKIP
+            >>> flight2 = book_flight.step("SAN", "OAK") # doctest: +SKIP
+            >>> hotel = book_hotel.step("SAN") # doctest: +SKIP
+            >>> trip = finalize_trip.step([flight1, flight2, hotel]) # doctest: +SKIP
+            >>> result = trip.run() # doctest: +SKIP
 
         Args:
             workflow_id: A unique identifier that can be used to resume the
@@ -467,23 +507,25 @@ class Workflow(Generic[T]):
         If the workflow with the given id already exists, it will be resumed.
 
         Examples:
-            >>> @workflow.step
-            ... def book_flight(origin: str, dest: str) -> Flight:
-            ...    return Flight(...)
+            >>> from ray import workflow
+            >>> Flight, Reservation, Trip = ... # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+            ...    return Flight(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def book_hotel(location: str) -> Reservation:
-            ...    return Reservation(...)
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
+            ...    return Reservation(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def finalize_trip(bookings: List[Any]) -> Trip:
-            ...    return Trip(...)
+            >>> @workflow.step # doctest: +SKIP
+            ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
+            ...    return Trip(...) # doctest: +SKIP
 
-            >>> flight1 = book_flight.step("OAK", "SAN")
-            >>> flight2 = book_flight.step("SAN", "OAK")
-            >>> hotel = book_hotel.step("SAN")
-            >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> result = ray.get(trip.run_async())
+            >>> flight1 = book_flight.step("OAK", "SAN") # doctest: +SKIP
+            >>> flight2 = book_flight.step("SAN", "OAK") # doctest: +SKIP
+            >>> hotel = book_hotel.step("SAN") # doctest: +SKIP
+            >>> trip = finalize_trip.step([flight1, flight2, hotel]) # doctest: +SKIP
+            >>> result = ray.get(trip.run_async()) # doctest: +SKIP
 
         Args:
             workflow_id: A unique identifier that can be used to resume the
@@ -505,9 +547,7 @@ class Workflow(Generic[T]):
 @PublicAPI(stability="beta")
 class WorkflowNotFoundError(Exception):
     def __init__(self, workflow_id: str):
-        self.message = (
-            f"Workflow[id={workflow_id}] was referenced but " "doesn't exist."
-        )
+        self.message = f"Workflow[id={workflow_id}] was referenced but doesn't exist."
         super().__init__(self.message)
 
 

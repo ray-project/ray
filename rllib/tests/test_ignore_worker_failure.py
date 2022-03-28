@@ -26,6 +26,7 @@ class FaultInjectEnv(gym.Env):
 
     def __init__(self, config):
         self.env = gym.make("CartPole-v0")
+        self._skip_env_checking = True
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
         self.config = config

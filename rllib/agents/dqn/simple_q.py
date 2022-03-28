@@ -31,7 +31,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Exploration Settings ===
@@ -110,7 +110,7 @@ DEFAULT_CONFIG = with_common_config({
     "min_time_s_per_reporting": 1,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class SimpleQTrainer(Trainer):
@@ -142,7 +142,7 @@ class SimpleQTrainer(Trainer):
         if config.get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
                 raise ValueError(
-                    "Prioritized replay is not supported when " "replay_mode=lockstep."
+                    "Prioritized replay is not supported when replay_mode=lockstep."
                 )
             elif config.get("replay_sequence_length", 0) > 1:
                 raise ValueError(

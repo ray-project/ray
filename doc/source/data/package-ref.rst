@@ -49,6 +49,12 @@ GroupedDataset API
 .. autoclass:: ray.data.grouped_dataset.GroupedDataset
     :members:
 
+RandomAccessDataset API
+-----------------------
+
+.. autoclass:: ray.data.random_access_dataset.RandomAccessDataset
+    :members:
+
 Tensor Column Extension API
 ---------------------------
 
@@ -71,6 +77,12 @@ Custom Datasource API
     :members:
 
 .. autoclass:: ray.data.ReadTask
+    :members:
+
+Table Row API
+---------------------
+
+.. autoclass:: ray.data.row.TableRow
     :members:
 
 Utility

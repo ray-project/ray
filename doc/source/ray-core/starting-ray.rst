@@ -95,9 +95,9 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
         ... // ray program
         ray::Shutdown()
 
-.. tabbed:: Python
+To check if Ray is initialized, use the ``is_initialized`` API.
 
-    To check if Ray is initialized, you can call ``ray.is_initialized()``:
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -109,8 +109,6 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
         assert ray.is_initialized() == False
 
 .. tabbed:: Java
-
-    To check if Ray is initialized, you can call ``Ray.isInitialized()``:
 
     .. code-block:: java
 
@@ -127,8 +125,6 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
         }
 
 .. tabbed:: C++
-
-    To check if Ray is initialized, you can call ``ray::IsInitialized()``:
 
     .. code-block:: c++
 
@@ -168,6 +164,7 @@ Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This 
 You can connect to this Ray runtime by starting a driver process on the same node as where you ran ``ray start``:
 
 .. tabbed:: Python
+
   .. code-block:: python
 
     # This must
@@ -222,7 +219,7 @@ The ``ray up`` command uses the Ray cluster launcher to start a cluster on the c
 
 Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about :ref:`running programs on a Ray cluster <using-ray-on-a-cluster>`.
 
-To connect to the existing cluster, similar to the method outlined in :ref:`start-ray-cli`, you must call ``ray.init`` and specify the address of the Ray cluster when initializing Ray in your code. This allows Ray to connect to the cluster.
+To connect to the existing cluster, similar to the method outlined in :ref:`start-ray-cli`, you must call ``ray.init`` and specify the address of the Ray cluster when initializing Ray in your code. This allows your script to connect to the existing Ray runtime on the cluster.
 
 .. code-block:: python
 

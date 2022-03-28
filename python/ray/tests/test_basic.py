@@ -58,6 +58,40 @@ def test_release_resources_race(shutdown_only):
     assert len(pids) <= 2, pids
 
 
+# https://github.com/ray-project/ray/issues/22504
+def test_worker_isolation_by_resources(shutdown_only):
+    ray.init(num_cpus=1, num_gpus=1)
+
+    @ray.remote(num_gpus=1)
+    def gpu():
+        return os.getpid()
+
+    @ray.remote
+    def cpu():
+        return os.getpid()
+
+    pid1 = ray.get(cpu.remote())
+    pid2 = ray.get(gpu.remote())
+    assert pid1 != pid2, (pid1, pid2)
+
+
+# https://github.com/ray-project/ray/issues/10960
+def test_max_calls_releases_resources(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1)
+
+    @ray.remote(num_cpus=0)
+    def g():
+        return 0
+
+    @ray.remote(num_cpus=1, num_gpus=1, max_calls=1, max_retries=0)
+    def f():
+        return [g.remote()]
+
+    for i in range(10):
+        print(i)
+        ray.get(f.remote())  # This will hang if GPU resources aren't released.
+
+
 # https://github.com/ray-project/ray/issues/7263
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
@@ -149,7 +183,7 @@ def test_invalid_arguments(shutdown_only):
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
             ValueError,
-            match="The keyword 'num_returns' only accepts 0 or a" " positive integer",
+            match="The keyword 'num_returns' only accepts 0 or a positive integer",
         ):
 
             @ray.remote(num_returns=opt)
@@ -170,7 +204,7 @@ def test_invalid_arguments(shutdown_only):
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
             ValueError,
-            match="The keyword 'max_calls' only accepts 0 or a positive" " integer",
+            match="The keyword 'max_calls' only accepts 0 or a positive integer",
         ):
 
             @ray.remote(max_calls=opt)

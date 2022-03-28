@@ -404,6 +404,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
                     "use_lstm": test_lstm,
                 },
                 "framework": "tf",
+                "disable_env_checking": True,
             },
         )
         # Skip first passes as they came from the TorchPolicy loss
@@ -436,6 +437,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
                     "custom_model": "composite2",
                 },
                 "framework": "tf",
+                "disable_env_checking": True,
             },
         )
         # Skip first passes as they came from the TorchPolicy loss
@@ -518,6 +520,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
                     }[aid],
                 },
                 "framework": "tf",
+                "disable_env_checking": True,
             },
         )
         # Skip first passes as they came from the TorchPolicy loss

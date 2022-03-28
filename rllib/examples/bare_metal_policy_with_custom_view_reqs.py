@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs import (
     BareMetalPolicyWithCustomViewReqs,
 )
@@ -19,13 +19,19 @@ def get_cli_args():
     )
     parser.add_argument("--num-cpus", type=int, default=3)
     parser.add_argument(
-        "--stop-iters", type=int, default=1, help="Number of iterations to train."
+        "--stop-iters", type=int, default=200, help="Number of iterations to train."
     )
     parser.add_argument(
         "--stop-timesteps",
         type=int,
         default=100000,
         help="Number of timesteps to train.",
+    )
+    parser.add_argument(
+        "--stop-reward",
+        type=float,
+        default=80.0,
+        help="Reward at which we stop training.",
     )
     parser.add_argument(
         "--local-mode",
@@ -44,9 +50,9 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # Create q custom Trainer class using our custom Policy.
-    BareMetalPolicyTrainer = build_trainer(
-        name="MyPolicy", default_policy=BareMetalPolicyWithCustomViewReqs
-    )
+    class BareMetalPolicyTrainer(Trainer):
+        def get_default_policy_class(self, config):
+            return BareMetalPolicyWithCustomViewReqs
 
     config = {
         "env": "CartPole-v0",
@@ -68,6 +74,7 @@ if __name__ == "__main__":
     stop = {
         "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
     }
 
     # Train the Trainer with our policy.

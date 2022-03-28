@@ -35,9 +35,10 @@ class BaseEnv:
     rllib.ExternalEnv => rllib.BaseEnv
 
     Examples:
-        >>> env = MyBaseEnv()
-        >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
-        >>> print(obs)
+        >>> MyBaseEnv = ... # doctest: +SKIP
+        >>> env = MyBaseEnv() # doctest: +SKIP
+        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
+        >>> print(obs) # doctest: +SKIP
         {
             "env_0": {
                 "car_0": [2.4, 1.6],
@@ -52,21 +53,21 @@ class BaseEnv:
                 "car_3": [1.2, 0.1],
             },
         }
-        >>> env.send_actions({
-        ...   "env_0": {
-        ...     "car_0": 0,
-        ...     "car_1": 1,
-        ...   }, ...
-        ... })
-        >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
-        >>> print(obs)
+        >>> env.send_actions({ # doctest: +SKIP
+        ...   "env_0": { # doctest: +SKIP
+        ...     "car_0": 0, # doctest: +SKIP
+        ...     "car_1": 1, # doctest: +SKIP
+        ...   }, ... # doctest: +SKIP
+        ... }) # doctest: +SKIP
+        >>> obs, rewards, dones, infos, off_policy_actions = env.poll() # doctest: +SKIP
+        >>> print(obs) # doctest: +SKIP
         {
             "env_0": {
                 "car_0": [4.1, 1.7],
                 "car_1": [3.2, -4.2],
             }, ...
         }
-        >>> print(dones)
+        >>> print(dones) # doctest: +SKIP
         {
             "env_0": {
                 "__all__": False,
@@ -204,7 +205,7 @@ class BaseEnv:
         Returns:
             All agent ids for each the environment.
         """
-        return {_DUMMY_AGENT_ID}
+        return {}
 
     @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
@@ -313,7 +314,7 @@ class BaseEnv:
             True if the observations are contained within their respective
                 spaces. False otherwise.
         """
-        self._space_contains(self.observation_space, x)
+        return self._space_contains(self.observation_space, x)
 
     @PublicAPI
     def action_space_contains(self, x: MultiEnvDict) -> bool:
@@ -340,8 +341,15 @@ class BaseEnv:
         """
         agents = set(self.get_agent_ids())
         for multi_agent_dict in x.values():
-            for agent_id, obs in multi_agent_dict:
-                if (agent_id not in agents) or (not space[agent_id].contains(obs)):
+            for agent_id, obs in multi_agent_dict.items():
+                # this is for the case where we have a single agent
+                # and we're checking a Vector env thats been converted to
+                # a BaseEnv
+                if agent_id == _DUMMY_AGENT_ID:
+                    if not space.contains(obs):
+                        return False
+                # for the MultiAgent env case
+                elif (agent_id not in agents) or (not space[agent_id].contains(obs)):
                     return False
 
         return True

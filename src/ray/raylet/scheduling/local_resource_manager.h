@@ -40,73 +40,59 @@ namespace ray {
 class LocalResourceManager {
  public:
   LocalResourceManager(
-      int64_t local_node_id, StringIdMap &resource_name_to_id,
+      scheduling::NodeID local_node_id,
       const NodeResources &node_resources,
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const NodeResources &)> resource_change_subscriber);
 
-  int64_t GetNodeId() const { return local_node_id_; }
+  scheduling::NodeID GetNodeId() const { return local_node_id_; }
 
   /// Add a local resource that is available.
   ///
-  /// \param resource_name: Resource which we want to update.
+  /// \param resource_id: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void AddLocalResourceInstances(const std::string &resource_name,
+  void AddLocalResourceInstances(scheduling::ResourceID resource_id,
                                  const std::vector<FixedPoint> &instances);
 
   /// Delete a given resource from the local node.
   ///
-  /// \param resource_name: Resource we want to delete
-  void DeleteLocalResource(const std::string &resource_name);
+  /// \param resource_id: Resource we want to delete
+  void DeleteLocalResource(scheduling::ResourceID resource_id);
 
   /// Check whether the available resources are empty.
   ///
-  /// \param resource_name: Resource which we want to check.
-  bool IsAvailableResourceEmpty(const std::string &resource_name);
+  /// \param resource_id: Resource which we want to check.
+  bool IsAvailableResourceEmpty(scheduling::ResourceID resource_id) const;
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() const { return local_resources_; }
 
-  /// Increase the available CPU instances of this node.
+  /// Increase the available resource instances of this node.
   ///
-  /// \param cpu_instances CPU instances to be added to available cpus.
+  /// \param resource_id id of the resource.
+  /// \param instances instances to be added to available resources.
   ///
-  /// \return Overflow capacities of CPU instances after adding CPU
-  /// capacities in cpu_instances.
-  std::vector<double> AddCPUResourceInstances(std::vector<double> &cpu_instances);
+  /// \return Overflow capacities of resource instances after adding the resources.
+  std::vector<double> AddResourceInstances(scheduling::ResourceID resource_id,
+                                           const std::vector<double> &cpu_instances);
 
-  /// Decrease the available CPU instances of this node.
+  /// Decrease the available resource instances of this node.
   ///
-  /// \param cpu_instances CPU instances to be removed from available cpus.
+  /// \param resource_id id of the resource.
+  /// \param instances instances to be removed from available resources.
   /// \param allow_going_negative Allow the values to go negative (disable underflow).
   ///
-  /// \return Underflow capacities of CPU instances after subtracting CPU
-  /// capacities in cpu_instances.
-  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances,
-                                                   bool allow_going_negative = false);
-
-  /// Increase the available GPU instances of this node.
-  ///
-  /// \param gpu_instances GPU instances to be added to available gpus.
-  ///
-  /// \return Overflow capacities of GPU instances after adding GPU
-  /// capacities in gpu_instances.
-  std::vector<double> AddGPUResourceInstances(std::vector<double> &gpu_instances);
-
-  /// Decrease the available GPU instances of this node.
-  ///
-  /// \param gpu_instances GPU instances to be removed from available gpus.
-  ///
-  /// \return Underflow capacities of GPU instances after subtracting GPU
-  /// capacities in gpu_instances.
-  std::vector<double> SubtractGPUResourceInstances(std::vector<double> &gpu_instances);
+  /// \return Underflow capacities of reousrce instances after subtracting the resources.
+  std::vector<double> SubtractResourceInstances(scheduling::ResourceID resource_id,
+                                                const std::vector<double> &instances,
+                                                bool allow_going_negative = false);
 
   /// Subtract the resources required by a given resource request (resource_request) from
   /// the local node. This function also updates the local node resources at the instance
   /// granularity.
   ///
-  /// \param resource_request Task for which we allocate resources.
+  /// \param task_resources Task for which we allocate resources.
   /// \param task_allocation Resources allocated to the task at instance granularity.
   /// This is a return parameter.
   ///
@@ -164,7 +150,7 @@ class LocalResourceManager {
   /// \param resource_name: the specific resource name.
   ///
   /// \return true, if exist. otherwise, false.
-  bool ResourcesExist(const std::string &resource_name);
+  bool ResourcesExist(scheduling::ResourceID resource_id) const;
 
  private:
   /// Create instances for each resource associated with the local node, given
@@ -182,7 +168,8 @@ class LocalResourceManager {
   /// \param unit_instances: If true, we split the resource in unit-size instances.
   /// If false, we create a single instance of capacity "total".
   /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(FixedPoint total, bool unit_instances,
+  void InitResourceInstances(FixedPoint total,
+                             bool unit_instances,
                              ResourceInstanceCapacities *instance_list);
 
   /// Init the information about which resources are unit_instance.
@@ -212,7 +199,8 @@ class LocalResourceManager {
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+      std::vector<FixedPoint> available,
+      ResourceInstanceCapacities *resource_instances,
       bool allow_going_negative = false) const;
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
@@ -246,7 +234,8 @@ class LocalResourceManager {
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
 
-  bool AllocateResourceInstances(FixedPoint demand, std::vector<FixedPoint> &available,
+  bool AllocateResourceInstances(FixedPoint demand,
+                                 std::vector<FixedPoint> &available,
                                  std::vector<FixedPoint> *allocation) const;
 
   /// Allocate local resources to satisfy a given request (resource_request).
@@ -267,11 +256,10 @@ class LocalResourceManager {
   /// \param task_allocation: Task's resources to be freed.
   void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  void UpdateAvailableObjectStoreMemResource();
+
   /// Identifier of local node.
-  int64_t local_node_id_;
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap &resource_name_to_id_;
+  scheduling::NodeID local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
@@ -299,6 +287,6 @@ class LocalResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 };
 
-int GetPredefinedResourceIndex(const std::string &resource_name);
+int GetPredefinedResourceIndex(scheduling::ResourceID resource_id);
 
 }  // end namespace ray

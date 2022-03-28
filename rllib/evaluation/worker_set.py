@@ -1,6 +1,7 @@
 import gym
 import logging
 import importlib.util
+import os
 from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
@@ -45,9 +46,9 @@ T = TypeVar("T")
 
 @DeveloperAPI
 class WorkerSet:
-    """Set of RolloutWorkers with n @ray.remote workers and one local worker.
+    """Set of RolloutWorkers with n @ray.remote workers and zero or one local worker.
 
-    Where n may be 0.
+    Where: n >= 0.
     """
 
     def __init__(
@@ -457,7 +458,11 @@ class WorkerSet:
             return tf1.Session(config=tf1.ConfigProto(**config["tf_session_args"]))
 
         def valid_module(class_path):
-            if isinstance(class_path, str) and "." in class_path:
+            if (
+                isinstance(class_path, str)
+                and not os.path.isfile(class_path)
+                and "." in class_path
+            ):
                 module_path, class_name = class_path.rsplit(".", 1)
                 try:
                     spec = importlib.util.find_spec(module_path)
@@ -470,31 +475,40 @@ class WorkerSet:
                     )
             return False
 
+        # A callable returning an InputReader object to use.
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
+        # Use RLlib's Sampler classes (SyncSampler or AsynchSampler, depending
+        # on `config.sample_async` setting).
         elif config["input"] == "sampler":
             input_creator = lambda ioctx: ioctx.default_sampler_input()
+        # Ray Dataset input -> Use `config.input_config` to construct DatasetReader.
         elif config["input"] == "dataset":
             # Input dataset shards should have already been prepared.
             # We just need to take the proper shard here.
             input_creator = lambda ioctx: DatasetReader(
                 ioctx, self._ds_shards[worker_index]
             )
+        # Dict: Mix of different input methods with different ratios.
         elif isinstance(config["input"], dict):
             input_creator = lambda ioctx: ShuffledInput(
                 MixedInput(config["input"], ioctx), config["shuffle_buffer_size"]
             )
+        # A pre-registered input descriptor (str).
         elif isinstance(config["input"], str) and registry_contains_input(
             config["input"]
         ):
             input_creator = registry_get_input(config["input"])
+        # D4RL input.
         elif "d4rl" in config["input"]:
             env_name = config["input"].split(".")[-1]
             input_creator = lambda ioctx: D4RLReader(env_name, ioctx)
+        # Valid python module (class path) -> Create using `from_config`.
         elif valid_module(config["input"]):
             input_creator = lambda ioctx: ShuffledInput(
                 from_config(config["input"], ioctx=ioctx)
             )
+        # JSON file or list of JSON files -> Use JsonReader (shuffled).
         else:
             input_creator = lambda ioctx: ShuffledInput(
                 JsonReader(config["input"], ioctx), config["shuffle_buffer_size"]
@@ -591,6 +605,7 @@ class WorkerSet:
             fake_sampler=config["fake_sampler"],
             extra_python_environs=extra_python_environs,
             spaces=spaces,
+            disable_env_checking=config["disable_env_checking"],
         )
 
         return worker

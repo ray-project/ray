@@ -19,14 +19,14 @@ ClassyVision |classyvision|
 Classy Vision is a new end-to-end, PyTorch-based framework for large-scale training of state-of-the-art image and video classification models. The library features a modular, flexible design that allows anyone to train machine learning models on top of PyTorch using very simple abstractions.
 
 
-[`Link to integration <https://classyvision.ai/tutorials/ray_aws>`__]
+[`Link to integration <https://github.com/facebookresearch/ClassyVision/blob/main/tutorials/ray_aws.ipynb>`__]
 
 Dask |dask|
 -----------
 
 Dask provides advanced parallelism for analytics, enabling performance at scale for the tools you love. Dask uses existing Python APIs and data structures to make it easy to switch between Numpy, Pandas, Scikit-learn to their Dask-powered equivalents.
 
-[`Link to integration <dask-on-ray.html>`__]
+[`Link to integration <../data/dask-on-ray.html>`__]
 
 Flambe |flambe|
 ---------------
@@ -81,7 +81,7 @@ MARS |mars|
 
 Mars is a tensor-based unified framework for large-scale data computation which scales Numpy, Pandas and Scikit-learn. Mars can scale in to a single machine, and scale out to a cluster with thousands of machines.
 
-[`Link to integration <mars-on-ray.html>`__]
+[`Link to integration <../data/mars-on-ray.html>`__]
 
 Modin |modin|
 -------------

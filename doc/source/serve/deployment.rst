@@ -33,7 +33,7 @@ If ``serve.start()`` is called again in a process in which there is already a ru
 Deploying on a Single Node
 ==========================
 
-While Ray Serve makes it easy to scale out on a multi-node Ray cluster, in some scenarios a single node may suite your needs.
+While Ray Serve makes it easy to scale out on a multi-node Ray cluster, in some scenarios a single node may suit your needs.
 There are two ways you can run Ray Serve on a single node, shown below.
 In general, **Option 2 is recommended for most users** because it allows you to fully make use of Serve's ability to dynamically update running deployments.
 
@@ -211,6 +211,45 @@ Please refer to the Kubernetes documentation for more information.
 .. _`Ingress`: https://kubernetes.io/docs/concepts/services-networking/ingress/
 .. _`NodePort`: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 
+
+
+Health Checking
+===============
+By default, each actor making up a Serve deployment is health checked and restarted on failure.
+
+
+.. note::
+
+   User-defined health checks are experimental and may be subject to change before the interface is stabilized. If you have any feedback or run into any issues or unexpected behaviors, please file an issue on GitHub.
+
+You can customize this behavior to perform an application-level health check or to adjust the frequency/timeout.
+To define a custom healthcheck, define a ``check_health`` method on your deployment class.
+This method should take no arguments and return no result, raising an exception if the replica should be considered unhealthy.
+You can also customize how frequently the health check is run and the timeout when a replica will be deemed unhealthy if it hasn't responded in the deployment options.
+
+  .. code-block:: python
+
+    @serve.deployment(_health_check_period_s=10, _health_check_timeout_s=30)
+    class MyDeployment:
+        def __init__(self, db_addr: str):
+            self._my_db_connection = connect_to_db(db_addr)
+
+        def __call__(self, request):
+            return self._do_something_cool()
+
+        # Will be called by Serve to check the health of the replica.
+        def check_health(self):
+            if not self._my_db_connection.is_connected():
+                # The specific type of exception is not important.
+                raise RuntimeError("uh-oh, DB connection is broken.")
+
+.. tip::
+
+    You can use the Serve CLI command ``serve status`` to get status info
+    about your live deployments. The CLI was included with Serve when you did
+    ``pip install "ray[serve]"``. If you're checking your deployments on a
+    remote Ray cluster, make sure to include the Ray cluster's dashboard address
+    in the command: ``serve status --address [dashboard_address]``.
 
 Failure Recovery
 ================

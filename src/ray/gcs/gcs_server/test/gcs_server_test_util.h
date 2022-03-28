@@ -61,8 +61,10 @@ struct GcsServerMocker {
   class MockRayletClient : public RayletClientInterface {
    public:
     /// WorkerLeaseInterface
-    ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                             bool disconnect_worker) override {
+    ray::Status ReturnWorker(int worker_port,
+                             const WorkerID &worker_id,
+                             bool disconnect_worker,
+                             bool worker_exiting) override {
       if (disconnect_worker) {
         num_workers_disconnected++;
       } else {
@@ -77,17 +79,11 @@ struct GcsServerMocker {
 
     /// WorkerLeaseInterface
     void RequestWorkerLease(
-        const ray::TaskSpecification &resource_spec, bool grant_or_reject,
+        const rpc::TaskSpec &spec,
+        bool grant_or_reject,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size, const bool is_selected_based_on_locality) override {
-      num_workers_requested += 1;
-      callbacks.push_back(callback);
-    }
-
-    void RequestWorkerLease(
-        const rpc::TaskSpec &spec, bool grant_or_reject,
-        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-        const int64_t backlog_size, const bool is_selected_based_on_locality) override {
+        const int64_t backlog_size,
+        const bool is_selected_based_on_locality) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
     }
@@ -113,9 +109,13 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to RequestWorkerLease.
-    bool GrantWorkerLease(const std::string &address, int port, const WorkerID &worker_id,
-                          const NodeID &raylet_id, const NodeID &retry_at_raylet_id,
-                          Status status = Status::OK(), bool rejected = false) {
+    bool GrantWorkerLease(const std::string &address,
+                          int port,
+                          const WorkerID &worker_id,
+                          const NodeID &raylet_id,
+                          const NodeID &retry_at_raylet_id,
+                          Status status = Status::OK(),
+                          bool rejected = false) {
       rpc::RequestWorkerLeaseReply reply;
       if (!retry_at_raylet_id.IsNil()) {
         reply.mutable_retry_at_raylet_address()->set_ip_address(address);
@@ -251,7 +251,8 @@ struct GcsServerMocker {
 
     /// PinObjectsInterface
     void PinObjectIDs(
-        const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+        const rpc::Address &caller_address,
+        const std::vector<ObjectID> &object_ids,
         const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
     /// DependencyWaiterInterface
@@ -282,7 +283,8 @@ struct GcsServerMocker {
 
     /// ShutdownRaylet
     void ShutdownRaylet(
-        const NodeID &node_id, bool graceful,
+        const NodeID &node_id,
+        bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 
     ~MockRayletClient() {}
@@ -373,7 +375,8 @@ struct GcsServerMocker {
     MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
-    Status Put(const ActorID &key, const rpc::ActorTableData &value,
+    Status Put(const ActorID &key,
+               const rpc::ActorTableData &value,
                const gcs::StatusCallback &callback) override {
       auto status = Status::OK();
       callback(status);
@@ -437,8 +440,8 @@ struct GcsServerMocker {
       return nullptr;
     }
 
-    const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
-      static std::unordered_map<NodeID, rpc::GcsNodeInfo> node_info_list;
+    const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
+      static absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_list;
       return node_info_list;
     }
 
@@ -457,8 +460,10 @@ struct GcsServerMocker {
     MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
         : GcsPubSub(redis_client) {}
 
-    Status Publish(std::string_view channel, const std::string &id,
-                   const std::string &data, const gcs::StatusCallback &done) override {
+    Status Publish(std::string_view channel,
+                   const std::string &id,
+                   const std::string &data,
+                   const gcs::StatusCallback &done) override {
       return Status::OK();
     }
   };

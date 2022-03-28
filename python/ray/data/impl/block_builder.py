@@ -1,10 +1,14 @@
 from typing import Generic
 
-from ray.data.block import Block, T
+from ray.data.block import Block, BlockAccessor, T
 
 
 class BlockBuilder(Generic[T]):
     """A builder class for blocks."""
+
+    @staticmethod
+    def for_block(block: Block) -> "BlockBuilder[T]":
+        return BlockAccessor.for_block(block).builder()
 
     def add(self, item: T) -> None:
         """Append a single row to the block being built."""

@@ -1,6 +1,10 @@
 import logging
 from pathlib import Path
+import os
+import shutil
 import sys
+import json
+import yaml
 import tempfile
 from typing import Optional
 
@@ -8,16 +12,17 @@ import pytest
 from unittest.mock import patch
 
 import ray
-from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
-from ray.dashboard.modules.job.sdk import (
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray.dashboard.modules.job.common import CURRENT_VERSION, JobInfo
+from ray.dashboard.modules.dashboard_sdk import (
     ClusterInfo,
-    JobSubmissionClient,
     parse_cluster_info,
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.ray_constants import DEFAULT_DASHBOARD_PORT
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (
+    chdir,
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
@@ -33,41 +38,118 @@ def headers():
 
 @pytest.fixture(scope="module")
 def job_sdk_client(headers):
-    with _ray_start(include_dashboard=True, num_cpus=1) as address_info:
-        address = address_info["webui_url"]
+    with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
+        address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
+# NOTE(architkulkarni): This test must be run first in order for the job
+# submission history of the shared Ray runtime to be empty.
+@pytest.mark.parametrize("use_sdk", [True, False])
+def test_list_jobs_empty(job_sdk_client: JobSubmissionClient, use_sdk: bool):
+    client = job_sdk_client
+
+    if use_sdk:
+        assert client.list_jobs() == dict()
+    else:
+        r = client._do_request(
+            "GET",
+            "/api/jobs/",
+        )
+
+        assert r.status_code == 200
+        assert json.loads(r.text) == dict()
+
+
+@pytest.mark.parametrize("use_sdk", [True, False])
+def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
+    client = job_sdk_client
+
+    runtime_env = {"env_vars": {"TEST": "123"}}
+    metadata = {"foo": "bar"}
+    entrypoint = "echo hello"
+    job_id = client.submit_job(
+        entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+    if use_sdk:
+        info: JobInfo = client.list_jobs()[job_id]
+    else:
+        r = client._do_request(
+            "GET",
+            "/api/jobs/",
+        )
+
+        assert r.status_code == 200
+        jobs_info_json = json.loads(r.text)
+        info_json = jobs_info_json[job_id]
+        info = JobInfo(**info_json)
+
+    assert info.entrypoint == entrypoint
+    assert info.status == JobStatus.SUCCEEDED
+    assert info.message is not None
+    assert info.end_time >= info.start_time
+    assert info.runtime_env == runtime_env
+    assert info.metadata == metadata
+
+
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    if status.status == JobStatus.FAILED:
+    if status == JobStatus.FAILED:
         logs = client.get_job_logs(job_id)
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
-    return status.status == JobStatus.SUCCEEDED
+    return status == JobStatus.SUCCEEDED
 
 
 def _check_job_failed(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status.status == JobStatus.FAILED
+    return status == JobStatus.FAILED
 
 
 def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status.status == JobStatus.STOPPED
+    return status == JobStatus.STOPPED
 
 
 @pytest.fixture(
-    scope="module", params=["no_working_dir", "local_working_dir", "s3_working_dir"]
+    scope="module",
+    params=[
+        "no_working_dir",
+        "local_working_dir",
+        "s3_working_dir",
+        "local_py_modules",
+        "working_dir_and_local_py_modules_whl",
+        "local_working_dir_zip",
+        "pip_txt",
+        "conda_yaml",
+        "local_py_modules",
+    ],
 )
-def working_dir_option(request):
+def runtime_env_option(request):
+    import_in_task_script = """
+import ray
+ray.init(address="auto")
+
+@ray.remote
+def f():
+    import pip_install_test
+
+ray.get(f.remote())
+"""
     if request.param == "no_working_dir":
         yield {
             "runtime_env": {},
             "entrypoint": "echo hello",
             "expected_logs": "hello\n",
         }
-    elif request.param == "local_working_dir":
+    elif request.param in {
+        "local_working_dir",
+        "local_working_dir_zip",
+        "local_py_modules",
+        "working_dir_and_local_py_modules_whl",
+    }:
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir)
 
@@ -88,11 +170,49 @@ def working_dir_option(request):
             with init_file.open(mode="w") as f:
                 f.write("from test_module.test import run_test\n")
 
-            yield {
-                "runtime_env": {"working_dir": tmp_dir},
-                "entrypoint": "python test.py",
-                "expected_logs": "Hello from test_module!\n",
-            }
+            if request.param == "local_working_dir":
+                yield {
+                    "runtime_env": {"working_dir": tmp_dir},
+                    "entrypoint": "python test.py",
+                    "expected_logs": "Hello from test_module!\n",
+                }
+            elif request.param == "local_working_dir_zip":
+                local_zipped_dir = shutil.make_archive(
+                    os.path.join(tmp_dir, "test"), "zip", tmp_dir
+                )
+                yield {
+                    "runtime_env": {"working_dir": local_zipped_dir},
+                    "entrypoint": "python test.py",
+                    "expected_logs": "Hello from test_module!\n",
+                }
+            elif request.param == "local_py_modules":
+                yield {
+                    "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
+                    "entrypoint": (
+                        "python -c 'import test_module;"
+                        "print(test_module.run_test())'"
+                    ),
+                    "expected_logs": "Hello from test_module!\n",
+                }
+            elif request.param == "working_dir_and_local_py_modules_whl":
+                yield {
+                    "runtime_env": {
+                        "working_dir": "s3://runtime-env-test/script_runtime_env.zip",
+                        "py_modules": [
+                            Path(os.path.dirname(__file__))
+                            / "pip_install_test-0.5-py3-none-any.whl"
+                        ],
+                    },
+                    "entrypoint": (
+                        "python script.py && python -c 'import pip_install_test'"
+                    ),
+                    "expected_logs": (
+                        "Executing main() from script.py !!\n"
+                        "Good job!  You installed a pip module."
+                    ),
+                }
+            else:
+                raise ValueError(f"Unexpected pytest fixture option {request.param}")
     elif request.param == "s3_working_dir":
         yield {
             "runtime_env": {
@@ -101,22 +221,57 @@ def working_dir_option(request):
             "entrypoint": "python script.py",
             "expected_logs": "Executing main() from script.py !!\n",
         }
+    elif request.param == "pip_txt":
+        with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+            pip_list = ["pip-install-test==0.5"]
+            relative_filepath = "requirements.txt"
+            pip_file = Path(relative_filepath)
+            pip_file.write_text("\n".join(pip_list))
+            runtime_env = {"pip": {"packages": relative_filepath, "pip_check": False}}
+            yield {
+                "runtime_env": runtime_env,
+                "entrypoint": (
+                    f"python -c 'import pip_install_test' && "
+                    f"python -c '{import_in_task_script}'"
+                ),
+                "expected_logs": "Good job!  You installed a pip module.",
+            }
+    elif request.param == "conda_yaml":
+        with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+            conda_dict = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
+            relative_filepath = "environment.yml"
+            conda_file = Path(relative_filepath)
+            conda_file.write_text(yaml.dump(conda_dict))
+            runtime_env = {"conda": relative_filepath}
+
+            yield {
+                "runtime_env": runtime_env,
+                "entrypoint": f"python -c '{import_in_task_script}'",
+                # TODO(architkulkarni): Uncomment after #22968 is fixed.
+                # "entrypoint": "python -c 'import pip_install_test'",
+                "expected_logs": "Good job!  You installed a pip module.",
+            }
     else:
         assert False, f"Unrecognized option: {request.param}."
 
 
-def test_submit_job(job_sdk_client, working_dir_option):
+def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
+    # This flag allows for local testing of runtime env conda functionality
+    # without needing a built Ray wheel.  Rather than insert the link to the
+    # wheel into the conda spec, it links to the current Python site.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+
     client = job_sdk_client
 
     job_id = client.submit_job(
-        entrypoint=working_dir_option["entrypoint"],
-        runtime_env=working_dir_option["runtime_env"],
+        entrypoint=runtime_env_option["entrypoint"],
+        runtime_env=runtime_env_option["runtime_env"],
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
 
     logs = client.get_job_logs(job_id)
-    assert logs == working_dir_option["expected_logs"]
+    assert runtime_env_option["expected_logs"] in logs
 
 
 def test_http_bad_request(job_sdk_client):
@@ -139,13 +294,10 @@ def test_http_bad_request(job_sdk_client):
 
 def test_invalid_runtime_env(job_sdk_client):
     client = job_sdk_client
-    job_id = client.submit_job(
-        entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
-    )
-
-    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-    status = client.get_job_status(job_id)
-    assert "Only .zip files supported for remote URIs" in status.message
+    with pytest.raises(ValueError, match="Only .zip files supported"):
+        client.submit_job(
+            entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
+        )
 
 
 def test_runtime_env_setup_failure(job_sdk_client):
@@ -155,8 +307,8 @@ def test_runtime_env_setup_failure(job_sdk_client):
     )
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-    status = client.get_job_status(job_id)
-    assert "Failed to setup runtime environment" in status.message
+    data = client.get_job_info(job_id)
+    assert "Failed to setup runtime environment" in data.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
@@ -321,7 +473,7 @@ def test_request_headers(job_sdk_client):
         )
 
 
-@pytest.mark.parametrize("scheme", ["http", "https", "ray", "fake_module"])
+@pytest.mark.parametrize("scheme", ["http", "https", "fake_module"])
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "fake.dns.name"])
 @pytest.mark.parametrize("port", [None, 8265, 10000])
 def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
@@ -330,16 +482,9 @@ def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
         address += f":{port}"
 
     final_port = port if port is not None else DEFAULT_DASHBOARD_PORT
-    if scheme in {"http", "ray"}:
+    if scheme in {"http", "https"}:
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=f"http://{host}:{final_port}",
-            cookies=None,
-            metadata=None,
-            headers=None,
-        )
-    elif scheme == "https":
-        assert parse_cluster_info(address, False) == ClusterInfo(
-            address=f"https://{host}:{final_port}",
+            address=f"{scheme}://{host}:{final_port}",
             cookies=None,
             metadata=None,
             headers=None,

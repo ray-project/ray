@@ -25,16 +25,11 @@ from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
 from ray.tune.syncer import SyncConfig
+from ray.tune.tests.utils_for_test_trial_runner import TrialResultObserver
 
 
 class TrialRunnerTest3(unittest.TestCase):
     def setUp(self):
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
-
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
 
         self.tmpdir = tempfile.mkdtemp()
@@ -51,7 +46,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner()
 
         def on_step_begin(self, trialrunner):
-            self._update_avail_resources()
+            self._resource_updater.update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 
@@ -131,15 +126,9 @@ class TrialRunnerTest3(unittest.TestCase):
         searcher = search_alg.searcher
         search_alg.add_configurations(experiments)
         runner = TrialRunner(search_alg=search_alg)
-        runner.step()
-        trials = runner.get_trials()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        while not runner.is_finished():
+            runner.step()
 
         self.assertEqual(searcher.counter["result"], 1)
         self.assertEqual(searcher.counter["complete"], 1)
@@ -204,19 +193,18 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(search_alg=search_alg)
         runner.step()
         trials = runner.get_trials()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
+        while trials[0].status != Trial.TERMINATED:
+            runner.step()
 
         runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-
         trials = runner.get_trials()
-        runner.step()
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(len(searcher.live_trials), 1)
 
         searcher.stall = True
 
-        runner.step()
+        while trials[1].status != Trial.TERMINATED:
+            runner.step()
         self.assertEqual(trials[1].status, Trial.TERMINATED)
         self.assertEqual(len(searcher.live_trials), 0)
 
@@ -231,8 +219,9 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trials[2].status, Trial.RUNNING)
         self.assertEqual(len(searcher.live_trials), 1)
 
-        runner.step()
-        self.assertEqual(trials[2].status, Trial.TERMINATED)
+        while trials[2].status != Trial.TERMINATED:
+            runner.step()
+
         self.assertEqual(len(searcher.live_trials), 0)
         self.assertTrue(search_alg.is_finished())
         self.assertTrue(runner.is_finished())
@@ -445,9 +434,9 @@ class TrialRunnerTest3(unittest.TestCase):
             )
         ]
         runner.add_trial(trials[0])
-        runner.step()  # Start trial
-        runner.step()  # Process result, dispatch save
-        runner.step()  # Process save
+        while not runner.is_finished():
+            # Start trial, process result, dispatch save and process save.
+            runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         trials += [
@@ -460,10 +449,13 @@ class TrialRunnerTest3(unittest.TestCase):
             )
         ]
         runner.add_trial(trials[1])
-        runner.step()  # Start trial
-        runner.step()  # Process result, dispatch save
-        runner.step()  # Process save
-        runner.step()  # Error
+        while not runner.is_finished():
+            # Start trial,
+            # Process result,
+            # Dispatch save,
+            # Process save and
+            # Error.
+            runner.step()
         self.assertEqual(trials[1].status, Trial.ERROR)
 
         trials += [
@@ -488,12 +480,14 @@ class TrialRunnerTest3(unittest.TestCase):
         restored_trial = runner2.get_trial("trial_succ")
         self.assertEqual(Trial.PENDING, restored_trial.status)
 
-        runner2.step()  # Start trial
-        runner2.step()  # Process result, dispatch save
-        runner2.step()  # Process save
-        runner2.step()  # Process result, dispatch save
-        runner2.step()  # Process save
-        self.assertRaises(TuneError, runner2.step)
+        while not runner2.is_finished():
+            # Start trial,
+            # Process result, dispatch save
+            # Process save
+            # Process result, dispatch save
+            # Process save.
+            runner2.step()
+        self.assertEqual(restored_trial.status, Trial.TERMINATED)
 
     def testTrialNoCheckpointSave(self):
         """Check that non-checkpointing trials *are* saved."""
@@ -533,8 +527,9 @@ class TrialRunnerTest3(unittest.TestCase):
             )
         )
 
-        runner.step()
-        runner.step()
+        old_trials = runner.get_trials()
+        while not old_trials[2].has_reported_at_least_once:
+            runner.step()
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trials = runner2.get_trials()
@@ -643,29 +638,42 @@ class TrialRunnerTest3(unittest.TestCase):
             checkpoint_at_end=True,
             stopping_criterion={"training_iteration": 4},
         )
+        observer = TrialResultObserver()
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             checkpoint_period=0,
             trial_executor=RayTrialExecutor(result_buffer_length=7),
+            callbacks=[observer],
         )
         runner.add_trial(trial)
 
-        runner.step()  # start trial
-
-        runner.step()  # run iteration 1
+        while not observer.just_received_a_result():
+            runner.step()
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 1)
         self.assertEqual(num_checkpoints(trial), 0)
 
-        runner.step()  # run iteration 2
+        while True:
+            runner.step()
+            if observer.just_received_a_result():
+                break
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 2)
         self.assertEqual(num_checkpoints(trial), 0)
 
-        runner.step()  # run iteration 3
+        while True:
+            runner.step()
+            if observer.just_received_a_result():
+                break
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
         self.assertEqual(num_checkpoints(trial), 0)
 
-        runner.step()  # run iteration 4
+        while True:
+            runner.step()
+            if observer.just_received_a_result():
+                break
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 4)
+
+        while not runner.is_finished():
+            runner.step()
         self.assertEqual(num_checkpoints(trial), 1)
 
     def testUserCheckpoint(self):

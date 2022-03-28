@@ -15,6 +15,7 @@ from unittest import mock
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+from ray._private.runtime_env.pip import PipProcessor
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
@@ -165,7 +166,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    if cluster_not_supported:
+    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
+    if cluster_not_supported_:
         pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
@@ -201,6 +203,14 @@ def _ray_start_cluster(**kwargs):
 @pytest.fixture
 def ray_start_cluster(request):
     param = getattr(request, "param", {})
+    with _ray_start_cluster(**param) as res:
+        yield res
+
+
+@pytest.fixture
+def ray_start_cluster_enabled(request):
+    param = getattr(request, "param", {})
+    param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
         yield res
 
@@ -435,6 +445,11 @@ file_system_object_spilling_config = {
     "params": {"directory_path": spill_local_path},
 }
 
+buffer_object_spilling_config = {
+    "type": "filesystem",
+    "params": {"directory_path": spill_local_path, "buffer_size": 1_000_000},
+}
+
 # Since we have differet protocol for a local external storage (e.g., fs)
 # and distributed external storage (e.g., S3), we need to test both cases.
 # This mocks the distributed fs with cluster utils.
@@ -445,6 +460,20 @@ mock_distributed_fs_object_spilling_config = {
 smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
+}
+ray_storage_object_spilling_config = {
+    "type": "ray_storage",
+    # Force the storage config so we don't need to patch each test to separately
+    # configure the storage param under this.
+    "params": {"_force_storage_for_testing": spill_local_path},
+}
+buffer_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
+}
+multi_smart_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": [f"s3://{bucket_name}/{i}" for i in range(3)]},
 }
 
 unstable_object_spilling_config = {
@@ -476,6 +505,17 @@ def create_object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
+    ],
+)
+def fs_only_object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
+        ray_storage_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
         # smart_open_object_spilling_config,
     ],
@@ -550,9 +590,9 @@ def _ray_start_chaos_cluster(request):
         killed = ray.get(node_killer.get_total_killed_nodes.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
-        assert died.issubset(killed), (
-            f"Raylets {died - killed} that " "we did not kill crashed"
-        )
+        assert died.issubset(
+            killed
+        ), f"Raylets {died - killed} that we did not kill crashed"
 
     ray.shutdown()
     cluster.shutdown()
@@ -574,7 +614,68 @@ def runtime_env_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
         },
     ):
-        print("URI caching disabled (conda and pip cache size set to 0).")
+        print(
+            "URI caching disabled (conda, pip, working_dir, py_modules cache "
+            "size set to 0)."
+        )
         yield
+
+
+# Use to create virtualenv that clone from current python env.
+# The difference between this fixture and `pytest_virtual.virtual` is that
+# `pytest_virtual.virtual` will not inherit current python env's site-package.
+# Note: Can't use in virtualenv, this must be noted when testing locally.
+@pytest.fixture(scope="function")
+def cloned_virtualenv():
+    # Lazy import pytest_virtualenv,
+    # aviod import `pytest_virtualenv` in test case `Minimal install`
+    from pytest_virtualenv import VirtualEnv
+
+    if PipProcessor._is_in_virtualenv():
+        raise RuntimeError("Forbid the use of this fixture in virtualenv")
+
+    venv = VirtualEnv(
+        args=[
+            "--system-site-packages",
+            "--reset-app-data",
+            "--no-periodic-update",
+            "--no-download",
+        ],
+    )
+    yield venv
+    venv.teardown()
+
+
+@pytest.fixture
+def set_runtime_env_retry_times(request):
+    runtime_env_retry_times = getattr(request, "param", "0")
+    try:
+        os.environ["RUNTIME_ENV_RETRY_TIMES"] = runtime_env_retry_times
+        yield runtime_env_retry_times
+    finally:
+        del os.environ["RUNTIME_ENV_RETRY_TIMES"]
+
+
+@pytest.fixture
+def listen_port(request):
+    port = getattr(request, "param", 0)
+    try:
+        sock = socket.socket()
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
+        sock.bind(("127.0.0.1", port))
+        yield port
+    finally:
+        sock.close()
+
+
+@pytest.fixture
+def set_bad_runtime_env_cache_ttl_seconds(request):
+    ttl = getattr(request, "param", "0")
+    os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"] = ttl
+    yield ttl
+    del os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"]

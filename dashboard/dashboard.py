@@ -9,10 +9,9 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
-import ray._private.gcs_utils as gcs_utils
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
@@ -33,8 +32,6 @@ class Dashboard:
         port(int): Port number of dashboard aiohttp server.
         port_retries(int): The retry times to select a valid port.
         gcs_address(str): GCS address of the cluster
-        redis_address(str): Redis address of a Ray cluster
-        redis_password(str): Redis password to access GCS
         log_dir(str): Log directory of dashboard.
     """
 
@@ -44,10 +41,9 @@ class Dashboard:
         port,
         port_retries,
         gcs_address,
-        redis_address,
-        redis_password=None,
         log_dir=None,
         temp_dir=None,
+        session_dir=None,
         minimal=False,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
@@ -55,10 +51,9 @@ class Dashboard:
             http_port=port,
             http_port_retries=port_retries,
             gcs_address=gcs_address,
-            redis_address=redis_address,
-            redis_password=redis_password,
             log_dir=log_dir,
             temp_dir=temp_dir,
+            session_dir=session_dir,
             minimal=minimal,
         )
 
@@ -82,17 +77,7 @@ if __name__ == "__main__":
         help="The retry times to select a valid port.",
     )
     parser.add_argument(
-        "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
-    )
-    parser.add_argument(
-        "--redis-address", required=True, type=str, help="The address to use for Redis."
-    )
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="The password to use for Redis",
+        "--gcs-address", required=True, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
         "--logging-level",
@@ -151,6 +136,13 @@ if __name__ == "__main__":
         help="Specify the path of the temporary directory use by Ray process.",
     )
     parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of the session directory of the cluster.",
+    )
+    parser.add_argument(
         "--minimal",
         action="store_true",
         help=(
@@ -161,12 +153,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
-    if gcs_utils.use_gcs_for_bootstrap():
-        args.redis_address = None
-        args.redis_password = None
-    else:
-        args.gcs_address = None
 
     try:
         setup_component_logger(
@@ -183,10 +169,9 @@ if __name__ == "__main__":
             args.port,
             args.port_retries,
             args.gcs_address,
-            args.redis_address,
-            redis_password=args.redis_password,
             log_dir=args.log_dir,
             temp_dir=args.temp_dir,
+            session_dir=args.session_dir,
             minimal=args.minimal,
         )
         loop = asyncio.get_event_loop()
@@ -205,28 +190,9 @@ if __name__ == "__main__":
             raise e
 
         # Something went wrong, so push an error to all drivers.
-        redis_client = None
-        gcs_publisher = None
-        if gcs_pubsub_enabled():
-            if gcs_utils.use_gcs_for_bootstrap():
-                gcs_publisher = GcsPublisher(args.gcs_address)
-            else:
-                redis_client = ray._private.services.create_redis_client(
-                    args.redis_address, password=args.redis_password
-                )
-                gcs_publisher = GcsPublisher(
-                    address=gcs_utils.get_gcs_address_from_redis(redis_client)
-                )
-                redis_client = None
-        else:
-            redis_client = ray._private.services.create_redis_client(
-                args.redis_address, password=args.redis_password
-            )
-
+        gcs_publisher = GcsPublisher(args.gcs_address)
         ray._private.utils.publish_error_to_driver(
-            redis_client,
             ray_constants.DASHBOARD_DIED_ERROR,
             message,
-            redis_client=redis_client,
             gcs_publisher=gcs_publisher,
         )

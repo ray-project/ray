@@ -411,7 +411,7 @@ def handle_ssh_fails(e, first_conn_refused_time, retry_interval):
 
     if e.special_case in ["ssh_timeout", "ssh_conn_refused"]:
         cli_logger.print(
-            "SSH still not available, " "retrying in {} seconds.",
+            "SSH still not available, retrying in {} seconds.",
             cf.bold(str(retry_interval)),
         )
     else:

@@ -5,16 +5,18 @@ import inspect
 from typing import Any, Callable, Optional, Tuple, Dict
 import time
 import aiorwlock
+from importlib import import_module
 
 import starlette.responses
 
 import ray
 from ray import cloudpickle
-from ray.actor import ActorHandle
+from ray.remote_function import RemoteFunction
+from ray.actor import ActorClass, ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import str, ReplicaTag
+from ray.serve.common import ReplicaTag
 from ray.serve.config import DeploymentConfig
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
@@ -22,22 +24,37 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
+    HEALTH_CHECK_METHOD,
     RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve.version import DeploymentVersion
-from ray.serve.utils import wrap_to_ray_error
+from ray.serve.utils import wrap_to_ray_error, parse_import_path
+from ray.serve.api import Deployment
 
 logger = _get_logger()
 
 
-def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
+def create_replica_wrapper(
+    name: str, import_path: str = None, serialized_deployment_def: bytes = None
+):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
-    serialized_deployment_def = serialized_deployment_def
+
+    if (import_path is None) and (serialized_deployment_def is None):
+        raise ValueError(
+            "Either the import_name or the serialized_deployment_def must "
+            "be specified, but both were unspecified."
+        )
+    elif (import_path is not None) and (serialized_deployment_def is not None):
+        raise ValueError(
+            "Only one of either the import_name or the "
+            "serialized_deployment_def must be specified, but both were "
+            "specified."
+        )
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
@@ -50,9 +67,30 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             deployment_config_proto_bytes: bytes,
             version: DeploymentVersion,
             controller_name: str,
+            controller_namespace: str,
             detached: bool,
         ):
-            deployment_def = cloudpickle.loads(serialized_deployment_def)
+
+            if import_path is not None:
+                module_name, attr_name = parse_import_path(import_path)
+                deployment_def = getattr(import_module(module_name), attr_name)
+                # For ray or serve decorated class or function, strip to return
+                # original body
+                if isinstance(deployment_def, RemoteFunction):
+                    deployment_def = deployment_def._function
+                elif isinstance(deployment_def, ActorClass):
+                    deployment_def = deployment_def.__ray_metadata__.modified_class
+                elif isinstance(deployment_def, Deployment):
+                    logger.warning(
+                        f'The import path "{import_path}" contains a '
+                        "decorated Serve deployment. The decorator's settings "
+                        "are ignored when deploying via import path."
+                    )
+                    deployment_def = deployment_def.func_or_class
+
+            else:
+                deployment_def = cloudpickle.loads(serialized_deployment_def)
+
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes
             )
@@ -64,19 +102,23 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             else:
                 assert False, (
                     "deployment_def must be function, class, or "
-                    "corresponding import path."
+                    "corresponding import path. Instead, it's type was "
+                    f"{type(deployment_def)}."
                 )
 
             # Set the controller name so that serve.connect() in the user's
             # code will connect to the instance that this deployment is running
             # in.
             ray.serve.api._set_internal_replica_context(
-                deployment_name, replica_tag, controller_name, servable_object=None
+                deployment_name,
+                replica_tag,
+                controller_name,
+                controller_namespace,
+                servable_object=None,
             )
 
             assert controller_name, "Must provide a valid controller_name"
 
-            controller_namespace = ray.serve.api._get_controller_namespace(detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace
             )
@@ -97,11 +139,13 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                     # method (required for FastAPI).
                     _callable = deployment_def.__new__(deployment_def)
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
+
                 # Setting the context again to update the servable_object.
                 ray.serve.api._set_internal_replica_context(
                     deployment_name,
                     replica_tag,
                     controller_name,
+                    controller_namespace,
                     servable_object=_callable,
                 )
 
@@ -122,9 +166,6 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             self.replica = None
             self._initialize_replica = initialize_replica
 
-            # asyncio.Event used to signal that the replica is shutting down.
-            self.shutdown_event = asyncio.Event()
-
         @ray.method(num_returns=2)
         async def handle_request(
             self,
@@ -139,7 +180,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.replica.handle_request(query)
 
-        async def is_allocated(self):
+        async def is_allocated(self) -> str:
             """poke the replica to check whether it's alive.
 
             When calling this method on an ActorHandle, it will complete as
@@ -147,8 +188,10 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             detect when a replica has been allocated a worker slot.
             At this time, the replica can transition from PENDING_ALLOCATION
             to PENDING_INITIALIZATION startup state.
+
+            Return the NodeID of this replica
             """
-            pass
+            return ray.get_runtime_context().node_id
 
         async def reconfigure(
             self, user_config: Optional[Any] = None
@@ -164,12 +207,11 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
-            self.shutdown_event.set()
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
 
-        async def run_forever(self):
-            await self.shutdown_event.wait()
+        async def check_health(self):
+            await self.replica.check_health()
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
@@ -198,12 +240,20 @@ class RayServeReplica:
         self.version = version
         self.rwlock = aiorwlock.RWLock()
 
+        user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
+        if not callable(user_health_check):
+
+            def user_health_check():
+                pass
+
+        self.user_health_check = sync_to_async(user_health_check)
+
         self.num_ongoing_requests = 0
 
         self.request_counter = metrics.Counter(
             "serve_deployment_request_counter",
             description=(
-                "The number of queries that have been " "processed in this replica."
+                "The number of queries that have been processed in this replica."
             ),
             tag_keys=("deployment", "replica"),
         )
@@ -214,7 +264,7 @@ class RayServeReplica:
         self.error_counter = metrics.Counter(
             "serve_deployment_error_counter",
             description=(
-                "The number of exceptions that have " "occurred in this replica."
+                "The number of exceptions that have occurred in this replica."
             ),
             tag_keys=("deployment", "replica"),
         )
@@ -225,7 +275,7 @@ class RayServeReplica:
         self.restart_counter = metrics.Counter(
             "serve_deployment_replica_starts",
             description=(
-                "The number of times this replica " "has been restarted due to failure."
+                "The number of times this replica has been restarted due to failure."
             ),
             tag_keys=("deployment", "replica"),
         )
@@ -273,6 +323,9 @@ class RayServeReplica:
                     f"replica={self.replica_tag}"
                 )
             )
+
+    async def check_health(self):
+        await self.user_health_check()
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()

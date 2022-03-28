@@ -163,6 +163,20 @@ public class GcsClient {
     return nodeInfo;
   }
 
+  public byte[] getActorAddress(ActorId actorId) {
+    byte[] serializedActorInfo = globalStateAccessor.getActorInfo(actorId);
+    if (serializedActorInfo == null) {
+      return null;
+    }
+
+    try {
+      Gcs.ActorTableData actorTableData = Gcs.ActorTableData.parseFrom(serializedActorInfo);
+      return actorTableData.getAddress().toByteArray();
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
+  }
+
   /** Destroy global state accessor when ray native runtime will be shutdown. */
   public void destroy() {
     // Only ray shutdown should call gcs client destroy.

@@ -3,7 +3,7 @@ import uuid
 from functools import partial
 
 from types import FunctionType
-from typing import Optional
+from typing import Optional, Type, Union
 
 import ray
 import ray.cloudpickle as pickle
@@ -54,15 +54,15 @@ def validate_trainable(trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
 
-def register_trainable(name, trainable, warn=True):
+def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool = True):
     """Register a trainable function or class.
 
     This enables a class or function to be accessed on every Ray process
     in the cluster.
 
     Args:
-        name (str): Name to register.
-        trainable (obj): Function or tune.Trainable class. Functions must
+        name: Name to register.
+        trainable: Function or tune.Trainable class. Functions must
             take (config, status_reporter) as arguments and will be
             automatically converted into a class during registration.
     """
@@ -84,15 +84,15 @@ def register_trainable(name, trainable, warn=True):
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
-def register_env(name, env_creator):
+def register_env(name: str, env_creator: Callable):
     """Register a custom environment for use with RLlib.
 
     This enables the environment to be accessed on every Ray process
     in the cluster.
 
     Args:
-        name (str): Name to register.
-        env_creator (obj): Callable that creates an env.
+        name: Name to register.
+        env_creator: Callable that creates an env.
     """
 
     if not callable(env_creator):
@@ -104,8 +104,8 @@ def register_input(name: str, input_creator: Callable):
     """Register a custom input api for RLLib.
 
     Args:
-        name (str): Name to register.
-        input_creator (IOContext -> InputReader): Callable that creates an
+        name: Name to register.
+        input_creator: Callable that creates an
             input reader.
     """
     if not callable(input_creator):
@@ -125,13 +125,13 @@ def check_serializability(key, value):
     _global_registry.register(TEST, key, value)
 
 
-def _make_key(prefix, category, key):
+def _make_key(prefix: str, category: str, key: str):
     """Generate a binary key for the given category and key.
 
     Args:
-        prefix (str): Prefix
-        category (str): The category of the item
-        key (str): The unique identifier for the item
+        prefix: Prefix
+        category: The category of the item
+        key: The unique identifier for the item
 
     Returns:
         The key to use for storing a the value.

@@ -5,23 +5,26 @@ import logging
 import pathlib
 import subprocess
 import tempfile
+import time
 import types
 import warnings
 
-from typing import Optional, List
+from typing import Optional, List, Callable, Union
 
 from shlex import quote
 
 from ray.tune.error import TuneError
 from ray.util.annotations import PublicAPI
 from ray.util.debug import log_once
+from ray.util.ml_utils.cloud import (
+    S3_PREFIX,
+    GS_PREFIX,
+    HDFS_PREFIX,
+    ALLOWED_REMOTE_PREFIXES,
+)
 
 logger = logging.getLogger(__name__)
 
-S3_PREFIX = "s3://"
-GS_PREFIX = "gs://"
-HDFS_PREFIX = "hdfs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 noop_template = ": {target}"  # noop in bash
 
@@ -30,12 +33,15 @@ def noop(*args):
     return
 
 
-def get_sync_client(sync_function, delete_function=None):
+def get_sync_client(
+    sync_function: Optional[Union[str, Callable]],
+    delete_function: Optional[Union[str, Callable]] = None,
+) -> Optional["SyncClient"]:
     """Returns a sync client.
 
     Args:
-        sync_function (Optional[str|function]): Sync function.
-        delete_function (Optional[str|function]): Delete function. Must be
+        sync_function: Sync function.
+        delete_function: Delete function. Must be
             the same type as sync_function if it is provided.
 
     Raises:
@@ -58,11 +64,11 @@ def get_sync_client(sync_function, delete_function=None):
     return client_cls(sync_function, sync_function, delete_function)
 
 
-def get_cloud_sync_client(remote_path):
+def get_cloud_sync_client(remote_path: str) -> "CommandBasedClient":
     """Returns a CommandBasedClient that can sync to/from remote storage.
 
     Args:
-        remote_path (str): Path to remote storage (S3, GS or HDFS).
+        remote_path: Path to remote storage (S3, GS or HDFS).
 
     Raises:
         ValueError if malformed remote_dir.
@@ -73,13 +79,9 @@ def get_cloud_sync_client(remote_path):
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX)
             )
-        sync_up_template = (
-            "aws s3 sync {source} {target} " "--only-show-errors {options}"
-        )
+        sync_up_template = "aws s3 sync {source} {target} --only-show-errors {options}"
         sync_down_template = sync_up_template
-        delete_template = (
-            "aws s3 rm {target} --recursive " "--only-show-errors {options}"
-        )
+        delete_template = "aws s3 rm {target} --recursive --only-show-errors {options}"
         exclude_template = "--exclude '{pattern}'"
     elif remote_path.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
@@ -115,13 +117,13 @@ def get_cloud_sync_client(remote_path):
 class SyncClient:
     """Client interface for interacting with remote storage options."""
 
-    def sync_up(self, source, target, exclude: Optional[List] = None):
+    def sync_up(self, source: str, target: str, exclude: Optional[List] = None):
         """Syncs up from source to target.
 
         Args:
-            source (str): Source path.
-            target (str): Target path.
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            source: Source path.
+            target: Target path.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
@@ -129,13 +131,13 @@ class SyncClient:
         """
         raise NotImplementedError
 
-    def sync_down(self, source, target, exclude: Optional[List] = None):
+    def sync_down(self, source: str, target: str, exclude: Optional[List] = None):
         """Syncs down from source to target.
 
         Args:
-            source (str): Source path.
-            target (str): Target path.
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            source: Source path.
+            target: Target path.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
@@ -143,11 +145,11 @@ class SyncClient:
         """
         raise NotImplementedError
 
-    def delete(self, target):
+    def delete(self, target: str):
         """Deletes target.
 
         Args:
-            target (str): Target path.
+            target: Target path.
 
         Returns:
             True if delete initiation successful, False otherwise.
@@ -156,6 +158,10 @@ class SyncClient:
 
     def wait(self):
         """Waits for current sync to complete, if asynchronously started."""
+        pass
+
+    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+        """Wait for current sync to complete or retries on error."""
         pass
 
     def reset(self):
@@ -228,15 +234,15 @@ class CommandBasedClient(SyncClient):
         """Syncs between two directories with the given command.
 
         Arguments:
-            sync_up_template (str): A runnable string template; needs to
+            sync_up_template: A runnable string template; needs to
                 include replacement fields ``{source}``, ``{target}``, and
                 ``{options}``.
-            sync_down_template (str): A runnable string template; needs to
+            sync_down_template: A runnable string template; needs to
                 include replacement fields ``{source}``, ``{target}``, and
                 ``{options}``.
-            delete_template (Optional[str]): A runnable string template; needs
+            delete_template: A runnable string template; needs
                 to include replacement field ``{target}``. Noop by default.
-            exclude_template (Optional[str]): A pattern with possible
+            exclude_template: A pattern with possible
                 replacement fields ``{pattern}`` and ``{regex_pattern}``.
                 Will replace ``{options}}`` in the sync up/down templates
                 if files/directories to exclude are passed.
@@ -251,12 +257,14 @@ class CommandBasedClient(SyncClient):
         self.logfile = None
         self._closed = False
         self.cmd_process = None
+        # Keep track of last command for retry
+        self._last_cmd = None
 
-    def set_logdir(self, logdir):
+    def set_logdir(self, logdir: str):
         """Sets the directory to log sync execution output in.
 
         Args:
-            logdir (str): Log directory.
+            logdir: Log directory.
         """
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync_out", dir=logdir, suffix=".log", delete=False
@@ -273,6 +281,11 @@ class CommandBasedClient(SyncClient):
         else:
             return self.logfile
 
+    def _start_process(self, cmd: str) -> subprocess.Popen:
+        return subprocess.Popen(
+            cmd, shell=True, stderr=subprocess.PIPE, stdout=self._get_logfile()
+        )
+
     def sync_up(self, source, target, exclude: Optional[List] = None):
         return self._execute(self.sync_up_template, source, target, exclude)
 
@@ -284,13 +297,15 @@ class CommandBasedClient(SyncClient):
 
     def delete(self, target):
         if self.is_running:
-            logger.warning("Last sync client cmd still in progress, skipping.")
+            logger.warning(
+                f"Last sync client cmd still in progress, "
+                f"skipping deletion of {target}"
+            )
             return False
         final_cmd = self.delete_template.format(target=quote(target), options="")
         logger.debug("Running delete: {}".format(final_cmd))
-        self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self._get_logfile()
-        )
+        self._last_cmd = final_cmd
+        self.cmd_process = self._start_process(final_cmd)
         return True
 
     def wait(self):
@@ -306,10 +321,28 @@ class CommandBasedClient(SyncClient):
                     "Error message ({}): {}".format(args, code, error_msg)
                 )
 
+    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+        assert max_retries > 0
+        for i in range(max_retries - 1):
+            try:
+                self.wait()
+            except TuneError as e:
+                logger.error(
+                    f"Caught sync error: {e}. "
+                    f"Retrying after sleeping for {backoff_s} seconds..."
+                )
+                time.sleep(backoff_s)
+                self.cmd_process = self._start_process(self._last_cmd)
+                continue
+            return
+        self.cmd_process = None
+        raise TuneError(f"Failed sync even after {max_retries} retries.")
+
     def reset(self):
         if self.is_running:
             logger.warning("Sync process still running but resetting anyways.")
         self.cmd_process = None
+        self._last_cmd = None
 
     def close(self):
         if self.logfile:
@@ -329,7 +362,10 @@ class CommandBasedClient(SyncClient):
     def _execute(self, sync_template, source, target, exclude: Optional[List] = None):
         """Executes sync_template on source and target."""
         if self.is_running:
-            logger.warning("Last sync client cmd still in progress, skipping.")
+            logger.warning(
+                f"Last sync client cmd still in progress, "
+                f"skipping sync from {source} to {target}."
+            )
             return False
 
         if exclude and self.exclude_template:
@@ -355,9 +391,8 @@ class CommandBasedClient(SyncClient):
             source=quote(source), target=quote(target), options=option_str
         )
         logger.debug("Running sync: {}".format(final_cmd))
-        self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self._get_logfile()
-        )
+        self._last_cmd = final_cmd
+        self.cmd_process = self._start_process(final_cmd)
         return True
 
     @staticmethod

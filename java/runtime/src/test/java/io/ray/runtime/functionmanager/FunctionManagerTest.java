@@ -185,12 +185,13 @@ public class FunctionManagerTest {
     JobFunctionTable functionTable = new JobFunctionTable(getClass().getClassLoader());
     Map<Pair<String, String>, Pair<RayFunction, Boolean>> res =
         functionTable.loadFunctionsForClass(ChildClass.class.getName());
-    // The result should be 4 entries:
+    // The result should be 5 entries:
     //   1, the constructor with signature
     //   2, the constructor without signature
     //   3, bar with signature
     //   4, bar without signature
-    Assert.assertEquals(res.size(), 11);
+    //   5, bar with the number of signature acting as signature field (xlang)
+    Assert.assertEquals(res.size(), 16);
     Assert.assertTrue(
         res.containsKey(
             ImmutablePair.of(childClassBarDescriptor.name, childClassBarDescriptor.signature)));

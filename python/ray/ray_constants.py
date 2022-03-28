@@ -67,6 +67,7 @@ DEFAULT_PORT = 6379
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
 RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
 RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
+RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -244,6 +245,9 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # Autoscaler events are denoted by the ":event_summary:" magic token.
 LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
+# Cluster-level info events are denoted by the ":info_message:" magic token. These may
+# be emitted in the stderr of Ray components.
+LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 # Actor names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.
@@ -302,6 +306,10 @@ SETUP_WORKER_FILENAME = "setup_worker.py"
 
 # Directory name where runtime_env resources will be created & cached.
 DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
+
+# The timeout seconds for the creation of runtime env,
+# dafault timeout is 10 minutes
+DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
 
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.

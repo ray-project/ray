@@ -53,12 +53,12 @@ def explore(
     """Return a config perturbed as specified.
 
     Args:
-        config (dict): Original hyperparameter configuration.
-        mutations (dict): Specification of mutations to perform as documented
+        config: Original hyperparameter configuration.
+        mutations: Specification of mutations to perform as documented
             in the PopulationBasedTraining scheduler.
-        resample_probability (float): Probability of allowing resampling of a
+        resample_probability: Probability of allowing resampling of a
             particular variable.
-        custom_explore_fn (func): Custom explore fn applied after built-in
+        custom_explore_fn: Custom explore fn applied after built-in
             config perturbations are.
     """
     new_config = copy.deepcopy(config)
@@ -151,24 +151,24 @@ class PopulationBasedTraining(FIFOScheduler):
     on each perturbation step.
 
     Args:
-        time_attr (str): The training result attr to use for comparing time.
+        time_attr: The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. Stopping
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        perturbation_interval (float): Models will be considered for
+        perturbation_interval: Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
-        burn_in_period (float): Models will not be considered for
+        burn_in_period: Models will not be considered for
             perturbation before this interval of `time_attr` has passed. This
             guarantees that models are trained for at least a certain amount
             of time or timesteps before being perturbed.
-        hyperparam_mutations (dict): Hyperparams to mutate. The format is
+        hyperparam_mutations: Hyperparams to mutate. The format is
             as follows: for each key, either a list, function,
             or a tune search space object (tune.loguniform, tune.uniform,
             etc.) can be provided. A list specifies an allowed set of
@@ -181,26 +181,26 @@ class PopulationBasedTraining(FIFOScheduler):
             Tune will use the search space provided by
             `hyperparam_mutations` for the initial samples if the
             corresponding attributes are not present in `config`.
-        quantile_fraction (float): Parameters are transferred from the top
+        quantile_fraction: Parameters are transferred from the top
             `quantile_fraction` fraction of trials to the bottom
             `quantile_fraction` fraction. Needs to be between 0 and 0.5.
             Setting it to 0 essentially implies doing no exploitation at all.
-        resample_probability (float): The probability of resampling from the
+        resample_probability: The probability of resampling from the
             original distribution when applying `hyperparam_mutations`. If not
             resampled, the value will be perturbed by a factor of 1.2 or 0.8
             if continuous, or changed to an adjacent value if discrete.
-        custom_explore_fn (func): You can also specify a custom exploration
+        custom_explore_fn: You can also specify a custom exploration
             function. This function is invoked as `f(config)` after built-in
             perturbations from `hyperparam_mutations` are applied, and should
             return `config` updated as needed. You must specify at least one of
             `hyperparam_mutations` or `custom_explore_fn`.
-        log_config (bool): Whether to log the ray config of each model to
+        log_config: Whether to log the ray config of each model to
             local_dir at each exploit. Allows config schedule to be
             reconstructed.
-        require_attrs (bool): Whether to require time_attr and metric to appear
+        require_attrs: Whether to require time_attr and metric to appear
             in result for every iteration. If True, error will be raised
             if these values are not present in trial result.
-        synch (bool): If False, will use asynchronous implementation of
+        synch: If False, will use asynchronous implementation of
             PBT. Trial perturbations occur every perturbation_interval for each
             trial independently. If True, will use synchronous implementation
             of PBT. Perturbations will occur only after all trials are
@@ -314,7 +314,9 @@ class PopulationBasedTraining(FIFOScheduler):
         self._num_checkpoints = 0
         self._num_perturbations = 0
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str]) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], **spec
+    ) -> bool:
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -489,10 +491,10 @@ class PopulationBasedTraining(FIFOScheduler):
     ):
         """Saves necessary trial information when result is received.
         Args:
-            state (PBTTrialState): The state object for the trial.
-            time (int): The current timestep of the trial.
-            result (dict): The trial's result dictionary.
-            trial (dict): The trial object.
+            state: The state object for the trial.
+            time: The current timestep of the trial.
+            result: The trial's result dictionary.
+            trial: The trial object.
         """
 
         # This trial has reached its perturbation interval.
@@ -741,7 +743,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     config according to the schedule.
 
     Args:
-        policy_file (str): The PBT policy file. Usually this is
+        policy_file: The PBT policy file. Usually this is
             stored in ``~/ray_results/experiment_name/pbt_policy_xxx.txt``
             where ``xxx`` is the trial ID.
 

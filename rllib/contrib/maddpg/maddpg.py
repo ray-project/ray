@@ -25,7 +25,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Framework to run the algorithm ===
@@ -123,7 +123,7 @@ DEFAULT_CONFIG = with_common_config({
     "min_time_s_per_reporting": 0,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):

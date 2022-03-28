@@ -112,8 +112,8 @@ if __name__ == "__main__":
             print(f"Skipping framework='{args.framework}' for QMIX.")
             continue
 
-        # Always run with eager-tracing when framework=tf2.
-        if args.framework in ["tf2", "tfe"]:
+        # Always run with eager-tracing when framework=tf2 if not in local-mode.
+        if args.framework in ["tf2", "tfe"] and not args.local_mode:
             exp["config"]["eager_tracing"] = True
 
         # Print out the actual config.

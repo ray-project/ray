@@ -54,9 +54,13 @@ class MultiAgentEnv(gym.Env):
             New observations for each ready agent.
 
         Examples:
-            >>> env = MyMultiAgentEnv()
-            >>> obs = env.reset()
-            >>> print(obs)
+            >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv
+            >>> class MyMultiAgentEnv(MultiAgentEnv): # doctest: +SKIP
+            ...     # Define your env here. # doctest: +SKIP
+            ...     ... # doctest: +SKIP
+            >>> env = MyMultiAgentEnv() # doctest: +SKIP
+            >>> obs = env.reset() # doctest: +SKIP
+            >>> print(obs) # doctest: +SKIP
             {
                 "car_0": [2.4, 1.6],
                 "car_1": [3.4, -3.2],
@@ -83,23 +87,24 @@ class MultiAgentEnv(gym.Env):
             4) Optional info values for each agent id.
 
         Examples:
-            >>> obs, rewards, dones, infos = env.step(
-            ...    action_dict={
-            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2,
-            ...    })
-            >>> print(rewards)
+            >>> env = ... # doctest: +SKIP
+            >>> obs, rewards, dones, infos = env.step( # doctest: +SKIP
+            ...    action_dict={ # doctest: +SKIP
+            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2, # doctest: +SKIP
+            ...    }) # doctest: +SKIP
+            >>> print(rewards) # doctest: +SKIP
             {
                 "car_0": 3,
                 "car_1": -1,
                 "traffic_light_1": 0,
             }
-            >>> print(dones)
+            >>> print(dones) # doctest: +SKIP
             {
                 "car_0": False,    # car_0 is still running
                 "car_1": True,     # car_1 is done
                 "__all__": False,  # the env is not done
             }
-            >>> print(infos)
+            >>> print(infos) # doctest: +SKIP
             {
                 "car_0": {},  # info for car_0
                 "car_1": {},  # info for car_1
@@ -178,7 +183,11 @@ class MultiAgentEnv(gym.Env):
             if agent_ids is None:
                 agent_ids = self.get_agent_ids()
             samples = self.action_space.sample()
-            return {agent_id: samples[agent_id] for agent_id in agent_ids}
+            return {
+                agent_id: samples[agent_id]
+                for agent_id in agent_ids
+                if agent_id != "__all__"
+            }
         logger.warning("action_space_sample() has not been implemented")
         del agent_ids
         return {}
@@ -233,7 +242,7 @@ class MultiAgentEnv(gym.Env):
         # By default, do nothing.
         pass
 
-    # yapf: disable
+    # fmt: off
     # __grouping_doc_begin__
     @ExperimentalAPI
     def with_agent_groups(
@@ -267,11 +276,15 @@ class MultiAgentEnv(gym.Env):
                 Must be a tuple space.
 
         Examples:
-            >>> env = YourMultiAgentEnv(...)
-            >>> grouped_env = env.with_agent_groups(env, {
-            ...   "group1": ["agent1", "agent2", "agent3"],
-            ...   "group2": ["agent4", "agent5"],
-            ... })
+            >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv
+            >>> class MyMultiAgentEnv(MultiAgentEnv): # doctest: +SKIP
+            ...     # define your env here
+            ...     ... # doctest: +SKIP
+            >>> env = MyMultiAgentEnv(...) # doctest: +SKIP
+            >>> grouped_env = env.with_agent_groups(env, { # doctest: +SKIP
+            ...   "group1": ["agent1", "agent2", "agent3"], # doctest: +SKIP
+            ...   "group2": ["agent4", "agent5"], # doctest: +SKIP
+            ... }) # doctest: +SKIP
         """
 
         from ray.rllib.env.wrappers.group_agents_wrapper import \
@@ -279,7 +292,7 @@ class MultiAgentEnv(gym.Env):
         return GroupAgentsWrapper(self, groups, obs_space, act_space)
 
     # __grouping_doc_end__
-    # yapf: enable
+    # fmt: on
 
     @PublicAPI
     def to_base_env(
@@ -338,7 +351,7 @@ class MultiAgentEnv(gym.Env):
         obs_space_check = (
             hasattr(self, "observation_space")
             and isinstance(self.observation_space, gym.spaces.Dict)
-            and set(self.observation_space.keys()) == self.get_agent_ids()
+            and set(self.observation_space.spaces.keys()) == self.get_agent_ids()
         )
         action_space_check = (
             hasattr(self, "action_space")
@@ -374,24 +387,24 @@ def make_multi_agent(
         underlying single-agent env's constructor.
 
     Examples:
+         >>> from ray.rllib.env.multi_agent_env import make_multi_agent
          >>> # By gym string:
-         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0")
+         >>> ma_cartpole_cls = make_multi_agent("CartPole-v0") # doctest: +SKIP
          >>> # Create a 2 agent multi-agent cartpole.
-         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2})
-         >>> obs = ma_cartpole.reset()
-         >>> print(obs)
-         ... {0: [...], 1: [...]}
-
+         >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2}) # doctest: +SKIP
+         >>> obs = ma_cartpole.reset() # doctest: +SKIP
+         >>> print(obs) # doctest: +SKIP
+         {0: [...], 1: [...]}
          >>> # By env-maker callable:
-         >>> from ray.rllib.examples.env.stateless_cartpole import \
-         ...    StatelessCartPole
-         >>> ma_stateless_cartpole_cls = make_multi_agent(
-         ...    lambda config: StatelessCartPole(config))
+         >>> from ray.rllib.examples.env.stateless_cartpole # doctest: +SKIP
+         ...    import StatelessCartPole
+         >>> ma_stateless_cartpole_cls = make_multi_agent( # doctest: +SKIP
+         ...    lambda config: StatelessCartPole(config)) # doctest: +SKIP
          >>> # Create a 3 agent multi-agent stateless cartpole.
-         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
-         ...    {"num_agents": 3})
-         >>> print(obs)
-         ... {0: [...], 1: [...], 2: [...]}
+         >>> ma_stateless_cartpole = ma_stateless_cartpole_cls( # doctest: +SKIP
+         ...    {"num_agents": 3}) # doctest: +SKIP
+         >>> print(obs) # doctest: +SKIP
+         {0: [...], 1: [...], 2: [...]}
     """
 
     class MultiEnv(MultiAgentEnv):

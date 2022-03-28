@@ -24,8 +24,8 @@ provider:
     type: aws
     region: us-west-2
     # Availability zone(s), comma-separated, that nodes may be launched in.
-    # Nodes are currently spread between zones by a round-robin approach,
-    # however this implementation detail should not be relied upon.
+    # Nodes will be launched in the first listed availability zone and will
+    # be tried in the subsequent availability zones if launching fails.
     availability_zone: us-west-2a,us-west-2b
     # Whether to allow node reuse. If set to False, nodes will be terminated
     # instead of stopped.
@@ -56,7 +56,6 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: m5.large
-            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
             # You can provision additional disk space with a conf as follows
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
@@ -79,7 +78,6 @@ available_node_types:
         # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
         node_config:
             InstanceType: m5.large
-            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
             # Run workers on spot by default. Comment this out to use on-demand.
             InstanceMarketOptions:
                 MarketType: spot

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # flake8: noqa
-# yapf: disable
+# fmt: off
 
 # __tutorial_imports_begin__
 import argparse

@@ -2,6 +2,7 @@
 import heapq
 import gc
 import logging
+from typing import Any, Callable
 
 from ray.tune.utils.util import flatten_dict
 
@@ -14,8 +15,8 @@ class Checkpoint:
     Checkpoint may be saved in different storage.
 
     Attributes:
-        storage (str): Storage type.
-        value (str): If storage==MEMORY, it is a Python object.
+        storage: Storage type.
+        value: If storage==MEMORY, it is a Python object.
             If storage==PERSISTENT, it is a path to persistent storage,
             or a future that will be resolved to such a path.
     """
@@ -23,7 +24,7 @@ class Checkpoint:
     MEMORY = "memory"
     PERSISTENT = "persistent"
 
-    def __init__(self, storage, value, result=None):
+    def __init__(self, storage: str, value: Any, result=None):
         self.storage = storage
         self.value = value
         self.result = result or {}
@@ -68,17 +69,22 @@ class QueueItem:
 class CheckpointManager:
     """Manages checkpoints on the driver for a trial."""
 
-    def __init__(self, keep_checkpoints_num, checkpoint_score_attr, delete_fn):
+    def __init__(
+        self,
+        keep_checkpoints_num: int,
+        checkpoint_score_attr: str,
+        delete_fn: Callable[[str], None],
+    ):
         """Initializes a new CheckpointManager.
 
         `newest_persistent_checkpoint` and `newest_memory_checkpoint` are
         initialized to Checkpoint objects with values of None.
 
         Args:
-            keep_checkpoints_num (int): Keep at least this many checkpoints.
-            checkpoint_score_attr (str): Attribute to use to determine which
+            keep_checkpoints_num: Keep at least this many checkpoints.
+            checkpoint_score_attr: Attribute to use to determine which
                 checkpoints to keep.
-            delete_fn (function): Function that deletes checkpoints. Must be
+            delete_fn: Function that deletes checkpoints. Must be
                 idempotent.
         """
         self.keep_checkpoints_num = keep_checkpoints_num or float("inf")
@@ -118,7 +124,7 @@ class CheckpointManager:
         gc.collect()
         self._newest_memory_checkpoint = new_checkpoint
 
-    def on_checkpoint(self, checkpoint):
+    def on_checkpoint(self, checkpoint: Checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
         Checkpoints get assigned with an `order` as they come in.
@@ -129,7 +135,7 @@ class CheckpointManager:
         deletes the worst checkpoint if at capacity.
 
         Args:
-            checkpoint (Checkpoint): Trial state checkpoint.
+            checkpoint: Trial state checkpoint.
         """
         self._cur_order += 1
         checkpoint.order = self._cur_order

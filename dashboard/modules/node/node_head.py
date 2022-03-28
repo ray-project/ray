@@ -3,10 +3,8 @@ import re
 import logging
 import json
 import aiohttp.web
-from aioredis.pubsub import Receiver
 
 import ray._private.utils
-import ray._private.gcs_utils as gcs_utils
 from ray import ray_constants
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
@@ -279,30 +277,14 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
             logger.debug(f"Received a log for {ip} and {pid}")
 
-        if self._dashboard_head.gcs_log_subscriber:
-            while True:
-                try:
-                    log_batch = await self._dashboard_head.gcs_log_subscriber.poll()
-                    if log_batch is None:
-                        continue
-                    process_log_batch(log_batch)
-                except Exception:
-                    logger.exception("Error receiving log from GCS.")
-        else:
-            aioredis_client = self._dashboard_head.aioredis_client
-            receiver = Receiver()
-
-            channel = receiver.channel(gcs_utils.LOG_FILE_CHANNEL)
-            await aioredis_client.subscribe(channel)
-            logger.info("Subscribed to %s", channel)
-
-            async for sender, msg in receiver.iter():
-                try:
-                    data = json.loads(ray._private.utils.decode(msg))
-                    data["pid"] = str(data["pid"])
-                    process_log_batch(data)
-                except Exception:
-                    logger.exception("Error receiving log from Redis.")
+        while True:
+            try:
+                log_batch = await self._dashboard_head.gcs_log_subscriber.poll()
+                if log_batch is None:
+                    continue
+                process_log_batch(log_batch)
+            except Exception:
+                logger.exception("Error receiving log from GCS.")
 
     async def _update_error_info(self):
         def process_error(error_data):
@@ -325,35 +307,17 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
                 logger.info(f"Received error entry for {ip} {pid}")
 
-        if self._dashboard_head.gcs_error_subscriber:
-            while True:
-                try:
-                    (
-                        _,
-                        error_data,
-                    ) = await self._dashboard_head.gcs_error_subscriber.poll()
-                    if error_data is None:
-                        continue
-                    process_error(error_data)
-                except Exception:
-                    logger.exception("Error receiving error info from GCS.")
-        else:
-            aioredis_client = self._dashboard_head.aioredis_client
-            receiver = Receiver()
-
-            key = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-            pattern = receiver.pattern(key)
-            await aioredis_client.psubscribe(pattern)
-            logger.info("Subscribed to %s", key)
-
-            async for _, msg in receiver.iter():
-                try:
-                    _, data = msg
-                    pubsub_msg = gcs_utils.PubSubMessage.FromString(data)
-                    error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
-                    process_error(error_data)
-                except Exception:
-                    logger.exception("Error receiving error info from Redis.")
+        while True:
+            try:
+                (
+                    _,
+                    error_data,
+                ) = await self._dashboard_head.gcs_error_subscriber.poll()
+                if error_data is None:
+                    continue
+                process_error(error_data)
+            except Exception:
+                logger.exception("Error receiving error info from GCS.")
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

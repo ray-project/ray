@@ -83,7 +83,6 @@ class BreastCancerTrainable(Trainable):
     def setup(self, config):
         self.config = config
         self.nthread = config.pop("nthread", 1)
-        self.new_nthread = None
         self.model: xgb.Booster = None
         # Load dataset
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -98,8 +97,10 @@ class BreastCancerTrainable(Trainable):
     def step(self):
         # you can also obtain current trial resources:
         current_resources = self.trial_resources
-        # testing purposes only:
-        assert int(current_resources.head_cpus) == int(self.nthread)
+        if isinstance(current_resources, PlacementGroupFactory):
+            self.nthread = current_resources.head_cpus
+        else:
+            self.nthread = current_resources.cpu
 
         results = {}
         config = self.config.copy()
@@ -125,9 +126,6 @@ class BreastCancerTrainable(Trainable):
     def load_checkpoint(self, checkpoint_path):
         with open(checkpoint_path, "rb") as inputFile:
             self.config, self.nthread, raw_model = pickle.load(inputFile)
-        if self.new_nthread:
-            self.nthread = self.new_nthread
-            self.new_nthread = None
         self.model = Booster()
         self.model.load_model(bytearray(raw_model))
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -138,13 +136,6 @@ class BreastCancerTrainable(Trainable):
         # Build input matrices for XGBoost
         self.train_set = xgb.DMatrix(train_x, label=train_y)
         self.test_set = xgb.DMatrix(test_x, label=test_y)
-
-    def update_resources(self, new_resources: Union[PlacementGroupFactory, Resources]):
-        # this is called before `load_checkpoint`
-        if isinstance(new_resources, PlacementGroupFactory):
-            self.new_nthread = new_resources.head_cpus
-        else:
-            self.new_nthread = new_resources.cpu
 
 
 def tune_xgboost(use_class_trainable=True):
@@ -181,16 +172,15 @@ def tune_xgboost(use_class_trainable=True):
         trial has currently, the scheduler will skip the update process
         internally (same with None).
 
-        See :func:`evenly_distribute_cpus_gpus` for a more complex,
+        See :class:`DistributeResources` for a more complex,
         robust approach.
 
         Args:
-            trial_runner (TrialRunner): Trial runner for this Tune run.
+            trial_runner: Trial runner for this Tune run.
                 Can be used to obtain information about other trials.
-            trial (Trial): The trial to allocate new resources to.
-            result (Dict[str, Any]): The latest results of trial.
-            scheduler (ResourceChangingScheduler): The scheduler calling
-                the function.
+            trial: The trial to allocate new resources to.
+            result: The latest results of trial.
+            scheduler: The scheduler calling the function.
         """
 
         # Get base trial resources as defined in
@@ -210,7 +200,9 @@ def tune_xgboost(use_class_trainable=True):
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
 
         # Get the number of CPUs available in total (not just free)
-        total_available_cpus = trial_runner.trial_executor._avail_resources.cpu
+        total_available_cpus = (
+            trial_runner.trial_executor._resource_updater.get_num_cpus()
+        )
 
         # Divide the free CPUs among all live trials
         cpu_to_use = max(
@@ -221,15 +213,15 @@ def tune_xgboost(use_class_trainable=True):
         return PlacementGroupFactory([{"CPU": cpu_to_use, "GPU": 0}])
 
     # You can either define your own resources_allocation_function, or
-    # use the default one - evenly_distribute_cpus_gpus
+    # use the default one - DistributeResources
 
     # from ray.tune.schedulers.resource_changing_scheduler import \
-    #    evenly_distribute_cpus_gpus
+    #    DistributeResources
 
     scheduler = ResourceChangingScheduler(
         base_scheduler=base_scheduler,
         resources_allocation_function=example_resources_allocation_function
-        # resources_allocation_function=evenly_distribute_cpus_gpus  # default
+        # resources_allocation_function=DistributeResources()  # default
     )
 
     if use_class_trainable:
@@ -263,7 +255,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     parser.add_argument(
         "--class-trainable",

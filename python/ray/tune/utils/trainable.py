@@ -5,7 +5,7 @@ import logging
 import os
 import pandas as pd
 import shutil
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Optional
 
 import ray
 import ray.cloudpickle as pickle
@@ -133,14 +133,16 @@ class TrainableUtil:
         return os.path.join(tokens[0], "")
 
     @staticmethod
-    def make_checkpoint_dir(checkpoint_dir, index, override=False):
+    def make_checkpoint_dir(
+        checkpoint_dir: str, index: Union[int, str], override=False
+    ):
         """Creates a checkpoint directory within the provided path.
 
         Args:
-            checkpoint_dir (str): Path to checkpoint directory.
-            index (int|str): A subdirectory will be created
+            checkpoint_dir: Path to checkpoint directory.
+            index: A subdirectory will be created
                 at the checkpoint directory named 'checkpoint_{index}'.
-            override (bool): Deletes checkpoint_dir before creating
+            override: Deletes checkpoint_dir before creating
                 a new one.
         """
         suffix = "checkpoint"
@@ -213,33 +215,33 @@ class TrainableUtil:
 class PlacementGroupUtil:
     @staticmethod
     def get_remote_worker_options(
-        num_workers,
-        num_cpus_per_worker,
-        num_gpus_per_worker,
-        num_workers_per_host,
-        timeout_s,
+        num_workers: int,
+        num_cpus_per_worker: int,
+        num_gpus_per_worker: int,
+        num_workers_per_host: Optional[int],
+        timeout_s: Optional[int],
     ) -> (Dict[str, Any], placement_group):
         """Returns the option for remote workers.
 
         Args:
-            num_workers (int): Number of training workers to include in
+            num_workers: Number of training workers to include in
                 world.
-            num_cpus_per_worker (int): Number of CPU resources to reserve
+            num_cpus_per_worker: Number of CPU resources to reserve
                 per training worker.
-            num_gpus_per_worker (int): Number of GPU resources to reserve
+            num_gpus_per_worker: Number of GPU resources to reserve
                 per training worker.
             num_workers_per_host: Optional[int]: Number of workers to
                 colocate per host.
-            timeout_s (Optional[int]): Seconds before the torch process group
+            timeout_s: Seconds before the torch process group
                 times out. Useful when machines are unreliable. Defaults
                 to 60 seconds. This value is also reused for triggering
                 placement timeouts if forcing colocation.
 
 
         Returns:
-            type(Dict[Str, Any]): option that contains CPU/GPU count of
+            type: option that contains CPU/GPU count of
                 the remote worker and the placement group information.
-            pg(placement_group): return a reference to the placement group
+            pg: return a reference to the placement group
         """
         pg = None
         options = dict(num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)

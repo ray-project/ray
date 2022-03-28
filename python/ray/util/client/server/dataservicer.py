@@ -53,10 +53,14 @@ def _should_cache(req: ray_client_pb2.DataRequest) -> bool:
         - acks: Repeating acks is idempotent
         - clean up requests: Also idempotent, and client has likely already
              wrapped up the data connection by this point.
+        - puts: We should only cache when we receive the final chunk, since
+             any earlier chunks won't generate a response
     """
     req_type = req.WhichOneof("type")
     if req_type == "get" and req.get.asynchronous:
         return False
+    if req_type == "put":
+        return req.put.chunk_id == req.put.total_chunks - 1
     return req_type not in ("acknowledge", "connection_cleanup")
 
 
@@ -80,6 +84,44 @@ def fill_queue(
         output_queue.put(None)
 
 
+class ChunkCollector:
+    """
+    Helper class for collecting chunks from PutObject calls
+    """
+
+    def __init__(self):
+        self.curr_req_id = None
+        self.last_seen_chunk_id = -1
+        self.data = bytearray()
+
+    def add_chunk(self, req: ray_client_pb2.DataRequest):
+        if self.curr_req_id is not None and self.curr_req_id != req.req_id:
+            raise RuntimeError(
+                "Expected to receive a chunk from request with id "
+                f"{self.curr_req_id}, but found {req.req_id} instead."
+            )
+        self.curr_req_id = req.req_id
+        chunk = req.put
+        next_chunk = self.last_seen_chunk_id + 1
+        if chunk.chunk_id < next_chunk:
+            # Repeated chunk, ignore
+            return
+        if chunk.chunk_id > next_chunk:
+            raise RuntimeError(
+                f"A chunk {chunk.chunk_id} of request {req.req_id} was "
+                "received out of order."
+            )
+        elif chunk.chunk_id == self.last_seen_chunk_id + 1:
+            self.data.extend(chunk.data)
+            self.last_seen_chunk_id = chunk.chunk_id
+        return chunk.chunk_id + 1 == chunk.total_chunks
+
+    def reset(self):
+        self.curr_req_id = None
+        self.last_seen_chunk_id = -1
+        self.data = bytearray()
+
+
 class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, basic_service: "RayletServicer"):
         self.basic_service = basic_service
@@ -95,6 +137,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         )
         # stopped event, useful for signals that the server is shut down
         self.stopped = Event()
+        # Helper for collecting chunks from PutObject calls. Assumes that
+        # that put requests from different objects aren't interleaved.
+        self.chunk_collector = ChunkCollector()
 
     def Datapath(self, request_iterator, context):
         start_time = time.time()
@@ -168,7 +213,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         get_resp = self.basic_service._get_object(req.get, client_id)
                     resp = ray_client_pb2.DataResponse(get=get_resp)
                 elif req_type == "put":
-                    put_resp = self.basic_service._put_object(req.put, client_id)
+                    if not self.chunk_collector.add_chunk(req):
+                        # Put request still in progress
+                        continue
+                    put_resp = self.basic_service._put_object(
+                        self.chunk_collector.data, req.put.client_ref_id, client_id
+                    )
+                    self.chunk_collector.reset()
                     resp = ray_client_pb2.DataResponse(put=put_resp)
                 elif req_type == "release":
                     released = []

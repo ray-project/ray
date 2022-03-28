@@ -7,7 +7,7 @@ from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.agents.registry import get_trainer_class
 
-from pettingzoo.butterfly import pistonball_v5
+from pettingzoo.butterfly import pistonball_v6
 from pettingzoo.mpe import simple_spread_v2
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 
@@ -19,9 +19,9 @@ class TestPettingZooEnv(unittest.TestCase):
     def tearDown(self) -> None:
         ray.shutdown()
 
-    def test_pettingzoo_pistonball_v5_policies_are_dict_env(self):
+    def test_pettingzoo_pistonball_v6_policies_are_dict_env(self):
         def env_creator(config):
-            env = pistonball_v5.env()
+            env = pistonball_v6.env()
             env = dtype_v0(env, dtype=float32)
             env = color_reduction_v0(env, mode="R")
             env = normalize_obs_v0(env)

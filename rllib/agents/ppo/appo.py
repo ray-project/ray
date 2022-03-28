@@ -25,7 +25,7 @@ from ray.rllib.execution.common import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 
 # Adds the following updates to the `IMPALATrainer` config in
@@ -85,7 +85,7 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
 )
 
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class UpdateTargetAndKL:

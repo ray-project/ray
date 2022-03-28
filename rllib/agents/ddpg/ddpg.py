@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Twin Delayed DDPG (TD3) and Soft Actor-Critic (SAC) tricks ===
@@ -175,7 +175,7 @@ DEFAULT_CONFIG = with_common_config({
     "min_time_s_per_reporting": 1,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class DDPGTrainer(SimpleQTrainer):
@@ -220,7 +220,7 @@ class DDPGTrainer(SimpleQTrainer):
         if config.get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
                 raise ValueError(
-                    "Prioritized replay is not supported when " "replay_mode=lockstep."
+                    "Prioritized replay is not supported when replay_mode=lockstep."
                 )
         else:
             if config.get("worker_side_prioritization"):

@@ -37,6 +37,7 @@ def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
         "placement group create per second",
         lambda: placement_group_create(num_pgs),
         num_pgs,
+        warmup_time_sec=0,
     )
 
     # Get fine-grained scheduling stats.

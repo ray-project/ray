@@ -270,11 +270,10 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
         _system_config={
             "worker_lease_timeout_milliseconds": 0,
             "max_direct_call_object_size": 0,
-            "locality_aware_leasing_enabled": True,
         },
     )
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=8, resources={"pin": 1})
+    remote_node = cluster.add_node(num_cpus=8, resources={"pin": 1})
     cluster.wait_for_nodes()
 
     @ray.remote(resources={"pin": 1})
@@ -285,9 +284,14 @@ def test_spread_scheduling_overrides_locality_aware_scheduling(ray_start_cluster
     def f(x):
         return ray.worker.global_worker.node.unique_id
 
-    # Test that task f() runs on the local node
-    # even though non local node has the dependencies.
-    assert ray.get(f.remote(non_local.remote())) == local_node.unique_id
+    # Test that task f() runs on the local node as well
+    # even though remote node has the dependencies.
+    obj1 = non_local.remote()
+    obj2 = non_local.remote()
+    assert {ray.get(f.remote(obj1)), ray.get(f.remote(obj2))} == {
+        local_node.unique_id,
+        remote_node.unique_id,
+    }
 
 
 def test_locality_aware_leasing(ray_start_cluster):
@@ -572,9 +576,9 @@ def test_gpu(monkeypatch):
         ), "expected launcher task to be scheduled on GPU nodes"
 
         for node_id in ids:
-            assert node_id in cpu_node_ids, (
-                "expected non-GPU tasks/actors to be scheduled on" "non-GPU nodes."
-            )
+            assert (
+                node_id in cpu_node_ids
+            ), "expected non-GPU tasks/actors to be scheduled on non-GPU nodes."
     finally:
         ray.shutdown()
         cluster.shutdown()

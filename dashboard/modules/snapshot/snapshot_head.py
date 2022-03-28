@@ -15,10 +15,10 @@ from ray.experimental.internal_kv import (
 )
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.runtime_env import RuntimeEnv
+from ray.job_submission import JobInfo
 from ray.dashboard.modules.job.common import (
-    JobStatusInfo,
-    JobStatusStorageClient,
+    JobInfoStorageClient,
     JOB_ID_METADATA_KEY,
 )
 
@@ -35,7 +35,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
         assert _internal_kv_initialized()
-        self._job_status_client = JobStatusStorageClient()
+        self._job_info_client = JobInfoStorageClient()
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="api_head"
@@ -68,14 +68,22 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
-        job_data, actor_data, serve_data, session_name = await asyncio.gather(
+        (
+            job_info,
+            job_submission_data,
+            actor_data,
+            serve_data,
+            session_name,
+        ) = await asyncio.gather(
             self.get_job_info(),
+            self.get_job_submission_info(),
             self.get_actor_info(),
             self.get_serve_info(),
             self.get_session_name(),
         )
         snapshot = {
-            "jobs": job_data,
+            "jobs": job_info,
+            "job_submission": job_submission_data,
             "actors": actor_data,
             "deployments": serve_data,
             "session_name": session_name,
@@ -86,13 +94,14 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             success=True, message="hello", snapshot=snapshot
         )
 
-    def _get_job_status(self, metadata: Dict[str, str]) -> Optional[JobStatusInfo]:
+    def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:
         # If a job submission ID has been added to a job, the status is
         # guaranteed to be returned.
         job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
-        return self._job_status_client.get_status(job_submission_id)
+        return self._job_info_client.get_info(job_submission_id)
 
     async def get_job_info(self):
+        """Return info for each job.  Here a job is a Ray driver."""
         request = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
 
@@ -103,14 +112,14 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             config = {
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": metadata,
-                "runtime_env": ParsedRuntimeEnv.deserialize(
+                "runtime_env": RuntimeEnv.deserialize(
                     job_table_entry.config.runtime_env_info.serialized_runtime_env
                 ),
             }
-            status = self._get_job_status(metadata)
+            info = self._get_job_info(metadata)
             entry = {
-                "status": None if status is None else status.status,
-                "status_message": None if status is None else status.message,
+                "status": None if info is None else info.status,
+                "status_message": None if info is None else info.message,
                 "is_dead": job_table_entry.is_dead,
                 "start_time": job_table_entry.start_time,
                 "end_time": job_table_entry.end_time,
@@ -118,6 +127,26 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             }
             jobs[job_id] = entry
 
+        return jobs
+
+    async def get_job_submission_info(self):
+        """Info for Ray job submission.  Here a job can have 0 or many drivers."""
+
+        jobs = {}
+
+        for job_submission_id, job_info in self._job_info_client.get_all_jobs().items():
+            if job_info is not None:
+                entry = {
+                    "status": job_info.status,
+                    "message": job_info.message,
+                    "error_type": job_info.error_type,
+                    "start_time": job_info.start_time,
+                    "end_time": job_info.end_time,
+                    "metadata": job_info.metadata,
+                    "runtime_env": job_info.runtime_env,
+                    "entrypoint": job_info.entrypoint,
+                }
+                jobs[job_submission_id] = entry
         return jobs
 
     async def get_actor_info(self):

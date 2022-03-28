@@ -143,7 +143,6 @@ def test_worker_restart(serve_instance):
 
 # Test that if there are multiple replicas for a worker and one dies
 # unexpectedly, the others continue to serve requests.
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_worker_replica_failure(serve_instance):
     @ray.remote
     class Counter:
