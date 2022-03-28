@@ -35,7 +35,6 @@ class LogAgentV1Grpc(
 ):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
-        log_utils.register_mimetypes()
 
     async def run(self, server):
         if server:
