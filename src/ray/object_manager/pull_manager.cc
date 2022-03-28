@@ -427,14 +427,12 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // before.
   it->second.client_locations.clear();
   for (const auto &client_id : client_ids) {
-    if (client_id == self_node_id_) {
-      RAY_LOG(WARNING) << "The object manager with ID " << self_node_id_
-                       << " is trying to pull object " << object_id
-                       << " but the object table suggests that this object manager "
-                       << "already has the object. The object may have been evicted. It is "
-                       << "most likely due to memory pressure, object pull has been "
-                       << "requested before object location is updated.";
-    } else {
+    if (client_id != self_node_id_) {
+      // We can't pull from ourselves, so filter these locations out.
+      // NOTE(swang): This means that we may try to pull an object even though
+      // the directory says that we already have the object local in plasma.
+      // This can happen due to a race condition between asynchronous updates
+      // or a bug in the object directory.
       it->second.client_locations.push_back(client_id);
     }
   }
@@ -562,8 +560,9 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
-      RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to spilled location at " << spilled_node_id
-                     << " of object " << object_id;
+      RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_
+                     << " to spilled location at " << spilled_node_id << " of object "
+                     << object_id;
       send_pull_request_(object_id, spilled_node_id);
       return true;
     }
@@ -579,8 +578,8 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   int node_index = distribution(gen_);
   NodeID node_id = node_vector[node_index];
   RAY_CHECK(node_id != self_node_id_);
-  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to in-memory location at " << node_id
-                 << " of object " << object_id;
+  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_
+                 << " to in-memory location at " << node_id << " of object " << object_id;
   send_pull_request_(object_id, node_id);
   return true;
 }
