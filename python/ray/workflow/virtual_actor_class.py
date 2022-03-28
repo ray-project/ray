@@ -272,9 +272,16 @@ class _VirtualActorMethodHelper:
         validate_user_metadata(metadata)
         options = WorkflowStepRuntimeOptions.make(
             step_type=self._options.step_type,
-            catch_exceptions=catch_exceptions or self._options.catch_exceptions,
-            max_retries=max_retries or self._options.max_retries,
-            ray_options={**self._options.ray_options, **(ray_options or {})},
+            catch_exceptions=catch_exceptions
+            if catch_exceptions is not None
+            else self._options.catch_exceptions,
+            max_retries=max_retries
+            if max_retries is not None
+            else self._options.max_retries,
+            ray_options={
+                **self._options.ray_options,
+                **(ray_options if ray_options is not None else {}),
+            },
         )
         _self = _VirtualActorMethodHelper(
             self._original_class,
@@ -282,8 +289,11 @@ class _VirtualActorMethodHelper:
             self._method_name,
             runtime_options=options,
         )
-        _self._name = name if name else self._name
-        _self._user_metadata = {**self._user_metadata, **(metadata or {})}
+        _self._name = name if name is not None else self._name
+        _self._user_metadata = {
+            **self._user_metadata,
+            **(metadata if metadata is not None else {}),
+        }
         return _self
 
     def __call__(self, *args, **kwargs):
