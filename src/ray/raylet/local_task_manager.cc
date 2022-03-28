@@ -228,6 +228,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
         }
+        num_unschedulable_task_spilled_++;
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
@@ -337,6 +338,7 @@ void LocalTaskManager::SpillWaitingTasks() {
         task_dependency_manager_.RemoveTaskDependencies(
             task.GetTaskSpecification().TaskId());
       }
+      num_waiting_task_spilled_++;
       waiting_tasks_index_.erase(task_id);
       it = waiting_task_queue_.erase(it);
     } else {
@@ -1059,6 +1061,10 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
   buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
   buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
+  buffer << "Number of total spilled tasks: " << num_task_spilled_ << "\n";
+  buffer << "Number of spilled waiting tasks: " << num_waiting_task_spilled_ << "\n";
+  buffer << "Number of spilled unschedulable tasks: " << num_unschedulable_task_spilled_
+         << "\n";
   buffer << "Resource usage {\n";
 
   // Calculates how much resources are occupied by tasks or actors.

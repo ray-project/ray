@@ -19,20 +19,26 @@ RUN sudo apt-get update \
         libgl1-mesa-dev \
         unzip \
         unrar \
-    && $HOME/anaconda3/bin/pip install -U pip \
-    && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -r requirements.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_rllib.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_train.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_tune.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_ml_docker.txt \
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U -r requirements_upstream.txt \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip \
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+           -r requirements.txt \
+           -r requirements_rllib.txt \
+           -r requirements_train.txt \
+           -r requirements_tune.txt \
+           -r requirements_upstream.txt \
+    # explicitly install (overwrite) pytorch with CUDA support
+    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
+           -r requirements_ml_docker.txt \
     # Remove dataclasses & typing because they are included in Python > 3.6
     && if [ $(python -c 'import sys; print(sys.version_info.minor)') != "6" ]; then \
         $HOME/anaconda3/bin/pip uninstall dataclasses typing -y; fi  \
-    && sudo rm requirements.txt && sudo rm requirements_ml_docker.txt \
-    && sudo rm requirements_tune.txt && sudo rm requirements_rllib.txt \
-    && sudo rm requirements_train.txt \
-    && sudo rm requirements_upstream.txt \
+    && sudo rm \
+        requirements.txt \
+        requirements_ml_docker.txt \
+        requirements_tune.txt \
+        requirements_rllib.txt \
+        requirements_train.txt \
+        requirements_upstream.txt \
     && sudo apt-get clean
 
 # Make sure tfp is installed correctly and matches tf version.

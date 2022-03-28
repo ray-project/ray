@@ -2,14 +2,15 @@
 import heapq
 import gc
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
+from ray.tune.result import NODE_IP
 from ray.tune.utils.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
 
-class Checkpoint:
+class _TuneCheckpoint:
     """Describes a checkpoint of trial state.
 
     Checkpoint may be saved in different storage.
@@ -24,10 +25,17 @@ class Checkpoint:
     MEMORY = "memory"
     PERSISTENT = "persistent"
 
-    def __init__(self, storage: str, value: Any, result=None):
+    def __init__(
+        self,
+        storage: str,
+        value: Any,
+        result: Optional[dict] = None,
+        node_ip: Optional[str] = None,
+    ):
         self.storage = storage
         self.value = value
         self.result = result or {}
+        self.node_ip = node_ip or self.result.get(NODE_IP, None)
         # The logical order of checkpoints (both in memory and persistent)
         # The more recent checkpoints have larger order.
         # The most recent checkpoint is used to restore the trial.
@@ -36,7 +44,7 @@ class Checkpoint:
     @staticmethod
     def from_object(value=None):
         """Creates a checkpoint from a Python object."""
-        return Checkpoint(Checkpoint.MEMORY, value)
+        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, value)
 
     @property
     def is_ready(self):
@@ -46,9 +54,9 @@ class Checkpoint:
         to an actual path. MEMORY checkpoints are always considered ready since
         they are transient.
         """
-        if self.storage == Checkpoint.PERSISTENT:
+        if self.storage == _TuneCheckpoint.PERSISTENT:
             return isinstance(self.value, str)
-        return self.storage == Checkpoint.MEMORY
+        return self.storage == _TuneCheckpoint.MEMORY
 
     def __repr__(self):
         return f"Checkpoint({self.storage}, {self.value})"
@@ -98,8 +106,10 @@ class CheckpointManager:
             self._checkpoint_score_attr = checkpoint_score_attr
 
         self.delete = delete_fn
-        self.newest_persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT, None)
-        self._newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
+        self.newest_persistent_checkpoint = _TuneCheckpoint(
+            _TuneCheckpoint.PERSISTENT, None
+        )
+        self._newest_memory_checkpoint = _TuneCheckpoint(_TuneCheckpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
         self._cur_order = 0
@@ -124,7 +134,7 @@ class CheckpointManager:
         gc.collect()
         self._newest_memory_checkpoint = new_checkpoint
 
-    def on_checkpoint(self, checkpoint: Checkpoint):
+    def on_checkpoint(self, checkpoint: _TuneCheckpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
         Checkpoints get assigned with an `order` as they come in.
@@ -140,7 +150,7 @@ class CheckpointManager:
         self._cur_order += 1
         checkpoint.order = self._cur_order
 
-        if checkpoint.storage == Checkpoint.MEMORY:
+        if checkpoint.storage == _TuneCheckpoint.MEMORY:
             self.replace_newest_memory_checkpoint(checkpoint)
             return
 
@@ -193,7 +203,9 @@ class CheckpointManager:
     def __getstate__(self):
         state = self.__dict__.copy()
         # Avoid serializing the memory checkpoint.
-        state["_newest_memory_checkpoint"] = Checkpoint(Checkpoint.MEMORY, None)
+        state["_newest_memory_checkpoint"] = _TuneCheckpoint(
+            _TuneCheckpoint.MEMORY, None
+        )
         # Avoid serializing lambda since it may capture cyclical dependencies.
         state.pop("delete")
         return state
