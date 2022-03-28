@@ -78,9 +78,8 @@ def test_actor_class_methods(ray_start_regular):
     assert ray.get(a.g.remote(2)) == 4
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_actor_gpus(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_actor_gpus(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     num_nodes = 3
     num_gpus_per_raylet = 4
     for i in range(num_nodes):
@@ -119,8 +118,8 @@ def test_actor_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
-def test_actor_multiple_gpus(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_actor_multiple_gpus(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     num_nodes = 3
     num_gpus_per_raylet = 5
     for i in range(num_nodes):
@@ -190,11 +189,10 @@ def test_actor_multiple_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")
-def test_actor_different_numbers_of_gpus(ray_start_cluster):
+def test_actor_different_numbers_of_gpus(ray_start_cluster_enabled):
     # Test that we can create actors on two nodes that have different
     # numbers of GPUs.
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=10, num_gpus=0)
     cluster.add_node(num_cpus=10, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=10)
@@ -230,8 +228,8 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
-def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     num_nodes = 3
     num_gpus_per_raylet = 2
     for i in range(num_nodes):
@@ -301,8 +299,8 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     assert ready_ids == []
 
 
-def test_actors_and_tasks_with_gpus(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_actors_and_tasks_with_gpus(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     num_nodes = 3
     num_gpus_per_raylet = 2
     for i in range(num_nodes):
@@ -555,8 +553,8 @@ def test_lifetime_and_transient_resources(ray_start_regular):
     assert len(ready_ids) == 1
 
 
-def test_custom_label_placement(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_custom_label_placement(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     custom_resource1_node = cluster.add_node(
         num_cpus=2, resources={"CustomResource1": 2}
     )
@@ -635,6 +633,4 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

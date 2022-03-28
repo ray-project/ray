@@ -271,14 +271,14 @@ def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
     ray.get(ref, timeout=30)
 
 
-def test_actor_restart_on_node_failure(ray_start_cluster):
+def test_actor_restart_on_node_failure(ray_start_cluster_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 1000,
         "task_retry_delay_ms": 100,
     }
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _system_config=config)
     cluster.wait_for_nodes()
@@ -509,7 +509,7 @@ def test_decorated_method(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
+    "ray_start_cluster_enabled",
     [
         {
             "num_cpus": 1,
@@ -518,7 +518,7 @@ def test_decorated_method(ray_start_regular):
     ],
     indirect=True,
 )
-def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
+def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster_enabled):
     """Test actor owner worker dies before local dependencies are resolved.
     This test verifies the scenario where owner worker
     has failed before actor dependencies are resolved.
@@ -580,7 +580,7 @@ def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
+    "ray_start_cluster_enabled",
     [
         {
             "num_cpus": 3,
@@ -589,7 +589,7 @@ def test_actor_owner_worker_dies_before_dependency_ready(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
+def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster_enabled):
     """Test actor owner node dies before local dependencies are resolved.
     This test verifies the scenario where owner node
     has failed before actor dependencies are resolved.
@@ -638,7 +638,7 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
         def hang(self):
             return True
 
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     node_to_be_broken = cluster.add_node(resources={"node": 1})
     cluster.add_node(resources={"caller": 1})
 
@@ -654,7 +654,7 @@ def test_actor_owner_node_dies_before_dependency_ready(ray_start_cluster):
     wait_for_condition(lambda: ray.get(caller.hang.remote()))
 
 
-def test_recreate_child_actor(ray_start_cluster):
+def test_recreate_child_actor(ray_start_cluster_enabled):
     @ray.remote
     class Actor:
         def __init__(self):
@@ -674,15 +674,15 @@ def test_recreate_child_actor(ray_start_cluster):
         def pid(self):
             return os.getpid()
 
-    ray.init(address=ray_start_cluster.address)
+    ray.init(address=ray_start_cluster_enabled.address)
     p = Parent.remote()
     pid = ray.get(p.pid.remote())
     os.kill(pid, 9)
     ray.get(p.ready.remote())
 
 
-def test_actor_failure_per_type(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_actor_failure_per_type(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node()
     ray.init(address="auto")
 
