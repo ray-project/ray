@@ -229,7 +229,6 @@ class WorkflowStepRuntimeOptions:
         cls,
         *,
         step_type,
-        existing_options: "WorkflowStepRuntimeOptions" = None,
         catch_exceptions=None,
         max_retries=None,
         allow_inplace=False,
@@ -237,21 +236,17 @@ class WorkflowStepRuntimeOptions:
         ray_options=None,
     ):
         if max_retries is None:
-            max_retries = existing_options.max_retries if existing_options else 3
+            max_retries = 3
         elif not isinstance(max_retries, int) or max_retries < -1:
             raise ValueError("'max_retries' only accepts 0, -1 or a positive integer.")
         if catch_exceptions is None:
-            catch_exceptions = (
-                existing_options.catch_exceptions if existing_options else False
-            )
+            catch_exceptions = False
         if not isinstance(checkpoint, bool) and checkpoint is not None:
             raise ValueError("'checkpoint' should be None or a boolean.")
         if ray_options is None:
             ray_options = {}
         elif not isinstance(ray_options, dict):
             raise ValueError("ray_options must be a dict.")
-        if existing_options:
-            ray_options = {**existing_options.ray_options, **ray_options}
         return cls(
             step_type=step_type,
             catch_exceptions=catch_exceptions,

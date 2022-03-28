@@ -122,20 +122,16 @@ class WorkflowStepFunction:
         Returns:
             The step function itself.
         """
-        name = name or self._name
         validate_user_metadata(metadata)
-        if metadata is not None:
-            metadata = {**self._user_metadata, **metadata}
-        else:
-            metadata = self._user_metadata
+        name = name or self._name
+        metadata = {**self._user_metadata, **(metadata or {})}
         step_options = WorkflowStepRuntimeOptions.make(
             step_type=StepType.FUNCTION,
-            existing_options=self._step_options,
-            catch_exceptions=catch_exceptions,
-            max_retries=max_retries,
-            allow_inplace=allow_inplace,
+            catch_exceptions=catch_exceptions or self._step_options.catch_exceptions,
+            max_retries=max_retries or self._step_options.max_retries,
+            allow_inplace=allow_inplace or self._step_options.allow_inplace,
             checkpoint=_inherit_checkpoint_option(checkpoint),
-            ray_options=ray_options,
+            ray_options={**self._step_options.ray_options, **(ray_options or {})},
         )
         return WorkflowStepFunction(
             self._func, step_options=step_options, name=name, metadata=metadata
