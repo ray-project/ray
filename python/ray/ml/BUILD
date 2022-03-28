@@ -131,7 +131,7 @@ py_test(
 
 py_test(
     name = "test_horovod_trainer",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
