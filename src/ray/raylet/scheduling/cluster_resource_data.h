@@ -54,7 +54,7 @@ class ResourceRequest {
     }
   }
 
-  ResourceRequest &operator=(const ResourceRequest &other)  = default;
+  ResourceRequest &operator=(const ResourceRequest &other) = default;
 
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
