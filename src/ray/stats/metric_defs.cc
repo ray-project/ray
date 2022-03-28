@@ -66,6 +66,13 @@ DEFINE_stats(grpc_server_req_finished,
              ray::stats::COUNT);
 
 /// Object Manager.
+DEFINE_stats(object_manager_bytes,
+             "Number of bytes pushed or received by type {PushedFromLocalPlasma, "
+             "PushedFromLocalDisk, Received}.",
+             ("Type"),
+             (),
+             ray::stats::GAUGE);
+
 DEFINE_stats(object_manager_received_chunks,
              "Number object chunks received broken per type {Total, FailedTotal, "
              "FailedCancelled, FailedPlasmaFull}.",

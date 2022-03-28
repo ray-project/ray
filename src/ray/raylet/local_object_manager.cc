@@ -591,8 +591,7 @@ void LocalObjectManager::RecordMetrics() const {
                                                        "PendingSpill");
   ray::stats::STATS_spill_manager_objects_bytes.Record(num_bytes_pending_restore_,
                                                        "PendingRestore");
-  ray::stats::STATS_spill_manager_objects_bytes.Record(spilled_bytes_total_,
-                                                       "Spilled");
+  ray::stats::STATS_spill_manager_objects_bytes.Record(spilled_bytes_total_, "Spilled");
   ray::stats::STATS_spill_manager_objects_bytes.Record(restored_objects_total_,
                                                        "Restored");
 

@@ -508,14 +508,15 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
-    restore_spilled_object_(
-        object_id, it->second.object_size,
-        direct_restore_url, [object_id](const ray::Status &status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Object restore for " << object_id
-                           << " failed, will retry later: " << status;
-          }
-        });
+    restore_spilled_object_(object_id,
+                            it->second.object_size,
+                            direct_restore_url,
+                            [object_id](const ray::Status &status) {
+                              if (!status.ok()) {
+                                RAY_LOG(ERROR) << "Object restore for " << object_id
+                                               << " failed, will retry later: " << status;
+                              }
+                            });
     return;
   }
 
@@ -652,10 +653,9 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
     if (ref != nullptr) {
       pinned_objects_size_ += ref->GetSize();
       pinned_objects_[object_id] = std::move(ref);
-      return false;
     }
   }
-  return true;
+  return pinned_objects_.count(object_id) > 0;
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {
