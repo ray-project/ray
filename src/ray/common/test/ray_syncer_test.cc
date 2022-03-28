@@ -294,8 +294,8 @@ struct SyncerServerTest {
     service.reset();
     server.reset();
     io_context.stop();
-    syncer.reset();
     thread->join();
+    syncer.reset();
   }
 
   int64_t GetNumConsumedMessages(const std::string &node_id) const {
