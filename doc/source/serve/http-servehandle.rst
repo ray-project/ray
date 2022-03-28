@@ -168,9 +168,9 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
 
 .. code-block:: python
 
+    from ray import serve
     from ray.serve.http_adapters import array_to_databatch
     from ray.serve.model_wrappers import ModelWrapper
-    from ray import serve
 
     serve.deployment(name="my_model")(ModelWrapper).deploy(
         my_ray_air_predictor,
