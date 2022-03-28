@@ -57,23 +57,6 @@ class Backend(metaclass=Singleton):
         """Logic for shutting down the backend."""
         pass
 
-    def handle_failure(
-        self,
-        worker_group: WorkerGroup,
-        failed_worker_indexes: List[int],
-        backend_config: BackendConfig,
-    ):
-        """Logic for handling failures.
-
-        By default, restart all workers.
-        """
-        logger.info("Shutting down all training workers.")
-        worker_group.shutdown()
-        logger.info("Restarting all training workers.")
-        worker_group.start()
-        logger.info("Setting up distributed backend on all workers.")
-        self.on_start(worker_group, backend_config)
-
     @staticmethod
     def encode_data(data_dict: Dict) -> EncodedData:
         """Logic to encode a data dict before sending to the driver.
@@ -557,23 +540,16 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success, failed_worker_indexes = check_for_failure(remote_values)
+        success = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)
         else:
             self._increment_failures()
-            try:
-                self._backend.handle_failure(
-                    self.worker_group, failed_worker_indexes, self._backend_config
-                )
-            except RayActorError as exc:
-                logger.warning(
-                    "Failure occurred during handling of another "
-                    "failure. Restarting all workers and "
-                    "continuing training from latest checkpoint."
-                )
-                logger.exception(str(exc))
-                self._restart()
+            logger.info(
+                "Failure identified during training. Restarting all workers and "
+                "continuing training from latest checkpoint."
+            )
+            self._restart()
             raise TrainingWorkerError
 
     def shutdown(self):

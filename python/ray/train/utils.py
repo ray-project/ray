@@ -8,11 +8,8 @@ from typing import Tuple, Dict, List, Any, TYPE_CHECKING, Union
 
 import ray
 from ray.exceptions import RayActorError
-from ray.ray_constants import env_integer
 from ray.types import ObjectRef
 from ray.util.ml_utils.util import find_free_port
-
-from ray.train.constants import TRAIN_REMAINING_WORKERS_GRACE_PERIOD_S_ENV
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -23,42 +20,20 @@ RayDataset = Union["Dataset", "DatasetPipeline"]
 logger = logging.getLogger(__name__)
 
 
-def check_for_failure(remote_values: List[ObjectRef]) -> Tuple[bool, List[int]]:
+def check_for_failure(remote_values: List[ObjectRef]) -> bool:
     """Check for actor failure when retrieving the remote values.
 
     Args:
         remote_values (list): List of object references from Ray actor methods.
 
     Returns:
-        Returns Tuple of success boolean and list of workers indexes that fail.
+        True if workers have failed, False otherwise.
     """
     unfinished = remote_values.copy()
-    dead_worker_indexes = []  # Store the indexes of the failed workers.
 
     at_least_one_failed_worker = False
-    while len(unfinished) > 0:
-        # Once a worker has failed, we add a timeout for getting the
-        # results for the remaining workers.
-        # This is to avoid situations where the remaining workers
-        # are alive, but hanging because other
-        # workers have failed (possibly on a synchronization call).
-        timeout = (
-            env_integer(TRAIN_REMAINING_WORKERS_GRACE_PERIOD_S_ENV, 10)
-            if at_least_one_failed_worker
-            else None
-        )
-        if at_least_one_failed_worker:
-            logger.info(f"Identified a worker failure. Waiting {timeout} "
-                        f"to see if remaining workers are still alive. ")
-        finished, unfinished = ray.wait(unfinished, timeout=timeout)
-
-        if at_least_one_failed_worker and len(unfinished) > 0:
-            # If at least one worker has failed, but there are still workers
-            # that we are waiting on results from, these workers are hanging.
-            # Treat these workers as dead workers as well.
-            unfinished_indexes = [remote_values.index(i) for i in unfinished]
-            dead_worker_indexes.extend(unfinished_indexes)
-            unfinished = []
+    while not at_least_one_failed_worker or len(unfinished) > 0:
+        finished, unfinished = ray.wait(unfinished)
 
         # If a failure occurs the ObjectRef will be marked as finished.
         # Calling ray.get will expose the failure as a RayActorError.
@@ -71,18 +46,9 @@ def check_for_failure(remote_values: List[ObjectRef]) -> Tuple[bool, List[int]]:
                 logger.exception(str(exc))
                 failed_actor_rank = remote_values.index(object_ref)
                 logger.info(f"Worker {failed_actor_rank} has failed.")
-                dead_worker_indexes.append(failed_actor_rank)
                 at_least_one_failed_worker = True
 
-    if len(dead_worker_indexes) > 0:
-        logger.warning(
-            "Failure has occurred during training. "
-            "Triggering Ray Train failure handling logic. "
-            "Training will restart from latest checkpoint."
-        )
-        return False, dead_worker_indexes
-    else:
-        return True, []
+    return at_least_one_failed_worker
 
 
 def get_address_and_port() -> Tuple[str, int]:
