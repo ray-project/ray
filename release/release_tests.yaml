@@ -1283,7 +1283,7 @@
     script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1372,7 +1372,7 @@
     script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1401,7 +1401,7 @@
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
