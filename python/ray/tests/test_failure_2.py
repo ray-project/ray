@@ -7,13 +7,13 @@ import time
 
 import numpy as np
 import pytest
+import platform
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
 from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 import ray.ray_constants as ray_constants
-from ray.cluster_utils import cluster_not_supported
 from ray._private.test_utils import (
     init_error_pubsub,
     get_error_message,
@@ -24,6 +24,7 @@ from ray._private.test_utils import (
 )
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Fails on Windows")
 def test_warning_for_too_many_actors(shutdown_only):
     # Check that if we run a workload which requires too many workers to be
     # started that we will receive a warning.
@@ -52,6 +53,7 @@ def test_warning_for_too_many_actors(shutdown_only):
     p.close()
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Fails on Windows")
 def test_warning_for_too_many_nested_tasks(shutdown_only):
     # Check that if we run a workload which requires too many workers to be
     # started that we will receive a warning.
@@ -340,17 +342,16 @@ def test_serialized_id(ray_start_cluster):
     ray.get(get.remote([obj], True))
 
 
-@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.mark.parametrize(
     "use_actors,node_failure",
     [(False, False), (False, True), (True, False), (True, True)],
 )
-def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
+def test_fate_sharing(ray_start_cluster_enabled, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
     }
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Head node with no resources.
     cluster.add_node(num_cpus=0, _system_config=config)
     ray.init(address=cluster.address)
@@ -404,7 +405,7 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         wait_for_condition(lambda: not child_resource_available())
         # Kill the parent process.
         os.kill(pid, 9)
-        wait_for_condition(child_resource_available)
+        wait_for_condition(child_resource_available, timeout=20)
 
     # Test fate sharing if the parent node dies.
     def test_node_failure(node_to_kill, use_actors):

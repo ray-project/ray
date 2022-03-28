@@ -41,11 +41,11 @@ def test_owner_assign_bug(ray_start_regular):
         ]
     ],
 )
-def test_owner_assign_when_put(ray_start_cluster, actor_resources):
+def test_owner_assign_when_put(ray_start_cluster_enabled, actor_resources):
     cluster_node_config = [
         {"num_cpus": 1, "resources": {f"node{i+1}": 10}} for i in range(3)
     ]
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     for kwargs in cluster_node_config:
         cluster.add_node(**kwargs)
     ray.init(address=cluster.address)
@@ -94,7 +94,7 @@ def test_owner_assign_when_put(ray_start_cluster, actor_resources):
     ray.kill(owner)
     time.sleep(2)
     with pytest.raises(ray.exceptions.RayTaskError) as error:
-        ray.get(borrower.get_object.remote(object_ref), timeout=2)
+        ray.get(borrower.get_object.remote(object_ref), timeout=10)
     assert "OwnerDiedError" in error.value.args[1]
 
 

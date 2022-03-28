@@ -225,7 +225,7 @@ def test_log_pid_with_hex_job_id(ray_start_cluster):
         submit_job()
 
 
-def test_log_monitor_backpressure(ray_start_cluster, monkeypatch):
+def test_log_monitor_backpressure(ray_start_cluster_enabled, monkeypatch):
     update_interval = 3
     monkeypatch.setenv("LOG_NAME_UPDATE_INTERVAL_S", str(update_interval))
     # Intentionally set low to trigger the backpressure condition.
@@ -236,7 +236,7 @@ def test_log_monitor_backpressure(ray_start_cluster, monkeypatch):
         return line == expected_str
 
     # Test log monitor still works with backpressure.
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
     # Connect a driver to the Ray cluster.
     ray.init(address=cluster.address)

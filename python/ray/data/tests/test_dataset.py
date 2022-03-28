@@ -3135,8 +3135,8 @@ def test_random_shuffle_spread(ray_start_cluster):
     assert set(locations) == {node1_id, node2_id}
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path):
-    cluster = ray_start_cluster
+def test_parquet_read_spread(ray_start_cluster_enabled, tmp_path):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(
         resources={"bar:1": 100},
         num_cpus=10,
