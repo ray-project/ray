@@ -257,7 +257,6 @@ class SimpleQTrainer(Trainer):
 
         This replicates Simple Q's execution_plan behaviour, e.g.:
         - For every time we (1) sample (MultiAgentBatch) from workers...
-            - (2) Concatenate freshly collected samples.
             - (3) Store new samples in replay buffer.
             - (4) Sample training batch (MultiAgentBatch) from replay buffer.
             - (5) Learn on training batch.
@@ -282,13 +281,11 @@ class SimpleQTrainer(Trainer):
             for s in new_sample_batches
         )
 
-        # (2) Concatenate freshly collected samples
-        concatenated_samples = SampleBatch.concat_samples(new_sample_batches)
-        # (3) Store new samples in replay buffer
-        self.local_replay_buffer.add(concatenated_samples)
+        # Multiple iterations are done to fit the old execution plan behaviour
+        for s in new_sample_batches:
+            # (3) Store new samples in replay buffer
+            self.local_replay_buffer.add(s)
 
-        # This is done to fit the old execution plan behaviour
-        for _ in new_sample_batches:
             # (4) Sample training batch (MultiAgentBatch) from replay buffer.
             train_batch = self.local_replay_buffer.sample(batch_size)
 

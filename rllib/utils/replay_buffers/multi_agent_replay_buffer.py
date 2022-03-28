@@ -14,6 +14,7 @@ from ray.rllib.utils.typing import PolicyID, SampleBatchType
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 from ray.rllib.utils.from_config import from_config
 from ray.util.debug import log_once
+from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -171,19 +172,9 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         return sum(len(buffer._storage) for buffer in self.replay_buffers.values())
 
     @ExperimentalAPI
+    @Deprecated(old="replay", new="sample", error=False)
     def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
-        """Deprecated in favor of new ReplayBuffer API.
-
-        This replay method retains compatibility with
-        deprecated kind of usage of this class.
-        """
-        if log_once("deprecated_replay_method"):
-            logger.info(
-                "ReplayBuffer method MultiAgentReplayBuffer.replay() is "
-                "deprecated in favor of the new ReplayBuffer API. Use "
-                "MultiAgentReplayBuffer.sample() instead."
-            )
-
+        """Deprecated in favor of new ReplayBuffer API."""
         if num_items is None:
             num_items = self.replay_batch_size
         return self.sample(num_items, **kwargs)
