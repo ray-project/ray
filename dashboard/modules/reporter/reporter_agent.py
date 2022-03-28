@@ -165,6 +165,9 @@ class ReporterAgent(
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
+        self._disk_stats_hist = [
+            (0, (0.0, 0.0, 0, 0))
+        ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_agent = MetricsAgent(
             "127.0.0.1" if self._ip == "127.0.0.1" else "",
             dashboard_agent.metrics_export_port,
@@ -282,6 +285,16 @@ class ReporterAgent(
             tmp: psutil.disk_usage(tmp),
         }
 
+    @staticmethod
+    def _get_disk_io():
+        stats = psutil.disk_io_counters()
+        return (
+            stats.read_bytes,
+            stats.write_bytes,
+            stats.read_count,
+            stats.write_count,
+        )
+
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
         if raylet_proc is None:
@@ -348,19 +361,25 @@ class ReporterAgent(
         per_cpu_load = tuple((round(x / self._cpu_counts[0], 2) for x in load))
         return load, per_cpu_load
 
+    @staticmethod
+    def _compute_speed_from_hist(hist):
+        while len(hist) > 7:
+            hist.pop(0)
+        then, prev_stats = hist[0]
+        now, now_stats = hist[-1]
+        time_delta = now - then
+        return tuple((y - x) / time_delta for x, y in zip(prev_stats, now_stats))
+
     def _get_all_stats(self):
         now = dashboard_utils.to_posix_time(datetime.datetime.utcnow())
         network_stats = self._get_network_stats()
-
         self._network_stats_hist.append((now, network_stats))
-        self._network_stats_hist = self._network_stats_hist[-7:]
-        then, prev_network_stats = self._network_stats_hist[0]
-        prev_send, prev_recv = prev_network_stats
-        now_send, now_recv = network_stats
-        network_speed_stats = (
-            (now_send - prev_send) / (now - then),
-            (now_recv - prev_recv) / (now - then),
-        )
+        network_speed_stats = self._compute_speed_from_hist(self._network_stats_hist)
+
+        disk_stats = self._get_disk_stats()
+        self._disk_stats_hist.append((now, disk_stats))
+        disk_speed_stats = self._compute_speed_from_hist(self._disk_stats_hist)
+
         return {
             "now": now,
             "hostname": self._hostname,
@@ -373,6 +392,8 @@ class ReporterAgent(
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
+            "disk_io": disk_stats,
+            "disk_io_speed": disk_speed_stats,
             "gpus": self._get_gpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
