@@ -68,6 +68,8 @@ class DatasetWriter(OutputWriter):
         d = _to_json_dict(sample_batch, self.compress_columns)
         self.samples.append(d)
 
+        # Todo: We should flush at the end of sampling even if this 
+        # condition was not reached.
         if len(self.samples) >= self.max_num_samples_per_file:
             ds = data.from_items(self.samples).repartition(num_blocks=1, shuffle=False)
             if self.format == "json":
