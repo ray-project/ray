@@ -255,13 +255,13 @@ class SimpleQTrainer(Trainer):
     def training_iteration(self) -> ResultDict:
         """Simple Q training iteration function.
 
-        This replicates Simple Q's execution_plan behaviour, e.g.:
-        - For every time we (1) sample (MultiAgentBatch) from workers...
-            - (3) Store new samples in replay buffer.
-            - (4) Sample training batch (MultiAgentBatch) from replay buffer.
-            - (5) Learn on training batch.
-            - (6) Update target network every target_network_update_freq steps.
-        - (7) Return all collected metrics for the iteration.
+        Simple Q consists of the following steps:
+        - (1) Sample (MultiAgentBatch) from workers...
+        - (2) Store new samples in replay buffer.
+        - (3) Sample training batch (MultiAgentBatch) from replay buffer.
+        - (4) Learn on training batch.
+        - (5) Update target network every target_network_update_freq steps.
+        - (6) Return all collected metrics for the iteration.
 
         Returns:
             The results dict from executing the training iteration.
@@ -269,49 +269,44 @@ class SimpleQTrainer(Trainer):
         batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()
 
-        train_results = {}
-
         # (1) Sample (MultiAgentBatch) from workers
         new_sample_batches = synchronous_parallel_sample(self.workers)
 
-        # Update counters
-        self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(s) for s in new_sample_batches)
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
-            len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-            for s in new_sample_batches
-        )
-
-        # Multiple iterations are done to fit the old execution plan behaviour
         for s in new_sample_batches:
-            # (3) Store new samples in replay buffer
+            # Update counters
+            self._counters[NUM_ENV_STEPS_SAMPLED] += len(s)
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += (
+                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+            )
+            # (2) Store new samples in replay buffer
             self.local_replay_buffer.add(s)
 
-            # (4) Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.sample(batch_size)
+        # (3) Sample training batch (MultiAgentBatch) from replay buffer.
+        train_batch = self.local_replay_buffer.sample(batch_size)
 
-            # (5) Learn on training batch.
-            # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-            if self.config.get("simple_optimizer") is True:
-                train_results = train_one_step(self, train_batch)
-            else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
+        # (4) Learn on training batch.
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        if self.config.get("simple_optimizer") is True:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
 
-            # (6) Update target network every target_network_update_freq steps
-            cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
-            last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            if cur_ts - last_update >= self.config["target_network_update_freq"]:
-                to_update = local_worker.get_policies_to_train()
-                local_worker.foreach_policy_to_train(
-                    lambda p, pid: pid in to_update and p.update_target()
-                )
-                self._counters[NUM_TARGET_UPDATES] += 1
-                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+        # (5) Update target network every target_network_update_freq steps
+        cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
+        last_update = self._counters[LAST_TARGET_UPDATE_TS]
+        if cur_ts - last_update >= self.config["target_network_update_freq"]:
+            to_update = local_worker.get_policies_to_train()
+            local_worker.foreach_policy_to_train(
+                lambda p, pid: pid in to_update and p.update_target()
+            )
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-            # Update remote workers's weights after learning on local worker
-            if self.workers.remote_workers():
-                with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                    self.workers.sync_weights()
+        # Update remote workers' weights after learning on local worker
+        if self.workers.remote_workers():
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                self.workers.sync_weights()
 
-        # (7) Return all collected metrics for the iteration.
+        # (6) Return all collected metrics for the iteration.
         return train_results
