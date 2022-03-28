@@ -65,7 +65,9 @@ steps:
     - export RAY_INSTALL_JAVA=1
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
+    # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
+    # with dynamic linking.
+    - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
       //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
     # clang-format is needed by java/test.sh
     - pip install clang-format==12.0.1

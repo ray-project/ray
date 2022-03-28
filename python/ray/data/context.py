@@ -19,8 +19,7 @@ DEFAULT_BLOCK_SPLITTING_ENABLED = False
 DEFAULT_ENABLE_PANDAS_BLOCK = True
 
 # Whether to enable stage-fusion optimizations for dataset pipelines.
-# TODO(ekl): enable this by default when ready.
-DEFAULT_OPTIMIZE_FUSE_STAGES = False
+DEFAULT_OPTIMIZE_FUSE_STAGES = True
 
 # Whether to furthermore fuse read stages. When this is enabled, data will also be
 # re-read from the base dataset in each repetition of a DatasetPipeline.
@@ -54,12 +53,8 @@ class DatasetContext:
         self.target_max_block_size = target_max_block_size
         self.enable_pandas_block = enable_pandas_block
         self.optimize_fuse_stages = optimize_fuse_stages
-        self.optimize_fuse_read_stages = (
-            optimize_fuse_stages and optimize_fuse_read_stages
-        )
-        self.optimize_fuse_shuffle_stages = (
-            optimize_fuse_stages and optimize_fuse_shuffle_stages
-        )
+        self.optimize_fuse_read_stages = optimize_fuse_read_stages
+        self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
 
     @staticmethod
     def get_current() -> "DatasetContext":

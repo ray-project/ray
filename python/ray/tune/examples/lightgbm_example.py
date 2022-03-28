@@ -1,20 +1,31 @@
 import lightgbm as lgb
-import numpy as np
 import sklearn.datasets
 import sklearn.metrics
 from sklearn.model_selection import train_test_split
 
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.integration.lightgbm import TuneReportCheckpointCallback
+from ray.tune.integration.lightgbm import (
+    TuneReportCheckpointCallback,
+    TuneReportCallback,
+)
 
 
-def train_breast_cancer(config):
+def train_breast_cancer(config: dict):
+    # This is a simple training function to be passed into Tune
+
+    # Load dataset
     data, target = sklearn.datasets.load_breast_cancer(return_X_y=True)
+
+    # Split into train and test set
     train_x, test_x, train_y, test_y = train_test_split(data, target, test_size=0.25)
+
+    # Build input Datasets for LightGBM
     train_set = lgb.Dataset(train_x, label=train_y)
     test_set = lgb.Dataset(test_x, label=test_y)
-    gbm = lgb.train(
+
+    # Train the classifier, using the Tune callback
+    lgb.train(
         config,
         train_set,
         valid_sets=[test_set],
@@ -29,10 +40,37 @@ def train_breast_cancer(config):
             )
         ],
     )
-    preds = gbm.predict(test_x)
-    pred_labels = np.rint(preds)
-    tune.report(
-        mean_accuracy=sklearn.metrics.accuracy_score(test_y, pred_labels), done=True
+
+
+def train_breast_cancer_cv(config: dict):
+    # This is a simple training function to be passed into Tune, using
+    # lightgbm's cross validation functionality
+
+    # Load dataset
+    data, target = sklearn.datasets.load_breast_cancer(return_X_y=True)
+
+    train_set = lgb.Dataset(data, label=target)
+
+    # Run CV, using the Tune callback
+    lgb.cv(
+        config,
+        train_set,
+        verbose_eval=False,
+        stratified=True,
+        # Checkpointing is not supported for CV
+        # LightGBM aggregates metrics over folds automatically
+        # with the cv_agg key. Both mean and standard deviation
+        # are provided.
+        callbacks=[
+            TuneReportCallback(
+                {
+                    "binary_error": "cv_agg-binary_error-mean",
+                    "binary_logloss": "cv_agg-binary_logloss-mean",
+                    "binary_error_stdv": "cv_agg-binary_error-stdv",
+                    "binary_logloss_stdv": "cv_agg-binary_logloss-stdv",
+                },
+            )
+        ],
     )
 
 
@@ -45,7 +83,10 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
+    )
+    parser.add_argument(
+        "--use-cv", action="store_true", help="Use `lgb.cv` instead of `lgb.train`."
     )
     args, _ = parser.parse_known_args()
 
@@ -64,7 +105,7 @@ if __name__ == "__main__":
     }
 
     analysis = tune.run(
-        train_breast_cancer,
+        train_breast_cancer if not args.use_cv else train_breast_cancer_cv,
         metric="binary_error",
         mode="min",
         config=config,

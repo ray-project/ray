@@ -35,13 +35,17 @@ DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_string(redis_address, "", "The IP address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
-DEFINE_int32(min_worker_port, 0,
+DEFINE_int32(min_worker_port,
+             0,
              "The lowest port that workers' gRPC servers will bind on.");
-DEFINE_int32(max_worker_port, 0,
+DEFINE_int32(max_worker_port,
+             0,
              "The highest port that workers' gRPC servers will bind on.");
-DEFINE_string(worker_port_list, "",
+DEFINE_string(worker_port_list,
+              "",
               "An explicit list of ports that workers' gRPC servers will bind on.");
-DEFINE_int32(num_initial_python_workers_for_first_job, 0,
+DEFINE_int32(num_initial_python_workers_for_first_job,
+             0,
              "Number of initial Python workers for the first job.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
@@ -49,7 +53,8 @@ DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
-DEFINE_string(native_library_path, "",
+DEFINE_string(native_library_path,
+              "",
               "The native library path which includes the core libraries.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
@@ -60,10 +65,12 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 #ifdef __linux__
-DEFINE_string(plasma_directory, "/dev/shm",
+DEFINE_string(plasma_directory,
+              "/dev/shm",
               "The shared memory directory of the object store.");
 #else
-DEFINE_string(plasma_directory, "/tmp",
+DEFINE_string(plasma_directory,
+              "/tmp",
               "The shared memory directory of the object store.");
 #endif
 DEFINE_bool(huge_pages, false, "Enable huge pages.");
@@ -71,7 +78,8 @@ DEFINE_bool(huge_pages, false, "Enable huge pages.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
@@ -129,9 +137,12 @@ int main(int argc, char *argv[]) {
   } else {
     // Async context is not used by `redis_client_` in `gcs_client`, so we set
     // `enable_async_conn` as false.
-    ray::gcs::GcsClientOptions client_options(
-        redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
-        /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
+    ray::gcs::GcsClientOptions client_options(redis_address,
+                                              redis_port,
+                                              redis_password,
+                                              /*enable_sync_conn=*/true,
+                                              /*enable_async_conn=*/false,
+                                              /*enable_subscribe_conn=*/true);
     gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
   }
 
@@ -262,14 +273,19 @@ int main(int argc, char *argv[]) {
         ray::stats::Init(global_tags, metrics_agent_port);
 
         // Initialize the node manager.
-        raylet = std::make_unique<ray::raylet::Raylet>(
-            main_service, raylet_socket_name, node_ip_address, node_manager_config,
-            object_manager_config, gcs_client, metrics_export_port);
+        raylet = std::make_unique<ray::raylet::Raylet>(main_service,
+                                                       raylet_socket_name,
+                                                       node_ip_address,
+                                                       node_manager_config,
+                                                       object_manager_config,
+                                                       gcs_client,
+                                                       metrics_export_port);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
           ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
-                            {{"node_id", raylet->GetNodeId().Hex()}}, log_dir,
+                            {{"node_id", raylet->GetNodeId().Hex()}},
+                            log_dir,
                             RayConfig::instance().event_level());
         };
 

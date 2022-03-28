@@ -144,7 +144,8 @@ class ActorID : public BaseID<ActorID> {
   /// \param parent_task_counter The counter of the parent task.
   ///
   /// \return The random `ActorID`.
-  static ActorID Of(const JobID &job_id, const TaskID &parent_task_id,
+  static ActorID Of(const JobID &job_id,
+                    const TaskID &parent_task_id,
                     const size_t parent_task_counter);
 
   /// Creates a nil ActorID with the given job.
@@ -210,8 +211,10 @@ class TaskID : public BaseID<TaskID> {
   /// \param actor_id The ID of the actor to which this task belongs.
   ///
   /// \return The ID of the actor task.
-  static TaskID ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
-                             size_t parent_task_counter, const ActorID &actor_id);
+  static TaskID ForActorTask(const JobID &job_id,
+                             const TaskID &parent_task_id,
+                             size_t parent_task_counter,
+                             const ActorID &actor_id);
 
   /// Creates a TaskID for normal task.
   ///
@@ -221,7 +224,8 @@ class TaskID : public BaseID<TaskID> {
   ///        parent task before this one.
   ///
   /// \return The ID of the normal task.
-  static TaskID ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
+  static TaskID ForNormalTask(const JobID &job_id,
+                              const TaskID &parent_task_id,
                               size_t parent_task_counter);
 
   /// Given a base task ID, create a task ID that represents the n-th execution
@@ -239,6 +243,9 @@ class TaskID : public BaseID<TaskID> {
   ///
   /// \return The `ActorID` of the actor which creates this task.
   ActorID ActorId() const;
+
+  /// Returns whether this is the ID of an actor creation task.
+  bool IsForActorCreationTask() const;
 
   /// Get the id of the job to which this task belongs.
   ///
@@ -324,16 +331,34 @@ class ObjectID : public BaseID<ObjectID> {
 };
 
 class PlacementGroupID : public BaseID<PlacementGroupID> {
+ private:
+  static constexpr size_t kUniqueBytesLength = 14;
+
  public:
-  static constexpr size_t kLength = 16;
+  /// Length of `PlacementGroupID` in bytes.
+  static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
 
   /// Size of `PlacementGroupID` in bytes.
   ///
   /// \return Size of `PlacementGroupID` in bytes.
   static constexpr size_t Size() { return kLength; }
 
+  /// Creates a `PlacementGroupID` by hashing the given information.
+  ///
+  /// \param job_id The job id to which this actor belongs.
+  ///
+  /// \return The random `PlacementGroupID`.
+  static PlacementGroupID Of(const JobID &job_id);
+
+  static PlacementGroupID FromRandom() = delete;
+
   /// Constructor of `PlacementGroupID`.
   PlacementGroupID() : BaseID() {}
+
+  /// Get the job id to which this placement group belongs.
+  ///
+  /// \return The job id to which this placement group belongs.
+  JobID JobId() const;
 
   MSGPACK_DEFINE(id_);
 

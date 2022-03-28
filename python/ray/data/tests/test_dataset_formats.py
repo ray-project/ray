@@ -6,8 +6,10 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import snappy
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
+from io import BytesIO
 
 import ray
 
@@ -242,7 +244,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
         ),  # Path contains space.
     ],
 )
-def test_parquet_read(ray_start_regular_shared, fs, data_path):
+def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df1)
     setup_data_path = _unwrap_protocol(data_path)
@@ -381,6 +383,55 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     values = [[s["one"], s["two"]] for s in ds.take()]
     assert ds._plan.execute()._num_computed() == 2
     assert sorted(values) == [[1, "a"], [1, "a"]]
+
+
+def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame(
+        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
+    )
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False,
+    )
+
+    schema = pa.schema([("one", pa.int32()), ("two", pa.string())])
+    partitioning = pa.dataset.partitioning(schema, flavor="hive")
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), dataset_kwargs=dict(partitioning=partitioning)
+    )
+
+    # Test metadata-only parquet ops.
+    assert ds._plan.execute()._num_computed() == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert (
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={two: string, one: int32})"
+    ), ds
+    assert (
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={two: string, one: int32})"
+    ), ds
+    assert ds._plan.execute()._num_computed() == 1
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert ds._plan.execute()._num_computed() == 2
+    assert sorted(values) == [
+        [1, "a"],
+        [1, "b"],
+        [1, "c"],
+        [3, "e"],
+        [3, "f"],
+        [3, "g"],
+    ]
 
 
 def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
@@ -789,6 +840,31 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 5
+
+
+def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_binary_snappy")
+    os.mkdir(path)
+    with open(os.path.join(path, "file"), "wb") as f:
+        byte_str = "hello, world".encode()
+        bytes = BytesIO(byte_str)
+        snappy.stream_compress(bytes, f)
+    ds = ray.data.read_binary_files(
+        path,
+        arrow_open_stream_args=dict(compression="snappy"),
+    )
+    assert sorted(ds.take()) == [byte_str]
+
+
+def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_binary_snappy_inferred")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.snappy"), "wb") as f:
+        byte_str = "hello, world".encode()
+        bytes = BytesIO(byte_str)
+        snappy.stream_compress(bytes, f)
+    ds = ray.data.read_binary_files(path)
+    assert sorted(ds.take()) == [byte_str]
 
 
 @pytest.mark.parametrize("pipelined", [False, True])

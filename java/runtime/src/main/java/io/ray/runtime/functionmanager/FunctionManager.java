@@ -233,15 +233,22 @@ public class FunctionManager {
           final boolean isDefault = e instanceof Method && ((Method) e).isDefault();
           map.put(
               ImmutablePair.of(methodName, signature), ImmutablePair.of(rayFunction, isDefault));
-          // For cross language call java function without signature
-          final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");
-          /// default method is not overloaded, so we should filter it.
-          if (map.containsKey(emptyDescriptor) && !map.get(emptyDescriptor).getRight()) {
-            map.put(
-                emptyDescriptor,
-                ImmutablePair.of(null, false)); // Mark this function as overloaded.
-          } else {
-            map.put(emptyDescriptor, ImmutablePair.of(rayFunction, isDefault));
+          // For cross language call java function with signature "{length_of_arguments}" or just
+          // empty "".
+          // TODO: more robust signature type matching
+          // https://github.com/ray-project/ray/issues/21380.
+          String[] crossLangSignatures = {"", String.format("%s", type.getArgumentTypes().length)};
+          for (String crossLangSignature : crossLangSignatures) {
+            final Pair<String, String> crossLangDescriptor =
+                ImmutablePair.of(methodName, crossLangSignature);
+            /// default method is not overloaded, so we should filter it.
+            if (map.containsKey(crossLangDescriptor) && !map.get(crossLangDescriptor).getRight()) {
+              map.put(
+                  crossLangDescriptor,
+                  ImmutablePair.of(null, false)); // Mark this function as overloaded.
+            } else {
+              map.put(crossLangDescriptor, ImmutablePair.of(rayFunction, isDefault));
+            }
           }
         }
       } catch (Exception e) {

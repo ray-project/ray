@@ -1,3 +1,4 @@
+import importlib.util
 from collections import namedtuple
 import logging
 import os
@@ -7,6 +8,11 @@ import sys
 
 import ray
 import ray.ray_constants as ray_constants
+
+try:
+    import GPUtil
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +181,14 @@ class ResourceSpec(
                 num_gpus = min(num_gpus, len(gpu_ids))
 
         try:
-            info_string = _get_gpu_info_string()
-            gpu_types = _constraints_from_gpu_info(info_string)
+            if (
+                sys.platform.startswith("linux")
+                and importlib.util.find_spec("GPUtil") is not None
+            ):
+                gpu_types = _get_gpu_types_gputil()
+            else:
+                info_string = _get_gpu_info_string()
+                gpu_types = _constraints_from_gpu_info(info_string)
             resources.update(gpu_types)
         except Exception:
             logger.exception("Could not parse gpu information.")
@@ -202,7 +214,9 @@ class ResourceSpec(
             # Cap by shm size by default to avoid low performance, but don't
             # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
             if sys.platform == "linux" or sys.platform == "linux2":
-                shm_avail = ray._private.utils.get_shared_memory_bytes()
+                # Multiple by 0.95 to give a bit of wiggle-room.
+                # https://github.com/ray-project/ray/pull/23034/files
+                shm_avail = ray._private.utils.get_shared_memory_bytes() * 0.95
                 max_cap = min(
                     max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail), max_cap
                 )
@@ -261,25 +275,40 @@ def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
     TODO(rkn): This currently assumes NVIDIA GPUs on Linux.
-    TODO(mehrdadn): This currently does not work on macOS.
     TODO(mehrdadn): Use a better mechanism for Windows.
-
-    Possibly useful: tensorflow.config.list_physical_devices()
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
     """
     result = 0
     if sys.platform.startswith("linux"):
-        proc_gpus_path = "/proc/driver/nvidia/gpus"
-        if os.path.isdir(proc_gpus_path):
-            result = len(os.listdir(proc_gpus_path))
+        if importlib.util.find_spec("GPUtil"):
+            gpu_list = GPUtil.getGPUs()
+            result = len(gpu_list)
+        else:
+            proc_gpus_path = "/proc/driver/nvidia/gpus"
+            if os.path.isdir(proc_gpus_path):
+                result = len(os.listdir(proc_gpus_path))
     elif sys.platform == "win32":
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
         lines = subprocess.check_output(cmdargs).splitlines()[1:]
         result = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
     return result
+
+
+def _get_gpu_types_gputil():
+    gpu_list = GPUtil.getGPUs()
+    if len(gpu_list) > 0:
+        gpu_list_names = [gpu.name for gpu in gpu_list]
+        info_str = gpu_list_names.pop()
+        pretty_name = _pretty_gpu_name(info_str)
+        if pretty_name:
+            constraint_name = (
+                f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
+            )
+            return {constraint_name: 1}
+    return {}
 
 
 def _constraints_from_gpu_info(info_str):

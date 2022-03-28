@@ -23,22 +23,22 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     See https://arxiv.org/abs/1810.05934
 
     Args:
-        time_attr (str): A training result attr to use for comparing time.
+        time_attr: A training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. Stopping
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        max_t (float): max time units per trial. Trials will be stopped after
+        max_t: max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
-        grace_period (float): Only stop trials at least this old in time.
+        grace_period: Only stop trials at least this old in time.
             The units are the same as the attribute named by `time_attr`.
-        reduction_factor (float): Used to set halving rate and amount. This
+        reduction_factor: Used to set halving rate and amount. This
             is simply a unit-less scalar.
-        brackets (int): Number of brackets. Each bracket has a different
+        brackets: Number of brackets. Each bracket has a different
             halving rate, specified by the reduction factor.
     """
 
@@ -81,7 +81,9 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             self._metric_op = -1.0
         self._time_attr = time_attr
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str]) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], **spec
+    ) -> bool:
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -174,12 +176,17 @@ class _Bracket:
     the correct rung corresponding to the current iteration of the result.
 
     Example:
-        >>> b = _Bracket(1, 10, 2, 0)
-        >>> b.on_result(trial1, 1, 2)  # CONTINUE
-        >>> b.on_result(trial2, 1, 4)  # CONTINUE
-        >>> b.cutoff(b._rungs[-1][1]) == 3.0  # rungs are reversed
-        >>> b.on_result(trial3, 1, 1)  # STOP
-        >>> b.cutoff(b._rungs[3][1]) == 2.0
+        >>> trial1, trial2, trial3 = ... # doctest: +SKIP
+        >>> b = _Bracket(1, 10, 2, 0) # doctest: +SKIP
+        >>> # CONTINUE
+        >>> b.on_result(trial1, 1, 2) # doctest: +SKIP
+        >>> # CONTINUE
+        >>> b.on_result(trial2, 1, 4) # doctest: +SKIP
+        >>> # rungs are reversed
+        >>> b.cutoff(b._rungs[-1][1]) == 3.0 # doctest: +SKIP
+         # STOP
+        >>> b.on_result(trial3, 1, 1) # doctest: +SKIP
+        >>> b.cutoff(b._rungs[3][1]) == 2.0 # doctest: +SKIP
     """
 
     def __init__(self, min_t: int, max_t: int, reduction_factor: float, s: int):

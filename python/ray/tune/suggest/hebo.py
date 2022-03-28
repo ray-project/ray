@@ -61,30 +61,29 @@ class HEBOSearch(Searcher):
     here.
 
     Args:
-        space (dict|hebo.design_space.design_space.DesignSpace):
-            A dict mapping parameter names to Tune search spaces or a
+        space: A dict mapping parameter names to Tune search spaces or a
             HEBO DesignSpace object.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        evaluated_rewards (list): If you have previously evaluated the
+        evaluated_rewards: If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/hebo_example.py)
-        random_state_seed (int, None): Seed for reproducible
+        random_state_seed: Seed for reproducible
             results. Defaults to None. Please note that setting this to a value
             will change global random states for `numpy` and `torch`
             on initalization and loading from checkpoint.
-        max_concurrent (int, 8): Number of maximum concurrent trials.
+        max_concurrent: Number of maximum concurrent trials.
             If this Searcher is used in a ``ConcurrencyLimiter``, the
             ``max_concurrent`` value passed to it will override the
             value passed here.
@@ -333,7 +332,7 @@ class HEBOSearch(Searcher):
             )
         else:
             logger.warning(
-                "Only non errored and non pruned points" " can be added to HEBO."
+                "Only non errored and non pruned points can be added to HEBO."
             )
 
     def save(self, checkpoint_path: str):

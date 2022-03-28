@@ -37,7 +37,8 @@ namespace {
 using ::google::protobuf::io::CodedInputStream;
 using ::google::protobuf::io::FileInputStream;
 
-bool ReadExtraAction(const std::string &path, blaze::ExtraActionInfo *info,
+bool ReadExtraAction(const std::string &path,
+                     blaze::ExtraActionInfo *info,
                      blaze::CppCompileInfo *cpp_info) {
   int fd = ::open(path.c_str(), O_RDONLY, S_IREAD | S_IWRITE);
   if (fd < 0) {
@@ -97,8 +98,8 @@ int main(int argc, char **argv) {
 
   std::vector<std::string> args;
   args.push_back(cpp_info.tool());
-  args.insert(args.end(), cpp_info.compiler_option().begin(),
-              cpp_info.compiler_option().end());
+  args.insert(
+      args.end(), cpp_info.compiler_option().begin(), cpp_info.compiler_option().end());
   if (std::find(args.begin(), args.end(), "-c") == args.end()) {
     args.push_back("-c");
     args.push_back(cpp_info.source_file());

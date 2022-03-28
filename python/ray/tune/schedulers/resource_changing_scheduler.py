@@ -1,10 +1,13 @@
+from copy import deepcopy
+import numpy as np
 import logging
-from typing import Dict, Any, Optional, Set, Union, Callable
+from typing import Dict, Any, List, Optional, Set, Tuple, Union, Callable
 
 import pickle
 import warnings
-import math
 
+from ray.util import log_once
+from ray.util.annotations import PublicAPI, Deprecated
 from ray.tune import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -14,13 +17,367 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 logger = logging.getLogger(__name__)
 
 
-class _DistributeResources:
-    """Generic functionality for resource allocation functions"""
+@PublicAPI(stability="beta")
+class DistributeResources:
+    """This class creates a basic uniform resource allocation function.
 
-    def __init__(self, add_bundles: bool = False):
-        """If add_bundles is True, create new bundles from free resources.
-        Otherwise, spread them among base_trial_resource bundles."""
+    The function naively balances free resources (CPUs and GPUs) between
+    trials, giving them all equal priority, ensuring that all resources
+    are always being used. The free resources will be placed in new bundles.
+    The function assumes that all bundles are equal (there is no "head"
+    bundle).
+
+    If for some reason a trial ends up with
+    more resources than there are free ones, it will adjust downwards.
+    It will also ensure that trial as at least as many resources as
+    it started with (``base_trial_resource``).
+
+    The function returns a new ``PlacementGroupFactory`` with updated
+    resource requirements, or None. If the returned
+    ``PlacementGroupFactory`` is equal by value to the one the
+    trial has currently, the scheduler will skip the update process
+    internally (same with None).
+
+    If you wish to implement your own resource distribution logic,
+    you can do so by extending this class, as it provides several
+    generic methods. You can also implement a function instead.
+
+    Args:
+        add_bundles: If True, create new bundles from free resources.
+            Otherwise, spread them among base_trial_resource bundles.
+        increase_by: A dict with key-value
+            pairs representing an atomic unit of resources (name-amount)
+            the trial will be increased by. If not set, the trial will
+            increase by 1 CPU/GPU.
+        increase_by_times: If set to >=1 and ``increase_by`` is set,
+            the trial will increase by maximum of
+            ``increase_by_times * increase_by`` resources. If set to <1,
+            no upper limit is set. Ignored if ``increase_by`` is not set.
+        reserve_resources: A dict of
+            resource_name-amount pairs representing the resources
+            that will not be allocated to resized trials.
+    """
+
+    def __init__(
+        self,
+        add_bundles: bool = False,
+        increase_by: Optional[Dict[str, float]] = None,
+        increase_by_times: int = -1,
+        reserve_resources: Optional[Dict[str, float]] = None,
+    ):
         self.add_bundles = add_bundles
+        self.increase_by = increase_by or {}
+        self.increase_by_times = increase_by_times
+        self.reserve_resources = reserve_resources or {}
+
+    def _validate(
+        self, base_trial_resource: PlacementGroupFactory, result: Dict[str, Any]
+    ) -> bool:
+        """Return False if we should keep the current resources outright."""
+        if not isinstance(base_trial_resource, PlacementGroupFactory):
+            raise ValueError(
+                f"{self.__class__.__name__} only supports PlacementGroupFactories."
+            )
+
+        if not self.add_bundles and len(base_trial_resource.bundles) > 1:
+            raise ValueError(
+                "If `add_bundles` is False, the number of bundles in "
+                "`resources_per_trial` must be 1 "
+                f"(got {len(base_trial_resource.bundles)})."
+            )
+
+        # Don't bother if this is just the first iteration
+        if result["training_iteration"] < 1:
+            return False
+        return True
+
+    def _get_total_available_resources(
+        self, trial_runner: "trial_runner.TrialRunner"
+    ) -> Tuple[float, float]:
+        """Get the number of CPUs and GPUs avaialble in total (not just free)"""
+        total_available_cpus = (
+            trial_runner.trial_executor._resource_updater.get_num_cpus()
+            - self.reserve_resources.get("CPU", 0)
+        )
+        total_available_gpus = (
+            trial_runner.trial_executor._resource_updater.get_num_gpus()
+            - self.reserve_resources.get("GPU", 0)
+        )
+        return total_available_cpus, total_available_gpus
+
+    def _get_used_cpus_and_gpus(self, t: Trial) -> Tuple[float, float]:
+        """Check how many CPUs and GPUs a trial is using currently"""
+        return (
+            t.placement_group_factory.required_resources.get("CPU", 0),
+            t.placement_group_factory.required_resources.get("GPU", 0),
+        )
+
+    def _get_resources_from_bundles(
+        self, bundles: List[Dict[str, float]]
+    ) -> Dict[str, float]:
+        """Get total sums of resources in bundles"""
+        if not bundles:
+            return {"CPU": 0, "GPU": 0}
+        pgf = PlacementGroupFactory(bundles)
+        return pgf.required_resources
+
+    def _is_bundle_empty(self, bundle: Dict[str, float]) -> bool:
+        return not (bundle.get("CPU", 0) or bundle.get("GPU", 0))
+
+    def _add_two_bundles(
+        self,
+        bundles_a: List[Dict[str, float]],
+        bundles_b: List[Dict[str, float]],
+        increase_by: Dict[str, float],
+        limit_to_increase_by_times: bool,
+        max_increase_by_times: int = -1,
+    ):
+        """Add two bundles together.
+
+        If ``limit_to_increase_by_times`` is True, ``self.increase_by_times`` > 0
+        and ``max_increase_by_times`` > 0, ensure that the resulting number of
+        bundles is not above ``min(max_increase_by_times, self.increase_by_times)``.
+
+        If ``limit_to_increase_by_times`` is True and ``self.increase_by_times`` > 0,
+        ensure that the resulting number of bundles is not above
+        `self.increase_by_times``.
+        """
+        if limit_to_increase_by_times:
+            if max_increase_by_times > 0 and self.increase_by_times > 0:
+                max_increase_by_times = min(
+                    max_increase_by_times, self.increase_by_times
+                )
+            elif self.increase_by_times > 0:
+                max_increase_by_times = self.increase_by_times
+
+        if self.add_bundles:
+            bundles = [b for b in bundles_a if not self._is_bundle_empty(b)] + [
+                b for b in bundles_b if not self._is_bundle_empty(b)
+            ]
+            if max_increase_by_times > 0:
+                bundles = bundles[:max_increase_by_times]
+        else:
+            bundles_a = bundles_a or [{}]
+            bundles_b = bundles_b or [{}]
+            bundles = [
+                {
+                    "CPU": bundles_a[0].get("CPU", 0) + bundles_b[0].get("CPU", 0),
+                    "GPU": bundles_a[0].get("GPU", 0) + bundles_b[0].get("GPU", 0),
+                }
+            ]
+            if max_increase_by_times > 0:
+                bundles[0]["CPU"] = min(
+                    bundles[0]["CPU"],
+                    increase_by.get("CPU", 0) * max_increase_by_times,
+                )
+                bundles[0]["GPU"] = min(
+                    bundles[0]["GPU"],
+                    increase_by.get("GPU", 0) * max_increase_by_times,
+                )
+
+        return bundles
+
+    def _get_multiplier(
+        self,
+        increase_by: Dict[str, float],
+        cpus: float = 0,
+        gpus: float = 0,
+        max_multiplier: int = -1,
+    ) -> int:
+        """Get how many times ``increase_by`` bundles
+        occur in ``cpus`` and ``gpus``."""
+        if increase_by.get("CPU", 0) and increase_by.get("GPU", 0):
+            multiplier = min(
+                cpus // increase_by.get("CPU", 0),
+                gpus // increase_by.get("GPU", 0),
+            )
+        elif increase_by.get("GPU", 0):
+            multiplier = gpus // increase_by.get("GPU", 0)
+        else:
+            multiplier = cpus // increase_by.get("CPU", 0)
+
+        if max_multiplier > 0 and multiplier > 0:
+            multiplier = min(max_multiplier, multiplier)
+        return int(multiplier)
+
+    def _remove_bundles(
+        self,
+        bundles: List[Dict[str, float]],
+        increase_by: Dict[str, float],
+        multiplier: int,
+    ) -> List[Dict[str, float]]:
+        """Remove ``multiplier`` ``increase_by`` bundles from ``bundles``."""
+        multiplier = -abs(multiplier)
+        if self.add_bundles:
+            bundles = bundles[:multiplier]
+        else:
+            bundles = deepcopy(bundles)
+            bundles[0]["CPU"] += increase_by.get("CPU", 0) * multiplier
+            bundles[0]["GPU"] += increase_by.get("GPU", 0) * multiplier
+            bundles[0]["CPU"] = max(bundles[0]["CPU"], 0)
+            bundles[0]["GPU"] = max(bundles[0]["GPU"], 0)
+        return bundles
+
+    def _create_new_bundles(
+        self,
+        increase_by: Dict[str, float],
+        multiplier: int,
+    ) -> List[Dict[str, float]]:
+        """Create a list of new bundles containing ``increase_by`` * ``multiplier``."""
+        multiplier = abs(multiplier)
+
+        if self.add_bundles:
+            bundles = [increase_by] * int(multiplier)
+        else:
+            bundles = [{}]
+            bundles[0]["CPU"] = increase_by.get("CPU", 0) * multiplier
+            bundles[0]["GPU"] = increase_by.get("GPU", 0) * multiplier
+
+        return bundles
+
+    def _modify_bundles_with_free_resources(
+        self,
+        bundles: List[Dict[str, float]],
+        increase_by: Dict[str, float],
+        free_cpus: float,
+        free_gpus: float,
+        *,
+        max_multiplier: int = -1,
+        max_increase_by_times: int = -1,
+    ):
+        """Given free resources, increase/decrease the number of bundles in
+        ``bundles``."""
+        multiplier = self._get_multiplier(
+            increase_by, free_cpus, free_gpus, max_multiplier
+        )
+        if multiplier < 0:
+            bundles = self._remove_bundles(bundles, increase_by, multiplier)
+        elif multiplier > 0:
+            bundles_to_add = self._create_new_bundles(increase_by, multiplier)
+            bundles = self._add_two_bundles(
+                bundles, bundles_to_add, increase_by, True, max_increase_by_times
+            )
+        return bundles
+
+    def _get_added_bundles(
+        self, bundles: List[Dict[str, float]], base_bundles: List[Dict[str, float]]
+    ) -> List[Dict[str, float]]:
+        """Return the difference between bundles and base_bundles"""
+        if self.add_bundles:
+            added_bundles = bundles[len(base_bundles) :]
+        else:
+            if not bundles:
+                bundles = [{"CPU": 0, "GPU": 0}]
+            if not base_bundles:
+                base_bundles = [{"CPU": 0, "GPU": 0}]
+            added_bundles = [
+                {
+                    "CPU": bundles[0].get("CPU", 0) - base_bundles[0].get("CPU", 0),
+                    "GPU": bundles[0].get("GPU", 0) - base_bundles[0].get("GPU", 0),
+                }
+            ]
+        return added_bundles
+
+    def _are_bundles_below_limit(
+        self,
+        bundles: List[Dict[str, float]],
+        base_bundles: Optional[List[Dict[str, float]]] = None,
+        max_added_cpus: Optional[float] = None,
+        max_added_gpus: Optional[float] = None,
+    ):
+        if not max_added_cpus:
+            if self.increase_by_times > 0:
+                max_added_cpus = self.increase_by.get("CPU", 0) * self.increase_by_times
+            else:
+                max_added_cpus = np.inf
+        if not max_added_gpus:
+            if self.increase_by_times > 0:
+                max_added_gpus = self.increase_by.get("GPU", 0) * self.increase_by_times
+            else:
+                max_added_gpus = np.inf
+        added_resources = self._get_resources_from_bundles(
+            self._get_added_bundles(bundles, base_bundles) if base_bundles else bundles
+        )
+        ret = (
+            added_resources.get("CPU", -np.inf) < max_added_cpus
+            or added_resources.get("GPU", -np.inf) < max_added_gpus
+        )
+        return ret
+
+    def _get_new_added_bundles(
+        self,
+        trial: Trial,
+        all_trials: List[Trial],
+        base_bundles: List[Dict[str, float]],
+        increase_by: Dict[str, float],
+        total_available_cpus: float,
+        total_available_gpus: float,
+        used_cpus: float,
+        used_gpus: float,
+    ) -> List[Dict[str, float]]:
+        """Returns updated added bundles."""
+        upper_limit_all_trials_bundles = [list() for _ in range(len(all_trials))]
+
+        free_cpus = total_available_cpus - used_cpus
+        free_gpus = total_available_gpus - used_gpus
+
+        base_resources = self._get_resources_from_bundles(base_bundles)
+        upper_limit_cpus_to_distribute = total_available_cpus - (
+            base_resources.get("CPU", 0) * len(all_trials)
+        )
+        upper_limit_gpus_to_distribute = total_available_gpus - (
+            base_resources.get("GPU", 0) * len(all_trials)
+        )
+        max_increase_by_times = 0
+
+        # First, calculate upper limits for uniform allocation
+        # This is done by simulating a clean slate scenario
+        # The loop runs until all resources are allocated or
+        # all trials are at their resource limits
+        i = 0
+        trials_at_limit = set()
+        while (
+            len(trials_at_limit) < len(all_trials)
+            # we have previously asserted that at least one resource has to be
+            # bigger than 0
+            and upper_limit_cpus_to_distribute >= increase_by.get("CPU", 0)
+            and upper_limit_gpus_to_distribute >= increase_by.get("GPU", 0)
+        ):
+            idx = i % len(upper_limit_all_trials_bundles)
+            old_bundles = deepcopy(upper_limit_all_trials_bundles[idx])
+            upper_limit_all_trials_bundles[
+                idx
+            ] = self._modify_bundles_with_free_resources(
+                upper_limit_all_trials_bundles[idx],
+                increase_by,
+                upper_limit_cpus_to_distribute,
+                upper_limit_gpus_to_distribute,
+                max_multiplier=1,
+            )
+            added_resources = self._get_resources_from_bundles(
+                self._get_added_bundles(
+                    upper_limit_all_trials_bundles[idx], old_bundles
+                )
+            )
+            if not added_resources.get("CPU", 0) and not added_resources.get("GPU", 0):
+                trials_at_limit.add(idx)
+            elif idx == 0:
+                max_increase_by_times += 1
+            upper_limit_cpus_to_distribute -= added_resources.get("CPU", 0)
+            upper_limit_gpus_to_distribute -= added_resources.get("GPU", 0)
+            i += 1
+
+        # Add new resourcs, but only up to calculated upper limits
+        # (max_increase_by_times)
+        return self._modify_bundles_with_free_resources(
+            self._get_added_bundles(
+                trial.placement_group_factory.bundles, base_bundles
+            ),
+            increase_by,
+            free_cpus,
+            free_gpus,
+            max_increase_by_times=max_increase_by_times,
+        )
 
     def __call__(
         self,
@@ -29,115 +386,211 @@ class _DistributeResources:
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
     ) -> Union[None, PlacementGroupFactory]:
+        """Run resource allocation logic.
+
+        Returns a new ``PlacementGroupFactory`` with updated
+        resource requirements, or None. If the returned
+        ``PlacementGroupFactory`` is equal by value to the one the
+        trial has currently, the scheduler will skip the update process
+        internally (same with None).
+
+        Args:
+            trial_runner: Trial runner for this Tune run.
+                Can be used to obtain information about other trials.
+            trial: The trial to allocate new resources to.
+            result: The latest results of trial.
+            scheduler: The scheduler calling
+                the function.
+        """
         # Get base trial resources as defined in
         # ``tune.run(resources_per_trial)``
         base_trial_resource = scheduler.base_trial_resources
 
-        if not isinstance(base_trial_resource, PlacementGroupFactory):
-            raise ValueError(
-                "evenly_distribute_cpus_gpus only supports" " PlacementGroupFactories."
-            )
-
-        # Don't bother if this is just the first iteration
-        if result["training_iteration"] < 1:
+        if not self._validate(base_trial_resource=base_trial_resource, result=result):
             return None
 
         # default values if resources_per_trial is unspecified
         if base_trial_resource is None:
             base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
 
-        # Assume that the number of CPUs and GPUs can't go below
-        # what was specified in tune.run
-        min_cpu = base_trial_resource.required_resources.get("CPU", 0)
-        min_gpu = base_trial_resource.required_resources.get("GPU", 0)
-
-        min_cpu_bundle = base_trial_resource.bundles[0].get("CPU", 0)
-        min_gpu_bundle = base_trial_resource.bundles[0].get("GPU", 0)
-
-        # Get the number of CPUs and GPUs avaialble in total (not just free)
-        total_available_cpus = trial_runner.trial_executor._avail_resources.cpu
-        total_available_gpus = trial_runner.trial_executor._avail_resources.gpu
-
-        # Set upper limits for resources based on number of live trials
-        # to ensure that the trial cannot get more resources that it's
-        # possible to run
-        num_running_trials = len(trial_runner.get_live_trials())
-        if min_cpu == 0:
-            upper_cpu_limit = 0
+        if self.increase_by:
+            increase_by = self.increase_by
+            assert not self._is_bundle_empty(increase_by)
+            assert increase_by.get("CPU", 0) >= 0 and increase_by.get("GPU", 0) >= 0
+        elif self.add_bundles:
+            increase_by = base_trial_resource.bundles[-1]
+        elif base_trial_resource.bundles[0].get("GPU", 0):
+            increase_by = {"GPU": 1}
         else:
-            upper_cpu_limit = math.ceil(total_available_cpus / num_running_trials)
-            # Round to nearest bundle minimum
-            # eg. 8 CPUs between 3 trials with min 2 CPUs per bundle
-            #   -> 4, 2, 2
-            if self.add_bundles:
-                upper_cpu_limit = (
-                    math.ceil(upper_cpu_limit / min_cpu_bundle) * min_cpu_bundle
-                )
-            upper_cpu_limit = max(min_cpu, upper_cpu_limit)
+            increase_by = {"CPU": 1}
 
-        if min_gpu == 0:
-            upper_gpu_limit = 0
-        else:
-            upper_gpu_limit = math.ceil(total_available_gpus / num_running_trials)
-            # Ensure we don't go below per-bundle minimum
-            if self.add_bundles:
-                upper_gpu_limit = (
-                    math.ceil(upper_gpu_limit / min_cpu_bundle) * min_gpu_bundle
-                )
-            upper_gpu_limit = max(min_gpu, upper_gpu_limit)
+        base_bundles = deepcopy(base_trial_resource.bundles)
 
-        # Function to check how many CPUs and GPUs a trial is using currently
-        def get_used_cpus_and_gpus(t: Trial):
-            return (
-                t.placement_group_factory.required_resources.get("CPU", 0),
-                t.placement_group_factory.required_resources.get("GPU", 0),
-            )
+        (
+            total_available_cpus,
+            total_available_gpus,
+        ) = self._get_total_available_resources(trial_runner=trial_runner)
 
-        # Check how many CPUs and GPUs are currently being used by this trial
-        trial_used_cpus, trial_used_gpus = get_used_cpus_and_gpus(trial)
+        all_trials = trial_runner.get_live_trials()
 
-        # Check how many CPUs and GPUs are currently being used by live trials
-        used_cpus_and_gpus = [
-            get_used_cpus_and_gpus(t) for t in trial_runner.get_live_trials()
-        ]
+        used_cpus_and_gpus = [self._get_used_cpus_and_gpus(t) for t in all_trials]
         used_cpus, used_gpus = zip(*used_cpus_and_gpus)
         used_cpus = sum(used_cpus)
         used_gpus = sum(used_gpus)
 
-        # Calculate how many free CPUs and GPUs there are
+        added_bundles = self._get_new_added_bundles(
+            trial,
+            all_trials,
+            base_bundles,
+            increase_by,
+            total_available_cpus,
+            total_available_gpus,
+            used_cpus,
+            used_gpus,
+        )
+
+        new_bundles = self._add_two_bundles(
+            base_bundles, added_bundles, increase_by, False
+        )
+
+        pgf = PlacementGroupFactory(new_bundles)
+        pgf._head_bundle_is_empty = base_trial_resource._head_bundle_is_empty
+        return pgf
+
+
+@PublicAPI(stability="beta")
+class DistributeResourcesToTopJob(DistributeResources):
+    """This class creates a "TopJob" resource allocation function.
+
+    The function will assign all of the free resources to the best
+    performing trial (as defined by ``metric`` and ``mode``). The
+    previous best trials will not have their resources deallocated,
+    unless in the case outlined below.
+
+    If for some reason a trial ends up with
+    more resources than there are free ones, it will adjust downwards.
+    It will also ensure that trial as at least as many resources as
+    it started with (``base_trial_resource``).
+
+    The function returns a new ``PlacementGroupFactory`` with updated
+    resource requirements, or None. If the returned
+    ``PlacementGroupFactory`` is equal by value to the one the
+    trial has currently, the scheduler will skip the update process
+    internally (same with None).
+
+    Args:
+        add_bundles: If True, create new bundles from free resources.
+            Otherwise, spread them among base_trial_resource bundles.
+        increase_by: A dict with key-value
+            pairs representing an atomic unit of resources (name-amount)
+            the trial will be increased by. If not set, the trial will
+            increase by 1 CPU/GPU.
+        increase_by_times: If set to >=1 and ``increase_by`` is set,
+            the trial will increase by maximum of
+            ``increase_by_times * increase_by`` resources. If set to <1,
+            no upper limit is set. Ignored if ``increase_by`` is not set.
+        reserve_resources: A dict of
+            resource_name-amount pairs representing the resources
+            that will not be allocated to resized trials.
+            is that the attribute should increase monotonically.
+        metric: The training result objective value attribute. Stopping
+            procedures will use this attribute. If None, will use the metric
+            of the scheduler.
+        mode: One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute. If None, will use the metric
+            of the scheduler.
+
+    """
+
+    def __init__(
+        self,
+        add_bundles: bool = False,
+        increase_by: Optional[Dict[str, float]] = None,
+        increase_by_times: int = -1,
+        reserve_resources: Optional[Dict[str, float]] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+    ):
+        super().__init__(add_bundles, increase_by, increase_by_times, reserve_resources)
+        self.metric = metric
+        self.mode = mode
+
+    @property
+    def _metric_op(self) -> float:
+        if self.mode not in ("min", "max"):
+            raise ValueError("The mode parameter can only be either min or max.")
+        if self.mode == "max":
+            return 1.0
+        return -1.0
+
+    def _get_new_added_bundles(
+        self,
+        trial: Trial,
+        all_trials: List[Trial],
+        base_bundles: List[Dict[str, float]],
+        increase_by: Dict[str, float],
+        total_available_cpus: float,
+        total_available_gpus: float,
+        used_cpus: float,
+        used_gpus: float,
+    ) -> List[Dict[str, float]]:
+        if self.metric is None:
+            raise ValueError(
+                "The metric parameter cannot be None. The parameter can be set in "
+                "either `DistributeResourcesToTopJob`, the base scheduler or in "
+                "`tune.run` (highest to lowest priority)."
+            )
+
         free_cpus = total_available_cpus - used_cpus
         free_gpus = total_available_gpus - used_gpus
 
-        # Add free CPUs and GPUs enforcing upper and lower limits
-        new_cpu = min(upper_cpu_limit, max(trial_used_cpus + free_cpus, min_cpu))
-        new_gpu = min(upper_gpu_limit, max(trial_used_gpus + free_gpus, min_gpu))
+        sorted_trials = sorted(
+            all_trials,
+            key=lambda t: -self._metric_op * t.last_result.get(self.metric, np.inf),
+        )
 
-        # Assign new CPUs and GPUs to the trial in a PlacementGroupFactory
+        added_bundles = self._get_added_bundles(
+            trial.placement_group_factory.bundles, base_bundles
+        )
 
-        # If self.add_bundles, make new bundles out of the resources
-        if self.add_bundles:
-            if min_cpu_bundle and min_gpu_bundle:
-                multiplier = min(new_cpu // min_cpu_bundle, new_gpu // min_cpu_bundle)
-            elif min_gpu_bundle:
-                multiplier = new_gpu // min_cpu_bundle
-            else:
-                multiplier = new_cpu // min_cpu_bundle
-            new_bundles = [{"CPU": min_cpu_bundle, "GPU": min_gpu_bundle}] * int(
-                multiplier
-            )
-        # Otherwise, just put them all in one bundle
-        else:
-            new_bundles = [{"CPU": new_cpu, "GPU": new_gpu}]
-        return PlacementGroupFactory(new_bundles)
+        best_trial = next(
+            (
+                t
+                for t in sorted_trials
+                if self._are_bundles_below_limit(
+                    t.placement_group_factory.bundles, base_bundles
+                )
+            ),
+            sorted_trials[0],
+        )
+
+        if (
+            trial.trial_id != best_trial.trial_id
+            # Only reduce resources here
+            and self._get_multiplier(increase_by, free_cpus, free_gpus) >= 0
+        ):
+            return added_bundles
+
+        return self._modify_bundles_with_free_resources(
+            added_bundles,
+            increase_by,
+            free_cpus,
+            free_gpus,
+        )
 
 
+_DistributeResourcesDefault = DistributeResources(add_bundles=False)
+_DistributeResourcesDistributedDefault = DistributeResources(add_bundles=True)
+
+
+@Deprecated
 def evenly_distribute_cpus_gpus(
     trial_runner: "trial_runner.TrialRunner",
     trial: Trial,
     result: Dict[str, Any],
     scheduler: "ResourceChangingScheduler",
 ) -> Union[None, PlacementGroupFactory]:
-    """This is a basic resource allocating function.
+    """This is a basic uniform resource allocating function.
 
     This function is used by default in ``ResourceChangingScheduler``.
 
@@ -156,27 +609,38 @@ def evenly_distribute_cpus_gpus(
     trial has currently, the scheduler will skip the update process
     internally (same with None).
 
+    For greater customizability, use ``DistributeResources`` to create
+    this function.
+
     Args:
-        trial_runner (TrialRunner): Trial runner for this Tune run.
+        trial_runner: Trial runner for this Tune run.
             Can be used to obtain information about other trials.
-        trial (Trial): The trial to allocate new resources to.
-        result (Dict[str, Any]): The latest results of trial.
-        scheduler (ResourceChangingScheduler): The scheduler calling
+        trial: The trial to allocate new resources to.
+        result: The latest results of trial.
+        scheduler: The scheduler calling
             the function.
     """
 
-    return _DistributeResources(add_bundles=False)(
-        trial_runner, trial, result, scheduler
-    )
+    if log_once("evenly_distribute_cpus_gpus_deprecated"):
+        warnings.warn(
+            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
+            "and `evenly_distribute_cpus_gpus_distributed` are "
+            "being deprecated. Use `DistributeResources()` and "
+            "`DistributeResources(add_bundles=False)` instead "
+            "for equivalent functionality."
+        )
+
+    return _DistributeResourcesDefault(trial_runner, trial, result, scheduler)
 
 
+@Deprecated
 def evenly_distribute_cpus_gpus_distributed(
     trial_runner: "trial_runner.TrialRunner",
     trial: Trial,
     result: Dict[str, Any],
     scheduler: "ResourceChangingScheduler",
 ) -> Union[None, PlacementGroupFactory]:
-    """This is a basic resource allocating function.
+    """This is a basic uniform resource allocating function.
 
     The function naively balances free resources (CPUs and GPUs) between
     trials, giving them all equal priority, ensuring that all resources
@@ -195,16 +659,28 @@ def evenly_distribute_cpus_gpus_distributed(
     trial has currently, the scheduler will skip the update process
     internally (same with None).
 
+    For greater customizability, use ``DistributeResources`` to create
+    this function.
+
     Args:
-        trial_runner (TrialRunner): Trial runner for this Tune run.
+        trial_runner: Trial runner for this Tune run.
             Can be used to obtain information about other trials.
-        trial (Trial): The trial to allocate new resources to.
-        result (Dict[str, Any]): The latest results of trial.
-        scheduler (ResourceChangingScheduler): The scheduler calling
+        trial: The trial to allocate new resources to.
+        result: The latest results of trial.
+        scheduler: The scheduler calling
             the function.
     """
 
-    return _DistributeResources(add_bundles=True)(
+    if log_once("evenly_distribute_cpus_gpus_deprecated"):
+        warnings.warn(
+            "DeprecationWarning: `evenly_distribute_cpus_gpus` "
+            "and `evenly_distribute_cpus_gpus_distributed` are "
+            "being deprecated. Use `DistributeResources()` and "
+            "`DistributeResources(add_bundles=False)` instead "
+            "for equivalent functionality."
+        )
+
+    return _DistributeResourcesDistributedDefault(
         trial_runner, trial, result, scheduler
     )
 
@@ -221,8 +697,9 @@ class ResourceChangingScheduler(TrialScheduler):
     scheduler and adjusting the resource requirements of live trials
     in response to the decisions of the wrapped scheduler
     through a user-specified ``resources_allocation_function``.
+
     An example of such a function can be found in
-    :doc:`/tune/examples/xgboost_dynamic_resources_example`.
+    :doc:`/tune/examples/includes/xgboost_dynamic_resources_example`.
 
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
@@ -230,38 +707,34 @@ class ResourceChangingScheduler(TrialScheduler):
     :ref:`load and save checkpoints <tune-checkpoint-syncing>`
     (the latter preferably every iteration).
 
-    If the Trainable (class) API is used, when the resources of a
-    trial are updated with new values, the ``update_resources`` method in
-    the Trainable will be called. This method needs to be overwritten by the
-    user in order to let the trained model take advantage of newly allocated
-    resources. You can also obtain the current trial resources by calling
-    ``Trainable.trial_resources``.
+    If the Trainable (class) API is used, you can obtain the current trial
+    resources through the ``Trainable.trial_resources`` property.
 
     Cannot be used if ``reuse_actors`` is True in ``tune.run``. A ValueError
     will be raised in that case.
 
     Args:
-        base_scheduler (TrialScheduler): The scheduler to provide decisions
+        base_scheduler: The scheduler to provide decisions
             about trials. If None, a default FIFOScheduler will be used.
-        resources_allocation_function (Callable): The function used to change
-            live trial resource requiements during tuning. This function
+        resources_allocation_function: The callable used to change
+            live trial resource requiements during tuning. This callable
             will be called on each trial as it finishes one step of training.
-            The function must take four arguments: ``TrialRunner``, current
+            The callable must take four arguments: ``TrialRunner``, current
             ``Trial``, current result :class:`dict` and the
-            ``ResourceChangingScheduler`` calling it. The function must
+            ``ResourceChangingScheduler`` calling it. The callable must
             return a ``PlacementGroupFactory``, ``Resources``, :class:`dict`
             or None (signifying no need for an update). If
             ``resources_allocation_function`` is None, no resource
             requirements will be changed at any time.
-            By default, :func:`evenly_distribute_cpus_gpus` will be used,
+            By default, :class:`DistributeResources` will be used,
             distributing available CPUs and GPUs over all running trials
             in a robust way, without any prioritization.
 
     Warning:
         If the ``resources_allocation_function`` sets trial resource
         requirements to values bigger than possible, the trial will
-        not run. Ensure that your function accounts for that possibility
-        by setting upper limits. Consult :func:`evenly_distribute_cpus_gpus`
+        not run. Ensure that your callable accounts for that possibility
+        by setting upper limits. Consult :class:`DistributeResources`
         to see how that may be done.
 
     Example:
@@ -282,7 +755,7 @@ class ResourceChangingScheduler(TrialScheduler):
                             my_resources_allocation_function
                         )
 
-        See :doc:`/tune/examples/xgboost_dynamic_resources_example` for a
+        See :doc:`/tune/examples/includes/xgboost_dynamic_resources_example` for a
         more detailed example.
     """
 
@@ -299,7 +772,7 @@ class ResourceChangingScheduler(TrialScheduler):
                 ],
                 Union[None, PlacementGroupFactory, Resources],
             ]
-        ] = evenly_distribute_cpus_gpus,
+        ] = _DistributeResourcesDefault,
     ) -> None:
         super().__init__()
         if resources_allocation_function is None:
@@ -317,6 +790,8 @@ class ResourceChangingScheduler(TrialScheduler):
             Trial, Union[None, dict, PlacementGroupFactory]
         ] = {}
         self._reallocated_trial_ids: Set[str] = set()
+        self._metric = None
+        self._mode = None
 
     @property
     def metric(self):
@@ -326,8 +801,12 @@ class ResourceChangingScheduler(TrialScheduler):
     def base_trial_resources(self) -> Optional[Union[Resources, PlacementGroupFactory]]:
         return self._base_trial_resources
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str]) -> bool:
-        return self._base_scheduler.set_search_properties(metric, mode)
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], **spec
+    ) -> bool:
+        self._metric = metric
+        self._mode = mode
+        return self._base_scheduler.set_search_properties(metric, mode, **spec)
 
     def on_trial_add(
         self, trial_runner: "trial_runner.TrialRunner", trial: Trial, **kwargs
@@ -436,7 +915,10 @@ class ResourceChangingScheduler(TrialScheduler):
     ) -> bool:
         """Returns True if new_resources were set."""
         if new_resources:
-            logger.info(f"Setting trial {trial} resource to {new_resources}")
+            logger.info(
+                f"Setting trial {trial} resource to {new_resources} "
+                f"with {new_resources._bundles}"
+            )
             trial.placement_group_factory = None
             trial.update_resources(new_resources)
             # keep track of all trials which had their resources changed
@@ -475,6 +957,15 @@ class ResourceChangingScheduler(TrialScheduler):
         them. Otherwise, returns None."""
         if self._resources_allocation_function is None:
             return None
+
+        if not getattr(self._resources_allocation_function, "metric", None):
+            self._resources_allocation_function.metric = getattr(
+                self._base_scheduler, "_metric", self._metric
+            )
+        if not getattr(self._resources_allocation_function, "mode", None):
+            self._resources_allocation_function.mode = getattr(
+                self._base_scheduler, "_mode", self._mode
+            )
 
         new_resources = self._resources_allocation_function(
             trial_runner, trial, result, self

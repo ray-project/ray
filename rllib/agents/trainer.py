@@ -549,7 +549,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "output_config": {},
     # What sample batch columns to LZ4 compress in the output data.
     "output_compress_columns": ["obs", "new_obs"],
-    # Max output file size before rolling over to a new file.
+    # Max output file size (in bytes) before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
 
     # === Settings for Multi-Agent Environments ===
@@ -831,7 +831,6 @@ class Trainer(Trainable):
             config, logger_creator, remote_checkpoint_dir, sync_function_tpl
         )
 
-    @ExperimentalAPI
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
         return cls._default_config or COMMON_CONFIG
@@ -907,7 +906,7 @@ class Trainer(Trainable):
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
             # This matches the behavior of using `build_trainer()`, which
-            # should no longer be used.
+            # has been deprecated.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -1023,6 +1022,9 @@ class Trainer(Trainable):
                 logdir=self.logdir,
             )
 
+        # Run any callbacks after trainer initialization is done.
+        self.callbacks.on_trainer_init(trainer=self)
+
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
     #  default setup behavior plus some own setup logic.
@@ -1031,7 +1033,6 @@ class Trainer(Trainable):
     def _init(self, config: TrainerConfigDict, env_creator: EnvCreator) -> None:
         raise NotImplementedError
 
-    @ExperimentalAPI
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         """Returns a default Policy class to use, given a config.
 
@@ -1104,7 +1105,6 @@ class Trainer(Trainable):
 
         return result
 
-    @ExperimentalAPI
     def step_attempt(self) -> ResultDict:
         """Attempts a single training step, including evaluation, if required.
 
@@ -1386,7 +1386,7 @@ class Trainer(Trainable):
         # Also return the results here for convenience.
         return self.evaluation_metrics
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def training_iteration(self) -> ResultDict:
         """Default single iteration logic of an algorithm.
 
@@ -1879,7 +1879,7 @@ class Trainer(Trainable):
             config=config,
             policy_state=policy_state,
             policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=list(policies_to_train),
+            policies_to_train=list(policies_to_train) if policies_to_train else None,
         )
 
         def fn(worker: RolloutWorker):
@@ -1963,11 +1963,13 @@ class Trainer(Trainable):
                 If None, the output format will be DL framework specific.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> for _ in range(10):
-            >>>     trainer.train()
-            >>> trainer.export_policy_model("/tmp/dir")
-            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1)
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> # Use a Trainer from RLlib or define your own.
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
+            >>> trainer.export_policy_model("/tmp/dir") # doctest: +SKIP
+            >>> trainer.export_policy_model("/tmp/dir/onnx", onnx=1) # doctest: +SKIP
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
@@ -1986,10 +1988,12 @@ class Trainer(Trainable):
             policy_id: Optional policy id to export.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> for _ in range(10):
-            >>>     trainer.train()
-            >>> trainer.export_policy_checkpoint("/tmp/export_dir")
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> # Use a Trainer from RLlib or define your own.
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
+            >>> trainer.export_policy_checkpoint("/tmp/export_dir") # doctest: +SKIP
         """
         self.get_policy(policy_id).export_checkpoint(export_dir, filename_prefix)
 
@@ -2006,10 +2010,11 @@ class Trainer(Trainable):
             policy_id: Optional policy id to import into.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
-            >>> for _ in range(10):
-            >>>     trainer.train()
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> trainer = PPOTrainer(...) # doctest: +SKIP
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
         """
         self.get_policy(policy_id).import_model_from_h5(import_file)
         # Sync new weights to remote workers.
@@ -2300,7 +2305,7 @@ class Trainer(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
 
@@ -2481,24 +2486,13 @@ class Trainer(Trainable):
                 "timesteps_per_iteration"
             ]
 
-        # Metrics settings.
-        if config["metrics_smoothing_episodes"] != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="metrics_smoothing_episodes",
-                new="metrics_num_episodes_for_smoothing",
-                error=False,
-            )
-            config["metrics_num_episodes_for_smoothing"] = config[
-                "metrics_smoothing_episodes"
-            ]
-
         # Evaluation settings.
 
         # Deprecated setting: `evaluation_num_episodes`.
         if config["evaluation_num_episodes"] != DEPRECATED_VALUE:
             deprecation_warning(
                 old="evaluation_num_episodes",
-                new="`evaluation_duration` and `evaluation_duration_unit=" "episodes`",
+                new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
                 error=False,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]
@@ -2684,6 +2678,11 @@ class Trainer(Trainable):
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
+            if self.evaluation_workers:
+                # If evaluation workers are used, also restore the policies
+                # there in case they are used for evaluation purpose.
+                for r in self.evaluation_workers.remote_workers():
+                    r.restore.remote(remote_state)
         # If necessary, restore replay data as well.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay
@@ -2707,14 +2706,10 @@ class Trainer(Trainable):
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
 
-    # TODO: Deprecate this method (`build_trainer` should no longer be used).
     @staticmethod
-    def with_updates(**overrides) -> Type["Trainer"]:
-        raise NotImplementedError(
-            "`with_updates` may only be called on Trainer sub-classes "
-            "that were generated via the `ray.rllib.agents.trainer_template."
-            "build_trainer()` function (which has been deprecated)!"
-        )
+    @Deprecated(error=True)
+    def with_updates(*args, **kwargs):
+        pass
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(

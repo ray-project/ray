@@ -62,6 +62,31 @@ def test_tf_non_distributed(ray_start_2_cpus):
     trainer.shutdown()
 
 
+def test_tensorflow_mnist_fail(ray_start_2_cpus):
+    """Tests if tensorflow example works even with worker failure."""
+    epochs = 3
+
+    trainer = Trainer("tensorflow", num_workers=2)
+    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer.start()
+    kill_callback = KillCallback(fail_on=0, trainer=trainer)
+    results = trainer.run(
+        tensorflow_mnist_train_func, config, callbacks=[kill_callback]
+    )
+    trainer.shutdown()
+
+    assert len(results) == 2
+    result = results[0]
+
+    loss = result["loss"]
+    assert len(loss) == epochs
+    assert loss[-1] < loss[0]
+
+    accuracy = result["accuracy"]
+    assert len(accuracy) == epochs
+    assert accuracy[-1] > accuracy[0]
+
+
 @pytest.mark.parametrize("num_workers", [1, 2])
 def test_torch_linear(ray_start_2_cpus, num_workers):
     num_workers = num_workers

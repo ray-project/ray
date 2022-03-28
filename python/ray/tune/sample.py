@@ -570,9 +570,9 @@ def loguniform(lower: float, upper: float, base: float = 10):
     """Sugar for sampling in different orders of magnitude.
 
     Args:
-        lower (float): Lower boundary of the output interval (e.g. 1e-4)
-        upper (float): Upper boundary of the output interval (e.g. 1e-2)
-        base (int): Base of the log. Defaults to 10.
+        lower: Lower boundary of the output interval (e.g. 1e-4)
+        upper: Upper boundary of the output interval (e.g. 1e-2)
+        base: Base of the log. Defaults to 10.
 
     """
     return Float(lower, upper).loguniform(base)
@@ -586,11 +586,11 @@ def qloguniform(lower: float, upper: float, q: float, base: float = 10):
     Quantization makes the upper bound inclusive.
 
     Args:
-        lower (float): Lower boundary of the output interval (e.g. 1e-4)
-        upper (float): Upper boundary of the output interval (e.g. 1e-2)
-        q (float): Quantization number. The result will be rounded to an
+        lower: Lower boundary of the output interval (e.g. 1e-4)
+        upper: Upper boundary of the output interval (e.g. 1e-2)
+        q: Quantization number. The result will be rounded to an
             integer increment of this value.
-        base (int): Base of the log. Defaults to 10.
+        base: Base of the log. Defaults to 10.
 
     """
     return Float(lower, upper).loguniform(base).quantized(q)
@@ -677,8 +677,8 @@ def randn(mean: float = 0.0, sd: float = 1.0):
     """Sample a float value normally with ``mean`` and ``sd``.
 
     Args:
-        mean (float): Mean of the normal distribution. Defaults to 0.
-        sd (float): SD of the normal distribution. Defaults to 1.
+        mean: Mean of the normal distribution. Defaults to 0.
+        sd: SD of the normal distribution. Defaults to 1.
 
     """
     return Float(None, None).normal(mean, sd)
@@ -690,9 +690,9 @@ def qrandn(mean: float, sd: float, q: float):
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
 
     Args:
-        mean (float): Mean of the normal distribution.
-        sd (float): SD of the normal distribution.
-        q (float): Quantization number. The result will be rounded to an
+        mean: Mean of the normal distribution.
+        sd: SD of the normal distribution.
+        q: Quantization number. The result will be rounded to an
             integer increment of this value.
 
     """

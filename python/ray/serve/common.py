@@ -18,10 +18,10 @@ class EndpointInfo:
     route: str
 
 
-class DeploymentStatus(Enum):
-    UPDATING = 1
-    HEALTHY = 2
-    UNHEALTHY = 3
+class DeploymentStatus(str, Enum):
+    UPDATING = "UPDATING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
 
 
 @dataclass

@@ -6,7 +6,6 @@ import numpy as np
 import ray  # noqa F401
 import psutil  # noqa E402
 
-from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -17,12 +16,20 @@ from ray.rllib.utils.typing import SampleBatchType
 
 @ExperimentalAPI
 class PrioritizedReplayBuffer(ReplayBuffer):
+    """This buffer implements Prioritized Experience Replay
+
+    The algorithm has been described by Tom Schaul et. al. in "Prioritized
+    Experience Replay". See https://arxiv.org/pdf/1511.05952.pdf for
+    the full paper.
+    """
+
     @ExperimentalAPI
     def __init__(
         self,
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         alpha: float = 1.0,
+        **kwargs
     ):
         """Initializes a PrioritizedReplayBuffer instance.
 
@@ -30,16 +37,18 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            storage_unit: Either 'sequences' or 'timesteps'. Specifies how
-                experiences are stored.
+            storage_unit: Either 'timesteps', 'sequences' or
+                'episodes'. Specifies how experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
+            **kwargs: Forward compatibility kwargs.
         """
-        ReplayBuffer.__init__(self, capacity, storage_unit)
+        ReplayBuffer.__init__(self, capacity, storage_unit, **kwargs)
 
         assert alpha > 0
         self._alpha = alpha
 
+        # Segment tree must have capacity that is a power of 2
         it_capacity = 1
         while it_capacity < self.capacity:
             it_capacity *= 2
@@ -51,46 +60,26 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def add(self, batch: SampleBatchType, weight: float) -> None:
-        """Add a batch of experiences.
+    def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
+        """Add a batch of experiences to self._storage with weight.
+
+        An item consists of either one or more timesteps, a sequence or an
+        episode. Differs from add() in that it does not consider the storage
+        unit or type of batch and simply stores it.
 
         Args:
-            batch: SampleBatch to add to this buffer's storage.
-            weight: The weight of the added sample used in subsequent sampling
-                steps.
+            item: The item to be added.
+            **kwargs: Forward compatibility kwargs.
         """
-        idx = self._next_idx
-
-        assert batch.count > 0, batch
-        warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
-
-        # Update our timesteps counts.
-        self._num_timesteps_added += batch.count
-        self._num_timesteps_added_wrap += batch.count
-
-        if self._next_idx >= len(self._storage):
-            self._storage.append(batch)
-            self._est_size_bytes += batch.size_bytes()
-        else:
-            self._storage[self._next_idx] = batch
-
-        # Wrap around storage as a circular buffer once we hit capacity.
-        if self._num_timesteps_added_wrap >= self.capacity:
-            self._eviction_started = True
-            self._num_timesteps_added_wrap = 0
-            self._next_idx = 0
-        else:
-            self._next_idx += 1
-
-        # Eviction of older samples has already started (buffer is "full").
-        if self._eviction_started:
-            self._evicted_hit_stats.push(self._hit_count[self._next_idx])
-            self._hit_count[self._next_idx] = 0
+        weight = kwargs.get("weight", None)
 
         if weight is None:
             weight = self._max_priority
-        self._it_sum[idx] = weight ** self._alpha
-        self._it_min[idx] = weight ** self._alpha
+
+        self._it_sum[self._next_idx] = weight ** self._alpha
+        self._it_min[self._next_idx] = weight ** self._alpha
+
+        ReplayBuffer._add_single_batch(self, item)
 
     def _sample_proportional(self, num_items: int) -> List[int]:
         res = []
@@ -103,27 +92,37 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     @override(ReplayBuffer)
-    def sample(self, num_items: int, beta: float) -> Optional[SampleBatchType]:
+    def sample(
+        self, num_items: int, beta: float, **kwargs
+    ) -> Optional[SampleBatchType]:
         """Sample `num_items` items from this buffer, including prio. weights.
 
-        If less than `num_items` records are in this buffer, some samples in
-        the results may be repeated to fulfil the batch size (`num_items`)
-        request.
+        Samples in the results may be repeated.
+
+        Examples for storage of SamplesBatches:
+        - If storage unit `timesteps` has been chosen and batches of
+        size 5 have been added, sample(5) will yield a concatenated batch of
+        15 timesteps.
+        - If storage unit 'sequences' has been chosen and sequences of
+        different lengths have been added, sample(5) will yield a concatenated
+        batch with a number of timesteps equal to the sum of timesteps in
+        the 5 sampled sequences.
+        - If storage unit 'episodes' has been chosen and episodes of
+        different lengths have been added, sample(5) will yield a concatenated
+        batch with a number of timesteps equal to the sum of timesteps in
+        the 5 sampled episodes.
 
         Args:
             num_items: Number of items to sample from this buffer.
             beta: To what degree to use importance weights
                 (0 - no corrections, 1 - full correction).
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
-            Concatenated batch of items including "weights" and
+            Concatenated SampleBatch of items including "weights" and
             "batch_indexes" fields denoting IS of each sampled
             transition and original idxes in buffer of sampled experiences.
         """
-        # If we don't have any samples yet in this buffer, return None.
-        if len(self) == 0:
-            return None
-
         assert beta >= 0.0
 
         idxes = self._sample_proportional(num_items)
@@ -151,7 +150,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._num_timesteps_sampled += count
         batch = self._encode_sample(idxes)
 
-        # Note: prioritization is not supported in lockstep replay mode.
+        # Note: prioritization is not supported in multi agent lockstep
         if isinstance(batch, SampleBatch):
             batch["weights"] = np.array(weights)
             batch["batch_indexes"] = np.array(batch_indexes)
@@ -160,21 +159,20 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     @ExperimentalAPI
     def update_priorities(self, idxes: List[int], priorities: List[float]) -> None:
-        """Update priorities of sampled transitions.
+        """Update priorities of items at given indices.
 
-        Sets priority of transition at index idxes[i] in buffer
+        Sets priority of item at index idxes[i] in buffer
         to priorities[i].
 
         Args:
-            idxes: List of indices of sampled transitions
+            idxes: List of indices of items
             priorities: List of updated priorities corresponding to
-                transitions at the sampled idxes denoted by
-                variable `idxes`.
+                items at the idxes denoted by variable `idxes`.
         """
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(
             idxes, (list, np.ndarray)
-        ), "ERROR: `idxes` is not a list or np.ndarray, but " "{}!".format(
+        ), "ERROR: `idxes` is not a list or np.ndarray, but {}!".format(
             type(idxes).__name__
         )
         assert len(idxes) == len(priorities)

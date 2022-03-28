@@ -2,15 +2,14 @@ package io.ray.runtime.config;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
-import com.typesafe.config.ConfigValue;
 import io.ray.api.id.JobId;
 import io.ray.api.options.ActorLifetime;
 import io.ray.runtime.generated.Common.WorkerType;
+import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
 import java.util.ArrayList;
@@ -52,6 +51,10 @@ public class RayConfig {
 
   public int startupToken;
 
+  public int runtimeEnvHash;
+
+  public RuntimeEnvImpl runtimeEnvImpl = null;
+
   public final ActorLifetime defaultActorLifetime;
 
   public static class LoggerConf {
@@ -77,7 +80,6 @@ public class RayConfig {
   public final String namespace;
 
   public final List<String> jvmOptionsForJavaWorker;
-  public final Map<String, String> workerEnv;
 
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
@@ -147,15 +149,6 @@ public class RayConfig {
 
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");
-
-    ImmutableMap.Builder<String, String> workerEnvBuilder = ImmutableMap.builder();
-    Config workerEnvConfig = config.getConfig("ray.job.worker-env");
-    if (workerEnvConfig != null) {
-      for (Map.Entry<String, ConfigValue> entry : workerEnvConfig.entrySet()) {
-        workerEnvBuilder.put(entry.getKey(), workerEnvConfig.getString(entry.getKey()));
-      }
-    }
-    workerEnv = workerEnvBuilder.build();
     updateSessionDir(null);
 
     // Object store socket name.
@@ -200,6 +193,27 @@ public class RayConfig {
     numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
     startupToken = config.getInt("ray.raylet.startup-token");
+
+    /// Driver needn't this config item.
+    if (workerMode == WorkerType.WORKER && config.hasPath("ray.internal.runtime-env-hash")) {
+      runtimeEnvHash = config.getInt("ray.internal.runtime-env-hash");
+    }
+
+    {
+      /// Runtime Env
+      final String envVarsPath = "ray.job.runtime-env.env-vars";
+      if (config.hasPath(envVarsPath)) {
+        Map<String, String> envVars = new HashMap<>();
+        Config envVarsConfig = config.getConfig(envVarsPath);
+        envVarsConfig
+            .entrySet()
+            .forEach(
+                (entry) -> {
+                  envVars.put(entry.getKey(), ((String) entry.getValue().unwrapped()));
+                });
+        runtimeEnvImpl = new RuntimeEnvImpl(envVars);
+      }
+    }
 
     {
       loggers = new ArrayList<>();

@@ -35,7 +35,7 @@ if __name__ == "__main__":
     def train():
         train_ray(
             path="/data/classification.parquet",
-            num_workers=4,
+            num_workers=None,
             num_boost_rounds=100,
             num_files=25,
             regression=False,

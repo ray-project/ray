@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 Algorithms
 ==========
@@ -12,31 +12,31 @@ Algorithms
 Available Algorithms - Overview
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=========================== ========== ======================= ================== =========== ============================================================= ===============
-Algorithm                   Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
-=========================== ========== ======================= ================== =========== ============================================================= ===============
-`A2C, A3C`_                 tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
-`ARS`_                      tf + torch **Yes**                 **Yes**            No                                                                        No
-`Bandits`_ (`TS`_ & `UCB`_) torch      **Yes** `+parametric`_  No                 **Yes**                                                                   No
-`BC`_                       tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       torch
-`CQL`_                      tf + torch No                      **Yes**            No                                                                        tf + torch
-`ES`_                       tf + torch **Yes**                 **Yes**            No                                                                        No
-`DDPG`_, `TD3`_             tf + torch No                      **Yes**            **Yes**                                                                   torch
-`APEX-DDPG`_                tf + torch No                      **Yes**            **Yes**                                                                   torch
-`Dreamer`_                  torch      No                      **Yes**            No          `+RNN`_                                                       torch
-`DQN`_, `Rainbow`_          tf + torch **Yes** `+parametric`_  No                 **Yes**                                                                   tf + torch
-`APEX-DQN`_                 tf + torch **Yes** `+parametric`_  No                 **Yes**                                                                   torch
-`IMPALA`_                   tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`MAML`_                     tf + torch No                      **Yes**            No                                                                        torch
-`MARWIL`_                   tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       torch
-`MBMPO`_                    torch      No                      **Yes**            No                                                                        torch
-`PG`_                       tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`PPO`_, `APPO`_             tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`R2D2`_                     tf + torch **Yes** `+parametric`_  No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
-`SAC`_                      tf + torch **Yes**                 **Yes**            **Yes**                                                                   torch
-`SlateQ`_                   torch      **Yes**                 No                 No                                                                        torch
-`AlphaZero`_                torch      **Yes** `+parametric`_  No                 No                                                                        No
-=========================== ========== ======================= ================== =========== ============================================================= ===============
+=========================== ========== ============================= ================== =========== ============================================================= ===============
+Algorithm                   Frameworks Discrete Actions              Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
+=========================== ========== ============================= ================== =========== ============================================================= ===============
+`A2C, A3C`_                 tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
+`ARS`_                      tf + torch **Yes**                       **Yes**            No                                                                        No
+`Bandits`_ (`TS`_ & `UCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
+`BC`_                       tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
+`CQL`_                      tf + torch No                            **Yes**            No                                                                        tf + torch
+`ES`_                       tf + torch **Yes**                       **Yes**            No                                                                        No
+`DDPG`_, `TD3`_             tf + torch No                            **Yes**            **Yes**                                                                   torch
+`APEX-DDPG`_                tf + torch No                            **Yes**            **Yes**                                                                   torch
+`Dreamer`_                  torch      No                            **Yes**            No          `+RNN`_                                                       torch
+`DQN`_, `Rainbow`_          tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
+`APEX-DQN`_                 tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
+`IMPALA`_                   tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`MAML`_                     tf + torch No                            **Yes**            No                                                                        torch
+`MARWIL`_                   tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
+`MBMPO`_                    torch      No                            **Yes**            No                                                                        torch
+`PG`_                       tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`PPO`_, `APPO`_             tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`R2D2`_                     tf + torch **Yes** `+parametric`_        No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
+`SAC`_                      tf + torch **Yes**                       **Yes**            **Yes**                                                                   torch
+`SlateQ`_                   tf + torch **Yes** (multi-discr. slates) No                 No                                                                        torch
+`AlphaZero`_                torch      **Yes** `+parametric`_        No                 No                                                                        No
+=========================== ========== ============================= ================== =========== ============================================================= ===============
 
 Multi-Agent only Methods
 
@@ -712,7 +712,7 @@ uncertainty of action values.
 
 Tuned examples:
 `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
-`UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/tune_lin_ucb_train_recsim.py>`__.
+`UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recsim_env.py>`__.
 `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recommendation.py>`__.
 
 **LinUCB-specific configs** (see also `common configs <rllib-training
@@ -740,7 +740,7 @@ the posterior distributions, and plays the arm that produces the highest reward.
 
 Tuned examples:
 `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
-`WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ts__train_wheel_env.py>`__.
+`WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ts_train_wheel_env.py>`__.
 
 **LinTS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -962,4 +962,4 @@ RE3 uses a randomly initialized encoder to get the state’s latent representati
     :class: inline-figure
     :width: 24
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

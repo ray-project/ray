@@ -47,7 +47,7 @@ def _dirmatch(path, matchwith):
 
 
 def _virtualenv_sys(venv_path):
-    "obtain version and path info from a virtualenv."
+    """obtain version and path info from a virtualenv."""
     executable = os.path.join(venv_path, env_bin_dir, "python")
     # Must use "executable" as the first argument rather than as the
     # keyword argument "executable" to get correct value from sys.path
@@ -82,7 +82,7 @@ def clone_virtualenv(src_dir, dst_dir):
     logger.info("fixing scripts in bin...")
     fixup_scripts(src_dir, dst_dir, version)
 
-    has_old = lambda s: any(i for i in s if _dirmatch(i, src_dir))
+    has_old = lambda s: any(i for i in s if _dirmatch(i, src_dir))  # noqa: E731
 
     if has_old(sys_path):
         # only need to fix stuff in sys.path if we have old
@@ -100,7 +100,8 @@ def fix_symlink_if_necessary(src_dir, dst_dir):
     # one example is $OLD_VIRTUAL_ENV/local/lib points to $OLD_VIRTUAL_ENV/lib
     # this function makes sure
     # $NEW_VIRTUAL_ENV/local/lib will point to $NEW_VIRTUAL_ENV/lib
-    # usually this goes unnoticed unless one tries to upgrade a package though pip, so this bug is hard to find.
+    # usually this goes unnoticed unless one tries to upgrade a package though pip,
+    # so this bug is hard to find.
     logger.info("scanning for internal symlinks that point to the original virtual env")
     for dirpath, dirnames, filenames in os.walk(dst_dir):
         for a_file in itertools.chain(filenames, dirnames):
@@ -283,7 +284,7 @@ def fixup_pth_file(filename, old_dir, new_dir):
 
     if has_change:
         with open(filename, "w") as f:
-            payload = os.linesep.join([l.strip() for l in lines]) + os.linesep
+            payload = os.linesep.join([line.strip() for line in lines]) + os.linesep
             f.write(payload)
 
 
@@ -300,7 +301,7 @@ def fixup_egglink_file(filename, old_dir, new_dir):
 
 def main():
     parser = optparse.OptionParser(
-        "usage: %prog [options]" " /path/to/existing/venv /path/to/cloned/venv"
+        "usage: %prog [options] /path/to/existing/venv /path/to/cloned/venv"
     )
     parser.add_option(
         "-v", action="count", dest="verbose", default=False, help="verbosity"

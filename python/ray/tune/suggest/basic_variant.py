@@ -66,19 +66,19 @@ class _TrialIterator:
     """Generates trials from the spec.
 
     Args:
-        uuid_prefix (str): Used in creating the trial name.
-        num_samples (int): Number of samples from distribution
+        uuid_prefix: Used in creating the trial name.
+        num_samples: Number of samples from distribution
              (same as tune.run).
-        unresolved_spec (dict): Experiment specification
+        unresolved_spec: Experiment specification
             that might have unresolved distributions.
-        constant_grid_search (bool): Should random variables be sampled
+        constant_grid_search: Should random variables be sampled
             first before iterating over grid variants (True) or not (False).
-        output_path (str): A specific output path within the local_dir.
-        points_to_evaluate (list): Same as tune.run.
-        lazy_eval (bool): Whether variants should be generated
+        output_path: A specific output path within the local_dir.
+        points_to_evaluate: Same as tune.run.
+        lazy_eval: Whether variants should be generated
             lazily or eagerly. This is toggled depending
             on the size of the grid search.
-        start (int): index at which to start counting trials.
+        start: index at which to start counting trials.
         random_state (int | np.random.Generator | np.random.RandomState):
             Seed or numpy random generator to use for reproducible results.
             If None (default), will use the global numpy random generator
@@ -192,23 +192,23 @@ class BasicVariantGenerator(SearchAlgorithm):
 
 
     Args:
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        max_concurrent (int): Maximum number of concurrently running trials.
+        max_concurrent: Maximum number of concurrently running trials.
             If 0 (default), no maximum is enforced.
-        constant_grid_search (bool): If this is set to ``True``, Ray Tune will
+        constant_grid_search: If this is set to ``True``, Ray Tune will
             *first* try to sample random values and keep them constant over
             grid search parameters. If this is set to ``False`` (default),
             Ray Tune will sample new random parameters in each grid search
             condition.
-        random_state (int | np.random.Generator | np.random.RandomState):
+        random_state:
             Seed or numpy random generator to use for reproducible results.
             If None (default), will use the global numpy random generator
             (``np.random``). Please note that full reproducibility cannot
-            be guaranteed in a distributed enviroment.
+            be guaranteed in a distributed environment.
 
 
     Example:
@@ -314,7 +314,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         """Chains generator given experiment specifications.
 
         Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
+            experiments: Experiments to run.
         """
         experiment_list = convert_to_experiment_list(experiments)
         for experiment in experiment_list:
@@ -352,6 +352,8 @@ class BasicVariantGenerator(SearchAlgorithm):
         Returns:
             Trial: Returns a single trial.
         """
+        if self.is_finished():
+            return None
         if self.max_concurrent > 0 and len(self._live_trials) >= self.max_concurrent:
             return None
         if not self._trial_iter:

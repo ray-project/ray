@@ -12,6 +12,9 @@ from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
 from ray.data.impl.lazy_block_list import LazyBlockList
 
+# Scheduling strategy can be inherited from prev stage if not specified.
+INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+
 
 class ExecutionPlan:
     """A lazy execution plan for a Dataset."""
@@ -80,7 +83,7 @@ class ExecutionPlan:
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
         for m in metadata:
-            if m.schema is not None:
+            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
                 return m.schema
         if not fetch_if_missing:
             return None
@@ -115,10 +118,6 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        # TODO: add optimizations:
-        # 1. task fusion of OneToOne
-        # 2. task fusion of OneToOne to AlltoAll
-        # 3. clear input blocks
         if self._out_blocks is None:
             self._optimize()
             blocks = self._in_blocks
@@ -186,6 +185,7 @@ class ExecutionPlan:
         [GetReadTasks -> MapBatches(DoRead -> Fn)].
         """
         # Generate the "GetReadTasks" stage blocks.
+        remote_args = self._in_blocks._read_remote_args
         blocks = []
         metadata = []
         for i, read_task in enumerate(self._in_blocks._read_tasks):
@@ -198,8 +198,7 @@ class ExecutionPlan:
             for tmp1 in read_task._read_fn():
                 yield tmp1
 
-        # TODO(ekl): add num_cpus properly here and make the read default num_cpus=1.
-        return block_list, OneToOneStage("read", block_fn, None, {})
+        return block_list, OneToOneStage("read", block_fn, "tasks", remote_args)
 
     def _fuse_one_to_one_stages(self) -> None:
         """Fuses compatible one-to-one stages."""
@@ -254,14 +253,18 @@ class OneToOneStage(Stage):
         super().__init__(name, None)
         self.block_fn = block_fn
         self.compute = compute or "tasks"
-        self.ray_remote_args = ray_remote_args
+        self.ray_remote_args = ray_remote_args or {}
 
     def can_fuse(self, prev: Stage):
         if not isinstance(prev, OneToOneStage):
             return False
         if prev.compute != self.compute:
             return False
-        if prev.ray_remote_args != self.ray_remote_args:
+        for key in INHERITABLE_REMOTE_ARGS:
+            remote_args = self.ray_remote_args.copy()
+            if key in prev.ray_remote_args:
+                remote_args[key] = prev.ray_remote_args[key]
+        if prev.ray_remote_args != remote_args:
             return False
         return True
 
@@ -275,13 +278,13 @@ class OneToOneStage(Stage):
                 for tmp2 in fn2(tmp1):
                     yield tmp2
 
-        return OneToOneStage(name, block_fn, self.compute, self.ray_remote_args)
+        return OneToOneStage(name, block_fn, prev.compute, prev.ray_remote_args)
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
-        blocks = compute.apply(
+        blocks = compute._apply(
             self.block_fn, self.ray_remote_args, blocks, clear_input_blocks
         )
         assert isinstance(blocks, BlockList), blocks
@@ -298,11 +301,13 @@ class AllToAllStage(Stage):
         fn: Callable[[BlockList, bool, Callable], Tuple[BlockList, dict]],
         supports_block_udf: bool = False,
         block_udf=None,
+        remote_args=None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
+        self.ray_remote_args = remote_args or {}
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -315,18 +320,22 @@ class AllToAllStage(Stage):
             return False
         if prev.compute != "tasks":
             return False
-        if prev.ray_remote_args:
+        if any(k not in INHERITABLE_REMOTE_ARGS for k in prev.ray_remote_args):
             return False
         return True
 
     def fuse(self, prev: Stage):
         assert self.supports_block_udf
         name = prev.name + "->" + self.name
-        return AllToAllStage(name, self.num_blocks, self.fn, True, prev.block_fn)
+        return AllToAllStage(
+            name, self.num_blocks, self.fn, True, prev.block_fn, prev.ray_remote_args
+        )
 
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
-        blocks, stage_info = self.fn(blocks, clear_input_blocks, self.block_udf)
+        blocks, stage_info = self.fn(
+            blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
+        )
         assert isinstance(blocks, BlockList), blocks
         return blocks, stage_info

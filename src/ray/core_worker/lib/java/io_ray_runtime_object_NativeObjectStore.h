@@ -71,7 +71,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
  * Signature: ([B[B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, jclass,
+Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *,
+                                                                     jclass,
                                                                      jbyteArray,
                                                                      jbyteArray);
 
@@ -81,7 +82,8 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, j
  * Signature: ([B[B)V
  */
 JNIEXPORT void JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *, jclass,
+Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *,
+                                                                        jclass,
                                                                         jbyteArray,
                                                                         jbyteArray);
 
@@ -100,7 +102,8 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv 
  * Signature: ([B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *, jclass,
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *,
+                                                                   jclass,
                                                                    jbyteArray);
 
 /*
@@ -109,7 +112,8 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *, jcl
  * Signature: ([B)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *, jclass,
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *,
+                                                                    jclass,
                                                                     jbyteArray);
 
 /*

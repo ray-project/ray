@@ -124,7 +124,7 @@ class ActorGroup:
     def __getattr__(self, item):
         if len(self.actors) == 0:
             raise RuntimeError(
-                "This ActorGroup has been shutdown. Please " "start it again."
+                "This ActorGroup has been shutdown. Please start it again."
             )
         # Same implementation as actor.py
         return ActorGroupMethod(self, item)
@@ -167,9 +167,7 @@ class ActorGroup:
             # Wait for actors to die gracefully.
             done, not_done = ray.wait(done_refs, timeout=patience_s)
             if not_done:
-                logger.debug(
-                    "Graceful termination failed. Falling back to " "force kill."
-                )
+                logger.debug("Graceful termination failed. Falling back to force kill.")
                 # If all actors are not able to die gracefully, then kill them.
                 for actor in self.actors:
                     ray.kill(actor.actor)

@@ -65,7 +65,8 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \param timeout_ms RPC timeout in milliseconds. -1 means the default.
   /// \return Status
-  virtual Status AsyncGetByName(const std::string &name, const std::string &ray_namespace,
+  virtual Status AsyncGetByName(const std::string &name,
+                                const std::string &ray_namespace,
                                 const OptionalItemCallback<rpc::ActorTableData> &callback,
                                 int64_t timeout_ms = -1);
 
@@ -77,7 +78,8 @@ class ActorInfoAccessor {
   /// \param ray_namespace The namespace to filter to.
   /// \return Status. TimedOut status if RPC is timed out.
   /// NotFound if the name doesn't exist.
-  virtual Status SyncGetByName(const std::string &name, const std::string &ray_namespace,
+  virtual Status SyncGetByName(const std::string &name,
+                               const std::string &ray_namespace,
                                rpc::ActorTableData &actor_table_data);
 
   /// List all named actors from the GCS asynchronously.
@@ -88,7 +90,8 @@ class ActorInfoAccessor {
   /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status
   virtual Status AsyncListNamedActors(
-      bool all_namespaces, const std::string &ray_namespace,
+      bool all_namespaces,
+      const std::string &ray_namespace,
       const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
       int64_t timeout_ms = -1);
 
@@ -101,7 +104,8 @@ class ActorInfoAccessor {
   /// \param[out] actors The pair of list of named actors. Each pair includes the
   /// namespace and name of the actor. \return Status. TimeOut if RPC times out.
   virtual Status SyncListNamedActors(
-      bool all_namespaces, const std::string &ray_namespace,
+      bool all_namespaces,
+      const std::string &ray_namespace,
       std::vector<std::pair<std::string, std::string>> &actors);
 
   /// Register actor to GCS asynchronously.
@@ -130,7 +134,9 @@ class ActorInfoAccessor {
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   /// \param callback Callback that will be called after the actor is destroyed.
   /// \return Status
-  virtual Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
+  virtual Status AsyncKillActor(const ActorID &actor_id,
+                                bool force_kill,
+                                bool no_restart,
                                 const StatusCallback &callback);
 
   /// Asynchronously request GCS to create the actor.
@@ -184,11 +190,11 @@ class ActorInfoAccessor {
   absl::Mutex mutex_;
 
   /// Resubscribe operations for actors.
-  std::unordered_map<ActorID, SubscribeOperation> resubscribe_operations_
+  absl::flat_hash_map<ActorID, SubscribeOperation> resubscribe_operations_
       GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.
-  std::unordered_map<ActorID, FetchDataOperation> fetch_data_operations_
+  absl::flat_hash_map<ActorID, FetchDataOperation> fetch_data_operations_
       GUARDED_BY(mutex_);
 
   GcsClient *client_impl_;
@@ -349,7 +355,7 @@ class NodeInfoAccessor {
   /// is called before.
   ///
   /// \return All nodes in cache.
-  virtual const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
+  virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -410,7 +416,7 @@ class NodeInfoAccessor {
   NodeChangeCallback node_change_callback_{nullptr};
 
   /// A cache for information about all nodes.
-  std::unordered_map<NodeID, rpc::GcsNodeInfo> node_cache_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
   std::unordered_set<NodeID> removed_nodes_;
 };
@@ -425,7 +431,7 @@ class NodeResourceInfoAccessor {
   explicit NodeResourceInfoAccessor(GcsClient *client_impl);
   virtual ~NodeResourceInfoAccessor() = default;
   // TODO(micafan) Define ResourceMap in GCS proto.
-  typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+  typedef absl::flat_hash_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
       ResourceMap;
 
   /// Get node's resources from GCS asynchronously.
@@ -442,23 +448,6 @@ class NodeResourceInfoAccessor {
   /// \return Status
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
-
-  /// Update resources of node in GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to update dynamic resources.
-  /// \param resources The dynamic resources of node to be updated.
-  /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                                      const StatusCallback &callback);
-
-  /// Delete resources of a node from GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to delete resources from GCS.
-  /// \param resource_names The names of resource to be deleted.
-  /// \param callback Callback that will be called after delete finishes.
-  virtual Status AsyncDeleteResources(const NodeID &node_id,
-                                      const std::vector<std::string> &resource_names,
-                                      const StatusCallback &callback);
 
   /// Subscribe to node resource changes.
   ///
@@ -693,7 +682,8 @@ class PlacementGroupInfoAccessor {
   /// \param timeout_ms The RPC timeout in milliseconds. -1 means the default.
   /// \return Status.
   virtual Status AsyncGetByName(
-      const std::string &placement_group_name, const std::string &ray_namespace,
+      const std::string &placement_group_name,
+      const std::string &ray_namespace,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
       int64_t timeout_ms = -1);
 
@@ -737,7 +727,8 @@ class InternalKVAccessor {
   /// \param callback Callback that will be called after scanning.
   /// \return Status
   virtual Status AsyncInternalKVKeys(
-      const std::string &ns, const std::string &prefix,
+      const std::string &ns,
+      const std::string &prefix,
       const OptionalItemCallback<std::vector<std::string>> &callback);
 
   /// Asynchronously get the value for a given key.
@@ -745,7 +736,8 @@ class InternalKVAccessor {
   /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
   /// \param callback Callback that will be called after get the value.
-  virtual Status AsyncInternalKVGet(const std::string &ns, const std::string &key,
+  virtual Status AsyncInternalKVGet(const std::string &ns,
+                                    const std::string &key,
                                     const OptionalItemCallback<std::string> &callback);
 
   /// Asynchronously set the value for a given key.
@@ -755,8 +747,10 @@ class InternalKVAccessor {
   /// \param value The value associated with the key
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVPut(const std::string &ns, const std::string &key,
-                                    const std::string &value, bool overwrite,
+  virtual Status AsyncInternalKVPut(const std::string &ns,
+                                    const std::string &key,
+                                    const std::string &value,
+                                    bool overwrite,
                                     const OptionalItemCallback<int> &callback);
 
   /// Asynchronously check the existence of a given key
@@ -765,7 +759,8 @@ class InternalKVAccessor {
   /// \param key The key to check.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVExists(const std::string &ns, const std::string &key,
+  virtual Status AsyncInternalKVExists(const std::string &ns,
+                                       const std::string &key,
                                        const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously delete a key
@@ -775,8 +770,10 @@ class InternalKVAccessor {
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
-  virtual Status AsyncInternalKVDel(const std::string &ns, const std::string &key,
-                                    bool del_by_prefix, const StatusCallback &callback);
+  virtual Status AsyncInternalKVDel(const std::string &ns,
+                                    const std::string &key,
+                                    bool del_by_prefix,
+                                    const StatusCallback &callback);
 
   // These are sync functions of the async above
 
@@ -788,7 +785,8 @@ class InternalKVAccessor {
   /// \param prefix The prefix to scan.
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
-  virtual Status Keys(const std::string &ns, const std::string &prefix,
+  virtual Status Keys(const std::string &ns,
+                      const std::string &prefix,
                       std::vector<std::string> &value);
 
   /// Set the <key, value> in the store
@@ -803,8 +801,11 @@ class InternalKVAccessor {
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
-  virtual Status Put(const std::string &ns, const std::string &key,
-                     const std::string &value, bool overwrite, bool &added);
+  virtual Status Put(const std::string &ns,
+                     const std::string &key,
+                     const std::string &value,
+                     bool overwrite,
+                     bool &added);
 
   /// Retrive the value associated with a key
   ///
