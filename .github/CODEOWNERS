@@ -12,6 +12,7 @@
 /src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz @raulchen @iycheng @scv119 @mwtian
 /dashboard/modules/snapshot @wuisawesome @ijrsvt @edoakes @alanwguo @architkulkarni
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
+/python/ray/autoscaler/node_provider.py @wuisawesome @clarng @DmitriGekhtman
 
 # Metrics
 /src/ray/stats/metric_defs.h @ericl @scv119 @rkooo567
