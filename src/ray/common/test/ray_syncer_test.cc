@@ -248,23 +248,24 @@ struct SyncerServerTest {
   }
 
   void WaitSendingFlush() {
-    while(true) {
+    while (true) {
       std::promise<bool> p;
       auto f = p.get_future();
-      io_context.post([&p, this]() mutable {
-        for(const auto& [node_id, conn] : syncer->sync_connections_) {
-          if(!conn->sending_queue_.empty()) {
-            p.set_value(false);
-            RAY_LOG(INFO)
-                << NodeID::FromBinary(syncer->GetNodeId()) << ": "
-                << "Waiting for message on " << NodeID::FromBinary(node_id) << " to be sent."
-                          << " Remainings " << conn->sending_queue_.size();
-            return;
-          }
-        }
-        p.set_value(true);
-      },
-        "TEST");
+      io_context.post(
+          [&p, this]() mutable {
+            for (const auto &[node_id, conn] : syncer->sync_connections_) {
+              if (!conn->sending_queue_.empty()) {
+                p.set_value(false);
+                RAY_LOG(INFO) << NodeID::FromBinary(syncer->GetNodeId()) << ": "
+                              << "Waiting for message on " << NodeID::FromBinary(node_id)
+                              << " to be sent."
+                              << " Remainings " << conn->sending_queue_.size();
+                return;
+              }
+            }
+            p.set_value(true);
+          },
+          "TEST");
       if (f.get()) {
         return;
       } else {
@@ -661,7 +662,7 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     return CompareViews(servers, views, g);
   };
 
-  for(auto& server : servers) {
+  for (auto &server : servers) {
     server->WaitSendingFlush();
   }
 
@@ -697,7 +698,7 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     }
   }
 
-  for(auto& server : servers) {
+  for (auto &server : servers) {
     server->WaitSendingFlush();
   }
   // Make sure everything is synced.
