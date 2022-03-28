@@ -67,9 +67,9 @@ Let's start with a simple DAG with the following attributes where each node is e
 - Same class can be constructed, or function bound with different args that generates multiple distinct nodes in DAG.
 - A node can be called either sync or async.
 
-```{code-cell} ipython3
++++
 
-```
+![deployment graph](https://github.com/ray-project/images/blob/master/docs/serve/deployment_graph.png?raw=true)
 
 ```{code-cell} ipython3
 import ray
