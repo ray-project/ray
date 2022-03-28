@@ -177,7 +177,7 @@ class RaySyncer {
   std::shared_ptr<bool> stopped_;
 
   /// Test purpose
-  friend class SyncerServerTest;
+  friend struct SyncerServerTest;
   FRIEND_TEST(SyncerTest, Broadcast);
   FRIEND_TEST(SyncerTest, Test1To1);
   FRIEND_TEST(SyncerTest, Test1ToN);
