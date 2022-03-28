@@ -224,7 +224,7 @@ The class and function definition as well as decorator didn't diverage from exis
 
 +++
 
-**```bind(*args, **kwargs)```**
+**`bind(*args, **kwargs)`**
 
 Once called on supported ray decorated function or class (@ray.remote, @serve.deployment), generates an IR of type DAGNode that acts as the building block of graph building.
 
@@ -292,7 +292,7 @@ print(ray.get(dag_handle.remote(2)))
 
 #### On class constructor 
 
-```Class.bind(*args, **kwargs)``` constructs and returns a DAGNode that acts as the instantiated instance of Class, where ```*args``` and ```**kwargs``` are used as init args.
+**`Class.bind(*args, **kwargs)`** constructs and returns a DAGNode that acts as the instantiated instance of Class, where `*args` and `**kwargs` are used as init args.
 
 #### On class method
 
@@ -384,17 +384,3 @@ Tip: You can also use the Serve CLI to run your deployment graph. The CLI was
 included with Serve when you did ``pip install "ray[serve]"``. The command
 ```serve run [node import path]``` will deploy the node and its childrens'
 deployments.
-
-+++
-
-### Future improvements
-
-Polishing 
-
-Operationalizing deployment graph
-
-Performance improvements:
-
-```{code-cell} ipython3
-
-```
