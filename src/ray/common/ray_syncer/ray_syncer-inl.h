@@ -108,7 +108,9 @@ class NodeSyncConnection {
   void ReceiveUpdate(RaySyncMessages messages);
 
  protected:
+  // For testing
   FRIEND_TEST(RaySyncerTest, NodeSyncConnection);
+  friend class SyncerServerTest;
 
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);

@@ -173,8 +173,8 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
                 .node_versions_[from_node_id.Binary()][RayComponentId::RESOURCE_MANAGER]);
 }
 
-struct SyncerServer {
-  SyncerServer(std::string port, bool has_scheduler_reporter = true) {
+struct SyncerServerTest {
+  SyncerServerTest(std::string port, bool has_scheduler_reporter = true) {
     this->server_port = port;
     bool has_scheduler_receiver = !has_scheduler_reporter;
     // Setup io context
@@ -247,6 +247,32 @@ struct SyncerServer {
     });
   }
 
+  void WaitSendingFlush() {
+    while(true) {
+      std::promise<bool> p;
+      auto f = p.get_future();
+      io_context.post([&p, this]() mutable {
+        for(const auto& [node_id, conn] : syncer->sync_connections_) {
+          if(!conn->sending_queue_.empty()) {
+            p.set_value(false);
+            RAY_LOG(INFO)
+                << NodeID::FromBinary(syncer->GetNodeId()) << ": "
+                << "Waiting for message on " << NodeID::FromBinary(node_id) << " to be sent."
+                          << " Remainings " << conn->sending_queue_.size();
+            return;
+          }
+        }
+        p.set_value(true);
+      },
+        "TEST");
+      if (f.get()) {
+        return;
+      } else {
+        std::this_thread::sleep_for(1s);
+      }
+    }
+  }
+
   bool WaitUntil(std::function<bool()> predicate, int64_t time_s) {
     auto start = steady_clock::now();
 
@@ -263,7 +289,7 @@ struct SyncerServer {
     return false;
   }
 
-  ~SyncerServer() {
+  ~SyncerServerTest() {
     service.reset();
     server.reset();
     io_context.stop();
@@ -311,7 +337,7 @@ struct SyncerServer {
 };
 
 // Useful for debugging
-// std::ostream &operator<<(std::ostream &os, const SyncerServer &server) {
+// std::ostream &operator<<(std::ostream &os, const SyncerServerTest &server) {
 //   auto dump_array = [&os](const std::array<int64_t, kComponentArraySize> &v,
 //                           std::string label,
 //                           int indent) mutable -> std::ostream & {
@@ -353,11 +379,11 @@ using TClusterView = absl::flat_hash_map<
 TEST(SyncerTest, Test1To1) {
   // s1: reporter: RayComponentId::RESOURCE_MANAGER
   // s1: receiver: RayComponentId::SCHEDULER, RayComponentId::RESOURCE_MANAGER
-  auto s1 = SyncerServer("19990", false);
+  auto s1 = SyncerServerTest("19990", false);
 
   // s2: reporter: RayComponentId::RESOURCE_MANAGER, RayComponentId::SCHEDULER
   // s2: receiver: RayComponentId::RESOURCE_MANAGER
-  auto s2 = SyncerServer("19991", true);
+  auto s2 = SyncerServerTest("19991", true);
 
   // Make sure the setup is correct
   ASSERT_NE(nullptr, s1.receivers[RayComponentId::SCHEDULER]);
@@ -468,9 +494,9 @@ TEST(SyncerTest, Test1To1) {
 
 TEST(SyncerTest, Broadcast) {
   // This test covers the broadcast feature of ray syncer.
-  auto s1 = SyncerServer("19990", false);
-  auto s2 = SyncerServer("19991", true);
-  auto s3 = SyncerServer("19992", true);
+  auto s1 = SyncerServerTest("19990", false);
+  auto s2 = SyncerServerTest("19991", true);
+  auto s3 = SyncerServerTest("19992", true);
   // We need to make sure s1 is sending data to s3 for s2
   s1.syncer->Connect(MakeChannel("19991"));
   s1.syncer->Connect(MakeChannel("19992"));
@@ -514,7 +540,7 @@ TEST(SyncerTest, Broadcast) {
       5));
 }
 
-bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
+bool CompareViews(const std::vector<std::unique_ptr<SyncerServerTest>> &servers,
                   const std::vector<TClusterView> &views,
                   const std::vector<std::set<size_t>> &g) {
   // Check broadcasting is working
@@ -625,7 +651,7 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServer>> &servers,
 }
 
 bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_view,
-                     std::vector<std::unique_ptr<SyncerServer>> &servers,
+                     std::vector<std::unique_ptr<SyncerServerTest>> &servers,
                      const std::vector<std::set<size_t>> &g) {
   auto check = [&servers, get_cluster_view, &g]() {
     std::vector<TClusterView> views;
@@ -634,6 +660,10 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     }
     return CompareViews(servers, views, g);
   };
+
+  for(auto& server : servers) {
+    server->WaitSendingFlush();
+  }
 
   for (size_t i = 0; i < 10; ++i) {
     if (!check()) {
@@ -667,6 +697,9 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     }
   }
 
+  for(auto& server : servers) {
+    server->WaitSendingFlush();
+  }
   // Make sure everything is synced.
   for (size_t i = 0; i < 10; ++i) {
     if (!check()) {
@@ -681,10 +714,10 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
 
 TEST(SyncerTest, Test1ToN) {
   size_t base_port = 18990;
-  std::vector<std::unique_ptr<SyncerServer>> servers;
+  std::vector<std::unique_ptr<SyncerServerTest>> servers;
   for (int i = 0; i < 20; ++i) {
     servers.push_back(
-        std::make_unique<SyncerServer>(std::to_string(i + base_port), i != 0));
+        std::make_unique<SyncerServerTest>(std::to_string(i + base_port), i != 0));
   }
   std::vector<std::set<size_t>> g(servers.size());
   for (size_t i = 1; i < servers.size(); ++i) {
@@ -706,10 +739,10 @@ TEST(SyncerTest, Test1ToN) {
 
 TEST(SyncerTest, TestMToN) {
   size_t base_port = 18990;
-  std::vector<std::unique_ptr<SyncerServer>> servers;
+  std::vector<std::unique_ptr<SyncerServerTest>> servers;
   for (int i = 0; i < 20; ++i) {
     servers.push_back(
-        std::make_unique<SyncerServer>(std::to_string(i + base_port), i != 0));
+        std::make_unique<SyncerServerTest>(std::to_string(i + base_port), i != 0));
   }
   std::vector<std::set<size_t>> g(servers.size());
   // Try to construct a tree based structure
