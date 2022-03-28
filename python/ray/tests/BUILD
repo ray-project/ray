@@ -56,9 +56,9 @@ py_test_module_list(
     "test_memstat.py",
     "test_mldataset.py",
   ],
-  size = "large",
+  size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "large_size_python_tests_shard_3", "team:core"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib"],
 )
 
