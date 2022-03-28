@@ -100,8 +100,8 @@ bool NodeSyncConnection::PushToSendingQueue(
 
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
-    sending_queue_.insert(message);
     node_versions[message->component_id()] = message->version();
+    sending_queue_.insert(message);
     return true;
   }
   return false;

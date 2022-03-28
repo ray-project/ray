@@ -110,7 +110,7 @@ class NodeSyncConnection {
  protected:
   // For testing
   FRIEND_TEST(RaySyncerTest, NodeSyncConnection);
-  friend class SyncerServerTest;
+  friend struct SyncerServerTest;
 
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);
