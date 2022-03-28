@@ -237,13 +237,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # a) handles window generation and rendering itself (returning True) or
     # b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
     "render_env": False,
-    # If True, stores videos in this relative directory inside the default
-    # output dir (~/ray_results/...). Alternatively, you can specify an
-    # absolute path (str), in which the env recordings should be
-    # stored instead.
-    # Set to False for not recording anything.
-    # Note: This setting replaces the deprecated `monitor` key.
-    "record_env": False,
     # Whether to clip rewards during Policy's postprocessing.
     # None (default): Clip for Atari only (r=sign(r)).
     # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
@@ -637,9 +630,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # the default optimizer.
     # This will be set automatically from now on.
     "simple_optimizer": DEPRECATED_VALUE,
-    # Whether to write episode stats and videos to the agent log dir. This is
-    # typically located in ~/ray_results.
-    "monitor": DEPRECATED_VALUE,
     # Replaced by `evaluation_duration=10` and
     # `evaluation_duration_unit=episodes`.
     "evaluation_num_episodes": DEPRECATED_VALUE,
@@ -2325,16 +2315,6 @@ class Trainer(Trainable):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
-
-        # Monitor should be replaced by `record_env`.
-        if config.get("monitor", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning("monitor", "record_env", error=False)
-            config["record_env"] = config.get("monitor", False)
-        # Empty string would fail some if-blocks checking for this setting.
-        # Set to True instead, meaning: use default output dir to store
-        # the videos.
-        if config.get("record_env") == "":
-            config["record_env"] = True
 
         # Use DefaultCallbacks class, if callbacks is None.
         if config["callbacks"] is None:

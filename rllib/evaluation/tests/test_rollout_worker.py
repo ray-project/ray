@@ -12,7 +12,6 @@ import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.utils import VideoMonitor
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
@@ -772,15 +771,12 @@ class TestRolloutWorker(unittest.TestCase):
             policy_config={
                 "in_evaluation": False,
             },
-            record_env=tempfile.gettempdir(),
         )
         # Make sure we can properly sample from the wrapped env.
         ev.sample()
         # Make sure the resulting environment is indeed still an
-        # instance of MultiAgentEnv and VideoMonitor.
         self.assertTrue(isinstance(ev.env.unwrapped, MultiAgentEnv))
         self.assertTrue(isinstance(ev.env, gym.Env))
-        self.assertTrue(isinstance(ev.env, VideoMonitor))
         ev.stop()
 
     def test_no_training(self):

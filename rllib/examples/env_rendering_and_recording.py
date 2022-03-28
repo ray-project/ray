@@ -115,13 +115,6 @@ if __name__ == "__main__":
         # Special evaluation config. Keys specified here will override
         # the same keys in the main config, but only for evaluation.
         "evaluation_config": {
-            # Store videos in this relative directory here inside
-            # the default output dir (~/ray_results/...).
-            # Alternatively, you can specify an absolute path.
-            # Set to True for using the default output dir (~/ray_results/...).
-            # Set to False for not recording anything.
-            "record_env": "videos",
-            # "record_env": "/Users/xyz/my_videos/",
             # Render the env while evaluating.
             # Note that this will always only render the 1st RolloutWorker's
             # env and only the 1st sub-env in a vectorized env.

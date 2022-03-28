@@ -588,7 +588,6 @@ class WorkerSet:
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,
-            record_env=config["record_env"],
             log_dir=self._logdir,
             log_level=config["log_level"],
             callbacks=config["callbacks"],
