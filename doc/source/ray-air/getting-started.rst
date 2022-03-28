@@ -101,13 +101,12 @@ Predictors
     :members:
     :show-inheritance:
 
-
+.. _air-serve-integration:
 
 Serving
 ~~~~~~~
 
-.. automodule:: ray.serve.model_wrappers
-    :members:
+.. autoclass:: ray.serve.model_wrappers.ModelWrapper
 
 
 Outputs

@@ -39,6 +39,33 @@ def _load_predictor_cls(
 
 
 class ModelWrapper(SimpleSchemaIngress):
+    """Serve any Ray AIR predictor from a AIR checkpoint.
+
+    Args:
+        predictor_cls(str, Type[Predictor]): The class or path for predictor class.
+            The type must be a subclass of :class:`ray.ml.predicotr.Predictor`.
+        checkpoint(Checkpoint, dict): The checkpoint object or a dictionary describe
+            the object.
+
+            - The checkpoint object must be a subclass of
+              :class:`ray.ml.checkpoint.Checkpoint`.
+            - The dictionary should be in the form of
+              ``{"checkpoint_cls": "import.path.MyCheckpoint",
+              "uri": "uri_to_load_from"}``.
+              Serve will then call ``MyCheckpoint.from_uri("uri_to_load_from")`` to
+              instantiate the object.
+
+        input_schema(str, InputSchemaFn, None): The FastAPI input conversion
+            function. By default, Serve will use the
+            :ref:`NdArray <serve-ndarray-schema>` schema and convert to numpy array.
+            You can pass in any FastAPI dependency resolver that returns
+            an array. When you pass in a string, Serve will import it.
+            Please refer to :ref:`Serve HTTP adatpers <serve-http-adapters>`
+            documentation to learn more.
+        batching_params(dict, None, False): override the default parameters to
+            :func:`ray.serve.batch`. Pass ``False`` to disable batching.
+    """
+
     def __init__(
         self,
         predictor_cls: Union[str, Type[Predictor]],
@@ -48,27 +75,6 @@ class ModelWrapper(SimpleSchemaIngress):
         ] = "ray.serve.http_adapters.array_to_databatch",
         batching_params: Optional[Union[Dict[str, int], bool]] = None,
     ):
-        """Serve any Ray ML predictor from checkpoint.
-
-        Args:
-            predictor_cls(str, Type[Predictor]): The class or path for predictor class.
-              The type must be a subclass of ray.ml `Predictor`.
-            checkpoint(Checkpoint, dict): The checkpoint object or a dictionary describe
-              the object.
-                - The checkpoint object must be a subclass of ray.ml `Checkpoint`.
-                - The dictionary should be in the form of
-                  {"checkpoint_cls": "import.path.MyCheckpoint",
-                   "uri": "uri_to_load_from"}.
-                  Serve will then call `MyCheckpoint.from_uri("uri_to_load_from")` to
-                  instantiate the object.
-            input_schema(str, InputSchemaFn, None): The FastAPI input conversion
-              function. By default, Serve will use the `NdArray` schema and convert to
-              numpy array. You can pass in any FastAPI dependency resolver that returns
-              an array. When you pass in a string, Serve will import it.
-              Please refer to Serve HTTP adatper documentation to learn more.
-            batching_params(dict, None, False): override the default parameters to
-              serve.batch. Pass `False` to disable batching.
-        """
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
 

@@ -152,6 +152,43 @@ To try it out, save a code snippet in a local python file (i.e. main.py) and in 
     ray start --head
     python main.py
 
+.. _serve-http-adapters:
+
+HTTP Adapters
+^^^^^^^^^^^^^
+
+Ray Serve provides a suite of adapter for input schema conversion. You can directly
+import them and put them into your FastAPI app. Alternatively, just use it with
+:ref:`Ray AI Runtime (AIR) model wrapper<air-serve-integration>` feature to one click deploy pre-trained models.
+
+For example, we provide a simple converter for n-dimensional array. You can bring it
+to your own FastAPI app using `Depends <https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends>`_.
+
+.. code-block:: python
+
+    from ray.serve.http_adapters import array_to_databatch
+    from fastapi import FastAPI, Depends
+
+    app = FastAPI()
+
+    @app.post("/endpoint")
+    async def endpoint(np_array = Depends(array_to_databatch)):
+        ...
+
+It has the following schema for input:
+
+.. _serve-ndarray-schema:
+
+.. autopydantic_model:: ray.serve.http_adapters.NdArray
+
+The input schema will automatically be part of the generated OpenAPI schema with FastAPI.
+
+Here is a list of adapters and please feel free to contribute more!
+
+.. automodule:: ray.serve.http_adapters
+    :members: array_to_databatch, image_to_databatch
+
+
 Configuring HTTP Server Locations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
