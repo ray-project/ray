@@ -39,7 +39,7 @@ def _load_predictor_cls(
 
 
 class ModelWrapper(SimpleSchemaIngress):
-    """Serve any Ray AIR predictor from a AIR checkpoint.
+    """Serve any Ray AIR predictor from an AIR checkpoint.
 
     Args:
         predictor_cls(str, Type[Predictor]): The class or path for predictor class.

@@ -157,12 +157,29 @@ To try it out, save a code snippet in a local python file (i.e. main.py) and in 
 HTTP Adapters
 ^^^^^^^^^^^^^
 
-Ray Serve provides a suite of adapter for input schema conversion. You can directly
-import them and put them into your FastAPI app. Alternatively, just use it with
-:ref:`Ray AI Runtime (AIR) model wrapper<air-serve-integration>` feature to one click deploy pre-trained models.
+Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
+You can just use it with :ref:`Ray AI Runtime (AIR) model wrapper<air-serve-integration>` feature
+to one click deploy pre-trained models.
+Alternatively, you can directly import them and put them into your FastAPI app.
 
-For example, we provide a simple converter for n-dimensional array. You can bring it
-to your own FastAPI app using `Depends <https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends>`_.
+For example, we provide a simple adapter for n-dimensional array.
+
+With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``input_schema`` field.
+
+.. code-block:: python
+
+    from ray.serve.http_adapters import array_to_databatch
+    from ray.serve.model_wrappers import ModelWrapper
+    from ray import serve
+
+    serve.deployment(name="my_model")(ModelWrapper).deploy(
+        my_ray_air_predictor,
+        my_ray_air_checkpoint,
+        input_schema=array_to_databatch
+    )
+
+You can also bring the adapter to your own FastAPI app using
+`Depends <https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends>`_.
 
 .. code-block:: python
 
@@ -183,7 +200,7 @@ It has the following schema for input:
 
 The input schema will automatically be part of the generated OpenAPI schema with FastAPI.
 
-Here is a list of adapters and please feel free to contribute more!
+Here is a list of adapters and please feel free to `contribute more <https://github.com/ray-project/ray/issues/new/choose>`_!
 
 .. automodule:: ray.serve.http_adapters
     :members: array_to_databatch, image_to_databatch
