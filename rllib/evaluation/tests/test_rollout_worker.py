@@ -4,7 +4,6 @@ from gym.spaces import Box, Discrete
 import numpy as np
 import os
 import random
-import tempfile
 import time
 import unittest
 

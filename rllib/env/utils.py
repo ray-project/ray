@@ -1,10 +1,6 @@
 import gym
-from gym import wrappers
-import os
 
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.utils import add_mixins
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 
 
