@@ -54,13 +54,15 @@ class ResourceRequest {
     }
   }
 
+  ResourceRequest &operator=(const ResourceRequest &other)  = default;
+
   bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
 
   /// Get the value of a particular resource.
   /// If the resource doesn't exist, return 0.
   FixedPoint Get(ResourceID resource_id) const {
     auto ptr = GetPointer(resource_id);
-    if (ptr == 0) {
+    if (ptr == nullptr) {
       return FixedPoint(0);
     } else {
       return *ptr;
@@ -103,11 +105,23 @@ class ResourceRequest {
 
   /// Cap the resource values in this set by those in another set.
   void Cap(const ResourceRequest &other) {
-    for (auto &resource_id : ResourceIds()) {
+    auto this_ids = ResourceIds();
+    auto other_ids = other.ResourceIds();
+    // Check the resources that exist in "this".
+    for (auto &resource_id : this_ids) {
       auto this_value = Get(resource_id);
       auto other_value = other.Get(resource_id);
       if (this_value > other_value) {
         Set(resource_id, other_value);
+      }
+    }
+    // Check the resources that only exist in "other".
+    for (auto &resource_id : other_ids) {
+      if (!this_ids.contains(resource_id)) {
+        auto other_value = other.Get(resource_id);
+        if (other_value < 0) {
+          Set(resource_id, other_value);
+        }
       }
     }
   }
@@ -163,13 +177,6 @@ class ResourceRequest {
       res.emplace(resource_id, Get(resource_id));
     }
     return res;
-  }
-
-  ResourceRequest &operator=(const ResourceRequest &other) {
-    this->predefined_resources_ = other.predefined_resources_;
-    this->custom_resources_ = other.custom_resources_;
-    this->requires_object_store_memory_ = other.requires_object_store_memory_;
-    return *this;
   }
 
   ResourceRequest operator+(const ResourceRequest &other) {
