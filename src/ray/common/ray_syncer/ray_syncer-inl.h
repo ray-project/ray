@@ -68,7 +68,7 @@ class NodeState {
   std::array<ReceiverInterface *, kComponentArraySize> receivers_ = {nullptr};
 
   /// This field records the version of the snapshot that has been taken.
-  std::array<int64_t, kComponentArraySize> snapshots_taken_;
+  std::array<int64_t, kComponentArraySize> snapshots_versions_taken_;
   /// Keep track of the latest messages received.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.
@@ -165,8 +165,7 @@ class ServerSyncConnection : public NodeSyncConnection {
 
  protected:
   /// Send the message from the pending queue to the target node.
-  /// It'll send nothing unless there is a request from the remote node
-  /// for the sending request.
+  /// It'll send nothing unless there is a long-polling request.
   /// TODO (iycheng): Unify the sending algorithm when we migrate to gRPC streaming
   void DoSend() override;
 
