@@ -78,7 +78,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerTest()
       : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()) {
-    gcs_publisher_ = std::make_shared<GcsPublisher>(
+    gcs_publisher_ = std::make_shared<RedisBasedGcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_resource_manager_ =

@@ -214,13 +214,6 @@ std::string GcsPubSub::DebugString() const {
   return stream.str();
 }
 
-std::string GcsPublisher::DebugString() const {
-  if (pubsub_) {
-    return pubsub_->DebugString();
-  }
-  return "GcsPublisher {}";
-}
-
 Status GcsSubscriber::SubscribeAllJobs(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
     const StatusCallback &done) {

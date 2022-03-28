@@ -27,7 +27,7 @@ class GcsNodeManagerTest : public ::testing::Test {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_shared<gcs::RedisBasedGcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
   }
 

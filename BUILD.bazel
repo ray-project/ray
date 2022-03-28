@@ -489,9 +489,11 @@ cc_library(
     name = "gcs_pub_sub_lib",
     srcs = [
         "src/ray/gcs/pubsub/gcs_pub_sub.cc",
+        "src/ray/gcs/pubsub/gcs_publisher.cc",
     ],
     hdrs = [
         "src/ray/gcs/pubsub/gcs_pub_sub.h",
+        "src/ray/gcs/pubsub/gcs_publisher.h",
     ],
     copts = COPTS,
     strip_include_prefix = "src",

@@ -54,7 +54,7 @@ class GcsJobManagerTest : public ::testing::Test {
     });
     promise.get_future().get();
 
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_shared<gcs::RedisBasedGcsPublisher>(
         std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
     store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);

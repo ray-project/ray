@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/gcs/pubsub/gcs_publisher.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 

@@ -83,12 +83,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   main_service_.restart();
 
   // Init GCS publisher instance.
-  std::unique_ptr<pubsub::Publisher> inner_publisher;
   if (config_.grpc_pubsub_enabled) {
     // Init grpc based pubsub on GCS.
-    // TODO: Move this into GcsPublisher.
-    inner_publisher = std::make_unique<pubsub::Publisher>(
-        /*channels=*/
+    gcs_publisher_ = std::make_shared<GrpcBasedGcsPublisher>(
         std::vector<rpc::ChannelType>{
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
             rpc::ChannelType::GCS_JOB_CHANNEL,
@@ -100,13 +97,10 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
             rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
             rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
         },
-        /*periodical_runner=*/&pubsub_periodical_runner_,
-        /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+        &pubsub_periodical_runner_);
+  } else {
+    gcs_publisher_ = std::make_shared<RedisBasedGcsPublisher>(redis_client_);
   }
-  gcs_publisher_ =
-      std::make_shared<GcsPublisher>(redis_client_, std::move(inner_publisher));
 }
 
 GcsServer::~GcsServer() { Stop(); }
