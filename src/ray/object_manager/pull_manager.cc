@@ -779,6 +779,8 @@ void PullManager::RecordMetrics() const {
                                                           "Wait");
   ray::stats::STATS_pull_manager_requested_bundles.Record(task_argument_bundles_.size(),
                                                           "TaskArgs");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(next_req_id_,
+                                                          "CumulativeTotal");
   ray::stats::STATS_pull_manager_requests.Record(object_pull_requests_.size(), "Queued");
   ray::stats::STATS_pull_manager_requests.Record(active_object_pull_requests_.size(),
                                                  "Active");
