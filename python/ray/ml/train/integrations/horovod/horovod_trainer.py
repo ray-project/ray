@@ -14,7 +14,7 @@ class HorovodTrainer(DataParallelTrainer):
     """A Trainer for data parallel Horovod training.
 
     This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
-    Actors. These actors already have the necessary Horovod process group already
+    Actors. These actors already have the necessary Horovod setup already
     configured for distributed Horovod training.
 
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
@@ -75,75 +75,43 @@ class HorovodTrainer(DataParallelTrainer):
 
     .. code-block:: python
 
-        class Net(nn.Module):
+        import horovod.torch as hvd
+        import torch
+        import torch.nn as nn
+
+        import ray
+        from ray import train
+        from ray.ml.train.integrations.torch import TorchTrainer
+
+
+        input_size = 1
+        layer_size = 15
+        output_size = 1
+        num_epochs = 3
+
+        class NeuralNetwork(nn.Module):
             def __init__(self):
-                super(Net, self).__init__()
-                self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-                self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-                self.conv2_drop = nn.Dropout2d()
-                self.fc1 = nn.Linear(320, 50)
-                self.fc2 = nn.Linear(50, 10)
+                super(NeuralNetwork, self).__init__()
+                self.layer1 = nn.Linear(input_size, layer_size)
+                self.relu = nn.ReLU()
+                self.layer2 = nn.Linear(layer_size, output_size)
 
-            def forward(self, x):
-                x = F.relu(F.max_pool2d(self.conv1(x), 2))
-                x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-                x = x.view(-1, 320)
-                x = F.relu(self.fc1(x))
-                x = F.dropout(x, training=self.training)
-                x = self.fc2(x)
-                return F.log_softmax(x)
+            def forward(self, input):
+                return self.layer2(self.relu(self.layer1(input)))
 
 
-        def setup(config):
-            batch_size = config.get("batch_size", 64)
-            use_adasum = config.get("use_adasum", False)
-            lr = config.get("lr", 0.01)
-            momentum = config.get("momentum", 0.5)
-            use_cuda = config.get("use_cuda", False)
-
-            # Horovod: initialize library.
+        def train_loop_per_worker():
+            use_adasum = False
             hvd.init()
-
-            if use_cuda:
-                # Horovod: pin GPU to local rank.
-                torch.cuda.set_device(hvd.local_rank())
-
-            # Horovod: limit # of CPU threads to be used per worker.
-            torch.set_num_threads(1)
-
-            kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
-            with FileLock(os.path.expanduser("~/.horovod_lock")):
-                train_dataset = datasets.MNIST(
-                    "~/data",
-                    train=True,
-                    download=True,
-                    transform=transforms.Compose(
-                        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]  # noqa
-                    ),
-                )
-            # Horovod: use DistributedSampler to partition the training data.
-            train_sampler = torch.utils.data.distributed.DistributedSampler(
-                train_dataset, num_replicas=hvd.size(), rank=hvd.rank()
-            )
-            train_loader = torch.utils.data.DataLoader(
-                train_dataset, batch_size=batch_size, sampler=train_sampler, **kwargs
-            )
-
-            model = Net()
+            dataset_shard = train.get_dataset_shard("train")
+            model = NeuralNetwork()
+            device = train.torch.get_device()
+            model.to(device)
+            loss_fn = nn.MSELoss()
 
             # By default, Adasum doesn't need scaling up learning rate.
             lr_scaler = hvd.size() if not use_adasum else 1
-
-            if use_cuda:
-                # Move model to GPU.
-                model.cuda()
-                # If using GPU Adasum allreduce, scale learning rate by local_size.
-                if use_adasum and hvd.nccl_built():
-                    lr_scaler = hvd.local_size()
-
-            # Horovod: scale learning rate by lr_scaler.
-            optimizer = optim.SGD(model.parameters(), lr=lr * lr_scaler,
-                momentum=momentum)
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.1 * lr_scaler)
 
             # Horovod: wrap optimizer with DistributedOptimizer.
             optimizer = hvd.DistributedOptimizer(
@@ -152,49 +120,38 @@ class HorovodTrainer(DataParallelTrainer):
                 op=hvd.Adasum if use_adasum else hvd.Average,
             )
 
-            return model, optimizer, train_loader, train_sampler
+            for epoch in range(num_epochs):
+                model.train()
+                for inputs, labels in iter(
+                    dataset_shard.to_torch(
+                        label_column="y",
+                        label_column_dtype=torch.float,
+                        feature_column_dtypes=torch.float,
+                        batch_size=32,
+                    )
+                ):
+                    inputs.to(device)
+                    labels.to(device)
+                    outputs = model(inputs)
+                    loss = loss_fn(outputs, labels)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    print(f"epoch: {epoch}, loss: {loss.item()}")
+
+                train.save_checkpoint(model=model.state_dict())
 
 
-        def train_epoch(
-            model, optimizer, train_sampler, train_loader, epoch, use_cuda
-        ):
-            loss = None
-            model.train()
-            # Horovod: set epoch to sampler for shuffling.
-            train_sampler.set_epoch(epoch)
-            for batch_idx, (data, target) in enumerate(train_loader):
-                if use_cuda:
-                    data, target = data.cuda(), target.cuda()
-                optimizer.zero_grad()
-                output = model(data)
-                loss = F.nll_loss(output, target)
-                loss.backward()
-                optimizer.step()
-            return loss.item() if loss else None
-
-
-        def train_func(config):
-            use_cuda = config.get("use_cuda", False)
-
-            model, optimizer, train_loader, train_sampler = setup(config)
-
-            results = []
-            for epoch in range(10):
-                loss = train_epoch(
-                    model, optimizer, train_sampler, train_loader, epoch, use_cuda
-                )
-                results.append(loss)
-            return results
-
-        scaling_config = {"num_workers": num_workers}
-        config = {"use_cuda": False}
-        trainer = HorovodTrainer(
-            train_loop_per_worker=train_func,
-            train_loop_config=config,
-            scaling_config=scaling_config,
+        train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+        scaling_config = {"num_workers": 3}
+        # If using GPUs, use the below scaling config instead.
+        # scaling_config = {"num_workers": 3, "use_gpu": True}
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config={"num_workers": 3},
+            datasets={"train": train_dataset},
         )
         result = trainer.fit()
-
 
     Args:
         train_loop_per_worker: The training function to execute.
