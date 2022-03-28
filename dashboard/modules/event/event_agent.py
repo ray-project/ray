@@ -43,7 +43,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 )
                 if dashboard_rpc_address:
                     logger.info("Report events to %s", dashboard_rpc_address)
-                    options = (("grpc.enable_http_proxy", 0),)
+                    options = ray_constants.GLOBAL_GRPC_OPTIONS
                     channel = utils.init_grpc_channel(
                         dashboard_rpc_address, options=options, asynchronous=True
                     )

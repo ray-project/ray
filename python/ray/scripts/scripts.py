@@ -2058,7 +2058,7 @@ def healthcheck(address, redis_password, component):
 
     if not component:
         try:
-            options = (("grpc.enable_http_proxy", 0),)
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
             channel = ray._private.utils.init_grpc_channel(gcs_address, options)
             stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
             request = gcs_service_pb2.CheckAliveRequest()
