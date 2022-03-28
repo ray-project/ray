@@ -1,7 +1,6 @@
 # These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
 # For GPU Docker images, you should install requirements_ml_docker.txt afterwards.
 
-keras==2.6.0rc3  # remove again, just to bump CI mac cache
 tensorflow==2.6.2
 tensorflow-probability==0.14.1
 
