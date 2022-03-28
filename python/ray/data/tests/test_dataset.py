@@ -2564,6 +2564,13 @@ def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_part
     assert mapped.take_all() == [99]
 
 
+def test_groupby_map_groups_with_udf_returning_none(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3])
+    mapped = ds.groupby(lambda x: x).map_groups(lambda x: None if x == [1] else x)
+    assert mapped.count() == 2
+    assert mapped.take_all() == [2, 3]
+
+
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num_parts):
     xs = list(range(100))

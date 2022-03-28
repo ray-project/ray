@@ -1,4 +1,4 @@
-from typing import Any, Union, Generic, Tuple, List, Callable
+from typing import Any, Union, Generic, Tuple, List, Callable, Optional
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
@@ -152,7 +152,7 @@ class GroupedDataset(Generic[T]):
 
     def map_groups(
         self,
-        fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+        fn: Union[CallableClass, Callable[[BatchType], Optional[BatchType]]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: str = "native",
@@ -249,7 +249,8 @@ class GroupedDataset(Generic[T]):
             for end in boundaries:
                 group = block_accessor.slice(start, end, False)
                 applied = fn(group)
-                builder.add_block(applied)
+                if applied is not None:
+                    builder.add_block(applied)
                 start = end
 
             rs = builder.build()
