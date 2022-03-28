@@ -64,6 +64,7 @@ DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
+DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 #ifdef __linux__
 DEFINE_string(plasma_directory,
               "/dev/shm",
@@ -87,6 +88,7 @@ int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
   const std::string store_socket_name = FLAGS_store_socket_name;
+  const std::string node_name = FLAGS_node_name;
   const int object_manager_port = static_cast<int>(FLAGS_object_manager_port);
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
@@ -276,6 +278,7 @@ int main(int argc, char *argv[]) {
         raylet = std::make_unique<ray::raylet::Raylet>(main_service,
                                                        raylet_socket_name,
                                                        node_ip_address,
+                                                       node_name,
                                                        node_manager_config,
                                                        object_manager_config,
                                                        gcs_client,

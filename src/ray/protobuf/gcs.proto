@@ -242,6 +242,9 @@ message GcsNodeInfo {
 
   // The total resources of this node.
   map<string, double> resources_total = 11;
+
+  // The user-provided identifier or name for this node.
+  optional string node_name = 12;
 }
 
 message HeartbeatTableData {

@@ -273,6 +273,12 @@ def debug(address):
     f" allocate an available port.",
 )
 @click.option(
+    "--node-name",
+    required=False,
+    type=str,
+    help="the user-provided identifier or name for this node",
+)
+@click.option(
     "--redis-password",
     required=False,
     hidden=True,
@@ -512,6 +518,7 @@ def start(
     node_ip_address,
     address,
     port,
+    node_name,
     redis_password,
     redis_shard_ports,
     object_manager_port,
@@ -583,6 +590,7 @@ def start(
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
+        node_name=node_name,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
         worker_port_list=worker_port_list,
