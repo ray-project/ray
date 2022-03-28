@@ -183,6 +183,10 @@ class LocalTaskManager : public ILocalTaskManager {
   void DebugStr(std::stringstream &buffer) const override;
 
   size_t GetNumTaskSpilled() const override { return num_task_spilled_; }
+  size_t GetNumWaitingTaskSpilled() const override { return num_waiting_task_spilled_; }
+  size_t GetNumUnschedulableTaskSpilled() const override {
+    return num_unschedulable_task_spilled_;
+  }
 
  private:
   struct SchedulingClassInfo;
