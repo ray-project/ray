@@ -264,8 +264,9 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -E -W -T -b html source _build/html
+      make html
       make linkcheck
+      make doctest
     fi
   )
 }
@@ -416,8 +417,9 @@ build_wheels() {
         # Sync the directory to buildkite artifacts
         rm -rf /artifact-mount/.whl || true
         cp -r .whl /artifact-mount/.whl
+        chmod -R 777 /artifact-mount/.whl
 
-      validate_wheels_commit_str
+        validate_wheels_commit_str
       fi
       ;;
     darwin*)
