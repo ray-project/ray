@@ -35,7 +35,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "maximum_gcs_destroyed_actor_cached_count": 10,
   "maximum_gcs_dead_node_cached_count": 10,
-  "gcs_storage": $1
+  "gcs_storage": $0
 }
   )",
                          no_redis_ ? "\"memory\"" : "\"redis\""));
