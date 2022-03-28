@@ -205,7 +205,7 @@ When should I use Ray Serve?
 
 Ray Serve is a flexible tool that's easy to use for deploying, operating, and monitoring Python-based machine learning applications.
 Ray Serve excels when you want to mix business logic with ML models and scaling out in production is a necessity. This might be because of large-scale batch processing
-requirements or because you want to scale up a model deployment graph consisting of many individual models with different performance properties.
+requirements or because you want to scale up a deployment graph consisting of many individual models with different performance properties.
 
 If you plan on running on multiple machines, Ray Serve will serve you well!
 
