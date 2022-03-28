@@ -68,7 +68,7 @@ Let's start with a simple DAG with the following attributes where each node is e
 - A node can be called either sync or async.
 
 ```{code-cell} ipython3
-# TODO: Add a diagram here
+
 ```
 
 ```{code-cell} ipython3
