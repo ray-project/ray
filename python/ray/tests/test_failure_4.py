@@ -484,8 +484,8 @@ ray.get(task.remote(), timeout=3)
         ) not in e.value.output.decode()
 
 
-def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     head = cluster.add_node(num_cpus=4, resources={"foo": 1})
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)

@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import signal
 import sys
 import threading
@@ -24,6 +25,7 @@ from ray._private.test_utils import (
 )
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Fails on Windows")
 def test_warning_for_too_many_actors(shutdown_only):
     # Check that if we run a workload which requires too many workers to be
     # started that we will receive a warning.
@@ -52,6 +54,7 @@ def test_warning_for_too_many_actors(shutdown_only):
     p.close()
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Fails on Windows")
 def test_warning_for_too_many_nested_tasks(shutdown_only):
     # Check that if we run a workload which requires too many workers to be
     # started that we will receive a warning.
@@ -256,7 +259,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
+    "ray_start_cluster_enabled",
     [
         {
             "num_nodes": 1,
@@ -269,7 +272,7 @@ def test_raylet_crash_when_get(ray_start_regular):
     ],
     indirect=True,
 )
-def test_eviction(ray_start_cluster):
+def test_eviction(ray_start_cluster_enabled):
     @ray.remote
     def large_object():
         return np.zeros(10 * 1024 * 1024)
@@ -293,7 +296,7 @@ def test_eviction(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
+    "ray_start_cluster_enabled",
     [
         {
             "num_nodes": 2,
@@ -306,7 +309,7 @@ def test_eviction(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_serialized_id(ray_start_cluster):
+def test_serialized_id(ray_start_cluster_enabled):
     @ray.remote
     def small_object():
         # Sleep a bit before creating the object to force a timeout

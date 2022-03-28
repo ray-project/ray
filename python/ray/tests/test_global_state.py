@@ -218,8 +218,8 @@ def test_load_report(shutdown_only, max_shapes):
     global_state_accessor.disconnect()
 
 
-def test_placement_group_load_report(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_placement_group_load_report(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     # Add a head node that doesn't have gpu resource.
     cluster.add_node(num_cpus=4)
 

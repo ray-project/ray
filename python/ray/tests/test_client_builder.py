@@ -52,7 +52,7 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
-def test_namespace(ray_start_cluster):
+def test_namespace(ray_start_cluster_enabled):
     """
     Most of the "checks" in this test case rely on the fact that
     `run_string_as_driver` will throw an exception if the driver string exits
@@ -67,7 +67,7 @@ def test_namespace(ray_start_cluster):
     * When two drivers specify a namespace, they collide.
     * The namespace name (as provided by the runtime context) is correct.
     """
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4, ray_client_server_port=50055)
     cluster.wait_for_nodes(1)
 

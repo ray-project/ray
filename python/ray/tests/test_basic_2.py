@@ -12,7 +12,7 @@ import pytest
 
 from unittest.mock import MagicMock, patch
 
-from ray.cluster_utils import Cluster, cluster_not_supported
+from ray.cluster_utils import Cluster
 from ray._private.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
@@ -309,7 +309,7 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
+    "ray_start_cluster_enabled",
     [
         {
             "num_cpus": 1,
@@ -322,7 +322,7 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     ],
     indirect=True,
 )
-def test_call_chain(ray_start_cluster):
+def test_call_chain(ray_start_cluster_enabled):
     @ray.remote
     def g(x):
         return x + 1
@@ -333,9 +333,8 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
-@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.mark.skipif(client_test_enabled(), reason="init issue")
-def test_system_config_when_connecting(ray_start_cluster):
+def test_system_config_when_connecting(ray_start_cluster_enabled):
     config = {"object_timeout_milliseconds": 200}
     cluster = Cluster()
     cluster.add_node(_system_config=config, object_store_memory=100 * 1024 * 1024)

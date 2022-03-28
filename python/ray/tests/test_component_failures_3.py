@@ -10,13 +10,13 @@ from ray._private.test_utils import get_other_nodes
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
+    "ray_start_cluster_enabled",
     [{"num_cpus": 4, "num_nodes": 3, "do_init": True}],
     indirect=True,
 )
-def test_actor_creation_node_failure(ray_start_cluster):
+def test_actor_creation_node_failure(ray_start_cluster_enabled):
     # TODO(swang): Refactor test_raylet_failed, etc to reuse the below code.
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
 
     @ray.remote
     class Child:

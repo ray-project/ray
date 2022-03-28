@@ -102,7 +102,7 @@ def check_components_alive(cluster, component_type, check_component_alive):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
+    "ray_start_cluster_enabled",
     [
         {
             "num_cpus": 8,
@@ -112,8 +112,8 @@ def check_components_alive(cluster, component_type, check_component_alive):
     ],
     indirect=True,
 )
-def test_raylet_failed(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_raylet_failed(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     # Kill all raylets on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 

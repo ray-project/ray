@@ -13,8 +13,8 @@ from ray._private.test_utils import SignalActor, wait_for_pid_to_exit
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
-def test_worker_exit_after_parent_raylet_dies(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_worker_exit_after_parent_raylet_dies(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=0)
     cluster.add_node(num_cpus=8, resources={"foo": 1})
     cluster.wait_for_nodes()
