@@ -24,9 +24,10 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double total_custom_resource = 0,
                                   bool object_pulls_queued = false) {
   NodeResources resources;
-  resources.predefined_resources = {{available_cpu, total_cpu}, {0, 0}, {0, 0}, {0, 0}};
-  resources.custom_resources[scheduling::ResourceID("CUSTOM").ToInt()] = {
-      available_custom_resource, total_custom_resource};
+  resources.available.Set(ResourceID::CPU(), available_cpu);
+  resources.total.Set(ResourceID::CPU(), total_cpu);
+  resources.available.Set(scheduling::ResourceID("CUSTOM"), available_custom_resource);
+  resources.total.Set(scheduling::ResourceID("CUSTOM"), total_custom_resource);
   resources.object_pulls_queued = object_pulls_queued;
   return resources;
 }
@@ -93,64 +94,49 @@ TEST_F(ClusterResourceManagerTest, HasSufficientResourceTest) {
 
 TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   const auto &node_resources = manager->GetNodeResources(node0);
-  ASSERT_TRUE(
-      node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
-      1);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
 
   manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_TRUE(
-      node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
-      0);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 0);
   // Subtract again and make sure the available == 0.
   manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_TRUE(
-      node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
-      0);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 0);
 
   // Add resources back.
   manager->AddNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_TRUE(
-      node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
-      1);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
 
   // Add again and make sure the available == 1 (<= total).
   manager->AddNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_TRUE(
-      node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
-      1);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
 }
 
 TEST_F(ClusterResourceManagerTest, UpdateNodeAvailableResourcesIfExist) {
   const auto &node_resources = manager->GetNodeResources(node0);
-  ASSERT_TRUE(
-      node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
-      1);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
 
   rpc::ResourcesData resources_data;
   resources_data.set_resources_available_changed(true);
   (*resources_data.mutable_resources_available())["CPU"] = 0;
 
   manager->UpdateNodeAvailableResourcesIfExist(node0, resources_data);
-  ASSERT_TRUE(
-      node_resources.predefined_resources[scheduling::kCPUResource.ToInt()].available ==
-      0);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 0);
 
   (*resources_data.mutable_resources_available())["CUSTOM_RESOURCE"] = 1;
   manager->UpdateNodeAvailableResourcesIfExist(node0, resources_data);
-  ASSERT_FALSE(node_resources.custom_resources.contains(
-      scheduling::ResourceID("CUSTOM_RESOURCE").ToInt()));
+  ASSERT_FALSE(node_resources.total.Has(ResourceID("CUSTOM_RESOURCE")));
 }
 
 TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskResources) {
@@ -163,33 +149,28 @@ TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskResources) {
   resources_data.mutable_resources_normal_task()->insert({"CPU", 0.5});
 
   manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources
-                  .predefined_resources[scheduling::kCPUResource.ToInt()] == 0.5);
+  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
 
   (*resources_data.mutable_resources_normal_task())["CPU"] = 0.8;
   resources_data.set_resources_normal_task_changed(false);
   resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
   manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources
-                  .predefined_resources[scheduling::kCPUResource.ToInt()] == 0.5);
+  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
 
   resources_data.set_resources_normal_task_changed(true);
   resources_data.set_resources_normal_task_timestamp(0);
   manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources
-                  .predefined_resources[scheduling::kCPUResource.ToInt()] == 0.5);
+  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
 
   resources_data.set_resources_normal_task_changed(true);
   resources_data.set_resources_normal_task_timestamp(0);
   manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources
-                  .predefined_resources[scheduling::kCPUResource.ToInt()] == 0.5);
+  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
 
   resources_data.set_resources_normal_task_changed(true);
   resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
   manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources
-                  .predefined_resources[scheduling::kCPUResource.ToInt()] == 0.8);
+  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.8);
 }
 
 }  // namespace ray
