@@ -130,10 +130,10 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       /*subscriber_id=*/gcs_client_id_,
       /*channels=*/
       std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
-        rpc::ChannelType::GCS_JOB_CHANNEL,
-        rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-        rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-        rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+                                    rpc::ChannelType::GCS_JOB_CHANNEL,
+                                    rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+                                    rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+                                    rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
       [this](const rpc::Address &) {
@@ -142,8 +142,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       /*callback_service*/ &io_service);
 
   // Init GCS subscriber instance.
-  gcs_subscriber_ =
-      std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
+  gcs_subscriber_ = std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
 
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);

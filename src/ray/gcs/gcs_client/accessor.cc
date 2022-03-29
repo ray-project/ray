@@ -641,10 +641,9 @@ void NodeInfoAccessor::AsyncResubscribe() {
   };
 
   if (subscribe_node_operation_ != nullptr) {
-    RAY_CHECK_OK(
-        subscribe_node_operation_([this, fetch_all_done](const Status &status) {
-          fetch_node_data_operation_(fetch_all_done);
-        }));
+    RAY_CHECK_OK(subscribe_node_operation_([this, fetch_all_done](const Status &status) {
+      fetch_node_data_operation_(fetch_all_done);
+    }));
   }
 }
 
