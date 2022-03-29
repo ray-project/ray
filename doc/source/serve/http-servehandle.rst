@@ -169,13 +169,13 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
 .. code-block:: python
 
     from ray import serve
-    from ray.serve.http_adapters import array_to_databatch
+    from ray.serve.http_adapters import json_to_ndarray
     from ray.serve.model_wrappers import ModelWrapper
 
-    serve.deployment(name="my_model")(ModelWrapper).deploy(
+    ModelWrapper.options(name="my_model").deploy(
         my_ray_air_predictor,
         my_ray_air_checkpoint,
-        input_schema=array_to_databatch
+        input_schema=json_to_ndarray
     )
 
 You can also bring the adapter to your own FastAPI app using
@@ -183,13 +183,13 @@ You can also bring the adapter to your own FastAPI app using
 
 .. code-block:: python
 
-    from ray.serve.http_adapters import array_to_databatch
+    from ray.serve.http_adapters import json_to_ndarray
     from fastapi import FastAPI, Depends
 
     app = FastAPI()
 
     @app.post("/endpoint")
-    async def endpoint(np_array = Depends(array_to_databatch)):
+    async def endpoint(np_array = Depends(json_to_ndarray)):
         ...
 
 It has the following schema for input:
@@ -203,7 +203,7 @@ The input schema will automatically be part of the generated OpenAPI schema with
 Here is a list of adapters and please feel free to `contribute more <https://github.com/ray-project/ray/issues/new/choose>`_!
 
 .. automodule:: ray.serve.http_adapters
-    :members: array_to_databatch, image_to_databatch
+    :members: json_to_ndarray, image_to_ndarray
 
 
 Configuring HTTP Server Locations

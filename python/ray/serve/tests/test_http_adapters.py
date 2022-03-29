@@ -35,7 +35,7 @@ def test_json_to_ndarray():
     )
 
 
-def test_image_to_databatch():
+def test_image_to_ndarray():
     buffer = io.BytesIO()
     arr = (np.random.rand(100, 100, 3) * 255).astype("uint8")
     image = Image.fromarray(arr).convert("RGB")
