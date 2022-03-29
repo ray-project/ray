@@ -2554,6 +2554,14 @@ def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
     assert mapped.take_all() == []
 
 
+def test_groupby_map_groups_merging_empty_result(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3])
+    # This needs to merge empty and non-empty results from different groups.
+    mapped = ds.groupby(lambda x: x).map_groups(lambda x: [] if x == [1] else x)
+    assert mapped.count() == 2
+    assert mapped.take_all() == [2, 3]
+
+
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
     ds = ray.data.from_items(list(range(100)))
@@ -2562,13 +2570,6 @@ def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_part
     )
     assert mapped.count() == 1
     assert mapped.take_all() == [99]
-
-
-def test_groupby_map_groups_with_udf_returning_none(ray_start_regular_shared):
-    ds = ray.data.from_items([1, 2, 3])
-    mapped = ds.groupby(lambda x: x).map_groups(lambda x: None if x == [1] else x)
-    assert mapped.count() == 2
-    assert mapped.take_all() == [2, 3]
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
