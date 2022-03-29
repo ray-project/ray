@@ -255,7 +255,9 @@ def msgpack_serialize(obj):
     return serialized
 
 
-def get_deployment_import_path(deployment, replace_main=False):
+def get_deployment_import_path(
+    deployment, replace_main=False, enforce_importable=False
+):
     """
     Gets the import path for deployment's func_or_class.
 
@@ -275,8 +277,15 @@ def get_deployment_import_path(deployment, replace_main=False):
 
     import_path = f"{body.__module__}.{body.__qualname__}"
 
-    if replace_main:
+    if enforce_importable and "<locals>" in body.__qualname__:
+        raise RuntimeError(
+            "Deployment definitions must be importable to build the Serve app, "
+            f"but deployment '{deployment.name}' is inline defined or returned "
+            "from another function. Please restructure your code so that "
+            f"'{import_path}' can be imported (i.e., put it in a module)."
+        )
 
+    if replace_main:
         # Replaces __main__ with its file name. E.g. suppose the import path
         # is __main__.classname and classname is defined in filename.py.
         # Its import path becomes filename.classname.
@@ -365,3 +374,11 @@ def require_packages(packages: List[str]):
         return wrapped
 
     return decorator
+
+
+def in_interactive_shell():
+    # Taken from:
+    # https://stackoverflow.com/questions/15411967/how-can-i-check-if-code-is-executed-in-the-ipython-notebook
+    import __main__ as main
+
+    return not hasattr(main, "__file__")
