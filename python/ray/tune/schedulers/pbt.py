@@ -128,7 +128,7 @@ def fill_config(
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training (PBT) algorithm.
 
-    https://deepmind.com/blog/population-based-training-neural-networks
+    https://www.deepmind.com/blog/population-based-training-of-neural-networks
 
     PBT trains a group of models (or agents) in parallel. Periodically, poorly
     performing models clone the state of the top performers, and a random
