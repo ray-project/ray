@@ -243,6 +243,14 @@ You can also customize how frequently the health check is run and the timeout wh
                 # The specific type of exception is not important.
                 raise RuntimeError("uh-oh, DB connection is broken.")
 
+.. tip::
+
+    You can use the Serve CLI command ``serve status`` to get status info
+    about your live deployments. The CLI was included with Serve when you did
+    ``pip install "ray[serve]"``. If you're checking your deployments on a
+    remote Ray cluster, make sure to include the Ray cluster's dashboard address
+    in the command: ``serve status --address [dashboard_address]``.
+
 Failure Recovery
 ================
 Ray Serve is resilient to any component failures within the Ray cluster out of the box.
