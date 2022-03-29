@@ -87,7 +87,7 @@ class GrpcBasedGcsPublisher : public GcsPublisher {
             /*publish_batch_size_=*/RayConfig::instance().publish_batch_size())) {}
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
-  pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
+  pubsub::Publisher *GetPublisher() const override { return publisher_.get(); }
 
   /// TODO: Verify GCS pubsub satisfies the streaming semantics.
   /// TODO: Implement optimization for channels where only latest data per ID is useful.
@@ -137,7 +137,7 @@ class RedisBasedGcsPublisher : public GcsPublisher {
       : pubsub_(std::move(pubsub)) {}
 
   /// Returns nullptr when RayConfig::instance().gcs_grpc_based_pubsub() is false.
-  pubsub::Publisher *GetPublisher() const { return nullptr; }
+  pubsub::Publisher *GetPublisher() const override { return nullptr; }
 
   Status PublishActor(const ActorID &id,
                       const rpc::ActorTableData &message,
