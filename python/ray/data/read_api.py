@@ -130,7 +130,11 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
         Dataset holding the integers.
     """
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
+        RangeDatasource(),
+        parallelism=parallelism,
+        n=n,
+        block_format="list",
+        _warn_parallelism=False,
     )
 
 
@@ -198,6 +202,7 @@ def read_datasource(
     *,
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
+    _warn_parallelism: bool = True,
     **read_args,
 ) -> Dataset[T]:
     """Read a dataset from a custom data source.
@@ -242,12 +247,15 @@ def read_datasource(
             )
         )
 
-    if len(read_tasks) < parallelism:
+    if _warn_parallelism and len(read_tasks) < parallelism // 4:
         logger.warning(
-            "The number of files for this dataset ({}) limits its parallelism to {}, "
-            "but the requested parallelism was {}. "
-            "To increase the available parallelism, use `ds.repartition()`.".format(
-                len(read_tasks), len(read_tasks), parallelism))
+            "The number of files in this dataset ({}) limits its parallelism to {} "
+            "concurrent tasks. This is much less than the configured "
+            "parallelism of {}. "
+            "Use `.repartition(p)` to increase the dataset parallelism.".format(
+                len(read_tasks), len(read_tasks), parallelism
+            )
+        )
 
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
