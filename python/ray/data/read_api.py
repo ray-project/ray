@@ -249,8 +249,8 @@ def read_datasource(
         logger.warning(
             "The number of blocks in this dataset ({}) limits its parallelism to {} "
             "concurrent tasks. This is much less than the configured "
-            "parallelism of {}. Use `.repartition(p)` to increase the number of "
-            "dataset blocks to `p`.".format(
+            "parallelism of {}. Use `.repartition(n)` to increase the number of "
+            "dataset blocks.".format(
                 len(read_tasks), len(read_tasks), parallelism
             )
         )
