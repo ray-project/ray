@@ -40,7 +40,7 @@ def check_for_failure(remote_values: List[ObjectRef]) -> bool:
         remote_values (list): List of object references from Ray actor methods.
 
     Returns:
-        True evaluating all object references is successful, False otherwise.
+        True if evaluating all object references is successful, False otherwise.
     """
     unfinished = remote_values.copy()
 
