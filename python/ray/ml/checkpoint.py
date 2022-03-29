@@ -157,12 +157,13 @@ class Checkpoint:
                 )
         elif uri:
             assert not local_path and not data_dict and not obj_ref
-            uri = _get_external_path(uri)
-            if not uri:
+            resolved = _get_external_path(uri)
+            if not resolved:
                 raise RuntimeError(
                     f"Cannot create checkpoint from URI as it is not "
-                    f"supported: {uri}"
+                    f"supported: {resolved}"
                 )
+            uri = resolved
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
