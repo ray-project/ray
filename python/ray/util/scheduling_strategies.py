@@ -1,4 +1,3 @@
-import ray
 from typing import Union, Optional
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
@@ -43,7 +42,22 @@ class PlacementGroupSchedulingStrategy:
 
 @PublicAPI(stability="beta")
 class NodeSchedulingStrategy:
-    def __init__(self, node_id: "ray.NodeID", soft: bool):
+    """Static scheduling strategy used to run a task or actor
+       on a particular node.
+
+    Attributes:
+        node_id: the hex id of the node where the task or actor should run.
+        soft: whether the scheduler should run the task or actor somewhere else
+            if the target node doesn't exist (e.g. the node dies) during scheduling.
+            If the node exists, the task or actor will only be scheduled there.
+            This means if the node doesn't have the required resources,
+            the task or actor will just wait indefinitely.
+            If soft is False and the node doesn't exist, the task or actor will fail.
+            If soft is True and the node doesn't exist, the task or actor will be
+            scheduled somewhere else.
+    """
+
+    def __init__(self, node_id: str, soft: bool = False):
         self.node_id = node_id
         self.soft = soft
 

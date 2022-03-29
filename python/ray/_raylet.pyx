@@ -1485,7 +1485,7 @@ cdef class CoreWorker:
                 c_scheduling_strategy[0] \
                 .mutable_node_scheduling_strategy()
             c_node_scheduling_strategy[0].set_node_id(
-                python_scheduling_strategy.node_id.binary())
+                NodeID.from_hex(python_scheduling_strategy.node_id).binary())
             c_node_scheduling_strategy[0].set_soft(
                 python_scheduling_strategy.soft)
         else:

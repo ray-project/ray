@@ -266,7 +266,7 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         @ray.remote
         def get_node_id():
-            return ray.get_runtime_context().node_id.binary()
+            return ray.get_runtime_context().node_id.hex()
 
         head_node_id = ray.get(
             get_node_id.options(num_cpus=0, resources={"head": 1}).remote()
@@ -277,23 +277,19 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         assert worker_node_id == ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeSchedulingStrategy(
-                    ray.NodeID(worker_node_id), soft=False
-                )
+                scheduling_strategy=NodeSchedulingStrategy(worker_node_id, soft=False)
             ).remote()
         )
         assert head_node_id == ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeSchedulingStrategy(
-                    ray.NodeID(head_node_id), soft=False
-                )
+                scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=False)
             ).remote()
         )
         # Doesn't hang since soft is true.
         ray.get(
             get_node_id.options(
                 scheduling_strategy=NodeSchedulingStrategy(
-                    ray.NodeID.from_random(), soft=True
+                    ray.NodeID.from_random().hex(), soft=True
                 )
             ).remote()
         )
