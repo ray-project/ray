@@ -24,7 +24,12 @@ class AdderPredictor(Predictor):
 
     @classmethod
     def from_checkpoint(cls, checkpoint: "AdderCheckpoint") -> "Predictor":
-        return cls(checkpoint.increment)
+        if checkpoint._data_dict:
+            return cls(checkpoint._data_dict["increment"])
+        elif checkpoint._local_path:  # uri case
+            with open(checkpoint._local_path) as f:
+                return cls(json.load(f))
+        raise Exception("Unreachable")
 
     def predict(self, data: DataBatchType) -> DataBatchType:
         return [
@@ -34,17 +39,7 @@ class AdderPredictor(Predictor):
 
 
 class AdderCheckpoint(Checkpoint):
-    def __init__(self, increment: int):
-        self.increment = increment
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "Checkpoint":
-        return cls(data["increment"])
-
-    @classmethod
-    def from_uri(cls, uri: str) -> "Checkpoint":
-        with open(uri) as f:
-            return cls(json.load(f))
+    pass
 
 
 def adder_schema(query_param_arg: int) -> DataBatchType:
@@ -57,7 +52,7 @@ def send_request(**requests_kargs):
 
 
 def test_simple_adder(serve_instance):
-    serve.deployment(name="Adder")(ModelWrapper).deploy(
+    ModelWrapper.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
     )
@@ -66,7 +61,7 @@ def test_simple_adder(serve_instance):
 
 
 def test_batching(serve_instance):
-    serve.deployment(name="Adder")(ModelWrapper).deploy(
+    ModelWrapper.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
         batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
@@ -100,7 +95,7 @@ def test_model_wrappers_in_pipeline(serve_instance):
     checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
 
     with InputNode() as dag_input:
-        m1 = ray.remote(ModelWrapper).bind(
+        m1 = ModelWrapper.bind(
             predictor_cls=predictor_cls,  # TODO: can't be the raw class right now?
             checkpoint={  # TODO: can't be the raw object right now?
                 "checkpoint_cls": checkpoint_cls,

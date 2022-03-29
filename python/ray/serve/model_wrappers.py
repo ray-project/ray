@@ -38,6 +38,7 @@ def _load_predictor_cls(
     return predictor_cls
 
 
+@serve.deployment
 class ModelWrapper(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
 
