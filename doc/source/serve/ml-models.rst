@@ -50,7 +50,7 @@ Model Composition
 =================
 
 .. note::
-  Serve recently added an experimental first-class API for model deployment graph.
+  Serve recently added an experimental API for building deployment graphs of multiple models.
   Please take a look at the :ref:`Deployment Graph API <serve-deployment-graph>` and try it out!
 
 Ray Serve supports composing individually scalable models into a single model
