@@ -349,7 +349,12 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
 
 /// Wait timeout for dashboard agent register.
+#ifdef _WIN32
+// agent startup time can involve creating conda environments
+RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
+#else
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
+#endif
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
