@@ -40,12 +40,12 @@ def check_for_failure(remote_values: List[ObjectRef]) -> bool:
         remote_values (list): List of object references from Ray actor methods.
 
     Returns:
-        True if workers have failed, False otherwise.
+        True evaluating all object references is successful, False otherwise.
     """
     unfinished = remote_values.copy()
 
     at_least_one_failed_worker = False
-    while not at_least_one_failed_worker or len(unfinished) > 0:
+    while len(unfinished) > 0 and not at_least_one_failed_worker:
         finished, unfinished = ray.wait(unfinished)
 
         # If a failure occurs the ObjectRef will be marked as finished.
@@ -61,7 +61,7 @@ def check_for_failure(remote_values: List[ObjectRef]) -> bool:
                 logger.info(f"Worker {failed_actor_rank} has failed.")
                 at_least_one_failed_worker = True
 
-    return at_least_one_failed_worker
+    return not at_least_one_failed_worker
 
 
 def get_address_and_port() -> Tuple[str, int]:
