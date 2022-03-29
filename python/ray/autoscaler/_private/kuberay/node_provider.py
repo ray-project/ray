@@ -224,7 +224,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             raycluster = self._get(url)
             group_name = tags["ray-user-node-type"]
             group_index, _ = self._get_worker_group(raycluster, group_name)
-            tag_filters = {TAG_RAY_USER_NODE_TYPE: groupName}
+            tag_filters = {TAG_RAY_USER_NODE_TYPE: group_name}
             current_replica_count = len(self.non_terminated_nodes(tag_filters))
             path = f"/spec/workerGroupSpecs/{group_index}/replicas"
             payload = [
