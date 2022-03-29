@@ -39,6 +39,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx_external_toc",
     "sphinx_thebe",
+    "sphinxcontrib.autodoc_pydantic",
 ]
 
 myst_enable_extensions = [
@@ -163,6 +164,8 @@ linkcheck_ignore = [
     "https://scikit-optimize.github.io/stable/modules/",
     "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
     r"https://huggingface.co/*",  # seems to be flaky
+    r"https://www.meetup.com/*",  # seems to be flaky
+    r"https://www.pettingzoo.ml/*",  # seems to be flaky
 ]
 
 # -- Options for HTML output ----------------------------------------------
