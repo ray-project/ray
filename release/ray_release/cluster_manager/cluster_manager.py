@@ -43,7 +43,6 @@ class ClusterManager(abc.ABC):
         self.cluster_env["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
-        self.cluster_env["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
 
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"

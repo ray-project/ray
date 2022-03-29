@@ -14,7 +14,7 @@ import ray
 import yaml
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.result import NODE_IP
 from ray.util import get_node_ip_address
 from ray.util.debug import log_once
@@ -129,6 +129,7 @@ def log_sync_template(options: str = ""):
 
     rsh = "ssh -i {ssh_key} -o ConnectTimeout=120s -o StrictHostKeyChecking=no"
     rsh = rsh.format(ssh_key=quote(ssh_key))
+    options += " --exclude='checkpoint_tmp*'"
     template = "rsync {options} -savz -e {rsh} {{source}} {{target}}"
     return template.format(options=options, rsh=quote(rsh))
 
@@ -479,8 +480,8 @@ class SyncerCallback(Callback):
             trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
         )
 
-    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
-        if checkpoint.storage == Checkpoint.MEMORY:
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
+        if checkpoint.storage == _TuneCheckpoint.MEMORY:
             return
 
         trial_syncer = self._get_trial_syncer(trial)
@@ -496,10 +497,8 @@ class SyncerCallback(Callback):
                 # Errors occurring during this wait are not fatal for this
                 # checkpoint, so it should just be logged.
                 logger.error(
-                    "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait - %s",
-                    trial,
-                    str(e),
+                    f"Trial {trial}: An error occurred during the "
+                    f"checkpoint pre-sync wait: {e}"
                 )
             # Force sync down and wait before tracking the new checkpoint.
             try:
@@ -507,14 +506,14 @@ class SyncerCallback(Callback):
                     trial_syncer.wait()
                 else:
                     logger.error(
-                        "Trial %s: Checkpoint sync skipped. This should not happen.",
-                        trial,
+                        f"Trial {trial}: Checkpoint sync skipped. "
+                        f"This should not happen."
                     )
             except TuneError as e:
                 if trial.uses_cloud_checkpointing:
                     # Even though rsync failed the trainable can restore
                     # from remote durable storage.
-                    logger.error("Trial %s: Sync error - %s", trial, str(e))
+                    logger.error(f"Trial {trial}: Sync error: {e}")
                 else:
                     # If the trainable didn't have remote storage to upload
                     # to then this checkpoint may have been lost, so we
@@ -569,7 +568,7 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: Checkpoint,
+        checkpoint: _TuneCheckpoint,
         **info,
     ):
         self._sync_trial_checkpoint(trial, checkpoint)

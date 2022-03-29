@@ -1295,7 +1295,7 @@
     script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1384,7 +1384,7 @@
     script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -3812,7 +3812,7 @@
   team: core
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
+    cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
 
   run:
     timeout: 7200
