@@ -17,22 +17,22 @@ kernelspec:
 # Deployment Graph
 
 ```{note} 
-Note: This feature is still experimental in Alpha release, some APIs are subject to change.
+Note: This feature is in Alpha, so APIs are subject to change.
 ```
 
-## General Motivation
+## Motivation
 
-Production machine learning serving pipelines are getting longer and wider. They often consist of multiple, or even tens of models collectively making a final prediction, such as image / video content classification and tagging, fraud detection pipeline with multiple policies and models, multi-stage ranking and recommendation, etc.
+Production machine learning serving pipelines are getting longer and wider. They often consist of many models collectively making a final prediction. This is common in use cases like image / video content classification and tagging, fraud detection pipeline with multiple policies, multi-stage ranking and recommendation, etc.
 
-Meanwhile, the size of a model is also growing beyond the memory limit of a single machine due to the exponentially growing number of parameters, such as GPT-3, sparse feature embeddings in recsys models such that the ability to do disaggregated and distributed inference is desirable and future proof.
+Meanwhile, the size of a model is also growing beyond the memory limit of a single machine due to the exponentially growing number of parameters. GPT-3 and sparse feature embeddings in large recommendation models are two prime examples. The need of serving large models with disaggregated and distributed inference is rapidly growing.
 
-We want to leverage the programmable and general purpose distributed computing ability of Ray, double down on its unique strengths (scheduling, communication and shared memory) to facilitate authoring, orchestrating, scaling and deployment of complex serving pipelines under one set of DAG API, so a user can program & test multiple models or multiple shards of a single large model dynamically, deploy to production at scale, and upgrade individually.
+We want to leverage the programmable and general purpose distributed computing ability of Ray and double down on its unique strengths (scheduling, communication and shared memory) to facilitate authoring, orchestrating, scaling and deployment of complex serving graphs so a user can program & test multiple models or multiple shards of a single large model dynamically and deploy to production at scale, and able to scale and reconfigure individually.
 
-## Key requirements
+## Key Features
 - Provide the ability to author a DAG of Serve nodes to form a complex inference graph.
-- Pipeline authoring experience should be fully Python-programmable with support for dynamic selection, control flows, user business logic, etc.
-- DAG can be instantiated and locally executed using tasks and actors API
-- DAG can be deployed as a group where individual nodes can be reconfigured and scaled indepenently.
+- Graph authoring experience should be fully Python-programmable with support for dynamic selection, control flows, user business logic, etc.
+- Graph can be instantiated and locally executed using tasks and actors API
+- Graph can be deployed as a group where individual nodes can be reconfigured and scaled indepenently.
 
 __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md)__
 
@@ -41,16 +41,17 @@ __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ra
 ## Concepts
 
 ### Deployment
-Upgradeable group of actors managed by the Serve controller. Currently the primary API in Ray Serve. At authoring time it’s the class or function under `@serve.deployment` decorator. 
+Scalable, upgradeable group of actors managed by Ray Serve. __[See docs for detail](https://docs.ray.io/en/master/serve/core-apis.html#core-api-deployments)__
 
-### Node
-Smallest unit in a graph, typically an annotated class but can also be a function, backed by a group of actors that are scalable and reconfigurable. 
-
-### Deployment Graph
-Collection of nodes that forms a DAG that represents an inference graph for complicated tasks. Ex: ensemble, chaining, dynamic selection. 
+### DeploymentNode
+Smallest unit in a graph, typically a serve annotated class or function, backed by a Deployment.
 
 ### Bind
 A graph building API applicable to decorated class or function.  `decorated_class_or_func.bind(*args, **kwargs)` generates an IR node that can be used to build graph, and bound arguments will be applied at execution time, including dynamic user input.
+
+### Deployment Graph
+Collection of deployment nodes bound together that forms a DAG that represents an inference graph for complicated tasks, can be deployed and call as a unit. Ex: ensemble, chaining, dynamic selection. 
+
 
 +++
 
@@ -62,7 +63,7 @@ The class and function definition as well as decorator didn't diverage from exis
 
 ### **`bind(*args, **kwargs)`**
 
-Once called on supported ray decorated function or class (@ray.remote, @serve.deployment), generates an IR of type DAGNode that acts as the building block of graph building.
+Once called on supported ray decorated function or class (@serve.deployment fully supported, @ray.remote soon), generates an IR of type DAGNode that acts as the building block of graph building.
 
 +++
 
@@ -70,7 +71,10 @@ Once called on supported ray decorated function or class (@ray.remote, @serve.de
 
 ```bind()``` on function produces a DAGNode that can be exeucted with user input.
 
-```{code-cell} ipython3
++++
+
+```{code-cell} python3
+:tags: [remove-cell]
 import ray
 from ray import serve
 from ray.serve.pipeline.generate import DeploymentNameGenerator
@@ -84,7 +88,10 @@ ray.init(num_cpus=4)
 serve.start()
 
 ### Setting up clean ray cluster with serve ###
+```
+        
 
+```{code-cell} ipython3
 @serve.deployment
 def preprocessor_with_arg(val):
     print(val)
@@ -109,7 +116,10 @@ print(ray.get(dag_handle.remote(2)))
 
 Once a class is bound with its init args, its class methods can be directly accessed, called or bound with other args.
 
-```{code-cell} ipython3
++++
+
+```{code-cell} python3
+:tags: [remove-cell]
 import ray
 from ray import serve
 from ray.serve.pipeline.generate import DeploymentNameGenerator
@@ -123,7 +133,9 @@ ray.init(num_cpus=4)
 serve.start()
 
 ### Setting up clean ray cluster with serve ###
+```
 
+```{code-cell} ipython3
 @serve.deployment
 class Model:
     def __init__(self, val):
@@ -143,7 +155,7 @@ get() returns
 """
 ```
 
-### DAGNode as args in bind()
+### DAGNode as arguments in other node's bind()
 
 DAGNode can also be passed into other DAGNode in dag binding. In the full example below, ```Combiner``` calls into two instantiations of ```Model``` class, which can be bound and passed into ```Combiner```'s constructor as if we're passing in two regular python class instances.
 
@@ -209,7 +221,6 @@ example.py. Then we can run the driver DeploymentNode using its import path,
 ```example.serve_dag```:
 
 ```bash
-$ ray start --head
 $ serve run example.serve_dag
 ```
 
@@ -239,7 +250,7 @@ more info on these options.
 
 ## Full End to End Example
 
-Let's put the concepts together to a full runnable DAG example including the following attributes where each node is empowered by a __[serve deployment](https://docs.ray.io/en/master/serve/core-apis.html#core-api-deployments)__:
+Let's put the concepts together to a full runnable DAG example including the following attributes:
 
 - All nodes in the deployment graph naturally forms a DAG structure.
 - A node could use or call into other nodes in the deployment graph.
@@ -254,7 +265,10 @@ Let's put the concepts together to a full runnable DAG example including the fol
 
 ![deployment graph](https://github.com/ray-project/images/blob/master/docs/serve/deployment_graph.png?raw=true)
 
-```{code-cell} ipython3
++++
+
+```{code-cell} python3
+:tags: [remove-cell]
 import ray
 from ray import serve
 from ray.serve.pipeline.generate import DeploymentNameGenerator
@@ -264,11 +278,13 @@ if ray.is_initialized():
     DeploymentNameGenerator.reset()
     ray.shutdown()
 
-ray.init(num_cpus=16)
+ray.init(num_cpus=4)
 serve.start()
 
-### Setup clean ray cluster with new serve instance ###
+### Setting up clean ray cluster with serve ###
+```
 
+```{code-cell} ipython3
 import time
 import asyncio
 import requests
