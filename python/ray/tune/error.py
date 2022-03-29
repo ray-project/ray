@@ -13,7 +13,7 @@ class AbortTrialExecution(TuneError):
     pass
 
 
-def get_tb_from_exception(e: Exception):
+def get_tb_from_exception(e: Exception) -> str:
     """Utility function to get traceback from Exception."""
     return "".join(
         traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)
