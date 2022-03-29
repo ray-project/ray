@@ -18,7 +18,7 @@ from ray.tune.ray_trial_executor import (
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -118,7 +118,7 @@ class RayTrialExecutorTest(unittest.TestCase):
             trial.update_last_result(training_result)
 
     def _simulate_saving(self, trial):
-        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        checkpoint = self.trial_executor.save(trial, _TuneCheckpoint.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
         self.assertEqual(trial.checkpoint.value, None)
         event = self.trial_executor.get_next_executor_event(
@@ -187,7 +187,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.assertEqual(trial.checkpoint.storage, Checkpoint.MEMORY)
+        self.assertEqual(trial.checkpoint.storage, _TuneCheckpoint.MEMORY)
 
         # Resume
         self._simulate_starting_trial(trial)

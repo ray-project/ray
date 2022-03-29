@@ -10,7 +10,7 @@ from collections import OrderedDict
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
 from ray.tune.ray_trial_executor import (
     ExecutorEvent,
@@ -150,8 +150,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(self.callback.state["trial_start"]["trial"].trial_id, "two")
 
         # Just a placeholder object ref for cp.value.
-        cp = Checkpoint(
-            Checkpoint.PERSISTENT, value=ray.put(1), result={TRAINING_ITERATION: 0}
+        cp = _TuneCheckpoint(
+            _TuneCheckpoint.PERSISTENT, value=ray.put(1), result={TRAINING_ITERATION: 0}
         )
         trials[0].saving_to = cp
 

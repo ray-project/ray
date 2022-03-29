@@ -26,7 +26,7 @@ from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.utils.placement_groups import PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
+from ray.tune.trial import Trial, _TuneCheckpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.resource_updater import ResourceUpdater
@@ -662,9 +662,9 @@ class RayTrialExecutor(TrialExecutor):
     def save(
         self,
         trial: Trial,
-        storage: str = Checkpoint.PERSISTENT,
+        storage: str = _TuneCheckpoint.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> Checkpoint:
+    ) -> _TuneCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
@@ -680,13 +680,13 @@ class RayTrialExecutor(TrialExecutor):
         logger.debug(f"saving trial {trial}")
         result = result or trial.last_result
         with self._change_working_directory(trial):
-            if storage == Checkpoint.MEMORY:
+            if storage == _TuneCheckpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
-                checkpoint = Checkpoint(storage, value, result)
+                checkpoint = _TuneCheckpoint(storage, value, result)
                 trial.on_checkpoint(checkpoint)
             else:
                 value = trial.runner.save.remote()
-                checkpoint = Checkpoint(storage, value, result)
+                checkpoint = _TuneCheckpoint(storage, value, result)
                 trial.saving_to = checkpoint
                 self._futures[value] = (ExecutorEventType.SAVING_RESULT, trial)
         return checkpoint
@@ -710,7 +710,8 @@ class RayTrialExecutor(TrialExecutor):
                 "Trial {}: Unable to restore - no runner found.".format(trial)
             )
         value = checkpoint.value
-        if checkpoint.storage == Checkpoint.MEMORY:
+        node_ip = checkpoint.node_ip
+        if checkpoint.storage == _TuneCheckpoint.MEMORY:
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
@@ -723,7 +724,7 @@ class RayTrialExecutor(TrialExecutor):
                 # If not syncing to driver, assume it has access to the cp
                 # on the local fs.
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(value)
+                    remote = trial.runner.restore.remote(value, node_ip)
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.
