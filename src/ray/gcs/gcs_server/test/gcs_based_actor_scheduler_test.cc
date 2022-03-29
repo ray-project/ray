@@ -149,7 +149,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleFailedWithZeroNode) {
 TEST_F(GcsBasedActorSchedulerTest, TestNotEnoughClusterResources) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   AddNewNode(node_resources);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
@@ -172,7 +172,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestNotEnoughClusterResources) {
 TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   scheduling::NodeID scheduling_node_id(node->node_id());
@@ -228,8 +228,8 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
 TEST_F(GcsBasedActorSchedulerTest, TestBalancedSchedule) {
   // Add two nodes, each with 10 memory units and 10 CPU.
   for (int i = 0; i < 2; i++) {
-    absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 10},
-                                                              {kCPU_ResourceLabel, 10}};
+    absl::flat_hash_map<std::string, double> node_resources = {
+        {kMemory_ResourceLabel, 10}, {kCPU_ResourceLabel, 10}};
     AddNewNode(node_resources);
   }
 
@@ -257,13 +257,13 @@ TEST_F(GcsBasedActorSchedulerTest, TestBalancedSchedule) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
   // Add a node with 64 memory units and 8 CPU.
-  absl::flat_hash_map<std::string, double> node_resources_1 = {{kMemory_ResourceLabel, 64},
-                                                              {kCPU_ResourceLabel, 8}};
+  absl::flat_hash_map<std::string, double> node_resources_1 = {
+      {kMemory_ResourceLabel, 64}, {kCPU_ResourceLabel, 8}};
   auto node1 = AddNewNode(node_resources_1);
   auto node_id_1 = NodeID::FromBinary(node1->node_id());
   // Add a node with 32 memory units and 4 CPU.
-  absl::flat_hash_map<std::string, double> node_resources_2 = {{kMemory_ResourceLabel, 32},
-                                                              {kCPU_ResourceLabel, 4}};
+  absl::flat_hash_map<std::string, double> node_resources_2 = {
+      {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto node2 = AddNewNode(node_resources_2);
   auto node_id_2 = NodeID::FromBinary(node2->node_id());
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
@@ -299,7 +299,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
 TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
@@ -352,7 +352,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
 TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenCreating) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
@@ -398,7 +398,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenCreating) {
 TEST_F(GcsBasedActorSchedulerTest, TestNodeFailedWhenLeasing) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
@@ -441,7 +441,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestNodeFailedWhenLeasing) {
 TEST_F(GcsBasedActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
@@ -480,7 +480,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
 TEST_F(GcsBasedActorSchedulerTest, TestNodeFailedWhenCreating) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
@@ -527,7 +527,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestNodeFailedWhenCreating) {
 TEST_F(GcsBasedActorSchedulerTest, TestWorkerFailedWhenCreating) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
@@ -571,7 +571,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestWorkerFailedWhenCreating) {
 TEST_F(GcsBasedActorSchedulerTest, TestReschedule) {
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node1 = AddNewNode(node_resources);
   auto node_id_1 = NodeID::FromBinary(node1->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
@@ -630,7 +630,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestReleaseUnusedWorkers) {
   // Add a node to the cluster.
   // Add a node with 64 memory units and 8 CPU.
   absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
-                                                            {kCPU_ResourceLabel, 8}};
+                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());

@@ -270,21 +270,20 @@ class ClusterTaskManagerTest : public ::testing::Test {
             },
             /*max_pinned_task_arguments_bytes=*/1000,
             /*get_time=*/[this]() { return current_time_ms_; })),
-        task_manager_(
-            id_,
-            scheduler_,
-            /* get_node_info= */
-            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
-              node_info_calls_++;
-              if (node_info_.count(node_id) != 0) {
-                return &node_info_[node_id];
-              }
-              return nullptr;
-            },
-            /* announce_infeasible_task= */
-            [this](const RayTask &task) { announce_infeasible_task_calls_++; },
-            local_task_manager_,
-            /*get_time=*/[this]() { return current_time_ms_; }) {}
+        task_manager_(id_,
+                      scheduler_,
+                      /* get_node_info= */
+                      [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+                        node_info_calls_++;
+                        if (node_info_.count(node_id) != 0) {
+                          return &node_info_[node_id];
+                        }
+                        return nullptr;
+                      },
+                      /* announce_infeasible_task= */
+                      [this](const RayTask &task) { announce_infeasible_task_calls_++; },
+                      local_task_manager_,
+                      /*get_time=*/[this]() { return current_time_ms_; }) {}
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;

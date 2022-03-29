@@ -333,7 +333,9 @@ class Stats {
 
   /// Record a value
   /// \param val The value to record
-  void Record(double val) { Record(val, absl::flat_hash_map<std::string, std::string>()); }
+  void Record(double val) {
+    Record(val, absl::flat_hash_map<std::string, std::string>());
+  }
 
   /// Record a value
   /// \param val The value to record

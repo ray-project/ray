@@ -27,7 +27,7 @@ class TaskCaller {
   TaskCaller(RayRuntime *runtime, RemoteFunctionHolder remote_function_holder);
 
   template <typename... Args>
-  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&...args);
+  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
 
   TaskCaller &SetName(std::string name) {
     task_options_.name = std::move(name);
@@ -71,7 +71,7 @@ TaskCaller<F>::TaskCaller(RayRuntime *runtime,
 template <typename F>
 template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
-    Args &&...args) {
+    Args &&... args) {
   CheckTaskOptions(task_options_.resources);
 
   if constexpr (is_python_v<F>) {

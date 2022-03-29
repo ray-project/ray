@@ -88,7 +88,7 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
 }
 
 inline absl::flat_hash_map<std::string, double> ToResources(JNIEnv *env,
-                                                           jobject java_resources) {
+                                                            jobject java_resources) {
   return JavaMapToNativeMap<std::string, double>(
       env,
       java_resources,

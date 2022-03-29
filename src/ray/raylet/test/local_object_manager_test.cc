@@ -102,7 +102,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 
   rpc::ChannelType channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
   absl::flat_hash_map<WorkerID,
-                     std::deque<std::pair<ObjectID, pubsub::SubscriptionItemCallback>>>
+                      std::deque<std::pair<ObjectID, pubsub::SubscriptionItemCallback>>>
       callbacks;
 };
 
@@ -297,29 +297,28 @@ class LocalObjectManagerTest : public ::testing::Test {
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
         max_fused_object_count_(15),
-        manager(
-            manager_node_id_,
-            "address",
-            1234,
-            free_objects_batch_size,
-            /*free_objects_period_ms=*/1000,
-            worker_pool,
-            client_pool,
-            /*max_io_workers=*/2,
-            /*min_spilling_size=*/0,
-            /*is_external_storage_type_fs=*/true,
-            /*max_fused_object_count*/ max_fused_object_count_,
-            /*on_objects_freed=*/
-            [&](const std::vector<ObjectID> &object_ids) {
-              for (const auto &object_id : object_ids) {
-                freed.insert(object_id);
-              }
-            },
-            /*is_plasma_object_spillable=*/
-            [&](const ray::ObjectID &object_id) {
-              return unevictable_objects_.count(object_id) == 0;
-            },
-            /*core_worker_subscriber=*/subscriber_.get()),
+        manager(manager_node_id_,
+                "address",
+                1234,
+                free_objects_batch_size,
+                /*free_objects_period_ms=*/1000,
+                worker_pool,
+                client_pool,
+                /*max_io_workers=*/2,
+                /*min_spilling_size=*/0,
+                /*is_external_storage_type_fs=*/true,
+                /*max_fused_object_count*/ max_fused_object_count_,
+                /*on_objects_freed=*/
+                [&](const std::vector<ObjectID> &object_ids) {
+                  for (const auto &object_id : object_ids) {
+                    freed.insert(object_id);
+                  }
+                },
+                /*is_plasma_object_spillable=*/
+                [&](const ray::ObjectID &object_id) {
+                  return unevictable_objects_.count(object_id) == 0;
+                },
+                /*core_worker_subscriber=*/subscriber_.get()),
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
   }

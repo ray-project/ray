@@ -53,7 +53,8 @@ class FunctionHelper {
   std::string LoadAllRemoteFunctions(const std::string lib_path,
                                      const boost::dll::shared_library &lib,
                                      const EntryFuntion &entry_function);
-  absl::flat_hash_map<std::string, std::shared_ptr<boost::dll::shared_library>> libraries_;
+  absl::flat_hash_map<std::string, std::shared_ptr<boost::dll::shared_library>>
+      libraries_;
   // Map from remote function name to executable entry function.
   absl::flat_hash_map<std::string, EntryFuntion> remote_funcs_;
   // Map from remote member function name to executable entry function.
