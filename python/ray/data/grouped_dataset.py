@@ -37,12 +37,16 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> grouped_ds.aggregate(AggregateFn(
-            ...     init=lambda k: [],
-            ...     accumulate=lambda a, r: a + [r],
-            ...     merge=lambda a1, a2: a1 + a2,
-            ...     finalize=lambda a: a
-            ... ))
+            >>> import ray
+            >>> from ray.data.aggregate import AggregateFn
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> grouped_ds = ds.groupby(lambda x: x % 3) # doctest: +SKIP
+            >>> grouped_ds.aggregate(AggregateFn( # doctest: +SKIP
+            ...     init=lambda k: [], # doctest: +SKIP
+            ...     accumulate=lambda a, r: a + [r], # doctest: +SKIP
+            ...     merge=lambda a1, a2: a1 + a2, # doctest: +SKIP
+            ...     finalize=lambda a: a # doctest: +SKIP
+            ... )) # doctest: +SKIP
 
         Args:
             aggs: Aggregations to do.
@@ -154,6 +158,8 @@ class GroupedDataset(Generic[T]):
         batch_format: str = "native",
         **ray_remote_args,
     ) -> "Dataset[Any]":
+        # TODO AttributeError: 'GroupedDataset' object has no attribute 'map_groups'
+        #  in the example below.
         """Apply the given function to each group of records of this dataset.
 
         While map_groups() is very flexible, note that it comes with downsides:
@@ -168,19 +174,24 @@ class GroupedDataset(Generic[T]):
             >>> # Return a single record per group (list of multiple records in,
             >>> # list of a single record out). Note that median is not an
             >>> # associative function so cannot be computed with aggregate().
-            >>> ray.data.range(100).groupby(lambda x: x % 3).map_groups(
-            ...     lambda x: [median(x)])
+            >>> import ray
+            >>> import pandas as pd
+            >>> import numpy as np
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.groupby(lambda x: x % 3).map_groups( # doctest: +SKIP
+            ...     lambda x: [np.median(x)])
 
             >>> # Return multiple records per group (dataframe in, dataframe out).
             >>> df = pd.DataFrame(
             ...     {"A": ["a", "a", "b"], "B": [1, 1, 3], "C": [4, 6, 5]}
             ... )
-            >>> grouped = ray.data.from_pandas(df).groupby("A")
-            >>> grouped.map_groups(
+            >>> ds = ray.data.from_pandas(df) # doctest: +SKIP
+            >>> grouped = ds.groupby("A") # doctest: +SKIP
+            >>> grouped.map_groups( # doctest: +SKIP
             ...     lambda g: g.apply(
             ...         lambda c: c / g[c.name].sum() if c.name in ["B", "C"] else c
             ...     )
-            ... )
+            ... ) # doctest: +SKIP
 
         Args:
             fn: The function to apply to each group of records, or a class type
@@ -260,10 +271,11 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
-            >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").count()
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby( # doctest: +SKIP
+            ...     "A").count() # doctest: +SKIP
 
         Returns:
             A simple dataset of ``(k, v)`` pairs or an Arrow dataset of
@@ -281,18 +293,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).sum()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .sum(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").sum()
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .sum(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).sum() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .sum(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").sum() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .sum(["B", "C"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the sum.
@@ -341,18 +354,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).min()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .min(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").min()
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .min(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).min() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .min(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").min() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the min.
@@ -401,18 +415,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).max()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .max(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").max()
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .max(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).max() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .max(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").max() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the max.
@@ -461,18 +476,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).mean()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .mean(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").mean()
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .mean(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).mean() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .mean(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").mean() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the mean.
@@ -525,18 +541,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).std()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .std(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").std(ddof=0)
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .std(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).std() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .std(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").std(ddof=0) # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .std(["B", "C"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to

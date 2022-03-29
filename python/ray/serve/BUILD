@@ -287,7 +287,7 @@ py_test(
     name = "test_runtime_env",
     size = "large",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "post_wheel_build"],
     deps = [":serve_lib"],
 )
 
@@ -295,7 +295,7 @@ py_test(
     name = "test_runtime_env_2",
     size = "large",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "post_wheel_build"],
     deps = [":serve_lib"],
 )
 
@@ -489,6 +489,14 @@ py_test(
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
+)
+
+py_test(
+    name = "snippet_model_ensemble",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"]
 )
 
 py_test(
