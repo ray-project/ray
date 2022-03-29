@@ -25,8 +25,6 @@ from ray.serve.api import (
     Application,
     DeploymentFunctionNode,
     DeploymentNode,
-    get_deployment_statuses,
-    serve_application_status_to_schema,
 )
 from ray.serve.api import build as build_app
 
@@ -284,12 +282,12 @@ def run(
     app_or_node = None
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
-        cli_logger.print(f"Loading app from config file: '{config_path}'.")
+        cli_logger.print(f"Deploying from config file: '{config_path}'.")
         with open(config_path, "r") as config_file:
             app_or_node = Application.from_yaml(config_file)
     else:
         import_path = config_or_import_path
-        cli_logger.print(f"Loading app from import path: '{import_path}'.")
+        cli_logger.print(f"Deploying from import path: '{import_path}'.")
         app_or_node = import_attr(import_path)
 
     # Setting the runtime_env here will set defaults for the deployments.
@@ -297,14 +295,11 @@ def run(
 
     try:
         serve.run(app_or_node, host=host, port=port)
-        cli_logger.success("Deployed successfully!\n")
+        cli_logger.success("Deployed successfully.")
 
         if blocking:
             while True:
-                statuses = serve_application_status_to_schema(
-                    get_deployment_statuses()
-                ).json(indent=4)
-                cli_logger.info(f"{statuses}")
+                # Block, letting Ray print logs to the terminal.
                 time.sleep(10)
 
     except KeyboardInterrupt:
