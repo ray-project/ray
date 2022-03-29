@@ -154,10 +154,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i],
                                                ports[i],
                                                /*sharding=*/true,
-                                               /*password=*/options_.password_,
-                                               /*enable_sync_conn=*/false,
-                                               /*enable_async_conn=*/true,
-                                               /*enable_subscribe_conn=*/false));
+                                               /*password=*/options_.password_));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
@@ -165,10 +162,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
     RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_,
                                              options_.server_port_,
                                              /*sharding=*/true,
-                                             /*password=*/options_.password_,
-                                             /*enable_sync_conn=*/false,
-                                             /*enable_async_conn=*/true,
-                                             /*enable_subscribe_conn=*/false));
+                                             /*password=*/options_.password_));
   }
 
   Attach();

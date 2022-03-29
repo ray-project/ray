@@ -390,13 +390,6 @@ Status RedisContext::Connect(const std::string &address,
   redis_async_context_.reset(new RedisAsyncContext(async_context));
   SetDisconnectCallback(redis_async_context_.get());
 
-  // Connect to subscribe context
-  redisAsyncContext *subscribe_context = nullptr;
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &subscribe_context));
-  RAY_CHECK_OK(AuthenticateRedis(subscribe_context, password));
-  async_redis_subscribe_context_.reset(new RedisAsyncContext(subscribe_context));
-  SetDisconnectCallback(async_redis_subscribe_context_.get());
-
   return Status::OK();
 }
 
