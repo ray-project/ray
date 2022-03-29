@@ -67,9 +67,11 @@ class ExperimentAnalysis:
             in the respective functions.
 
     Example:
-        >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
-        >>> analysis = ExperimentAnalysis(
-        >>>     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
+        >>> from ray import tune
+        >>> tune.run( # doctest: +SKIP
+        ...     my_trainable, name="my_exp", local_dir="~/tune_results")
+        >>> analysis = ExperimentAnalysis( # doctest: +SKIP
+        ...     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
     """
 
     def __init__(

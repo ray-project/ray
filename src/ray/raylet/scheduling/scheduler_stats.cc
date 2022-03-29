@@ -138,6 +138,10 @@ void SchedulerStats::RecordMetrics() const {
   ray::stats::STATS_scheduler_tasks.Record(num_cancelled_tasks_, "Cancelled");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_dispatch_, "Dispatched");
   ray::stats::STATS_scheduler_tasks.Record(num_tasks_to_schedule_, "Received");
+  ray::stats::STATS_scheduler_tasks.Record(local_task_manager_.GetNumWaitingTaskSpilled(),
+                                           "SpilledWaiting");
+  ray::stats::STATS_scheduler_tasks.Record(
+      local_task_manager_.GetNumUnschedulableTaskSpilled(), "SpilledUnschedulable");
 
   /// Pending task count.
   ray::stats::STATS_scheduler_unscheduleable_tasks.Record(num_infeasible_tasks_,

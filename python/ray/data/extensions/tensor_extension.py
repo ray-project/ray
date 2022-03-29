@@ -69,33 +69,34 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
     Examples:
         >>> # Create a DataFrame with a list of ndarrays as a column.
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> import ray
         >>> df = pd.DataFrame({
-                "one": [1, 2, 3],
-                "two": list(np.arange(24).reshape((3, 2, 2, 2)))})
+        ...     "one": [1, 2, 3],
+        ...     "two": list(np.arange(24).reshape((3, 2, 2, 2)))})
         >>> # Note the opaque np.object dtype for this column.
-        >>> df.dtypes
+        >>> df.dtypes # doctest: +SKIP
         one     int64
         two    object
         dtype: object
-
         >>> # Cast column to our TensorDtype extension type.
+        >>> from ray.data.extensions import TensorDtype
         >>> df["two"] = df["two"].astype(TensorDtype())
-
         >>> # Note that the column dtype is now TensorDtype instead of
         >>> # np.object.
-        >>> df.dtypes
+        >>> df.dtypes # doctest: +SKIP
         one          int64
         two    TensorDtype
         dtype: object
-
         >>> # Pandas is now aware of this tensor column, and we can do the
         >>> # typical DataFrame operations on this column.
         >>> col = 2 * (df["two"] + 10)
         >>> # The ndarrays underlying the tensor column will be manipulated,
         >>> # but the column itself will continue to be a Pandas type.
-        >>> type(col)
+        >>> type(col) # doctest: +SKIP
         pandas.core.series.Series
-        >>> col
+        >>> col # doctest: +SKIP
         0   [[[ 2  4]
               [ 6  8]]
              [[10 12]
@@ -112,44 +113,41 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         >>> # Once you do an aggregation on that column that returns a single
         >>> # row's value, you get back our TensorArrayElement type.
         >>> tensor = col.mean()
-        >>> type(tensor)
+        >>> type(tensor) # doctest: +SKIP
         ray.data.extensions.tensor_extension.TensorArrayElement
-        >>> tensor
+        >>> tensor # doctest: +SKIP
         array([[[18., 20.],
                 [22., 24.]],
                [[26., 28.],
                 [30., 32.]]])
         >>> # This is a light wrapper around a NumPy ndarray, and can easily
         >>> # be converted to an ndarray.
-        >>> type(tensor.to_numpy())
+        >>> type(tensor.to_numpy()) # doctest: +SKIP
         numpy.ndarray
-
         >>> # In addition to doing Pandas operations on the tensor column,
         >>> # you can now put the DataFrame into a Dataset.
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df) # doctest: +SKIP
         >>> # Internally, this column is represented the corresponding
         >>> # Arrow tensor extension type.
-        >>> ds.schema()
+        >>> ds.schema() # doctest: +SKIP
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
-
         >>> # You can write the dataset to Parquet.
-        >>> ds.write_parquet("/some/path")
+        >>> ds.write_parquet("/some/path") # doctest: +SKIP
         >>> # And you can read it back.
-        >>> read_ds = ray.data.read_parquet("/some/path")
-        >>> read_ds.schema()
+        >>> read_ds = ray.data.read_parquet("/some/path") # doctest: +SKIP
+        >>> read_ds.schema() # doctest: +SKIP
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
-
-        >>> read_df = ray.get(read_ds.to_pandas_refs())[0]
-        >>> read_df.dtypes
+        >>> read_df = ray.get(read_ds.to_pandas_refs())[0] # doctest: +SKIP
+        >>> read_df.dtypes # doctest: +SKIP
         one          int64
         two    TensorDtype
         dtype: object
         >>> # The tensor extension type is preserved along the
         >>> # Pandas --> Arrow --> Parquet --> Arrow --> Pandas
         >>> # conversion chain.
-        >>> read_df.equals(df)
+        >>> read_df.equals(df) # doctest: +SKIP
         True
     """
 
@@ -210,6 +208,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         For extension dtypes with arguments the following may be an
         adequate implementation.
 
+        >>> import re
         >>> @classmethod
         ... def construct_from_string(cls, string):
         ...     pattern = re.compile(r"^my_type\[(?P<arg_name>.+)\]$")
@@ -361,24 +360,26 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
 
     Examples:
         >>> # Create a DataFrame with a list of ndarrays as a column.
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> import ray
+        >>> from ray.data.extensions import TensorArray
         >>> df = pd.DataFrame({
-                "one": [1, 2, 3],
-                "two": TensorArray(np.arange(24).reshape((3, 2, 2, 2)))})
-
+        ...     "one": [1, 2, 3],
+        ...     "two": TensorArray(np.arange(24).reshape((3, 2, 2, 2)))})
         >>> # Note that the column dtype is TensorDtype.
-        >>> df.dtypes
+        >>> df.dtypes # doctest: +SKIP
         one          int64
         two    TensorDtype
         dtype: object
-
         >>> # Pandas is aware of this tensor column, and we can do the
         >>> # typical DataFrame operations on this column.
         >>> col = 2 * (df["two"] + 10)
         >>> # The ndarrays underlying the tensor column will be manipulated,
         >>> # but the column itself will continue to be a Pandas type.
-        >>> type(col)
+        >>> type(col) # doctest: +SKIP
         pandas.core.series.Series
-        >>> col
+        >>> col # doctest: +SKIP
         0   [[[ 2  4]
               [ 6  8]]
              [[10 12]
@@ -394,45 +395,43 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         Name: two, dtype: TensorDtype
         >>> # Once you do an aggregation on that column that returns a single
         >>> # row's value, you get back our TensorArrayElement type.
-        >>> tensor = col.mean()
-        >>> type(tensor)
+        >>> tensor = col.mean() # doctest: +SKIP
+        >>> type(tensor) # doctest: +SKIP
         ray.data.extensions.tensor_extension.TensorArrayElement
-        >>> tensor
+        >>> tensor # doctest: +SKIP
         array([[[18., 20.],
                 [22., 24.]],
                [[26., 28.],
                 [30., 32.]]])
         >>> # This is a light wrapper around a NumPy ndarray, and can easily
         >>> # be converted to an ndarray.
-        >>> type(tensor.to_numpy())
+        >>> type(tensor.to_numpy()) # doctest: +SKIP
         numpy.ndarray
-
         >>> # In addition to doing Pandas operations on the tensor column,
         >>> # you can now put the DataFrame into a Dataset.
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df) # doctest: +SKIP
         >>> # Internally, this column is represented the corresponding
         >>> # Arrow tensor extension type.
-        >>> ds.schema()
+        >>> ds.schema() # doctest: +SKIP
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
-
         >>> # You can write the dataset to Parquet.
-        >>> ds.write_parquet("/some/path")
+        >>> ds.write_parquet("/some/path") # doctest: +SKIP
         >>> # And you can read it back.
-        >>> read_ds = ray.data.read_parquet("/some/path")
-        >>> read_ds.schema()
+        >>> read_ds = ray.data.read_parquet("/some/path") # doctest: +SKIP
+        >>> read_ds.schema() # doctest: +SKIP
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-        >>> read_df = ray.get(read_ds.to_pandas_refs())[0]
-        >>> read_df.dtypes
+        >>> read_df = ray.get(read_ds.to_pandas_refs())[0] # doctest: +SKIP
+        >>> read_df.dtypes # doctest: +SKIP
         one          int64
         two    TensorDtype
         dtype: object
         >>> # The tensor extension type is preserved along the
         >>> # Pandas --> Arrow --> Parquet --> Arrow --> Pandas
         >>> # conversion chain.
-        >>> read_df.equals(df)
+        >>> read_df.equals(df) # doctest: +SKIP
         True
     """
 

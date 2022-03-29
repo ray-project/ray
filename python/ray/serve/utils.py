@@ -181,6 +181,7 @@ def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_iterable_delta
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
         >>> compute_iterable_delta(old, new)
@@ -197,6 +198,7 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     """Given two dicts, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_dict_delta
         >>> old = {"a": 1, "b": 2}
         >>> new = {"a": 3, "d": 4}
         >>> compute_dict_delta(old, new)
@@ -253,7 +255,9 @@ def msgpack_serialize(obj):
     return serialized
 
 
-def get_deployment_import_path(deployment, replace_main=False):
+def get_deployment_import_path(
+    deployment, replace_main=False, enforce_importable=False
+):
     """
     Gets the import path for deployment's func_or_class.
 
@@ -273,8 +277,15 @@ def get_deployment_import_path(deployment, replace_main=False):
 
     import_path = f"{body.__module__}.{body.__qualname__}"
 
-    if replace_main:
+    if enforce_importable and "<locals>" in body.__qualname__:
+        raise RuntimeError(
+            "Deployment definitions must be importable to build the Serve app, "
+            f"but deployment '{deployment.name}' is inline defined or returned "
+            "from another function. Please restructure your code so that "
+            f"'{import_path}' can be imported (i.e., put it in a module)."
+        )
 
+    if replace_main:
         # Replaces __main__ with its file name. E.g. suppose the import path
         # is __main__.classname and classname is defined in filename.py.
         # Its import path becomes filename.classname.
@@ -330,12 +341,14 @@ def require_packages(packages: List[str]):
     """Decorator making sure function run in specified environments
 
     Examples:
-        >>> @require_packages(["numpy", "package_a"])
-            def func():
-                import numpy as np
-        >>> func()
-            ImportError: func requires ["numpy", "package_a"] but
-            ["package_a"] are not available, please pip install them.
+        >>> from ray.serve.utils import require_packages
+        >>> @require_packages(["numpy", "package_a"]) # doctest: +SKIP
+        ... def func(): # doctest: +SKIP
+        ...     import numpy as np # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        >>> func() # doctest: +SKIP
+        ImportError: func requires ["numpy", "package_a"] but
+        ["package_a"] are not available, please pip install them.
     """
 
     def decorator(func):
@@ -361,3 +374,11 @@ def require_packages(packages: List[str]):
         return wrapped
 
     return decorator
+
+
+def in_interactive_shell():
+    # Taken from:
+    # https://stackoverflow.com/questions/15411967/how-can-i-check-if-code-is-executed-in-the-ipython-notebook
+    import __main__ as main
+
+    return not hasattr(main, "__file__")
