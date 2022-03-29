@@ -48,7 +48,6 @@ class RedisClientOptions {
 
   // Whether we enable sharding for accessing data.
   bool enable_sharding_conn_{true};
-
 };
 
 /// \class RedisClient
