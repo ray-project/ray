@@ -37,7 +37,7 @@ from ray.util.placement_group import placement_group, remove_placement_group
 
 from ray import serve
 
-logger = logging.getLogger("ray.serve")
+logger = logging.getLogger(__file__)
 
 ray.shutdown()
 ray.init(address="auto")

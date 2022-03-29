@@ -13,7 +13,7 @@ import numpy as np
 import ray
 from ray import serve
 
-logger = logging.getLogger("ray.serve")
+logger = logging.getLogger(__file__)
 
 NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100
