@@ -16,7 +16,7 @@ from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ def fill_config(
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training (PBT) algorithm.
 
-    https://deepmind.com/blog/population-based-training-neural-networks
+    https://www.deepmind.com/blog/population-based-training-of-neural-networks
 
     PBT trains a group of models (or agents) in parallel. Periodically, poorly
     performing models clone the state of the top performers, and a random
@@ -525,7 +525,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 state.last_checkpoint = trial.checkpoint
             else:
                 state.last_checkpoint = trial_executor.save(
-                    trial, Checkpoint.MEMORY, result=state.last_result
+                    trial, _TuneCheckpoint.MEMORY, result=state.last_result
                 )
             self._num_checkpoints += 1
         else:
@@ -869,7 +869,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         )
 
         checkpoint = trial_runner.trial_executor.save(
-            trial, Checkpoint.MEMORY, result=result
+            trial, _TuneCheckpoint.MEMORY, result=result
         )
 
         new_tag = make_experiment_tag(self.experiment_tag, new_config, new_config)

@@ -82,11 +82,15 @@ class ModelV2:
             of an RNN, if applicable.
 
         Examples:
-            >>> def get_initial_state(self):
-            >>>    return [
-            >>>        np.zeros(self.cell_size, np.float32),
-            >>>        np.zeros(self.cell_size, np.float32),
-            >>>    ]
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2): # doctest: +SKIP
+            ...     # ...
+            ...     def get_initial_state(self):
+            ...         return [
+            ...             np.zeros(self.cell_size, np.float32),
+            ...             np.zeros(self.cell_size, np.float32),
+            ...         ]
         """
         return []
 
@@ -123,10 +127,14 @@ class ModelV2:
             [BATCH, num_outputs] and the list of new RNN state(s) if any.
 
         Examples:
-            >>> def forward(self, input_dict, state, seq_lens):
-            >>>     model_out, self._value_out = self.base_model(
-            ...         input_dict["obs"])
-            >>>     return model_out, state
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2): # doctest: +SKIP
+            ...     # ...
+            >>>     def forward(self, input_dict, state, seq_lens):# doctest: +SKIP
+            >>>         model_out, self._value_out = self.base_model(# doctest: +SKIP
+            ...             input_dict["obs"])# doctest: +SKIP
+            >>>         return model_out, state# doctest: +SKIP
         """
         raise NotImplementedError
 
@@ -275,10 +283,11 @@ class ModelV2:
             h5_file: The h5 file name to import weights from.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
-            >>> for _ in range(10):
-            >>>     trainer.train()
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> trainer = PPOTrainer(...)  # doctest: +SKIP
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
         """
         raise NotImplementedError
 

@@ -2,7 +2,7 @@ import unittest
 
 from ray.tune import PlacementGroupFactory
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.tune.schedulers.resource_changing_scheduler import (
     ResourceChangingScheduler,
     DistributeResources,
@@ -48,7 +48,7 @@ class MockTrialRunner:
 class MockTrial(Trial):
     @property
     def checkpoint(self):
-        return Checkpoint(Checkpoint.MEMORY, "None", {})
+        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, "None", {})
 
 
 class TestUniformResourceAllocation(unittest.TestCase):
