@@ -119,33 +119,8 @@ class NodeSyncConnection {
   instrumented_io_context &io_context_;
   std::string node_id_;
 
-  struct _MessageHash {
-    std::size_t operator()(
-        const std::shared_ptr<const RaySyncMessage> &m) const noexcept {
-      std::size_t seed = 0;
-      boost::hash_combine(seed, m->node_id());
-      boost::hash_combine(seed, m->component_id());
-      return seed;
-    }
-  };
-
-  struct _MessageEq {
-    bool operator()(const std::shared_ptr<const RaySyncMessage> &lhs,
-                    const std::shared_ptr<const RaySyncMessage> &rhs) const noexcept {
-      if (lhs == rhs) {
-        return true;
-      }
-      if (lhs == nullptr || rhs == nullptr) {
-        return false;
-      }
-      // We don't check the version here since we want the old version to be deleted.
-      return lhs->node_id() == rhs->node_id() &&
-             lhs->component_id() == rhs->component_id();
-    }
-  };
-
-  absl::flat_hash_set<std::shared_ptr<const RaySyncMessage>, _MessageHash, _MessageEq>
-      sending_queue_;
+  absl::flat_hash_map<std::pair<std::string, RayComponentId>, std::shared_ptr<const RaySyncMessage>>
+      sending_buffer_;
   // Keep track of the versions of components in this node.
   absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
       node_versions_;

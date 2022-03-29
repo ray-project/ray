@@ -156,7 +156,8 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
   // First push will succeed and the second one will be deduplicated.
   ASSERT_TRUE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
   ASSERT_FALSE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
-  ASSERT_EQ(1, sync_connection.sending_queue_.size());
+  ASSERT_EQ(1, sync_connection.sending_buffer_.size());
+  ASSERT_EQ(0, sync_connection.sending_buffer_.begin()->second->version());
   ASSERT_EQ(1, sync_connection.node_versions_.size());
   ASSERT_EQ(0,
             sync_connection
@@ -166,8 +167,9 @@ TEST_F(RaySyncerTest, NodeSyncConnection) {
   ASSERT_TRUE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
   ASSERT_FALSE(sync_connection.PushToSendingQueue(std::make_shared<RaySyncMessage>(msg)));
   // The previous message is deleted.
-  ASSERT_EQ(1, sync_connection.sending_queue_.size());
+  ASSERT_EQ(1, sync_connection.sending_buffer_.size());
   ASSERT_EQ(1, sync_connection.node_versions_.size());
+  ASSERT_EQ(2, sync_connection.sending_buffer_.begin()->second->version());
   ASSERT_EQ(2,
             sync_connection
                 .node_versions_[from_node_id.Binary()][RayComponentId::RESOURCE_MANAGER]);
@@ -254,12 +256,12 @@ struct SyncerServerTest {
       io_context.post(
           [&p, this]() mutable {
             for (const auto &[node_id, conn] : syncer->sync_connections_) {
-              if (!conn->sending_queue_.empty()) {
+              if (!conn->sending_buffer_.empty()) {
                 p.set_value(false);
                 RAY_LOG(INFO) << NodeID::FromBinary(syncer->GetNodeId()) << ": "
                               << "Waiting for message on " << NodeID::FromBinary(node_id)
                               << " to be sent."
-                              << " Remainings " << conn->sending_queue_.size();
+                              << " Remainings " << conn->sending_buffer_.size();
                 return;
               }
             }

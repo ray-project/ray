@@ -101,7 +101,7 @@ bool NodeSyncConnection::PushToSendingQueue(
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
     node_versions[message->component_id()] = message->version();
-    sending_queue_.insert(message);
+    sending_buffer_[std::make_pair(message->node_id(), message->component_id())] = message;
     return true;
   }
   return false;
@@ -152,7 +152,7 @@ void ClientSyncConnection::StartLongPolling() {
 }
 
 void ClientSyncConnection::DoSend() {
-  if (sending_queue_.empty()) {
+  if (sending_buffer_.empty()) {
     return;
   }
 
@@ -164,15 +164,15 @@ void ClientSyncConnection::DoSend() {
   std::vector<std::shared_ptr<const RaySyncMessage>> holder;
 
   size_t message_bytes = 0;
-  auto iter = sending_queue_.begin();
+  auto iter = sending_buffer_.begin();
   while (message_bytes < RayConfig::instance().max_sync_message_batch_bytes() &&
-         iter != sending_queue_.end()) {
-    message_bytes += (*iter)->sync_message().size();
+         iter != sending_buffer_.end()) {
+    message_bytes += iter->second->sync_message().size();
     // TODO (iycheng): Use arena allocator for optimization
     request->mutable_sync_messages()->UnsafeArenaAddAllocated(
-        const_cast<RaySyncMessage *>(iter->get()));
-    holder.push_back(*iter);
-    sending_queue_.erase(iter++);
+        const_cast<RaySyncMessage *>(iter->second.get()));
+    holder.push_back(iter->second);
+    sending_buffer_.erase(iter++);
   }
   if (request->sync_messages_size() != 0) {
     stub_->async()->Update(
@@ -212,19 +212,19 @@ void ServerSyncConnection::HandleLongPollingRequest(grpc::ServerUnaryReactor *re
 
 void ServerSyncConnection::DoSend() {
   // There is no receive request
-  if (unary_reactor_ == nullptr || sending_queue_.empty()) {
+  if (unary_reactor_ == nullptr || sending_buffer_.empty()) {
     return;
   }
   RAY_CHECK(unary_reactor_ != nullptr && response_ != nullptr);
 
   size_t message_bytes = 0;
-  auto iter = sending_queue_.begin();
+  auto iter = sending_buffer_.begin();
   while (message_bytes < RayConfig::instance().max_sync_message_batch_bytes() &&
-         iter != sending_queue_.end()) {
-    message_bytes += (*iter)->sync_message().size();
+         iter != sending_buffer_.end()) {
+    message_bytes += iter->second->sync_message().size();
     // TODO (iycheng): Use arena allocator for optimization
-    response_->add_sync_messages()->CopyFrom(**iter);
-    sending_queue_.erase(iter++);
+    response_->add_sync_messages()->CopyFrom(*iter->second);
+    sending_buffer_.erase(iter++);
   }
 
   if (response_->sync_messages_size() != 0) {
