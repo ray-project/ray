@@ -178,6 +178,7 @@ class Router:
         controller_handle: ActorHandle,
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
+        logger: logging.Logger = default_logger,
     ):
         """Router process incoming queries: assign a replica.
 
@@ -204,7 +205,7 @@ class Router:
                 ): self._replica_set.update_running_replicas,
             },
             call_in_event_loop=event_loop,
-            logger=self._logger,
+            logger=logger,
         )
 
     async def assign_request(

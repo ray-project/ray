@@ -3,6 +3,7 @@ import asyncio
 from importlib import import_module
 import inspect
 import logging
+import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
@@ -27,7 +28,7 @@ from ray.serve.constants import (
 )
 from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import ASGIHTTPSender
-from ray.serve.logging_utils import get_component_logger
+from ray.serve.logging_utils import access_log, get_component_logger
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.utils import parse_import_path, parse_request_item, wrap_to_ray_error
 from ray.serve.version import DeploymentVersion
@@ -372,7 +373,12 @@ class RayServeReplica:
             return sender.build_asgi_response()
         return response
 
-    async def invoke_single(self, request_item: Query) -> Any:
+    async def invoke_single(self, request_item: Query) -> Tuple[Any, bool]:
+        """Executes the provided request on this replica.
+
+        Returns the user-provided output and a boolean indicating if the
+        request succeeded (user code didn't raise an exception).
+        """
         self._logger.debug(
             "Replica {} started executing request {}".format(
                 self.replica_tag, request_item.metadata.request_id
@@ -380,8 +386,8 @@ class RayServeReplica:
         )
         args, kwargs = parse_request_item(request_item)
 
-        start = time.time()
         method_to_call = None
+        success = True
         try:
             runner_method = self.get_runner_method(request_item)
             method_to_call = sync_to_async(runner_method)
@@ -396,8 +402,7 @@ class RayServeReplica:
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()
         except Exception as e:
-            import os
-
+            success = False
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
             function_name = "unknown"
@@ -406,10 +411,7 @@ class RayServeReplica:
             result = wrap_to_ray_error(function_name, e)
             self.error_counter.inc()
 
-        latency_ms = (time.time() - start) * 1000
-        self.processing_latency_tracker.observe(latency_ms)
-
-        return result
+        return result, success
 
     async def reconfigure(self, user_config: Any):
         async with self.rwlock.writer_lock:
@@ -434,21 +436,21 @@ class RayServeReplica:
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         async with self.rwlock.reader_lock:
-            request.tick_enter_replica = time.time()
-            self._logger.debug(
-                "Replica {} received request {}".format(
-                    self.replica_tag, request.metadata.request_id
-                )
-            )
-
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
 
-            result = await self.invoke_single(request)
-            request_time_ms = (time.time() - request.tick_enter_replica) * 1000
-            self._logger.debug(
-                "Replica {} finished request {} in {:.2f}ms".format(
-                    self.replica_tag, request.metadata.request_id, request_time_ms
+            start_time = time.time()
+            result, success = await self.invoke_single(request)
+            latency_ms = (time.time() - start_time) * 1000
+
+            self.processing_latency_tracker.observe(latency_ms)
+
+            self._logger.info(
+                access_log(
+                    method="HANDLE",
+                    route=request.metadata.call_method,
+                    status="OK" if success else "ERROR",
+                    latency_ms=latency_ms,
                 )
             )
 

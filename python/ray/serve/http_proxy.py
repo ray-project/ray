@@ -24,7 +24,7 @@ from ray.serve.http_util import (
 )
 from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.long_poll import LongPollNamespace
-from ray.serve.logging_utils import get_component_logger
+from ray.serve.logging_utils import access_log, get_component_logger
 from ray.serve.long_poll import LongPollClient
 
 default_logger = logging.getLogger(__file__)
@@ -310,8 +310,18 @@ class HTTPProxy:
             scope["path"] = route_path.replace(route_prefix, "", 1)
             scope["root_path"] = root_path + route_prefix
 
+        start_time = time.time()
         status_code = await _send_request_to_handle(
             handle, scope, receive, send, logger=self._logger
+        )
+        latency_ms = (time.time() - start_time) * 1000.0
+        self._logger.info(
+            access_log(
+                method=scope["method"],
+                route=route_prefix,
+                status=str(status_code),
+                latency_ms=latency_ms,
+            )
         )
         if status_code != "200":
             self.request_error_counter.inc(
