@@ -92,7 +92,7 @@ class LabelEncoder(Preprocessor):
     Transforming values not included in the fitted dataset will be encoded as ``None``.
 
     Args:
-        label_column The label column that will be encoded.
+        label_column: The label column that will be encoded.
     """
 
     def __init__(self, label_column: str):

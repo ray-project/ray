@@ -146,49 +146,6 @@ def test_container_option_serialize(runtime_env_class):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
-@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_invalid_conda_env(shutdown_only, runtime_env_class):
-    ray.init()
-
-    @ray.remote
-    def f():
-        pass
-
-    @ray.remote
-    class A:
-        def f(self):
-            pass
-
-    start = time.time()
-    bad_env = runtime_env_class(conda={"dependencies": ["this_doesnt_exist"]})
-    with pytest.raises(
-        RuntimeEnvSetupError,
-        # The actual error message should be included in the exception.
-        match="ResolvePackageNotFound",
-    ):
-        ray.get(f.options(runtime_env=bad_env).remote())
-    first_time = time.time() - start
-
-    # Check that another valid task can run.
-    ray.get(f.remote())
-
-    a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(
-        ray.exceptions.RuntimeEnvSetupError, match="ResolvePackageNotFound"
-    ):
-        ray.get(a.f.remote())
-
-    # The second time this runs it should be faster as the error is cached.
-    start = time.time()
-    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
-        ray.get(f.options(runtime_env=bad_env).remote())
-
-    assert (time.time() - start) < (first_time / 2.0)
-
-
-@pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows."
 )
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
