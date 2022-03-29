@@ -5,6 +5,7 @@ import importlib
 import inspect
 import json
 import logging
+import random
 import sys
 import time
 from typing import Optional
@@ -38,6 +39,9 @@ FunctionExecutionInfo = namedtuple(
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
 logger = logging.getLogger(__name__)
+
+# Timeout for importing a dependency.
+_IMPORT_TIMEOUT = 20
 
 
 def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]):
@@ -371,7 +375,7 @@ class FunctionActorManager:
         else:
             return False
 
-    def _wait_for_function(self, function_descriptor, job_id, timeout=10):
+    def _wait_for_function(self, function_descriptor, job_id):
         """Wait until the function to be executed is present on this worker.
         This method will simply loop until the import thread has imported the
         relevant function. If we spend too long in this loop, that may indicate
@@ -385,39 +389,39 @@ class FunctionActorManager:
                 if this times out.
         """
         start_time = time.time()
-        # Only send the warning once.
-        warning_sent = False
-        while True:
+        retry = False
+        while time.time() - start_time < _IMPORT_TIMEOUT:
             with self.lock:
                 if self._worker.actor_id.is_nil() and (
                     function_descriptor.function_id in self._function_execution_info
                 ):
-                    break
+                    return
                 elif not self._worker.actor_id.is_nil() and (
                     self._worker.actor_id in self._worker.actors
                 ):
-                    break
-            if time.time() - start_time > timeout:
-                warning_message = (
-                    "This worker was asked to execute a function "
-                    f"that has not been registered ({function_descriptor}, "
-                    f"node={self._worker.node_ip_address}, "
-                    f"worker_id={self._worker.worker_id.hex()}, "
-                    f"pid={os.getpid()}). You may have to restart Ray."
-                )
-                if not warning_sent:
-                    logger.error(warning_message)
-                    ray._private.utils.push_error_to_driver(
-                        self._worker,
-                        ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
-                        warning_message,
-                        job_id=job_id,
-                    )
-                warning_sent = True
+                    return
             # Try importing in case the worker did not get notified, or the
-            # importer thread did not run.
+            # importer thread is not running.
+            if retry:
+                time.sleep(random.uniform(1.0, 2.0))
+            else:
+                retry = True
             self._worker.import_thread._do_importing()
-            time.sleep(0.001)
+
+        warning_message = (
+            "This worker was asked to execute a function "
+            f"that has not been registered ({function_descriptor}, "
+            f"node={self._worker.node_ip_address}, "
+            f"worker_id={self._worker.worker_id.hex()}, "
+            f"pid={os.getpid()}). You may have to restart Ray or this job."
+        )
+        ray._private.utils.push_error_to_driver(
+            self._worker,
+            ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
+            warning_message,
+            job_id=job_id,
+        )
+        raise RuntimeError(warning_message)
 
     def _publish_actor_class_to_key(self, key, actor_class_info):
         """Push an actor class definition to Redis.
@@ -517,16 +521,9 @@ class FunctionActorManager:
                 actor_class = self._load_actor_class_from_local(
                     actor_creation_function_descriptor
                 )
-                # If the actor is unable to be loaded
-                # from local, try to load it
-                # from GCS even if load_code_from_local is set True
-                if actor_class is None:
-                    actor_class = self._load_actor_class_from_gcs(
-                        job_id, actor_creation_function_descriptor
-                    )
-
-            else:
-                # Load actor class from GCS.
+            # If the actor is unable to be loaded from local, try to load it
+            # from GCS even if load_code_from_local is set True
+            if actor_class is None:
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor
                 )
@@ -617,20 +614,34 @@ class FunctionActorManager:
         # Import order isn't important across jobs, as we only need to fetch
         # the class for `ray.get_actor()`.
         if job_id.binary() == self._worker.current_job_id.binary():
-            # Wait for the actor class key to have been imported by the
-            # import thread. TODO(rkn): It shouldn't be possible to end
-            # up in an infinite loop here, but we should push an error to
-            # the driver if too much time is spent here.
-            while key not in self.imported_actor_classes:
-                try:
-                    # If we're in the process of deserializing an ActorHandle
-                    # and we hold the function_manager lock, we may be blocking
-                    # the import_thread from loading the actor class. Use wait
-                    # to temporarily yield control to the import thread.
-                    self.cv.wait()
-                except RuntimeError:
-                    # We don't hold the function_manager lock, just sleep
-                    time.sleep(0.001)
+            start_time = time.time()
+            retry = False
+            while time.time() - start_time < _IMPORT_TIMEOUT:
+                if key in self.imported_actor_classes:
+                    break
+                # Try importing in case the worker did not get notified, or the
+                # importer thread is not running.
+                if retry:
+                    time.sleep(random.uniform(1.0, 2.0))
+                else:
+                    retry = True
+                self._worker.import_thread._do_importing()
+            if key not in self.imported_actor_classes:
+                warning_message = (
+                    "This worker was asked to start an actor "
+                    "that has not been registered "
+                    f"({actor_creation_function_descriptor}, "
+                    f"node={self._worker.node_ip_address}, "
+                    f"worker_id={self._worker.worker_id.hex()}, "
+                    f"pid={os.getpid()}). You may have to restart Ray or this job."
+                )
+                ray._private.utils.push_error_to_driver(
+                    self._worker,
+                    ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
+                    warning_message,
+                    job_id=job_id,
+                )
+                raise RuntimeError(warning_message)
 
         # Fetch raw data from GCS.
         vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)
