@@ -39,6 +39,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx_external_toc",
     "sphinx_thebe",
+    "sphinxcontrib.autodoc_pydantic",
 ]
 
 myst_enable_extensions = [
