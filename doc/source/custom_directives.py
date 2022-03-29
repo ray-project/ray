@@ -1,7 +1,7 @@
 import urllib
 import mock
 import sys
-import re
+from preprocess_github_markdown import preprocess_github_markdown_file
 
 # Note: the scipy import has to stay here, it's used implicitly down the line
 import scipy.stats  # noqa: F401
@@ -191,31 +191,6 @@ EXTERNAL_MARKDOWN_FILES = [
 ]
 
 
-def preprocess_markdown_file(path: str):
-    """
-    Preprocesses GitHub Markdown files by:
-        - Uncommenting all ``<!-- -->`` comments in which opening tag is immediately
-          succeded by ``$UNCOMMENT``(eg. ``<!--$UNCOMMENTthis will be uncommented-->``)
-        - Removing text between ``<!--$REMOVE-->`` and ``<!--$END_REMOVE-->``
-
-    This is to enable translation between GitHub Markdown and MyST Markdown used
-    in docs. For more details, see ``doc/README.md``.
-    """
-    with open(path, "r") as f:
-        text = f.read()
-    # $UNCOMMENT
-    text = re.sub(r"<!--\s*\$UNCOMMENT(.*?)(-->)", r"\1", text, flags=re.DOTALL)
-    # $REMOVE
-    text = re.sub(
-        r"(<!--\s*\$REMOVE\s*-->)(.*?)(<!--\s*\$END_REMOVE\s*-->)",
-        r"",
-        text,
-        flags=re.DOTALL,
-    )
-    with open(path, "w") as f:
-        f.write(text)
-
-
 def download_and_preprocess_ecosystem_docs():
     """
     This function downloads markdown readme files for various
@@ -248,4 +223,4 @@ def download_and_preprocess_ecosystem_docs():
 
     for x in EXTERNAL_MARKDOWN_FILES:
         get_file_from_github(*x)
-        preprocess_markdown_file(x[-1])
+        preprocess_github_markdown_file(x[-1])
