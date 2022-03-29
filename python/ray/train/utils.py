@@ -44,8 +44,7 @@ def check_for_failure(remote_values: List[ObjectRef]) -> bool:
     """
     unfinished = remote_values.copy()
 
-    at_least_one_failed_worker = False
-    while len(unfinished) > 0 and not at_least_one_failed_worker:
+    while len(unfinished) > 0:
         finished, unfinished = ray.wait(unfinished)
 
         # If a failure occurs the ObjectRef will be marked as finished.
@@ -59,9 +58,9 @@ def check_for_failure(remote_values: List[ObjectRef]) -> bool:
                 logger.exception(str(exc))
                 failed_actor_rank = remote_values.index(object_ref)
                 logger.info(f"Worker {failed_actor_rank} has failed.")
-                at_least_one_failed_worker = True
+                return False
 
-    return not at_least_one_failed_worker
+    return True
 
 
 def get_address_and_port() -> Tuple[str, int]:
