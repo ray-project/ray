@@ -41,7 +41,7 @@ class ActorTaskCaller {
     return *this;
   }
 
-  ActorTaskCaller &SetResources(std::unordered_map<std::string, double> resources) {
+  ActorTaskCaller &SetResources(absl::flat_hash_map<std::string, double> resources) {
     task_options_.resources = std::move(resources);
     return *this;
   }

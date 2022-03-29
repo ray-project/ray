@@ -87,7 +87,7 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
   return task_args;
 }
 
-inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
+inline absl::flat_hash_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
   return JavaMapToNativeMap<std::string, double>(
       env,
@@ -119,7 +119,7 @@ inline std::pair<PlacementGroupID, int64_t> ToPlacementGroupOptions(JNIEnv *env,
 }
 
 inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   std::string name = "";
   std::string concurrency_group_name = "";
   std::string serialzied_runtime_env_info = "";
@@ -160,7 +160,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::string name = "";
   std::optional<bool> is_detached = std::nullopt;
   int64_t max_restarts = 0;
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
@@ -314,8 +314,8 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
       java_obj_strategy, java_placement_group_creation_options_strategy_value);
   jobject java_bundles = env->GetObjectField(
       placementGroupCreationOptions, java_placement_group_creation_options_bundles);
-  std::vector<std::unordered_map<std::string, double>> bundles;
-  JavaListToNativeVector<std::unordered_map<std::string, double>>(
+  std::vector<absl::flat_hash_map<std::string, double>> bundles;
+  JavaListToNativeVector<absl::flat_hash_map<std::string, double>>(
       env, java_bundles, &bundles, [](JNIEnv *env, jobject java_bundle) {
         return JavaMapToNativeMap<std::string, double>(
             env,

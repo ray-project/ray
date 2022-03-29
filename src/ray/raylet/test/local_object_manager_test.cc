@@ -101,7 +101,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
   MOCK_CONST_METHOD0(DebugString, std::string());
 
   rpc::ChannelType channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
-  std::unordered_map<WorkerID,
+  absl::flat_hash_map<WorkerID,
                      std::deque<std::pair<ObjectID, pubsub::SubscriptionItemCallback>>>
       callbacks;
 };

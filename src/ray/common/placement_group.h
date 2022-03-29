@@ -79,7 +79,7 @@ class PlacementGroupSpecBuilder {
   PlacementGroupSpecBuilder &SetPlacementGroupSpec(
       const PlacementGroupID &placement_group_id,
       std::string name,
-      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<absl::flat_hash_map<std::string, double>> &bundles,
       const rpc::PlacementStrategy strategy,
       const bool is_detached,
       const JobID &creator_job_id,

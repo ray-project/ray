@@ -19,7 +19,7 @@
 namespace ray {
 namespace internal {
 
-inline void CheckTaskOptions(const std::unordered_map<std::string, double> &resources) {
+inline void CheckTaskOptions(const absl::flat_hash_map<std::string, double> &resources) {
   for (auto &pair : resources) {
     if (pair.first.empty() || pair.second == 0) {
       throw RayException("Resource values should be positive. Specified resource: " +
@@ -57,7 +57,7 @@ enum PlacementGroupState {
 
 struct PlacementGroupCreationOptions {
   std::string name;
-  std::vector<std::unordered_map<std::string, double>> bundles;
+  std::vector<absl::flat_hash_map<std::string, double>> bundles;
   PlacementStrategy strategy;
 };
 
@@ -70,7 +70,7 @@ class PlacementGroup {
       : id_(std::move(id)), options_(std::move(options)), state_(state) {}
   std::string GetID() const { return id_; }
   std::string GetName() { return options_.name; }
-  std::vector<std::unordered_map<std::string, double>> GetBundles() {
+  std::vector<absl::flat_hash_map<std::string, double>> GetBundles() {
     return options_.bundles;
   }
   ray::PlacementGroupState GetState() { return state_; }
@@ -92,14 +92,14 @@ namespace internal {
 
 struct CallOptions {
   std::string name;
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   PlacementGroup group;
   int bundle_index;
 };
 
 struct ActorCreationOptions {
   std::string name;
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   int max_restarts = 0;
   int max_concurrency = 1;
   PlacementGroup group;

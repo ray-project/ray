@@ -131,7 +131,7 @@ TEST(RayApiTest, LogTest) {
 }
 
 TEST(RayApiTest, TaskOptionsCheckTest) {
-  std::unordered_map<std::string, double> map;
+  absl::flat_hash_map<std::string, double> map;
   map.emplace("", 1);
   EXPECT_THROW(ray::internal::CheckTaskOptions(map), ray::internal::RayException);
   map.clear();
@@ -330,7 +330,7 @@ TEST(RayApiTest, CompareWithFuture) {
 }
 
 TEST(RayApiTest, CreateAndRemovePlacementGroup) {
-  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
+  std::vector<absl::flat_hash_map<std::string, double>> bundles{{{"CPU", 1}}};
   ray::PlacementGroupCreationOptions options1{
       "first_placement_group", bundles, ray::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options1);

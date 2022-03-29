@@ -229,8 +229,8 @@ const std::string ResourceSet::ToString() const {
   }
 }
 
-std::unordered_map<std::string, double> ResourceSet::GetResourceUnorderedMap() const {
-  std::unordered_map<std::string, double> result;
+absl::flat_hash_map<std::string, double> ResourceSet::GetResourceUnorderedMap() const {
+  absl::flat_hash_map<std::string, double> result;
   for (const auto &[name, quantity] : resource_capacity_) {
     result[name] = quantity.Double();
   }

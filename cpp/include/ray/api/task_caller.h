@@ -34,7 +34,7 @@ class TaskCaller {
     return *this;
   }
 
-  TaskCaller &SetResources(std::unordered_map<std::string, double> resources) {
+  TaskCaller &SetResources(absl::flat_hash_map<std::string, double> resources) {
     task_options_.resources = std::move(resources);
     return *this;
   }

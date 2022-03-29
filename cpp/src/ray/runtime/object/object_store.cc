@@ -43,7 +43,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> ObjectStore::Get(
   return GetRaw(ids, timeout_ms);
 }
 
-std::unordered_map<ObjectID, std::pair<size_t, size_t>>
+absl::flat_hash_map<ObjectID, std::pair<size_t, size_t>>
 ObjectStore::GetAllReferenceCounts() const {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   return core_worker.GetAllReferenceCounts();

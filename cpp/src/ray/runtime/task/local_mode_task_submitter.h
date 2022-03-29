@@ -50,18 +50,18 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
  private:
   ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
 
-  std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
+  absl::flat_hash_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
 
   absl::Mutex actor_contexts_mutex_;
 
-  std::unordered_map<std::string, ActorID> named_actors_ GUARDED_BY(named_actors_mutex_);
+  absl::flat_hash_map<std::string, ActorID> named_actors_ GUARDED_BY(named_actors_mutex_);
   mutable absl::Mutex named_actors_mutex_;
 
   std::unique_ptr<boost::asio::thread_pool> thread_pool_;
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
 
-  std::unordered_map<std::string, ray::PlacementGroup> placement_groups_;
+  absl::flat_hash_map<std::string, ray::PlacementGroup> placement_groups_;
 };
 }  // namespace internal
 }  // namespace ray

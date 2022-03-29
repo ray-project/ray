@@ -143,7 +143,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 }
 
 RayTask CreateTask(
-    const std::unordered_map<std::string, double> &required_resources,
+    const absl::flat_hash_map<std::string, double> &required_resources,
     int num_args = 0,
     std::vector<ObjectID> args = {},
     const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr) {
@@ -494,7 +494,7 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
    */
 
   // Use the same required_resources for all tasks so they end up in the same queue.
-  const std::unordered_map<std::string, double> required_resources = {
+  const absl::flat_hash_map<std::string, double> required_resources = {
       {ray::kCPU_ResourceLabel, 4}};
 
   std::string serialized_runtime_env_A = "mock_env_A";

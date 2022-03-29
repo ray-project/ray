@@ -1,3 +1,4 @@
+from ray.includes.absl cimport flat_hash_map
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
     CFunctionDescriptorBuilder,
@@ -18,7 +19,7 @@ import ray.ray_constants as ray_constants
 
 
 ctypedef object (*FunctionDescriptor_from_cpp)(const CFunctionDescriptor &)
-cdef unordered_map[int, FunctionDescriptor_from_cpp] \
+cdef flat_hash_map[int, FunctionDescriptor_from_cpp] \
     FunctionDescriptor_constructor_map
 cdef CFunctionDescriptorToPython(CFunctionDescriptor function_descriptor):
     cdef int function_descriptor_type = <int>function_descriptor.get().Type()

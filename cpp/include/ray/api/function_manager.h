@@ -25,7 +25,8 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
-#include <unordered_map>
+
+#include "absl/container/flat_hash_map.h"
 
 namespace ray {
 namespace internal {
@@ -52,11 +53,11 @@ using ArgsBuffer = msgpack::sbuffer;
 using ArgsBufferList = std::vector<ArgsBuffer>;
 
 using RemoteFunction = std::function<msgpack::sbuffer(const ArgsBufferList &)>;
-using RemoteFunctionMap_t = std::unordered_map<std::string, RemoteFunction>;
+using RemoteFunctionMap_t = absl::flat_hash_map<std::string, RemoteFunction>;
 
 using RemoteMemberFunction =
     std::function<msgpack::sbuffer(msgpack::sbuffer *, const ArgsBufferList &)>;
-using RemoteMemberFunctionMap_t = std::unordered_map<std::string, RemoteMemberFunction>;
+using RemoteMemberFunctionMap_t = absl::flat_hash_map<std::string, RemoteMemberFunction>;
 
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
 /// do type erase.
@@ -328,7 +329,7 @@ class FunctionManager {
 
   RemoteFunctionMap_t map_invokers_;
   RemoteMemberFunctionMap_t map_mem_func_invokers_;
-  std::unordered_map<std::string, std::string> func_ptr_to_key_map_;
+  absl::flat_hash_map<std::string, std::string> func_ptr_to_key_map_;
   std::map<std::pair<std::string, std::string>, std::string> mem_func_to_key_map_;
 };
 }  // namespace internal

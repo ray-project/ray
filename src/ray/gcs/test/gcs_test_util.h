@@ -36,10 +36,10 @@ struct Mocker {
       const std::string &name,
       const std::string &ray_namespace,
       const rpc::Address &owner_address,
-      std::unordered_map<std::string, double> required_resources =
-          std::unordered_map<std::string, double>(),
-      std::unordered_map<std::string, double> required_placement_resources =
-          std::unordered_map<std::string, double>()) {
+      absl::flat_hash_map<std::string, double> required_resources =
+          absl::flat_hash_map<std::string, double>(),
+      absl::flat_hash_map<std::string, double> required_placement_resources =
+          absl::flat_hash_map<std::string, double>()) {
     TaskSpecBuilder builder;
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
@@ -148,7 +148,7 @@ struct Mocker {
 
   static PlacementGroupSpecification GenPlacementGroupCreation(
       const std::string &name,
-      std::vector<std::unordered_map<std::string, double>> &bundles,
+      std::vector<absl::flat_hash_map<std::string, double>> &bundles,
       rpc::PlacementStrategy strategy,
       const JobID &job_id,
       const ActorID &actor_id) {
@@ -174,8 +174,8 @@ struct Mocker {
       const JobID job_id = JobID::FromInt(1),
       const ActorID &actor_id = ActorID::Nil()) {
     rpc::CreatePlacementGroupRequest request;
-    std::vector<std::unordered_map<std::string, double>> bundles;
-    std::unordered_map<std::string, double> bundle;
+    std::vector<absl::flat_hash_map<std::string, double>> bundles;
+    absl::flat_hash_map<std::string, double> bundle;
     bundle["CPU"] = cpu_num;
     for (int index = 0; index < bundles_count; ++index) {
       bundles.push_back(bundle);

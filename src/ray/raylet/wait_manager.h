@@ -91,10 +91,10 @@ class WaitManager {
   const std::function<void(std::function<void()>, int64_t delay_ms)> delay_executor_;
 
   /// A set of active wait requests.
-  std::unordered_map<uint64_t, WaitRequest> wait_requests_;
+  absl::flat_hash_map<uint64_t, WaitRequest> wait_requests_;
 
   /// Map from object to wait requests that are waiting for this object.
-  std::unordered_map<ObjectID, std::unordered_set<uint64_t>> object_to_wait_requests_;
+  absl::flat_hash_map<ObjectID, std::unordered_set<uint64_t>> object_to_wait_requests_;
 
   uint64_t next_wait_id_;
 

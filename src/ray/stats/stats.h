@@ -16,7 +16,6 @@
 
 #include <exception>
 #include <string>
-#include <unordered_map>
 
 #include "absl/synchronization/mutex.h"
 #include "opencensus/stats/internal/delta_producer.h"

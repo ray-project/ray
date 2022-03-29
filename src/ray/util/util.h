@@ -22,7 +22,6 @@
 #include <sstream>
 #include <string>
 #include <thread>
-#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/random/random.h"
@@ -193,7 +192,7 @@ struct EnumClassHash {
   }
 };
 
-/// unordered_map for enum class type.
+/// flat_hash_map for enum class type.
 template <typename Key, typename T>
 using EnumUnorderedMap = absl::flat_hash_map<Key, T, EnumClassHash>;
 

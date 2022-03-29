@@ -786,7 +786,7 @@ void CoreWorker::InternalHeartbeat() {
   }
 }
 
-std::unordered_map<ObjectID, std::pair<size_t, size_t>>
+absl::flat_hash_map<ObjectID, std::pair<size_t, size_t>>
 CoreWorker::GetAllReferenceCounts() const {
   auto counts = reference_counter_->GetAllReferenceCounts();
   std::vector<ObjectID> actor_handle_ids = actor_manager_->GetActorHandleIDsFromHandles();
@@ -1433,8 +1433,8 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
       });
 }
 
-std::unordered_map<std::string, double> AddPlacementGroupConstraint(
-    const std::unordered_map<std::string, double> &resources,
+absl::flat_hash_map<std::string, double> AddPlacementGroupConstraint(
+    const absl::flat_hash_map<std::string, double> &resources,
     const rpc::SchedulingStrategy &scheduling_strategy) {
   auto placement_group_id = PlacementGroupID::Nil();
   auto bundle_index = -1;
@@ -1449,7 +1449,7 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   if (bundle_index < 0) {
     RAY_CHECK(bundle_index == -1) << "Invalid bundle index " << bundle_index;
   }
-  std::unordered_map<std::string, double> new_resources;
+  absl::flat_hash_map<std::string, double> new_resources;
   if (placement_group_id != PlacementGroupID::Nil()) {
     for (auto iter = resources.begin(); iter != resources.end(); iter++) {
       auto new_name = FormatPlacementGroupResource(iter->first, placement_group_id, -1);
@@ -1616,8 +1616,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args,
     uint64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources,
-    const std::unordered_map<std::string, double> &required_placement_resources,
+    const absl::flat_hash_map<std::string, double> &required_resources,
+    const absl::flat_hash_map<std::string, double> &required_placement_resources,
     const std::string &debugger_breakpoint,
     int64_t depth,
     const std::string &serialized_runtime_env_info,
@@ -1666,7 +1666,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto constrained_resources =
       AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
 
-  const std::unordered_map<std::string, double> required_resources;
+  const absl::flat_hash_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
@@ -1963,7 +1963,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                            worker_context_.GetCurrentInternalTaskId(),
                            next_task_index,
                            actor_handle->GetActorID());
-  const std::unordered_map<std::string, double> required_resources;
+  const absl::flat_hash_map<std::string, double> required_resources;
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
@@ -3380,10 +3380,10 @@ const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 
-std::unordered_map<std::string, std::vector<uint64_t>> CoreWorker::GetActorCallStats()
+absl::flat_hash_map<std::string, std::vector<uint64_t>> CoreWorker::GetActorCallStats()
     const {
   absl::MutexLock l(&task_counter_.tasks_counter_mutex_);
-  std::unordered_map<std::string, std::vector<uint64_t>> total_counts;
+  absl::flat_hash_map<std::string, std::vector<uint64_t>> total_counts;
 
   for (const auto &count : task_counter_.pending_tasks_counter_map_) {
     total_counts[count.first].resize(3, 0);

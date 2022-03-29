@@ -15,7 +15,6 @@
 #pragma once
 
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -162,7 +161,7 @@ class ResourceSet {
 
   /// Return the resources in unordered map. This is used for some languate frontend that
   /// requires unordered map instead of flat hash map.
-  std::unordered_map<std::string, double> GetResourceUnorderedMap() const;
+  absl::flat_hash_map<std::string, double> GetResourceUnorderedMap() const;
 
   /// \brief Return a map of the resource and size in FixedPoint. Note,
   /// size is in kResourceConversionFactor of a unit.

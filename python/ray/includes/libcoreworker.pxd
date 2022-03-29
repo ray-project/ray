@@ -7,10 +7,10 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
 from libcpp.string cimport string as c_string
-from libcpp.unordered_map cimport unordered_map
 from libcpp.utility cimport pair
 from libcpp.vector cimport vector as c_vector
 
+from ray.includes.absl cimport flat_hash_map
 from ray.includes.unique_ids cimport (
     CActorID,
     CNodeID,
@@ -51,7 +51,7 @@ from ray.includes.optional cimport (
     optional
 )
 
-ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
+ctypedef flat_hash_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
 
 ctypedef void (*ray_callback_function) \
@@ -239,7 +239,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
 
-        unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
+        flat_hash_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
 
         void GetAsync(const CObjectID &object_id,
                       ray_callback_function success_callback,
@@ -259,7 +259,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
-        unordered_map[c_string, c_vector[uint64_t]] GetActorCallStats() const
+        flat_hash_map[c_string, c_vector[uint64_t]] GetActorCallStats() const
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
@@ -282,7 +282,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             CTaskType task_type,
             const c_string name,
             const CRayFunction &ray_function,
-            const unordered_map[c_string, double] &resources,
+            const flat_hash_map[c_string, double] &resources,
             const c_vector[shared_ptr[CRayObject]] &args,
             const c_vector[CObjectReference] &arg_refs,
             const c_vector[CObjectID] &return_ids,

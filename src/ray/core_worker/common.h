@@ -58,7 +58,7 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(std::string name,
               int num_returns,
-              std::unordered_map<std::string, double> &resources,
+              absl::flat_hash_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
               const std::string &serialized_runtime_env_info = "{}")
       : name(name),
@@ -72,7 +72,7 @@ struct TaskOptions {
   /// Number of returns of this task.
   int num_returns = 1;
   /// Resources required by this task.
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   /// The name of the concurrency group in which this task will be executed.
   std::string concurrency_group_name;
   /// Runtime Env Info used by this task. It includes Runtime Env and some
@@ -84,21 +84,22 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(int64_t max_restarts,
-                       int64_t max_task_retries,
-                       int max_concurrency,
-                       const std::unordered_map<std::string, double> &resources,
-                       const std::unordered_map<std::string, double> &placement_resources,
-                       const std::vector<std::string> &dynamic_worker_options,
-                       std::optional<bool> is_detached,
-                       std::string &name,
-                       std::string &ray_namespace,
-                       bool is_asyncio,
-                       const rpc::SchedulingStrategy &scheduling_strategy,
-                       const std::string &serialized_runtime_env_info = "{}",
-                       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-                       bool execute_out_of_order = false,
-                       int32_t max_pending_calls = -1)
+  ActorCreationOptions(
+      int64_t max_restarts,
+      int64_t max_task_retries,
+      int max_concurrency,
+      const absl::flat_hash_map<std::string, double> &resources,
+      const absl::flat_hash_map<std::string, double> &placement_resources,
+      const std::vector<std::string> &dynamic_worker_options,
+      std::optional<bool> is_detached,
+      std::string &name,
+      std::string &ray_namespace,
+      bool is_asyncio,
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      const std::string &serialized_runtime_env_info = "{}",
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+      bool execute_out_of_order = false,
+      int32_t max_pending_calls = -1)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -126,9 +127,9 @@ struct ActorCreationOptions {
   /// The max number of concurrent tasks to run on this direct call actor.
   const int max_concurrency = 1;
   /// Resources required by the whole lifetime of this actor.
-  const std::unordered_map<std::string, double> resources;
+  const absl::flat_hash_map<std::string, double> resources;
   /// Resources required to place this actor.
-  const std::unordered_map<std::string, double> placement_resources;
+  const absl::flat_hash_map<std::string, double> placement_resources;
   /// The dynamic options used in the worker command when starting a worker process for
   /// an actor creation task.
   const std::vector<std::string> dynamic_worker_options;
@@ -166,7 +167,7 @@ struct PlacementGroupCreationOptions {
   PlacementGroupCreationOptions(
       std::string name,
       PlacementStrategy strategy,
-      std::vector<std::unordered_map<std::string, double>> bundles,
+      std::vector<absl::flat_hash_map<std::string, double>> bundles,
       bool is_detached)
       : name(std::move(name)),
         strategy(strategy),
@@ -178,7 +179,7 @@ struct PlacementGroupCreationOptions {
   /// The strategy to place the bundle in Placement Group.
   const PlacementStrategy strategy = rpc::PACK;
   /// The resource bundles in this placement group.
-  const std::vector<std::unordered_map<std::string, double>> bundles;
+  const std::vector<absl::flat_hash_map<std::string, double>> bundles;
   /// Whether to keep the placement group persistent after its creator dead.
   const bool is_detached = false;
 };

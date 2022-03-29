@@ -173,7 +173,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
-  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
+  absl::flat_hash_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const;
 
   /// Get the RPC address of this worker.
   ///
@@ -809,10 +809,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool IsExiting() const;
 
   /// Retrieve the current statistics about tasks being received and executing.
-  /// \return an unordered_map mapping function name to list of (num_received,
+  /// \return a flat_hash_map map mapping function name to list of (num_received,
   /// num_executing, num_executed). It is a std map instead of absl due to its
   /// interface with language bindings.
-  std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
+  absl::flat_hash_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
   static rpc::RuntimeEnv OverrideRuntimeEnv(
@@ -842,8 +842,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args,
       uint64_t num_returns,
-      const std::unordered_map<std::string, double> &required_resources,
-      const std::unordered_map<std::string, double> &required_placement_resources,
+      const absl::flat_hash_map<std::string, double> &required_resources,
+      const absl::flat_hash_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
@@ -1166,7 +1166,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskSpecification current_task_ GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
-  std::unordered_map<std::string, std::string> webui_display_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, std::string> webui_display_ GUARDED_BY(mutex_);
 
   /// Actor title that consists of class name, args, kwargs for actor construction.
   std::string actor_title_ GUARDED_BY(mutex_);

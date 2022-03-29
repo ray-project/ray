@@ -1,5 +1,6 @@
+from ray.includes.absl cimport flat_hash_map
+
 from libcpp.string cimport string as c_string
-from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 cdef extern from "opencensus/tags/tag_key.h" nogil:
@@ -17,7 +18,7 @@ cdef extern from "ray/stats/metric.h" nogil:
         c_string GetName() const
         void Record(double value)
         void Record(double value,
-                    unordered_map[c_string, c_string] &tags)
+                    flat_hash_map[c_string, c_string] &tags)
 
     cdef cppclass CGauge "ray::stats::Gauge":
         CGauge(const c_string &name,

@@ -1,3 +1,4 @@
+from ray.includes.absl cimport flat_hash_map
 from ray.includes.metric cimport (
     CCount,
     CGauge,
@@ -8,7 +9,6 @@ from ray.includes.metric cimport (
 )
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string as c_string
-from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 cdef class TagKey:
@@ -45,7 +45,7 @@ cdef class Metric:
             value (double): metric name.
             tags (dict): default none.
         """
-        cdef unordered_map[c_string, c_string] c_tags
+        cdef flat_hash_map[c_string, c_string] c_tags
         cdef double c_value
         # Default tags will be exported if it's empty map.
         if tags:

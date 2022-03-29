@@ -49,6 +49,7 @@ from libcpp.pair cimport pair as c_pair
 
 from cython.operator import dereference, postincrement
 
+from ray.includes.absl cimport flat_hash_map
 from ray.includes.common cimport (
     CBuffer,
     CAddress,
@@ -171,6 +172,14 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     else:
         raise RaySystemError(message)
+
+cdef flat_hash_map[c_string, double] UnorderedMapToFlatHashMap(unordered_map[c_string, double] u_map):
+    cdef:
+        flat_hash_map[c_string, double] result
+    for pair in u_map:
+        result[pair.first] = pair.second
+    return result
+
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
@@ -311,11 +320,7 @@ cdef class Language:
 
 cdef int prepare_resources(
         dict resource_dict,
-        unordered_map[c_string, double] *resource_map) except -1:
-    cdef:
-        unordered_map[c_string, double] out
-        c_string resource_name
-
+        flat_hash_map[c_string, double] *resource_map) except -1:
     if resource_dict is None:
         raise ValueError("Must provide resource map.")
 
@@ -482,7 +487,7 @@ cdef execute_task(
         CTaskType task_type,
         const c_string name,
         const CRayFunction &ray_function,
-        const unordered_map[c_string, double] &c_resources,
+        const flat_hash_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectReference] &c_arg_refs,
         const c_vector[CObjectID] &c_return_ids,
@@ -779,7 +784,7 @@ cdef CRayStatus task_execution_handler(
         CTaskType task_type,
         const c_string task_name,
         const CRayFunction &ray_function,
-        const unordered_map[c_string, double] &c_resources,
+        const flat_hash_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectReference] &c_arg_refs,
         const c_vector[CObjectID] &c_return_ids,
@@ -1498,7 +1503,7 @@ cdef class CoreWorker:
                     c_string serialized_runtime_env_info,
                     ):
         cdef:
-            unordered_map[c_string, double] c_resources
+            flat_hash_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectReference] return_refs
@@ -1564,8 +1569,8 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[c_string] dynamic_worker_options
-            unordered_map[c_string, double] c_resources
-            unordered_map[c_string, double] c_placement_resources
+            flat_hash_map[c_string, double] c_resources
+            flat_hash_map[c_string, double] c_placement_resources
             CActorID c_actor_id
             c_vector[CConcurrencyGroup] c_concurrency_groups
             CSchedulingStrategy c_scheduling_strategy
@@ -1631,6 +1636,7 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
+            c_vector[flat_hash_map[c_string, double]] c_bundles
 
         if strategy == b"PACK":
             c_strategy = PLACEMENT_STRATEGY_PACK
@@ -1644,6 +1650,9 @@ cdef class CoreWorker:
             else:
                 raise TypeError(strategy)
 
+        for bundle in bundles:
+            c_bundles.push_back(UnorderedMapToFlatHashMap(bundle))
+
         with nogil:
             check_status(
                         CCoreWorkerProcess.GetCoreWorker().
@@ -1651,7 +1660,7 @@ cdef class CoreWorker:
                             CPlacementGroupCreationOptions(
                                 name,
                                 c_strategy,
-                                bundles,
+                                c_bundles,
                                 is_detached
                             ),
                             &c_placement_group_id))
@@ -1695,7 +1704,7 @@ cdef class CoreWorker:
 
         cdef:
             CActorID c_actor_id = actor_id.native()
-            unordered_map[c_string, double] c_resources
+            flat_hash_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
             optional[c_vector[CObjectReference]] return_refs
@@ -1775,7 +1784,7 @@ cdef class CoreWorker:
         cdef:
             ResourceMappingType resource_mapping = (
                 CCoreWorkerProcess.GetCoreWorker().GetResourceIDs())
-            unordered_map[
+            flat_hash_map[
                 c_string, c_vector[pair[int64_t, double]]
             ].iterator iterator = resource_mapping.begin()
             c_vector[pair[int64_t, double]] c_value
@@ -2175,8 +2184,8 @@ cdef class CoreWorker:
 
     def get_all_reference_counts(self):
         cdef:
-            unordered_map[CObjectID, pair[size_t, size_t]] c_ref_counts
-            unordered_map[CObjectID, pair[size_t, size_t]].iterator it
+            flat_hash_map[CObjectID, pair[size_t, size_t]] c_ref_counts
+            flat_hash_map[CObjectID, pair[size_t, size_t]].iterator it
 
         c_ref_counts = (
             CCoreWorkerProcess.GetCoreWorker().GetAllReferenceCounts())
@@ -2194,7 +2203,7 @@ cdef class CoreWorker:
 
     def get_actor_call_stats(self):
         cdef:
-            unordered_map[c_string, c_vector[uint64_t]] c_tasks_count
+            flat_hash_map[c_string, c_vector[uint64_t]] c_tasks_count
 
         c_tasks_count = (
             CCoreWorkerProcess.GetCoreWorker().GetActorCallStats())

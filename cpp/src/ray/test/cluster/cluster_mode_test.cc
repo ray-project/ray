@@ -314,7 +314,7 @@ TEST(RayClusterModeTest, GetAllNodeInfoTest) {
 }
 
 bool CheckRefCount(
-    std::unordered_map<ray::ObjectID, std::pair<size_t, size_t>> expected) {
+    absl::flat_hash_map<ray::ObjectID, std::pair<size_t, size_t>> expected) {
   auto object_store = std::make_unique<ray::internal::NativeObjectStore>();
   auto map = object_store->GetAllReferenceCounts();
   return expected == map;
@@ -367,7 +367,7 @@ TEST(RayClusterModeTest, GetActorTest) {
 }
 
 ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
-  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
+  std::vector<absl::flat_hash_map<std::string, double>> bundles{{{"CPU", 1}}};
 
   ray::PlacementGroupCreationOptions options{name, bundles, ray::PlacementStrategy::PACK};
   return ray::CreatePlacementGroup(options);
@@ -399,7 +399,7 @@ TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
 }
 
 TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
-  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 10000}}};
+  std::vector<absl::flat_hash_map<std::string, double>> bundles{{{"CPU", 10000}}};
 
   ray::PlacementGroupCreationOptions options{
       "first_placement_group", bundles, ray::PlacementStrategy::PACK};

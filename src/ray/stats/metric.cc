@@ -119,7 +119,7 @@ void Metric::Record(double value, const TagsType &tags) {
 }
 
 void Metric::Record(double value,
-                    const std::unordered_map<std::string, std::string> &tags) {
+                    const absl::flat_hash_map<std::string, std::string> &tags) {
   TagsType tags_pair_vec;
   std::for_each(
       tags.begin(),

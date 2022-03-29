@@ -126,7 +126,7 @@ Status TaskExecutor::ExecuteTask(
     ray::TaskType task_type,
     const std::string task_name,
     const RayFunction &ray_function,
-    const std::unordered_map<std::string, double> &required_resources,
+    const absl::flat_hash_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
     const std::vector<rpc::ObjectReference> &arg_refs,
     const std::vector<ObjectID> &return_ids,
@@ -261,7 +261,7 @@ void TaskExecutor::Invoke(
     const TaskSpecification &task_spec,
     std::shared_ptr<msgpack::sbuffer> actor,
     AbstractRayRuntime *runtime,
-    std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
+    absl::flat_hash_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
   ArgsBufferList args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {

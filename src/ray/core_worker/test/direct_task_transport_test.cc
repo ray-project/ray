@@ -30,7 +30,7 @@ namespace core {
 // overhead for the very simple timeout logic we currently have.
 int64_t kLongTimeout = 1024 * 1024 * 1024;
 
-TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
+TaskSpecification BuildTaskSpec(const absl::flat_hash_map<std::string, double> &resources,
                                 const FunctionDescriptor &function_descriptor,
                                 int64_t depth = 0,
                                 std::string serialized_runtime_env = "") {
@@ -533,7 +533,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
 }
 
 TaskSpecification BuildEmptyTaskSpec() {
-  std::unordered_map<std::string, double> empty_resources;
+  absl::flat_hash_map<std::string, double> empty_resources;
   FunctionDescriptor empty_descriptor =
       FunctionDescriptorBuilder::BuildPython("", "", "", "");
   return BuildTaskSpec(empty_resources, empty_descriptor);
@@ -1592,8 +1592,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
 
-  std::unordered_map<std::string, double> resources1({{"a", 1.0}});
-  std::unordered_map<std::string, double> resources2({{"b", 2.0}});
+  absl::flat_hash_map<std::string, double> resources1({{"a", 1.0}});
+  absl::flat_hash_map<std::string, double> resources2({{"b", 2.0}});
   FunctionDescriptor descriptor1 =
       FunctionDescriptorBuilder::BuildPython("a", "", "", "");
   FunctionDescriptor descriptor2 =
@@ -1698,8 +1698,8 @@ TEST(DirectTaskTransportTest, TestBacklogReport) {
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
-  std::unordered_map<std::string, double> resources1({{"a", 1.0}});
-  std::unordered_map<std::string, double> resources2({{"b", 2.0}});
+  absl::flat_hash_map<std::string, double> resources1({{"a", 1.0}});
+  absl::flat_hash_map<std::string, double> resources2({{"b", 2.0}});
   FunctionDescriptor descriptor1 =
       FunctionDescriptorBuilder::BuildPython("a", "", "", "");
   FunctionDescriptor descriptor2 =

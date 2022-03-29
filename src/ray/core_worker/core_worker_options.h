@@ -36,7 +36,7 @@ struct CoreWorkerOptions {
       TaskType task_type,
       const std::string task_name,
       const RayFunction &ray_function,
-      const std::unordered_map<std::string, double> &required_resources,
+      const absl::flat_hash_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<rpc::ObjectReference> &arg_refs,
       const std::vector<ObjectID> &return_ids,

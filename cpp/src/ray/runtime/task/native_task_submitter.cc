@@ -100,7 +100,7 @@ ObjectID NativeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
 ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
                                          const ActorCreationOptions &create_options) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   std::string name = create_options.name;
   std::string ray_namespace = "";
   BundleID bundle_id = GetBundleID(create_options);

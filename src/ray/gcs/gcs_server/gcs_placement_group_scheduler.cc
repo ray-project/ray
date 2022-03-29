@@ -23,11 +23,11 @@ using ray::BundleSpecification;
 using ray::NodeID;
 
 // Get a set of bundle specifications grouped by the node.
-std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
 GetUnplacedBundlesPerNode(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const ray::gcs::ScheduleMap &selected_nodes) {
-  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       node_to_bundles;
   for (const auto &bundle : bundles) {
     const auto &bundle_id = bundle->BundleId();
@@ -366,7 +366,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const PGSchedulingSuccessfulCallback &schedule_success_handler) {
   const std::shared_ptr<BundleLocations> &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
-  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+  absl::flat_hash_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       bundle_locations_per_node;
   for (const auto &bundle_location : *prepared_bundle_locations) {
     const auto &node_id = bundle_location.second.first;

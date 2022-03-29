@@ -232,7 +232,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+    absl::flat_hash_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
         aggregate_load;
     for (const auto &usage : node_resource_usages_) {
       // Aggregate the load reported by each raylet.

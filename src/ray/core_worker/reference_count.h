@@ -291,7 +291,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
-  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const
+  absl::flat_hash_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const
       LOCKS_EXCLUDED(mutex_);
 
   /// Populate a table with ObjectIDs that we were or are still borrowing.

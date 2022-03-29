@@ -39,8 +39,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
       invocation.remote_function_holder.function_name);
   rpc::Address address;
-  std::unordered_map<std::string, double> required_resources;
-  std::unordered_map<std::string, double> required_placement_resources;
+  absl::flat_hash_map<std::string, double> required_resources;
+  absl::flat_hash_map<std::string, double> required_placement_resources;
   std::string task_id_data(TaskID::Size(), 0);
   FillRandom(&task_id_data);
   auto task_id = TaskID::FromBinary(task_id_data);

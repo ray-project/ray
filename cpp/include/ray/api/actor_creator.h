@@ -39,7 +39,7 @@ class ActorCreator {
     return *this;
   }
 
-  ActorCreator &SetResources(std::unordered_map<std::string, double> resources) {
+  ActorCreator &SetResources(absl::flat_hash_map<std::string, double> resources) {
     create_options_.resources = std::move(resources);
     return *this;
   }

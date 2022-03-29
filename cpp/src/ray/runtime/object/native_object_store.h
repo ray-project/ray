@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <unordered_map>
-
 #include "../native_ray_runtime.h"
 #include "object_store.h"
 

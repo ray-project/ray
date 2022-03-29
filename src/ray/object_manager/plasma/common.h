@@ -21,7 +21,6 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"

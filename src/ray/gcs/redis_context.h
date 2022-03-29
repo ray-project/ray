@@ -19,7 +19,6 @@
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <unordered_map>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"

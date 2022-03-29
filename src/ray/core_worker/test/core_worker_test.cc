@@ -56,7 +56,7 @@ static void flushall_redis(void) {
   redisFree(context);
 }
 
-ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
+ActorID CreateActorHelper(absl::flat_hash_map<std::string, double> &resources,
                           int64_t max_restarts) {
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
@@ -174,17 +174,17 @@ class CoreWorkerTest : public ::testing::Test {
   void TestNormalTask();
 
   // Test actor tasks.
-  void TestActorTask(std::unordered_map<std::string, double> &resources);
+  void TestActorTask(absl::flat_hash_map<std::string, double> &resources);
 
   // Test actor failure case, verify that the tasks would either succeed or
   // fail with exceptions, in that case the return objects fetched from `Get`
   // contain errors.
-  void TestActorFailure(std::unordered_map<std::string, double> &resources);
+  void TestActorFailure(absl::flat_hash_map<std::string, double> &resources);
 
   // Test actor failover case. Verify that actor can be reconstructed successfully,
   // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
-  void TestActorRestart(std::unordered_map<std::string, double> &resources);
+  void TestActorRestart(absl::flat_hash_map<std::string, double> &resources);
 
  protected:
   bool WaitForDirectCallActorState(const ActorID &actor_id,
@@ -193,7 +193,7 @@ class CoreWorkerTest : public ::testing::Test {
 
   // Get the pid for the worker process that runs the actor.
   int GetActorPid(const ActorID &actor_id,
-                  std::unordered_map<std::string, double> &resources);
+                  absl::flat_hash_map<std::string, double> &resources);
 
   int num_nodes_;
   std::vector<std::string> raylet_socket_names_;
@@ -216,7 +216,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id,
 }
 
 int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
-                                std::unordered_map<std::string, double> &resources) {
+                                absl::flat_hash_map<std::string, double> &resources) {
   std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options{"", 1, resources};
   RayFunction func{Language::PYTHON,
@@ -293,7 +293,7 @@ void CoreWorkerTest::TestNormalTask() {
   }
 }
 
-void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &resources) {
+void CoreWorkerTest::TestActorTask(absl::flat_hash_map<std::string, double> &resources) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   auto actor_id = CreateActorHelper(resources, 1000);
@@ -382,7 +382,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 }
 
 void CoreWorkerTest::TestActorRestart(
-    std::unordered_map<std::string, double> &resources) {
+    absl::flat_hash_map<std::string, double> &resources) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // creating actor.
@@ -442,7 +442,7 @@ void CoreWorkerTest::TestActorRestart(
 }
 
 void CoreWorkerTest::TestActorFailure(
-    std::unordered_map<std::string, double> &resources) {
+    absl::flat_hash_map<std::string, double> &resources) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // creating actor.
@@ -527,7 +527,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   std::string name = "";
   std::string ray_namespace = "";
   rpc::SchedulingStrategy scheduling_strategy;
@@ -604,7 +604,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
   std::vector<ObjectID> object_ids;
   // Create an actor.
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   auto actor_id = CreateActorHelper(resources,
                                     /*max_restarts=*/0);
   // wait for actor creation finish.
@@ -948,34 +948,34 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
 TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) { TestNormalTask(); }
 
 TEST_F(SingleNodeTest, TestActorTaskLocal) {
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   TestActorTask(resources);
 }
 
 TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorTask(resources);
 }
 
 TEST_F(SingleNodeTest, TestActorTaskLocalReconstruction) {
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   TestActorRestart(resources);
 }
 
 TEST_F(TwoNodeTest, TestActorTaskCrossNodesReconstruction) {
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorRestart(resources);
 }
 
 TEST_F(SingleNodeTest, TestActorTaskLocalFailure) {
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   TestActorFailure(resources);
 }
 
 TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
-  std::unordered_map<std::string, double> resources;
+  absl::flat_hash_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorFailure(resources);
 }

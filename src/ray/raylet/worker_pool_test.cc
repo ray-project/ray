@@ -78,7 +78,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   instrumented_io_context &io_service_;
 };
 
-static std::unordered_map<std::string, int> runtime_env_reference;
+static absl::flat_hash_map<std::string, int> runtime_env_reference;
 
 static int GetReferenceCount(const std::string serialized_runtime_env) {
   auto it = runtime_env_reference.find(serialized_runtime_env);

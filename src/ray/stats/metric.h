@@ -19,8 +19,8 @@
 #include <functional>
 #include <memory>
 #include <tuple>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
@@ -131,7 +131,7 @@ class Metric {
   ///
   /// \param value The value that we record.
   /// \param tags The map tag values that we want to record for this metric record.
-  void Record(double value, const std::unordered_map<std::string, std::string> &tags);
+  void Record(double value, const absl::flat_hash_map<std::string, std::string> &tags);
 
  protected:
   virtual void RegisterView() = 0;
@@ -209,7 +209,7 @@ struct MetricPoint {
   std::string metric_name;
   int64_t timestamp;
   double value;
-  std::unordered_map<std::string, std::string> tags;
+  absl::flat_hash_map<std::string, std::string> tags;
   const opencensus::stats::MeasureDescriptor &measure_descriptor;
 };
 
@@ -333,7 +333,7 @@ class Stats {
 
   /// Record a value
   /// \param val The value to record
-  void Record(double val) { Record(val, std::unordered_map<std::string, std::string>()); }
+  void Record(double val) { Record(val, absl::flat_hash_map<std::string, std::string>()); }
 
   /// Record a value
   /// \param val The value to record
@@ -353,7 +353,7 @@ class Stats {
   /// Record a value
   /// \param val The value to record
   /// \param tags The tags for this value
-  void Record(double val, std::unordered_map<std::string, std::string> tags) {
+  void Record(double val, absl::flat_hash_map<std::string, std::string> tags) {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }

@@ -3,9 +3,9 @@ from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
 from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t, uint32_t
-from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
+from ray.includes.absl cimport flat_hash_map
 from ray.includes.optional cimport (
     optional,
 )
@@ -251,10 +251,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskOptions "ray::core::TaskOptions":
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
-                     unordered_map[c_string, double] &resources,
+                     flat_hash_map[c_string, double] &resources,
                      c_string concurrency_group_name)
         CTaskOptions(c_string name, int num_returns,
-                     unordered_map[c_string, double] &resources,
+                     flat_hash_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      c_string serialized_runtime_env)
 
@@ -264,8 +264,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             int64_t max_restarts,
             int64_t max_task_retries,
             int32_t max_concurrency,
-            const unordered_map[c_string, double] &resources,
-            const unordered_map[c_string, double] &placement_resources,
+            const flat_hash_map[c_string, double] &resources,
+            const flat_hash_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
             optional[c_bool] is_detached, c_string &name, c_string &ray_namespace,
             c_bool is_asyncio,
@@ -281,7 +281,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CPlacementGroupCreationOptions(
             const c_string &name,
             CPlacementStrategy strategy,
-            const c_vector[unordered_map[c_string, double]] &bundles,
+            const c_vector[flat_hash_map[c_string, double]] &bundles,
             c_bool is_detached
         )
 

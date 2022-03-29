@@ -73,8 +73,8 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
   }
 
   std::shared_ptr<gcs::GcsActor> NewGcsActor(
-      const std::unordered_map<std::string, double> &required_placement_resources =
-          std::unordered_map<std::string, double>()) {
+      const absl::flat_hash_map<std::string, double> &required_placement_resources =
+          absl::flat_hash_map<std::string, double>()) {
     rpc::Address owner_address;
     owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("127.0.0.1");
@@ -82,7 +82,7 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
     auto job_id = JobID::FromInt(1);
 
-    std::unordered_map<std::string, double> required_resources;
+    absl::flat_hash_map<std::string, double> required_resources;
 
     required_resources.insert(required_placement_resources.begin(),
                               required_placement_resources.end());
@@ -100,7 +100,7 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
   }
 
   std::shared_ptr<rpc::GcsNodeInfo> AddNewNode(
-      std::unordered_map<std::string, double> node_resources) {
+      absl::flat_hash_map<std::string, double> node_resources) {
     auto node_info = Mocker::GenNodeInfo();
     node_info->mutable_resources_total()->insert(node_resources.begin(),
                                                  node_resources.end());
@@ -130,7 +130,7 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
 TEST_F(GcsBasedActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
 
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -148,13 +148,13 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleFailedWithZeroNode) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestNotEnoughClusterResources) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   AddNewNode(node_resources);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 128 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 128}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -171,7 +171,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestNotEnoughClusterResources) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -183,7 +183,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   ASSERT_TRUE(resource_view_before_scheduling.contains(scheduling_node_id));
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -228,16 +228,16 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleAndDestroyOneActor) {
 TEST_F(GcsBasedActorSchedulerTest, TestBalancedSchedule) {
   // Add two nodes, each with 10 memory units and 10 CPU.
   for (int i = 0; i < 2; i++) {
-    std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 10},
+    absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 10},
                                                               {kCPU_ResourceLabel, 10}};
     AddNewNode(node_resources);
   }
 
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 1}, {kCPU_ResourceLabel, 1}};
-  std::unordered_map<NodeID, int> sched_counts;
+  absl::flat_hash_map<NodeID, int> sched_counts;
 
   // Schedule 10 actors, each requiring 1 memory unit and 1 CPU.
   for (int i = 0; i < 10; i++) {
@@ -257,19 +257,19 @@ TEST_F(GcsBasedActorSchedulerTest, TestBalancedSchedule) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources_1 = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources_1 = {{kMemory_ResourceLabel, 64},
                                                               {kCPU_ResourceLabel, 8}};
   auto node1 = AddNewNode(node_resources_1);
   auto node_id_1 = NodeID::FromBinary(node1->node_id());
   // Add a node with 32 memory units and 4 CPU.
-  std::unordered_map<std::string, double> node_resources_2 = {{kMemory_ResourceLabel, 32},
+  absl::flat_hash_map<std::string, double> node_resources_2 = {{kMemory_ResourceLabel, 32},
                                                               {kCPU_ResourceLabel, 4}};
   auto node2 = AddNewNode(node_resources_2);
   auto node_id_2 = NodeID::FromBinary(node2->node_id());
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -298,14 +298,14 @@ TEST_F(GcsBasedActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -351,14 +351,14 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenCreating) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -397,14 +397,14 @@ TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenCreating) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestNodeFailedWhenLeasing) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -440,14 +440,14 @@ TEST_F(GcsBasedActorSchedulerTest, TestNodeFailedWhenLeasing) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -479,14 +479,14 @@ TEST_F(GcsBasedActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestNodeFailedWhenCreating) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -526,14 +526,14 @@ TEST_F(GcsBasedActorSchedulerTest, TestNodeFailedWhenCreating) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestWorkerFailedWhenCreating) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -570,14 +570,14 @@ TEST_F(GcsBasedActorSchedulerTest, TestWorkerFailedWhenCreating) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestReschedule) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node1 = AddNewNode(node_resources);
   auto node_id_1 = NodeID::FromBinary(node1->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
@@ -629,7 +629,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestReleaseUnusedWorkers) {
 
   // Add a node to the cluster.
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
+  absl::flat_hash_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 64},
                                                             {kCPU_ResourceLabel, 8}};
   auto node = AddNewNode(node_resources);
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -648,7 +648,7 @@ TEST_F(GcsBasedActorSchedulerTest, TestReleaseUnusedWorkers) {
   // won't send `RequestWorkerLease` request to node immediately. But instead, it will
   // invoke the `RetryLeasingWorkerFromNode` to retry later.
   // Schedule a actor (requiring 32 memory units and 4 CPU).
-  std::unordered_map<std::string, double> required_placement_resources = {
+  absl::flat_hash_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
   gcs_actor_scheduler_->Schedule(actor);
