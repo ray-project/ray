@@ -376,7 +376,7 @@ class ReporterAgent(
         self._network_stats_hist.append((now, network_stats))
         network_speed_stats = self._compute_speed_from_hist(self._network_stats_hist)
 
-        disk_stats = self._get_disk_stats()
+        disk_stats = self._get_disk_io()
         self._disk_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_stats_hist)
 
