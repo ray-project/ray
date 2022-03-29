@@ -200,7 +200,7 @@ bool ClusterResourceManager::AddNodeAvailableResources(
 
   auto node_resources = it->second.GetMutableLocalView();
   for (auto &resource_id : resource_request.ResourceIds()) {
-    if (node_resources.total.Has(resource_id)) {
+    if (node_resources->total.Has(resource_id)) {
       auto available = node_resources->available.Get(resource_id);
       auto total = node_resources->total.Get(resource_id);
       auto new_available = available + resource_request.Get(resource_id);
