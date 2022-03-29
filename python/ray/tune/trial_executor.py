@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import warnings
 
 from ray.util.annotations import DeveloperAPI
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +119,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.MEMORY)
+            self.save(trial, _TuneCheckpoint.MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -189,9 +189,9 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     def save(
         self,
         trial: Trial,
-        storage: str = Checkpoint.PERSISTENT,
+        storage: str = _TuneCheckpoint.PERSISTENT,
         result: Optional[Dict] = None,
-    ) -> Checkpoint:
+    ) -> _TuneCheckpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.
