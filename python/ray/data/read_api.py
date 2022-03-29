@@ -242,6 +242,13 @@ def read_datasource(
             )
         )
 
+    if len(read_tasks) < parallelism:
+        logger.warning(
+            "The number of files for this dataset ({}) limits its parallelism to {}, "
+            "but the requested parallelism was {}. "
+            "To increase the available parallelism, use `ds.repartition()`.".format(
+                len(read_tasks), len(read_tasks), parallelism))
+
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
     stats_uuid = uuid.uuid4()
