@@ -610,7 +610,9 @@ class TrialRunner:
             "something significantly higher than this duration "
             "to ensure compute time is mostly spent on the main "
             "training loop.",
-            disable=self._checkpoint_manager.auto_checkpoint_enabled,
+            # No backlog warning if forced checkpoint as we wait
+            # for previous sync to finish.
+            disable=self._checkpoint_manager.auto_checkpoint_enabled or force,
         ):
 
             self._checkpoint_manager.checkpoint(
