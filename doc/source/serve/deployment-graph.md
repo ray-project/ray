@@ -113,7 +113,7 @@ with InputNode() as dag_input:
 
 There are two new APIs used in the DAG building stage: `InputNode()` and `bind()`.
 
-## **```InputNode()```** : User input of the graph
+### **```InputNode()```** : User input of the graph
 
 ```InputNode``` is a special singleton in DAG building that's only relevant to it's runtime call behavior. Even though all decorated classes or functions can be reused in arbitrary way to facilitate DAG building where the root DAGNode forms the graph with its children, in each deployment graph there should be one and only one InputNode used.
 
@@ -124,7 +124,7 @@ There are two new APIs used in the DAG building stage: `InputNode()` and `bind()
 It's possible to access partial user input by index or key, if some DAGNode in the graph doesn't need the complete user input to run. 
 
 
-## **`bind(*args, **kwargs)`** : The graph building API
+### **`bind(*args, **kwargs)`** : The graph building API
 
 Once called on supported Ray-decorated function or class (`@serve.deployment` is fully supported, `@ray.remote` will be soon), generates an IR of type DAGNode that acts as the building block of graph building.
 
