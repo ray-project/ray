@@ -108,7 +108,7 @@ below the median of other trials at similar points in time.
 Population Based Training (tune.schedulers.PopulationBasedTraining)
 -------------------------------------------------------------------
 
-Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__.
+Tune includes a distributed implementation of `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__.
 This can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.
 
 .. code-block:: python

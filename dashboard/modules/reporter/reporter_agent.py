@@ -275,7 +275,10 @@ class ReporterAgent(
             return {
                 "/": psutil._common.sdiskusage(total=1, used=0, free=1, percent=0.0)
             }
-        root = os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep
+        if sys.platform == "win32":
+            root = psutil.disk_partitions()[0].mountpoint
+        else:
+            root = os.sep
         tmp = ray._private.utils.get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
