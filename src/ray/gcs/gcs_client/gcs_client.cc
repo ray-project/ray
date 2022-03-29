@@ -101,10 +101,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     RedisClientOptions redis_client_options(options_.redis_ip_,
                                             options_.redis_port_,
                                             options_.password_,
-                                            /*enable_sharding_conn=*/false,
-                                            options_.enable_sync_conn_,
-                                            options_.enable_async_conn_,
-                                            options_.enable_subscribe_conn_);
+                                            /*enable_sharding_conn=*/false);
     redis_client_ = std::make_shared<RedisClient>(redis_client_options);
     RAY_CHECK_OK(redis_client_->Connect(io_service));
   } else {

@@ -131,10 +131,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,
                                          /*sharding=*/true,
-                                         /*password=*/options_.password_,
-                                         options_.enable_sync_conn_,
-                                         options_.enable_async_conn_,
-                                         options_.enable_subscribe_conn_));
+                                         /*password=*/options_.password_));
 
   if (options_.enable_sharding_conn_) {
     // Moving sharding into constructor defaultly means that sharding = true.
@@ -192,14 +189,8 @@ void RedisClient::Attach() {
   }
 
   instrumented_io_context &io_service = primary_context_->io_service();
-  if (options_.enable_async_conn_) {
-    asio_async_auxiliary_client_.reset(
-        new RedisAsioClient(io_service, primary_context_->async_context()));
-  }
-  if (options_.enable_subscribe_conn_) {
-    asio_subscribe_auxiliary_client_.reset(
-        new RedisAsioClient(io_service, primary_context_->subscribe_context()));
-  }
+  asio_async_auxiliary_client_.reset(
+      new RedisAsioClient(io_service, primary_context_->async_context()));
 }
 
 void RedisClient::Disconnect() {
