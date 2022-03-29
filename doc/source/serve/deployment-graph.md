@@ -12,7 +12,6 @@ kernelspec:
   name: python3
 ---
 
-
 (serve-deployment-graph)=
 
 # Deployment Graph
@@ -53,7 +52,6 @@ Collection of nodes that forms a DAG that represents an inference graph for comp
 ### Bind
 A graph building API applicable to decorated class or function.  `decorated_class_or_func.bind(*args, **kwargs)` generates an IR node that can be used to build graph, and bound arguments will be applied at execution time, including dynamic user input.
 
-
 +++
 
 ## Key APIs Explained
@@ -70,7 +68,7 @@ Once called on supported ray decorated function or class (@ray.remote, @serve.de
 
 #### On function
 
-```bind()``` on function produces a DAGNode that can be exeucted with user input. 
+```bind()``` on function produces a DAGNode that can be exeucted with user input.
 
 ```{code-cell} ipython3
 import ray
@@ -147,7 +145,7 @@ get() returns
 
 ### DAGNode as args in bind()
 
-DAGNode can also be passed into other DAGNode in dag binding. In the example above, ```Combiner``` calls into two instantiations of ```Model``` class, which can be bound and passed into ```Combiner```'s constructor as if we're passing in two regular python class instances.
+DAGNode can also be passed into other DAGNode in dag binding. In the full example below, ```Combiner``` calls into two instantiations of ```Model``` class, which can be bound and passed into ```Combiner```'s constructor as if we're passing in two regular python class instances.
 
 ```python
 m1 = Model.bind(1)
@@ -172,7 +170,7 @@ dag = combiner.run.bind(preprocessed_1, preprocessed_2, dag_input[2])
 
 ```InputNode``` value is fulfilled and replaced by user input at runtime, therefore it takes no argument when being constructed.
 
-It's possible to access partial user input by index or key, if some DAGNode in the graph doesn't need the complete user input to run. In the example above, `combiner.run` only needs the element at index 2 to determine it's runtime behavior.
+It's possible to access partial user input by index or key, if some DAGNode in the graph doesn't need the complete user input to run. In the full example below, `combiner.run` only needs the element at index 2 to determine it's runtime behavior.
 
 ```python
 dag = combiner.run.bind(preprocessed_1, preprocessed_2, dag_input[2])
