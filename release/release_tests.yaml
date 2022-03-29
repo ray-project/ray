@@ -1091,7 +1091,7 @@
     frequency: nightly
 
     cluster:
-      compute_template: tpl_20x2.yaml
+      cluster_compute: tpl_20x2.yaml
 
     run:
       timeout: 400
@@ -2517,7 +2517,7 @@
     frequency: multi
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
-      compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
 
     run:
       timeout: 7200
@@ -2557,7 +2557,7 @@
     frequency: multi
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
-      compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
 
     run:
       timeout: 7200
@@ -2591,7 +2591,7 @@
     frequency: multi
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
-      compute_template: stress_tests/smoke_test_compute.yaml
+      cluster_compute: stress_tests/smoke_test_compute.yaml
 
     run:
       timeout: 3600
@@ -2620,7 +2620,7 @@
     frequency: multi
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
-      compute_template: stress_tests/smoke_test_compute.yaml
+      cluster_compute: stress_tests/smoke_test_compute.yaml
 
     run:
       timeout: 3600
@@ -2680,7 +2680,7 @@
 #     frequency: nightly
 #     cluster:
 #       app_config: stress_tests/stress_tests_app_config.yaml
-#       compute_template: stress_tests/smoke_test_compute.yaml
+#       cluster_compute: stress_tests/smoke_test_compute.yaml
 #
 #     run:
 #       timeout: 3600
@@ -3288,7 +3288,7 @@
     frequency: multi
     cluster:
       app_config: ray_sgd_training_app.yaml
-      compute_template: ray_sgd_training_smoke_compute.yaml
+      cluster_compute: ray_sgd_training_smoke_compute.yaml
 
     run:
       timeout: 3600
@@ -3800,7 +3800,7 @@
   team: core
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
+    cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
 
   run:
     timeout: 7200

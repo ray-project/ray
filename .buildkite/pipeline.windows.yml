@@ -29,6 +29,8 @@ steps:
   parallelism: 6
   commands:
     - *prelude_commands
+    # conda init should be moved to the docker image setup
+    - conda init
     - . ./ci/travis/ci.sh init
     - . ./ci/travis/ci.sh build
     - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/travis/ci.sh test_core; fi
