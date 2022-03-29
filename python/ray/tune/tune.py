@@ -92,7 +92,7 @@ def run(
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
-    stop: Union[None, Mapping, Stopper, Callable[[str, Mapping], bool]] = None,
+    stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None,
     time_budget_s: Union[None, int, float, datetime.timedelta] = None,
     config: Optional[Dict[str, Any]] = None,
     resources_per_trial: Union[

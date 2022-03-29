@@ -18,7 +18,7 @@ from ray.util.ml_utils.dict import merge_dicts
 class RLTrainer(Trainer):
     def __init__(
         self,
-        algorithm: Union[str, RLLibTrainer],
+        algorithm: Union[str, Type[RLLibTrainer]],
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -61,8 +61,7 @@ class RLTrainer(Trainer):
             if self.datasets:
                 config["input"] = "dataset"
                 config["input_config"] = {
-                    "format": "native",
-                    "path": lambda: self.datasets["train"],
+                    "loader_fn": lambda: self.datasets["train"],
                 }
 
         return config

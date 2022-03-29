@@ -1,20 +1,21 @@
 import argparse
 
 import ray
+from ray.ml.config import RunConfig
 from ray.ml.train.integrations.rllib.rl_trainer import RLTrainer
 from ray.ml.result import Result
 from ray.rllib.agents.marwil import BCTrainer
 
 
-def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
-    path = "/tmp/out"
-
-    # Curently doesn't seem to work, to unblock dev pass `input_config`
+def train_rllib_bc_offline(
+    path: str, num_workers: int, use_gpu: bool = False
+) -> Result:
     dataset = ray.data.read_json(
         path, parallelism=num_workers, ray_remote_args={"num_cpus": 1}
     )
 
     trainer = RLTrainer(
+        run_config=RunConfig(stop={"training_iteration": 5}),
         scaling_config={
             "num_workers": num_workers,
             "use_gpu": use_gpu,
@@ -35,33 +36,34 @@ def train_rllib_bc(num_workers: int, use_gpu: bool = False) -> Result:
     return result
 
 
-def train_old_style():
-    from ray import tune
-
-    path = "/tmp/out"
-    # parallelism = 2
-    # dataset = ray.data.read_json(
-    #     path, parallelism=parallelism, ray_remote_args={"num_cpus": 1}
-    # ).fully_executed()
-
-    analysis = tune.run(
-        "BC",
-        stop={"timesteps_total": 500000},
-        config={
+def train_rllib_bc_online(num_workers: int, use_gpu: bool = False) -> Result:
+    trainer = RLTrainer(
+        run_config=RunConfig(stop={"training_iteration": 5}),
+        scaling_config={
+            "num_workers": num_workers,
+            "use_gpu": use_gpu,
+        },
+        algorithm="PPO",
+        param_space={
             "env": "CartPole-v0",
             "framework": "tf",
             "evaluation_num_workers": 1,
             "evaluation_interval": 1,
             "evaluation_config": {"input": "sampler"},
-            "input": "dataset",
-            "input_config": {"format": "json", "path": path},
         },
     )
-    print(analysis.trials[0].checkpoint)
+    result = trainer.fit()
+    print(result.metrics)
+
+    return result
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--offline", default=False, action="store_true")
+    parser.add_argument(
+        "--path", required=False, default="/tmp/out", help="Path to (offline) data"
+    )
     parser.add_argument(
         "--address", required=False, type=str, help="the address to use for Ray"
     )
@@ -77,5 +79,10 @@ if __name__ == "__main__":
     )
     args, _ = parser.parse_known_args()
 
-    ray.init(address="auto")  # args.address)
-    result = train_rllib_bc(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    ray.init(address=args.address)
+    if args.offline:
+        train_rllib_bc_offline(
+            path=args.path, num_workers=args.num_workers, use_gpu=args.use_gpu
+        )
+    else:
+        train_rllib_bc_online(num_workers=args.num_workers, use_gpu=args.use_gpu)

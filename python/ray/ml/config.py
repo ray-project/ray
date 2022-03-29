@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Mapping, Callable, Union
 
+from ray.tune import Stopper
 from ray.util import PublicAPI
 
 from ray.tune.trainable import PlacementGroupFactory
@@ -133,6 +134,8 @@ class RunConfig:
             from the Trainable.
         local_dir: Local dir to save training results to.
             Defaults to ``~/ray_results``.
+        stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
+            for more info. Stoppers should be serializable.
         callbacks: Callbacks to invoke.
             Refer to ray.tune.callback.Callback for more info.
             Callbacks should be serializable.
@@ -145,4 +148,5 @@ class RunConfig:
     name: Optional[str] = None
     local_dir: Optional[str] = None
     callbacks: Optional[List[Callback]] = None
+    stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None
     failure: Optional[FailureConfig] = None

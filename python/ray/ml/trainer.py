@@ -253,8 +253,8 @@ class Trainer(abc.ABC):
             result = result_grid[0]
             if result.error:
                 raise result.error
-        except TuneError:
-            raise TrainingFailedError
+        except TuneError as e:
+            raise TrainingFailedError from e
         return result
 
     def as_trainable(self) -> Type[Trainable]:

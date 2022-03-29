@@ -165,6 +165,7 @@ class TunerInternal:
             scheduler=self._tune_config.scheduler,
             name=self._run_config.name,
             callbacks=self._run_config.callbacks,
+            stop=self._run_config.stop,
             max_failures=(
                 self._run_config.failure.max_failures if self._run_config.failure else 0
             ),
@@ -181,6 +182,7 @@ class TunerInternal:
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
+            stop=self._run_config.stop,
             max_failures=(
                 self._run_config.failure.max_failures if self._run_config.failure else 0
             ),
