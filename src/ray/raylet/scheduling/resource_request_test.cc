@@ -148,13 +148,6 @@ TEST_F(ResourceRequestTest, TestOperators) {
   r1.RemoveNegative();
   expected = {{custom_id1, 2}};
   ASSERT_EQ(r1.ToMap(), expected);
-
-  // Test Cap
-  r1 = ResourceRequest({{custom_id1, 2}});
-  r2 = ResourceRequest({{cpu_id, 1}, {custom_id1, 1}, {custom_id2, -2}});
-  r1.Cap(r2);
-  expected = {{custom_id1, 1}, {custom_id2, -2}};
-  ASSERT_EQ(r1.ToMap(), expected);
 }
 
 class TaskResourceInstancesTest : public ::testing::Test {};

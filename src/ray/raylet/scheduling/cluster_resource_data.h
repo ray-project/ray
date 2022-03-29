@@ -103,29 +103,6 @@ class ResourceRequest {
     custom_resources_.clear();
   }
 
-  /// Cap the resource values in this set by those in another set.
-  void Cap(const ResourceRequest &other) {
-    auto this_ids = ResourceIds();
-    auto other_ids = other.ResourceIds();
-    // Check the resources that exist in "this".
-    for (auto &resource_id : this_ids) {
-      auto this_value = Get(resource_id);
-      auto other_value = other.Get(resource_id);
-      if (this_value > other_value) {
-        Set(resource_id, other_value);
-      }
-    }
-    // Check the resources that only exist in "other".
-    for (auto &resource_id : other_ids) {
-      if (!this_ids.contains(resource_id)) {
-        auto other_value = other.Get(resource_id);
-        if (other_value < 0) {
-          Set(resource_id, other_value);
-        }
-      }
-    }
-  }
-
   /// Remove the negative values in this set.
   void RemoveNegative() {
     for (size_t i = 0; i < predefined_resources_.size(); i++) {
