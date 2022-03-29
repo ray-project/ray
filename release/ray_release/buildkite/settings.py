@@ -60,6 +60,25 @@ def get_priority(priority_str: str) -> Priority:
     return priority_str_to_enum[priority_str]
 
 
+def get_test_attr_regex_filters(filters_str: str) -> Dict[str, str]:
+    if not filters_str:
+        return {}
+
+    test_attr_regex_filters = {}
+    for line in filters_str.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(":", maxsplit=1)
+        if len(parts) != 2:
+            raise ReleaseTestConfigError(
+                f"Invalid test attr regex filter: {line}. "
+                "Should be of the form attr:regex"
+            )
+        test_attr_regex_filters[parts[0]] = parts[1]
+    return test_attr_regex_filters
+
+
 def split_ray_repo_str(repo_str: str) -> Tuple[str, str]:
     if "https://" in repo_str:
         if "/tree/" in repo_str:
@@ -104,9 +123,7 @@ def get_pipeline_settings() -> Dict:
 def get_default_settings() -> Dict:
     settings = {
         "frequency": Frequency.ANY,
-        "test_name_filter": None,
-        "test_group_filter": None,
-        "test_team_filter": None,
+        "test_attr_regex_filters": None,
         "ray_wheels": None,
         "ray_test_repo": None,
         "ray_test_branch": None,
@@ -131,13 +148,15 @@ def update_settings_from_environment(settings: Dict) -> Dict:
         settings["ray_wheels"] = os.environ["RAY_WHEELS"]
 
     if "TEST_NAME" in os.environ:
-        settings["test_name_filter"] = os.environ["TEST_NAME"]
+        # This is for backward compatibility.
+        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
+            "name:" + os.environ["TEST_NAME"]
+        )
 
-    if "TEST_GROUP" in os.environ:
-        settings["test_group_filter"] = os.environ["TEST_GROUP"]
-
-    if "TEST_TEAM" in os.environ:
-        settings["test_team_filter"] = os.environ["TEST_TEAM"]
+    if "TEST_ATTR_REGEX_FILTERS" in os.environ:
+        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
+            os.environ["TEST_ATTR_REGEX_FILTERS"]
+        )
 
     if "RELEASE_PRIORITY" in os.environ:
         settings["priority"] = get_priority(os.environ["RELEASE_PRIORITY"])
@@ -165,15 +184,17 @@ def update_settings_from_buildkite(settings: Dict):
 
     test_name_filter = get_buildkite_prompt_value("release-test-name")
     if test_name_filter:
-        settings["test_name_filter"] = test_name_filter
+        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
+            "name:" + test_name_filter
+        )
 
-    test_group_filter = get_buildkite_prompt_value("release-test-group")
-    if test_group_filter:
-        settings["test_group_filter"] = test_group_filter
-
-    test_team_filter = get_buildkite_prompt_value("release-test-team")
-    if test_team_filter:
-        settings["test_team_filter"] = test_team_filter
+    test_attr_regex_filters = get_buildkite_prompt_value(
+        "release-test-attr-regex-filters"
+    )
+    if test_attr_regex_filters:
+        settings["test_attr_regex_filters"] = get_test_attr_regex_filters(
+            test_attr_regex_filters
+        )
 
     test_priority = get_buildkite_prompt_value("release-priority")
     if test_priority:
