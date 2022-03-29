@@ -7,6 +7,7 @@ import unittest
 
 import numpy as np
 import pytest
+import platform
 
 import ray
 import ray.util.accelerators

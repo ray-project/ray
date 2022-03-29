@@ -10,13 +10,6 @@ import ray._private.services
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver
-<<<<<<< HEAD
-from ray._private.gcs_utils import use_gcs_for_bootstrap
-=======
-from ray.util.client.common import ClientObjectRef
-from ray.util.client.worker import Worker
-import grpc
->>>>>>> master
 
 
 @pytest.fixture
