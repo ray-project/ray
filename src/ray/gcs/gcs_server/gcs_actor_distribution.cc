@@ -21,13 +21,25 @@ namespace ray {
 namespace gcs {
 
 GcsActorWorkerAssignment::GcsActorWorkerAssignment(
-    const NodeID &node_id, const ResourceRequest &acquired_resources)
-    : node_id_(node_id), acquired_resources_(acquired_resources) {}
+    const NodeID &node_id,
+    const ResourceRequest &acquired_resources,
+    bool is_infeasible,
+    SchedulingClass sched_cls_id)
+    : node_id_(node_id),
+      acquired_resources_(acquired_resources),
+      is_infeasible_(is_infeasible),
+      sched_cls_id_(sched_cls_id) {}
 
 const NodeID &GcsActorWorkerAssignment::GetNodeID() const { return node_id_; }
 
 const ResourceRequest &GcsActorWorkerAssignment::GetResources() const {
   return acquired_resources_;
+}
+
+bool GcsActorWorkerAssignment::IsInfeasible() const { return is_infeasible_; }
+
+const SchedulingClass GcsActorWorkerAssignment::GetSchedulingClass() const {
+  return sched_cls_id_;
 }
 
 GcsBasedActorScheduler::GcsBasedActorScheduler(
@@ -53,55 +65,72 @@ GcsBasedActorScheduler::GcsBasedActorScheduler(
 
 NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   if (actor->GetActorWorkerAssignment()) {
-    ResetActorWorkerAssignment(actor.get());
+    ReleaseActorResourceAllocation(actor.get());
+    actor->SetActorWorkerAssignment(nullptr);
   }
 
-  if (auto actor_worker_assignment =
-          AllocateActorWorkerAssignment(actor->GetCreationTaskSpecification())) {
-    auto node_id = actor_worker_assignment->GetNodeID();
-    actor->SetActorWorkerAssignment(std::move(actor_worker_assignment));
-    return node_id;
-  }
-  return NodeID::Nil();
+  AllocateActorWorkerAssignment(actor);
+  return actor->GetActorWorkerAssignment()->GetNodeID();
 }
 
-std::unique_ptr<GcsActorWorkerAssignment>
-GcsBasedActorScheduler::AllocateActorWorkerAssignment(
-    const TaskSpecification &task_spec) {
+void GcsBasedActorScheduler::AllocateActorWorkerAssignment(
+    std::shared_ptr<GcsActor> actor) {
+  bool is_infeasible = false;
   // Allocate resources from cluster.
-  auto selected_node_id = AllocateResources(task_spec);
-  if (selected_node_id.IsNil()) {
-    WarnResourceAllocationFailure(task_spec);
-    return nullptr;
-  }
-
+  auto selected_node_id =
+      AllocateResources(actor->GetCreationTaskSpecification(), &is_infeasible);
   auto required_resources = ResourceMapToResourceRequest(
-      task_spec.GetRequiredResources().GetResourceMap(), false);
+      actor->GetCreationTaskSpecification().GetRequiredResources().GetResourceMap(),
+      false);
   // Create a new gcs actor worker assignment.
-  auto gcs_actor_worker_assignment = std::make_unique<GcsActorWorkerAssignment>(
-      NodeID::FromBinary(selected_node_id.Binary()), required_resources);
-
-  return gcs_actor_worker_assignment;
+  if (selected_node_id.IsNil()) {
+    WarnResourceAllocationFailure(actor->GetCreationTaskSpecification());
+    actor->SetActorWorkerAssignment(std::make_shared<GcsActorWorkerAssignment>(
+        NodeID::Nil(),
+        required_resources,
+        is_infeasible,
+        actor->GetCreationTaskSpecification().GetSchedulingClass()));
+  } else {
+    actor->SetActorWorkerAssignment(std::make_shared<GcsActorWorkerAssignment>(
+        NodeID::FromBinary(selected_node_id.Binary()),
+        required_resources,
+        is_infeasible,
+        actor->GetCreationTaskSpecification().GetSchedulingClass()));
+  }
 }
 
 scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
-    const TaskSpecification &task_spec) {
-  bool is_infeasible = false;
+    const TaskSpecification &task_spec, bool *is_infeasible) {
   auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
       task_spec,
       /*prioritize_local_node*/ false,
-      /*exclude_local_node*/ true,
+      /*exclude_local_node*/ false,
       /*requires_object_store_memory*/ false,
-      &is_infeasible);
+      is_infeasible);
 
+  // We do not require node availability in the hybrid policy. If there is still no
+  // schedulable node found, it means infeasible. The actor has to be put into the
+  // `infeasible_actors` queue.
   if (scheduling_node_id.IsNil()) {
-    RAY_LOG(INFO) << "No node found to schedule a task " << task_spec.TaskId()
-                  << " is infeasible?" << is_infeasible;
+    RAY_CHECK(*is_infeasible);
+    RAY_LOG(INFO) << "The actor creation task " << task_spec.TaskId()
+                  << " is infeasible right now.";
     return scheduling_node_id;
   }
 
   auto &cluster_resource_manager =
       cluster_resource_scheduler_->GetClusterResourceManager();
+  const auto &node_resources =
+      cluster_resource_manager.GetNodeResources(scheduling_node_id);
+  auto required_placement_resources = ResourceMapToResourceRequest(
+      task_spec.GetRequiredPlacementResources().GetResourceMap(), false);
+  // The best schedulable node is actually unavailable. The actor has to be put into the
+  // `actors_to_schedule` queue.
+  if (!node_resources.IsAvailable(required_placement_resources)) {
+    *is_infeasible = false;
+    return scheduling::NodeID::Nil();
+  }
+
   auto required_resources = ResourceMapToResourceRequest(
       task_spec.GetRequiredResources().GetResourceMap(), false);
   // Acquire the resources from the selected node.
@@ -163,7 +192,8 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
         // reschedule the actor, so it return directly here.
         RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
                        << " creation task has been cancelled.";
-        ResetActorWorkerAssignment(actor.get());
+        ReleaseActorResourceAllocation(actor.get());
+        actor->SetActorWorkerAssignment(nullptr);
         return;
       }
       // Remove the actor from the leasing map as the reply is returned from the
@@ -227,24 +257,26 @@ void GcsBasedActorScheduler::NotifyClusterResourcesChanged() {
   }
 }
 
-void GcsBasedActorScheduler::ResetActorWorkerAssignment(GcsActor *actor) {
+void GcsBasedActorScheduler::ReleaseActorResourceAllocation(GcsActor *actor) {
   if (!actor->GetActorWorkerAssignment()) {
     return;
   }
 
-  auto &cluster_resource_manager =
-      cluster_resource_scheduler_->GetClusterResourceManager();
-  if (cluster_resource_manager.AddNodeAvailableResources(
-          scheduling::NodeID(actor->GetActorWorkerAssignment()->GetNodeID().Binary()),
-          actor->GetActorWorkerAssignment()->GetResources())) {
-    NotifyClusterResourcesChanged();
-  };
-  actor->SetActorWorkerAssignment(nullptr);
+  // This actor has been assigned to a certain node.
+  if (!actor->GetActorWorkerAssignment()->GetNodeID().IsNil()) {
+    auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
+    if (cluster_resource_manager.AddNodeAvailableResources(
+            scheduling::NodeID(actor->GetActorWorkerAssignment()->GetNodeID().Binary()),
+            actor->GetActorWorkerAssignment()->GetResources())) {
+      NotifyClusterResourcesChanged();
+    };
+  }
 }
 
 void GcsBasedActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   if (actor) {
-    ResetActorWorkerAssignment(actor.get());
+    ReleaseActorResourceAllocation(actor.get());
   }
 }
 

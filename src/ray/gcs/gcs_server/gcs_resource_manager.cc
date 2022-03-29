@@ -22,9 +22,11 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    ClusterResourceManager &cluster_resource_manager)
+    ClusterResourceManager &cluster_resource_manager,
+    std::function<std::shared_ptr<rpc::ResourcesData>()> get_gcs_node_resources)
     : gcs_table_storage_(gcs_table_storage),
-      cluster_resource_manager_(cluster_resource_manager) {}
+      cluster_resource_manager_(cluster_resource_manager),
+      get_gcs_node_resources_(std::move(get_gcs_node_resources)) {}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -230,6 +232,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  auto resources_data = get_gcs_node_resources_();
+  UpdateNodeResourceUsage(NodeID::Nil(), *(resources_data.get()));
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>

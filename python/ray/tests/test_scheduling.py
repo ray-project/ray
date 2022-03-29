@@ -674,7 +674,6 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
         Worker.options(placement_group=pg).remote(i) for i in range(NUM_CPU_BUNDLES)
     ]
     trainer = Trainer.options(placement_group=pg).remote(0)
-
     # If the gpu scheduling doesn't properly work, the below
     # code will hang.
     ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)], timeout=30)

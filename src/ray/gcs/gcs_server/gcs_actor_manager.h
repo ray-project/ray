@@ -130,13 +130,14 @@ class GcsActor {
 
   std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
 
+  std::shared_ptr<GcsActorWorkerAssignment> GetMutableWorkerAssignment() const;
+
   void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
 
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
-  // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
   std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
 };
 
@@ -365,6 +366,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   void SetSchedulePendingActorsPosted(bool posted);
 
+  size_t GetPendingActorsCount() const;
+
+  // Actors that can not find nodes to assign.
+  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
+      &GetInfeasibleActors() const;
+
+  // TODO(Chong-Li): GCS-based actor scheduler may schedule new actor prior to the
+  // currently pending actors. Use this map to get actors in order.
+  const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
+      &GetActorsToSchedule() const;
+
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -510,8 +522,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// dies.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
       unresolved_actors_;
-  /// The pending actors which will not be scheduled until there's a resource change.
-  std::vector<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of node and created actors. Each node ID
   /// maps to a map from worker ID to the actor created on that worker.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
@@ -549,6 +559,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Indicate whether a call of SchedulePendingActors has been posted.
   bool schedule_pending_actors_posted_;
+
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
+      actors_to_schedule_;
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
+      infeasible_actors_;
 
   // Debug info.
   enum CountType {

@@ -31,7 +31,7 @@
 namespace ray {
 namespace gcs {
 
-/// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a
+/// `GcsActorWorkerAssignment` represents the assignment from one to a
 /// worker process.
 class GcsActorWorkerAssignment
     : public std::enable_shared_from_this<GcsActorWorkerAssignment> {
@@ -41,16 +41,26 @@ class GcsActorWorkerAssignment
   /// \param node_id ID of node on which this gcs actor worker assignment is allocated.
   /// \param acquired_resources Resources owned by this gcs actor worker assignment.
   GcsActorWorkerAssignment(const NodeID &node_id,
-                           const ResourceRequest &acquired_resources);
+                           const ResourceRequest &acquired_resources,
+                           bool is_infeasible = false,
+                           SchedulingClass sched_cls_id = 0);
   const NodeID &GetNodeID() const;
 
   const ResourceRequest &GetResources() const;
+
+  bool IsInfeasible() const;
+
+  const SchedulingClass GetSchedulingClass() const;
 
  private:
   /// ID of node on which this actor worker assignment is allocated.
   const NodeID node_id_;
   /// Resources owned by this actor worker assignment.
   const ResourceRequest acquired_resources_;
+  /// Whether this is a infeasible assignment.
+  bool is_infeasible_ = false;
+  /// Cached scheduling class of the actor.
+  SchedulingClass sched_cls_id_ = 0;
 };
 
 /// GcsBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is
@@ -117,13 +127,14 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
  private:
   /// Allocate a new actor worker assignment.
   ///
-  /// \param task_spec The specification of the task.
-  std::unique_ptr<GcsActorWorkerAssignment> AllocateActorWorkerAssignment(
-      const TaskSpecification &task_spec);
+  /// \param actor The actor to be scheduled.
+  void AllocateActorWorkerAssignment(std::shared_ptr<GcsActor> actor);
 
   /// \param task_spec The specification of the task.
+  /// \param is_infeasible Whether the resource requirement is infeasible.
   /// \return ID of the node from which the resources are allocated.
-  scheduling::NodeID AllocateResources(const TaskSpecification &task_spec);
+  scheduling::NodeID AllocateResources(const TaskSpecification &task_spec,
+                                       bool *is_infeasible);
 
   void WarnResourceAllocationFailure(const TaskSpecification &task_spec) const;
 
@@ -132,8 +143,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   void HandleWorkerLeaseRejectedReply(std::shared_ptr<GcsActor> actor,
                                       const rpc::RequestWorkerLeaseReply &reply);
 
-  /// Reset the actor's current assignment, while releasing acquired resources.
-  void ResetActorWorkerAssignment(GcsActor *actor);
+  /// Release acquired resources.
+  void ReleaseActorResourceAllocation(GcsActor *actor);
 
   /// Notify that the cluster resources are changed.
   void NotifyClusterResourcesChanged();
