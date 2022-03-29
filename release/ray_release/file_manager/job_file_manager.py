@@ -48,13 +48,15 @@ class JobFileManager(FileManager):
         remote_upload_to = self._generate_tmp_s3_path()
         # remote source -> s3
         bucket_address = f"s3://{self.bucket}/{remote_upload_to}"
-        retcode, _ = self.job_manager.run_and_wait(
-            (
-                f"pip install -q awscli && "
-                f"aws s3 cp {source} {bucket_address} "
-                "--acl bucket-owner-full-control"
-            ),
-            {},
+        retcode, _ = self._run_with_retry(
+            self.job_manager.run_and_wait(
+                (
+                    f"pip install -q awscli && "
+                    f"aws s3 cp {source} {bucket_address} "
+                    "--acl bucket-owner-full-control"
+                ),
+                {},
+            )
         )
 
         if retcode != 0:

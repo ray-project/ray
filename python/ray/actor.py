@@ -554,6 +554,7 @@ class ActorClass:
         max_task_retries=None,
         name=None,
         namespace=None,
+        get_if_exists=False,
         lifetime=None,
         placement_group="default",
         placement_group_bundle_index=-1,
@@ -607,6 +608,15 @@ class ActorClass:
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
+                # Handle the get-or-create case.
+                if get_if_exists:
+                    if not cls_options.get("name"):
+                        raise ValueError(
+                            "The actor name must be specified to use `get_if_exists`."
+                        )
+                    return self._get_or_create_impl(args, kwargs)
+
+                # Normal create case.
                 return actor_cls._remote(
                     args=args,
                     kwargs=kwargs,
@@ -628,6 +638,23 @@ class ActorClass:
                     kwargs,
                     cls_options,
                 )
+
+            def _get_or_create_impl(self, args, kwargs):
+                name = cls_options["name"]
+                try:
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
+                except ValueError:
+                    # Attempt to create it (may race with other attempts).
+                    try:
+                        return actor_cls._remote(
+                            args=args,
+                            kwargs=kwargs,
+                            **cls_options,
+                        )
+                    except ValueError:
+                        # We lost the creation race, ignore.
+                        pass
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
 
         return ActorOptionWrapper()
 

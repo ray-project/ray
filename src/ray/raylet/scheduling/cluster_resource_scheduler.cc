@@ -27,7 +27,6 @@ ClusterResourceScheduler::ClusterResourceScheduler()
     : local_node_id_(scheduling::NodeID::Nil()) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   NodeResources node_resources;
-  node_resources.predefined_resources.resize(PredefinedResources_MAX);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
       local_node_id_,
       node_resources,

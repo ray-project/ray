@@ -1431,7 +1431,9 @@ class Node:
             object_spilling_config = json.loads(object_spilling_config)
             from ray import external_storage
 
-            storage = external_storage.setup_external_storage(object_spilling_config)
+            storage = external_storage.setup_external_storage(
+                object_spilling_config, self.session_name
+            )
             storage.destroy_external_storage()
 
     def validate_external_storage(self):
@@ -1471,5 +1473,5 @@ class Node:
         # Validate external storage usage.
         from ray import external_storage
 
-        external_storage.setup_external_storage(deserialized_config)
+        external_storage.setup_external_storage(deserialized_config, self.session_name)
         external_storage.reset_external_storage()
