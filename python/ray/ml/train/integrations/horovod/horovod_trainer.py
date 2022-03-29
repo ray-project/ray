@@ -77,9 +77,7 @@ class HorovodTrainer(DataParallelTrainer):
 
         import ray
         import ray.train as train
-        # Note you need to import this to use e.g.
-        # `torch.get_device()` in HorovodTrainer.
-        import ray.train.torch
+        import ray.train.torch. # Need this to use `train.torch.get_device()`
         import horovod.torch as hvd
         import torch
         import torch.nn as nn
