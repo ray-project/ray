@@ -274,11 +274,6 @@ void ReferenceCounter::UpdateObjectPriority(
 		Priority *priority){
   absl::MutexLock lock(&mutex_);
   object_id_priority_[object_id] =  priority;
-  Priority *p = priority;
-  while(p->parent != NULL){
-	  p = p->parent;
-	  p->increaseChildrenCount();
-  }
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(

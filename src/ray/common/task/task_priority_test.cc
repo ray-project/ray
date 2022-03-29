@@ -23,20 +23,29 @@
 
 namespace ray {
 
-TEST(TaskPriorityTest, TestProducerPriority) {
-  std::vector<int> vec_pri0{0}, vec_pri1{1};
-  Priority priority0(vec_pri0);
-  Priority priority1(vec_pri1);
-  Priority priority12;
+TEST(TaskPriorityTest, TestDependent) {
+  Priority default_priority;
+  Priority priority1;
+  Priority priority2;
+  Priority priority23;
+  Priority priority14;
 
-  ASSERT_LT(priority0, priority1);
-
-  priority12.SetFromParentPriority(priority1, 2);
-  priority1.increaseChildrenCount();
+  priority1.SetFromParentPriority(default_priority);
+  priority2.SetFromParentPriority(default_priority);
 
   ASSERT_LT(priority1, priority2);
-  ASSERT_LT(priority12, priority2);
-  ASSERT_LT(priority12, priority1);
+
+  priority23.SetFromParentPriority(priority2);
+  ASSERT_LT(priority2, priority1);
+  ASSERT_LT(priority23, priority1);
+
+  std::vector<int> vect1{2};
+  priority14.SetFromParentPriority(priority1);
+  Priority priority_one(vect1);
+  Priority priority_one_three({2,3});
+
+  ASSERT_EQ(priority1, priority_one);
+  ASSERT_EQ(priority14, priority_one_three);
 }
 
 TEST(TaskPriorityTest, TestEquals) {
@@ -121,10 +130,10 @@ TEST(TaskPriorityTest, TestDataStructures) {
   Priority p3({});
   Priority p4({1, 3, 5});
 
-  std::vector<std::pair<Priority, TaskID>> vec = {
-    std::make_pair(p1, ObjectID::FromRandom().TaskId()),
-    std::make_pair(p2, ObjectID::FromRandom().TaskId()),
-    std::make_pair(p3, ObjectID::FromRandom().TaskId())
+  std::vector<std::pair<Priority&, TaskID>> vec = {
+    {p1, ObjectID::FromRandom().TaskId()},
+    {p2, ObjectID::FromRandom().TaskId()},
+    {p3, ObjectID::FromRandom().TaskId()}
   };
 
   absl::btree_set<TaskKey> set;

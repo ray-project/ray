@@ -44,7 +44,7 @@ Priority* TaskManager::GenerateTaskPriority(
   }
 
   Priority *pri = new Priority;
-  pri->SetFromParentPriority(max_priority);//, new_priority_s++);
+  pri->SetFromParentPriority(max_priority);
   spec.SetPriority(*pri);
   return pri;
 }

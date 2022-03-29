@@ -23,16 +23,22 @@ struct Priority {
 
   Priority(const std::vector<int> &s) : score(s) {}
 
-  void extend(int64_t size) const;
+  int extend(int64_t size) const;
 
-  void SetFromParentPriority(Priority &parent, int);
-
-  void IncreaseChildrenCount(){}
+  void SetFromParentPriority(Priority &parent);
 
   bool operator==(const Priority &rhs) const {
-    rhs.extend(score.size());
-    extend(rhs.score.size());
-    return score == rhs.score;
+    int rhs_diff = rhs.extend(score.size());
+    int lhs_diff = extend(rhs.score.size());
+
+	bool ret = score == rhs.score;
+
+    for(int i=0; i<rhs_diff; i++)
+      rhs.score.pop_back();
+    for(int i=0; i<lhs_diff; i++)
+      score.pop_back();
+
+    return ret;
   }
 
   bool operator!=(const Priority &rhs) const {
@@ -82,8 +88,6 @@ struct Priority {
   }
 
   mutable std::vector<int> score = {};
-  mutable int num_children = 0;
-  mutable struct Priority *parent = NULL;
   //monotonically increased id assigned to priorities
   //when they are first created without any pendents
   static int childless_id;
