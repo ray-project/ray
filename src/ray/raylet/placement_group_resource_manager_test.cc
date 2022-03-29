@@ -33,16 +33,20 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
       new_placement_group_resource_manager_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
+  std::function<bool(scheduling::NodeID)> is_node_available_fn_;
   rpc::GcsNodeInfo node_info_;
   void SetUp() {
     gcs_client_ = std::make_unique<gcs::MockGcsClient>();
+    is_node_available_fn_ = [this](scheduling::NodeID node_id) {
+      return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+    };
     EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
         .WillRepeatedly(::testing::Return(&node_info_));
   }
   void InitLocalAvailableResource(
       absl::flat_hash_map<std::string, double> &unit_resource) {
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-        scheduling::NodeID("local"), unit_resource, *gcs_client_);
+        scheduling::NodeID("local"), unit_resource, is_node_available_fn_);
     new_placement_group_resource_manager_ =
         std::make_unique<raylet::NewPlacementGroupResourceManager>(
             cluster_resource_scheduler_);
@@ -73,7 +77,7 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
@@ -88,7 +92,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
 TEST_F(NewPlacementGroupResourceManagerTest,
        TestNewPrepareBundleWithInsufficientResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 2.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
@@ -102,7 +106,7 @@ TEST_F(NewPlacementGroupResourceManagerTest,
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
@@ -119,7 +123,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
       {"bundle_group_1_" + group_id.Hex(), 1000},
       {"bundle_group_" + group_id.Hex(), 1000}};
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(
@@ -133,7 +137,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   // 1. create bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -148,7 +152,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   /// 5. check remaining resources is correct.
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), unit_resource, *gcs_client_);
+      scheduling::NodeID("remaining"), unit_resource, is_node_available_fn_);
   auto remaining_resource_instance =
       remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID("remaining"));
@@ -157,7 +161,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndReturn) {
   // 1. create two bundles spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto first_bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -185,7 +189,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       {"bundle_group_2_" + group_id.Hex(), 1000},
       {"bundle_group_" + group_id.Hex(), 2000}};
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(
@@ -205,7 +209,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
                          {"bundle_group_1_" + group_id.Hex(), 1000},
                          {"bundle_group_" + group_id.Hex(), 2000}};
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   ASSERT_TRUE(
       remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
           {{"CPU_group_" + group_id.Hex(), 1.0},
@@ -221,7 +225,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   /// 8. check remaining resources is correct after all bundle returned.
   remaining_resources = {{"CPU", 2.0}};
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   remaining_resource_instance =
       remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID("remaining"));
@@ -230,7 +234,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare) {
   // 1. create one bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 1);
@@ -245,7 +249,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
   /// 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(
@@ -259,7 +263,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) {
   // 1. create one bundle spec.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
@@ -282,7 +286,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
       {"bundle_group_1_" + group_id.Hex(), 1000},
       {"bundle_group_" + group_id.Hex(), 1000}};
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(
@@ -311,7 +315,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
       ConvertSingleSpecToVectorPtrs(bundle_spec));
   // 8. check remaining resources is correct.
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), available_resource, *gcs_client_);
+      scheduling::NodeID("remaining"), available_resource, is_node_available_fn_);
   remaining_resource_instance =
       remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID("remaining"));
@@ -320,7 +324,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   // 1. create a placement group spec with 4 bundles and each required 1 CPU.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);
@@ -335,7 +339,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   // 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   auto remaining_resource_instance =
       remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID("remaining"));
@@ -361,7 +365,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
                          {"bundle_group_4_" + group_id.Hex(), 1000},
                          {"bundle_group_" + group_id.Hex(), 4000}};
   remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
   absl::flat_hash_map<std::string, double> allocating_resource;
@@ -379,7 +383,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
   // 1. create a placement group spec with 4 bundles and each required 1 CPU.
-  auto group_id = PlacementGroupID::FromRandom();
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
   absl::flat_hash_map<std::string, double> unit_resource;
   unit_resource.insert({"CPU", 1.0});
   auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);
@@ -407,7 +411,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
       {"bundle_group_4_" + group_id.Hex(), 1000},
       {"bundle_group_" + group_id.Hex(), 4000}};
   auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID("remaining"), remaining_resources, *gcs_client_);
+      scheduling::NodeID("remaining"), remaining_resources, is_node_available_fn_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
   absl::flat_hash_map<std::string, double> allocating_resource;

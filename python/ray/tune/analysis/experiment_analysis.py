@@ -67,9 +67,11 @@ class ExperimentAnalysis:
             in the respective functions.
 
     Example:
-        >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
-        >>> analysis = ExperimentAnalysis(
-        >>>     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
+        >>> from ray import tune
+        >>> tune.run( # doctest: +SKIP
+        ...     my_trainable, name="my_exp", local_dir="~/tune_results")
+        >>> analysis = ExperimentAnalysis( # doctest: +SKIP
+        ...     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
     """
 
     def __init__(
@@ -363,9 +365,8 @@ class ExperimentAnalysis:
         ``metric=None`` or ``mode=None``, the last result will be returned.
 
         Args:
-            metric (str): Key for trial info to order on.
-                If None, uses last result.
-            mode (None|str): One of [None, "min", "max"].
+            metric: Key for trial info to order on. If None, uses last result.
+            mode: One of [None, "min", "max"].
 
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
@@ -396,8 +397,8 @@ class ExperimentAnalysis:
         """Gets paths and metrics of all persistent checkpoints of a trial.
 
         Args:
-            trial (Trial): The log directory of a trial, or a trial instance.
-            metric (str): key for trial info to return, e.g. "mean_accuracy".
+            trial: The log directory of a trial, or a trial instance.
+            metric: key for trial info to return, e.g. "mean_accuracy".
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
 
@@ -433,11 +434,11 @@ class ExperimentAnalysis:
         """Gets best persistent checkpoint path of provided trial.
 
         Args:
-            trial (Trial): The log directory of a trial, or a trial instance.
-            metric (str): key of trial info to return, e.g. "mean_accuracy".
+            trial: The log directory of a trial, or a trial instance.
+            metric: key of trial info to return, e.g. "mean_accuracy".
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
 
         Returns:
             :class:`Checkpoint <ray.ml.Checkpoint>` object.
@@ -479,7 +480,7 @@ class ExperimentAnalysis:
         """Returns a list of all configurations.
 
         Args:
-            prefix (bool): If True, flattens the config dict
+            prefix: If True, flattens the config dict
                 and prepends `config/`.
 
         Returns:
@@ -518,10 +519,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -531,7 +532,7 @@ class ExperimentAnalysis:
                 `metric` and compare across trials based on `mode=[min,max]`.
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
-            filter_nan_and_inf (bool): If True (default), NaN or infinite
+            filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
@@ -600,10 +601,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -632,10 +633,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -657,12 +658,12 @@ class ExperimentAnalysis:
         provided metric and mode (defaults to max. training iteration).
 
         Args:
-            trial (Trial): The log directory or an instance of a trial.
-            If None, load the latest trial automatically.
-            metric (str): If no trial is specified, use this metric to identify
-            the best trial and load the last checkpoint from this trial.
-            mode (str): If no trial is specified, use the metric and this mode
-            to identify the best trial and load the last checkpoint from it.
+            trial: The log directory or an instance of a trial.
+                If None, load the latest trial automatically.
+            metric: If no trial is specified, use this metric to identify
+                the best trial and load the last checkpoint from this trial.
+            mode: If no trial is specified, use the metric and this mode
+                to identify the best trial and load the last checkpoint from it.
 
         Returns:
             Path for last checkpoint of trial

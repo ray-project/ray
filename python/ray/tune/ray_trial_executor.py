@@ -27,7 +27,7 @@ from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.utils.placement_groups import PlacementGroupManager, get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
+from ray.tune.trial import Trial, _TuneCheckpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.resource_updater import ResourceUpdater
@@ -399,11 +399,11 @@ class RayTrialExecutor(TrialExecutor):
         trial_item = self._find_future(trial)
         assert len(trial_item) < 2, trial_item
 
-    def _start_trial(self, trial) -> bool:
+    def _start_trial(self, trial: Trial) -> bool:
         """Starts trial and restores last result if trial was paused.
 
         Args:
-            trial (Trial): The trial to start.
+            trial: The trial to start.
 
         Returns:
             True if trial was started successfully, False otherwise.
@@ -433,8 +433,8 @@ class RayTrialExecutor(TrialExecutor):
         exception will be thrown.
 
         Args:
-            error (bool): Whether to mark this trial as terminated in error.
-            error_msg (str): Optional error message.
+            error: Whether to mark this trial as terminated in error.
+            error_msg: Optional error message.
 
         """
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
@@ -498,7 +498,7 @@ class RayTrialExecutor(TrialExecutor):
         Will not return resources if trial repeatedly fails on start.
 
         Args:
-            trial (Trial): Trial to be started.
+            trial: Trial to be started.
 
         Returns:
             True if the remote runner has been started. False if trial was
@@ -553,11 +553,11 @@ class RayTrialExecutor(TrialExecutor):
         """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
-            trial (Trial): Trial to be reset.
-            new_config (dict): New configuration for Trial trainable.
-            new_experiment_tag (str): New experiment name for trial.
-            logger_creator (Optional[Callable[[Dict], Logger]]): Function
-                that instantiates a logger on the actor process.
+            trial: Trial to be reset.
+            new_config: New configuration for Trial trainable.
+            new_experiment_tag: New experiment name for trial.
+            logger_creator: Function that instantiates a logger on the
+                actor process.
 
         Returns:
             True if `reset_config` is successful else False.
@@ -645,15 +645,18 @@ class RayTrialExecutor(TrialExecutor):
         self.last_pg_recon = -float("inf")
 
     def save(
-        self, trial, storage=Checkpoint.PERSISTENT, result: Optional[Dict] = None
-    ) -> Checkpoint:
+        self,
+        trial: Trial,
+        storage: str = _TuneCheckpoint.PERSISTENT,
+        result: Optional[Dict] = None,
+    ) -> _TuneCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
-            trial (Trial): The trial to be saved.
-            storage (str): Where to store the checkpoint. Defaults to
+            trial: The trial to be saved.
+            storage: Where to store the checkpoint. Defaults to
                 PERSISTENT.
-            result (dict): The state of this trial as a dictionary to be saved.
+            result: The state of this trial as a dictionary to be saved.
                 If result is None, the trial's last result will be used.
 
         Returns:
@@ -662,22 +665,22 @@ class RayTrialExecutor(TrialExecutor):
         logger.debug(f"saving trial {trial}")
         result = result or trial.last_result
         with self._change_working_directory(trial):
-            if storage == Checkpoint.MEMORY:
+            if storage == _TuneCheckpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
-                checkpoint = Checkpoint(storage, value, result)
+                checkpoint = _TuneCheckpoint(storage, value, result)
                 trial.on_checkpoint(checkpoint)
             else:
                 value = trial.runner.save.remote()
-                checkpoint = Checkpoint(storage, value, result)
+                checkpoint = _TuneCheckpoint(storage, value, result)
                 trial.saving_to = checkpoint
                 self._futures[value] = (ExecutorEventType.SAVING_RESULT, trial)
         return checkpoint
 
-    def restore(self, trial) -> None:
+    def restore(self, trial: Trial) -> None:
         """Restores training state from a given model checkpoint.
 
         Args:
-            trial (Trial): The trial to be restored.
+            trial: The trial to be restored.
 
         Raises:
             RuntimeError: This error is raised if no runner is found.
@@ -692,7 +695,8 @@ class RayTrialExecutor(TrialExecutor):
                 "Trial {}: Unable to restore - no runner found.".format(trial)
             )
         value = checkpoint.value
-        if checkpoint.storage == Checkpoint.MEMORY:
+        node_ip = checkpoint.node_ip
+        if checkpoint.storage == _TuneCheckpoint.MEMORY:
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
@@ -701,8 +705,11 @@ class RayTrialExecutor(TrialExecutor):
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, value)
             if trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint:
+                # If using cloud checkpointing, trial will get cp from cloud.
+                # If not syncing to driver, assume it has access to the cp
+                # on the local fs.
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(value)
+                    remote = trial.runner.restore.remote(value, node_ip)
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.

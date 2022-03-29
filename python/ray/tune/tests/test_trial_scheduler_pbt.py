@@ -7,14 +7,16 @@ import sys
 import time
 from unittest.mock import MagicMock
 
+
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray._private.test_utils import object_memory_usage
+
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -437,7 +439,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         class MockTrial(Trial):
             @property
             def checkpoint(self):
-                return Checkpoint(Checkpoint.MEMORY, "None", {})
+                return _TuneCheckpoint(_TuneCheckpoint.MEMORY, "None", {})
 
             @property
             def status(self):
