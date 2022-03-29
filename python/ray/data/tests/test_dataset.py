@@ -1883,19 +1883,25 @@ def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_groupby_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_sum with: {seed}")
+    print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": x} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .sum("B")
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+
+    agg_ds = ds.groupby("A").sum("B")
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "sum(B)": 1683},
@@ -1904,13 +1910,12 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     ]
 
     # Test built-in sum aggregation with nans
-    nan_grouped_ds = (
-        ray.data.from_items(
-            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
-        )
-        .repartition(num_parts)
-        .groupby("A")
-    )
+    ds = ray.data.from_items(
+        [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+    ).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.sum("B")
     assert nan_agg_ds.count() == 3
     assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
@@ -1921,17 +1926,16 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    pd.testing.assert_frame_equal(
-        nan_agg_ds.to_pandas(),
-        pd.DataFrame({"A": [0, 1, 2], "sum(B)": [None, 1617, 1650]}),
-    )
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": None},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
     # Test all nans
-    nan_agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .sum("B")
+    ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
+        num_parts
     )
+    nan_agg_ds = ds.groupby("A").sum("B")
     assert nan_agg_ds.count() == 3
     assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "sum(B)": None},
@@ -1982,19 +1986,25 @@ def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_min with: {seed}")
+    print(f"Seeding RNG for test_groupby_tabular_min with: {seed}")
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": x} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .min("B")
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+
+    agg_ds = ds.groupby("A").min("B")
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "min(B)": 0},
@@ -2003,13 +2013,12 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
     ]
 
     # Test built-in min aggregation with nans
-    nan_grouped_ds = (
-        ray.data.from_items(
-            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
-        )
-        .repartition(num_parts)
-        .groupby("A")
-    )
+    ds = ray.data.from_items(
+        [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+    ).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.min("B")
     assert nan_agg_ds.count() == 3
     assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
@@ -2020,16 +2029,18 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.min("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    pd.testing.assert_frame_equal(
-        nan_agg_ds.to_pandas(), pd.DataFrame({"A": [0, 1, 2], "min(B)": [None, 1, 2]})
-    )
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "min(B)": None},
+        {"A": 1, "min(B)": 1},
+        {"A": 2, "min(B)": 2},
+    ]
     # Test all nans
-    nan_agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .min("B")
+    ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
+        num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_agg_ds = ds.groupby("A").min("B")
     assert nan_agg_ds.count() == 3
     assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "min(B)": None},
@@ -2080,19 +2091,25 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_max with: {seed}")
+    print(f"Seeding RNG for test_groupby_tabular_max with: {seed}")
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": x} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .max("B")
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+
+    agg_ds = ds.groupby("A").max("B")
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "max(B)": 99},
@@ -2100,14 +2117,13 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
         {"A": 2, "max(B)": 98},
     ]
 
-    # Test built-in max aggregation with nans
-    nan_grouped_ds = (
-        ray.data.from_items(
-            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
-        )
-        .repartition(num_parts)
-        .groupby("A")
-    )
+    # Test built-in min aggregation with nans
+    ds = ray.data.from_items(
+        [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+    ).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.max("B")
     assert nan_agg_ds.count() == 3
     assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
@@ -2118,16 +2134,18 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.max("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    pd.testing.assert_frame_equal(
-        nan_agg_ds.to_pandas(), pd.DataFrame({"A": [0, 1, 2], "max(B)": [None, 97, 98]})
-    )
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "max(B)": None},
+        {"A": 1, "max(B)": 97},
+        {"A": 2, "max(B)": 98},
+    ]
     # Test all nans
-    nan_agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .max("B")
+    ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
+        num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_agg_ds = ds.groupby("A").max("B")
     assert nan_agg_ds.count() == 3
     assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "max(B)": None},
@@ -2178,19 +2196,25 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_mean with: {seed}")
+    print(f"Seeding RNG for test_groupby_tabular_mean with: {seed}")
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": x} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .mean("B")
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+
+    agg_ds = ds.groupby("A").mean("B")
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "mean(B)": 49.5},
@@ -2198,14 +2222,13 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
         {"A": 2, "mean(B)": 50.0},
     ]
 
-    # Test built-in mean aggregation with nans
-    nan_grouped_ds = (
-        ray.data.from_items(
-            [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
-        )
-        .repartition(num_parts)
-        .groupby("A")
-    )
+    # Test built-in min aggregation with nans
+    ds = ray.data.from_items(
+        [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+    ).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.mean("B")
     assert nan_agg_ds.count() == 3
     assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
@@ -2216,17 +2239,18 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.mean("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    pd.testing.assert_frame_equal(
-        nan_agg_ds.to_pandas(),
-        pd.DataFrame({"A": [0, 1, 2], "mean(B)": [None, 49.0, 50.0]}),
-    )
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "mean(B)": None},
+        {"A": 1, "mean(B)": 49.0},
+        {"A": 2, "mean(B)": 50.0},
+    ]
     # Test all nans
-    nan_agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": None} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .mean("B")
+    ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
+        num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_agg_ds = ds.groupby("A").mean("B")
     assert nan_agg_ds.count() == 3
     assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "mean(B)": None},
@@ -2277,23 +2301,32 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
-    print(f"Seeding RNG for test_groupby_arrow_std with: {seed}")
+    print(f"Seeding RNG for test_groupby_tabular_std with: {seed}")
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
+
+    def _to_arrow(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pyarrow")
+
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
-    agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A").std("B")
+    ds = ray.data.from_pandas(df).repartition(num_parts)
+    if ds_format == "arrow":
+        ds = _to_arrow(ds)
+    agg_ds = ds.groupby("A").std("B")
     assert agg_ds.count() == 3
     result = agg_ds.to_pandas()["std(B)"].to_numpy()
     expected = df.groupby("A")["B"].std().to_numpy()
     np.testing.assert_array_almost_equal(result, expected)
     # ddof of 0
-    agg_ds = (
-        ray.data.from_pandas(df).repartition(num_parts).groupby("A").std("B", ddof=0)
-    )
+    ds = ray.data.from_pandas(df).repartition(num_parts)
+    if ds_format == "arrow":
+        ds = _to_arrow(ds)
+    agg_ds = ds.groupby("A").std("B", ddof=0)
     assert agg_ds.count() == 3
     result = agg_ds.to_pandas()["std(B)"].to_numpy()
     expected = df.groupby("A")["B"].std(ddof=0).to_numpy()
@@ -2301,7 +2334,10 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
 
     # Test built-in std aggregation with nans
     nan_df = pd.DataFrame({"A": [x % 3 for x in xs] + [0], "B": xs + [None]})
-    nan_grouped_ds = ray.data.from_pandas(nan_df).repartition(num_parts).groupby("A")
+    ds = ray.data.from_pandas(nan_df).repartition(num_parts)
+    if ds_format == "arrow":
+        ds = _to_arrow(ds)
+    nan_grouped_ds = ds.groupby("A")
     nan_agg_ds = nan_grouped_ds.std("B")
     assert nan_agg_ds.count() == 3
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
@@ -2316,12 +2352,10 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     np.testing.assert_array_almost_equal(result, expected)
     # Test all nans
     nan_df = pd.DataFrame({"A": [x % 3 for x in xs], "B": [None] * len(xs)})
-    nan_agg_ds = (
-        ray.data.from_pandas(nan_df)
-        .repartition(num_parts)
-        .groupby("A")
-        .std("B", ignore_nulls=False)
-    )
+    ds = ray.data.from_pandas(nan_df).repartition(num_parts)
+    if ds_format == "arrow":
+        ds = _to_arrow(ds)
+    nan_agg_ds = ds.groupby("A").std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
     expected = pd.Series([None] * 3)

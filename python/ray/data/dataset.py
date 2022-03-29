@@ -64,19 +64,7 @@ from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
 )
 from ray.data.row import TableRow
-from ray.data.aggregate import (
-    AggregateFn,
-    Sum,
-    Max,
-    Min,
-    Mean,
-    Std,
-    VectorizedAggregation,
-    VectorizedSum,
-    VectorizedMin,
-    VectorizedMax,
-    VectorizedMean,
-)
+from ray.data.aggregate import AggregateFn, Sum, Max, Min, Mean, Std
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.block_batching import batch_blocks, BatchType
@@ -91,7 +79,6 @@ from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.impl.block_builder import BlockBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -1108,132 +1095,6 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def aggregate_vectorized(self, *aggs: VectorizedAggregation) -> U:
-        """Aggregate the entire dataset as one group, using vectorized aggregations.
-
-        This is a blocking operation.
-
-        Examples:
-            >>> from ray.data.aggregate import VectorizedMax, VectorizedMean
-            >>> ray.data.range_arrow(100).aggregate_vectorized(
-                VectorizedMax("value"), VectorizedMean("value"))
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            aggs: Vectorized aggregations to do.
-
-        Returns:
-            If the input dataset is a simple dataset then the output is
-            a tuple of ``(agg1, agg2, ...)`` where each tuple element is
-            the corresponding aggregation result.
-            If the input dataset is an Arrow dataset then the output is
-            an ``ArrowRow`` where each column is the corresponding
-            aggregation result.
-            If the dataset is empty, return ``None``.
-        """
-        ret = self._aggregate_vectorized(*aggs).take(1)
-        return ret[0] if len(ret) > 0 else None
-
-    def _aggregate_vectorized(self, *aggs: VectorizedAggregation) -> "Dataset[T]":
-        # TODO(Clark): Unify this with groupby aggregations.
-        dataset_format = self._dataset_format()
-        if dataset_format not in ("arrow", "pandas"):
-            raise ValueError(
-                "Can only do an optimized tabular sum on a tabular dataset, but "
-                f'dataset format not "arrow" nor "pandas": "{dataset_format}"'
-            )
-
-        def do_agg(blocks: BlockList, clear_input_blocks: bool, *_):
-            def _agg_block(block: Block) -> Tuple[np.ndarray, BlockMetadata]:
-                stats = BlockExecStats.builder()
-
-                block_acc = BlockAccessor.for_block(block)
-
-                if block_acc.num_rows() == 0:
-                    # Block is empty.
-                    return (
-                        None,
-                        block_acc.get_metadata(
-                            input_files=None, exec_stats=stats.build()
-                        ),
-                    )
-
-                results = []
-                for agg in aggs:
-                    results.append(agg.aggregate_block(block_acc))
-
-                meta = BlockAccessor.for_block(block).get_metadata(
-                    input_files=None, exec_stats=stats.build()
-                )
-
-                return results, meta
-
-            def _agg_merge(*blocks_aggs: List) -> Tuple[Block, BlockMetadata]:
-                stats = BlockExecStats.builder()
-
-                # Drop empty blocks.
-                blocks_aggs = [
-                    block_agg for block_agg in blocks_aggs if block_agg is not None
-                ]
-
-                if len(blocks_aggs) == 0:
-                    # Handle empty dataset.
-                    empty = BlockBuilder.for_format(dataset_format)._empty_table()
-                    return (
-                        empty,
-                        BlockAccessor.for_block(empty).get_metadata(
-                            input_files=None, exec_stats=stats.build()
-                        ),
-                    )
-
-                # Merge block results.
-                row = {}
-                counts = collections.defaultdict(int)
-                for agg, block_aggs in zip(aggs, zip(*blocks_aggs)):
-                    name = agg.name
-                    count = counts[name]
-                    if count > 0:
-                        name = f"{name}_{count+1}"
-                    counts[name] += 1
-                    row[name] = agg.merge_block_aggs(block_aggs)
-                # Return table representing row of column-wise sums.
-                builder = BlockBuilder.for_format(dataset_format)
-                builder.add(row)
-                block = builder.build()
-                meta = BlockAccessor.for_block(block).get_metadata(
-                    input_files=None, exec_stats=stats.build()
-                )
-                return block, meta
-
-            agg_block = cached_remote_fn(_agg_block).options(num_returns=2)
-            agg_merge = cached_remote_fn(_agg_merge).options(num_returns=2)
-
-            block_results, metadata = [], []
-            for block in blocks.get_blocks():
-                block_result, meta = agg_block.remote(block)
-                block_results.append(block_result)
-                metadata.append(meta)
-            stage_info = {}
-            map_bar = ProgressBar("Agg Map", len(block_results))
-            if clear_input_blocks:
-                blocks.clear()
-                del blocks
-            metadata = map_bar.fetch_until_complete(metadata)
-            stage_info["map"] = metadata
-            map_bar.close()
-
-            results, metadata = agg_merge.remote(*block_results)
-            results, metadata = [results], [metadata]
-            merge_bar = ProgressBar("Agg Merge", len(results))
-            metadata = merge_bar.fetch_until_complete(metadata)
-            stage_info["merge"] = metadata
-            merge_bar.close()
-            return BlockList(results, metadata), stage_info
-
-        plan = self._plan.with_stage(AllToAllStage("sum", None, do_agg))
-        return Dataset(plan, self._epoch, self._lazy)
-
     def sum(
         self, on: Optional[Union[KeyFn, List[KeyFn]]] = None, ignore_nulls: bool = True
     ) -> U:
@@ -1290,13 +1151,7 @@ class Dataset(Generic[T]):
             If the dataset is empty, all values are null, or any value is null
             AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        dataset_format = self._dataset_format()
-        if dataset_format in ("arrow", "pandas"):
-            # Tabular data fast path.
-            ret = self._aggregate_vectorized_on(VectorizedSum, on, ignore_nulls)
-        else:
-            # Fall back to groupby + accumulator implementation for simple datasets.
-            ret = self._aggregate_on(Sum, on, ignore_nulls)
+        ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
 
     def min(
@@ -1355,13 +1210,7 @@ class Dataset(Generic[T]):
             If the dataset is empty, all values are null, or any value is null
             AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        dataset_format = self._dataset_format()
-        if dataset_format in ("arrow", "pandas"):
-            # Tabular data fast path.
-            ret = self._aggregate_vectorized_on(VectorizedMin, on, ignore_nulls)
-        else:
-            # Fall back to groupby + accumulator implementation for simple datasets.
-            ret = self._aggregate_on(Min, on, ignore_nulls)
+        ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
 
     def max(
@@ -1420,13 +1269,7 @@ class Dataset(Generic[T]):
             If the dataset is empty, all values are null, or any value is null
             AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        dataset_format = self._dataset_format()
-        if dataset_format in ("arrow", "pandas"):
-            # Tabular data fast path.
-            ret = self._aggregate_vectorized_on(VectorizedMax, on, ignore_nulls)
-        else:
-            # Fall back to groupby + accumulator implementation for simple datasets.
-            ret = self._aggregate_on(Max, on, ignore_nulls)
+        ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
 
     def mean(
@@ -1485,13 +1328,7 @@ class Dataset(Generic[T]):
             If the dataset is empty, all values are null, or any value is null
             AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        dataset_format = self._dataset_format()
-        if dataset_format in ("arrow", "pandas"):
-            # Tabular data fast path.
-            ret = self._aggregate_vectorized_on(VectorizedMean, on, ignore_nulls)
-        else:
-            # Fall back to groupby + accumulator implementation for simple datasets.
-            ret = self._aggregate_on(Mean, on, ignore_nulls)
+        ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
 
     def std(
@@ -1563,7 +1400,6 @@ class Dataset(Generic[T]):
             If the dataset is empty, all values are null, or any value is null
             AND ``ignore_nulls`` is ``False``, then the output will be None.
         """
-        # TODO(Clark): Enable vectorized stddev calculation.
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
@@ -3060,20 +2896,6 @@ Dict[str, List[str]]]): The names of the columns
         aggs = self._build_multicolumn_aggs(agg_cls, on, *args, **kwargs)
         return self.aggregate(*aggs)
 
-    def _aggregate_vectorized_on(
-        self, agg_cls: type, on: Optional[Union[KeyFn, List[KeyFn]]], *args, **kwargs
-    ):
-        """Helper for aggregating on a particular subset of the dataset using vectorized
-        aggregation.
-
-        This validates the `on` argument, and converts a list of column names
-        or lambdas to a multi-aggregation. A null `on` results in a
-        multi-aggregation on all columns for an Arrow Dataset, and vectorized
-        aggregation on a simple dataset isn't supported.
-        """
-        aggs = self._build_multicolumn_aggs(agg_cls, on, *args, **kwargs)
-        return self.aggregate_vectorized(*aggs)
-
     def _build_multicolumn_aggs(
         self,
         agg_cls: type,
@@ -3086,14 +2908,7 @@ Dict[str, List[str]]]): The names of the columns
         """Build set of aggregations for applying a single aggregation to
         multiple columns.
         """
-        on = self._coerce_on(on, skip_cols)
-        return [agg_cls(on_, *args, ignore_nulls=ignore_nulls, **kwargs) for on_ in on]
 
-    def _coerce_on(
-        self,
-        on: Optional[Union[KeyFn, List[KeyFn]]],
-        skip_cols: Optional[List[str]] = None,
-    ) -> Optional[List[KeyFn]]:
         # Expand None into an aggregation for each column.
         if on is None:
             try:
@@ -3111,30 +2926,19 @@ Dict[str, List[str]]]): The names of the columns
 
         if not isinstance(on, list):
             on = [on]
-        return on
-
-    def _validate_tabular_on(self, on: KeyFn):
-        if not isinstance(on, str):
-            raise ValueError(
-                "Must select column to aggregate on using column name, got {type(on)}: "
-                f"{on}",
-            )
+        return [agg_cls(on_, *args, ignore_nulls=ignore_nulls, **kwargs) for on_ in on]
 
     def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
         if result is not None and len(result) == 1:
             if isinstance(result, tuple):
-                result = result[0]
+                return result[0]
             else:
                 # NOTE (kfstorm): We cannot call `result[0]` directly on
                 # `PandasRow` because indexing a column with position is not
                 # supported by pandas.
-                result = list(result.values())[0]
-        try:
-            if np.isnan(result):
-                result = None
-        except TypeError:
-            pass
-        return result
+                return list(result.values())[0]
+        else:
+            return result
 
     def __repr__(self) -> str:
         schema = self.schema()

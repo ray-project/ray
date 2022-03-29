@@ -1,7 +1,17 @@
 import collections
 import random
 import heapq
-from typing import Dict, List, Tuple, Iterator, Any, TypeVar, Optional, TYPE_CHECKING
+from typing import (
+    Callable,
+    Dict,
+    List,
+    Tuple,
+    Iterator,
+    Any,
+    TypeVar,
+    Optional,
+    TYPE_CHECKING,
+)
 
 import numpy as np
 
@@ -10,7 +20,15 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats, U, KeyFn
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockExecStats,
+    U,
+    KeyFn,
+    KeyType,
+)
 from ray.data.row import TableRow
 from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
@@ -156,48 +174,46 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
         import pyarrow.compute as pac
 
+        if self.num_rows() == 0:
+            return None
+
         col = self._table[on]
         return pac.count(col).as_py()
 
-    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def _apply_arrow_compute(
+        self, compute_fn: Callable, on: KeyFn, ignore_nulls: bool
+    ) -> Optional[U]:
+        """Helper providing null handling around applying an aggregation to a column."""
         import pyarrow as pa
-        import pyarrow.compute as pac
+
+        if self.num_rows() == 0:
+            return None
 
         col = self._table[on]
         if pa.types.is_null(col.type):
             return None
         else:
-            return pac.sum(col, skip_nulls=ignore_nulls).as_py()
+            return compute_fn(col, skip_nulls=ignore_nulls).as_py()
+
+    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        import pyarrow.compute as pac
+
+        return self._apply_arrow_compute(pac.sum, on, ignore_nulls)
 
     def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow as pa
         import pyarrow.compute as pac
 
-        col = self._table[on]
-        if pa.types.is_null(col.type):
-            return None
-        else:
-            return pac.min(col, skip_nulls=ignore_nulls).as_py()
+        return self._apply_arrow_compute(pac.min, on, ignore_nulls)
 
     def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow as pa
         import pyarrow.compute as pac
 
-        col = self._table[on]
-        if pa.types.is_null(col.type):
-            return None
-        else:
-            return pac.max(col, skip_nulls=ignore_nulls).as_py()
+        return self._apply_arrow_compute(pac.max, on, ignore_nulls)
 
     def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
-        import pyarrow as pa
         import pyarrow.compute as pac
 
-        col = self._table[on]
-        if pa.types.is_null(col.type):
-            return None
-        else:
-            return pac.mean(col, skip_nulls=ignore_nulls).as_py()
+        return self._apply_arrow_compute(pac.mean, on, ignore_nulls)
 
     def sum_of_squared_diffs_from_mean(
         self,
@@ -205,19 +221,19 @@ class ArrowBlockAccessor(TableBlockAccessor):
         ignore_nulls: bool,
         mean: Optional[U] = None,
     ) -> Optional[U]:
-        import pyarrow as pa
         import pyarrow.compute as pac
 
         if mean is None:
+            # If precomputed mean not given, we compute it ourselves.
             mean = self.mean(on, ignore_nulls)
-        col = self._table[on]
-        if pa.types.is_null(col.type):
-            return None
-        return pac.sum(pac.power(pac.subtract(col, mean), 2)).as_py()
-        # col = self._table[on]
-        # if pa.types.is_null(col.type):
-        #     return None
-        # return (pac.count(col) + 1) * pac.variance(col)
+        return self._apply_arrow_compute(
+            lambda col, skip_nulls: pac.sum(
+                pac.power(pac.subtract(col, mean), 2),
+                skip_nulls=skip_nulls,
+            ),
+            on,
+            ignore_nulls,
+        )
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
@@ -287,51 +303,79 @@ class ArrowBlockAccessor(TableBlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
-        # TODO(jjyao) This can be implemented natively in Arrow
-        key_fn = (lambda r: r[key]) if key is not None else (lambda r: None)
-        iter = self.iter_rows()
-        next_row = None
-        builder = ArrowBlockBuilder()
-        while True:
-            try:
-                if next_row is None:
-                    next_row = next(iter)
-                next_key = key_fn(next_row)
 
-                def gen():
-                    nonlocal iter
-                    nonlocal next_row
-                    while key_fn(next_row) == next_key:
-                        yield next_row
+        def iter_groups() -> Iterator[Tuple[KeyType, BlockAccessor]]:
+            """Creates an iterator over zero-copy group views."""
+            if key is None:
+                # Global aggregation consists of a single "group", so we short-circuit.
+                yield None, self
+                return
+
+            start = end = 0
+            iter = self.iter_rows()
+            next_row = None
+            while True:
+                try:
+                    if next_row is None:
+                        next_row = next(iter)
+                    next_key = next_row[key]
+                    while next_row[key] == next_key:
+                        end += 1
                         try:
                             next_row = next(iter)
                         except StopIteration:
                             next_row = None
                             break
+                    yield next_key, BlockAccessor.for_block(
+                        self.slice(start, end, copy=False)
+                    )
+                    start = end
+                except StopIteration:
+                    break
 
-                # Accumulate.
-                accumulators = [agg.init(next_key) for agg in aggs]
-                for r in gen():
-                    for i in range(len(aggs)):
-                        accumulators[i] = aggs[i].accumulate(accumulators[i], r)
+        builder = ArrowBlockBuilder()
+        for group_key, group_view in iter_groups():
+            # Aggregate.
+            accumulators = [agg.init(group_key) for agg in aggs]
+            for i in range(len(aggs)):
+                agg = aggs[i]
+                # Apply vectorized aggregation on group, if available.
+                if agg.can_vectorize_for_block(group_view):
+                    if agg.vectorized_aggregate is None:
+                        raise ValueError(
+                            f"Aggregation {agg} indicates that vectorized "
+                            f"processing of {type(group_view)} block is possible, but "
+                            "agg.vectorized_aggregate() is not defined."
+                        )
+                    accumulators[i] = agg.vectorized_aggregate(
+                        accumulators[i], group_view
+                    )
+                else:
+                    if agg.accumulate is None:
+                        raise ValueError(
+                            f"Aggregation {agg} doesn't support vectorized "
+                            f"processing of {type(group_view)} block, but "
+                            "agg.accumulate() is not defined."
+                        )
+                    for row in group_view.iter_rows():
+                        accumulators[i] = agg.accumulate(accumulators[i], row)
 
-                # Build the row.
-                row = {}
-                if key is not None:
-                    row[key] = next_key
+            # Build the row.
+            row = {}
+            if key is not None:
+                row[key] = group_key
 
-                count = collections.defaultdict(int)
-                for agg, accumulator in zip(aggs, accumulators):
-                    name = agg.name
-                    # Check for conflicts with existing aggregation name.
-                    if count[name] > 0:
-                        name = self._munge_conflict(name, count[name])
-                    count[name] += 1
-                    row[name] = accumulator
+            count = collections.defaultdict(int)
+            for agg, accumulator in zip(aggs, accumulators):
+                name = agg.name
+                # Check for conflicts with existing aggregation name.
+                if count[name] > 0:
+                    name = self._munge_conflict(name, count[name])
+                count[name] += 1
+                row[name] = accumulator
 
-                builder.add(row)
-            except StopIteration:
-                break
+            builder.add(row)
+
         return builder.build()
 
     @staticmethod
