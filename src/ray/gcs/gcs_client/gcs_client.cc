@@ -104,12 +104,12 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     i++;
   }
 
-  resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
-    job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    node_resource_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+  resubscribe_func_ = [this]() {
+    job_accessor_->AsyncResubscribe();
+    actor_accessor_->AsyncResubscribe();
+    node_accessor_->AsyncResubscribe();
+    node_resource_accessor_->AsyncResubscribe();
+    worker_accessor_->AsyncResubscribe();
   };
 
   // Connect to gcs service.
@@ -126,27 +126,24 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   /// TODO(mwtian): refactor pubsub::Subscriber to avoid faking worker ID.
   gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
 
-  std::unique_ptr<pubsub::Subscriber> subscriber;
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    subscriber = std::make_unique<pubsub::Subscriber>(
-        /*subscriber_id=*/gcs_client_id_,
-        /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
-                                      rpc::ChannelType::GCS_JOB_CHANNEL,
-                                      rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                                      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-                                      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
-        /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-        /*get_client=*/
-        [this](const rpc::Address &) {
-          return std::make_shared<GcsSubscriberClient>(gcs_rpc_client_);
-        },
-        /*callback_service*/ &io_service);
-  }
+  auto subscriber = std::make_unique<pubsub::Subscriber>(
+      /*subscriber_id=*/gcs_client_id_,
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
+        rpc::ChannelType::GCS_JOB_CHANNEL,
+        rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+        rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+        rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+      /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
+      /*get_client=*/
+      [this](const rpc::Address &) {
+        return std::make_shared<GcsSubscriberClient>(gcs_rpc_client_);
+      },
+      /*callback_service*/ &io_service);
 
   // Init GCS subscriber instance.
   gcs_subscriber_ =
-      std::make_unique<GcsSubscriber>(nullptr, gcs_address, std::move(subscriber));
+      std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
 
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
@@ -213,7 +210,7 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
     // subscription.
     ReconnectGcsServer();
     // If using GCS server for pubsub, resubscribe to GCS publishers.
-    resubscribe_func_(RayConfig::instance().gcs_grpc_based_pubsub());
+    resubscribe_func_();
     // Resend resource usage after reconnected, needed by resource view in GCS.
     node_resource_accessor_->AsyncReReportResourceUsage();
     break;

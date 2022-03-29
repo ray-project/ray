@@ -58,6 +58,7 @@ Status GcsPublisher::PublishNodeInfo(const NodeID &id,
   if (done != nullptr) {
     done(Status::OK());
   }
+  return Status::OK();
 }
 
 Status GcsPublisher::PublishNodeResource(const NodeID &id,
