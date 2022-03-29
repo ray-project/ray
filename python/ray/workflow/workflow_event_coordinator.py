@@ -33,7 +33,8 @@ class EventCoordinatorActor:
         self.wma = wma
         self.event_registry: Dict[str, WorkflowEvents] = {}
         self.sigature_workflow_step: Dict[str, List[Tuple[str,str]]] = {}
-        self.fan_in: Dict[str, Tuple[str,List[str]]] = {}
+        self.from_upstream_to_downstream: Dict[str, Dict[str,List[str]]] = {}
+        self.from_downstream_to_upstream: Dict[str, Dict[str,str]] = {}
         self.wait_list: List[Any] = []
         self.write_lock = asyncio.Lock()
         asyncio_run(self.pollEvent())
@@ -41,12 +42,15 @@ class EventCoordinatorActor:
     async def transferFaninStepOwnership(self, workflow_id:str, current_step_id:str, \
         downstream_steps:List[Any]) -> None:
         fanin_steps = []
+        fanout_steps = {}
         for fanin in downstream_steps:
             (event_listener_handle, event_signature, fanin_step_id, outer_most_step_id, args, kwargs) = fanin
             await self.transferEventStepOwnership(event_listener_handle, event_signature, \
                 workflow_id, current_step_id, outer_most_step_id, *args, **kwargs)
             fanin_steps.append(fanin_step_id)
-        self.fan_in[workflow_id] = (current_step_id, fanin_steps)
+            fanout_steps[fanin_step_id] = current_step_id
+        self.from_upstream_to_downstream[workflow_id][current_step_id] = fanin_steps
+        self.from_downstream_to_upstream[workflow_id] = fanout_steps
 
     async def transferEventStepOwnership(self, event_listener_handle, event_signature, \
         workflow_id, current_step_id, outer_most_step_id, *args, **kwargs) -> None:
