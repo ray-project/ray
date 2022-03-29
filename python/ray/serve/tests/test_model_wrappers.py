@@ -13,7 +13,7 @@ from ray.serve.model_wrappers import ModelWrapper
 from ray.serve.pipeline.api import build
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import RayServeDAGHandle
-from ray.serve.http_adapters import array_to_databatch
+from ray.serve.http_adapters import json_to_ndarray
 import ray
 from ray import serve
 
@@ -87,7 +87,7 @@ class Ingress:
         self.dag = dag
 
     @app.post("/")
-    async def predict(self, data=Depends(array_to_databatch)):
+    async def predict(self, data=Depends(json_to_ndarray)):
         return await self.dag.remote(data)
 
 

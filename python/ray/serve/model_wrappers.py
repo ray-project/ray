@@ -72,7 +72,7 @@ class ModelWrapper(SimpleSchemaIngress):
         checkpoint: Union[Checkpoint, Dict],
         input_schema: Union[
             str, InputSchemaFn
-        ] = "ray.serve.http_adapters.array_to_databatch",
+        ] = "ray.serve.http_adapters.json_to_ndarray",
         batching_params: Optional[Union[Dict[str, int], bool]] = None,
     ):
         predictor_cls = _load_predictor_cls(predictor_cls)

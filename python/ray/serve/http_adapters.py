@@ -40,7 +40,7 @@ class NdArray(BaseModel):
     )
 
 
-def array_to_databatch(payload: NdArray) -> np.ndarray:
+def json_to_ndarray(payload: NdArray) -> np.ndarray:
     """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array."""
     arr = np.array(payload.array)
     if payload.shape:
@@ -59,7 +59,7 @@ def starlette_request(
 
 
 @require_packages(["PIL"])
-def image_to_databatch(img: bytes = File(...)) -> np.ndarray:
+def image_to_ndarray(img: bytes = File(...)) -> np.ndarray:
     """Accepts a PIL-readable file from an HTTP form and converts
     it to a numpy array.
     """
