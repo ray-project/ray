@@ -119,7 +119,8 @@ class NodeSyncConnection {
   instrumented_io_context &io_context_;
   std::string node_id_;
 
-  absl::flat_hash_map<std::pair<std::string, RayComponentId>, std::shared_ptr<const RaySyncMessage>>
+  absl::flat_hash_map<std::pair<std::string, RayComponentId>,
+                      std::shared_ptr<const RaySyncMessage>>
       sending_buffer_;
   // Keep track of the versions of components in this node.
   absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>

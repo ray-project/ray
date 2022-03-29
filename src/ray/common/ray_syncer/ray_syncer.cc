@@ -101,7 +101,8 @@ bool NodeSyncConnection::PushToSendingQueue(
   auto &node_versions = GetNodeComponentVersions(message->node_id());
   if (node_versions[message->component_id()] < message->version()) {
     node_versions[message->component_id()] = message->version();
-    sending_buffer_[std::make_pair(message->node_id(), message->component_id())] = message;
+    sending_buffer_[std::make_pair(message->node_id(), message->component_id())] =
+        message;
     return true;
   }
   return false;
