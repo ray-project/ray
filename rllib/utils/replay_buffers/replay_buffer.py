@@ -60,6 +60,11 @@ class ReplayBuffer:
         self._storage = []
 
         # Caps the number of timesteps stored in this buffer
+        if capacity <= 0:
+            raise ValueError(
+                "Capacity of replay buffer has to be greater than zero "
+                "but was set to {}.".format(capacity)
+            )
         self.capacity = capacity
         # The next index to override in the buffer.
         self._next_idx = 0

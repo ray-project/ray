@@ -56,18 +56,6 @@ BundleSchedulingPolicy::SortRequiredResources(
     const auto &a = *resource_request_list[a_idx];
     const auto &b = *resource_request_list[b_idx];
 
-    RAY_CHECK(a.predefined_resources.size() == (int)PredefinedResources_MAX);
-    RAY_CHECK(b.predefined_resources.size() == (int)PredefinedResources_MAX);
-
-    // Make sure that resources are always sorted in the same order
-    std::set<uint64_t> extra_resources_set;
-    for (auto r : a.custom_resources) {
-      extra_resources_set.insert(r.first);
-    }
-    for (auto r : b.custom_resources) {
-      extra_resources_set.insert(r.first);
-    }
-
     // TODO (jon-chuang): the exact resource priority defined here needs to be revisted.
 
     // Notes: This is a comparator for sorting in c++. We return true if a < b based on a
@@ -79,21 +67,36 @@ BundleSchedulingPolicy::SortRequiredResources(
     // two `ResourceRequest`s require a resource under consideration, the one requiring
     // more of the resource is prioritized.
 
-    if (a.predefined_resources[GPU] != b.predefined_resources[GPU]) {
-      return a.predefined_resources[GPU] < b.predefined_resources[GPU];
+    auto gpu = scheduling::ResourceID::GPU();
+    if (a.Get(gpu) != b.Get(gpu)) {
+      return a.Get(gpu) < b.Get(gpu);
     }
-    for (auto r : extra_resources_set) {
-      auto a_iter = a.custom_resources.find(r);
-      const auto &a_resource = a_iter != a.custom_resources.end() ? a_iter->second : 0;
-      auto b_iter = a.custom_resources.find(r);
-      const auto &b_resource = b_iter != b.custom_resources.end() ? b_iter->second : 0;
+
+    // Make sure that resources are always sorted in the same order
+    std::set<scheduling::ResourceID> extra_resources_set;
+    for (const auto &r : a.ResourceIds()) {
+      if (!IsPredefinedResource(r)) {
+        extra_resources_set.insert(r);
+      }
+    }
+    for (const auto &r : b.ResourceIds()) {
+      if (!IsPredefinedResource(r)) {
+        extra_resources_set.insert(r);
+      }
+    }
+
+    for (const auto &r : extra_resources_set) {
+      auto a_resource = a.Get(r);
+      auto b_resource = b.Get(r);
       if (a_resource != b_resource) {
         return a_resource < b_resource;
       }
     }
-    for (auto idx : std::vector({OBJECT_STORE_MEM, MEM, CPU})) {
-      if (a.predefined_resources[idx] != b.predefined_resources[idx]) {
-        return a.predefined_resources[idx] < b.predefined_resources[idx];
+    for (auto id : std::vector({scheduling::ResourceID::ObjectStoreMemory(),
+                                scheduling::ResourceID::Memory(),
+                                scheduling::ResourceID::CPU()})) {
+      if (a.Get(id) != b.Get(id)) {
+        return a.Get(id) < b.Get(id);
       }
     }
     return false;
@@ -282,17 +285,10 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   // Aggregate required resources.
   ResourceRequest aggregated_resource_request;
   for (const auto &resource_request : resource_request_list) {
-    if (aggregated_resource_request.predefined_resources.size() <
-        resource_request->predefined_resources.size()) {
-      aggregated_resource_request.predefined_resources.resize(
-          resource_request->predefined_resources.size());
-    }
-    for (size_t i = 0; i < resource_request->predefined_resources.size(); ++i) {
-      aggregated_resource_request.predefined_resources[i] +=
-          resource_request->predefined_resources[i];
-    }
-    for (const auto &[name, value] : resource_request->custom_resources) {
-      aggregated_resource_request.custom_resources[name] += value;
+    for (auto &resource_id : resource_request->ResourceIds()) {
+      auto value = aggregated_resource_request.Get(resource_id) +
+                   resource_request->Get(resource_id);
+      aggregated_resource_request.Set(resource_id, value);
     }
   }
 

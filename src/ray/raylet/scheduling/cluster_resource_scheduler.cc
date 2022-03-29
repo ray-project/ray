@@ -27,9 +27,8 @@ ClusterResourceScheduler::ClusterResourceScheduler()
     : local_node_id_(scheduling::NodeID::Nil()),
       is_node_available_fn_([](auto) { return true; }) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
-  NodeResources local_node_resources;
-  local_node_resources.predefined_resources.resize(PredefinedResources_MAX);
-  Init(local_node_resources,
+  NodeResources node_resources;
+  Init(node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr);
 }
