@@ -1003,7 +1003,7 @@ class RayServeDAGHandle:
     """Resolved from a DeploymentNode at runtime.
 
     This can be used to call the DAG from a driver deployment to efficiently
-    orchestrate a multi-deployment pipeline.
+    orchestrate a deployment graph.
     """
 
     def __init__(self, dag_node_json: str) -> None:
@@ -1052,11 +1052,10 @@ class DeploymentMethodNode(DAGNode):
 class DeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
-    The bound deployment can be run, deployed, or built to a production config
-    using serve.run, serve.deploy, and serve.build, respectively.
+    The bound deployment can be run using serve.run().
 
     A bound deployment can be passed as an argument to other bound deployments
-    to build a multi-deployment application. When the application is deployed, the
+    to build a deployment graph. When the graph is deployed, the
     bound deployments passed into a constructor will be converted to
     RayServeHandles that can be used to send requests.
 
@@ -1242,7 +1241,7 @@ class Deployment:
         """Bind the provided arguments and return a DeploymentNode.
 
         The returned bound deployment can be deployed or bound to other
-        deployments to create a multi-deployment application.
+        deployments to create a deployment graph.
         """
         copied_self = copy(self)
         copied_self._init_args = []
@@ -1967,7 +1966,6 @@ def run(
         return ingress.get_handle()
 
 
-@PublicAPI(stability="alpha")
 def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
@@ -1988,7 +1986,7 @@ def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
 
     if in_interactive_shell():
         raise RuntimeError(
-            "serve.build cannot be called from an interactive shell like "
+            "build cannot be called from an interactive shell like "
             "IPython or Jupyter because it requires all deployments to be "
             "importable to run the app after building."
         )
