@@ -105,10 +105,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
-      ::RayConfig::instance().bootstrap_with_gcs()
-          ? CreateGlobalStateAccessor(bootstrap_address)
-          : CreateGlobalStateAccessor(bootstrap_address,
-                                      ConfigInternal::Instance().redis_password);
+      CreateGlobalStateAccessor(bootstrap_address);
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     std::string node_to_connect;
     auto status =
@@ -134,12 +131,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     log_dir = session_dir + "/logs";
   }
 
-  gcs::GcsClientOptions gcs_options =
-      ::RayConfig::instance().bootstrap_with_gcs()
-          ? gcs::GcsClientOptions(bootstrap_address)
-          : gcs::GcsClientOptions(bootstrap_ip,
-                                  ConfigInternal::Instance().bootstrap_port,
-                                  ConfigInternal::Instance().redis_password);
+  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(bootstrap_address);
 
   CoreWorkerOptions options;
   options.worker_type = ConfigInternal::Instance().worker_type;

@@ -5,6 +5,7 @@ import pathlib
 import click
 import time
 import sys
+from typing import Optional, Union
 import yaml
 
 import ray
@@ -22,9 +23,12 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.api import (
     Application,
+    DeploymentFunctionNode,
+    DeploymentNode,
     get_deployment_statuses,
     serve_application_status_to_schema,
 )
+from ray.serve.api import build as build_app
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -152,6 +156,7 @@ def shutdown(address: str, namespace: str):
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
+    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
@@ -310,6 +315,7 @@ def run(
 
 @cli.command(
     help="Get the current config of the running Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -354,6 +360,7 @@ def status(address: str):
 
 @cli.command(
     help="Deletes all deployments in the Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -378,3 +385,52 @@ def delete(address: str, yes: bool):
     cli_logger.newline()
     cli_logger.success("\nSent delete request successfully!\n")
     cli_logger.newline()
+
+
+@cli.command(
+    short_help="Writes a Pipeline's config file.",
+    help=(
+        "Imports the DeploymentNode or DeploymentFunctionNode at IMPORT_PATH "
+        "and generates a structured config for it that can be used by "
+        "`serve deploy` or the REST API. "
+    ),
+    hidden=True,
+)
+@click.option(
+    "--app-dir",
+    "-d",
+    default=".",
+    type=str,
+    help=APP_DIR_HELP_STR,
+)
+@click.option(
+    "--output-path",
+    "-o",
+    default=None,
+    type=str,
+    help=(
+        "Local path where the output config will be written in YAML format. "
+        "If not provided, the config will be printed to STDOUT."
+    ),
+)
+@click.argument("import_path")
+def build(app_dir: str, output_path: Optional[str], import_path: str):
+    sys.path.insert(0, app_dir)
+
+    node: Union[DeploymentNode, DeploymentFunctionNode] = import_attr(import_path)
+    if not isinstance(node, (DeploymentNode, DeploymentFunctionNode)):
+        raise TypeError(
+            f"Expected '{import_path}' to be DeploymentNode or "
+            f"DeploymentFunctionNode, but got {type(node)}."
+        )
+
+    app = build_app(node)
+
+    if output_path is not None:
+        if not output_path.endswith(".yaml"):
+            raise ValueError("FILE_PATH must end with '.yaml'.")
+
+        with open(output_path, "w") as f:
+            app.to_yaml(f)
+    else:
+        print(app.to_yaml(), end="")

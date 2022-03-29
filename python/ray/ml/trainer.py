@@ -287,7 +287,11 @@ class Trainer(abc.ABC):
                 super().__init__(*args, **kwargs)
 
                 # Create a new config by merging the dicts.
+                # run_config is not a tunable hyperparameter so it does not need to be
+                # merged.
+                run_config = base_config.pop("run_config", None)
                 self._merged_config = merge_dicts(base_config, self.config)
+                self._merged_config["run_config"] = run_config
 
             def _trainable_func(self, config, reporter, checkpoint_dir):
                 # We ignore the config passed by Tune and instead use the merged

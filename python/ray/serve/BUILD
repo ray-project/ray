@@ -492,6 +492,14 @@ py_test(
 )
 
 py_test(
+    name = "snippet_model_ensemble",
+    size = "small",
+    srcs = glob(["examples/doc/*.py"]),
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"]
+)
+
+py_test(
     name = "test_json_serde",
     size = "medium",
     srcs = pipeline_tests_srcs,
