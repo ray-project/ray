@@ -28,7 +28,8 @@ class NodeState {
   /// \param cid The component id.
   /// \param reporter The reporter is defined to be the local module which wants to
   /// broadcast its internal status to the whole clsuter. When it's null, it means there
-  /// is no reporter in this node for this component. This is the place there messages are
+  /// is no reporter in the local node for this component. This is the place there
+  /// messages are
   /// generated.
   /// \param receiver The receiver is defined to be the module which eventually
   /// will have the view of of the cluster for this component. It's the place where
@@ -51,7 +52,7 @@ class NodeState {
   ///
   /// \param message The message received.
   ///
-  /// \return true if this node doesn't have message with newer version.
+  /// \return true if the local node doesn't have message with newer version.
   bool ConsumeMessage(std::shared_ptr<const RaySyncMessage> message);
 
   /// Return the cluster view of this local node.
@@ -82,12 +83,12 @@ class NodeSyncConnection {
  public:
   NodeSyncConnection(RaySyncer &instance,
                      instrumented_io_context &io_context,
-                     std::string node_id);
+                     std::string remote_node_id);
 
   /// Push a message to the sending queue to be sent later. Some message
   /// might be dropped if the module think the target node has already got the
   /// information. Usually it'll happen when the message has the source node id
-  /// as the target or the message is sent from this node.
+  /// as the target or the message is sent from the remote node.
   ///
   /// \param message The message to be sent.
   ///
@@ -99,10 +100,10 @@ class NodeSyncConnection {
 
   virtual ~NodeSyncConnection() {}
 
-  /// Return the node id of this connection.
-  const std::string &GetNodeId() const { return node_id_; }
+  /// Return the remote node id of this connection.
+  const std::string &GetRemoteNodeID() const { return remote_node_id_; }
 
-  /// Handle the udpates sent from this node.
+  /// Handle the udpates sent from the remote node.
   ///
   /// \param messages The message received.
   void ReceiveUpdate(RaySyncMessages messages);
@@ -115,14 +116,23 @@ class NodeSyncConnection {
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);
 
+  /// The ray syncer this class is working with
   RaySyncer &instance_;
-  instrumented_io_context &io_context_;
-  std::string node_id_;
 
+  /// The io context
+  instrumented_io_context &io_context_;
+
+  /// The remote node id.
+  std::string remote_node_id_;
+
+  /// Buffering all the updates. Sending will be done in an async way.
   absl::flat_hash_map<std::pair<std::string, RayComponentId>,
                       std::shared_ptr<const RaySyncMessage>>
       sending_buffer_;
-  // Keep track of the versions of components in this node.
+
+  /// Keep track of the versions of components in the remote node.
+  /// This field will be udpated when messages are received or sent.
+  /// We'll filter the received or sent messages when the message is stale.
   absl::flat_hash_map<std::string, std::array<int64_t, kComponentArraySize>>
       node_versions_;
 };
@@ -132,7 +142,7 @@ class ServerSyncConnection : public NodeSyncConnection {
  public:
   ServerSyncConnection(RaySyncer &instance,
                        instrumented_io_context &io_context,
-                       const std::string &node_id);
+                       const std::string &remote_node_id);
 
   ~ServerSyncConnection() override;
 

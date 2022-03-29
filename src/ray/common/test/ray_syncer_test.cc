@@ -225,7 +225,7 @@ struct SyncerServerTest {
           auto msg = RaySyncMessage();
           msg.set_component_id(static_cast<RayComponentId>(cid));
           msg.set_version(local_versions[cid]);
-          msg.set_node_id(syncer->GetNodeId());
+          msg.set_node_id(syncer->GetLocalNodeID());
           std::string dbg_message;
           google::protobuf::util::MessageToJsonString(msg, &dbg_message);
           snapshot_taken++;
@@ -258,7 +258,7 @@ struct SyncerServerTest {
             for (const auto &[node_id, conn] : syncer->sync_connections_) {
               if (!conn->sending_buffer_.empty()) {
                 p.set_value(false);
-                RAY_LOG(INFO) << NodeID::FromBinary(syncer->GetNodeId()) << ": "
+                RAY_LOG(INFO) << NodeID::FromBinary(syncer->GetLocalNodeID()) << ": "
                               << "Waiting for message on " << NodeID::FromBinary(node_id)
                               << " to be sent."
                               << " Remainings " << conn->sending_buffer_.size();
@@ -354,7 +354,7 @@ struct SyncerServerTest {
 //     }
 //     return os;
 //   };
-//   os << "NodeID: " << NodeID::FromBinary(server.syncer->GetNodeId()) << std::endl;
+//   os << "NodeID: " << NodeID::FromBinary(server.syncer->GetLocalNodeID()) << std::endl;
 //   dump_array(server.local_versions, "LocalVersions:", 1) << std::endl;
 //   for (auto [node_id, versions] : server.received_versions) {
 //     os << "\tFromNodeID: " << NodeID::FromBinary(node_id) << std::endl;
@@ -419,14 +419,14 @@ TEST(SyncerTest, Test1To1) {
 
   // s1 will only send 1 message to s2 because it only has one reporter
   ASSERT_TRUE(s2.WaitUntil(
-      [&s2, node_id = s1.syncer->GetNodeId()]() {
+      [&s2, node_id = s1.syncer->GetLocalNodeID()]() {
         return s2.GetNumConsumedMessages(node_id) == 1;
       },
       5));
 
   // s2 will send 2 messages to s1 because it has two reporters.
   ASSERT_TRUE(s1.WaitUntil(
-      [&s1, node_id = s2.syncer->GetNodeId()]() {
+      [&s1, node_id = s2.syncer->GetLocalNodeID()]() {
         return s1.GetNumConsumedMessages(node_id) == 2;
       },
       5));
@@ -437,7 +437,7 @@ TEST(SyncerTest, Test1To1) {
 
   // Make sure s2 send the new message to s1.
   ASSERT_TRUE(s1.WaitUntil(
-      [&s1, node_id = s2.syncer->GetNodeId()]() {
+      [&s1, node_id = s2.syncer->GetLocalNodeID()]() {
         return s1.GetReceivedVersions(node_id)[RayComponentId::RESOURCE_MANAGER] == 1 &&
                s1.GetNumConsumedMessages(node_id) == 3;
       },
@@ -447,8 +447,8 @@ TEST(SyncerTest, Test1To1) {
   s2.local_versions[0] = 0;
   std::this_thread::sleep_for(1s);
 
-  ASSERT_TRUE(s1.GetNumConsumedMessages(s2.syncer->GetNodeId()) == 3);
-  ASSERT_TRUE(s2.GetNumConsumedMessages(s1.syncer->GetNodeId()) == 1);
+  ASSERT_TRUE(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()) == 3);
+  ASSERT_TRUE(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()) == 1);
   // Change it back
   s2.local_versions[0] = 1;
 
@@ -485,14 +485,15 @@ TEST(SyncerTest, Test1To1) {
 
   ASSERT_TRUE(s1.WaitUntil(
       [&s1, &s2]() {
-        return s1.GetReceivedVersions(s2.syncer->GetNodeId()) == s2.local_versions &&
-               s2.GetReceivedVersions(s1.syncer->GetNodeId())[0] == s1.local_versions[0];
+        return s1.GetReceivedVersions(s2.syncer->GetLocalNodeID()) == s2.local_versions &&
+               s2.GetReceivedVersions(s1.syncer->GetLocalNodeID())[0] ==
+                   s1.local_versions[0];
       },
       5));
   // s2 has two reporters + 3 for the ones send before the measure
-  ASSERT_LT(s1.GetNumConsumedMessages(s2.syncer->GetNodeId()), max_sends * 2 + 3);
+  ASSERT_LT(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), max_sends * 2 + 3);
   // s1 has one reporter + 1 for the one send before the measure
-  ASSERT_LT(s2.GetNumConsumedMessages(s1.syncer->GetNodeId()), max_sends + 3);
+  ASSERT_LT(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
 }
 
 TEST(SyncerTest, Broadcast) {
@@ -528,14 +529,14 @@ TEST(SyncerTest, Broadcast) {
   s2.local_versions[1] = 1;
 
   ASSERT_TRUE(s1.WaitUntil(
-      [&s1, node_id = s2.syncer->GetNodeId()]() mutable {
+      [&s1, node_id = s2.syncer->GetLocalNodeID()]() mutable {
         return s1.received_versions[node_id][0] == 1 &&
                s1.received_versions[node_id][1] == 1;
       },
       5));
 
   ASSERT_TRUE(s1.WaitUntil(
-      [&s3, node_id = s2.syncer->GetNodeId()]() mutable {
+      [&s3, node_id = s2.syncer->GetLocalNodeID()]() mutable {
         return s3.received_versions[node_id][0] == 1 &&
                // Make sure SCHEDULE information is not sent to s3
                s3.received_versions[node_id][1] == 0;
@@ -569,12 +570,12 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServerTest>> &servers,
         std::string dbg_message;
         google::protobuf::util::MessageToJsonString(*v[0], &dbg_message);
         RAY_LOG(ERROR) << "server[0] >> "
-                       << NodeID::FromBinary(servers[0]->syncer->GetNodeId()) << ": "
+                       << NodeID::FromBinary(servers[0]->syncer->GetLocalNodeID()) << ": "
                        << dbg_message << " - " << NodeID::FromBinary(v[0]->node_id());
         dbg_message.clear();
         google::protobuf::util::MessageToJsonString(*vv[0], &dbg_message);
         RAY_LOG(ERROR) << "server[i] << "
-                       << NodeID::FromBinary(servers[i]->syncer->GetNodeId()) << ": "
+                       << NodeID::FromBinary(servers[i]->syncer->GetLocalNodeID()) << ": "
                        << dbg_message << " - " << NodeID::FromBinary(vv[0]->node_id());
         return false;
       }
@@ -583,7 +584,7 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServerTest>> &servers,
 
   std::map<std::string, size_t> node_id_to_idx;
   for (size_t i = 0; i < servers.size(); ++i) {
-    node_id_to_idx[servers[i]->syncer->GetNodeId()] = i;
+    node_id_to_idx[servers[i]->syncer->GetLocalNodeID()] = i;
   }
   // Check whether j is reachable from i
   auto reachable = [&g](size_t i, size_t j) {
@@ -637,13 +638,13 @@ bool CompareViews(const std::vector<std::unique_ptr<SyncerServerTest>> &servers,
           std::string dbg_message;
           google::protobuf::util::MessageToJsonString(*msg, &dbg_message);
           RAY_LOG(ERROR) << "server[" << i << "] >> "
-                         << NodeID::FromBinary(servers[i]->syncer->GetNodeId()) << ": "
-                         << dbg_message;
+                         << NodeID::FromBinary(servers[i]->syncer->GetLocalNodeID())
+                         << ": " << dbg_message;
           dbg_message.clear();
           google::protobuf::util::MessageToJsonString(*msg2, &dbg_message);
           RAY_LOG(ERROR) << "server[" << node_id_to_idx[node_id] << "] << "
-                         << NodeID::FromBinary(
-                                servers[node_id_to_idx[node_id]]->syncer->GetNodeId())
+                         << NodeID::FromBinary(servers[node_id_to_idx[node_id]]
+                                                   ->syncer->GetLocalNodeID())
                          << ": " << dbg_message;
           return false;
         }

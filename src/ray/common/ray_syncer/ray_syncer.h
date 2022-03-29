@@ -112,16 +112,27 @@ class RaySyncer {
   /// Register the components to the syncer module. Syncer will make sure eventually
   /// it'll have a global view of the cluster.
   ///
+  /// Right now there are two types of components. One type of components will
+  /// try to broadcast the messages to make sure eventually the cluster will reach
+  /// an agreement (upward_only=false). The other type of components will only
+  /// send the message to upward (upward_only=true). Right now, upward is defined
+  /// to be the place which received the connection. In Ray, one type of this message
+  /// is resource load which only GCS needs.
+  /// TODO (iycheng): 1) Revisit this and come with a better solution; or 2) implement
+  /// resource loads in another way to avoid this feature; or 3) broadcast resource
+  /// loads so the scheduler can also use this.
+  ///
   /// \param component_id The component to sync.
   /// \param reporter The local component to be broadcasted.
   /// \param receiver The snapshot of the component in the cluster.
-  /// \param upstream_only Only send the message to the upstream server for this
-  /// component. \param pull_from_reporter_interval_ms The frequence to pull a message
+  /// \param upward_only Only send the message to the upward of this node.
+  /// component.
+  /// \param pull_from_reporter_interval_ms The frequence to pull a message
   /// from reporter and push it to sending queue.
   bool Register(RayComponentId component_id,
                 const ReporterInterface *reporter,
                 ReceiverInterface *receiver,
-                bool upstream_only = false,
+                bool upward_only = false,
                 int64_t pull_from_reporter_interval_ms = 100);
 
   /// Function to broadcast the messages to other nodes.
@@ -132,7 +143,7 @@ class RaySyncer {
   void BroadcastMessage(std::shared_ptr<const RaySyncMessage> message);
 
   /// Get the current node id.
-  const std::string &GetNodeId() const { return node_id_; }
+  const std::string &GetLocalNodeID() const { return local_node_id_; }
 
   /// Get the io_context used by RaySyncer.
   instrumented_io_context &GetIOContext() { return io_context_; }
@@ -156,12 +167,12 @@ class RaySyncer {
   instrumented_io_context &io_context_;
 
   /// The current node id.
-  const std::string node_id_;
+  const std::string local_node_id_;
 
   /// Manage connections. Here the key is the NodeID in binary form.
   absl::flat_hash_map<std::string, std::unique_ptr<NodeSyncConnection>> sync_connections_;
 
-  /// Upward connections. These are connections initialized not by this node
+  /// Upward connections. These are connections initialized not by the local node.
   absl::flat_hash_set<NodeSyncConnection *> upward_connections_;
 
   /// The local node state
@@ -215,7 +226,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
   // Ideally this should be owned by RaySyncer, but since we are doing
   // long-polling right now, we have to put it here so that when
   // long-polling request comes, we can set it up.
-  std::string node_id_;
+  std::string remote_node_id_;
 
   // The ray syncer this RPC wrappers of.
   RaySyncer &syncer_;
