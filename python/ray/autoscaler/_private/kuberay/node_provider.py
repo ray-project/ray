@@ -142,7 +142,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
     ):
         logger.info("Creating KuberayNodeProvider.")
         self.namespace = provider_config["namespace"]
-        self.cluster_name = cluster_name <--- Sriram: is this required?
+        self.cluster_name = cluster_name
         self._lock = threading.RLock()
 
         self.headers, self.verify = load_k8s_secrets()
