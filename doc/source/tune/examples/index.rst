@@ -153,38 +153,32 @@ Search Algorithm Examples
 
 .. TODO: make these panels with logos!
 
-- :doc:`/tune/examples/includes/ax_example`:
+- :doc:`/tune/examples/ax_example`:
   Example script showing usage of :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
-- :doc:`/tune/examples/includes/dragonfly_example`:
+- :doc:`/tune/examples/dragonfly_example`:
   Example script showing usage of :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
-- :doc:`/tune/examples/includes/skopt_example`:
+- :doc:`/tune/examples/skopt_example`:
   Example script showing usage of :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
 - :doc:`/tune/examples/hyperopt_example`:
-  Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__]
-- :doc:`/tune/examples/includes/hyperopt_conditional_search_space_example`:
-  Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__] with a conditional search space
-- :doc:`/tune/examples/includes/bayesopt_example`:
+  Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__] including a conditional search space.
+- :doc:`/tune/examples/bayesopt_example`:
   Example script showing usage of :ref:`BayesOptSearch <bayesopt>` [`BayesianOptimization website <https://github.com/fmfn/BayesianOptimization>`__]
-- :doc:`/tune/examples/includes/blendsearch_example`:
+- :doc:`/tune/examples/blendsearch_example`:
   Example script showing usage of :ref:`BlendSearch <BlendSearch>` [`BlendSearch website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-- :doc:`/tune/examples/includes/cfo_example`:
+- :doc:`/tune/examples/cfo_example`:
   Example script showing usage of :ref:`CFO <CFO>` [`CFO website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-- :doc:`/tune/examples/includes/bohb_example`:
+- :doc:`/tune/examples/bohb_example`:
   Example script showing usage of :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
-- :doc:`/tune/examples/includes/nevergrad_example`:
+- :doc:`/tune/examples/nevergrad_example`:
   Example script showing usage of :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
 - :doc:`/tune/examples/optuna_example`:
   Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
-- :doc:`/tune/examples/includes/zoopt_example`:
+- :doc:`/tune/examples/zoopt_example`:
   Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
-- :doc:`/tune/examples/includes/sigopt_example`:
-  Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
-- :doc:`/tune/examples/includes/hebo_example`:
+- :doc:`/tune/examples/sigopt_example`:
+  Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__] including support for prior beliefs and the multi-objective case.
+- :doc:`/tune/examples/hebo_example`:
   Example script showing usage of :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-- :doc:`/tune/examples/includes/sigopt_multi_objective_example`:
-  Example using Sigopt's multi-objective functionality (contributed).
-- :doc:`/tune/examples/includes/sigopt_prior_beliefs_example`:
-  Example using Sigopt's support for prior beliefs (contributed).
 
 
 .. _tune-general-examples:
