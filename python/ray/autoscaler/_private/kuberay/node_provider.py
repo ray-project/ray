@@ -42,8 +42,6 @@ from ray.autoscaler.tags import (
 # Note: Log handlers set up in autoscaling monitor entrypoint.
 logger = logging.getLogger(__name__)
 
-NOT_A_NODE_NAME = "__not_a_node_name__"
-
 provider_exists = False
 
 
@@ -144,7 +142,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
     ):
         logger.info("Creating KuberayNodeProvider.")
         self.namespace = provider_config["namespace"]
-        self.cluster_name = cluster_name
+        self.cluster_name = cluster_name <--- Sriram: is this required?
         self._lock = threading.RLock()
 
         self.headers, self.verify = load_k8s_secrets()
@@ -225,28 +223,15 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             url = "rayclusters/{}".format(self.cluster_name)
             raycluster = self._get(url)
             group_name = tags["ray-user-node-type"]
-            group_index, group_spec = self._get_worker_group(raycluster, group_name)
-            prefix = f"/spec/workerGroupSpecs/{group_index}"
+            group_index, _ = self._get_worker_group(raycluster, group_name)
+            tag_filters = {TAG_RAY_USER_NODE_TYPE: groupName}
+            current_replica_count = len(self.non_terminated_nodes(tag_filters))
+            path = f"/spec/workerGroupSpecs/{group_index}/replicas"
             payload = [
-                # This test makes sure that the previous request to Kuberay has been completed.
-                {
-                    "op": "test",
-                    "path": prefix + "/scaleStrategy",
-                    "value": {"workersToDelete": []},
-                },
-                # We only submit the request for additional replicas if the above test passes.
                 {
                     "op": "replace",
-                    "path": prefix + "/replicas",
-                    "value": group_spec["replicas"] + count,
-                },
-                # We insert a dummy node to delete so future requests from create_node and
-                # terminate_nodes can ensure that this request has been completed (by checking that
-                # workersToDelete is empty).
-                {
-                    "op": "replace",
-                    "path": prefix + "/scaleStrategy",
-                    "value": {"workersToDelete": [NOT_A_NODE_NAME]},
+                    "path": path,
+                    "value": current_replica_count + count,
                 },
             ]
             self._patch(url, payload)
@@ -290,33 +275,27 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             # a single element and therefore it is most likely not worth
             # optimizing this code to batch the requests to the API server.
             groups = {}
+            current_replica_counts = {}
             label_filters = to_label_selector({"ray.io/cluster": self.cluster_name})
             pods = self._get(
                 "pods?labelSelector=" + requests.utils.quote(label_filters)
             )
             for pod in pods["items"]:
+                group_name = pod["metadata"]["labels"]["ray.io/group"]
+                current_replica_counts[group_name] = current_replica_counts.get(group_name, 0) + 1
                 if pod["metadata"]["name"] in node_ids:
-                    groups.setdefault(
-                        pod["metadata"]["labels"]["ray.io/group"], []
-                    ).append(pod["metadata"]["name"])
+                    groups.setdefault(group_name, []).append(pod["metadata"]["name"])
 
             url = "rayclusters/{}".format(self.cluster_name)
             raycluster = self._get(url)
             for group_name, nodes in groups.items():
-                group_index, group_spec = self._get_worker_group(raycluster, group_name)
+                group_index, _ = self._get_worker_group(raycluster, group_name)
                 prefix = f"/spec/workerGroupSpecs/{group_index}"
                 payload = [
-                    # This test makes sure that the previous request to Kuberay has been completed.
-                    {
-                        "op": "test",
-                        "path": prefix + "/scaleStrategy",
-                        "value": {"workersToDelete": []},
-                    },
-                    # We only submit the request to scale down replicas if the above test passes.
                     {
                         "op": "replace",
                         "path": prefix + "/replicas",
-                        "value": group_spec["replicas"] - len(nodes),
+                        "value": current_replica_counts[group_name] - len(nodes),
                     },
                     {
                         "op": "replace",
