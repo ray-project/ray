@@ -268,8 +268,18 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
-      make linkcheck
       make doctest
+    fi
+  )
+}
+
+check_sphinx_links() {
+  (
+    cd "${WORKSPACE_DIR}"/doc
+    if [ "${OSTYPE}" = msys ]; then
+      echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
+    else
+      make linkcheck
     fi
   )
 }
