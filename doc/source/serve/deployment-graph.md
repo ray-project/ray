@@ -15,7 +15,7 @@ kernelspec:
 
 (serve-deployment-graph)=
 
-# Serve Deployment Graph
+# Deployment Graph
 
 ```{note} 
 Note: This feature is still experimental in Alpha release, some APIs are subject to change.
