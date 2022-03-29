@@ -143,7 +143,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # If True, the execution plan API will not be used. Instead,
         # a Trainer's `training_iteration` method will be called as-is each
         # training iteration.
-        "_disable_execution_plan_api": False,
+        "_disable_execution_plan_api": True,
     },
     _allow_unknown_configs=True,
 )
@@ -311,8 +311,7 @@ class DQNTrainer(SimpleQTrainer):
         train_results = {}
 
         # We alternate between storing new samples and sampling and training
-        store_weight, sample_and_train_weight = calculate_rr_weights(
-            self.config)
+        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
 
         for _ in range(store_weight):
             # (1) Sample (MultiAgentBatch) from workers
@@ -320,7 +319,9 @@ class DQNTrainer(SimpleQTrainer):
             sample_batches.extend(new_sample_batches)
 
             # Update counters
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(s) for s in new_sample_batches)
+            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
+                len(s) for s in new_sample_batches
+            )
             self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
                 len(s) if isinstance(s, SampleBatch) else s.agent_steps()
                 for s in new_sample_batches
@@ -336,8 +337,7 @@ class DQNTrainer(SimpleQTrainer):
             train_batch = self.local_replay_buffer.replay(batch_size)
 
             # Postprocess batch before we learn on it
-            post_fn = self.config.get("before_learn_on_batch") or (lambda b,
-                                                                       *a: b)
+            post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
             train_batch = post_fn(train_batch, self.workers, self.config)
 
             # (5) Learn on training batch.
@@ -394,6 +394,7 @@ class DQNTrainer(SimpleQTrainer):
 
         # (7) Return all collected metrics for the iteration.
         return train_results
+
 
 @Deprecated(
     new="Sub-class directly from `DQNTrainer` and override its methods", error=False

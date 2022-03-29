@@ -2776,8 +2776,21 @@ class Trainer(Trainable):
                 if config.get("replay_buffer_config") is not None:
                     config["replay_buffer_config"][k] = config[k]
 
-        # Some agents do not need a replay buffer
-        if not config.get("replay_buffer_config") or config.get(
+        # Old Ape-X configs may contain no_local_replay_buffer
+        no_local_replay_buffer = config.get("no_local_replay_buffer", False)
+        if no_local_replay_buffer:
+            deprecation_warning(
+                old="config['no_local_replay_buffer']",
+                help="no_local_replay_buffer specified at new location config["
+                "'replay_buffer_config']["
+                "'capacity'] will be overwritten.",
+                error=False,
+            )
+            config["replay_buffer_config"][
+                "no_local_replay_buffer"
+            ] = no_local_replay_buffer
+
+        if not config.get("replay_buffer_config") or config["replay_buffer_config"].get(
             "no_local_replay_buffer", False
         ):
             return
