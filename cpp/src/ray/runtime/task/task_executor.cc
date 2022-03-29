@@ -85,7 +85,8 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
 /// TODO(qicosmos): Need to add more details of the error messages, such as object id,
 /// task id etc.
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
-    const std::string &func_name, const ArgsBufferList &args_buffer,
+    const std::string &func_name,
+    const ArgsBufferList &args_buffer,
     msgpack::sbuffer *actor_ptr) {
   try {
     EntryFuntion entry_function;
@@ -122,11 +123,14 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
 }
 
 Status TaskExecutor::ExecuteTask(
-    ray::TaskType task_type, const std::string task_name, const RayFunction &ray_function,
+    ray::TaskType task_type,
+    const std::string task_name,
+    const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
     const std::vector<std::shared_ptr<ray::RayObject>> &args_buffer,
     const std::vector<rpc::ObjectReference> &arg_refs,
-    const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
+    const std::vector<ObjectID> &return_ids,
+    const std::string &debugger_breakpoint,
     std::vector<std::shared_ptr<ray::RayObject>> *results,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_application_level_error,
@@ -160,6 +164,13 @@ Status TaskExecutor::ExecuteTask(
     std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
     current_actor_ = data;
   } else if (task_type == ray::TaskType::ACTOR_TASK) {
+    if (cross_lang) {
+      RAY_CHECK(!typed_descriptor->ClassName().empty());
+      func_name = std::string("&")
+                      .append(typed_descriptor->ClassName())
+                      .append("::")
+                      .append(typed_descriptor->FunctionName());
+    }
     RAY_CHECK(current_actor_ != nullptr);
     std::tie(status, data) =
         GetExecuteResult(func_name, ray_args_buffer, current_actor_.get());
@@ -210,8 +221,12 @@ Status TaskExecutor::ExecuteTask(
 
     size_t total = cross_lang ? (XLANG_HEADER_LEN + data_size) : data_size;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id, total, meta_buffer, std::vector<ray::ObjectID>(),
-        &task_output_inlined_bytes, result_ptr));
+        result_id,
+        total,
+        meta_buffer,
+        std::vector<ray::ObjectID>(),
+        &task_output_inlined_bytes,
+        result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {
@@ -243,7 +258,8 @@ Status TaskExecutor::ExecuteTask(
 }
 
 void TaskExecutor::Invoke(
-    const TaskSpecification &task_spec, std::shared_ptr<msgpack::sbuffer> actor,
+    const TaskSpecification &task_spec,
+    std::shared_ptr<msgpack::sbuffer> actor,
     AbstractRayRuntime *runtime,
     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
@@ -267,8 +283,8 @@ void TaskExecutor::Invoke(
   std::shared_ptr<msgpack::sbuffer> data;
   try {
     if (actor) {
-      auto result = TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer,
-                                         actor.get());
+      auto result = TaskExecutionHandler(
+          typed_descriptor->FunctionName(), args_buffer, actor.get());
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       runtime->Put(std::move(data), task_spec.ReturnId(0));
     } else {

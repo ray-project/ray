@@ -1,5 +1,6 @@
 from typing import Optional
 
+from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
@@ -16,6 +17,7 @@ class ResultGrid:
     The constructor is a private API.
 
     Usage pattern:
+
     .. code-block:: python
 
         result_grid = tuner.fit()
@@ -62,10 +64,11 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        # TODO(xwjiang): Use Kai's new checkpoint!
         result = Result(
-            checkpoint=trial.checkpoint,
+            checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
+            if trial.checkpoint.value
+            else None,
             metrics=trial.last_result,
-            error=self._get_error_msg(trial),
+            error=self._populate_exception(trial),
         )
         return result

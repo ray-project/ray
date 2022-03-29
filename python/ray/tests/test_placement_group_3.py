@@ -28,11 +28,7 @@ from ray.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
-    if gcs_utils.use_gcs_for_bootstrap():
-        gcs_client = gcs_utils.GcsClient(address=address)
-    else:
-        redis_client = ray._private.services.create_redis_client(address, "")
-        gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
+    gcs_client = gcs_utils.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)

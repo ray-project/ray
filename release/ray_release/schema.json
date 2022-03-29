@@ -18,9 +18,9 @@
 				"legacy": {
 					"$ref": "#/definitions/Legacy"
 				},
-                "stable": {
-                    "type": "boolean"
-                },
+				"stable": {
+					"type": "boolean"
+				},
 				"frequency": {
 					"type": "string",
 					"enum": [
@@ -52,7 +52,6 @@
 			"required": [
 				"cluster",
 				"frequency",
-				"legacy",
 				"name",
 				"run",
 				"team",
@@ -141,9 +140,9 @@
 				"timeout": {
 					"type": "integer"
 				},
-                "long_running": {
-                    "type": "boolean"
-                }
+				"long_running": {
+					"type": "boolean"
+				}
 			},
 			"required": [
 				"script",
@@ -170,8 +169,37 @@
 		},
 		"SmokeTest": {
 			"type": "object",
-			"additionalProperties": true,
-			"title": "SmokeTest"
+			"additionalProperties": false,
+			"title": "SmokeTest",
+			"properties": {
+				"working_dir": {
+					"type": "string"
+				},
+                "driver_setup": {
+					"type": "string"
+				},
+				"cluster": {
+					"type": "object"
+				},
+				"run": {
+					"type": "object"
+				},
+                "alert": {
+					"type": "string"
+				},
+				"frequency": {
+					"type": "string",
+					"enum": [
+						"disabled",
+						"multi",
+						"nightly",
+						"weekly"
+					]
+				}
+			},
+			"required": [
+				"frequency"
+			]
 		}
 	}
 }

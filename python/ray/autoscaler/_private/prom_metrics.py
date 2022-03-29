@@ -156,7 +156,7 @@ try:
             )
             self.update_loop_exceptions: Counter = Counter(
                 "update_loop_exceptions",
-                "Number of exceptions raised in the update loop of the " "autoscaler.",
+                "Number of exceptions raised in the update loop of the autoscaler.",
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry,

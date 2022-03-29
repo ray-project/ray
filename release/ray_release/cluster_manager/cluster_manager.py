@@ -39,7 +39,6 @@ class ClusterManager(abc.ABC):
         # Add flags for redisless Ray
         self.cluster_env.setdefault("env_vars", {})
         self.cluster_env["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
-        self.cluster_env["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
         self.cluster_env["env_vars"]["RAY_gcs_storage"] = "memory"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
@@ -70,7 +69,7 @@ class ClusterManager(abc.ABC):
     def terminate_cluster(self):
         raise NotImplementedError
 
-    def get_cluster_address(self, full: bool = True) -> str:
+    def get_cluster_address(self) -> str:
         raise NotImplementedError
 
     def get_cluster_url(self) -> Optional[str]:

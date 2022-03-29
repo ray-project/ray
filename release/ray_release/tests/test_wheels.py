@@ -1,10 +1,12 @@
 import os
+import sys
 import time
 import unittest
 from unittest.mock import patch
 
 from freezegun import freeze_time
 
+from ray_release.config import Test, load_test_cluster_env
 from ray_release.exception import RayWheelsNotFoundError, RayWheelsTimeoutError
 from ray_release.wheels import (
     get_ray_version,
@@ -36,14 +38,6 @@ class WheelsFinderTest(unittest.TestCase):
             get_ray_version(DEFAULT_REPO, commit="fake")
 
     def testGetRayWheelsURL(self):
-        with self.assertRaises(RayWheelsNotFoundError):
-            get_ray_wheels_url(
-                repo_url="https://github.com/unknown/ray.git",
-                branch="master",
-                commit="1234",
-                ray_version="2.0.0.dev0",
-            )
-
         url = get_ray_wheels_url(
             repo_url="https://github.com/ray-project/ray.git",
             branch="master",
@@ -78,6 +72,8 @@ class WheelsFinderTest(unittest.TestCase):
 
     @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
     def testFindRayWheelsCommitOnly(self):
+        os.environ.pop("BUILDKITE_BRANCH")
+
         repo = DEFAULT_REPO
         branch = "master"
         commit = "1234" * 10
@@ -132,10 +128,23 @@ class WheelsFinderTest(unittest.TestCase):
             repo, branch, commit, version, search_str="ray-project:master"
         )
 
-        with self.assertRaises(RayWheelsNotFoundError):
-            self._testFindRayWheelsCheckout(
-                repo, branch, commit, version, search_str="remote:master"
-            )
+    @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
+    def testFindRayWheelsPRRepoBranch(self):
+        repo = "user"
+        branch = "dev-branch"
+        commit = "1234" * 10
+        version = "2.0.0.dev0"
+
+        self._testFindRayWheelsCheckout(
+            repo, branch, commit, version, search_str="user:dev-branch"
+        )
+        self._testFindRayWheelsCheckout(
+            f"https://github.com/{repo}/ray-fork.git",
+            branch,
+            commit,
+            version,
+            search_str="user:dev-branch",
+        )
 
     @patch("time.sleep", lambda *a, **kw: None)
     @patch("ray_release.wheels.get_ray_version", lambda *a, **kw: "2.0.0.dev0")
@@ -165,3 +174,33 @@ class WheelsFinderTest(unittest.TestCase):
                 url = find_and_wait_for_ray_wheels_url(commit, timeout=300.0)
 
             self.assertEqual(url, get_ray_wheels_url(repo, branch, commit, version))
+
+    def testWheelsSanityString(self):
+        this_env = {"env": None}
+
+        def override_env(path, env):
+            this_env["env"] = env
+
+        with patch(
+            "ray_release.config.load_and_render_yaml_template", override_env
+        ), patch("ray_release.config.get_test_environment", lambda: {}):
+            load_test_cluster_env(
+                Test(cluster=dict(cluster_env="invalid")),
+                ray_wheels_url="https://no-commit-url",
+            )
+            assert (
+                "No commit sanity check" in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
+            )
+
+            sha = "abcdef1234abcdef1234abcdef1234abcdef1234"
+            load_test_cluster_env(
+                Test(cluster=dict(cluster_env="invalid")),
+                ray_wheels_url=f"https://some/{sha}/binary.whl",
+            )
+            assert sha in this_env["env"]["RAY_WHEELS_SANITY_CHECK"]
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

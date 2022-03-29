@@ -33,7 +33,7 @@ If ``serve.start()`` is called again in a process in which there is already a ru
 Deploying on a Single Node
 ==========================
 
-While Ray Serve makes it easy to scale out on a multi-node Ray cluster, in some scenarios a single node may suite your needs.
+While Ray Serve makes it easy to scale out on a multi-node Ray cluster, in some scenarios a single node may suit your needs.
 There are two ways you can run Ray Serve on a single node, shown below.
 In general, **Option 2 is recommended for most users** because it allows you to fully make use of Serve's ability to dynamically update running deployments.
 
@@ -242,6 +242,14 @@ You can also customize how frequently the health check is run and the timeout wh
             if not self._my_db_connection.is_connected():
                 # The specific type of exception is not important.
                 raise RuntimeError("uh-oh, DB connection is broken.")
+
+.. tip::
+
+    You can use the Serve CLI command ``serve status`` to get status info
+    about your live deployments. The CLI was included with Serve when you did
+    ``pip install "ray[serve]"``. If you're checking your deployments on a
+    remote Ray cluster, make sure to include the Ray cluster's dashboard address
+    in the command: ``serve status --address [dashboard_address]``.
 
 Failure Recovery
 ================

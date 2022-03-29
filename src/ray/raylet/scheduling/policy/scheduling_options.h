@@ -34,7 +34,8 @@ enum class SchedulingType {
 struct SchedulingOptions {
   static SchedulingOptions Random() {
     return SchedulingOptions(SchedulingType::RANDOM,
-                             /*spread_threshold*/ 0, /*avoid_local_node*/ false,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false);
   }
@@ -42,7 +43,8 @@ struct SchedulingOptions {
   // construct option for spread scheduling policy.
   static SchedulingOptions Spread(bool avoid_local_node, bool require_node_available) {
     return SchedulingOptions(SchedulingType::SPREAD,
-                             /*spread_threshold*/ 0, avoid_local_node,
+                             /*spread_threshold*/ 0,
+                             avoid_local_node,
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes());
   }
@@ -51,7 +53,8 @@ struct SchedulingOptions {
   static SchedulingOptions Hybrid(bool avoid_local_node, bool require_node_available) {
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
-                             avoid_local_node, require_node_available,
+                             avoid_local_node,
+                             require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes());
   }
 
@@ -62,8 +65,11 @@ struct SchedulingOptions {
   bool avoid_gpu_nodes;
 
  private:
-  SchedulingOptions(SchedulingType type, float spread_threshold, bool avoid_local_node,
-                    bool require_node_available, bool avoid_gpu_nodes)
+  SchedulingOptions(SchedulingType type,
+                    float spread_threshold,
+                    bool avoid_local_node,
+                    bool require_node_available,
+                    bool avoid_gpu_nodes)
       : scheduling_type(type),
         spread_threshold(spread_threshold),
         avoid_local_node(avoid_local_node),

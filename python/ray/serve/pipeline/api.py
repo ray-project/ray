@@ -1,13 +1,14 @@
-from ray.experimental.dag import DAGNode
+from typing import List
+from ray.experimental.dag.dag_node import DAGNode
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
-    get_pipeline_input_node,
-    get_ingress_deployment,
+    process_ingress_deployment_in_serve_dag,
 )
+from ray.serve.api import Deployment
 
 
-def build(ray_dag_root_node: DAGNode):
+def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
@@ -38,15 +39,14 @@ def build(ray_dag_root_node: DAGNode):
     Args:
         ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
             should be executable via `ray_dag_root_node.execute(user_input)`
-            and should have `PipelineInputNode` in it.
+            and should have `InputNode` in it.
 
     Returns:
-        app: The Ray Serve application object that wraps all deployments needed
-            along with ingress deployment for an e2e runnable serve pipeline,
-            accessible via python .remote() call and HTTP.
+        deployments: All deployments needed for an e2e runnable serve pipeline,
+            accessible via python .remote() call.
 
     Examples:
-        >>> with ServeInputNode(preprocessor=request_to_data_int) as dag_input:
+        >>> with InputNode() as dag_input:
         ...    m1 = Model.bind(1)
         ...    m2 = Model.bind(2)
         ...    m1_output = m1.forward.bind(dag_input[0])
@@ -56,19 +56,35 @@ def build(ray_dag_root_node: DAGNode):
         Assuming we have non-JSON serializable or inline defined class or
         function in local pipeline development.
 
-        >>> app = serve.pipeline.build(ray_dag) # This works
-        >>> handle = app.deploy()
-        >>> # This also works, we're simply executing the transformed serve_dag.
-        >>> ray.get(handle.remote(data)
-        >>> # This will fail where enforcements are applied.
-        >>> deployment_yaml = app.to_yaml()
+        >>> from ray.serve.api import build as build_app
+        >>> deployments = build_app(ray_dag) # it can be method node
+        >>> deployments = build_app(m1) # or just a regular node.
     """
     serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
-    pipeline_input_node = get_pipeline_input_node(serve_root_dag)
-    ingress_deployment = get_ingress_deployment(serve_root_dag, pipeline_input_node)
-    deployments.insert(0, ingress_deployment)
+    deployments_with_http = process_ingress_deployment_in_serve_dag(deployments)
 
-    # TODO (jiaodong): Call into Application once Shreyas' PR is merged
-    # TODO (jiaodong): Apply enforcements at serve app to_yaml level
-    return deployments
+    return deployments_with_http
+
+
+def get_and_validate_ingress_deployment(deployments: List[Deployment]) -> Deployment:
+    """Validation for http route prefixes for a list of deployments in pipeline.
+
+    Ensures:
+        1) One and only one ingress deployment with given route prefix.
+        2) All other not ingress deployments should have prefix of None.
+    """
+
+    ingress_deployments = []
+    for deployment in deployments:
+        if deployment.route_prefix is not None:
+            ingress_deployments.append(deployment)
+
+    if len(ingress_deployments) != 1:
+        raise ValueError(
+            "Only one deployment in an Serve Application or DAG can have "
+            f"non-None route prefix. {len(ingress_deployments)} ingress "
+            f"deployments found: {ingress_deployments}"
+        )
+
+    return ingress_deployments[0]

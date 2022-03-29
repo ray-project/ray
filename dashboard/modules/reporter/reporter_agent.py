@@ -275,7 +275,10 @@ class ReporterAgent(
             return {
                 "/": psutil._common.sdiskusage(total=1, used=0, free=1, percent=0.0)
             }
-        root = os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep
+        if sys.platform == "win32":
+            root = psutil.disk_partitions()[0].mountpoint
+        else:
+            root = os.sep
         tmp = ray._private.utils.get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
@@ -465,7 +468,9 @@ class ReporterAgent(
         if gpus_available:
             gpus_utilization, gram_used, gram_total = 0, 0, 0
             for gpu in gpus:
-                gpus_utilization += gpu["utilization_gpu"]
+                # Consume GPU may not report its utilization.
+                if gpu["utilization_gpu"] is not None:
+                    gpus_utilization += gpu["utilization_gpu"]
                 gram_used += gpu["memory_used"]
                 gram_total += gpu["memory_total"]
 
@@ -603,7 +608,8 @@ class ReporterAgent(
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
-        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
+        if server:
+            reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
         gcs_addr = self._dashboard_agent.gcs_address
         assert gcs_addr is not None

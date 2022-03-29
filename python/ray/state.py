@@ -46,7 +46,7 @@ class GlobalState:
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
             raise ray.exceptions.RaySystemError(
-                "Ray has not been started yet. You can start Ray with " "'ray.init()'."
+                "Ray has not been started yet. You can start Ray with 'ray.init()'."
             )
 
     def disconnect(self):

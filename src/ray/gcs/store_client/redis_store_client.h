@@ -29,26 +29,34 @@ class RedisStoreClient : public StoreClient {
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(std::move(redis_client)) {}
 
-  Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &data, const StatusCallback &callback) override;
+  Status AsyncPut(const std::string &table_name,
+                  const std::string &key,
+                  const std::string &data,
+                  const StatusCallback &callback) override;
 
-  Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                           const std::string &index_key, const std::string &data,
+  Status AsyncPutWithIndex(const std::string &table_name,
+                           const std::string &key,
+                           const std::string &index_key,
+                           const std::string &data,
                            const StatusCallback &callback) override;
 
-  Status AsyncGet(const std::string &table_name, const std::string &key,
+  Status AsyncGet(const std::string &table_name,
+                  const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
 
-  Status AsyncGetByIndex(const std::string &table_name, const std::string &index_key,
+  Status AsyncGetByIndex(const std::string &table_name,
+                         const std::string &index_key,
                          const MapCallback<std::string, std::string> &callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
                      const MapCallback<std::string, std::string> &callback) override;
 
-  Status AsyncDelete(const std::string &table_name, const std::string &key,
+  Status AsyncDelete(const std::string &table_name,
+                     const std::string &key,
                      const StatusCallback &callback) override;
 
-  Status AsyncDeleteWithIndex(const std::string &table_name, const std::string &key,
+  Status AsyncDeleteWithIndex(const std::string &table_name,
+                              const std::string &key,
                               const std::string &index_key,
                               const StatusCallback &callback) override;
 
@@ -61,7 +69,8 @@ class RedisStoreClient : public StoreClient {
                                    const std::vector<std::string> &index_keys,
                                    const StatusCallback &callback) override;
 
-  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
+  Status AsyncDeleteByIndex(const std::string &table_name,
+                            const std::string &index_key,
                             const StatusCallback &callback) override;
 
   int GetNextJobID() override;
@@ -86,7 +95,8 @@ class RedisStoreClient : public StoreClient {
    private:
     void Scan(const std::string &match_pattern, const StatusCallback &callback);
 
-    void OnScanCallback(const std::string &match_pattern, size_t shard_index,
+    void OnScanCallback(const std::string &match_pattern,
+                        size_t shard_index,
                         const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
 
@@ -108,7 +118,8 @@ class RedisStoreClient : public StoreClient {
     std::shared_ptr<RedisClient> redis_client_;
   };
 
-  Status DoPut(const std::string &key, const std::string &data,
+  Status DoPut(const std::string &key,
+               const std::string &data,
                const StatusCallback &callback);
 
   Status DeleteByKeys(const std::vector<std::string> &keys,
@@ -118,7 +129,8 @@ class RedisStoreClient : public StoreClient {
   /// operations.
   static absl::flat_hash_map<RedisContext *, std::list<std::vector<std::string>>>
   GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_client,
-                      const std::string &command, const std::vector<std::string> &keys,
+                      const std::string &command,
+                      const std::vector<std::string> &keys,
                       int *count);
 
   /// The separator is used when building redis key.
@@ -127,7 +139,8 @@ class RedisStoreClient : public StoreClient {
 
   static std::string GenRedisKey(const std::string &table_name, const std::string &key);
 
-  static std::string GenRedisKey(const std::string &table_name, const std::string &key,
+  static std::string GenRedisKey(const std::string &table_name,
+                                 const std::string &key,
                                  const std::string &index_key);
 
   static std::string GenRedisMatchPattern(const std::string &table_name);

@@ -7,6 +7,7 @@ try:
         deployment,
         get_deployment,
         list_deployments,
+        run,
     )
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
@@ -33,4 +34,5 @@ __all__ = [
     "deployment",
     "get_deployment",
     "list_deployments",
+    "run",
 ]

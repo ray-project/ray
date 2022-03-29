@@ -99,7 +99,8 @@ DECLARE_stats(gcs_actors_count);
 ///
 /// RPC
 static Histogram GcsLatency("gcs_latency",
-                            "The latency of a GCS (by default Redis) operation.", "us",
+                            "The latency of a GCS (by default Redis) operation.",
+                            "us",
                             {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
                             {CustomKey});
 
@@ -109,25 +110,30 @@ static Histogram GcsLatency("gcs_latency",
 
 /// Raylet Resource Manager
 static Gauge LocalAvailableResource("local_available_resource",
-                                    "The available resources on this node.", "",
+                                    "The available resources on this node.",
+                                    "",
                                     {ResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
-                                "The total resources on this node.", "",
+                                "The total resources on this node.",
+                                "",
                                 {ResourceNameKey});
 
 /// Object Manager.
 static Gauge ObjectStoreAvailableMemory(
     "object_store_available_memory",
-    "Amount of memory currently available in the object store.", "bytes");
+    "Amount of memory currently available in the object store.",
+    "bytes");
 
 static Gauge ObjectStoreUsedMemory(
     "object_store_used_memory",
-    "Amount of memory currently occupied in the object store.", "bytes");
+    "Amount of memory currently occupied in the object store.",
+    "bytes");
 
 static Gauge ObjectStoreFallbackMemory(
     "object_store_fallback_memory",
-    "Amount of memory in fallback allocations in the filesystem.", "bytes");
+    "Amount of memory in fallback allocations in the filesystem.",
+    "bytes");
 
 static Gauge ObjectStoreLocalObjects("object_store_num_local_objects",
                                      "Number of objects currently in the object store.",
@@ -175,25 +181,29 @@ static Histogram HeartbeatReportMs(
     "Heartbeat report time in raylet. If this value is high, that means there's a high "
     "system load. It is possible that this node will be killed because of missing "
     "heartbeats.",
-    "ms", {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
+    "ms",
+    {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
 
 /// Worker Pool
 static Histogram ProcessStartupTimeMs("process_startup_time_ms",
-                                      "Time to start up a worker process.", "ms",
+                                      "Time to start up a worker process.",
+                                      "ms",
                                       {1, 10, 100, 1000, 10000});
 
 static Sum NumWorkersStarted(
     "internal_num_processes_started",
-    "The total number of worker processes the worker pool has created.", "processes");
+    "The total number of worker processes the worker pool has created.",
+    "processes");
 
-static Sum NumSpilledTasks("internal_num_spilled_tasks",
-                           "The cumulative number of lease requeusts that this raylet "
-                           "has spilled to other raylets.",
-                           "tasks");
+static Gauge NumSpilledTasks("internal_num_spilled_tasks",
+                             "The cumulative number of lease requeusts that this raylet "
+                             "has spilled to other raylets.",
+                             "tasks");
 
 static Gauge NumInfeasibleSchedulingClasses(
     "internal_num_infeasible_scheduling_classes",
-    "The number of unique scheduling classes that are infeasible.", "tasks");
+    "The number of unique scheduling classes that are infeasible.",
+    "tasks");
 
 ///
 /// GCS Server Metrics
@@ -208,21 +218,27 @@ static Count UnintentionalWorkerFailures(
 
 /// Nodes
 static Count NodeFailureTotal(
-    "node_failure_total", "Number of node failures that have happened in the cluster.",
+    "node_failure_total",
+    "Number of node failures that have happened in the cluster.",
     "");
 
 /// Resources
 static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
-                                         "Outbound heartbeat payload size", "kb",
+                                         "Outbound heartbeat payload size",
+                                         "kb",
                                          {10, 50, 100, 1000, 10000, 100000});
 
 static Histogram GcsUpdateResourceUsageTime(
-    "gcs_update_resource_usage_time", "The average RTT of a UpdateResourceUsage RPC.",
-    "ms", {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000}, {CustomKey});
+    "gcs_update_resource_usage_time",
+    "The average RTT of a UpdateResourceUsage RPC.",
+    "ms",
+    {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000},
+    {CustomKey});
 
 /// Testing
 static Gauge LiveActors("live_actors", "Number of live actors.", "actors");
-static Gauge RestartingActors("restarting_actors", "Number of restarting actors.",
+static Gauge RestartingActors("restarting_actors",
+                              "Number of restarting actors.",
                               "actors");
 
 }  // namespace stats

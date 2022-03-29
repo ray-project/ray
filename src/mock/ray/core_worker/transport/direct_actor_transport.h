@@ -17,24 +17,34 @@ namespace core {
 class MockCoreWorkerDirectActorTaskSubmitterInterface
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
-  MOCK_METHOD(void, AddActorQueueIfNotExists,
-              (const ActorID &actor_id, int32_t max_pending_calls), (override));
-  MOCK_METHOD(void, ConnectActor,
-              (const ActorID &actor_id, const rpc::Address &address,
+  MOCK_METHOD(void,
+              AddActorQueueIfNotExists,
+              (const ActorID &actor_id, int32_t max_pending_calls),
+              (override));
+  MOCK_METHOD(void,
+              ConnectActor,
+              (const ActorID &actor_id,
+               const rpc::Address &address,
                int64_t num_restarts),
               (override));
-  MOCK_METHOD(void, DisconnectActor,
-              (const ActorID &actor_id, int64_t num_restarts, bool dead,
+  MOCK_METHOD(void,
+              DisconnectActor,
+              (const ActorID &actor_id,
+               int64_t num_restarts,
+               bool dead,
                const rpc::RayException *creation_task_exception),
               (override));
-  MOCK_METHOD(void, KillActor,
-              (const ActorID &actor_id, bool force_kill, bool no_restart), (override));
+  MOCK_METHOD(void,
+              KillActor,
+              (const ActorID &actor_id, bool force_kill, bool no_restart),
+              (override));
   MOCK_METHOD(void, CheckTimeoutTasks, (), (override));
 };
 
 class MockDependencyWaiter : public DependencyWaiter {
  public:
-  MOCK_METHOD(void, Wait,
+  MOCK_METHOD(void,
+              Wait,
               (const std::vector<rpc::ObjectReference> &dependencies,
                std::function<void()> on_dependencies_available),
               (override));
@@ -42,13 +52,16 @@ class MockDependencyWaiter : public DependencyWaiter {
 
 class MockSchedulingQueue : public SchedulingQueue {
  public:
-  MOCK_METHOD(void, Add,
-              (int64_t seq_no, int64_t client_processed_up_to,
+  MOCK_METHOD(void,
+              Add,
+              (int64_t seq_no,
+               int64_t client_processed_up_to,
                std::function<void(rpc::SendReplyCallback)> accept_request,
                std::function<void(rpc::SendReplyCallback)> reject_request,
                rpc::SendReplyCallback send_reply_callback,
                const std::string &concurrency_group_name,
-               const ray::FunctionDescriptor &function_descriptor, TaskID task_id,
+               const ray::FunctionDescriptor &function_descriptor,
+               TaskID task_id,
                const std::vector<rpc::ObjectReference> &dependencies),
               (override));
   MOCK_METHOD(void, ScheduleRequests, (), (override));

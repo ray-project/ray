@@ -39,8 +39,8 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
     const std::string &key_id) const {
   std::vector<SubscriberID> subscribers;
   if (!subscribers_to_all_.empty()) {
-    subscribers.insert(subscribers.end(), subscribers_to_all_.begin(),
-                       subscribers_to_all_.end());
+    subscribers.insert(
+        subscribers.end(), subscribers_to_all_.begin(), subscribers_to_all_.end());
   }
   auto it = key_id_to_subscribers_.find(key_id);
   if (it != key_id_to_subscribers_.end()) {
@@ -217,9 +217,12 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     it = subscribers_
-             .emplace(subscriber_id, std::make_shared<pub_internal::SubscriberState>(
-                                         subscriber_id, get_time_ms_,
-                                         subscriber_timeout_ms_, publish_batch_size_))
+             .emplace(
+                 subscriber_id,
+                 std::make_shared<pub_internal::SubscriberState>(subscriber_id,
+                                                                 get_time_ms_,
+                                                                 subscriber_timeout_ms_,
+                                                                 publish_batch_size_))
              .first;
   }
   auto &subscriber = it->second;
@@ -233,9 +236,10 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                                      const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
   if (!subscribers_.contains(subscriber_id)) {
-    subscribers_.emplace(subscriber_id, std::make_shared<pub_internal::SubscriberState>(
-                                            subscriber_id, get_time_ms_,
-                                            subscriber_timeout_ms_, publish_batch_size_));
+    subscribers_.emplace(
+        subscriber_id,
+        std::make_shared<pub_internal::SubscriberState>(
+            subscriber_id, get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
   }
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());

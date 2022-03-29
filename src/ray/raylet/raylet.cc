@@ -25,7 +25,8 @@
 namespace {
 
 const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_ptr,
-                                                 int start_index, int end_index) {
+                                                 int start_index,
+                                                 int end_index) {
   std::vector<std::string> enum_names;
   for (int i = 0; i < start_index; ++i) {
     enum_names.push_back("EmptyMessageType");
@@ -54,19 +55,24 @@ namespace ray {
 
 namespace raylet {
 
-Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_name,
+Raylet::Raylet(instrumented_io_context &main_service,
+               const std::string &socket_name,
                const std::string &node_ip_address,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
+               std::shared_ptr<gcs::GcsClient> gcs_client,
+               int metrics_export_port)
     : main_service_(main_service),
       self_node_id_(
           !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
               ? NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
               : NodeID::FromRandom()),
       gcs_client_(gcs_client),
-      node_manager_(main_service, self_node_id_, node_manager_config,
-                    object_manager_config, gcs_client_),
+      node_manager_(main_service,
+                    self_node_id_,
+                    node_manager_config,
+                    object_manager_config,
+                    gcs_client_),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -118,8 +124,9 @@ ray::Status Raylet::RegisterGcs() {
 }
 
 void Raylet::DoAccept() {
-  acceptor_.async_accept(socket_, boost::bind(&Raylet::HandleAccept, this,
-                                              boost::asio::placeholders::error));
+  acceptor_.async_accept(
+      socket_,
+      boost::bind(&Raylet::HandleAccept, this, boost::asio::placeholders::error));
 }
 
 void Raylet::HandleAccept(const boost::system::error_code &error) {
@@ -141,9 +148,13 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
                                       fbb.GetBufferPointer() + fbb.GetSize());
     // Accept a new local client and dispatch it to the node manager.
     auto new_connection = ClientConnection::Create(
-        client_handler, message_handler, std::move(socket_), "worker",
+        client_handler,
+        message_handler,
+        std::move(socket_),
+        "worker",
         node_manager_message_enum,
-        static_cast<int64_t>(protocol::MessageType::DisconnectClient), message_data);
+        static_cast<int64_t>(protocol::MessageType::DisconnectClient),
+        message_data);
   }
   // We're ready to accept another client.
   DoAccept();

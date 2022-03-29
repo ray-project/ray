@@ -98,8 +98,10 @@ struct LongPollConnection {
 /// Keeps the state of each connected subscriber.
 class SubscriberState {
  public:
-  SubscriberState(SubscriberID subscriber_id, std::function<double()> get_time_ms,
-                  uint64_t connection_timeout_ms, const int publish_batch_size)
+  SubscriberState(SubscriberID subscriber_id,
+                  std::function<double()> get_time_ms,
+                  uint64_t connection_timeout_ms,
+                  const int publish_batch_size)
       : subscriber_id_(subscriber_id),
         get_time_ms_(std::move(get_time_ms)),
         connection_timeout_ms_(connection_timeout_ms),
@@ -232,7 +234,8 @@ class Publisher : public PublisherInterface {
   /// \param publish_batch_size The batch size of published messages.
   Publisher(const std::vector<rpc::ChannelType> &channels,
             PeriodicalRunner *const periodical_runner,
-            std::function<double()> get_time_ms, const uint64_t subscriber_timeout_ms,
+            std::function<double()> get_time_ms,
+            const uint64_t subscriber_timeout_ms,
             const int publish_batch_size)
       : periodical_runner_(periodical_runner),
         get_time_ms_(std::move(get_time_ms)),

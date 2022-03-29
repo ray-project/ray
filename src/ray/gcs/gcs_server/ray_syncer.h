@@ -53,7 +53,7 @@ class RaySyncer {
   void Start() {
     poller_->Start();
     broadcast_thread_ = std::make_unique<std::thread>([this]() {
-      SetThreadName("resource_report_broadcaster");
+      SetThreadName("resource_bcast");
       boost::asio::io_service::work work(broadcast_service_);
       broadcast_service_.run();
     });
@@ -66,7 +66,8 @@ class RaySyncer {
           static auto max_batch = RayConfig::instance().resource_broadcast_batch_size();
           // Prepare the to-be-sent messages.
           for (size_t cnt = resources_buffer_proto_.batch().size();
-               cnt < max_batch && cnt < resources_buffer_.size(); ++ptr, ++cnt) {
+               cnt < max_batch && cnt < resources_buffer_.size();
+               ++ptr, ++cnt) {
             resources_buffer_proto_.add_batch()->mutable_data()->Swap(&ptr->second);
           }
           resources_buffer_.erase(beg, ptr);

@@ -19,7 +19,8 @@ namespace ray {
 namespace gcs {
 
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
-                                     const std::string &key, const std::string &data,
+                                     const std::string &key,
+                                     const std::string &data,
                                      const StatusCallback &callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
@@ -136,8 +137,10 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
 }
 
 Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
-    const std::string &table_name, const std::vector<std::string> &keys,
-    const std::vector<std::string> &index_keys, const StatusCallback &callback) {
+    const std::string &table_name,
+    const std::vector<std::string> &keys,
+    const std::vector<std::string> &index_keys,
+    const StatusCallback &callback) {
   RAY_CHECK(keys.size() == index_keys.size());
 
   auto table = GetOrCreateTable(table_name);
@@ -169,7 +172,8 @@ Status InMemoryStoreClient::AsyncBatchDeleteWithIndex(
 }
 
 Status InMemoryStoreClient::AsyncGetByIndex(
-    const std::string &table_name, const std::string &index_key,
+    const std::string &table_name,
+    const std::string &index_key,
     const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
   auto table = GetOrCreateTable(table_name);

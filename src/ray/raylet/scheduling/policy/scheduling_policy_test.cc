@@ -23,13 +23,19 @@ namespace raylet {
 using ::testing::_;
 using namespace ray::raylet_scheduling_policy;
 
-NodeResources CreateNodeResources(double available_cpu, double total_cpu,
-                                  double available_memory, double total_memory,
-                                  double available_gpu, double total_gpu) {
+NodeResources CreateNodeResources(double available_cpu,
+                                  double total_cpu,
+                                  double available_memory,
+                                  double total_memory,
+                                  double available_gpu,
+                                  double total_gpu) {
   NodeResources resources;
-  resources.predefined_resources = {{available_cpu, total_cpu},
-                                    {available_memory, total_memory},
-                                    {available_gpu, total_gpu}};
+  resources.available.Set(ResourceID::CPU(), available_cpu)
+      .Set(ResourceID::Memory(), available_memory)
+      .Set(ResourceID::GPU(), available_gpu);
+  resources.total.Set(ResourceID::CPU(), total_cpu)
+      .Set(ResourceID::Memory(), total_memory)
+      .Set(ResourceID::GPU(), total_gpu);
   return resources;
 }
 
@@ -42,11 +48,15 @@ class SchedulingPolicyTest : public ::testing::Test {
   absl::flat_hash_map<scheduling::NodeID, Node> nodes;
 
   SchedulingOptions HybridOptions(
-      float spread, bool avoid_local_node, bool require_node_available,
+      float spread,
+      bool avoid_local_node,
+      bool require_node_available,
       bool avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes()) {
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
-                             avoid_local_node, require_node_available, avoid_gpu_nodes);
+                             avoid_local_node,
+                             require_node_available,
+                             avoid_gpu_nodes);
   }
 };
 
@@ -110,81 +120,57 @@ TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
   auto task_req1 =
       ResourceMapToResourceRequest({{"CPU", 1}, {"object_store_memory", 1}}, false);
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
-  {
-    // Don't break with a non-resized predefined resources array.
-    NodeResources resources;
-    resources.predefined_resources = {{0, 2.0}};
-    ASSERT_FALSE(resources.IsFeasible(task_req1));
-    ASSERT_TRUE(resources.IsFeasible(task_req2));
-  }
 
-  {
-    // After resizing, make sure it doesn't break under with resources with 0 total.
-    NodeResources resources;
-    resources.predefined_resources = {{0, 2.0}};
-    resources.predefined_resources.resize(PredefinedResources_MAX);
-    ASSERT_FALSE(resources.IsFeasible(task_req1));
-    ASSERT_TRUE(resources.IsFeasible(task_req2));
-  }
+  NodeResources resources;
+  resources.total.Set(ResourceID::CPU(), 2.0);
+  ASSERT_FALSE(resources.IsFeasible(task_req1));
+  ASSERT_TRUE(resources.IsFeasible(task_req2));
 }
 
 TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   auto task_req1 =
       ResourceMapToResourceRequest({{"CPU", 1}, {"object_store_memory", 1}}, false);
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
-  {
-    // Don't break with a non-resized predefined resources array.
-    NodeResources resources;
-    resources.predefined_resources = {{2, 2.0}};
-    ASSERT_FALSE(resources.IsAvailable(task_req1));
-    ASSERT_TRUE(resources.IsAvailable(task_req2));
-  }
 
-  {
-    // After resizing, make sure it doesn't break under with resources with 0 total.
-    NodeResources resources;
-    resources.predefined_resources = {{2, 2.0}};
-    resources.predefined_resources.resize(PredefinedResources_MAX);
-    ASSERT_FALSE(resources.IsAvailable(task_req1));
-    ASSERT_TRUE(resources.IsAvailable(task_req2));
-  }
+  NodeResources resources;
+  resources.available.Set(ResourceID::CPU(), 2.0);
+  resources.total.Set(ResourceID::CPU(), 2.0);
+  ASSERT_FALSE(resources.IsAvailable(task_req1));
+  ASSERT_TRUE(resources.IsAvailable(task_req2));
 }
 
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
-    // Don't break with a non-resized predefined resources array.
     NodeResources resources;
-    resources.predefined_resources = {{1.0, 2.0}};
+    resources.available.Set(ResourceID::CPU(), 1.0);
+    resources.total.Set(ResourceID::CPU(), 2.0);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.5);
   }
-
-  {
-    // After resizing, make sure it doesn't break under with resources with 0 total.
-    NodeResources resources;
-    resources.predefined_resources = {{1.0, 2.0}};
-    resources.predefined_resources.resize(PredefinedResources_MAX);
-    ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.5);
-  }
-
   {
     // Basic test of max
     NodeResources resources;
-    resources.predefined_resources = {/* CPU */ {1.0, 2.0},
-                                      /* MEM  */ {0.25, 1},
-                                      /* GPU (skipped) */ {1, 2},
-                                      /* OBJECT_STORE_MEM*/ {50, 100}};
-    resources.predefined_resources.resize(PredefinedResources_MAX);
+    resources.available.Set(ResourceID::CPU(), 1.0)
+        .Set(ResourceID::Memory(), 0.25)
+        .Set(ResourceID::GPU(), 1)
+        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.total.Set(ResourceID::CPU(), 2.0)
+        .Set(ResourceID::Memory(), 1)
+        .Set(ResourceID::GPU(), 2)
+        .Set(ResourceID::ObjectStoreMemory(), 100);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.75);
   }
 
   {
     // Skip GPU
     NodeResources resources;
-    resources.predefined_resources = {/* CPU */ {1.0, 2.0},
-                                      /* MEM  */ {0.25, 1},
-                                      /* GPU (skipped) */ {0, 2},
-                                      /* OBJECT_STORE_MEM*/ {50, 100}};
-    resources.predefined_resources.resize(PredefinedResources_MAX);
+    resources.available.Set(ResourceID::CPU(), 1.0)
+        .Set(ResourceID::Memory(), 0.25)
+        .Set(ResourceID::GPU(), 0)
+        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.total.Set(ResourceID::CPU(), 2.0)
+        .Set(ResourceID::Memory(), 1)
+        .Set(ResourceID::GPU(), 2)
+        .Set(ResourceID::ObjectStoreMemory(), 100);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.75);
   }
 }
@@ -300,8 +286,8 @@ TEST_F(SchedulingPolicyTest, AvoidSchedulingCPURequestsOnGPUNodes) {
     // we should schedule on remote node.
     const ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
     const auto to_schedule =
-        raylet_scheduling_policy::CompositeSchedulingPolicy(local_node, nodes,
-                                                            [](auto) { return true; })
+        raylet_scheduling_policy::CompositeSchedulingPolicy(
+            local_node, nodes, [](auto) { return true; })
             .Schedule(ResourceMapToResourceRequest({{"CPU", 1}}, false),
                       HybridOptions(0.51, false, true, true));
     ASSERT_EQ(to_schedule, remote_node);
@@ -392,29 +378,41 @@ TEST_F(SchedulingPolicyTest, NonGpuNodePreferredSchedulingTest) {
   ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
   auto to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                          local_node, nodes, [](auto) { return true; })
-                         .Schedule(req, HybridOptions(0.51, false, true,
-                                                      /*gpu_avoid_scheduling*/ true));
+                         .Schedule(req,
+                                   HybridOptions(0.51,
+                                                 false,
+                                                 true,
+                                                 /*gpu_avoid_scheduling*/ true));
   ASSERT_EQ(to_schedule, remote_node);
 
   req = ResourceMapToResourceRequest({{"CPU", 3}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                     local_node, nodes, [](auto) { return true; })
-                    .Schedule(req, HybridOptions(0.51, false, true,
-                                                 /*gpu_avoid_scheduling*/ true));
+                    .Schedule(req,
+                              HybridOptions(0.51,
+                                            false,
+                                            true,
+                                            /*gpu_avoid_scheduling*/ true));
   ASSERT_EQ(to_schedule, remote_node_2);
 
   req = ResourceMapToResourceRequest({{"CPU", 1}, {"GPU", 1}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                     local_node, nodes, [](auto) { return true; })
-                    .Schedule(req, HybridOptions(0.51, false, true,
-                                                 /*gpu_avoid_scheduling*/ true));
+                    .Schedule(req,
+                              HybridOptions(0.51,
+                                            false,
+                                            true,
+                                            /*gpu_avoid_scheduling*/ true));
   ASSERT_EQ(to_schedule, local_node);
 
   req = ResourceMapToResourceRequest({{"CPU", 2}}, false);
   to_schedule = raylet_scheduling_policy::CompositeSchedulingPolicy(
                     local_node, nodes, [](auto) { return true; })
-                    .Schedule(req, HybridOptions(0.51, false, true,
-                                                 /*gpu_avoid_scheduling*/ true));
+                    .Schedule(req,
+                              HybridOptions(0.51,
+                                            false,
+                                            true,
+                                            /*gpu_avoid_scheduling*/ true));
   ASSERT_EQ(to_schedule, remote_node);
 }
 

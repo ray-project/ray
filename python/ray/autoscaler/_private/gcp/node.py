@@ -367,7 +367,7 @@ class GCPCompute(GCPResource):
             + ")"
         )
 
-        cluster_name_filter_expr = "(labels.{key} = {value})" "".format(
+        cluster_name_filter_expr = "(labels.{key} = {value})".format(
             key=TAG_RAY_CLUSTER_NAME, value=self.cluster_name
         )
 
@@ -455,7 +455,7 @@ class GCPCompute(GCPResource):
         if not re.search(".*/machineTypes/.*", existing_machine_type):
             configuration_dict[
                 "machineType"
-            ] = "zones/{zone}/machineTypes/{machine_type}" "".format(
+            ] = "zones/{zone}/machineTypes/{machine_type}".format(
                 zone=self.availability_zone,
                 machine_type=configuration_dict["machineType"],
             )
@@ -465,7 +465,7 @@ class GCPCompute(GCPResource):
             if not re.search(".*/acceleratorTypes/.*", gpu_type):
                 accelerator[
                     "acceleratorType"
-                ] = "projects/{project}/zones/{zone}/" "acceleratorTypes/{accelerator}".format(  # noqa: E501
+                ] = "projects/{project}/zones/{zone}/acceleratorTypes/{accelerator}".format(  # noqa: E501
                     project=self.project_id,
                     zone=self.availability_zone,
                     accelerator=gpu_type,

@@ -98,23 +98,25 @@ def flatten_inputs_to_1d_tensor(
 
     Examples:
         >>> # B=2
-        >>> out = flatten_inputs_to_1d_tensor(
+        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
+        >>> from gym.spaces import Discrete, Box
+        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
         ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
-        ... )
-        >>> print(out)
-        ... [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        ... ) # doctest: +SKIP
+        >>> print(out) # doctest: +SKIP
+        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
 
         >>> # B=2; T=2
-        >>> out = flatten_inputs_to_1d_tensor(
+        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
         ...     ([[1, 0], [0, 1]],
         ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
         ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
         ...     time_axis=True
-        ... )
-        >>> print(out)
-        ... [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
-        ...  [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+        ... ) # doctest: +SKIP
+        >>> print(out) # doctest: +SKIP
+        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
+        [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
 
     flat_inputs = tree.flatten(inputs)
@@ -455,17 +457,19 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
         ValueError: If the given space is not a discrete one.
 
     Examples:
+        >>> import gym
+        >>> import tensorflow as tf
+        >>> from ray.rllib.utils.tf_utils import one_hot
         >>> x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
         >>> # Discrete space with 4 (one-hot) slots per batch item.
         >>> s = gym.spaces.Discrete(4)
-        >>> one_hot(x, s)
+        >>> one_hot(x, s) # doctest: +SKIP
         <tf.Tensor 'one_hot:0' shape=(2, 4) dtype=float32>
-
         >>> x = tf.Variable([[0, 1, 2, 3]], dtype=tf.int32)  # batch-dim=1
         >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
         >>> # per batch item.
         >>> s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
-        >>> one_hot(x, s)
+        >>> one_hot(x, s) # doctest: +SKIP
         <tf.Tensor 'concat:0' shape=(1, 20) dtype=float32>
     """
     if isinstance(space, Discrete):

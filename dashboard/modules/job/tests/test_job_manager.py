@@ -16,8 +16,46 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
 from ray._private.test_utils import SignalActor, async_wait_for_condition
+from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+
+from ray.tests.conftest import call_ray_start  # noqa: F401
 
 TEST_NAMESPACE = "jobs_test_namespace"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head --resources={"TestResourceKey":123}"""],
+    indirect=True,
+)
+async def test_submit_no_ray_address(call_ray_start):  # noqa: F811
+    """Test that a job script with an unspecified Ray address works."""
+
+    ray.init(address=call_ray_start)
+    job_manager = JobManager()
+
+    init_ray_no_address_script = """
+import ray
+
+ray.init()
+
+# Check that we connected to the running test Ray cluster and didn't create a new one.
+print(ray.cluster_resources())
+assert ray.cluster_resources().get('TestResourceKey') == 123
+
+"""
+
+    # The job script should work even if RAY_ADDRESS is not set on the cluster.
+    os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
+
+    job_id = job_manager.submit_job(
+        entrypoint=f"""python -c "{init_ray_no_address_script}" """
+    )
+
+    await async_wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
 
 
 @pytest.fixture(scope="module")
@@ -25,9 +63,12 @@ def shared_ray_instance():
     # Remove ray address for test ray cluster in case we have
     # lingering RAY_ADDRESS="http://127.0.0.1:8265" from previous local job
     # submissions.
-    if "RAY_ADDRESS" in os.environ:
-        del os.environ["RAY_ADDRESS"]
+    old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
+
     yield ray.init(num_cpus=16, namespace=TEST_NAMESPACE, log_to_driver=True)
+
+    if old_ray_address is not None:
+        os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
 
 
 @pytest.fixture

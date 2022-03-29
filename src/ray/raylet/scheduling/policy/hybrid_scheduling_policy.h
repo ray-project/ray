@@ -86,7 +86,8 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
   /// schedule on.
   scheduling::NodeID HybridPolicyWithFilter(const ResourceRequest &resource_request,
-                                            float spread_threshold, bool force_spillback,
+                                            float spread_threshold,
+                                            bool force_spillback,
                                             bool require_available,
                                             NodeFilter node_filter = NodeFilter::kAny);
 };

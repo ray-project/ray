@@ -5,7 +5,7 @@ import os
 import logging
 import shutil
 import tempfile
-from typing import Callable, Dict, Generator, Optional, Type
+from typing import Callable, Dict, Generator, Optional, Type, Any
 
 import torch
 from datetime import timedelta
@@ -149,7 +149,7 @@ class _TorchTrainable(DistributedTrainable):
 
 
 def DistributedTrainableCreator(
-    func: Callable,
+    func: Callable[[Dict, Optional[str]], Any],
     num_workers: int = 1,
     num_cpus_per_worker: int = 1,
     num_gpus_per_worker: int = 0,
@@ -166,20 +166,20 @@ def DistributedTrainableCreator(
     created.
 
     Args:
-        func (callable): This function is a Tune trainable function.
+        func: This function is a Tune trainable function.
             This function must have 2 args in the signature, and the
             latter arg must contain `checkpoint_dir`. For example:
             `func(config, checkpoint_dir=None)`.
-        num_workers (int): Number of training workers to include in
+        num_workers: Number of training workers to include in
             world.
-        num_cpus_per_worker (int): Number of CPU resources to reserve
+        num_cpus_per_worker: Number of CPU resources to reserve
             per training worker.
-        num_gpus_per_worker (int): Number of GPU resources to reserve
+        num_gpus_per_worker: Number of GPU resources to reserve
             per training worker.
         num_workers_per_host: Optional[int]: Number of workers to
             colocate per host.
-        backend (str): One of "gloo", "nccl".
-        timeout_s (float): Seconds before the torch process group
+        backend: One of "gloo", "nccl".
+        timeout_s: Seconds before the torch process group
             times out. Useful when machines are unreliable. Defaults
             to 1800 seconds. This value is also reused for triggering
             placement timeouts if forcing colocation.
@@ -205,7 +205,7 @@ def DistributedTrainableCreator(
     if num_workers_per_host:
         if num_workers % num_workers_per_host:
             raise ValueError(
-                "`num_workers` must be an integer multiple " "of workers_per_node."
+                "`num_workers` must be an integer multiple of workers_per_node."
             )
 
     class WrappedDistributedTorchTrainable(_TorchTrainable):
@@ -241,8 +241,8 @@ def distributed_checkpoint_dir(
     redundant work.
 
     Args:
-        step (int): Used to label the checkpoint
-        disable (bool): Disable for prototyping.
+        step: Used to label the checkpoint
+        disable: Disable for prototyping.
 
     Yields:
         str: A path to a directory. This path will be used

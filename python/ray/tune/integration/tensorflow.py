@@ -12,17 +12,17 @@ from ray.tune.utils import detect_checkpoint_function
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import PlacementGroupUtil, TrainableUtil
 from ray.util.placement_group import remove_placement_group
-from typing import Callable, Dict, Type, Optional
+from typing import Callable, Dict, Type, Optional, List
 
 logger = logging.getLogger(__name__)
 
 
-def setup_process_group(worker_addresses, index):
+def setup_process_group(worker_addresses: List[str], index: int):
     """Set up distributed training info for training task.
 
     Args:
-        worker_addresses (list): addresses of the workers.
-        index (int): index of current worker
+        worker_addresses: addresses of the workers.
+        index: index of current worker
     """
     tf_config = {
         "cluster": {"worker": worker_addresses},
@@ -122,7 +122,7 @@ class _TensorFlowTrainable(DistributedTrainable):
 
 
 def DistributedTrainableCreator(
-    func: Callable,
+    func: Callable[[Dict], None],
     num_workers: int = 2,
     num_gpus_per_worker: int = 0,
     num_cpus_per_worker: int = 1,
@@ -140,18 +140,18 @@ def DistributedTrainableCreator(
     Note: there is no fault tolerance at the moment.
 
     Args:
-        func (Callable[[dict], None]): A training function that takes in
+        func: A training function that takes in
             a config dict for hyperparameters and should initialize
             horovod via horovod.init.
-        num_gpus_per_worker (int); Number of GPUs to request
+        num_gpus_per_worker: Number of GPUs to request
             from Ray per worker.
-        num_cpus_per_worker (int): Number of CPUs to request
+        num_cpus_per_worker: Number of CPUs to request
             from Ray per worker.
-        num_workers (int): Number of hosts that each trial is expected
+        num_workers: Number of hosts that each trial is expected
             to use.
-        num_workers_per_host (Optional[int]): Number of workers to
-            colocate per host. None if not specified.
-        timeout_s (float): Seconds before triggering placement timeouts
+        num_workers_per_host: Number of workers to colocate per host.
+            None if not specified.
+        timeout_s: Seconds before triggering placement timeouts
             if forcing colocation. Default to 15 minutes.
 
 
