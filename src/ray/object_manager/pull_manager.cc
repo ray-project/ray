@@ -171,6 +171,10 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       if (needs_pull) {
         RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
+        auto it = object_pull_requests_.find(obj_id);
+        RAY_CHECK(it != object_pull_requests_.end());
+        it->second.activate_time_ms = absl::GetCurrentTimeNanos() / 1e3;
+
         TryPinObject(obj_id);
         objects_to_pull->push_back(obj_id);
         ResetRetryTimer(obj_id);
@@ -394,6 +398,9 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
       RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
+        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+            absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
+            "StartToCancel");
         object_pull_requests_.erase(it);
         object_ids_to_cancel_subscription.push_back(obj_id);
       }
@@ -615,6 +622,7 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
     max_timeout_object_id_ = object_id;
   }
 
+  num_tries_total_++;
   if (request.num_retries > 0) {
     // We've tried this object before.
     num_retries_total_++;
@@ -655,8 +663,14 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
 
       auto it = object_pull_requests_.find(object_id);
       RAY_CHECK(it != object_pull_requests_.end());
-      ray::stats::STATS_pull_manager_object_pull_time_ms.Record(
-          absl::GetCurrentTimeNanos() / 1e3 - it->second.pull_start_time_ms);
+      ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+          absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
+          "StartToPin");
+      if (it->second.activate_time_ms > 0) {
+        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+            absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
+            "MemoryAvailableToPin");
+      }
     }
   }
   return pinned_objects_.count(object_id) > 0;
@@ -791,6 +805,7 @@ void PullManager::RecordMetrics() const {
   ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
   ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
   ray::stats::STATS_pull_manager_retries_total.Record(num_retries_total_);
+  ray::stats::STATS_pull_manager_retries_total.Record(num_tries_total_);
 }
 
 std::string PullManager::DebugString() const {

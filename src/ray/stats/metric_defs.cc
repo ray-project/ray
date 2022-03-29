@@ -107,11 +107,10 @@ DEFINE_stats(pull_manager_retries_total,
              (),
              (),
              ray::stats::GAUGE);
-DEFINE_stats(pull_manager_object_pull_time_ms,
-             "Time between initial object pull request and local pinning of the object. "
-             "-1 means object was cancelled before it could be pinned.",
-             (),
-             ({-1, 0, 1, 10, 100, 1000, 10000}, ),
+DEFINE_stats(pull_manager_object_request_time_ms,
+             "Time between initial object pull request and local pinning of the object. ",
+             ("Type"),
+             ({1, 10, 100, 1000, 10000}),
              ray::stats::HISTOGRAM);
 
 /// Push Manager
