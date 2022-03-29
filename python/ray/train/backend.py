@@ -555,7 +555,7 @@ class BackendExecutor:
             return ray.get(remote_values)
         else:
             self._increment_failures()
-            logger.info(
+            logger.warning(
                 "Failure identified during training. Restarting all workers and "
                 "continuing training from latest checkpoint."
             )
