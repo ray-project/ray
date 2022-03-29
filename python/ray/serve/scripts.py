@@ -28,6 +28,7 @@ from ray.serve.api import (
     get_deployment_statuses,
     serve_application_status_to_schema,
 )
+from ray.serve.api import build as build_app
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -155,6 +156,7 @@ def shutdown(address: str, namespace: str):
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
+    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
@@ -313,6 +315,7 @@ def run(
 
 @cli.command(
     help="Get the current config of the running Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -357,6 +360,7 @@ def status(address: str):
 
 @cli.command(
     help="Deletes all deployments in the Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -390,6 +394,7 @@ def delete(address: str, yes: bool):
         "and generates a structured config for it that can be used by "
         "`serve deploy` or the REST API. "
     ),
+    hidden=True,
 )
 @click.option(
     "--app-dir",
@@ -419,7 +424,7 @@ def build(app_dir: str, output_path: Optional[str], import_path: str):
             f"DeploymentFunctionNode, but got {type(node)}."
         )
 
-    app = serve.build(node)
+    app = build_app(node)
 
     if output_path is not None:
         if not output_path.endswith(".yaml"):
