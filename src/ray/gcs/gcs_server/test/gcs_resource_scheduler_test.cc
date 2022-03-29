@@ -67,20 +67,10 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         gcs_resource_scheduler_->GetClusterResourceManager();
     const auto &node_resources =
         cluster_resource_manager.GetNodeResources(scheduling::NodeID(node_id.Binary()));
-    auto resource_id = scheduling::ResourceID(resource_name).ToInt();
-    ASSERT_NE(resource_id, -1);
+    auto resource_id = scheduling::ResourceID(resource_name);
 
-    const ResourceCapacity *resource_capacity = nullptr;
-    if (resource_id >= 0 && resource_id < PredefinedResources_MAX) {
-      resource_capacity = &node_resources.predefined_resources[resource_id];
-    } else {
-      auto iter = node_resources.custom_resources.find(resource_id);
-      if (iter != node_resources.custom_resources.end()) {
-        resource_capacity = &iter->second;
-      }
-    }
-    ASSERT_TRUE(resource_capacity != nullptr);
-    ASSERT_EQ(resource_capacity->available.Double(), resource_value);
+    ASSERT_TRUE(node_resources.available.Has(resource_id));
+    ASSERT_EQ(node_resources.available.Get(resource_id).Double(), resource_value);
   }
 
   void TestResourceLeaks(const gcs::SchedulingType &scheduling_type) {

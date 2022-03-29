@@ -29,6 +29,19 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Batch mode must be complete_episodes.
         "batch_mode": "complete_episodes",
 
+        # === Replay buffer ===
+        "replay_buffer_config": {
+            # For now we don't use the new ReplayBuffer API here
+            "_enable_replay_buffer_api": False,
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 50000,
+            "replay_batch_size": 32,
+            "prioritized_replay_alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
+            "prioritized_replay_beta": 0.4,
+            # Epsilon to add to the TD errors when updating priorities.
+            "prioritized_replay_eps": 1e-6,
+        },
         # If True, assume a zero-initialized state input (no matter where in
         # the episode the sequence is located).
         # If False, store the initial states along with each SampleBatch, use
@@ -66,6 +79,12 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 
         # Update the target network every `target_network_update_freq` steps.
         "target_network_update_freq": 2500,
+
+        # Experimental flag.
+        # If True, the execution plan API will not be used. Instead,
+        # a Trainer's `training_iteration` method will be called as-is each
+        # training iteration.
+        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )
