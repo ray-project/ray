@@ -9,9 +9,14 @@ import uuid
 
 import pytest
 from ray.ray_constants import KV_NAMESPACE_PACKAGE
-from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_exists
+from ray.experimental.internal_kv import (
+    _internal_kv_del,
+    _internal_kv_exists,
+    _internal_kv_get,
+)
 from ray._private.runtime_env.packaging import (
     _dir_travel,
+    _store_package_in_gcs,
     get_local_dir_from_uri,
     get_uri_for_directory,
     _get_excludes,
@@ -24,6 +29,7 @@ from ray._private.runtime_env.packaging import (
     get_top_level_dir_from_compressed_package,
     remove_dir_from_filepaths,
     unzip_package,
+    GCS_STORAGE_MAX_SIZE,
 )
 
 TOP_LEVEL_DIR_NAME = "top_level"
@@ -151,6 +157,41 @@ class TestUploadPackageIfNeeded:
         assert not _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
         uploaded = upload_package_if_needed(uri, tmp_path, random_dir)
         assert uploaded
+
+
+class TestStorePackageInGcs:
+    def raise_runtime_error(self, *args, **kwargs):
+        raise RuntimeError("Raised a runtime error!")
+
+    def test_upload_succeeds(self, ray_start_regular):
+        """Check function behavior when upload succeeds."""
+
+        uri = "gcs:/test.zip"
+        bytes = b"test"
+
+        assert len(bytes) < GCS_STORAGE_MAX_SIZE
+        assert not _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
+        assert _store_package_in_gcs(uri, bytes) == len(bytes)
+        assert bytes == _internal_kv_get(uri, namespace=KV_NAMESPACE_PACKAGE)
+
+    def test_upload_fails(self):
+        """Check that function throws useful error when upload fails."""
+
+        uri = "gcs:/test.zip"
+        bytes = b"test"
+
+        assert len(bytes) < GCS_STORAGE_MAX_SIZE
+        with pytest.raises(RuntimeError, match="Failed to store package in the GCS"):
+            _store_package_in_gcs(uri, bytes, _gcs_put=self.raise_runtime_error)
+
+    def test_package_size_too_large(self):
+        """Check that function throws useful error when package is too large."""
+
+        uri = "gcs:/test.zip"
+        bytes = b"a" * (GCS_STORAGE_MAX_SIZE + 1)
+
+        with pytest.raises(ValueError, match="Package size"):
+            _store_package_in_gcs(uri, bytes)
 
 
 class TestGetTopLevelDirFromCompressedPackage:
