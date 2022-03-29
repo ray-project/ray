@@ -38,7 +38,6 @@ def _load_predictor_cls(
     return predictor_cls
 
 
-@serve.deployment
 class ModelWrapper(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
 
@@ -103,3 +102,8 @@ class ModelWrapper(SimpleSchemaIngress):
     async def predict(self, inp):
         """Perform inference directly without HTTP."""
         return await self.batched_predict(inp)
+
+
+@serve.deployment
+class ModelWrapperDeployment(ModelWrapper):
+    """Ray Serve Deployment of the ModelWrapper class."""

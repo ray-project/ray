@@ -106,6 +106,8 @@ Predictors
 Serving
 ~~~~~~~
 
+.. autoclass:: ray.serve.model_wrappers.ModelWrapperDeployment
+
 .. autoclass:: ray.serve.model_wrappers.ModelWrapper
 
 

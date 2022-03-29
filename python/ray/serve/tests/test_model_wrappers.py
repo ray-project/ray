@@ -9,7 +9,7 @@ from requests.adapters import HTTPAdapter, Retry
 from ray._private.test_utils import wait_for_condition
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import DataBatchType, Predictor
-from ray.serve.model_wrappers import ModelWrapper
+from ray.serve.model_wrappers import ModelWrapperDeployment
 from ray.serve.pipeline.api import build
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.api import RayServeDAGHandle
@@ -52,7 +52,7 @@ def send_request(**requests_kargs):
 
 
 def test_simple_adder(serve_instance):
-    ModelWrapper.options(name="Adder").deploy(
+    ModelWrapperDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
     )
@@ -61,7 +61,7 @@ def test_simple_adder(serve_instance):
 
 
 def test_batching(serve_instance):
-    ModelWrapper.options(name="Adder").deploy(
+    ModelWrapperDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
         batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
@@ -95,7 +95,7 @@ def test_model_wrappers_in_pipeline(serve_instance):
     checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
 
     with InputNode() as dag_input:
-        m1 = ModelWrapper.bind(
+        m1 = ModelWrapperDeployment.bind(
             predictor_cls=predictor_cls,  # TODO: can't be the raw class right now?
             checkpoint={  # TODO: can't be the raw object right now?
                 "checkpoint_cls": checkpoint_cls,
@@ -135,7 +135,7 @@ def test_yaml_compatibility(serve_instance):
             "deployments": [
                 {
                     "name": "Adder",
-                    "import_path": "ray.serve.model_wrappers.ModelWrapper",
+                    "import_path": "ray.serve.model_wrappers.ModelWrapperDeployment",
                     "init_kwargs": {
                         "predictor_cls": predictor_cls,
                         "checkpoint": {

@@ -170,9 +170,9 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
 
     from ray import serve
     from ray.serve.http_adapters import json_to_ndarray
-    from ray.serve.model_wrappers import ModelWrapper
+    from ray.serve.model_wrappers import ModelWrapperDeployment
 
-    ModelWrapper.options(name="my_model").deploy(
+    ModelWrapperDeployment.options(name="my_model").deploy(
         my_ray_air_predictor,
         my_ray_air_checkpoint,
         input_schema=json_to_ndarray
@@ -180,11 +180,12 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
 
 You can also bring the adapter to your own FastAPI app using
 `Depends <https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends>`_.
+The input schema will automatically be part of the generated OpenAPI schema with FastAPI.
 
 .. code-block:: python
 
-    from ray.serve.http_adapters import json_to_ndarray
     from fastapi import FastAPI, Depends
+    from ray.serve.http_adapters import json_to_ndarray
 
     app = FastAPI()
 
@@ -198,7 +199,6 @@ It has the following schema for input:
 
 .. autopydantic_model:: ray.serve.http_adapters.NdArray
 
-The input schema will automatically be part of the generated OpenAPI schema with FastAPI.
 
 Here is a list of adapters and please feel free to `contribute more <https://github.com/ray-project/ray/issues/new/choose>`_!
 
