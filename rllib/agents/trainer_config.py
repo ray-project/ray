@@ -3,12 +3,17 @@ import gym
 from typing import (
     Any,
     Callable,
+    Dict,
     Optional,
+    Type,
+    TYPE_CHECKING,
     Union,
 )
 
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
+from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.utils.typing import (
     EnvConfigDict,
@@ -18,6 +23,9 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
 )
 from ray.tune.logger import Logger
+
+if TYPE_CHECKING:
+    from ray.rllib.agents.trainer import Trainer
 
 
 class TrainerConfig:
@@ -54,9 +62,12 @@ class TrainerConfig:
             from ray.rllib.agents.trainer import Trainer
 
             trainer_class = Trainer
+
         self.trainer_class = trainer_class
 
-        # TODO: define all properties with default values below:
+        # `self.python_environment()`
+        self.extra_python_environs_for_driver = {}
+        self.extra_python_environs_for_worker = {}
 
         # `self.resources()`
         self.num_gpus = 0
@@ -71,6 +82,24 @@ class TrainerConfig:
         self.framework_str = "tf"
         self.eager_tracing = False
         self.eager_max_retraces = 20
+        self.tf_session_args = {
+            # note: overridden by `local_tf_session_args`
+            "intra_op_parallelism_threads": 2,
+            "inter_op_parallelism_threads": 2,
+            "gpu_options": {
+                "allow_growth": True,
+            },
+            "log_device_placement": False,
+            "device_count": {"CPU": 1},
+            # Required by multi-GPU (num_gpus > 1).
+            "allow_soft_placement": True,
+        }
+        self.local_tf_session_args = {
+            # Allow a higher level of parallelism by default, but not unlimited
+            # since that can cause crashes with many concurrent drivers.
+            "intra_op_parallelism_threads": 8,
+            "inter_op_parallelism_threads": 8,
+        }
 
         # `self.environment()`
         self.env = None
@@ -83,11 +112,14 @@ class TrainerConfig:
         self.clip_rewards = None
         self.normalize_actions = True
         self.clip_actions = False
+        self.disable_env_checking = False
 
         # `self.rollouts()`
         self.num_workers = 2
         self.num_envs_per_worker = 1
+        self.sample_collector = SimpleListCollector
         self.create_env_on_local_worker = False
+        self.sample_async = False
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -97,6 +129,8 @@ class TrainerConfig:
         self.soft_horizon = False
         self.no_done_at_end = False
         self.preprocessor_pref = "deepmind"
+        self.observation_filter = "NoFilter"
+        self.synchronize_filters = True
         self.compress_observations = False
 
         # `self.training()`
@@ -153,11 +187,20 @@ class TrainerConfig:
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
 
+        # `self.reporting()`
+        self.keep_per_episode_custom_metrics = False
+        self.metrics_episode_collection_timeout_s = 180
+        self.metrics_num_episodes_for_smoothing = 100
+        self.min_time_s_per_reporting = None
+        self.min_train_timesteps_per_reporting = None
+        self.min_sample_timesteps_per_reporting = None
+
         # `self.debugging()`
         self.logger_config = None
         self.log_level = "WARN"
         self.log_sys_usage = True
         self.fake_sampler = False
+        self.seed = None
 
         # `self.experimental()`
         self._tf_policy_handles_more_than_one_loss = False
@@ -199,13 +242,12 @@ class TrainerConfig:
         return Trainer.merge_trainer_configs(
             COMMON_CONFIG, config, _allow_unknown_configs=True
         )
-        return config
 
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-    ):
+    ) -> "Trainer":
         """Builds a Trainer from the TrainerConfig.
 
         Args:
@@ -218,7 +260,7 @@ class TrainerConfig:
                 object. If unspecified, a default logger is created.
 
         Returns:
-            A ray.rllib.agents.dqn.DQNTrainer object.
+            A ray.rllib.agents.trainer.Trainer object.
         """
         if env is not None:
             self.env = env
@@ -230,6 +272,29 @@ class TrainerConfig:
             env=env,
             logger_creator=logger_creator,
         )
+
+    def python_environment(
+        self,
+        *,
+        extra_python_environs_for_driver: Optional[dict] = None,
+        extra_python_environs_for_worker: Optional[dict] = None,
+    ) -> "TrainerConfig":
+        """Sets the config's python environment settings.
+
+        Args:
+            extra_python_environs_for_driver: Any extra python env vars to set in the
+                trainer process, e.g., {"OMP_NUM_THREADS": "16"}.
+            extra_python_environs_for_worker: The extra python environments need to set
+                for worker processes.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        if extra_python_environs_for_driver is not None:
+            self.extra_python_environs_for_driver = extra_python_environs_for_driver
+        if extra_python_environs_for_worker is not None:
+            self.extra_python_environs_for_worker = extra_python_environs_for_worker
+        return self
 
     def resources(
         self,
@@ -306,6 +371,8 @@ class TrainerConfig:
         *,
         eager_tracing: Optional[bool] = None,
         eager_max_retraces: Optional[int] = None,
+        tf_session_args: Optional[Dict[str, Any]] = None,
+        local_tf_session_args: Optional[Dict[str, Any]] = None,
     ) -> "TrainerConfig":
         """Sets the config's DL framework settings.
 
@@ -323,6 +390,9 @@ class TrainerConfig:
                 cause for this slowdown could be.
                 Only necessary for framework=[tf2|tfe].
                 Set to None to ignore the re-trace count and never throw an error.
+            tf_session_args: Configures TF for single-process operation by default.
+            local_tf_session_args: Override the following tf session args on the local
+                worker
 
         Returns:
             This updated TrainerConfig object.
@@ -333,10 +403,13 @@ class TrainerConfig:
             self.eager_tracing = eager_tracing
         if eager_max_retraces is not None:
             self.eager_max_retraces = eager_max_retraces
+        if tf_session_args is not None:
+            self.tf_session_args = tf_session_args
+        if local_tf_session_args is not None:
+            self.local_tf_session_args = local_tf_session_args
 
         return self
 
-    # TODO type for env.
     def environment(
         self,
         *,
@@ -350,8 +423,9 @@ class TrainerConfig:
         clip_rewards: Optional[Union[bool, float]] = None,
         normalize_actions: Optional[bool] = None,
         clip_actions: Optional[bool] = None,
+        disable_env_checking: Optional[bool] = None,
     ) -> "TrainerConfig":
-        """Sets the config's environment settings.
+        """Sets the config's RL-environment settings.
 
         Args:
             env: The environment specifier. This can either be a tune-registered env,
@@ -394,6 +468,7 @@ class TrainerConfig:
             clip_actions: If True, RLlib will clip actions according to the env's bounds
                 before sending them back to the env.
                 TODO: (sven) This option should be deprecated and always be False.
+            disable_env_checking: If True, disable the environment pre-checking module.
 
         Returns:
             This updated TrainerConfig object.
@@ -418,6 +493,8 @@ class TrainerConfig:
             self.normalize_actions = normalize_actions
         if clip_actions is not None:
             self.clip_actions = clip_actions
+        if disable_env_checking is not None:
+            self.disable_env_checking = disable_env_checking
 
         return self
 
@@ -427,6 +504,8 @@ class TrainerConfig:
         num_rollout_workers: Optional[int] = None,
         num_envs_per_worker: Optional[int] = None,
         create_env_on_local_worker: Optional[bool] = None,
+        sample_collector: Optional[Type[SampleCollector]] = None,
+        sample_async: Optional[bool] = None,
         rollout_fragment_length: Optional[int] = None,
         batch_mode: Optional[str] = None,
         remote_worker_envs: Optional[bool] = None,
@@ -436,6 +515,8 @@ class TrainerConfig:
         soft_horizon: Optional[bool] = None,
         no_done_at_end: Optional[bool] = None,
         preprocessor_pref: Optional[str] = None,
+        observation_filter: Optional[str] = None,
+        synchronize_filter: Optional[bool] = None,
         compress_observations: Optional[bool] = None,
     ) -> "TrainerConfig":
         """Sets the rollout worker configuration.
@@ -447,11 +528,18 @@ class TrainerConfig:
             num_envs_per_worker: Number of environments to evaluate vector-wise per
                 worker. This enables model inference batching, which can improve
                 performance for inference bottlenecked workloads.
+            sample_collector: The SampleCollector class to be used to collect and
+                retrieve environment-, model-, and sampler data. Override the
+                SampleCollector base class to implement your own
+                collection/buffering/retrieval logic.
             create_env_on_local_worker: When `num_workers` > 0, the driver
                 (local_worker; worker-idx=0) does not need an environment. This is
                 because it doesn't have to sample (done by remote_workers;
                 worker_indices > 0) nor evaluate (done by evaluation workers;
                 see below).
+            sample_async: Use a background thread for sampling (slightly off-policy,
+                usually not advisable to turn on unless your env specifically requires
+                it).
             rollout_fragment_length: Divide episodes into fragments of this many steps
                 each during rollouts. Sample batches of this size are collected from
                 rollout workers and combined into a larger batch of `train_batch_size`
@@ -511,6 +599,9 @@ class TrainerConfig:
                 default. Set to None for using no preprocessor. In this case, the
                 model will have to handle possibly complex observations from the
                 environment.
+            observation_filter: Element-wise observation filter, either "NoFilter"
+                or "MeanStdFilter".
+            synchronize_filter: Whether to synchronize the statistics of remote filters.
             compress_observations: Whether to LZ4 compress individual observations
                 in the SampleBatches collected during rollouts.
 
@@ -521,8 +612,12 @@ class TrainerConfig:
             self.num_workers = num_rollout_workers
         if num_envs_per_worker is not None:
             self.num_envs_per_worker = num_envs_per_worker
+        if sample_collector is not None:
+            self.sample_collector = sample_collector
         if create_env_on_local_worker is not None:
             self.create_env_on_local_worker = create_env_on_local_worker
+        if sample_async is not None:
+            self.sample_async = sample_async
         if rollout_fragment_length is not None:
             self.rollout_fragment_length = rollout_fragment_length
         if batch_mode is not None:
@@ -541,6 +636,10 @@ class TrainerConfig:
             self.no_done_at_end = no_done_at_end
         if preprocessor_pref is not None:
             self.preprocessor_pref = preprocessor_pref
+        if observation_filter is not None:
+            self.observation_filter = observation_filter
+        if synchronize_filter is not None:
+            self.synchronize_filters = synchronize_filter
         if compress_observations is not None:
             self.compress_observations = compress_observations
 
@@ -707,78 +806,6 @@ class TrainerConfig:
 
         return self
 
-    # TODO
-    # # Store raw custom metrics without calculating max, min, mean
-    # "keep_per_episode_custom_metrics": False,
-
-    # TODO just have one rollout worker function, not basic and advanced.
-    # # === Advanced Rollout Settings ===
-    # # Use a background thread for sampling (slightly off-policy, usually not
-    # # advisable to turn on unless your env specifically requires it).
-    # "sample_async": False,
-    #
-    # # The SampleCollector class to be used to collect and retrieve
-    # # environment-, model-, and sampler data. Override the SampleCollector base
-    # # class to implement your own collection/buffering/retrieval logic.
-    # "sample_collector": SimpleListCollector,
-    #
-    # # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
-    # "observation_filter": "NoFilter",
-    # # Whether to synchronize the statistics of remote filters.
-    # "synchronize_filters": True,
-    # # Configures TF for single-process operation by default.
-    # "tf_session_args": {
-    #     # note: overridden by `local_tf_session_args`
-    #     "intra_op_parallelism_threads": 2,
-    #     "inter_op_parallelism_threads": 2,
-    #     "gpu_options": {
-    #         "allow_growth": True,
-    #     },
-    #     "log_device_placement": False,
-    #     "device_count": {
-    #         "CPU": 1
-    #     },
-    #     # Required by multi-GPU (num_gpus > 1).
-    #     "allow_soft_placement": True,
-    # },
-    # # Override the following tf session args on the local worker
-    # "local_tf_session_args": {
-    #     # Allow a higher level of parallelism by default, but not unlimited
-    #     # since that can cause crashes with many concurrent drivers.
-    #     "intra_op_parallelism_threads": 8,
-    #     "inter_op_parallelism_threads": 8,
-    # },
-    # # Whether to LZ4 compress individual observations.
-    # "compress_observations": False,
-    # # Wait for metric batches for at most this many seconds. Those that
-    # # have not returned in time will be collected in the next train iteration.
-    # "metrics_episode_collection_timeout_s": 180,
-    # # Smooth metrics over this many episodes.
-    # "metrics_num_episodes_for_smoothing": 100,
-    # # Minimum time interval to run one `train()` call for:
-    # # If - after one `step_attempt()`, this time limit has not been reached,
-    # # will perform n more `step_attempt()` calls until this minimum time has
-    # # been consumed. Set to None or 0 for no minimum time.
-    # "min_time_s_per_reporting": None,
-    # # Minimum train/sample timesteps to optimize for per `train()` call.
-    # # This value does not affect learning, only the length of train iterations.
-    # # If - after one `step_attempt()`, the timestep counts (sampling or
-    # # training) have not been reached, will perform n more `step_attempt()`
-    # # calls until the minimum timesteps have been executed.
-    # # Set to None or 0 for no minimum timesteps.
-    # "min_train_timesteps_per_reporting": None,
-    # "min_sample_timesteps_per_reporting": None,
-    #
-    # # This argument, in conjunction with worker_index, sets the random seed of
-    # # each worker, so that identically configured trials will have identical
-    # # results. This makes experiments reproducible.
-    # "seed": None,
-    # # Any extra python env vars to set in the trainer process, e.g.,
-    # # {"OMP_NUM_THREADS": "16"}
-    # "extra_python_environs_for_driver": {},
-    # # The extra python environments need to set for worker processes.
-    # "extra_python_environs_for_worker": {},
-
     def offline_data(
         self,
         *,
@@ -935,6 +962,62 @@ class TrainerConfig:
 
         return self
 
+    def reporting(
+        self,
+        *,
+        keep_per_episode_custom_metrics: Optional[bool] = None,
+        metrics_episode_collection_timeout_s: Optional[int] = None,
+        metrics_num_episodes_for_smoothing: Optional[int] = None,
+        min_time_s_per_reporting: Optional[int] = None,
+        min_train_timesteps_per_reporting: Optional[int] = None,
+        min_sample_timesteps_per_reporting: Optional[int] = None,
+    ) -> "TrainerConfig":
+        """Sets the config's reporting settings.
+
+        Args:
+            keep_per_episode_custom_metrics: Store raw custom metrics without
+                calculating max, min, mean
+            metrics_episode_collection_timeout_s: Wait for metric batches for at most
+                this many seconds. Those that have not returned in time will be
+                collected in the next train iteration.
+            metrics_num_episodes_for_smoothing: Smooth metrics over this many episodes.
+            min_time_s_per_reporting: Minimum time interval to run one `train()` call
+                for: If - after one `step_attempt()`, this time limit has not been
+                reached, will perform n more `step_attempt()` calls until this minimum
+                time has been consumed. Set to None or 0 for no minimum time.
+            min_train_timesteps_per_reporting: Minimum train timesteps to
+                optimize for per `train()` call. This value does not affect learning,
+                only the length of train iterations. If - after one `step_attempt()`,
+                the training timestep counts have not been reached, will
+                perform n more `step_attempt()` calls until the minimum timesteps have
+                been executed. Set to None or 0 for no minimum timesteps.
+            min_sample_timesteps_per_reporting: Minimum sample timesteps to
+                optimize for per `train()` call. This value does not affect learning,
+                only the length of train iterations. If - after one `step_attempt()`,
+                the sampling timestep counts (have not been reached, will
+                perform n more `step_attempt()` calls until the minimum timesteps have
+                been executed. Set to None or 0 for no minimum timesteps.
+
+        Returns:
+            This updated TrainerConfig object.
+        """
+        if keep_per_episode_custom_metrics is not None:
+            self.keep_per_episode_custom_metrics = keep_per_episode_custom_metrics
+        if metrics_episode_collection_timeout_s is not None:
+            self.metrics_episode_collection_timeout_s = (
+                metrics_episode_collection_timeout_s
+            )
+        if metrics_num_episodes_for_smoothing is not None:
+            self.metrics_num_episodes_for_smoothing = metrics_num_episodes_for_smoothing
+        if min_time_s_per_reporting is not None:
+            self.min_time_s_per_reporting = min_time_s_per_reporting
+        if min_train_timesteps_per_reporting is not None:
+            self.min_train_timesteps_per_reporting = min_train_timesteps_per_reporting
+        if min_sample_timesteps_per_reporting is not None:
+            self.min_sample_timesteps_per_reporting = min_sample_timesteps_per_reporting
+
+        return self
+
     def debugging(
         self,
         *,
@@ -942,6 +1025,7 @@ class TrainerConfig:
         log_level: Optional[str] = None,
         log_sys_usage: Optional[bool] = None,
         fake_sampler: Optional[bool] = None,
+        seed: Optional[int] = None,
     ) -> "TrainerConfig":
         """Sets the config's debugging settings.
 
@@ -957,6 +1041,9 @@ class TrainerConfig:
             log_sys_usage: Log system resource metrics to results. This requires
                 `psutil` to be installed for sys stats, and `gputil` for GPU metrics.
             fake_sampler: Use fake (infinite speed) sampler. For testing only.
+            seed: This argument, in conjunction with worker_index, sets the random
+                seed of each worker, so that identically configured trials will have
+                identical results. This makes experiments reproducible.
 
         Returns:
             This updated TrainerConfig object.
@@ -969,6 +1056,8 @@ class TrainerConfig:
             self.log_sys_usage = log_sys_usage
         if fake_sampler is not None:
             self.fake_sampler = fake_sampler
+        if seed is not None:
+            self.seed = seed
 
         return self
 
@@ -1020,9 +1109,3 @@ class TrainerConfig:
             self._disable_execution_plan_api = _disable_execution_plan_api
 
         return self
-
-    # TODO
-    # # === API deprecations/simplifications/changes ===
-    #
-    # # If True, disable the environment pre-checking module.
-    # "disable_env_checking": False,
