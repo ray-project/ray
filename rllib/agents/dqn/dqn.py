@@ -23,10 +23,7 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
-    synchronous_parallel_sample,
-)
+from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import (
     TrainOneStep,
     UpdateTargetNetwork,
@@ -143,7 +140,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # If True, the execution plan API will not be used. Instead,
         # a Trainer's `training_iteration` method will be called as-is each
         # training iteration.
-        "_disable_execution_plan_api": True,
+        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )
