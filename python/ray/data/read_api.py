@@ -249,7 +249,7 @@ def read_datasource(
             "The number of blocks in this dataset ({}) limits its parallelism to {} "
             "concurrent tasks. This is much less than the number of available "
             "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
-            "dataset blocks.".format(len(read_tasks), len(read_tasks), parallelism)
+            "dataset blocks.".format(len(read_tasks), len(read_tasks))
         )
 
     context = DatasetContext.get_current()
