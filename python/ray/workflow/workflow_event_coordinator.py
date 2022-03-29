@@ -5,12 +5,9 @@ import asyncio
 
 from dataclasses import dataclass
 import ray
-from ray.workflow import common
-from ray.workflow import recovery
-from ray.workflow import storage
-from ray.workflow import workflow_storage
-from ray.workflow import workflow_access
+from ray.workflow import common, recovery, storage, workflow_storage, workflow_access
 from ray.util.annotations import PublicAPI
+from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -18,33 +15,102 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+class WorkflowEvents:
+    # id of the workflow
+    workflow_id: str
+    # mapping of event signature to its listener
+    event_step_signature_listener: Dict[str, EventListenerType] = {}
+    # signature of incoming event and its checkpoint status
+    event_step_checkpointed: Dict[str, bool] = {}
+    # outer_most_step_id
+    event_outer_most_step_id: Dict[str, str] = {}
+
 @ray.remote(num_cpus=0)
 class EventCoordinatorActor:
     def __init__(self, wma: "workflow_access.WorkflowManagementActor"):
         import nest_asyncio
         nest_asyncio.apply()
         self.wma = wma
-        self.event_registry = dict()
-    async def transferEventStepOwnership(self, event_provider_handle, event_signature, \
-        workflow_id, current_step_id, outer_most_step_id):
-        # register actor handle with event_provider
-        self.event_registry[event_signature] = (workflow_id, current_step_id, outer_most_step_id)
-        event_provider_handle.register_eca.remote(common.EVENT_COORDINATOR_NAME)
+        self.event_registry: Dict[str, WorkflowEvents] = {}
+        self.sigature_workflow_step: Dict[str, List[Tuple[str,str]]] = {}
+        self.fan_in: Dict[str, Tuple[str,List[str]]] = {}
+        self.wait_list: List[Any] = []
+        self.write_lock = asyncio.Lock()
+        asyncio_run(self.pollEvent())
 
-    async def notifyEvent(self, event_signature, content):
-        # receive event from Provider
-        await self.checkpointEvent(event_signature, content)
+    async def transferFaninStepOwnership(self, workflow_id:str, current_step_id:str, \
+        downstream_steps:List[Any]) -> None:
+        fanin_steps = []
+        for fanin in downstream_steps:
+            (event_listener_handle, event_signature, fanin_step_id, outer_most_step_id, args, kwargs) = fanin
+            await self.transferEventStepOwnership(event_listener_handle, event_signature, \
+                workflow_id, current_step_id, outer_most_step_id, *args, **kwargs)
+            fanin_steps.append(fanin_step_id)
+        self.fan_in[workflow_id] = (current_step_id, fanin_steps)
 
-    async def checkpointEvent(self, event_signature, event_content) -> None:
-        if event_signature in self.event_registry:
-            (workflow_id, current_step_id, outer_most_step_id) = self.event_registry[event_signature]
-            ws = WorkflowStorage(workflow_id, storage.create_storage(self.wma.get_storage_url()))
-            ws.save_step_output(
-                current_step_id, event_content, exception=None, outer_most_step_id=outer_most_step_id
-            )
-        else:
-            # handle event signature not found
-            pass
+    async def transferEventStepOwnership(self, event_listener_handle, event_signature, \
+        workflow_id, current_step_id, outer_most_step_id, *args, **kwargs) -> None:
+        async with self.write_lock:
+            if workflow_id in self.event_registry.keys():
+                we = self.event_registry[workflow_id]
+            else:
+                we = WorkflowEvents()
+            if current_step_id not in we.event_step_checkpointed:
+                we.event_step_checkpointed[current_step_id] = False
+                we.event_outer_most_step_id[current_step_id] = outer_most_step_id
+                we.event_step_signature_listener[event_signature] = event_listener_handle
+            self.event_registry[workflow_id] = we
+            if len(self.sigature_workflow_step[event_signature]) < 1:
+                self.sigature_workflow_step[event_signature] = []
+            self.sigature_workflow_step[event_signature].append((workflow_id, current_step_id))
+
+    async def appendListener(self, event_listener_handle, *args, **kwargs):
+        @ray.remote
+        def get_event(event_listener_handle, *args, **kwargs):
+            event_listener = event_listener_handle()
+            return asyncio_run(event_listener.poll_for_event(*args, **kwargs))
+        async with self.write_lock:
+            self.wait_list.append(get_event.remote(event_listener_handle, *args, **kwargs))
+
+    async def pollEvent(self):
+        while True:
+            if len(self.wait_list) > 0:
+                ready, not_ready = ray.wait(self.wait_list, num_returns=1)
+
+                (event_signature, content) = ray.get(ready)
+                for pair in self.sigature_workflow_step[event_signature]:
+                    (workflow_id, current_step_id) = pair
+                    if workflow_id not in self.event_registry.keys():
+                        raise ValueError(workflow_id+" not found")
+                    we = self.event_registry[workflow_id]
+                    outer_most_step_id = we.event_outer_most_step_id[current_step_id]
+                    await self.checkpointEvent(workflow_id, current_step_id, outer_most_step_id, content)
+                    we.event_step_checkpointed[current_step_id] = True
+
+                async with self.write_lock:
+                    self.wait_list = not_ready
+            await asyncio.sleep(5)
+
+    async def notifyEvent(self, event_signature, content) -> None:
+        # receive event from event listener
+        if event_signature not in self.sigature_workflow_step.keys():
+            raise ValueError(event_signature+" not found")
+
+        for pair in self.sigature_workflow_step[event_signature]:
+            (workflow_id, current_step_id) = pair
+            if workflow_id not in self.event_registry.keys():
+                raise ValueError(workflow_id+" not found")
+            we = self.event_registry[workflow_id]
+            outer_most_step_id = we.event_outer_most_step_id[current_step_id]
+            await self.checkpointEvent(workflow_id, current_step_id, outer_most_step_id, content)
+            we.event_step_checkpointed[current_step_id] = True
+
+
+    async def checkpointEvent(self, workflow_id, current_step_id, outer_most_step_id, content) -> None:
+        ws = WorkflowStorage(workflow_id, storage.create_storage(self.wma.get_storage_url()))
+        ws.save_step_output(
+            current_step_id, content, exception=None, outer_most_step_id=outer_most_step_id
+        )
 
 def init_event_coordinator_actor() -> None:
     """Initialize EventCoordinatorActor"""

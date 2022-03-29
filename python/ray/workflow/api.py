@@ -32,6 +32,8 @@ from ray.workflow import workflow_access, workflow_context
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
 
+from ray.workflow import workflow_event_coordinator
+
 if TYPE_CHECKING:
     from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
     from ray.experimental.dag import DAGNode
@@ -77,6 +79,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
             )
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
+    workflow_event_coordinator.init_event_coordinator_actor()
     serialization.init_manager()
 
 
