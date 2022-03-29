@@ -105,7 +105,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   Priority& GetObjectPriority(const ObjectID &object_id);
   void UpdateObjectPriority(
 		const ObjectID &object_id,
-		const Priority &priority);
+		Priority *priority);
 
   /// Add references for the provided object IDs that correspond to them being
   /// dependencies to a submitted task. If lineage pinning is enabled, then
@@ -638,7 +638,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
-  using PriorityTable = absl::flat_hash_map<ObjectID, Priority>;
+  using PriorityTable = absl::flat_hash_map<ObjectID, Priority*>;
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);

@@ -103,7 +103,7 @@ class CoreWorkerDirectTaskSubmitter {
     return scheduling_key_entries_.empty();
   }
 
-  void UpdateTaskPriorities(const absl::flat_hash_map<TaskID, Priority> &priorities);
+  //void UpdateTaskPriorities(const absl::flat_hash_map<TaskID, Priority> &priorities);
 
   int64_t GetNumTasksSubmitted() const { return num_tasks_submitted_; }
 
@@ -302,8 +302,8 @@ class CoreWorkerDirectTaskSubmitter {
 
   struct TaskEntry {
     TaskEntry(const TaskSpecification &task_spec, const SchedulingKey &key,
-        Priority priority)
-      : task_spec(task_spec), key(key), task_key(std::make_pair(priority, task_spec.TaskId())) {}
+        Priority &priority)
+      : task_spec(task_spec), key(key), task_key({priority, task_spec.TaskId()}) {}
 
     TaskSpecification task_spec;
     SchedulingKey key;

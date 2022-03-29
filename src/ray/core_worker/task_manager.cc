@@ -31,7 +31,7 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 //TODO(Jae) Delete object priority when a task is finished
-Priority TaskManager::GenerateTaskPriority(
+Priority* TaskManager::GenerateTaskPriority(
 		TaskSpecification &spec, std::vector<ObjectID> &task_deps) {
   RAY_LOG(DEBUG) << "Generating priority of task " << spec.TaskId();
   Priority dummy_pri = Priority();
@@ -43,9 +43,9 @@ Priority TaskManager::GenerateTaskPriority(
 	}
   }
 
-  Priority pri;
-  pri.SetFromParentPriority(max_priority, new_priority_s++);
-  spec.SetPriority(pri);
+  Priority *pri = new Priority;
+  pri->SetFromParentPriority(max_priority);//, new_priority_s++);
+  spec.SetPriority(*pri);
   return pri;
 }
 
@@ -82,7 +82,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     num_returns--;
   }
   std::vector<rpc::ObjectReference> returned_refs;
-  Priority task_priority = GenerateTaskPriority(spec, task_deps);
+  Priority *task_priority = GenerateTaskPriority(spec, task_deps);
   for (size_t i = 0; i < num_returns; i++) {
     if (!spec.IsActorCreationTask()) {
       // We pass an empty vector for inner IDs because we do not know the return

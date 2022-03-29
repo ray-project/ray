@@ -11,6 +11,8 @@
 
 namespace ray {
 
+const int childless_id_start = 100000;
+
 struct Priority {
  public:
   Priority() : Priority(0) {}
@@ -24,6 +26,8 @@ struct Priority {
   void extend(int64_t size) const;
 
   void SetFromParentPriority(Priority &parent, int);
+
+  void IncreaseChildrenCount(){}
 
   bool operator==(const Priority &rhs) const {
     rhs.extend(score.size());
@@ -78,9 +82,17 @@ struct Priority {
   }
 
   mutable std::vector<int> score = {};
+  mutable int num_children = 0;
+  mutable struct Priority *parent = NULL;
+  //monotonically increased id assigned to priorities
+  //when they are first created without any pendents
+  static int childless_id;
+  //moved from childless_id when a pendent is subnmitted
+  //change the priority to id
+  static int id;
 };
 
-using TaskKey = std::pair<Priority, TaskID>;
+using TaskKey = std::pair<Priority&, TaskID>;
 
 std::ostream &operator<<(std::ostream &os, const Priority &p);
 std::ostream &operator<<(std::ostream &os, const TaskKey &k);

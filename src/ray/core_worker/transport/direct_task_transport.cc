@@ -75,7 +75,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
                                             : ActorID::Nil(),
             task_spec.GetRuntimeEnvHash());
-        const auto priority = get_task_priority_(task_spec);
+        auto priority = get_task_priority_(task_spec);
         auto inserted = tasks_.emplace(task_spec.TaskId(), TaskEntry(task_spec, scheduling_key, priority));
         RAY_CHECK(inserted.second);
         const auto task_key = inserted.first->second.task_key;
@@ -312,7 +312,7 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
           RAY_LOG(DEBUG) << "Adding stolen task " << stolen_task_spec.TaskId()
                          << " back to the queue (of current size="
                          << scheduling_key_entry.task_priority_queue.size() << ")!";
-          const auto priority = get_task_priority_(stolen_task_spec);
+          auto priority = get_task_priority_(stolen_task_spec);
           auto inserted = tasks_.emplace(stolen_task_id, TaskEntry(stolen_task_spec, scheduling_key, priority));
           RAY_CHECK(inserted.second);
           const auto &task_key = inserted.first->second.task_key;
@@ -746,11 +746,12 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   return Status::OK();
 }
 
+/*
 void CoreWorkerDirectTaskSubmitter::UpdateTaskPriorities(const absl::flat_hash_map<TaskID, Priority> &priorities) {
   absl::MutexLock lock(&mu_);
   for (const auto &pair : priorities) {
     const auto &task_id = pair.first;
-    const auto &priority = pair.second;
+    auto &priority = pair.second;
     auto task_it = tasks_.find(task_id);
     if (task_it == tasks_.end()) {
       continue;
@@ -761,12 +762,13 @@ void CoreWorkerDirectTaskSubmitter::UpdateTaskPriorities(const absl::flat_hash_m
       RAY_CHECK(it != scheduling_key_entries_.end());
       RAY_CHECK(it->second.task_priority_queue.erase(task_key)) << task_id;
 
-      task_it->second.task_key = std::make_pair(priority, task_id);
+      task_it->second.task_key = {priority, task_id};
       RAY_CHECK(it->second.task_priority_queue.emplace(task_it->second.task_key).second);
       RAY_LOG(DEBUG) << "Updated task " << task_id << " priority to " << priority;
     }
   }
 }
+*/
 
 }  // namespace core
 }  // namespace ray

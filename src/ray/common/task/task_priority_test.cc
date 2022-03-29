@@ -14,6 +14,7 @@
 
 #include "gtest/gtest.h"
 #include <limits.h>
+#include <vector>
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_set.h"
 
@@ -21,6 +22,22 @@
 #include "ray/common/task/task_priority.h"
 
 namespace ray {
+
+TEST(TaskPriorityTest, TestProducerPriority) {
+  std::vector<int> vec_pri0{0}, vec_pri1{1};
+  Priority priority0(vec_pri0);
+  Priority priority1(vec_pri1);
+  Priority priority12;
+
+  ASSERT_LT(priority0, priority1);
+
+  priority12.SetFromParentPriority(priority1, 2);
+  priority1.increaseChildrenCount();
+
+  ASSERT_LT(priority1, priority2);
+  ASSERT_LT(priority12, priority2);
+  ASSERT_LT(priority12, priority1);
+}
 
 TEST(TaskPriorityTest, TestEquals) {
   Priority priority1({1, 2, 3});

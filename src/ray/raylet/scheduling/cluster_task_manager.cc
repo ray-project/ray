@@ -76,7 +76,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // blocking where a task which cannot be scheduled because
       // there are not enough available resources blocks other
       // tasks from being scheduled.
-      Priority task_priority = work_it->first.first;
+      Priority &task_priority = work_it->first.first;
       RAY_LOG(DEBUG) << "[JAE_DEBUG] schedulePendingTasks task " << 
 		  work_it->second->task.GetTaskSpecification().TaskId() << "priority:" << task_priority
                      << " block requested is " << block_requested_priority_;

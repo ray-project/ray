@@ -89,7 +89,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 	new_priority_s = 0;
   }
 
-  Priority GenerateTaskPriority(TaskSpecification &spec, std::vector<ObjectID> &task_deps);
+  Priority* GenerateTaskPriority(TaskSpecification &spec, std::vector<ObjectID> &task_deps);
 
   /// Add a task that is pending execution.
   ///

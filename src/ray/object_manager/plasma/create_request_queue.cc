@@ -165,7 +165,6 @@ Status CreateRequestQueue::ProcessRequests() {
     bool evict_tasks_required = false;
     std::unique_ptr<CreateRequest> &request = queue_it->second;
     ray::Priority lowest_pri;
-    ray::TaskKey task_id = queue_it->first;
     auto status =
         ProcessRequest(/*fallback_allocator=*/false, request, &spilling_required,
                        &block_tasks_required, &evict_tasks_required, &lowest_pri);
@@ -263,7 +262,8 @@ void CreateRequestQueue::FinishRequest(
   it->second = std::move(queue_it->second);
   RAY_CHECK(num_bytes_pending_ >= it->second->object_size);
   num_bytes_pending_ -= it->second->object_size;
-  queue_it = queue_.erase(queue_it);
+  //queue_it = queue_.erase(queue_it);
+  queue_.erase(queue_it);
 }
 
 void CreateRequestQueue::RemoveDisconnectedClientRequests(

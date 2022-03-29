@@ -266,14 +266,19 @@ Priority& ReferenceCounter::GetObjectPriority(const ObjectID &object_id){
   absl::MutexLock lock(&mutex_);
   auto it = object_id_priority_.find(object_id);
   RAY_CHECK(it != object_id_priority_.end()) << "Object priority not found " << object_id;
-  return it->second;
+  return *(it->second);
 }
 
 void ReferenceCounter::UpdateObjectPriority(
 		const ObjectID &object_id,
-		const Priority &priority){
+		Priority *priority){
   absl::MutexLock lock(&mutex_);
   object_id_priority_[object_id] =  priority;
+  Priority *p = priority;
+  while(p->parent != NULL){
+	  p = p->parent;
+	  p->increaseChildrenCount();
+  }
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(

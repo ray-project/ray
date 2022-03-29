@@ -248,16 +248,19 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   }
 
   TaskKey GetTaskKey() const {
-    std::vector<int> p(message_->priority().data(), message_->priority().data() + message_->priority().size());
-    return std::make_pair<Priority, TaskID>(std::move(p), TaskId());
+    //std::vector<int> p(message_->priority().data(), message_->priority().data() + message_->priority().size());
+    //return std::make_pair<Priority, TaskID>(std::move(p), TaskId());
+    //return std::make_pair<Priority&, TaskID>((*task_priority), TaskId());
+	return {*task_priority, TaskId()};
   }
 
-  void SetPriority(const Priority &priority) {
+  void SetPriority(Priority &priority) {
     auto p = message_->mutable_priority();
     p->Clear();
     for (auto &s : priority.score) {
       p->Add(s);
     }
+	task_priority = &priority;
   }
 
   // Concurrency groups of the actor.
@@ -276,6 +279,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;
+
+  mutable Priority *task_priority = NULL;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
