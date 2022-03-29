@@ -44,7 +44,7 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     if (node_filter == NodeFilter::kAny) {
       return true;
     }
-    const bool has_gpu = node_resources.HasGPU();
+    const bool has_gpu = node_resources.total.Has(ResourceID::GPU());
     if (node_filter == NodeFilter::kGPU) {
       return has_gpu;
     }
@@ -140,7 +140,7 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type == SchedulingType::HYBRID)
       << "HybridPolicy policy requires type = HYBRID";
-  if (!options.avoid_gpu_nodes || resource_request.IsGPURequest()) {
+  if (!options.avoid_gpu_nodes || resource_request.Has(ResourceID::GPU())) {
     return HybridPolicyWithFilter(resource_request,
                                   options.spread_threshold,
                                   options.avoid_local_node,
