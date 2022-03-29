@@ -156,7 +156,6 @@ test_python() {
       -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
-      -python/ray/tests:test_runtime_env_complicated # requires conda
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests
@@ -180,6 +179,10 @@ test_python() {
     bazel test --config=ci \
       --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_env=CI=1 \
+      --test_env=RAY_CI_POST_WHEEL_TESTS=1 \
+      --test_output=streamed \
       -- \
       ${test_shard_selection};
   fi
@@ -265,8 +268,18 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       make html
-      make linkcheck
       make doctest
+    fi
+  )
+}
+
+check_sphinx_links() {
+  (
+    cd "${WORKSPACE_DIR}"/doc
+    if [ "${OSTYPE}" = msys ]; then
+      echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
+    else
+      make linkcheck
     fi
   )
 }
