@@ -27,12 +27,10 @@ from ray.serve.constants import (
 )
 from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import ASGIHTTPSender
-from ray.serve.logging_utils import configure_logger
+from ray.serve.logging_utils import get_component_logger
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.utils import parse_import_path, parse_request_item, wrap_to_ray_error
 from ray.serve.version import DeploymentVersion
-
-logger = logging.getLogger("ray.serve")
 
 
 def create_replica_wrapper(
@@ -70,7 +68,9 @@ def create_replica_wrapper(
             controller_namespace: str,
             detached: bool,
         ):
-            configure_logger(component=deployment_name, component_id=replica_tag)
+            logger = get_component_logger(
+                component=deployment_name, component_id=replica_tag
+            )
 
             if import_path is not None:
                 module_name, attr_name = parse_import_path(import_path)
@@ -159,6 +159,7 @@ def create_replica_wrapper(
                     version,
                     is_function,
                     controller_handle,
+                    logger=logger,
                 )
 
             # Is it fine that replica is None here?
@@ -231,6 +232,7 @@ class RayServeReplica:
         version: DeploymentVersion,
         is_function: bool,
         controller_handle: ActorHandle,
+        logger: logging.Logger,
     ) -> None:
         self.deployment_config = deployment_config
         self.deployment_name = deployment_name
@@ -250,6 +252,7 @@ class RayServeReplica:
         self.user_health_check = sync_to_async(user_health_check)
 
         self.num_ongoing_requests = 0
+        self._logger = logger
 
         self.request_counter = metrics.Counter(
             "serve_deployment_request_counter",
@@ -370,7 +373,7 @@ class RayServeReplica:
         return response
 
     async def invoke_single(self, request_item: Query) -> Any:
-        logger.debug(
+        self._logger.debug(
             "Replica {} started executing request {}".format(
                 self.replica_tag, request_item.metadata.request_id
             )
@@ -432,7 +435,7 @@ class RayServeReplica:
     async def handle_request(self, request: Query) -> asyncio.Future:
         async with self.rwlock.reader_lock:
             request.tick_enter_replica = time.time()
-            logger.debug(
+            self._logger.debug(
                 "Replica {} received request {}".format(
                     self.replica_tag, request.metadata.request_id
                 )
@@ -443,7 +446,7 @@ class RayServeReplica:
 
             result = await self.invoke_single(request)
             request_time_ms = (time.time() - request.tick_enter_replica) * 1000
-            logger.debug(
+            self._logger.debug(
                 "Replica {} finished request {} in {:.2f}ms".format(
                     self.replica_tag, request.metadata.request_id, request_time_ms
                 )
@@ -470,7 +473,7 @@ class RayServeReplica:
             if method_stat["running"] + method_stat["pending"] == 0:
                 break
             else:
-                logger.info(
+                self._logger.info(
                     "Waiting for an additional "
                     f"{self._shutdown_wait_loop_s}s to shut down because "
                     f"there are {self.num_ongoing_requests} ongoing requests."
@@ -484,7 +487,9 @@ class RayServeReplica:
                 # Make sure to accept `async def __del__(self)` as well.
                 await sync_to_async(self.callable.__del__)()
         except Exception as e:
-            logger.exception(f"Exception during graceful shutdown of replica: {e}")
+            self._logger.exception(
+                f"Exception during graceful shutdown of replica: {e}"
+            )
         finally:
             if hasattr(self.callable, "__del__"):
                 del self.callable.__del__

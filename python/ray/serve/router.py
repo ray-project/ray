@@ -15,7 +15,7 @@ from ray.serve.common import RunningReplicaInfo
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta
 
-logger = logging.getLogger("ray.serve")
+default_logger = logging.getLogger(__file__)
 
 
 @dataclass
@@ -43,6 +43,7 @@ class ReplicaSet:
         self,
         deployment_name,
         event_loop: asyncio.AbstractEventLoop,
+        logger: logging.Logger = default_logger,
     ):
         self.deployment_name = deployment_name
         self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
@@ -65,6 +66,7 @@ class ReplicaSet:
         else:
             self.config_updated_event = asyncio.Event(loop=event_loop)
 
+        self._logger = logger
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
             "serve_deployment_queued_queries",
@@ -95,7 +97,7 @@ class ReplicaSet:
             replicas = list(self.in_flight_queries.keys())
             random.shuffle(replicas)
             self.replica_iterator = itertools.cycle(replicas)
-            logger.debug(f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
+            self._logger.debug(f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
@@ -108,7 +110,7 @@ class ReplicaSet:
                 # This replica is overloaded, try next one
                 continue
 
-            logger.debug(
+            self._logger.debug(
                 f"Assigned query {query.metadata.request_id} "
                 f"to replica {replica.replica_tag}."
             )
@@ -144,7 +146,7 @@ class ReplicaSet:
         )
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
-            logger.debug(
+            self._logger.debug(
                 "Failed to assign a replica for " f"query {query.metadata.request_id}"
             )
             # Maybe there exists a free replica, we just need to refresh our
@@ -153,7 +155,7 @@ class ReplicaSet:
             # All replicas are really busy, wait for a query to complete or the
             # config to be updated.
             if num_finished == 0:
-                logger.debug("All replicas are busy, waiting for a free replica.")
+                self._logger.debug("All replicas are busy, waiting for a free replica.")
                 await asyncio.wait(
                     self._all_query_refs + [self.config_updated_event.wait()],
                     return_when=asyncio.FIRST_COMPLETED,
@@ -202,6 +204,7 @@ class Router:
                 ): self._replica_set.update_running_replicas,
             },
             call_in_event_loop=event_loop,
+            logger=self._logger,
         )
 
     async def assign_request(

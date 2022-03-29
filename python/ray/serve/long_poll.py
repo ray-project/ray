@@ -10,7 +10,7 @@ from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
 
 import ray
 
-logger = logging.getLogger("ray.serve")
+default_logger = logging.getLogger(__file__)
 
 # Each LongPollClient will send requests to LongPollHost to poll changes
 # as blocking awaitable. This doesn't scale if we have many client instances
@@ -64,6 +64,7 @@ class LongPollClient:
         host_actor,
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
+        logger: logging.Logger = default_logger,
     ) -> None:
         assert len(key_listeners) > 0
         # We used to allow this to be optional, but due to Ray Client issue
@@ -74,6 +75,7 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
+        self._logger = logger
         self._reset()
 
         self.is_running = True
@@ -116,7 +118,9 @@ class LongPollClient:
         if self.event_loop.is_running():
             self.event_loop.call_soon_threadsafe(callback)
         else:
-            logger.error("The event loop is closed, shutting down long poll client.")
+            self._logger.error(
+                "The event loop is closed, shutting down long poll client."
+            )
             self.is_running = False
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):
@@ -124,28 +128,30 @@ class LongPollClient:
             # This can happen during shutdown where the controller is
             # intentionally killed, the client should just gracefully
             # exit.
-            logger.debug("LongPollClient failed to connect to host. Shutting down.")
+            self._logger.debug(
+                "LongPollClient failed to connect to host. Shutting down."
+            )
             self.is_running = False
             return
 
         if isinstance(updates, ConnectionError):
-            logger.warning("LongPollClient connection failed, shutting down.")
+            self._logger.warning("LongPollClient connection failed, shutting down.")
             self.is_running = False
             return
 
         if isinstance(updates, (ray.exceptions.RayTaskError)):
             if isinstance(updates.as_instanceof_cause(), (asyncio.TimeoutError)):
-                logger.debug("LongPollClient polling timed out. Retrying.")
+                self._logger.debug("LongPollClient polling timed out. Retrying.")
             else:
                 # Some error happened in the controller. It could be a bug or
                 # some undesired state.
-                logger.error("LongPollHost errored\n" + updates.traceback_str)
+                self._logger.error("LongPollHost errored\n" + updates.traceback_str)
             # We must call this in event loop so it works in Ray Client.
             # See https://github.com/ray-project/ray/issues/20971
             self._schedule_to_event_loop(self._poll_next)
             return
 
-        logger.debug(
+        self._logger.debug(
             f"LongPollClient {self} received updates for keys: "
             f"{list(updates.keys())}."
         )
@@ -177,7 +183,8 @@ class LongPollHost:
     the object is updated.
     """
 
-    def __init__(self):
+    def __init__(self, logger: logging.Logger = default_logger):
+        self._logger = logger
         # Map object_key -> int
         self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
             lambda: random.randint(0, 1_000_000)
@@ -250,7 +257,7 @@ class LongPollHost:
     ):
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
-        logger.debug(f"LongPollHost: Notify change for key {object_key}.")
+        self._logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
         if object_key in self.notifier_events:
             for event in self.notifier_events.pop(object_key):

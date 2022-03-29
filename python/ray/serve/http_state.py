@@ -15,7 +15,7 @@ from ray.serve.utils import (
 )
 from ray.serve.common import EndpointTag, NodeId
 
-logger = logging.getLogger("ray.serve")
+default_logger = logging.getLogger(__file__)
 
 
 class HTTPState:
@@ -33,6 +33,7 @@ class HTTPState:
         _override_controller_namespace: Optional[str] = None,
         # Used by unit testing
         _start_proxies_on_init: bool = True,
+        logger: logging.Logger = default_logger,
     ):
         self._controller_name = controller_name
         self._controller_namespace = ray.serve.api._get_controller_namespace(
@@ -42,6 +43,7 @@ class HTTPState:
         self._config = config
         self._override_controller_namespace = _override_controller_namespace
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
+        self._logger = logger
 
         # Will populate self.proxy_actors with existing actors.
         if _start_proxies_on_init:
@@ -80,7 +82,7 @@ class HTTPState:
         if location == DeploymentMode.FixedNumber:
             num_replicas = self._config.fixed_number_replicas
             if num_replicas > len(target_nodes):
-                logger.warning(
+                self._logger.warning(
                     "You specified fixed_number_replicas="
                     f"{num_replicas} but there are only "
                     f"{len(target_nodes)} total nodes. Serve will start one "
@@ -105,7 +107,7 @@ class HTTPState:
             try:
                 proxy = ray.get_actor(name, namespace=self._controller_namespace)
             except ValueError:
-                logger.info(
+                self._logger.info(
                     "Starting HTTP proxy with name '{}' on node '{}' "
                     "listening on '{}:{}'".format(
                         name, node_id, self._config.host, self._config.port
@@ -138,7 +140,9 @@ class HTTPState:
         to_stop = []
         for node_id in self._proxy_actors:
             if node_id not in all_node_ids:
-                logger.info("Removing HTTP proxy on removed node '{}'.".format(node_id))
+                self._logger.info(
+                    "Removing HTTP proxy on removed node '{}'.".format(node_id)
+                )
                 to_stop.append(node_id)
 
         for node_id in to_stop:

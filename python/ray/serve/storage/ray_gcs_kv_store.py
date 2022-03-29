@@ -10,7 +10,7 @@ except ImportError:
 
 from ray.serve.storage.kv_store_base import KVStoreBase
 
-logger = logging.getLogger("ray.serve")
+default_logger = logging.getLogger(__file__)
 
 
 class RayGcsKVStore(KVStoreBase):
@@ -26,10 +26,12 @@ class RayGcsKVStore(KVStoreBase):
         namespace: str,
         bucket="",
         prefix="",
+        logger: logging.Logger = default_logger,
     ):
         self._namespace = namespace
         self._bucket = bucket
         self._prefix = prefix + "/" if prefix else ""
+        self._logger = logger
         if not storage:
             raise ImportError(
                 "You tried to use RayGcsKVStore client without"
@@ -60,7 +62,7 @@ class RayGcsKVStore(KVStoreBase):
             blob.upload_from_file(f, num_retries=5)
         except Exception as e:
             message = str(e)
-            logger.error(
+            self._logger.error(
                 f"Encountered ClientError while calling put() "
                 f"in RayExternalKVStore: {message}"
             )
@@ -82,7 +84,7 @@ class RayGcsKVStore(KVStoreBase):
             blob = self._bucket.blob(blob_name=self.get_storage_key(key))
             return blob.download_as_bytes()
         except NotFound:
-            logger.warning(f"No such key in GCS for key = {key}")
+            self._logger.warning(f"No such key in GCS for key = {key}")
             return None
 
     def delete(self, key: str):
@@ -100,7 +102,7 @@ class RayGcsKVStore(KVStoreBase):
             blob = self._bucket.blob(blob_name=blob_name)
             blob.delete()
         except NotFound:
-            logger.error(
+            self._logger.error(
                 f"Encountered ClientError while calling delete() "
                 f"in RayExternalKVStore - "
                 f"Blob {blob_name} was not found!"

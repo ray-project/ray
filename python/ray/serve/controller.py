@@ -2,7 +2,6 @@ import asyncio
 from collections import defaultdict
 from copy import copy
 import json
-import logging
 import time
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
@@ -80,7 +79,9 @@ class ServeController:
         self.controller_name = controller_name
         self.checkpoint_path = checkpoint_path
         kv_store_namespace = f"{self.controller_name}-{self.controller_namespace}"
-        self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
+        self.kv_store = make_kv_store(
+            checkpoint_path, namespace=kv_store_namespace, logger=self.logger
+        )
         self.snapshot_store = RayInternalKVStore(
             namespace=kv_store_namespace, logger=self.logger
         )
@@ -92,7 +93,7 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        self.long_poll_host = LongPollHost()
+        self.long_poll_host = LongPollHost(logger=self.logger)
 
         self.http_state = HTTPState(
             controller_name,

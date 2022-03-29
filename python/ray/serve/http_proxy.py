@@ -24,16 +24,18 @@ from ray.serve.http_util import (
 )
 from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.long_poll import LongPollNamespace
-from ray.serve.logging_utils import configure_logger
+from ray.serve.logging_utils import get_component_logger
 from ray.serve.long_poll import LongPollClient
 
-logger = logging.getLogger("ray.serve")
+default_logger = logging.getLogger(__file__)
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
 
 
-async def _send_request_to_handle(handle, scope, receive, send) -> str:
+async def _send_request_to_handle(
+    handle, scope, receive, send, logger: logging.Logger
+) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
     # NOTE(edoakes): it's important that we defer building the starlette
@@ -109,7 +111,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
 class LongestPrefixRouter:
     """Router that performs longest prefix matches on incoming routes."""
 
-    def __init__(self, get_handle: Callable):
+    def __init__(self, get_handle: Callable, logger: logging.Logger = default_logger):
+        self._logger = logger
         # Function to get a handle given a name. Used to mock for testing.
         self._get_handle = get_handle
         # Routes sorted in order of decreasing length.
@@ -123,7 +126,7 @@ class LongestPrefixRouter:
         return endpoint in self.handles
 
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        logger.debug(f"Got updated endpoints: {endpoints}.")
+        self._logger.debug(f"Got updated endpoints: {endpoints}.")
 
         existing_handles = set(self.handles.keys())
         routes = []
@@ -189,7 +192,14 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str, controller_namespace: str):
+    def __init__(
+        self,
+        controller_name: str,
+        controller_namespace: str,
+        logger: logging.Logger = default_logger,
+    ):
+        self._logger = logger
+
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.api._set_internal_replica_context(
@@ -207,13 +217,14 @@ class HTTPProxy:
                 _internal_pickled_http_request=True,
             )
 
-        self.prefix_router = LongestPrefixRouter(get_handle)
+        self.prefix_router = LongestPrefixRouter(get_handle, logger=logger)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=controller_namespace),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
             call_in_event_loop=asyncio.get_event_loop(),
+            logger=self._logger,
         )
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
@@ -299,7 +310,9 @@ class HTTPProxy:
             scope["path"] = route_path.replace(route_prefix, "", 1)
             scope["root_path"] = root_path + route_prefix
 
-        status_code = await _send_request_to_handle(handle, scope, receive, send)
+        status_code = await _send_request_to_handle(
+            handle, scope, receive, send, logger=self._logger
+        )
         if status_code != "200":
             self.request_error_counter.inc(
                 tags={"route": route_path, "error_code": status_code}
@@ -321,7 +334,7 @@ class HTTPProxyActor:
         node_id: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
-        configure_logger(component="http_proxy", component_id=node_id)
+        logger = get_component_logger(component="http_proxy", component_id=node_id)
 
         if http_middlewares is None:
             http_middlewares = []
@@ -332,7 +345,7 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name, controller_namespace)
+        self.app = HTTPProxy(controller_name, controller_namespace, logger=logger)
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:

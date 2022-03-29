@@ -42,6 +42,8 @@ from ray.serve.utils import (
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
 
+default_logger = logging.getLogger(__file__)
+
 
 class ReplicaState(Enum):
     STARTING = 1
@@ -138,7 +140,9 @@ class ActorReplicaWrapper:
         replica_tag: ReplicaTag,
         deployment_name: str,
         _override_controller_namespace: Optional[str] = None,
+        logger: logging.Logger = default_logger,
     ):
+        self._logger = logger
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
@@ -393,7 +397,9 @@ class ActorReplicaWrapper:
                 self._health_check_timeout_s = deployment_config.health_check_timeout_s
                 self._node_id = ray.get(self._allocated_obj_ref)
             except Exception:
-                logger.exception(f"Exception in deployment '{self._deployment_name}'")
+                self._logger.exception(
+                    f"Exception in deployment '{self._deployment_name}'"
+                )
                 return ReplicaStartupStatus.FAILED, None
 
         return ReplicaStartupStatus.SUCCEEDED, version
@@ -457,15 +463,16 @@ class ActorReplicaWrapper:
                 response = ReplicaHealthCheckResponse.SUCCEEDED
             except RayActorError:
                 # Health check failed due to actor crashing.
-                # logger.info(f"Actor for replica {self._replica_tag} crashed.")
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
                 # Health check failed due to application-level exception.
-                logger.info(f"Health check for replica {self._replica_tag} failed: {e}")
+                self._logger.info(
+                    f"Health check for replica {self._replica_tag} failed: {e}"
+                )
                 response = ReplicaHealthCheckResponse.APP_FAILURE
         elif time.time() - self._last_health_check_time > self._health_check_timeout_s:
             # Health check hasn't returned and the timeout is up, consider it failed.
-            logger.info(
+            self._logger.info(
                 "Didn't receive health check response for replica "
                 f"{self._replica_tag} after "
                 f"{self._health_check_timeout_s}s, marking it unhealthy."
@@ -530,7 +537,7 @@ class ActorReplicaWrapper:
                 self._consecutive_health_check_failures
                 >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
             ):
-                logger.info(
+                self._logger.info(
                     f"Replica {self._replica_tag} failed the health "
                     f"check {self._consecutive_health_check_failures}"
                     "times in a row, marking it unhealthy."
@@ -538,7 +545,7 @@ class ActorReplicaWrapper:
                 self._healthy = False
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             # Actor crashed, mark the replica unhealthy immediately.
-            logger.info(
+            self._logger.info(
                 f"Actor for replica {self._replica_tag} crashed, marking "
                 "it unhealthy immediately."
             )
@@ -588,7 +595,9 @@ class DeploymentReplica(VersionedReplica):
         deployment_name: str,
         version: DeploymentVersion,
         _override_controller_namespace: Optional[str] = None,
+        logger: logging.Logger = default_logger,
     ):
+        self._logger = logger
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
             detached,
@@ -702,7 +711,7 @@ class DeploymentReplica(VersionedReplica):
         if timeout_passed:
             # Graceful period passed, kill it forcefully.
             # This will be called repeatedly until the replica shuts down.
-            logger.debug(
+            self._logger.debug(
                 f"Replica {self.replica_tag} did not shut down after grace "
                 "period, force-killing it. "
                 f"component=serve deployment={self.deployment_name} "
@@ -888,8 +897,10 @@ class DeploymentState:
         long_poll_host: LongPollHost,
         _save_checkpoint_func: Callable,
         _override_controller_namespace: Optional[str] = None,
+        logger: logging.Logger = default_logger,
     ):
 
+        self._logger = logger
         self._name = name
         self._controller_name: str = controller_name
         self._detached: bool = detached
@@ -922,7 +933,7 @@ class DeploymentState:
         return self.get_target_state_checkpoint_data()
 
     def recover_target_state_from_checkpoint(self, target_state_checkpoint):
-        logger.info(
+        self._logger.info(
             "Recovering target state for deployment " f"{self._name} from checkpoint.."
         )
         (
@@ -943,7 +954,7 @@ class DeploymentState:
             "recovering current state from replica actor names."
         )
 
-        logger.debug(
+        self._logger.debug(
             "Recovering current state for deployment "
             f"{self._name} from {len(replica_actor_names)} actors in "
             "current ray cluster.."
@@ -961,7 +972,7 @@ class DeploymentState:
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
-            logger.debug(
+            self._logger.debug(
                 f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
                 f"deployment: {self._name}."
             )
@@ -1017,7 +1028,7 @@ class DeploymentState:
         version_str = (
             deployment_info if deployment_info is None else deployment_info.version
         )
-        logger.debug(f"Deploying new version of {self._name}: {version_str}")
+        self._logger.debug(f"Deploying new version of {self._name}: {version_str}")
 
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
@@ -1131,7 +1142,7 @@ class DeploymentState:
                 user_config_changes += 1
                 replica.update_user_config(self._target_version.user_config)
                 self._replicas.add(ReplicaState.UPDATING, replica)
-                logger.debug(
+                self._logger.debug(
                     "Adding UPDATING to replica_tag: "
                     f"{replica.replica_tag}, deployment_name: {self._name}"
                 )
@@ -1139,14 +1150,14 @@ class DeploymentState:
                 assert False, "Update must be code version or user config."
 
         if code_version_changes > 0:
-            logger.info(
+            self._logger.info(
                 f"Stopping {code_version_changes} replicas of "
                 f"deployment '{self._name}' with outdated versions. "
                 f"component=serve deployment={self._name}"
             )
 
         if user_config_changes > 0:
-            logger.info(
+            self._logger.info(
                 f"Updating {user_config_changes} replicas of "
                 f"deployment '{self._name}' with outdated "
                 f"user_configs. component=serve "
@@ -1182,7 +1193,7 @@ class DeploymentState:
             )
             to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
-                logger.info(
+                self._logger.info(
                     f"Adding {to_add} replicas to deployment "
                     f"'{self._name}'. component=serve "
                     f"deployment={self._name}"
@@ -1200,7 +1211,7 @@ class DeploymentState:
                 new_deployment_replica.start(self._target_info, self._target_version)
 
                 self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-                logger.debug(
+                self._logger.debug(
                     "Adding STARTING to replica_tag: "
                     f"{replica_name}, deployment_name: {self._name}"
                 )
@@ -1208,7 +1219,7 @@ class DeploymentState:
         elif delta_replicas < 0:
             replicas_stopped = True
             to_remove = -delta_replicas
-            logger.info(
+            self._logger.info(
                 f"Removing {to_remove} replicas from deployment "
                 f"'{self._name}'. component=serve "
                 f"deployment={self._name}"
@@ -1225,7 +1236,7 @@ class DeploymentState:
             )
 
             for replica in replicas_to_stop:
-                logger.debug(
+                self._logger.debug(
                     f"Adding STOPPING to replica_tag: {replica}, "
                     f"deployment_name: {self._name}"
                 )
@@ -1373,7 +1384,7 @@ class DeploymentState:
                 self._replicas.add(ReplicaState.RUNNING, replica)
             else:
                 running_replicas_changed = True
-                logger.warning(
+                self._logger.warning(
                     f"Replica {replica.replica_tag} of deployment "
                     f"{self._name} failed health check, stopping it. "
                     f"component=serve deployment={self._name} "
@@ -1424,7 +1435,7 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = slow_start_replicas[0][0].resource_requirements()
-                logger.warning(
+                self._logger.warning(
                     f"Deployment '{self._name}' has "
                     f"{len(pending_allocation)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
@@ -1439,7 +1450,7 @@ class DeploymentState:
                     print_verbose_scaling_log(self._logger)
 
             if len(pending_initialization) > 0:
-                logger.warning(
+                self._logger.warning(
                     f"Deployment '{self._name}' has "
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
@@ -1512,8 +1523,10 @@ class DeploymentStateManager:
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
         _override_controller_namespace: Optional[str] = None,
+        logger: logging.Logger = default_logger,
     ):
 
+        self._logger = logger
         self._controller_name = controller_name
         self._detached = detached
         self._kv_store = kv_store

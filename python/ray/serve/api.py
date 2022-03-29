@@ -81,7 +81,7 @@ from ray.serve.schema import (
     ServeApplicationStatusSchema,
 )
 
-logger = logging.getLogger("ray.serve")
+logger = logging.getLogger(__file__)
 
 
 _INTERNAL_REPLICA_CONTEXT = None
