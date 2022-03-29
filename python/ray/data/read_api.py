@@ -130,10 +130,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
         Dataset holding the integers.
     """
     return read_datasource(
-        RangeDatasource(),
-        parallelism=parallelism,
-        n=n,
-        block_format="list",
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
     )
 
 
@@ -250,9 +247,7 @@ def read_datasource(
             "The number of blocks in this dataset ({}) limits its parallelism to {} "
             "concurrent tasks. This is much less than the configured "
             "parallelism of {}. Use `.repartition(n)` to increase the number of "
-            "dataset blocks.".format(
-                len(read_tasks), len(read_tasks), parallelism
-            )
+            "dataset blocks.".format(len(read_tasks), len(read_tasks), parallelism)
         )
 
     context = DatasetContext.get_current()
