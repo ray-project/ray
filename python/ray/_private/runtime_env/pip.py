@@ -61,7 +61,6 @@ class _PathHelper:
     @classmethod
     def get_virtualenv_activate_command(cls, target_dir: str) -> str:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
-        # TODO(SongGuyang): Support Windows
         if _WIN32:
             return "%s 1>&2" % (os.path.join(virtualenv_path, "Scripts", "activate"))
         else:
