@@ -1,18 +1,23 @@
+import abc
 import distutils
 import distutils.spawn
 import inspect
 import logging
+import os
 import pathlib
+import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
 import types
 import warnings
 
-from typing import Optional, List, Callable, Union
+from typing import Optional, List, Callable, Union, Tuple
 
 from shlex import quote
 
+import ray
 from ray.tune.error import TuneError
 from ray.util.annotations import PublicAPI
 from ray.util.debug import log_once
@@ -117,7 +122,7 @@ def get_cloud_sync_client(remote_path: str) -> "CommandBasedClient":
 
 
 @PublicAPI(stability="beta")
-class SyncClient:
+class SyncClient(abc.ABC):
     """Client interface for interacting with remote storage options."""
 
     def sync_up(self, source: str, target: str, exclude: Optional[List] = None):
@@ -418,3 +423,138 @@ class CommandBasedClient(SyncClient):
                     "Neither `{pattern}` nor `{regex_pattern}` found in "
                     f"exclude string `{exclude_template}`"
                 )
+
+
+@ray.remote
+def _pack_dir(source_dir: str) -> bytes:
+    tmpfile = tempfile.mktemp()
+    with tarfile.open(tmpfile, "w:gz") as tar:
+        tar.add(source_dir, arcname="")
+
+    with open(tmpfile, "rb") as f:
+        stream = f.read()
+
+    return stream
+
+
+@ray.remote
+def _unpack_dir(stream: bytes, target_dir: str):
+    tmpfile = tempfile.mktemp()
+
+    with open(tmpfile, "wb") as f:
+        f.write(stream)
+
+    with tarfile.open(tmpfile) as tar:
+        tar.extractall(target_dir)
+
+
+@ray.remote
+def _delete_dir(target_dir: str) -> bool:
+    if os.path.exists(target_dir):
+        shutil.rmtree(target_dir)
+        return True
+    return False
+
+
+class RemoteTaskClient(SyncClient):
+    def __init__(self):
+        self._sync_future = None
+
+        self._last_source_tuple = None
+        self._last_target_tuple = None
+
+    def sync_down(
+        self, source: Tuple[str, str], target: str, exclude: Optional[List] = None
+    ):
+        if self._sync_future:
+            logger.warning(
+                f"Last remote task sync still in progress, "
+                f"skipping sync from {source} to {target}."
+            )
+            return False
+
+        source_ip, source_path = source
+        target_ip = ray.util.get_node_ip_address()
+
+        self._last_source_tuple = source_ip, source_path
+        self._last_target_tuple = target_ip, target
+
+        self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+
+    def sync_up(
+        self, source: str, target: Tuple[str, str], exclude: Optional[List] = None
+    ):
+        if self._sync_future:
+            logger.warning(
+                f"Last remote task sync still in progress, "
+                f"skipping sync from {source} to {target}."
+            )
+            return False
+
+        source_ip = ray.util.get_node_ip_address()
+        target_ip, target_path = target
+
+        self._last_source_tuple = source_ip, source
+        self._last_target_tuple = target_ip, target_path
+
+        self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+
+    def _execute_sync(
+        self, source_tuple: Tuple[str, str], target_tuple: Tuple[str, str]
+    ):
+        source_ip, source_path = source_tuple
+        target_ip, target_path = target_tuple
+
+        pack_on_source_node = _pack_dir.options(
+            num_cpus=0, resources={f"node:{source_ip}": 0.01}
+        )
+        unpack_on_target_node = _unpack_dir.options(
+            num_cpus=0, resources={f"node:{target_ip}": 0.01}
+        )
+
+        pack_future = pack_on_source_node.remote(source_path)
+        self._sync_future = unpack_on_target_node.remote(pack_future, target_path)
+
+    def delete(self, target: str):
+        pass
+
+    def wait(self):
+        if self._sync_future:
+            try:
+                ray.get(self._sync_future)
+            except Exception as e:
+                raise TuneError(
+                    f"Remote task sync failed from "
+                    f"{self._last_source_tuple} to "
+                    f"{self._last_target_tuple}"
+                ) from e
+
+    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+        assert max_retries > 0
+
+        for i in range(max_retries - 1):
+            try:
+                self.wait()
+            except TuneError as e:
+                logger.error(
+                    f"Caught sync error: {e}. "
+                    f"Retrying after sleeping for {backoff_s} seconds..."
+                )
+                time.sleep(backoff_s)
+
+                self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+                continue
+            return
+        self._sync_future = None
+        raise TuneError(f"Failed sync even after {max_retries} retries.")
+
+    def reset(self):
+        if self._sync_future:
+            logger.warning("Sync process still running but resetting anyways.")
+        self._sync_future = None
+        self._last_source_tuple = None
+        self._last_target_tuple = None
+
+    def close(self):
+        self._sync_future = None  # Avoid warning
+        self.reset()
