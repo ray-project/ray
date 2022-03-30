@@ -293,8 +293,6 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, true)
 // The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
 RAY_CONFIG(std::string, gcs_storage, "memory")
-// Feature flag to enable GCS based bootstrapping.
-RAY_CONFIG(bool, bootstrap_with_gcs, true)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -351,7 +349,12 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
 
 /// Wait timeout for dashboard agent register.
+#ifdef _WIN32
+// agent startup time can involve creating conda environments
+RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
+#else
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
+#endif
 
 /// If the agent manager fails to communicate with the dashboard agent, we will retry
 /// after this interval.
@@ -498,6 +501,9 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
+
+// Maximum ray sync message batch size in bytes (1MB by default) between nodes.
+RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024);
 
 // If enabled and worker stated in container, the container will add
 // resource limit.
