@@ -183,10 +183,10 @@ def _null_wrap_accumulate(
     return _accum
 
 
-def _null_wrap_vectorized_aggregate(
+def _null_wrap_accumulate_block(
     ignore_nulls: bool,
     vec_agg: Callable[[BlockAccessor[T]], AggType],
-) -> Callable[[BlockAccessor[T]], AggType]:
+) -> Callable[[AggType, BlockAccessor[T]], AggType]:
     """
     Wrap vectorized aggregate function with null handling.
 
@@ -198,14 +198,14 @@ def _null_wrap_vectorized_aggregate(
         A new vectorized aggregate function that handles nulls.
     """
 
-    def _vec_agg(init: AggType, block_acc: BlockAccessor[T]) -> AggType:
+    def _vec_agg(a: AggType, block_acc: BlockAccessor[T]) -> AggType:
         ret = vec_agg(block_acc)
         if ret is None:
             if ignore_nulls:
                 # This can happen if we're ignoring nulls but the entire block only
                 # consists of nulls. We treat the block as if it were empty in this
                 # case.
-                return init
+                return a
             else:
                 return ret
         else:

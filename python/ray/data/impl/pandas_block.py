@@ -176,10 +176,22 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
 
     def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        if on is not None and not isinstance(on, str):
+            raise ValueError(
+                "on must be a string or None when aggregating on Pandas blocks, but "
+                f"got: {type(on)}."
+            )
+
         col = self._table[on]
         return col.count()
 
     def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        if on is not None and not isinstance(on, str):
+            raise ValueError(
+                "on must be a string or None when aggregating on Pandas blocks, but "
+                f"got: {type(on)}."
+            )
+
         col = self._table[on]
         if col.isnull().all():
             # Short-circuit on an all-null column, returning None.
@@ -190,6 +202,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         self, agg_fn: Callable[["pandas.Series", bool], U], on: KeyFn
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation to a column."""
+        if on is not None and not isinstance(on, str):
+            raise ValueError(
+                "on must be a string or None when aggregating on Pandas blocks, but "
+                f"got: {type(on)}."
+            )
+
         col = self._table[on]
         try:
             return agg_fn(col)

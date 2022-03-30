@@ -3103,12 +3103,9 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     assert ray.data.from_items([[x, 2 * x] for x in xs]).repartition(num_parts).mean(
         [lambda x: x[0], lambda x: x[1]]
     ) == (49.5, 99.0)
-    assert (
-        ray.data.from_items([[x, 2 * x] for x in range(10)])
-        .filter(lambda r: r[0] > 10)
-        .mean([lambda x: x[0], lambda x: x[1]])
-        is None
-    )
+    assert ray.data.from_items([[x, 2 * x] for x in range(10)]).filter(
+        lambda r: r[0] > 10
+    ).mean([lambda x: x[0], lambda x: x[1]]) == (None, None)
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])

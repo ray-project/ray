@@ -174,6 +174,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
         import pyarrow.compute as pac
 
+        if on is not None and not isinstance(on, str):
+            raise ValueError(
+                "on must be a string or None when aggregating on Arrow blocks, but "
+                f"got: {type(on)}."
+            )
+
         if self.num_rows() == 0:
             return None
 
@@ -185,6 +191,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation to a column."""
         import pyarrow as pa
+
+        if on is not None and not isinstance(on, str):
+            raise ValueError(
+                "on must be a string or None when aggregating on Arrow blocks, but "
+                f"got: {type(on)}."
+            )
 
         if self.num_rows() == 0:
             return None
@@ -303,6 +315,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
+        if key is not None and not isinstance(key, str):
+            raise ValueError(
+                "key must be a string or None when aggregating on Arrow blocks, but "
+                f"got: {type(key)}."
+            )
 
         def iter_groups() -> Iterator[Tuple[KeyType, BlockAccessor]]:
             """Creates an iterator over zero-copy group views."""
@@ -338,27 +355,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # Aggregate.
             accumulators = [agg.init(group_key) for agg in aggs]
             for i in range(len(aggs)):
-                agg = aggs[i]
-                # Apply vectorized aggregation on group, if available.
-                if agg.can_vectorize_for_block(group_view):
-                    if agg.vectorized_aggregate is None:
-                        raise ValueError(
-                            f"Aggregation {agg} indicates that vectorized "
-                            f"processing of {type(group_view)} block is possible, but "
-                            "agg.vectorized_aggregate() is not defined."
-                        )
-                    accumulators[i] = agg.vectorized_aggregate(
-                        accumulators[i], group_view
-                    )
-                else:
-                    if agg.accumulate is None:
-                        raise ValueError(
-                            f"Aggregation {agg} doesn't support vectorized "
-                            f"processing of {type(group_view)} block, but "
-                            "agg.accumulate() is not defined."
-                        )
-                    for row in group_view.iter_rows():
-                        accumulators[i] = agg.accumulate(accumulators[i], row)
+                accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
 
             # Build the row.
             row = {}

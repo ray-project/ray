@@ -12,12 +12,10 @@ from ray.data.block import (
     KeyFn,
     _validate_key_fn,
 )
-from ray.data.impl.table_block import TableBlockAccessor
 from ray.data.impl.null_aggregate import (
     _null_wrap_init,
     _null_wrap_merge,
-    _null_wrap_accumulate,
-    _null_wrap_vectorized_aggregate,
+    _null_wrap_accumulate_block,
     _null_wrap_finalize,
 )
 
@@ -32,7 +30,7 @@ class AggregateFn(object):
         init: Callable[[KeyType], AggType],
         merge: Callable[[AggType, AggType], AggType],
         accumulate: Callable[[AggType, T], AggType] = None,
-        vectorized_aggregate: Callable[[AggType, Block[T]], AggType] = None,
+        accumulate_block: Callable[[AggType, Block[T]], AggType] = None,
         finalize: Callable[[AggType], U] = lambda a: a,
         name: Optional[str] = None,
     ):
@@ -50,35 +48,36 @@ class AggregateFn(object):
                 two accumulators into one.
             accumulate: This is called once per row of the same group.
                 This combines the accumulator and the row, returns the updated
-                accumulator.
-            vectorized_aggregate: This is used to calculate the aggregation for a single
-                block, and is vectorized alternative to accumulate. This will be given
-                the empty accumulator and the entire block, allowing for vectorized
-                aggregation of the block. This will only be used if
-                agg_fn.can_vectorize_for_block() returns True for the provided block.
+                accumulator. Exactly one of accumulate and accumulate_block must
+                be provided.
+            accumulate_block: This is used to calculate the aggregation for a
+                single block, and is vectorized alternative to accumulate. This will be
+                given the empty accumulator and the entire block, allowing for
+                vectorized aggregation of the block. Exactly one of accumulate and
+                accumulate_block must be provided.
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
             name: The name of the aggregation. This will be used as the output
                 column name in the case of Arrow dataset.
         """
-        if accumulate is None and vectorized_aggregate is None:
+        if (accumulate is None and accumulate_block is None) or (
+            accumulate is not None and accumulate_block is not None
+        ):
             raise ValueError(
-                "At least one of accumulate or vectorized_aggregate must be provided."
+                "Exactly one of accumulate or accumulate_block must be provided."
             )
+        if accumulate_block is None:
+
+            def accumulate_block(a: AggType, block_acc: BlockAccessor[T]) -> AggType:
+                for r in block_acc.iter_rows():
+                    a = accumulate(a, r)
+                return a
+
         self.init = init
         self.merge = merge
-        self.accumulate = accumulate
-        self.vectorized_aggregate = vectorized_aggregate
+        self.accumulate_block = accumulate_block
         self.finalize = finalize
         self.name = name
-
-    def can_vectorize_for_block(self, block_acc: BlockAccessor[T]) -> bool:
-        """Whether this aggregation can apply a vectorized aggregation to the provided
-        block.
-        """
-        # Aggregation functions must opt-in to vectorization, default is the accumulator
-        # style.
-        return False
 
     def _validate(self, ds: "Dataset") -> None:
         """Raise an error if this cannot be applied to the given dataset."""
@@ -106,31 +105,17 @@ class Count(AggregateFn):
         )
 
 
-class _VectorizedAggregateBase(_AggregateOnKeyBase):
-    """Mixin for supporting vectorized aggregation on tabular datasets."""
-
-    def can_vectorize_for_block(self, block_acc: BlockAccessor[T]) -> bool:
-        # Support vectorization for tabular blocks.
-        return isinstance(block_acc, TableBlockAccessor)
-
-
 @PublicAPI
-class Sum(_VectorizedAggregateBase):
+class Sum(_AggregateOnKeyBase):
     """Defines sum aggregation."""
 
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
-        on_fn = _to_on_fn(on)
 
         super().__init__(
             init=_null_wrap_init(lambda k: 0),
             merge=_null_wrap_merge(ignore_nulls, lambda a1, a2: a1 + a2),
-            accumulate=_null_wrap_accumulate(
-                ignore_nulls,
-                on_fn,
-                lambda a, r: a + r,
-            ),
-            vectorized_aggregate=_null_wrap_vectorized_aggregate(
+            accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
                 lambda block_acc: block_acc.sum(on, ignore_nulls),
             ),
@@ -140,18 +125,16 @@ class Sum(_VectorizedAggregateBase):
 
 
 @PublicAPI
-class Min(_VectorizedAggregateBase):
+class Min(_AggregateOnKeyBase):
     """Defines min aggregation."""
 
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
-        on_fn = _to_on_fn(on)
 
         super().__init__(
             init=_null_wrap_init(lambda k: float("inf")),
             merge=_null_wrap_merge(ignore_nulls, min),
-            accumulate=_null_wrap_accumulate(ignore_nulls, on_fn, min),
-            vectorized_aggregate=_null_wrap_vectorized_aggregate(
+            accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
                 lambda block_acc: block_acc.min(on, ignore_nulls),
             ),
@@ -161,18 +144,16 @@ class Min(_VectorizedAggregateBase):
 
 
 @PublicAPI
-class Max(_VectorizedAggregateBase):
+class Max(_AggregateOnKeyBase):
     """Defines max aggregation."""
 
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
-        on_fn = _to_on_fn(on)
 
         super().__init__(
             init=_null_wrap_init(lambda k: float("-inf")),
             merge=_null_wrap_merge(ignore_nulls, max),
-            accumulate=_null_wrap_accumulate(ignore_nulls, on_fn, max),
-            vectorized_aggregate=_null_wrap_vectorized_aggregate(
+            accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
                 lambda block_acc: block_acc.max(on, ignore_nulls),
             ),
@@ -182,12 +163,11 @@ class Max(_VectorizedAggregateBase):
 
 
 @PublicAPI
-class Mean(_VectorizedAggregateBase):
+class Mean(_AggregateOnKeyBase):
     """Defines mean aggregation."""
 
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
-        on_fn = _to_on_fn(on)
 
         def vectorized_mean(block_acc: BlockAccessor[T]) -> AggType:
             sum_ = block_acc.sum(on, ignore_nulls)
@@ -201,10 +181,7 @@ class Mean(_VectorizedAggregateBase):
             merge=_null_wrap_merge(
                 ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
             ),
-            accumulate=_null_wrap_accumulate(
-                ignore_nulls, on_fn, lambda a, r: [a[0] + r, a[1] + 1]
-            ),
-            vectorized_aggregate=_null_wrap_vectorized_aggregate(
+            accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
                 vectorized_mean,
             ),
@@ -214,7 +191,7 @@ class Mean(_VectorizedAggregateBase):
 
 
 @PublicAPI
-class Std(_VectorizedAggregateBase):
+class Std(_AggregateOnKeyBase):
     """Defines standard deviation aggregation.
 
     Uses Welford's online method for an accumulator-style computation of the
@@ -233,7 +210,6 @@ class Std(_VectorizedAggregateBase):
         ignore_nulls: bool = True,
     ):
         self._set_key_fn(on)
-        on_fn = _to_on_fn(on)
 
         def vectorized_agg(block_acc: BlockAccessor[T]) -> AggType:
             count = block_acc.count(on, ignore_nulls)
@@ -244,18 +220,6 @@ class Std(_VectorizedAggregateBase):
                 return None
             mean = sum_ / count
             M2 = block_acc.sum_of_squared_diffs_from_mean(on, ignore_nulls, mean)
-            return [M2, mean, count]
-
-        def accumulate(a: List[float], r: float):
-            # Accumulates the current count, the current mean, and the sum of
-            # squared differences from the current mean (M2).
-            M2, mean, count = a
-
-            count += 1
-            delta = r - mean
-            mean += delta / count
-            delta2 = r - mean
-            M2 += delta * delta2
             return [M2, mean, count]
 
         def merge(a: List[float], b: List[float]):
@@ -286,8 +250,7 @@ class Std(_VectorizedAggregateBase):
         super().__init__(
             init=_null_wrap_init(lambda k: [0, 0, 0]),
             merge=_null_wrap_merge(ignore_nulls, merge),
-            accumulate=_null_wrap_accumulate(ignore_nulls, on_fn, accumulate),
-            vectorized_aggregate=_null_wrap_vectorized_aggregate(
+            accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
                 vectorized_agg,
             ),
