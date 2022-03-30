@@ -12,13 +12,15 @@ from typing import Optional, List, Union, Tuple
 # will default to running "conda" if unset.
 RAY_CONDA_HOME = "RAY_CONDA_HOME"
 
+_WIN32 = os.name == "nt"
+
 
 def get_conda_activate_commands(conda_env_name: str) -> List[str]:
     """
     Get a list of commands to run to silently activate the given conda env.
     """
     #  Checking for newer conda versions
-    if os.name != "nt" and ("CONDA_EXE" in os.environ or RAY_CONDA_HOME in os.environ):
+    if not _WIN32 and ("CONDA_EXE" in os.environ or RAY_CONDA_HOME in os.environ):
         conda_path = get_conda_bin_executable("conda")
         activate_conda_env = [
             ". {}/../etc/profile.d/conda.sh".format(os.path.dirname(conda_path))
@@ -27,9 +29,8 @@ def get_conda_activate_commands(conda_env_name: str) -> List[str]:
 
     else:
         activate_path = get_conda_bin_executable("activate")
-        # in case os name is not 'nt', we are not running on windows. Introduce
-        # bash command otherwise.
-        if os.name != "nt":
+        if not _WIN32:
+            # Use bash command syntax
             return ["source %s %s 1>&2" % (activate_path, conda_env_name)]
         else:
             return ["conda activate %s" % (conda_env_name)]
@@ -39,20 +40,41 @@ def get_conda_activate_commands(conda_env_name: str) -> List[str]:
 def get_conda_bin_executable(executable_name: str) -> str:
     """
     Return path to the specified executable, assumed to be discoverable within
-    the 'bin' subdirectory of a conda installation.
+    a conda installation.
 
-    The conda home directory (expected to contain a 'bin' subdirectory) is
-    configurable via the ``RAY_CONDA_HOME`` environment variable. If
-    ``RAY_CONDA_HOME`` is unspecified, this method simply returns the passed-in
-    executable name.
+    The conda home directory (expected to contain a 'bin' subdirectory on
+    linux) is configurable via the ``RAY_CONDA_HOME`` environment variable. If
+    ``RAY_CONDA_HOME`` is unspecified, try the ``CONDA_EXE`` environment
+    variable set by activating conda. If neither is specified, this method
+    returns `executable_name`.
     """
     conda_home = os.environ.get(RAY_CONDA_HOME)
     if conda_home:
-        return os.path.join(conda_home, "bin/%s" % executable_name)
+        if _WIN32:
+            candidate = os.path.join(conda_home, "%s.exe" % executable_name)
+            if os.path.exists(candidate):
+                return candidate
+            candidate = os.path.join(conda_home, "%s.bat" % executable_name)
+            if os.path.exists(candidate):
+                return candidate
+        else:
+            return os.path.join(conda_home, "bin/%s" % executable_name)
+    else:
+        conda_home = "."
     # Use CONDA_EXE as per https://github.com/conda/conda/issues/7126
     if "CONDA_EXE" in os.environ:
         conda_bin_dir = os.path.dirname(os.environ["CONDA_EXE"])
-        return os.path.join(conda_bin_dir, executable_name)
+        if _WIN32:
+            candidate = os.path.join(conda_home, "%s.exe" % executable_name)
+            if os.path.exists(candidate):
+                return candidate
+            candidate = os.path.join(conda_home, "%s.bat" % executable_name)
+            if os.path.exists(candidate):
+                return candidate
+        else:
+            return os.path.join(conda_bin_dir, executable_name)
+    if _WIN32:
+        return executable_name + ".bat"
     return executable_name
 
 
@@ -79,9 +101,9 @@ def create_conda_env_if_needed(
     conda_path = get_conda_bin_executable("conda")
     try:
         exec_cmd([conda_path, "--help"], throw_on_error=False)
-    except EnvironmentError:
+    except (EnvironmentError, FileNotFoundError):
         raise ValueError(
-            f"Could not find Conda executable at {conda_path}. "
+            f"Could not find Conda executable at '{conda_path}'. "
             "Ensure Conda is installed as per the instructions at "
             "https://conda.io/projects/conda/en/latest/"
             "user-guide/install/index.html. "
@@ -192,6 +214,8 @@ def exec_cmd_stream_to_logger(
 
     The last n_lines lines of output are also returned (stdout and stderr).
     """
+    if "env" in kwargs and _WIN32 and "PATH" not in [x.upper() for x in kwargs.keys]:
+        raise ValueError("On windows, Popen requires 'PATH' in 'env'")
     child = subprocess.Popen(
         cmd,
         universal_newlines=True,

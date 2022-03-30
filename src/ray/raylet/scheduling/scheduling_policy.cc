@@ -24,17 +24,11 @@ namespace raylet_scheduling_policy {
 namespace {
 
 bool IsGPURequest(const ResourceRequest &resource_request) {
-  if (resource_request.predefined_resources.size() <= GPU) {
-    return false;
-  }
-  return resource_request.predefined_resources[GPU] > 0;
+  return resource_request.Has(ResourceID::GPU());
 }
 
 bool DoesNodeHaveGPUs(const NodeResources &resources) {
-  if (resources.predefined_resources.size() <= GPU) {
-    return false;
-  }
-  return resources.predefined_resources[GPU].total > 0;
+  return resources.total.Has(ResourceID::GPU());
 }
 }  // namespace
 
