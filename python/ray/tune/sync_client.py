@@ -2,6 +2,7 @@ import abc
 import distutils
 import distutils.spawn
 import inspect
+import io
 import logging
 import os
 import pathlib
@@ -13,7 +14,7 @@ import time
 import types
 import warnings
 
-from typing import Optional, List, Callable, Union, Tuple
+from typing import Optional, List, Callable, Union, Tuple, Dict
 
 from shlex import quote
 
@@ -425,26 +426,61 @@ class CommandBasedClient(SyncClient):
                 )
 
 
+def _get_recursive_files_and_stats(path: str) -> Dict[str, Tuple[float, int]]:
+    """Return dict of files mapping to stats in ``path``.
+
+    This function scans a directory ``path`` and returns a dict mapping
+    each contained file to a tuple of (mtime, filesize).
+    """
+    files_stats = {}
+    for root, dirs, files in os.walk(path, topdown=False):
+        rel_root = os.path.relpath(root, path)
+        for file in files:
+            key = os.path.join(rel_root, file)
+            stat = os.lstat(os.path.join(path, key))
+            files_stats[key] = round(stat.st_mtime, 5), stat.st_size
+
+    return files_stats
+
+
+# Only export once
+_remote_get_recursive_files_and_stats = ray.remote(_get_recursive_files_and_stats)
+
+
 @ray.remote
-def _pack_dir(source_dir: str) -> bytes:
-    tmpfile = tempfile.mktemp()
-    with tarfile.open(tmpfile, "w:gz") as tar:
-        tar.add(source_dir, arcname="")
+def _pack_dir(
+    source_dir: str, files_stats: Optional[Dict[str, Tuple[float, int]]]
+) -> bytes:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
+        if not files_stats:
+            # If no `files_stats` is passed, pack whole directory
+            tar.add(source_dir, arcname="", recursive=True)
+        else:
+            # Otherwise, only pack differing files
+            tar.add(source_dir, arcname="", recursive=False)
+            local_files_stats = _get_recursive_files_and_stats(source_dir)
+            for root, dirs, files in os.walk(source_dir, topdown=False):
+                rel_root = os.path.relpath(root, source_dir)
+                # Always add all directories
+                for dir in dirs:
+                    key = os.path.join(rel_root, dir)
+                    tar.add(os.path.join(source_dir, key), arcname=key, recursive=False)
+                # Add files where our information differs
+                for file in files:
+                    key = os.path.join(rel_root, file)
+                    if (
+                        key not in files_stats
+                        or local_files_stats[key] != files_stats[key]
+                    ):
+                        tar.add(os.path.join(source_dir, key), arcname=key)
 
-    with open(tmpfile, "rb") as f:
-        stream = f.read()
-
-    return stream
+    return stream.getvalue()
 
 
 @ray.remote
 def _unpack_dir(stream: bytes, target_dir: str):
-    tmpfile = tempfile.mktemp()
-
-    with open(tmpfile, "wb") as f:
-        f.write(stream)
-
-    with tarfile.open(tmpfile) as tar:
+    with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
         tar.extractall(target_dir)
 
 
@@ -457,11 +493,29 @@ def _delete_dir(target_dir: str) -> bool:
 
 
 class RemoteTaskClient(SyncClient):
-    def __init__(self):
+    """Sync client that uses remote tasks to synchronize two directories.
+
+    This client expects tuples of (ip, path) for remote sources/targets
+    in sync_down/sync_up.
+
+    To avoid unnecessary syncing, the sync client will collect the existing
+    files with their respective mtimes and sizes on the (possibly remote)
+    target directory. Only files that are not in the target directory or
+    differ to those in the target directory by size or mtime will be
+    transferred. This is similar to the implementations of most cloud
+    synchronization implementations (e.g. aws s3 sync).
+    """
+
+    def __init__(self, store_pack_future: bool = False):
+        # Used for testing
+        self._store_pack_future = store_pack_future
+
+        self._pack_future = None
         self._sync_future = None
 
         self._last_source_tuple = None
         self._last_target_tuple = None
+        self._last_files_stats = None
 
     def sync_down(
         self, source: Tuple[str, str], target: str, exclude: Optional[List] = None
@@ -479,7 +533,12 @@ class RemoteTaskClient(SyncClient):
         self._last_source_tuple = source_ip, source_path
         self._last_target_tuple = target_ip, target
 
-        return self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+        # Get existing files on local node before packing on remote node
+        self._last_files_stats = _get_recursive_files_and_stats(target)
+
+        return self._execute_sync(
+            self._last_source_tuple, self._last_target_tuple, self._last_files_stats
+        )
 
     def sync_up(
         self, source: str, target: Tuple[str, str], exclude: Optional[List] = None
@@ -497,10 +556,20 @@ class RemoteTaskClient(SyncClient):
         self._last_source_tuple = source_ip, source
         self._last_target_tuple = target_ip, target_path
 
-        return self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+        # Get existing files on remote node before packing on local node
+        self._last_files_stats = _remote_get_recursive_files_and_stats.options(
+            num_cpus=0, resources={f"node:{target_ip}": 0.01}
+        ).remote(target_path)
+
+        return self._execute_sync(
+            self._last_source_tuple, self._last_target_tuple, self._last_files_stats
+        )
 
     def _execute_sync(
-        self, source_tuple: Tuple[str, str], target_tuple: Tuple[str, str]
+        self,
+        source_tuple: Tuple[str, str],
+        target_tuple: Tuple[str, str],
+        files_stats: Optional[Dict[str, Tuple[float, int]]] = None,
     ) -> bool:
         source_ip, source_path = source_tuple
         target_ip, target_path = target_tuple
@@ -512,7 +581,9 @@ class RemoteTaskClient(SyncClient):
             num_cpus=0, resources={f"node:{target_ip}": 0.01}
         )
 
-        pack_future = pack_on_source_node.remote(source_path)
+        pack_future = pack_on_source_node.remote(source_path, files_stats)
+        if self._store_pack_future:
+            self._pack_future = pack_future
         self._sync_future = unpack_on_target_node.remote(pack_future, target_path)
         return True
 
@@ -527,9 +598,10 @@ class RemoteTaskClient(SyncClient):
                 raise TuneError(
                     f"Remote task sync failed from "
                     f"{self._last_source_tuple} to "
-                    f"{self._last_target_tuple}"
+                    f"{self._last_target_tuple}: {e}"
                 ) from e
             self._sync_future = None
+            self._pack_future = None
 
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
@@ -544,18 +616,25 @@ class RemoteTaskClient(SyncClient):
                 )
                 time.sleep(backoff_s)
 
-                self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+                self._execute_sync(
+                    self._last_source_tuple,
+                    self._last_target_tuple,
+                    self._last_files_stats,
+                )
                 continue
             return
         self._sync_future = None
+        self._pack_future = None
         raise TuneError(f"Failed sync even after {max_retries} retries.")
 
     def reset(self):
         if self._sync_future:
             logger.warning("Sync process still running but resetting anyways.")
         self._sync_future = None
+        self._pack_future = None
         self._last_source_tuple = None
         self._last_target_tuple = None
+        self._last_files_stats = None
 
     def close(self):
         self._sync_future = None  # Avoid warning
