@@ -11,9 +11,3 @@ transformers==4.10.0
 accelerate==0.5.1
 datasets==1.14.0
 sentencepiece==0.1.96
-
-# Dependencies for PyTorch Geometric examples:
-# `python/ray/ml/examples/pytorch_geometric`
-torch-geometric==2.0.4
-torch_sparse==0.6.13
-torch-scatter==2.0.9
