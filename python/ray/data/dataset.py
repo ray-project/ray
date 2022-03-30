@@ -73,7 +73,7 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.shuffle import shuffle_partitions
 from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
@@ -492,8 +492,9 @@ class Dataset(Generic[T]):
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(
+                return shuffle_partitions(
                     blocks,
+                    clear_input_blocks,
                     block_udf,
                     num_blocks,
                     map_ray_remote_args=remote_args,
@@ -561,8 +562,9 @@ class Dataset(Generic[T]):
                 block_list.clear()
             else:
                 blocks = block_list
-            new_blocks, stage_info = simple_shuffle(
+            new_blocks, stage_info = shuffle_partitions(
                 blocks,
+                clear_input_blocks,
                 block_udf,
                 num_blocks,
                 random_shuffle=True,

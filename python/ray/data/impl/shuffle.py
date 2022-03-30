@@ -13,17 +13,18 @@ from ray.data.impl.remote_fn import cached_remote_fn
 T = TypeVar("T")
 
 
-def simple_shuffle(
-    input_blocks: BlockList,
-    block_udf: Optional[Callable[[Block], Iterable[Block]]],
-    output_num_blocks: int,
-    *,
-    random_shuffle: bool = False,
-    random_seed: Optional[int] = None,
-    map_ray_remote_args: Optional[Dict[str, Any]] = None,
-    reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
-    input_blocks = input_blocks.get_blocks()
+def simple_shuffle(shuffle_map, shuffle_reduce,
+        input_blocks: BlockList,
+        output_num_blocks: int,
+        clear_input_blocks: bool,
+        map_args: List[Any],
+        #reduce_args: List[Any],
+        *,
+        map_ray_remote_args: Optional[Dict[str, Any]] = None,
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None):
+    input_blocks_list = input_blocks.get_blocks()
+    input_num_blocks = len(input_blocks_list)
+
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:
@@ -31,10 +32,6 @@ def simple_shuffle(
     if "scheduling_strategy" not in reduce_ray_remote_args:
         reduce_ray_remote_args = reduce_ray_remote_args.copy()
         reduce_ray_remote_args["scheduling_strategy"] = "SPREAD"
-    input_num_blocks = len(input_blocks)
-
-    shuffle_map = cached_remote_fn(_shuffle_map)
-    shuffle_reduce = cached_remote_fn(_shuffle_reduce)
 
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
 
@@ -42,8 +39,8 @@ def simple_shuffle(
         shuffle_map.options(
             **map_ray_remote_args,
             num_returns=1 + output_num_blocks,
-        ).remote(block, block_udf, i, output_num_blocks, random_shuffle, random_seed)
-        for i, block in enumerate(input_blocks)
+        ).remote(i, block, output_num_blocks, *map_args)
+        for i, block in enumerate(input_blocks_list)
     ]
 
     # The first item returned is the BlockMetadata.
@@ -54,14 +51,11 @@ def simple_shuffle(
 
     # Eagerly delete the input block references in order to eagerly release
     # the blocks' memory.
-    del input_blocks
+    del input_blocks_list
+    if clear_input_blocks:
+        input_blocks.clear()
     shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
     map_bar.close()
-
-    # Randomize the reduce order of the blocks.
-    if random_shuffle:
-        random = np.random.RandomState(random_seed)
-        random.shuffle(shuffle_map_out)
 
     reduce_bar = ProgressBar("Shuffle Reduce", position=0, total=output_num_blocks)
     shuffle_reduce_out = [
@@ -87,11 +81,44 @@ def simple_shuffle(
     return BlockList(list(new_blocks), list(new_metadata)), stats
 
 
-def _shuffle_map(
-    block: Block,
+def shuffle_partitions(
+    input_blocks: BlockList,
+    clear_input_blocks: bool,
     block_udf: Optional[Callable[[Block], Iterable[Block]]],
-    idx: int,
     output_num_blocks: int,
+    *,
+    random_shuffle: bool = False,
+    random_seed: Optional[int] = None,
+    map_ray_remote_args: Optional[Dict[str, Any]] = None,
+    reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
+    """Implements shuffle for Dataset.random_shuffle and Dataset.partition
+    calls.
+
+    Rows get shuffled from all input blocks into the specified number of output
+    blocks. If the `random_shuffle` flag is set, then rows in the input blocks
+    will also be randomly shuffled so that each final output block contains a
+    random unique subset of the input rows.
+    """
+    shuffle_map = cached_remote_fn(_shuffle_partitions_map)
+    shuffle_reduce = cached_remote_fn(_shuffle_partitions_reduce)
+    map_args = [block_udf, random_shuffle, random_seed]
+    return _simple_shuffle(
+            shuffle_map,
+            shuffle_reduce,
+            input_blocks,
+            output_num_blocks,
+            clear_input_blocks,
+            map_args,
+            map_ray_remote_args=map_ray_remote_args,
+            reduce_ray_remote_args=reduce_ray_remote_args)
+
+
+def _shuffle_partitions_map(
+    idx: int,
+    block: Block,
+    output_num_blocks: int,
+    block_udf: Optional[Callable[[Block], Iterable[Block]]],
     random_shuffle: bool,
     random_seed: Optional[int],
 ) -> List[Union[BlockMetadata, Block]]:
@@ -132,7 +159,7 @@ def _shuffle_map(
     return [metadata] + slices
 
 
-def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
+def _shuffle_partitions_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
     for block in mapper_outputs:
