@@ -195,7 +195,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::NodeID &node_id, bool is_intended /*= false*/) {
-  RAY_LOG(INFO) << "Removing node, node id = " << node_id;
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
@@ -234,7 +233,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     }
   }
   std::string report_node_name =
-      removed_node->has_node_name() ? ", node name =  " + removed_node->node_name() : "";
+      removed_node->has_node_name() ? ", node name = " + removed_node->node_name() : "";
   RAY_LOG(INFO) << "Removing node, node id = " << node_id << report_node_name;
   return removed_node;
 }
