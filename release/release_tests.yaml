@@ -1462,7 +1462,7 @@
     script: python workloads/many_tasks.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1491,7 +1491,7 @@
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1520,7 +1520,7 @@
     script: python workloads/node_failures.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
