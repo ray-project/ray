@@ -266,7 +266,7 @@ def _store_package_in_gcs(
         raise RuntimeError(
             "Failed to store package in the GCS.\n"
             f"  - GCS URI: {pkg_uri}\n"
-            f"  - Package data: {data}\n"
+            f"  - Package data ({size_str}): {data[:15]}...\n"
         ) from e
     logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
