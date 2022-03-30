@@ -125,6 +125,7 @@ test_core() {
         -//:gcs_pub_sub_test
         -//:gcs_server_test
         -//:gcs_server_rpc_test
+        -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
       )
       ;;
   esac
@@ -206,7 +207,7 @@ test_cpp() {
   # run cluster mode test with external cluster
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
-  
+
   bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example
