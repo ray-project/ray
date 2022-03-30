@@ -171,7 +171,7 @@ class ApexTrainer(DQNTrainer):
         replay_actor_args = [
             num_replay_buffer_shards,
             config["learning_starts"],
-            config["buffer_size"],
+            config["replay_buffer_config"]["capacity"],
             config["train_batch_size"],
             config["replay_buffer_config"]["prioritized_replay_alpha"],
             config["replay_buffer_config"]["prioritized_replay_beta"],
