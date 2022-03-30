@@ -11,6 +11,16 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "distributed_reddit_example",
+    size = "medium",
+    main = "examples/pytorch_geometric/distributed_reddit_example.py",
+    srcs = ["examples/pytorch_geometric/distributed_reddit_example.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":ml_lib"],
+    args = ["--use-gpu", "--num-workers=2", "--epochs=1"]
+)
+
 py_test (
     name = "lightgbm_example",
     size = "medium",
