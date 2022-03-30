@@ -32,7 +32,7 @@ class ActorCreator {
       : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
-  ray::ActorHandle<GetActorType<F>, is_python_v<F>> Remote(Args &&... args);
+  ray::ActorHandle<GetActorType<F>, is_python_v<F>> Remote(Args &&...args);
 
   ActorCreator &SetName(std::string name) {
     create_options_.name = std::move(name);
@@ -75,7 +75,7 @@ class ActorCreator {
 // ---------- implementation ----------
 template <typename F>
 template <typename... Args>
-ActorHandle<GetActorType<F>, is_python_v<F>> ActorCreator<F>::Remote(Args &&... args) {
+ActorHandle<GetActorType<F>, is_python_v<F>> ActorCreator<F>::Remote(Args &&...args) {
   CheckTaskOptions(create_options_.resources);
 
   if constexpr (is_python_v<F>) {

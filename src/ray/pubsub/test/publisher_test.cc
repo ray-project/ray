@@ -356,10 +356,11 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
       };
 
   auto max_publish_size = 5;
-  auto subscriber = std::make_shared<SubscriberState>(subscriber_id_,
-                                                      [this]() { return current_time_; },
-                                                      subscriber_timeout_ms_,
-                                                      max_publish_size);
+  auto subscriber = std::make_shared<SubscriberState>(
+      subscriber_id_,
+      [this]() { return current_time_; },
+      subscriber_timeout_ms_,
+      max_publish_size);
   subscriber->ConnectToSubscriber(request_, &reply, send_reply_callback);
 
   absl::flat_hash_set<ObjectID> published_objects;
