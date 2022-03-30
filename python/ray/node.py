@@ -812,6 +812,11 @@ class Node:
                 # The port has already been cached at this node, so use it.
                 port = int(ports_by_node[self.unique_id][port_name])
             else:
+                if default_port:
+                    # Sanity check that the port is not yet bound to by another process
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.bind(("localhost", default_port))
+                    sock.close()
                 # Pick a new port to use and cache it at this node.
                 port = default_port or self._get_unused_port(
                     set(ports_by_node[self.unique_id].values())
@@ -819,10 +824,6 @@ class Node:
                 ports_by_node[self.unique_id][port_name] = port
                 with open(file_path, "w") as f:
                     json.dump(ports_by_node, f)
-        # Sanity check that the port is not yet bound to by another process
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("localhost", port))
-        sock.close()
         return port
 
     def start_reaper_process(self):

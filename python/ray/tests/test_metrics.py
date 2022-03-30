@@ -184,6 +184,8 @@ def test_metrics_export_port_fail_on_nonexclusive_port(ray_start_cluster):
     time.sleep(1)
     with pytest.raises(OSError):
         cluster.add_node(True, metrics_export_port=port)
+    with pytest.raises(OSError):
+        cluster.add_node(True, metrics_agent_port=port)
     p.terminate()
 
 
