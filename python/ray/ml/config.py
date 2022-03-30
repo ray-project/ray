@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING
+from typing import Dict, Any, Optional, List, Union
 
+from ray.tune.sample import Domain
 from ray.tune.trainable import PlacementGroupFactory
 from ray.tune.callback import Callback
 from ray.util import PublicAPI
@@ -8,9 +9,7 @@ from ray.util import PublicAPI
 
 ScalingConfig = Dict[str, Any]
 
-if TYPE_CHECKING:
-    from ray.tune.sample import Domain
-    SampleRange = Union[Domain, Dict[str, list], List]
+SampleRange = Union[Domain, Dict[str, list], List]
 
 
 @dataclass
