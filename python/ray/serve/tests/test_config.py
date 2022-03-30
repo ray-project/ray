@@ -8,6 +8,7 @@ from ray.serve.config import (
     ReplicaConfig,
 )
 from ray.serve.config import AutoscalingConfig
+from ray.ray_constants import to_memory_units
 
 
 def test_autoscaling_config_validation():
@@ -132,6 +133,24 @@ def test_replica_config_validation():
     for option in disallowed_ray_actor_options:
         with pytest.raises(ValueError):
             ReplicaConfig(Class, ray_actor_options={option: None})
+
+
+@pytest.mark.parametrize("memory_omitted_options", [None, {}, {"CPU": 1, "GPU": 3}])
+def test_replica_config_default_memory_minimum(memory_omitted_options):
+    """Checks that ReplicaConfig's default memory is not lower than minimum."""
+
+    if memory_omitted_options is None:
+        config = ReplicaConfig(
+            "fake.import_path", ray_actor_options=memory_omitted_options
+        )
+
+        # Should not raise ValueError
+        to_memory_units(config.ray_actor_options["memory"], round_up=False)
+
+    config = ReplicaConfig("fake.import_path", ray_actor_options=memory_omitted_options)
+
+    # Should not raise ValueError
+    to_memory_units(config.ray_actor_options["memory"], round_up=False)
 
 
 def test_http_options():
