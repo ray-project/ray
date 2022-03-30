@@ -226,6 +226,12 @@ class DataParallelTrainer(Trainer):
                 f"integer. Received {self.scaling_config['num_workers']}"
             )
 
+        self._validate_train_loop_per_worker()
+
+        backend_config = backend_config if backend_config else BackendConfig()
+        self.backend_config = backend_config
+
+    def _validate_train_loop_per_worker(self):
         num_params = len(inspect.signature(self.train_loop_per_worker).parameters)
         if num_params > 1:
             raise ValueError(
@@ -233,8 +239,25 @@ class DataParallelTrainer(Trainer):
                 f"but it accepts {num_params} arguments instead."
             )
 
-        backend_config = backend_config if backend_config else BackendConfig()
-        self.backend_config = backend_config
+    @property
+    def train_loop_per_worker(
+        self,
+    ) -> Union[Callable[[], None], Callable[[Dict], None]]:
+        return self._train_loop_per_worker
+
+    @train_loop_per_worker.setter
+    def train_loop_per_worker(
+        self, val: Union[Callable[[], None], Callable[[Dict], None]]
+    ):
+        self._train_loop_per_worker = val
+
+    @property
+    def train_loop_config(self) -> Optional[Dict]:
+        return self._train_loop_config
+
+    @train_loop_config.setter
+    def train_loop_config(self, val: Optional[Dict]):
+        self._train_loop_config = val
 
     def training_loop(self) -> None:
         scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
