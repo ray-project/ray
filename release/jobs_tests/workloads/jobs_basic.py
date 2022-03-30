@@ -27,12 +27,23 @@ def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
     return status == JobStatus.SUCCEEDED
 
+def wait_until_finish(client: JobSubmissionClient, job_id: str, timeout_s: int = 10 * 60, retry_interval_s: int = 1):
+    start_time_s = time.time()
+    while time.time() - start_time_s <= timeout_s:
+        status = client.get_job_status(job_id)
+        print(f"status: {status}")
+        if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
+            return status
+        time.sleep(retry_interval_s)
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing."
     )
+    parser.add_argument("--working-dir", required=True, help="working_dir to use for the job within this test.")
     args = parser.parse_args()
 
     start = time.time()
@@ -47,13 +58,11 @@ if __name__ == "__main__":
 
     client = JobSubmissionClient(address)
     job_id = client.submit_job(
-        entrypoint="python jobs_basic_driver_script.py",
-        runtime_env={"pip": ["ray[tune]"], "working_dir": "./"},
+        entrypoint="python run_simple_tune_job.py",
+        runtime_env={"pip": ["ray[tune]"], "working_dir": args.working_dir},
     )
     timeout_s = 10 * 60
-    wait_for_condition(
-        _check_job_succeeded, client=client, job_id=job_id, timeout=timeout_s
-    )
+    assert wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s) == JobStatus.SUCCEEDED
 
     taken = time.time() - start
     result = {
