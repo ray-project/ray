@@ -1,7 +1,6 @@
 from typing import Any, Union, Generic, Tuple, List, Callable
 import numpy as np
 import ray
-import logging
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.dataset import BatchType
@@ -14,8 +13,6 @@ from ray.data.impl.compute import CallableClass, ComputeStrategy
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
-
-logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -252,10 +249,12 @@ class GroupedDataset(Generic[T]):
             for end in boundaries:
                 group = block_accessor.slice(start, end, False)
                 applied = fn(group)
-                if applied is None or not isinstance(applied, type(batch)):
-                    logger.error("Expecting output type %s, but got %s.",
-                                 type(batch), type(applied))
-                    continue
+                if not isinstance(applied, type(batch)):
+                    raise ValueError(
+                        "Expecting group mapping UDF to return {}, but got {}.".format(
+                            type(batch), type(applied)
+                        )
+                    )
                 builder.add_block(applied)
                 start = end
 

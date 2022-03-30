@@ -2562,6 +2562,19 @@ def test_groupby_map_groups_merging_empty_result(ray_start_regular_shared):
     assert mapped.take_all() == [2, 3]
 
 
+def test_groupby_map_groups_merging_invalid_result():
+    ds = ray.data.from_items([1, 2, 3])
+    grouped = ds.groupby(lambda x: x)
+
+    # The UDF returns None, which is invalid.
+    with pytest.raises(ValueError):
+        grouped.map_groups(lambda x: None if x == [1] else x)
+
+    # The UDF returns a type that's different than the input type, which is invalid.
+    with pytest.raises(ValueError):
+        grouped.map_groups(lambda x: pd.DataFrame([1]) if x == [1] else x)
+
+
 @pytest.mark.parametrize("num_parts", [1, 2, 30])
 def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
     ds = ray.data.from_items(list(range(100)))
