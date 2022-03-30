@@ -26,7 +26,7 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 # Set scope to "class" to force this to run before start_cluster, whose scope
 # is "function".  We need these env vars to be set before Ray is started.
 @pytest.fixture(scope="class")
-def runtime_env_disable_URI_cache():
+def working_dir_and_pymodules_disable_URI_cache():
     with mock.patch.dict(
         os.environ,
         {
@@ -62,7 +62,11 @@ class TestGC:
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
     )
     def test_job_level_gc(
-        self, start_cluster, runtime_env_disable_URI_cache, option: str, source: str
+        self,
+        start_cluster,
+        working_dir_and_pymodules_disable_URI_cache,
+        option: str,
+        source: str,
     ):
         """Tests that job-level working_dir is GC'd when the job exits."""
         NUM_NODES = 3
@@ -128,7 +132,7 @@ class TestGC:
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
-        self, start_cluster, runtime_env_disable_URI_cache, option: str
+        self, start_cluster, working_dir_and_pymodules_disable_URI_cache, option: str
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         NUM_NODES = 5
@@ -172,7 +176,11 @@ class TestGC:
         "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")]
     )
     def test_detached_actor_gc(
-        self, start_cluster, runtime_env_disable_URI_cache, option: str, source: str
+        self,
+        start_cluster,
+        working_dir_and_pymodules_disable_URI_cache,
+        option: str,
+        source: str,
     ):
         """Tests that URIs for detached actors are GC'd only when they exit."""
         cluster, address = start_cluster
@@ -294,7 +302,11 @@ def skip_local_gc():
 class TestSkipLocalGC:
     @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
     def test_skip_local_gc_env_var(
-        self, skip_local_gc, start_cluster, runtime_env_disable_URI_cache, source
+        self,
+        skip_local_gc,
+        start_cluster,
+        working_dir_and_pymodules_disable_URI_cache,
+        source,
     ):
         cluster, address = start_cluster
         ray.init(address, namespace="test", runtime_env={"working_dir": source})
