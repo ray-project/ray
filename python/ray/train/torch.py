@@ -23,17 +23,23 @@ from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
 
 import numpy as np
-import torch
-from torch.cuda.amp import autocast, GradScaler
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import (
-    DistributedSampler,
-    DataLoader,
-    IterableDataset,
-    SequentialSampler,
-    RandomSampler,
-)
+
+try:
+    import torch
+    from torch.cuda.amp import autocast, GradScaler
+    import torch.distributed as dist
+    from torch.nn.parallel import DistributedDataParallel
+    from torch.utils.data import (
+        DistributedSampler,
+        DataLoader,
+        IterableDataset,
+        SequentialSampler,
+        RandomSampler,
+    )
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "PyTorch isn't installed. To install PyTorch, run 'pip install torch'"
+    )
 
 try:
     from torch.profiler import profile
