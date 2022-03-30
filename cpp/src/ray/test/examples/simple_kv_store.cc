@@ -18,6 +18,7 @@
 
 #include <chrono>
 #include <thread>
+#include <unordered_map>
 
 // Name of the main server actor.
 const std::string MAIN_SERVER_NAME = "main_actor";
@@ -29,7 +30,7 @@ const absl::flat_hash_map<std::string, double> RESOUECES{
 
 namespace common {
 inline std::pair<bool, std::string> Get(
-    const std::string &key, const absl::flat_hash_map<std::string, std::string> &data) {
+    const std::string &key, const std::unordered_map<std::string, std::string> &data) {
   auto it = data.find(key);
   if (it == data.end()) {
     return std::pair<bool, std::string>{};
@@ -45,7 +46,7 @@ class BackupServer {
   BackupServer();
 
   // The main server will get all BackupServer's data when it restarts.
-  absl::flat_hash_map<std::string, std::string> GetAllData();
+  std::unordered_map<std::string, std::string> GetAllData();
 
   // This is used for the main server to backup data before putting data.
   void BackupData(const std::string &key, const std::string &val);
@@ -55,7 +56,7 @@ class BackupServer {
   // server.
   void HandleFailover();
   // A map that stores the key-value data.
-  absl::flat_hash_map<std::string, std::string> data_;
+  std::unordered_map<std::string, std::string> data_;
 };
 
 BackupServer::BackupServer() {
@@ -66,7 +67,7 @@ BackupServer::BackupServer() {
   RAYLOG(INFO) << "BackupServer created";
 }
 
-absl::flat_hash_map<std::string, std::string> BackupServer::GetAllData() { return data_; }
+std::unordered_map<std::string, std::string> BackupServer::GetAllData() { return data_; }
 
 void BackupServer::BackupData(const std::string &key, const std::string &val) {
   data_[key] = val;
@@ -83,14 +84,14 @@ class MainServer {
   std::pair<bool, std::string> Get(const std::string &key);
 
   // This is used for the backup server to recover data when it restarts.
-  absl::flat_hash_map<std::string, std::string> GetAllData();
+  std::unordered_map<std::string, std::string> GetAllData();
 
  private:
   // When the main server restarts from a failure. It will get all data from the backup
   // server.
   void HandleFailover();
   // A map that stores the key-value data.
-  absl::flat_hash_map<std::string, std::string> data_;
+  std::unordered_map<std::string, std::string> data_;
   // Actor handle to the backup server actor.
   ray::ActorHandle<BackupServer> backup_actor_;
 };
@@ -120,7 +121,7 @@ std::pair<bool, std::string> MainServer::Get(const std::string &key) {
   return common::Get(key, data_);
 }
 
-absl::flat_hash_map<std::string, std::string> MainServer::GetAllData() { return data_; }
+std::unordered_map<std::string, std::string> MainServer::GetAllData() { return data_; }
 
 void BackupServer::HandleFailover() {
   // Get all data from MainServer.
