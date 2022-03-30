@@ -457,7 +457,7 @@ class RayTrialExecutor(TrialExecutor):
             exc: Optional exception.
 
         """
-        self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
+        self.set_status(trial, Trial.ERROR if error or exc else Trial.TERMINATED)
         self._trial_just_finished = True
         trial.set_location(Location())
 
@@ -553,7 +553,7 @@ class RayTrialExecutor(TrialExecutor):
         self,
         trial: Trial,
         error: bool = False,
-        exc: Optional[Exception] = None,
+        exc: Optional[Union[TuneError, RayTaskError]] = None,
     ) -> None:
         prior_status = trial.status
         self._stop_trial(trial, error=error or exc, exc=exc)
