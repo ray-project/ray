@@ -129,6 +129,19 @@ class Dataset(Generic[T]):
     def copy(dataset: "Dataset[T]") -> "Dataset[T]":
         return Dataset(dataset._plan, dataset._epoch, dataset._lazy)
 
+    def select_polars(self, exprs: List) -> "Dataset[U]":
+        import polars as pl
+
+        def transform(block: Block) -> Iterable[Block]:
+            df = pl.from_arrow(block)
+            result = df.select(exprs)
+            yield result.to_arrow()
+
+        plan = self._plan.with_stage(
+            OneToOneStage("map", transform, compute="tasks", ray_remote_args={})
+        )
+        return Dataset(plan, self._epoch, self._lazy)
+
     def map(
         self,
         fn: Union[CallableClass, Callable[[T], U]],

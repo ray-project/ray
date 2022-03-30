@@ -306,77 +306,86 @@ class ArrowBlockAccessor(TableBlockAccessor):
             the ith given aggregation.
             If key is None then the k column is omitted.
         """
+        import polars as pl
 
         stats = BlockExecStats.builder()
-        key_fn = (
-            (lambda r: r[r._row.schema.names[0]]) if key is not None else (lambda r: 0)
-        )
 
-        iter = heapq.merge(
-            *[ArrowBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
-        )
-        next_row = None
-        builder = ArrowBlockBuilder()
-        while True:
-            try:
-                if next_row is None:
-                    next_row = next(iter)
-                next_key = key_fn(next_row)
-                next_key_name = (
-                    next_row._row.schema.names[0] if key is not None else None
-                )
+        df = pl.concat([pl.from_arrow(b) for b in blocks]) \
+            .with_column(pl.col("max(value)")) \
+            .groupby("value") \
+            .agg(pl.max("max(value)"))
+        ret = df.to_arrow()
 
-                def gen():
-                    nonlocal iter
-                    nonlocal next_row
-                    while key_fn(next_row) == next_key:
-                        yield next_row
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-
-                # Merge.
-                first = True
-                accumulators = [None] * len(aggs)
-                resolved_agg_names = [None] * len(aggs)
-                for r in gen():
-                    if first:
-                        count = collections.defaultdict(int)
-                        for i in range(len(aggs)):
-                            name = aggs[i].name
-                            # Check for conflicts with existing aggregation
-                            # name.
-                            if count[name] > 0:
-                                name = ArrowBlockAccessor._munge_conflict(
-                                    name, count[name]
-                                )
-                            count[name] += 1
-                            resolved_agg_names[i] = name
-                            accumulators[i] = r[name]
-                        first = False
-                    else:
-                        for i in range(len(aggs)):
-                            accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[resolved_agg_names[i]]
-                            )
-                # Build the row.
-                row = {}
-                if key is not None:
-                    row[next_key_name] = next_key
-
-                for agg, agg_name, accumulator in zip(
-                    aggs, resolved_agg_names, accumulators
-                ):
-                    row[agg_name] = agg.finalize(accumulator)
-
-                builder.add(row)
-            except StopIteration:
-                break
-
-        ret = builder.build()
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
+#        key_fn = (
+#            (lambda r: r[r._row.schema.names[0]]) if key is not None else (lambda r: 0)
+#        )
+#
+#        iter = heapq.merge(
+#            *[ArrowBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+#        )
+#        next_row = None
+#        builder = ArrowBlockBuilder()
+#        while True:
+#            try:
+#                if next_row is None:
+#                    next_row = next(iter)
+#                next_key = key_fn(next_row)
+#                next_key_name = (
+#                    next_row._row.schema.names[0] if key is not None else None
+#                )
+#
+#                def gen():
+#                    nonlocal iter
+#                    nonlocal next_row
+#                    while key_fn(next_row) == next_key:
+#                        yield next_row
+#                        try:
+#                            next_row = next(iter)
+#                        except StopIteration:
+#                            next_row = None
+#                            break
+#
+#                # Merge.
+#                first = True
+#                accumulators = [None] * len(aggs)
+#                resolved_agg_names = [None] * len(aggs)
+#                for r in gen():
+#                    if first:
+#                        count = collections.defaultdict(int)
+#                        for i in range(len(aggs)):
+#                            name = aggs[i].name
+#                            # Check for conflicts with existing aggregation
+#                            # name.
+#                            if count[name] > 0:
+#                                name = ArrowBlockAccessor._munge_conflict(
+#                                    name, count[name]
+#                                )
+#                            count[name] += 1
+#                            resolved_agg_names[i] = name
+#                            accumulators[i] = r[name]
+#                        first = False
+#                    else:
+#                        for i in range(len(aggs)):
+#                            accumulators[i] = aggs[i].merge(
+#                                accumulators[i], r[resolved_agg_names[i]]
+#                            )
+#                # Build the row.
+#                row = {}
+#                if key is not None:
+#                    row[next_key_name] = next_key
+#
+#                for agg, agg_name, accumulator in zip(
+#                    aggs, resolved_agg_names, accumulators
+#                ):
+#                    row[agg_name] = agg.finalize(accumulator)
+#
+#                builder.add(row)
+#            except StopIteration:
+#                break
+#
+#        ret = builder.build()
+#        return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
