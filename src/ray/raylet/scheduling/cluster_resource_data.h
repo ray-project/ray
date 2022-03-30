@@ -86,9 +86,7 @@ class ResourceRequest {
   }
 
   /// Check whether a particular resource exist.
-  bool Has(ResourceID resource_id) const {
-    return resources_.contains(resource_id);
-  }
+  bool Has(ResourceID resource_id) const { return resources_.contains(resource_id); }
 
   /// Clear the whole set.
   void Clear() { resources_.clear(); }
@@ -294,9 +292,7 @@ class TaskResourceInstances {
   }
 
   /// Check whether a particular resource exists.
-  bool Has(ResourceID resource_id) const {
-    return resources_.contains(resource_id);
-  }
+  bool Has(ResourceID resource_id) const { return resources_.contains(resource_id); }
 
   /// Set the per-instance values for a particular resource.
   TaskResourceInstances &Set(const ResourceID resource_id,
