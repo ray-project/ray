@@ -169,7 +169,6 @@ def test_metrics_export_port_fail_on_nonexclusive_port(ray_start_cluster):
 
     from multiprocessing import Process
     import socket
-    import time
 
     def listen_on_socket(port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -187,6 +186,8 @@ def test_metrics_export_port_fail_on_nonexclusive_port(ray_start_cluster):
     except OSError:
         p.terminate()
         return
+    finally:
+        p.terminate()
     raise Exception("Unreachable: meant to except as OSError")
 
 

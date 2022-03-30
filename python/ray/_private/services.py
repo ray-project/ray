@@ -1723,13 +1723,6 @@ def start_raylet(
     if max_worker_port is None:
         max_worker_port = 0
 
-    if metrics_export_port is not None:
-        import socket
-
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("localhost", metrics_export_port))
-        sock.close()
-
     agent_command = [
         sys.executable,
         "-u",

@@ -819,7 +819,10 @@ class Node:
                 ports_by_node[self.unique_id][port_name] = port
                 with open(file_path, "w") as f:
                     json.dump(ports_by_node, f)
-
+        # Sanity check that the port is not yet bound to by another process
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("localhost", port))
+        sock.close()
         return port
 
     def start_reaper_process(self):
