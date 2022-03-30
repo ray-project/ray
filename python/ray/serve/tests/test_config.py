@@ -143,9 +143,7 @@ def test_replica_config_default_memory_minimum(memory_omitted_options):
     """Checks that ReplicaConfig's default memory is not lower than minimum."""
 
     if memory_omitted_options is None:
-        config = ReplicaConfig(
-            "fake.import_path", ray_actor_options=memory_omitted_options
-        )
+        config = ReplicaConfig("fake.import_path")
 
         # Should not raise ValueError
         to_memory_units(config.ray_actor_options["memory"], round_up=False)
