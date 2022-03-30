@@ -109,8 +109,6 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
 
 class LogHeadV1(dashboard_utils.DashboardHeadModule):
-    LOG_URL_TEMPLATE = "http://{ip}:{port}/logs"
-
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
