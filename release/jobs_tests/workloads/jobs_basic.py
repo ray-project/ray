@@ -14,20 +14,17 @@ import argparse
 import json
 import os
 import time
-from ray._private.test_utils import wait_for_condition
 from ray.dashboard.modules.job.common import JobStatus
 
 from ray.job_submission import JobSubmissionClient
 
 
-def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
-    status = client.get_job_status(job_id)
-    if status == JobStatus.FAILED:
-        logs = client.get_job_logs(job_id)
-        raise RuntimeError(f"Job failed\nlogs:\n{logs}")
-    return status == JobStatus.SUCCEEDED
-
-def wait_until_finish(client: JobSubmissionClient, job_id: str, timeout_s: int = 10 * 60, retry_interval_s: int = 1):
+def wait_until_finish(
+    client: JobSubmissionClient,
+    job_id: str,
+    timeout_s: int = 10 * 60,
+    retry_interval_s: int = 1,
+):
     start_time_s = time.time()
     while time.time() - start_time_s <= timeout_s:
         status = client.get_job_status(job_id)
@@ -37,13 +34,16 @@ def wait_until_finish(client: JobSubmissionClient, job_id: str, timeout_s: int =
         time.sleep(retry_interval_s)
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing."
     )
-    parser.add_argument("--working-dir", required=True, help="working_dir to use for the job within this test.")
+    parser.add_argument(
+        "--working-dir",
+        required=True,
+        help="working_dir to use for the job within this test.",
+    )
     args = parser.parse_args()
 
     start = time.time()
@@ -62,7 +62,10 @@ if __name__ == "__main__":
         runtime_env={"pip": ["ray[tune]"], "working_dir": args.working_dir},
     )
     timeout_s = 10 * 60
-    assert wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s) == JobStatus.SUCCEEDED
+    assert (
+        wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s)
+        == JobStatus.SUCCEEDED
+    )
 
     taken = time.time() - start
     result = {
