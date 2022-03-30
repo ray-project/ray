@@ -894,7 +894,7 @@ class TrialRunner:
         return trial[0] if trial else None
 
     def get_trials(self):
-        """Returns the list of triaget_tb_from_exceptionls managed by this TrialRunner.
+        """Returns the list of trials managed by this TrialRunner.
 
         Note that the caller usually should not mutate trial state directly.
         """
