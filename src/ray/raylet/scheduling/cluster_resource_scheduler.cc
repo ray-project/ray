@@ -25,7 +25,6 @@ using namespace ::ray::raylet_scheduling_policy;
 
 ClusterResourceScheduler::ClusterResourceScheduler()
     : local_node_id_(scheduling::NodeID::Nil()) {
-  is_node_available_fn_ = [this](scheduling::NodeID node_id) { return true; };
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   NodeResources node_resources;
   node_resources.predefined_resources.resize(PredefinedResources_MAX);
@@ -42,7 +41,7 @@ ClusterResourceScheduler::ClusterResourceScheduler()
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
           cluster_resource_manager_->GetResourceView(),
-          [this](auto node_id) { return this->NodeAlive(node_id); });
+          [this](scheduling::NodeID node_id) { return !node_id.IsNil(); });
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
