@@ -22,19 +22,16 @@ Note: This feature is in Alpha, so APIs are subject to change.
 
 ## Motivation
 
-Production machine learning serving pipelines are getting longer and wider. They often consist of many models collectively making a final prediction. This is common in use cases like image / video content classification and tagging, fraud detection pipeline with multiple policies, multi-stage ranking and recommendation, etc.
+Machine learning serving systems are getting longer and wider. They often consist of many models to make a single prediction. This is common in use cases like image / video content classification and tagging, fraud detection pipeline with multiple policies, multi-stage ranking and recommendation, etc.
 
-Meanwhile, the size of a model is also growing beyond the memory limit of a single machine due to the exponentially growing number of parameters. GPT-3 and sparse feature embeddings in large recommendation models are two prime examples. The need of serving large models with disaggregated and distributed inference is rapidly growing.
+Meanwhile, the size of a model is also growing beyond the memory limit of a single machine due to the exponentially growing number of parameters. GPT-3 and sparse feature embeddings in large recommendation models are two prime examples. 
 
-We want to leverage the programmable and general purpose distributed computing ability of Ray and double down on its unique strengths (scheduling, communication and shared memory) to facilitate authoring, orchestrating, scaling and deployment of complex serving graphs so a user can program & test multiple models or multiple shards of a single large model dynamically and deploy to production at scale, and able to scale and reconfigure individually.
+Ray has unique strengths suited to distributed inference pipelines: flexible scheduling, efficient communication, and shared memory. Ray Serve leverages these strengths to build inference graphs, enabling users to develop complex ML applications locally and then deploy them to production with dynamic scaling and lightweight updates (e.g., for model weights).
 
-## Design Principles 
-- Provide the ability to author a DAG of Serve nodes to form a complex inference graph.
-- Graph authoring experience should be fully Python-programmable with support for dynamic selection, control flows, user business logic, etc.
-- Graph can be instantiated and locally executed using tasks and actors API
-- Graph can be deployed as a group where individual nodes can be reconfigured and scaled indepenently.
-- User should not need to write any YAML file to author, run, iterate, and deploy a graph. 
-- Have a path for DevOps / MLOps people to take actions on operationalizing a deployment graph with minimal knowledge required of the code.
+## Features
+- Provide the ability to build, test, and deploy a complex inference graph of deployments both locally and on remote cluster. The authoring experience is fully Python-programmable and support dynamic control flow and custom business logic, all without writing YAML.
+- In production, the deployments making up the graph can be reconfigured and scaled dynamically. This should enable DevOps/MLOps teams to operate deployment graphs without modifying the underlying code.
+
 
 __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md)__
 
@@ -44,13 +41,11 @@ __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ra
 
 - **Deployment**: Scalable, upgradeable group of actors managed by Ray Serve. __[See docs for detail](https://docs.ray.io/en/master/serve/core-apis.html#core-api-deployments)__
 
-- **DeploymentNode**: Smallest unit in a graph, typically a serve annotated class or function, backed by a Deployment.
+- **DeploymentNode**: Smallest unit in a graph, created by calling `.bind()` on a serve decorated class or function, backed by a Deployment.
 
-- **InputNode**: Singleton node in a graph that holds user input value, which is resolved at runtime of graph execution.
+- **InputNode**: A special node that represents the input passed to a graph at runtime.
 
-- **Bind**: A graph building API applicable to decorated class or function.  `decorated_class_or_func.bind(*args, **kwargs)` generates a `DeploymentNode` that can be used to build graph, and bound arguments will be applied at execution time, including dynamic user input.
-
-- **Deployment Graph**: Collection of deployment nodes bound together that forms a DAG that represents an inference graph for complicated tasks, can be deployed and call as a unit. For example: ensemble, chaining, dynamic selection.
+- **Deployment Graph**: Collection of deployment nodes bound together to define an inference graph. The graph can be deployed behind an HTTP endpoint and reconfigured/scaled dynamically.
 
 +++
 
@@ -74,7 +69,7 @@ At the end of this document we have the full and end to end executable implement
     - A deployment node can call into other nodes in the deployment graph.
     - You can use the dynamic calling to perform control flow operation that's hard to expressive in traditional DAG.
 - Running a DAG:
-    - A node can be called either sync or async.
+    - Nodes in the graph, such as functions or class methods, can be either sync or async.
 
 +++
 
@@ -90,7 +85,8 @@ Let's start with the first layer of DAG: Building user input to two preprocessor
 
 ```python
 from ray import serve
-# We will later move Ray DAG related components out of experimental in later stable release
+# We will later move Ray DAG related components 
+# out of experimental in later stable release
 from ray.experimental.dag.input_node import InputNode
 
 @serve.deployment
@@ -118,13 +114,9 @@ There are two new APIs used in the DAG building stage: `InputNode()` and `bind()
 
 ### **```InputNode()```** : User input of the graph
 
-```InputNode``` is a special singleton in DAG building that's only relevant to it's runtime call behavior. Even though all decorated classes or functions can be reused in arbitrary way to facilitate DAG building where the root DAGNode forms the graph with its children, in each deployment graph there should be one and only one InputNode used.
+```InputNode``` is a special node in the graph that represents the user input for the graph at runtime. There can only be one for each graph, takes no arguments, and should always be created in a context manager.
 
-```InputNode``` value is fulfilled and replaced by user input at runtime, therefore it takes no argument when being constructed.
-
-```InputNode``` should only be created within a context manager to indicate there's one and only one `InputNode` for each graph, and will throw exception if directly created, or multiple is found.
-
-It's possible to access partial user input by index or key, if a node in the graph doesn't need the complete user input to run. Example: User submits `[Tensor_0, Tensor_1]` via http but a model node might only need to receive `Tensor_1` at index 1 rather than complete list to reduce intermediate data transfer.
+It's possible to access partial inputs by index or key if every node in the graph doesn't require the full input. Example: the input consists of `[Tensor_0, Tensor_1]` but a single model might only need to receive `Tensor_1` at rather than the full list.
 
 
 ### **`bind(*args, **kwargs)`** : The graph building API
@@ -142,15 +134,30 @@ Which can be used and accessed by index or key in downstream calls of .bind(), s
 preprocessed_1 = preprocessor.bind(dag_input[0])
 ```
 
-This means we're creating a DAGNode IR called `preprocessed_1` in graph building by calling `.bind()` on a serve decorated function, where it executes the decorated deployment function `preprocessor` that takes the user input at index 0 at runtime.
+This means we're creating a DeploymentNode called `preprocessed_1` in graph building by calling `.bind()` on a serve decorated function, where it executes the decorated deployment function `preprocessor` that takes the user input at index 0 at runtime.
 
 #### bind() on function
 
-```bind()``` on function produces a DAGNode that can be executed with user input.
+```bind()``` on function produces a DeploymentNode that can be executed with user input.
 
 ```{tip}
 Each deployment node used in graph is individually scalable and configurable by default. This means in real production workload where we can expect difference in compute resource and latency, we can fine tune the nodes to optimal `num_replicas` and `num_cpus` to avoid a single node being the bottleneck of your deployment graph's latency or throughput.
 ```
+
+#### bind() on class constructor 
+
+**`Class.bind(*args, **kwargs)`** constructs and returns a DeploymentNode that acts as the instantiated instance of Class, where `*args` and `**kwargs` are used as init args. In our implementation, we have
+
+```python
+m1 = Model.bind(1)
+m2 = Model.bind(2)
+```
+
+This means we're creating two more `DeploymentNode` of an instance of `Model` that is constructed with init arg of `1` and `2`, and refereced with variable name `m1`, `m2` respectively.
+
+#### bind() on class method
+
+Once a class is bound with its init args, its class methods can be directly accessed, called or bound with other args. It has the same semantics as `bind()` on a function, except it acts on an instantiated `DeploymentNode` class instead.
 
 +++
 
@@ -213,25 +220,10 @@ with InputNode() as dag_input:
 
 We are adding a few more pieces to our dag builder: `bind()` on class and class method, as well as passing the output of `Model.bind()` as init args into another class `Combiner.bind()`
 
-#### bind() on class constructor 
 
-**`Class.bind(*args, **kwargs)`** constructs and returns a DAGNode that acts as the instantiated instance of Class, where `*args` and `**kwargs` are used as init args. In our implementation, we have
+### DeploymentNode as arguments in other node's bind()
 
-```python
-m1 = Model.bind(1)
-m2 = Model.bind(2)
-```
-
-This means we're creating two more DAGNodes of an instance of `Model` that is constructed with init arg of `1` and `2`, and refereced with variable name `m1`, `m2` respectively.
-
-#### bind() on class method
-
-Once a class is bound with its init args, its class methods can be directly accessed, called or bound with other args. It has the same semantics as `bind()` on a function, except it acts on an instantiated `DAGNode` class instead.
-
-
-### DAGNode as arguments in other node's bind()
-
-DAGNode can also be passed into other DAGNode in dag binding. In the full example below, ```Combiner``` calls into two instantiations of ```Model``` class, which can be bound and passed into ```Combiner```'s constructor as if we're passing in two regular python class instances.
+DeploymentNode can also be passed into other `DeploymentNode` in dag binding. In the full example below, ```Combiner``` calls into two instantiations of ```Model``` class, which can be bound and passed into ```Combiner```'s constructor as if we're passing in two regular python class instances.
 
 ```python
 m1 = Model.bind(1)
@@ -239,7 +231,7 @@ m2 = Model.bind(2)
 combiner = Combiner.bind(m1, m2)
 ```
 
-Similarly, we can also pass and bind upstream DAGNode results that will be resolved upon runtime to downstream DAGNodes, in our example, a function `run()` that access class method of ```Combiner``` class takes two preprocessing DAGNodes' output as well as part of user input that will be resolved when upstream `DAGNode` are executed.
+Similarly, we can also pass and bind upstream `DeploymentNode` results that will be resolved upon runtime to downstream DeploymentNodes, in our example, a function `run()` that access class method of ```Combiner``` class takes two preprocessing `DeploymentNode`s' output as well as part of user input that will be resolved when upstream `DeploymentNode` are executed.
 
 ```python
 preprocessed_1 = preprocessor.bind(dag_input[0])
@@ -331,14 +323,14 @@ with InputNode() as dag_input:
 
 ### Step 5: Test the full DAG in both python and http
 
-We can then try to deploy and run the steps we had above on a simple function DAG, using our new API `serve.run()`.
+We can now test and deploy the graph using `serve.run`:
 
 +++
 
 ### **```serve.run()```** : running the deployment graph
 
 The deployment graph can be deployed with ```serve.run()```. It
-takes in a target DeploymentNode, and it deploys the node's deployments, as
+takes in a target `DeploymentNode`, and it deploys the node's deployments, as
 well as all its child nodes' deployments. To deploy your graph, pass in the
 root DeploymentNode into ```serve.run()```:
 
@@ -425,13 +417,13 @@ from ray.experimental.dag.input_node import InputNode
 @serve.deployment
 async def preprocessor(input_data: str):
     """Simple feature processing that converts str to int"""
-    time.sleep(0.1) # Manual delay for blocking computation
+    await asyncio.sleep(0.1) # Manual delay for blocking computation
     return int(input_data)
 
 @serve.deployment
 async def avg_preprocessor(input_data):
     """Simple feature processing that returns average of input list as float."""
-    time.sleep(0.15) # Manual delay for blocking computation
+    await asyncio.sleep(0.15) # Manual delay for blocking computation
     return sum(input_data) / len(input_data)
 
 @serve.deployment
@@ -440,7 +432,7 @@ class Model:
         self.weight = weight
 
     async def forward(self, input: int):
-        time.sleep(0.3) # Manual delay for blocking computation 
+        await asyncio.sleep(0.3) # Manual delay for blocking computation 
         return f"({self.weight} * {input})"
 
 
@@ -561,5 +553,9 @@ We've walked through key concepts and a simple representative example that cover
 
 Potential Future improvements: 
  - `serve.build()` to fulfill the Ops API so user's deployment graph can generate a YAML file for deployment, scaling and reconfiguration.
- - Performance optimization and tuning to better take advantage of async handle and ray shared memory to reduce or eliminate intermediate data transfer
+ - Performance optimizations:
+   - Tuning guide for deployment graph to avoid single node being bottleneck
+   - Better use of async deployment handle
+   - Leverage ray shared memory to reduce or eliminate intermediate data transfer
+   - Static compute graph transformation, fusion and placement based on profiling
  - Better UX, such as visualization
