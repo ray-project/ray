@@ -63,6 +63,8 @@ struct NodeManagerConfig {
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
+  // The user-provided identifier or name for this node.
+  std::string node_name;
   /// The lowest port number that workers started will bind on.
   /// If this is set to 0, workers will bind on random ports.
   int min_worker_port;
@@ -146,6 +148,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_manager A reference to the local object manager.
   NodeManager(instrumented_io_context &io_service,
               const NodeID &self_node_id,
+              const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client);
@@ -617,6 +620,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// ID of this node.
   NodeID self_node_id_;
+  /// The user-given identifier or name of this node.
+  std::string self_node_name_;
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
