@@ -220,7 +220,7 @@ class ResourceRequest {
   }
 
  private:
-  /// The custom resources.
+  /// Map from the resource IDs to the resource values.
   absl::flat_hash_map<ResourceID, FixedPoint> resources_;
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
@@ -405,7 +405,7 @@ class TaskResourceInstances {
   }
 
  private:
-  /// The custom resources.
+  /// Map from the resource IDs to the resource values.
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
 };
 
