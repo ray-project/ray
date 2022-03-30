@@ -71,15 +71,6 @@ class GcsActor {
     auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
 
-    actor_table_data_.set_language(task_spec.language());
-    actor_table_data_.set_extension_data(
-        task_spec.actor_creation_task_spec().extension_data());
-    actor_table_data_.set_max_task_retries(
-        task_spec.actor_creation_task_spec().max_task_retries());
-    actor_table_data_.set_execute_out_of_order(
-        task_spec.actor_creation_task_spec().execute_out_of_order());
-    actor_table_data_.set_max_pending_calls(
-        task_spec.actor_creation_task_spec().max_pending_calls());
     actor_table_data_.mutable_function_descriptor()->CopyFrom(
         task_spec.function_descriptor());
 

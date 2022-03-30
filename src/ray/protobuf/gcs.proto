@@ -127,8 +127,6 @@ message ActorTableData {
   string name = 12;
   // Last timestamp that the actor state was updated.
   double timestamp = 13;
-  // Language the job uses.
-  Language language = 14;
   // Resource mapping ids acquired by the leased worker. This field is only set when this
   // actor already has a leased worker.
   repeated ResourceMapEntry resource_mapping = 15;
@@ -136,9 +134,6 @@ message ActorTableData {
   uint32 pid = 16;
   // The function descriptor of the actor creation task.
   FunctionDescriptor function_descriptor = 17;
-  // Field used for storing application-level extensions to the actor definition.
-  // See ActorCreationTaskSpec.
-  string extension_data = 18;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 19;
   // The unix ms timestamp the actor was started at.
@@ -154,12 +149,6 @@ message ActorTableData {
   string class_name = 23;
   // Contains metadata about why the actor is dead.
   ActorDeathCause death_cause = 24;
-  // The max number of times tasks submitted on this actor should be retried
-  int64 max_task_retries = 25;
-  // Whether the actor supports out of order execution.
-  bool execute_out_of_order = 26;
-  // The max number of pending actor calls.
-  int32 max_pending_calls = 27;
   // Quantities of the different resources required by this actor.
   map<string, double> required_resources = 28;
 }

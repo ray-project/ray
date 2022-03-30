@@ -294,7 +294,6 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
                 "className",
                 "serializedRuntimeEnv",
                 "functionDescriptor",
-                "extensionData",
                 "rayNamespace",
             }
         else:
