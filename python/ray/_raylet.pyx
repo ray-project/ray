@@ -173,7 +173,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     else:
         raise RaySystemError(message)
 
-cdef flat_hash_map[c_string, double] UnorderedMapToFlatHashMap(unordered_map[c_string, double] u_map):
+cdef flat_hash_map[c_string, double] UnorderedMapToFlatHashMap(
+        unordered_map[c_string, double] u_map):
     cdef:
         flat_hash_map[c_string, double] result
     for pair in u_map:

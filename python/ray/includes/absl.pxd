@@ -23,9 +23,9 @@ cdef extern from "absl/container/flat_hash_map.h" namespace "absl" nogil:
             pass
         flat_hash_map() except +
         flat_hash_map(flat_hash_map&) except +
-        #flat_hash_map(key_compare&)
+        # flat_hash_map(key_compare&)
         U& operator[](T&)
-        #flat_hash_map& operator=(flat_hash_map&)
+        # flat_hash_map& operator=(flat_hash_map&)
         bint operator==(flat_hash_map&, flat_hash_map&)
         bint operator!=(flat_hash_map&, flat_hash_map&)
         bint operator<(flat_hash_map&, flat_hash_map&)
@@ -48,10 +48,10 @@ cdef extern from "absl/container/flat_hash_map.h" namespace "absl" nogil:
         size_t erase(T&)
         iterator find(T&)
         const_iterator const_find "find"(T&)
-        pair[iterator, bint] insert(pair[T, U]) # XXX pair[T,U]&
-        iterator insert(iterator, pair[T, U]) # XXX pair[T,U]&
+        pair[iterator, bint] insert(pair[T, U])
+        iterator insert(iterator, pair[T, U])
         iterator insert(iterator, iterator)
-        #key_compare key_comp()
+        # key_compare key_comp()
         iterator lower_bound(T&)
         const_iterator const_lower_bound "lower_bound"(T&)
         size_t max_size()
@@ -63,7 +63,7 @@ cdef extern from "absl/container/flat_hash_map.h" namespace "absl" nogil:
         void swap(flat_hash_map&)
         iterator upper_bound(T&)
         const_iterator const_upper_bound "upper_bound"(T&)
-        #value_compare value_comp()
+        # value_compare value_comp()
         void max_load_factor(float)
         float max_load_factor()
         void rehash(size_t)
