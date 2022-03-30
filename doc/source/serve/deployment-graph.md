@@ -556,8 +556,8 @@ Total of `0.45` secs.
 
 We've walked through key concepts and a simple representative example that covers many important details we support in deployment graph building. There're still some rough edges in user experience that we're dedicated to polish in the next a few months, so please reach out to us if you have any feedback or suggestions:
 
-- Ray Serve forum: https://discuss.ray.io/c/ray-serve/6
-- Github issues / feature request: https://github.com/ray-project/ray/issues (tag `serve`)
+- __[Ray Serve forum](https://discuss.ray.io/c/ray-serve/6)__
+- __[Github issues / feature request](https://github.com/ray-project/ray/issues)__ (tag `serve`)
 
 Potential Future improvements: 
  - `serve.build()` to fulfill the Ops API so user's deployment graph can generate a YAML file for deployment, scaling and reconfiguration.
