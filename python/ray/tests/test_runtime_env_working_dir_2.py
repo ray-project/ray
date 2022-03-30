@@ -23,21 +23,6 @@ from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 
 
-# Set scope to "class" to force this to run before start_cluster, whose scope
-# is "function".  We need these env vars to be set before Ray is started.
-@pytest.fixture(scope="class")
-def runtime_env_disable_URI_cache():
-    with mock.patch.dict(
-        os.environ,
-        {
-            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
-            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
-        },
-    ):
-        print("URI caching disabled (cache size set to 0).")
-        yield
-
-
 @pytest.fixture(scope="class")
 def URI_cache_10_MB():
     with mock.patch.dict(
