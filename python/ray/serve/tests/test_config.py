@@ -135,7 +135,10 @@ def test_replica_config_validation():
             ReplicaConfig(Class, ray_actor_options={option: None})
 
 
-@pytest.mark.parametrize("memory_omitted_options", [None, {}, {"CPU": 1, "GPU": 3}])
+@pytest.mark.parametrize(
+    "memory_omitted_options",
+    [None, {}, {"CPU": 1, "GPU": 3}, {"CPU": 1, "GPU": 3, "memory": None}],
+)
 def test_replica_config_default_memory_minimum(memory_omitted_options):
     """Checks that ReplicaConfig's default memory is not lower than minimum."""
 
