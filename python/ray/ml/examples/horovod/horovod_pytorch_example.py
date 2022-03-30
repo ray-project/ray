@@ -1,15 +1,16 @@
 import argparse
-import os
-
+from filelock import FileLock
 import horovod.torch as hvd
-import ray
+import os
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
-from filelock import FileLock
-from ray.train import Trainer
 from torchvision import datasets, transforms
+
+import ray
+from ray import train
+from ray.ml.train.integrations.horovod import HorovodTrainer
 
 
 def metric_average(val, name):
@@ -132,13 +133,11 @@ def train_epoch(
     return loss.item() if loss else None
 
 
-# Horovod function API.
-
-
 def train_func(config):
     num_epochs = config.get("num_epochs", 10)
     log_interval = config.get("log_interval", 10)
     use_cuda = config.get("use_cuda", False)
+    save_model_as_dict = config.get("save_model_as_dict", False)
 
     model, optimizer, train_loader, train_sampler = setup(config)
 
@@ -148,43 +147,27 @@ def train_func(config):
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
         results.append(loss)
+    if save_model_as_dict:
+        train.save_checkpoint(model=model.state_dict())
+    else:
+        train.save_checkpoint(model=model)
+    print("losses of each epoch:")
+    print(results)
     return results
 
 
 def main(num_workers, use_gpu, kwargs):
-    trainer = Trainer("horovod", use_gpu=use_gpu, num_workers=num_workers)
-    trainer.start()
-    loss_per_epoch = trainer.run(train_func, config=kwargs)
-    trainer.shutdown()
-    print(loss_per_epoch)
-
-
-# Horovod Class API.
-
-
-class HorovodTrainClass:
-    def __init__(self, config):
-        self.log_interval = config.get("log_interval", 10)
-        self.use_cuda = config.get("use_cuda", False)
-
-        if self.use_cuda:
-            torch.cuda.set_device(hvd.local_rank())
-
-        self.model, self.optimizer, self.train_loader, self.train_sampler = setup(
-            config
-        )
-
-    def train(self, epoch):
-        loss = train_epoch(
-            self.model,
-            self.optimizer,
-            self.train_sampler,
-            self.train_loader,
-            epoch,
-            self.log_interval,
-            self.use_cuda,
-        )
-        return loss
+    trainer = HorovodTrainer(
+        train_loop_per_worker=train_func,
+        train_loop_config={
+            "num_epochs": kwargs["num_epochs"],
+            "log_interval": kwargs["log_interval"],
+            "use_cuda": kwargs["use_cuda"],
+        },
+        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+    )
+    result = trainer.fit()
+    print(result)
 
 
 if __name__ == "__main__":
