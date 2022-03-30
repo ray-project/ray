@@ -17,11 +17,17 @@ from typing import (
     List,
     Optional,
     Set,
+    Union,
 )
 
 import ray
-from ray.exceptions import GetTimeoutError
-from ray.tune.error import AbortTrialExecution, TuneError
+from ray.exceptions import GetTimeoutError, RayTaskError
+from ray.tune.error import (
+    AbortTrialExecution,
+    TuneError,
+    TuneStartTrialError,
+    TuneGetNextExecutorEventError,
+)
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.utils.placement_groups import PlacementGroupManager, get_tune_pg_prefix
@@ -435,7 +441,10 @@ class RayTrialExecutor(TrialExecutor):
         return True
 
     def _stop_trial(
-        self, trial: Trial, error=False, error_msg=None, exc: Optional[Exception] = None
+        self,
+        trial: Trial,
+        error: bool = False,
+        exc: Optional[Union[TuneError, RayTaskError]] = None,
     ):
         """Stops this trial.
 
@@ -445,7 +454,7 @@ class RayTrialExecutor(TrialExecutor):
 
         Args:
             error: Whether to mark this trial as terminated in error.
-            error_msg: Optional error message.
+            exc: Optional exception.
 
         """
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
@@ -453,7 +462,7 @@ class RayTrialExecutor(TrialExecutor):
         trial.set_location(Location())
 
         try:
-            trial.write_error_log(error_msg, exc=exc)
+            trial.write_error_log(exc=exc)
             if hasattr(trial, "runner") and trial.runner:
                 if (
                     not error
@@ -517,17 +526,18 @@ class RayTrialExecutor(TrialExecutor):
         """
         try:
             return self._start_trial(trial)
-        except AbortTrialExecution:
+        except AbortTrialExecution as e:
             logger.exception("Trial %s: Error starting runner, aborting!", trial)
             time.sleep(2)
-            error_msg = traceback.format_exc()
-            self._stop_trial(trial, error=True, error_msg=error_msg)
+            self._stop_trial(trial, exc=e)
             return False
-        except Exception:
+        except Exception as e:
             logger.exception("Trial %s: Unexpected error starting runner.", trial)
             time.sleep(2)
-            error_msg = traceback.format_exc()
-            self._stop_trial(trial, error=True, error_msg=error_msg)
+            if isinstance(e, TuneError):
+                self._stop_trial(trial, exc=e)
+            else:
+                self._stop_trial(trial, exc=TuneStartTrialError(traceback.format_exc()))
             # Note that we don't return the resources, since they may
             # have been lost. TODO(ujvl): is this the right thing to do?
             return False
@@ -543,11 +553,10 @@ class RayTrialExecutor(TrialExecutor):
         self,
         trial: Trial,
         error: bool = False,
-        error_msg: Optional[str] = None,
         exc: Optional[Exception] = None,
     ) -> None:
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg, exc=exc)
+        self._stop_trial(trial, error=error or exc, exc=exc)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             out = self._find_future(trial)
@@ -905,7 +914,6 @@ class RayTrialExecutor(TrialExecutor):
             # If it is a PG_READY event.
             ###################################################################
             if ready_future not in self._futures.keys():
-                # This is a ready future.
                 self._pg_manager.handle_ready_future(ready_future)
                 return ExecutorEvent(ExecutorEventType.PG_READY)
 
@@ -937,9 +945,19 @@ class RayTrialExecutor(TrialExecutor):
                         )
                     else:
                         raise TuneError(f"Unexpected future type - [{result_type}]")
-                except Exception as e:
+                except RayTaskError as e:
                     return ExecutorEvent(
                         ExecutorEventType.ERROR,
                         trial,
-                        result={ExecutorEvent.KEY_EXCEPTION: e},
+                        result={ExecutorEvent.KEY_EXCEPTION: e.as_instanceof_cause()},
+                    )
+                except Exception:
+                    return ExecutorEvent(
+                        ExecutorEventType.ERROR,
+                        trial,
+                        result={
+                            ExecutorEvent.KEY_EXCEPTION: TuneGetNextExecutorEventError(
+                                traceback.format_exc()
+                            )
+                        },
                     )

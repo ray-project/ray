@@ -349,7 +349,6 @@ class Trial:
         self.last_debug = 0
         self.error_file = None
         self.pickled_error_file = None
-        self.error_msg = None
         self.trial_name_creator = trial_name_creator
         self.trial_dirname_creator = trial_dirname_creator
         self.custom_trial_name = None
@@ -606,23 +605,22 @@ class Trial:
         self.experiment_tag = experiment_tag
         self.invalidate_json_state()
 
-    def write_error_log(self, error_msg, exc: Optional[Exception] = None):
-        if error_msg and self.logdir:
+    def write_error_log(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
+        if exc and self.logdir:
             self.num_failures += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
             if exc and isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
                 self.pickled_error_file = os.path.join(self.logdir, "error.pkl")
                 with open(self.pickled_error_file, "wb") as f:
-                    f.write(cloudpickle.dumps(exc))
+                    cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
                 f.write(
                     "Failure # {} (occurred at {})\n".format(
                         self.num_failures, date_str()
                     )
                 )
-                f.write(error_msg + "\n")
-            self.error_msg = error_msg
+                f.write(str(exc) + "\n")
         self.invalidate_json_state()
 
     def should_stop(self, result):

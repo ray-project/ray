@@ -2,7 +2,6 @@ import pytest
 
 import ray
 from ray import tune
-from ray.exceptions import RayTaskError
 
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer
@@ -155,7 +154,7 @@ def test_fail(ray_start_4_cpus):
         raise ValueError
 
     trainer = DummyTrainer(fail)
-    with pytest.raises(RayTaskError):
+    with pytest.raises(ValueError):
         trainer.fit()
 
 

@@ -10,7 +10,8 @@ import traceback
 import warnings
 
 import ray
-from ray.tune.error import get_tb_from_exception
+from ray.exceptions import RayTaskError
+from ray.tune.error import TuneStopTrialError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
@@ -879,23 +880,21 @@ class TrialRunner:
             if final_decision:
                 self._execute_action(trial, final_decision)
 
-    def _on_executor_error(self, trial, e: Exception):
+    def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
         error_msg = f"Trial {trial}: Error processing event."
         if self._fail_fast == TrialRunner.RAISE:
             logger.error(error_msg)
             raise e
         else:
             logger.exception(error_msg)
-            self._process_trial_failure(
-                trial, error_msg=get_tb_from_exception(e), exc=e
-            )
+            self._process_trial_failure(trial, exc=e)
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
         return trial[0] if trial else None
 
     def get_trials(self):
-        """Returns the list of trials managed by this TrialRunner.
+        """Returns the list of triaget_tb_from_exceptionls managed by this TrialRunner.
 
         Note that the caller usually should not mutate trial state directly.
         """
@@ -1148,7 +1147,7 @@ class TrialRunner:
         self._live_trials.add(trial)
 
     def _process_trial_failure(
-        self, trial: Trial, error_msg: str, exc: Optional[Exception] = None
+        self, trial: Trial, exc: Optional[Union[TuneError, RayTaskError]] = None
     ):
         """Handle trial failure.
 
@@ -1156,21 +1155,19 @@ class TrialRunner:
 
         Args:
             trial: Failed trial.
-            error_msg: Error message prior to invoking this method.
+            exc: Exception prior to invoking this method.
         """
         self._has_errored = True
         if trial.status == Trial.RUNNING:
             if trial.should_recover():
-                self._try_recover(trial, error_msg)
+                self._try_recover(trial, exc=exc)
             else:
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self._callbacks.on_trial_error(
                     iteration=self._iteration, trials=self._trials, trial=trial
                 )
-                self.trial_executor.stop_trial(
-                    trial, error=True, error_msg=error_msg, exc=exc
-                )
+                self.trial_executor.stop_trial(trial, exc=exc)
 
     def _queue_decision(self, trial, decision):
         # Get old decision, setting it to the current decision if it isn't set
@@ -1211,14 +1208,14 @@ class TrialRunner:
             if trial.runner:
                 self.trial_executor.save(trial, storage=_TuneCheckpoint.PERSISTENT)
 
-    def _try_recover(self, trial: Trial, error_msg: str):
+    def _try_recover(self, trial: Trial, exc: Union[TuneError, RayTaskError]):
         """Tries to recover trial.
 
         Notifies SearchAlgorithm and Scheduler if failure to recover.
 
         Args:
             trial: Trial to recover.
-            error_msg: Error message from prior to invoking this method.
+            exc: Exception prior to invoking this method.
         """
         self._cached_trial_decisions.pop(trial.trial_id, None)
         # Resetting this, in case that the trial is in saving status when it crashes.
@@ -1227,9 +1224,7 @@ class TrialRunner:
         if trial.is_restoring:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()
-        self.trial_executor.stop_trial(
-            trial, error=error_msg is not None, error_msg=error_msg
-        )
+        self.trial_executor.stop_trial(trial, error=exc is not None, exc=exc)
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
             logger.info(
@@ -1362,11 +1357,16 @@ class TrialRunner:
             self.trial_executor.export_trial_if_needed(trial)
             self.trial_executor.stop_trial(trial)
             self._live_trials.discard(trial)
-        except Exception:
+        except Exception as e:
             logger.exception("Trial %s: Error stopping trial.", trial)
             if self._fail_fast == TrialRunner.RAISE:
                 raise
-            self._process_trial_failure(trial, traceback.format_exc())
+            if isinstance(e, TuneError):
+                self._process_trial_failure(trial, exc=e)
+            else:
+                self._process_trial_failure(
+                    trial, TuneStopTrialError(traceback.format_exc())
+                )
 
     def cleanup_trials(self):
         self.trial_executor.cleanup(self.get_trials())
