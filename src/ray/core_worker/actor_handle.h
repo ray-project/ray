@@ -50,7 +50,8 @@ class ActorHandle {
   explicit ActorHandle(const std::string &serialized);
 
   /// Constructs an ActorHandle from a rpc::ActorTableData and a rpc::TaskSpec message.
-  ActorHandle(const rpc::ActorTableData &actor_table_data, const rpc::TaskSpec &task_spec);
+  ActorHandle(const rpc::ActorTableData &actor_table_data,
+              const rpc::TaskSpec &task_spec);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
