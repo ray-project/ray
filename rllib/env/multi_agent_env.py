@@ -363,7 +363,7 @@ class MultiAgentEnv(gym.Env):
 
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
-) -> Type["MultiAgentEnv"]:
+) -> MultiAgentEnv:
     """Convenience wrapper for any single-agent env to be converted into MA.
 
     Allows you to convert a simple (single-agent) `gym.Env` class
