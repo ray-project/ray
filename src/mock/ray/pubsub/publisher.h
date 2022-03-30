@@ -78,8 +78,21 @@ class MockPublisherInterface : public PublisherInterface {
 namespace ray {
 namespace pubsub {
 
+instrumented_io_context __io_service;
+PeriodicalRunner __periodical_runner(__io_service);
+
 class MockPublisher : public Publisher {
  public:
+  MockPublisher()
+      : Publisher(
+            std::vector<rpc::ChannelType>{
+                rpc::ChannelType::GCS_ACTOR_CHANNEL,
+            },
+            &__periodical_runner,
+            []() -> double { return absl::ToUnixMicros(absl::Now()); },
+            absl::ToInt64Microseconds(absl::Seconds(30)),
+            100) {}
+
   MOCK_METHOD(bool,
               RegisterSubscription,
               (const rpc::ChannelType channel_type,
@@ -97,6 +110,8 @@ class MockPublisher : public Publisher {
                const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
+
+ private:
 };
 
 }  // namespace pubsub
