@@ -10,9 +10,9 @@ import ray
 # NOTE(swang): This test currently fails in ASAN mode because it tests a
 # performance issue that is likely sensitive to timing.
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
-def test_spill_fusion(object_spilling_config):
+def test_spill_fusion(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    object_spilling_config, temp_folder = object_spilling_config
+    object_spilling_config, temp_folder = fs_only_object_spilling_config
     min_spilling_size = 10 * 1024 * 1024
     ray.init(
         num_cpus=1,
