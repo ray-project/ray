@@ -206,14 +206,13 @@ class Combiner:
 
 # DAG building
 with InputNode() as dag_input:
-    preprocessed_1 = preprocessor.bind(dag_input[0])  # Partial access of user input by index
-    preprocessed_2 = avg_preprocessor.bind(dag_input[1]) # Partial access of user input by index
+    # Partial access of user input by index
+    preprocessed_1 = preprocessor.bind(dag_input[0])  
+    preprocessed_2 = avg_preprocessor.bind(dag_input[1])
     m1 = Model.bind(1)
     m2 = Model.bind(2)
     combiner = Combiner.bind(m1, m2)
-    dag = combiner.run.bind(
-        preprocessed_1, preprocessed_2, dag_input[2]  # Partial access of user input by index
-    ) 
+    dag = combiner.run.bind(preprocessed_1, preprocessed_2, dag_input[2]) 
 ```
 
 +++
@@ -279,6 +278,12 @@ class Combiner:
             return f"sum({rst})"
         else:
             return f"max({rst})"
+```
+
++++
+
+```{tip}
+Support control flow in plain python code can be very useful to build dynamic dispatcher, such as routing user request to a smaller subset of running models based on request attribute, where each model can be sharded and scaled independently.
 ```
 
 +++
