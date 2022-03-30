@@ -1,13 +1,16 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List
-
-from ray.util import PublicAPI
+from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING
 
 from ray.tune.trainable import PlacementGroupFactory
 from ray.tune.callback import Callback
+from ray.util import PublicAPI
 
 
 ScalingConfig = Dict[str, Any]
+
+if TYPE_CHECKING:
+    from ray.tune.sample import Domain
+    SampleRange = Union[Domain, Dict[str, list], List]
 
 
 @dataclass
@@ -36,11 +39,11 @@ class ScalingConfigDataClass:
         Strategies <pgroup-strategy>` for the possible options.
     """
 
-    trainer_resources: Optional[Dict] = None
-    num_workers: Optional[int] = None
-    use_gpu: bool = False
-    resources_per_worker: Optional[Dict] = None
-    placement_strategy: str = "PACK"
+    trainer_resources: Optional[Union[Dict, SampleRange]] = None
+    num_workers: Optional[Union[int, SampleRange]] = None
+    use_gpu: Union[bool, SampleRange] = False
+    resources_per_worker: Optional[Union[Dict, SampleRange]] = None
+    placement_strategy: Union[str, SampleRange] = "PACK"
 
     def __post_init__(self):
         self.resources_per_worker = (

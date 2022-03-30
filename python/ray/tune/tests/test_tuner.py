@@ -9,7 +9,7 @@ from sklearn.utils import shuffle
 from ray import tune
 from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
-from ray.ml.config import RunConfig
+from ray.ml.config import RunConfig, ScalingConfigDataClass
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.ml.train import Trainer
 from ray.tune import Callback, TuneError
@@ -74,9 +74,9 @@ class TunerTest(unittest.TestCase):
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
         # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
-            "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
-            },
+            "scaling_config": ScalingConfigDataClass(
+                num_workers=tune.grid_search([1, 2])
+            ),
             # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
             #  is resolved.
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),

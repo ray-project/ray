@@ -1,14 +1,19 @@
+import dataclasses
+
 from ray.data import Dataset
+from ray.ml.config import ScalingConfigDataClass
 from ray.tune.sample import Categorical
 
+_KEY_SCALING_CONFIG = "scaling_config"
 
-def execute_dataset(config_dict: dict):
+
+def process_dataset_param(config_dict: dict):
     """Going through config dict (params space) and fully execute any Dataset
     if necessary.
     """
     for k, v in config_dict.items():
         if isinstance(v, dict):
-            execute_dataset(v)
+            process_dataset_param(v)
         elif isinstance(v, Dataset):
             config_dict[k] = v.fully_executed()
         # TODO(xwjiang): Consider CV config for beta.
@@ -26,3 +31,18 @@ def execute_dataset(config_dict: dict):
                     config_dict[k].categories = [
                         _item.fully_executed() for _item in _list
                     ]
+
+
+def process_scaling_config(params_space: dict):
+    """Convert ``params_space["scaling_config"]`` back to a dict so that
+    it can be used to generate search space.
+    """
+    scaling_config = params_space.get("scaling_config", None)
+    if not isinstance(scaling_config, ScalingConfigDataClass):
+        return
+    scaling_config_dict = dict()
+    for field in dataclasses.fields(scaling_config):
+        attr = getattr(scaling_config, field.name)
+        if attr:
+            scaling_config_dict[field.name] = attr
+    params_space[_KEY_SCALING_CONFIG] = scaling_config_dict
