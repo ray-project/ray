@@ -86,13 +86,14 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "n_step": 1,
 
         # === Replay buffer ===
-        # Size of the replay buffer. Note that if async_updates is set, then
-        # each worker will have a replay buffer of this size.
+        # Deprecated, use capacity in replay_buffer_config instead.
         "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
             # For now we don't use the new ReplayBuffer API here
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
+            # Size of the replay buffer. Note that if async_updates is set,
+            # then each worker will have a replay buffer of this size.
             "capacity": 50000,
             "replay_batch_size": 32,
             "prioritized_replay_alpha": 0.6,
