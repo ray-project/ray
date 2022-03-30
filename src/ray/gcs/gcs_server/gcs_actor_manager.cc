@@ -1090,6 +1090,12 @@ void GcsActorManager::OnActorSchedulingFailed(
         "created.\n",
         scheduling_failure_message);
     break;
+  case rpc::RequestWorkerLeaseReply::
+      SCHEDULING_CANCELLED_NODE_SCHEDULING_STRATEGY_NODE_DIED:
+    error_msg =
+        "Could not create the actor because the node specified via "
+        "NodeSchedulingStrategy died";
+    break;
   default:
     RAY_LOG(FATAL) << "Unknown error, failure type "
                    << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(

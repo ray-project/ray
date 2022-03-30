@@ -70,12 +70,17 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       if (keep_executing) {
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
-        const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
-                                           task_spec.GetDependencyIds(),
-                                           task_spec.IsActorCreationTask()
-                                               ? task_spec.ActorCreationId()
-                                               : ActorID::Nil(),
-                                           task_spec.GetRuntimeEnvHash());
+        const SchedulingKey scheduling_key(
+            task_spec.GetSchedulingClass(),
+            task_spec.GetDependencyIds(),
+            task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
+                                            : ActorID::Nil(),
+            task_spec.GetRuntimeEnvHash(),
+            task_spec.IsNodeSchedulingStrategy()
+                ? NodeID::FromBinary(task_spec.GetSchedulingStrategy()
+                                         .node_scheduling_strategy()
+                                         .node_id())
+                : NodeID::Nil());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
         scheduling_key_entry.resource_spec = task_spec;
@@ -381,7 +386,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED ||
                 reply.failure_type() ==
                     rpc::RequestWorkerLeaseReply::
-                        SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED) {
+                        SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
+                reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::
+                        SCHEDULING_CANCELLED_NODE_SCHEDULING_STRATEGY_NODE_DIED) {
               // We need to actively fail all of the pending tasks in the queue when the
               // placement group was removed or the runtime env failed to be set up. Such
               // an operation is straightforward for the scenario of placement group
@@ -403,6 +411,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                       rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
                       /*status*/ nullptr,
                       &error_info));
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_NODE_SCHEDULING_STRATEGY_NODE_DIED) {
+                  RAY_UNUSED(task_finisher_->FailPendingTask(
+                      task_spec.TaskId(),
+                      rpc::ErrorType::NODE_SCHEDULING_STRATEGY_NODE_DIED));
                 } else {
                   if (task_spec.IsActorCreationTask()) {
                     RAY_UNUSED(task_finisher_->FailPendingTask(
@@ -589,7 +603,11 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       task_spec.GetSchedulingClass(),
       task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
-      task_spec.GetRuntimeEnvHash());
+      task_spec.GetRuntimeEnvHash(),
+      task_spec.IsNodeSchedulingStrategy()
+          ? NodeID::FromBinary(
+                task_spec.GetSchedulingStrategy().node_scheduling_strategy().node_id())
+          : NodeID::Nil());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);

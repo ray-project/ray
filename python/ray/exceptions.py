@@ -563,6 +563,11 @@ class PendingCallsLimitExceeded(RayError):
     pass
 
 
+class NodeSchedulingStrategyNodeDiedError(RayError):
+    def __str__(self):
+        return "The node that's specified via strict NodeSchedulingStrategy is dead."
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -584,4 +589,5 @@ RAY_EXCEPTION_TYPES = [
     ActorPlacementGroupRemoved,
     PendingCallsLimitExceeded,
     LocalRayletDiedError,
+    NodeSchedulingStrategyNodeDiedError,
 ]

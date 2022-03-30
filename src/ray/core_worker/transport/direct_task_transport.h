@@ -49,9 +49,11 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &i
 // be aware of the actor and is not able to manage it.  It is also keyed on
 // RuntimeEnvHash, because a worker can only run a task if the worker's RuntimeEnvHash
 // matches the RuntimeEnvHash required by the task spec.
+// It is also keyed on node ID if the task has the required node for placement
+// through NodeSchedulingStrategy.
 typedef int RuntimeEnvHash;
 using SchedulingKey =
-    std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
+    std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash, NodeID>;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
@@ -266,7 +268,7 @@ class CoreWorkerDirectTaskSubmitter {
         google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
         SchedulingKey scheduling_key =
-            std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0))
+            std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0, NodeID::Nil()))
         : lease_client(lease_client),
           lease_expiration_time(lease_expiration_time),
           assigned_resources(assigned_resources),

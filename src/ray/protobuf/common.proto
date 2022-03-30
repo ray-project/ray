@@ -188,6 +188,9 @@ enum ErrorType {
   TASK_PLACEMENT_GROUP_REMOVED = 16;
   // Indicates that the placement group corresponding to an actor has been removed.
   ACTOR_PLACEMENT_GROUP_REMOVED = 17;
+  // Task/Actor is failed to be scheduled because
+  // the node that's specified via strict NodeSchedulingStrategy died.
+  NODE_SCHEDULING_STRATEGY_NODE_DIED = 18;
 }
 
 /// The information per ray error type.

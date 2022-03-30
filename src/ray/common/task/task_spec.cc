@@ -240,6 +240,15 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
+const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
+  return message_->scheduling_strategy();
+}
+
+bool TaskSpecification::IsNodeSchedulingStrategy() const {
+  return GetSchedulingStrategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeSchedulingStrategy;
+}
+
 std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
