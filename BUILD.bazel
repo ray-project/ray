@@ -505,26 +505,6 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "gcs_pub_sub_test",
-    size = "small",
-    srcs = ["src/ray/gcs/pubsub/test/gcs_pub_sub_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_pub_sub_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cc_library(
     name = "gcs_server_lib",
     srcs = glob(
