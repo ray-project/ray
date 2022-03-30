@@ -33,8 +33,8 @@ We want to leverage the programmable and general purpose distributed computing a
 - Graph authoring experience should be fully Python-programmable with support for dynamic selection, control flows, user business logic, etc.
 - Graph can be instantiated and locally executed using tasks and actors API
 - Graph can be deployed as a group where individual nodes can be reconfigured and scaled indepenently.
-- User should not need to write any YAML file to author, run, iterate, and deployment a graph. 
-- Have a path for DevOps / MLOps people to take actions on operationalizei
+- User should not need to write any YAML file to author, run, iterate, and deploy a graph. 
+- Have a path for DevOps / MLOps people to take actions on operationalizing a deployment graph with minimal knowledge required of the code.
 
 __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md)__
 
@@ -549,3 +549,17 @@ model forward: ```max(m1.forward, m2.forward) = 0.3 secs```
 <br>
 <br>
 Total of `0.45` secs.
+
++++
+
+## Conclusion
+
+We've walked through key concepts and a simple representative example that covers many important details we support in deployment graph building. There're still some rough edges in user experience that we're dedicated to polish in the next a few months, so please reach out to us if you have any feedback or suggestions:
+
+- Ray Serve forum: https://discuss.ray.io/c/ray-serve/6
+- Github issues / feature request: https://github.com/ray-project/ray/issues (tag `serve`)
+
+Potential Future improvements: 
+ - `serve.build()` to fulfill the Ops API so user's deployment graph can generate a YAML file for deployment, scaling and reconfiguration.
+ - Performance optimization and tuning to better take advantage of async handle and ray shared memory to reduce or eliminate intermediate data transfer
+ - Better UX, such as visualization
