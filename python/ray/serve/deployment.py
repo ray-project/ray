@@ -14,11 +14,12 @@ from ray.serve.config import (
     DeploymentConfig,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.utils import DEFAULT
 from ray.util.annotations import PublicAPI
 
 # TODO (shrekris-anyscale): remove dependency on api.py
-from ray.serve.api import internal_get_global_client
+from ray.serve.api import internal_get_global_client, deployment_to_schema
 
 
 @PublicAPI

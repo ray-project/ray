@@ -78,6 +78,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeApplicationStatusSchema,
 )
+from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 
 
 _INTERNAL_REPLICA_CONTEXT = None
