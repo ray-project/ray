@@ -230,7 +230,6 @@ def _store_package_in_gcs(
     pkg_uri: str,
     data: bytes,
     logger: Optional[logging.Logger] = default_logger,
-    _gcs_put: Callable = _internal_kv_put,
 ) -> int:
     """Stores package data in the Global Control Store (GCS).
 
@@ -238,9 +237,6 @@ def _store_package_in_gcs(
         pkg_uri (str): The GCS key to store the data in.
         data (bytes): The serialized package's bytes to store in the GCS.
         logger (Optional[logging.Logger]): The logger used by this function.
-        _gcs_put (Callable): The function used to upload data to the GCS. In
-            general, this should be ray.experimental._internal_kv_put(). Used
-            by unit tests for dependency injection.
 
     Return:
         int: Size of data
@@ -261,7 +257,7 @@ def _store_package_in_gcs(
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
     try:
-        _gcs_put(pkg_uri, data)
+        _internal_kv_put(pkg_uri, data)
     except RuntimeError as e:
         raise RuntimeError(
             "Failed to store package in the GCS.\n"

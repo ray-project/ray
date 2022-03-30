@@ -10,10 +10,13 @@ import uuid
 import pytest
 from ray.ray_constants import KV_NAMESPACE_PACKAGE
 from ray.experimental.internal_kv import (
+    _internal_kv_reset,
+    _initialize_internal_kv,
     _internal_kv_del,
     _internal_kv_exists,
     _internal_kv_get,
 )
+from ray._private.gcs_utils import GcsClient
 from ray._private.runtime_env.packaging import (
     _dir_travel,
     _store_package_in_gcs,
@@ -160,6 +163,15 @@ class TestUploadPackageIfNeeded:
 
 
 class TestStorePackageInGcs:
+    class DisconnectedClient(GcsClient):
+        """Mock GcsClient that fails cannot put in the GCS."""
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def internal_kv_put(self, *args, **kwargs):
+            raise RuntimeError("Cannot reach GCS!")
+
     def raise_runtime_error(self, *args, **kwargs):
         raise RuntimeError("Raised a runtime error!")
 
@@ -181,8 +193,11 @@ class TestStorePackageInGcs:
         bytes = b"test"
 
         assert len(bytes) < GCS_STORAGE_MAX_SIZE
+
+        _internal_kv_reset()
+        _initialize_internal_kv(self.DisconnectedClient())
         with pytest.raises(RuntimeError, match="Failed to store package in the GCS"):
-            _store_package_in_gcs(uri, bytes, _gcs_put=self.raise_runtime_error)
+            _store_package_in_gcs(uri, bytes)
 
     def test_package_size_too_large(self):
         """Check that function throws useful error when package is too large."""
