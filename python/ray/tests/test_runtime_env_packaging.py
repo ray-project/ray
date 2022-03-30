@@ -178,7 +178,7 @@ class TestStorePackageInGcs:
     def test_upload_succeeds(self, ray_start_regular):
         """Check function behavior when upload succeeds."""
 
-        uri = "gcs:/test.zip"
+        uri = "gcs://test.zip"
         bytes = b"test"
 
         assert len(bytes) < GCS_STORAGE_MAX_SIZE
@@ -189,7 +189,7 @@ class TestStorePackageInGcs:
     def test_upload_fails(self):
         """Check that function throws useful error when upload fails."""
 
-        uri = "gcs:/test.zip"
+        uri = "gcs://test.zip"
         bytes = b"test"
 
         assert len(bytes) < GCS_STORAGE_MAX_SIZE
