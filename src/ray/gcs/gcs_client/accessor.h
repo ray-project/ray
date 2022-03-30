@@ -80,7 +80,8 @@ class ActorInfoAccessor {
   /// NotFound if the name doesn't exist.
   virtual Status SyncGetByName(const std::string &name,
                                const std::string &ray_namespace,
-                               rpc::ActorTableData &actor_table_data);
+                               rpc::ActorTableData &actor_table_data,
+                               rpc::TaskSpec &task_spec);
 
   /// List all named actors from the GCS asynchronously.
   ///

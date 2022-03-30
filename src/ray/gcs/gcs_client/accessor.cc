@@ -203,15 +203,17 @@ Status ActorInfoAccessor::AsyncGetByName(
 
 Status ActorInfoAccessor::SyncGetByName(const std::string &name,
                                         const std::string &ray_namespace,
-                                        rpc::ActorTableData &actor_table_data) {
+                                        rpc::ActorTableData &actor_table_data,
+                                        rpc::TaskSpec &task_spec) {
   rpc::GetNamedActorInfoRequest request;
   rpc::GetNamedActorInfoReply reply;
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
   auto status = client_impl_->GetGcsRpcClient().SyncGetNamedActorInfo(
       request, &reply, /*timeout_ms*/ GetGcsTimeoutMs());
-  if (status.ok() && reply.has_actor_table_data()) {
+  if (status.ok()) {
     actor_table_data = reply.actor_table_data();
+    task_spec = reply.task_spec();
   }
   return status;
 }

@@ -57,8 +57,8 @@ rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serialized)
   return inner;
 }
 
-rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
-    const rpc::ActorTableData &actor_table_data) {
+rpc::ActorHandle CreateInnerActorHandleFromActorData(
+    const rpc::ActorTableData &actor_table_data, const rpc::TaskSpec &task_spec) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_table_data.actor_id());
   inner.set_owner_id(actor_table_data.parent_id());
@@ -113,8 +113,8 @@ ActorHandle::ActorHandle(
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
 
-ActorHandle::ActorHandle(const rpc::ActorTableData &actor_table_data)
-    : ActorHandle(CreateInnerActorHandleFromActorTableData(actor_table_data)) {}
+ActorHandle::ActorHandle(const rpc::ActorTableData &actor_table_data, const rpc::TaskSpec task_spec)
+    : ActorHandle(CreateInnerActorHandleFromActorData(actor_table_data, task_spec)) {}
 
 void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor) {
   absl::MutexLock guard(&mutex_);
