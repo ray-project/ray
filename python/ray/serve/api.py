@@ -132,6 +132,10 @@ def internal_get_global_client(
         _health_check_controller (bool): If True, run a health check on the
             cached controller if it exists. If the check fails, try reconnecting
             to the controller.
+
+    Raises:
+        RayServeException: if there is no Serve controller actor in the
+            expected namespace.
     """
 
     try:
@@ -812,6 +816,10 @@ def _connect(_override_controller_namespace: Optional[str] = None) -> Client:
         _override_controller_namespace (Optional[str]): The namespace to use
             when looking for the controller. If None, Serve recalculates the
             controller's namespace using _get_controller_namespace().
+
+    Raises:
+        RayServeException: if there is no Serve controller actor in the
+            expected namespace.
     """
 
     # Initialize ray if needed.
@@ -858,10 +866,17 @@ def shutdown() -> None:
     Shuts down all processes and deletes all state associated with the
     instance.
     """
-    if _global_client is None:
+
+    try:
+        client = internal_get_global_client()
+    except RayServeException:
+        logger.info(
+            "Nothing to shut down. There's no Serve application "
+            "running on this Ray cluster."
+        )
         return
 
-    internal_get_global_client().shutdown()
+    client.shutdown()
     _set_global_client(None)
 
 
@@ -988,7 +1003,7 @@ class RayServeDAGHandle:
     """Resolved from a DeploymentNode at runtime.
 
     This can be used to call the DAG from a driver deployment to efficiently
-    orchestrate a multi-deployment pipeline.
+    orchestrate a deployment graph.
     """
 
     def __init__(self, dag_node_json: str) -> None:
@@ -1037,11 +1052,10 @@ class DeploymentMethodNode(DAGNode):
 class DeploymentNode(ClassNode):
     """Represents a deployment with its bound config options and arguments.
 
-    The bound deployment can be run, deployed, or built to a production config
-    using serve.run, serve.deploy, and serve.build, respectively.
+    The bound deployment can be run using serve.run().
 
     A bound deployment can be passed as an argument to other bound deployments
-    to build a multi-deployment application. When the application is deployed, the
+    to build a deployment graph. When the graph is deployed, the
     bound deployments passed into a constructor will be converted to
     RayServeHandles that can be used to send requests.
 
@@ -1227,7 +1241,7 @@ class Deployment:
         """Bind the provided arguments and return a DeploymentNode.
 
         The returned bound deployment can be deployed or bound to other
-        deployments to create a multi-deployment application.
+        deployments to create a deployment graph.
         """
         copied_self = copy(self)
         copied_self._init_args = []
@@ -1952,7 +1966,6 @@ def run(
         return ingress.get_handle()
 
 
-@PublicAPI(stability="alpha")
 def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
@@ -1973,7 +1986,7 @@ def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
 
     if in_interactive_shell():
         raise RuntimeError(
-            "serve.build cannot be called from an interactive shell like "
+            "build cannot be called from an interactive shell like "
             "IPython or Jupyter because it requires all deployments to be "
             "importable to run the app after building."
         )
