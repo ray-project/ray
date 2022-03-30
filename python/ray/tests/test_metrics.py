@@ -2,6 +2,7 @@ import os
 import grpc
 import requests
 import time
+import pytest
 
 import ray
 from ray.core.generated import common_pb2
@@ -181,18 +182,12 @@ def test_metrics_export_port_fail_on_nonexclusive_port(ray_start_cluster):
     p = Process(target=listen_on_socket, args=(port,))
     p.start()
     time.sleep(1)
-    try:
+    with pytest.raises(OSError):
         cluster.add_node(True, metrics_export_port=port)
-    except OSError:
-        p.terminate()
-        return
-    finally:
-        p.terminate()
-    raise Exception("Unreachable: meant to except as OSError")
+    p.terminate()
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
