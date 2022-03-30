@@ -84,6 +84,7 @@ Let's start with the first layer of DAG: Building user input to two preprocessor
 +++
 
 ```python
+import asyncio
 from ray import serve
 # We will later move Ray DAG related components 
 # out of experimental in later stable release
@@ -92,13 +93,13 @@ from ray.experimental.dag.input_node import InputNode
 @serve.deployment
 async def preprocessor(input_data: str):
     """Simple feature processing that converts str to int"""
-    time.sleep(0.1) # Manual delay for blocking computation
+    await asyncio.sleep(0.1) # Manual delay for blocking computation
     return int(input_data)
 
 @serve.deployment
 async def avg_preprocessor(input_data):
     """Simple feature processing that returns average of input list as float."""
-    time.sleep(0.15) # Manual delay for blocking computation
+    await asyncio.sleep(0.15) # Manual delay for blocking computation
     return sum(input_data) / len(input_data)
 
 # DAG building
@@ -182,7 +183,7 @@ class Model:
         self.weight = weight
 
     async def forward(self, input: int):
-        time.sleep(0.3) # Manual delay for blocking computation 
+        await asyncio.sleep(0.3) # Manual delay for blocking computation 
         return f"({self.weight} * {input})"
 
 
