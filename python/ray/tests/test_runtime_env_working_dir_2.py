@@ -140,7 +140,7 @@ def test_large_file_error(shutdown_only, option: str):
         with open("test_file_2", "wb") as f:
             f.write(os.urandom(size))
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError):
             if option == "working_dir":
                 ray.init(runtime_env={"working_dir": "."})
             else:
