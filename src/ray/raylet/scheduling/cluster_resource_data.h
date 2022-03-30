@@ -51,7 +51,7 @@ class ResourceRequest {
       : equires_object_store_memory_(requires_object_store_memory) {
     for (auto entry : resource_map) {
       if (entry.second != 0) {
-        custom_resources_[entry.first] = entry.second;
+        resources_[entry.first] = entry.second;
       }
     }
   }
@@ -63,8 +63,8 @@ class ResourceRequest {
   /// Get the value of a particular resource.
   /// If the resource doesn't exist, return 0.
   FixedPoint Get(ResourceID resource_id) const {
-    auto it = custom_resources_.find(resource_id);
-    if (it == custom_resources_.end()) {
+    auto it = resources_.find(resource_id);
+    if (it == resources_.end()) {
       return FixedPoint(0);
     } else {
       return it->second;
@@ -75,27 +75,27 @@ class ResourceRequest {
   /// NOTE: if the new value is 0, the resource will be removed.
   ResourceRequest &Set(ResourceID resource_id, FixedPoint value) {
     if (value == 0) {
-      custom_resources_.erase(resource_id);
+      resources_.erase(resource_id);
     } else {
-      custom_resources_[resource_id] = value;
+      resources_[resource_id] = value;
     }
     return *this;
   }
 
   /// Check whether a particular resource exist.
   bool Has(ResourceID resource_id) const {
-    auto it = custom_resources_.find(resource_id);
-    return it != custom_resources_.end();
+    auto it = resources_.find(resource_id);
+    return it != resources_.end();
   }
 
   /// Clear the whole set.
-  void Clear() { custom_resources_.clear(); }
+  void Clear() { resources_.clear(); }
 
   /// Remove the negative values in this set.
   void RemoveNegative() {
-    for (auto it = custom_resources_.begin(); it != custom_resources_.end();) {
+    for (auto it = resources_.begin(); it != resources_.end();) {
       if (it->second < 0) {
-        custom_resources_.erase(it++);
+        resources_.erase(it++);
       } else {
         it++;
       }
@@ -103,21 +103,21 @@ class ResourceRequest {
   }
 
   /// Return the number of resources in this set.
-  size_t Size() const { return custom_resources_.size(); }
+  size_t Size() const { return resources_.size(); }
 
   /// Return true if this set is empty.
-  bool IsEmpty() const { return custom_resources_.empty(); }
+  bool IsEmpty() const { return resources_.empty(); }
 
   /// Return a set that contains all resource ids in this set.
   boost::select_first_range<absl::flat_hash_map<ResourceID, FixedPoint>> ResourceIds()
       const {
-    return boost::adaptors::keys(custom_resources_);
+    return boost::adaptors::keys(resources_);
   }
 
   /// Return a map from the resource ids to the values.
   absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
     absl::flat_hash_map<ResourceID, FixedPoint> res;
-    for (auto entry : custom_resources_) {
+    for (auto entry : resources_) {
       res.emplace(entry.first, entry.second);
     }
     return res;
@@ -136,37 +136,37 @@ class ResourceRequest {
   }
 
   ResourceRequest &operator+=(const ResourceRequest &other) {
-    for (auto &entry : other.custom_resources_) {
-      auto it = custom_resources_.find(entry.first);
-      if (it != custom_resources_.end()) {
+    for (auto &entry : other.resources_) {
+      auto it = resources_.find(entry.first);
+      if (it != resources_.end()) {
         it->second += entry.second;
         if (it->second == 0) {
-          custom_resources_.erase(it);
+          resources_.erase(it);
         }
       } else {
-        custom_resources_.emplace(entry.first, entry.second);
+        resources_.emplace(entry.first, entry.second);
       }
     }
     return *this;
   }
 
   ResourceRequest &operator-=(const ResourceRequest &other) {
-    for (auto &entry : other.custom_resources_) {
-      auto it = custom_resources_.find(entry.first);
-      if (it != custom_resources_.end()) {
+    for (auto &entry : other.resources_) {
+      auto it = resources_.find(entry.first);
+      if (it != resources_.end()) {
         it->second -= entry.second;
         if (it->second == 0) {
-          custom_resources_.erase(it);
+          resources_.erase(it);
         }
       } else {
-        custom_resources_.emplace(entry.first, -entry.second);
+        resources_.emplace(entry.first, -entry.second);
       }
     }
     return *this;
   }
 
   bool operator==(const ResourceRequest &other) const {
-    return this->custom_resources_ == other.custom_resources_;
+    return this->resources_ == other.resources_;
   }
 
   bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
@@ -176,11 +176,11 @@ class ResourceRequest {
   /// in B.
   bool operator<=(const ResourceRequest &other) const {
     // Check all resources that exist in this.
-    for (auto &entry : custom_resources_) {
+    for (auto &entry : resources_) {
       auto &this_value = entry.second;
       auto other_value = FixedPoint(0);
-      auto it = other.custom_resources_.find(entry.first);
-      if (it != other.custom_resources_.end()) {
+      auto it = other.resources_.find(entry.first);
+      if (it != other.resources_.end()) {
         other_value = it->second;
       }
       if (this_value > other_value) {
@@ -188,8 +188,8 @@ class ResourceRequest {
       }
     }
     // Check all resources that exist in other, but not in this.
-    for (auto &entry : other.custom_resources_) {
-      if (!custom_resources_.contains(entry.first)) {
+    for (auto &entry : other.resources_) {
+      if (!resources_.contains(entry.first)) {
         if (entry.second < 0) {
           return false;
         }
@@ -221,7 +221,7 @@ class ResourceRequest {
 
  private:
   /// The custom resources.
-  absl::flat_hash_map<ResourceID, FixedPoint> custom_resources_;
+  absl::flat_hash_map<ResourceID, FixedPoint> resources_;
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory_ = false;
@@ -259,8 +259,8 @@ class TaskResourceInstances {
   /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
   /// check fail will occur.
   const std::vector<FixedPoint> &Get(const ResourceID resource_id) const {
-    auto it = custom_resources_.find(resource_id);
-    RAY_CHECK(it != custom_resources_.end()) << "Resource ID not found " << resource_id;
+    auto it = resources_.find(resource_id);
+    RAY_CHECK(it != resources_.end()) << "Resource ID not found " << resource_id;
     return it->second;
   }
 
@@ -286,15 +286,15 @@ class TaskResourceInstances {
   /// check fail will occur.
   /// TODO(hchen): We should hide this method, and encapsulate all mutation operations.
   std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
-    auto it = custom_resources_.find(resource_id);
-    RAY_CHECK(it != custom_resources_.end()) << "Resource ID not found " << resource_id;
+    auto it = resources_.find(resource_id);
+    RAY_CHECK(it != resources_.end()) << "Resource ID not found " << resource_id;
     return it->second;
   }
 
   /// Check whether a particular resource exists.
   bool Has(ResourceID resource_id) const {
-    auto it = custom_resources_.find(resource_id);
-    return it != custom_resources_.end();
+    auto it = resources_.find(resource_id);
+    return it != resources_.end();
   }
 
   /// Set the per-instance values for a particular resource.
@@ -303,7 +303,7 @@ class TaskResourceInstances {
     if (instances.size() == 0) {
       Remove(resource_id);
     } else {
-      custom_resources_.emplace(resource_id, instances);
+      resources_.emplace(resource_id, instances);
     }
     return *this;
   }
@@ -326,22 +326,22 @@ class TaskResourceInstances {
   }
 
   /// Remove a particular resource.
-  void Remove(ResourceID resource_id) { custom_resources_.erase(resource_id); }
+  void Remove(ResourceID resource_id) { resources_.erase(resource_id); }
 
   /// Return a set of all resource ids.
   boost::select_first_range<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
   ResourceIds() const {
-    return boost::adaptors::keys(custom_resources_);
+    return boost::adaptors::keys(resources_);
   }
 
   /// Return the number of resources in this set.
-  size_t Size() const { return custom_resources_.size(); }
+  size_t Size() const { return resources_.size(); }
 
   /// Check whether this set is empty.
-  bool IsEmpty() const { return custom_resources_.empty(); }
+  bool IsEmpty() const { return resources_.empty(); }
 
   bool operator==(const TaskResourceInstances &other) const {
-    return this->custom_resources_ == other.custom_resources_;
+    return this->resources_ == other.resources_;
   }
 
   /// Return a ResourceRequest with the aggregated per-instance values.
@@ -406,7 +406,7 @@ class TaskResourceInstances {
 
  private:
   /// The custom resources.
-  absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> custom_resources_;
+  absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
 };
 
 /// Total and available capacities of each resource of a node.
