@@ -27,9 +27,7 @@ class Metric:
         self, name: str, description: str = "", tag_keys: Optional[Tuple[str]] = None
     ):
         if len(name) == 0:
-            raise ValueError(
-                "Empty name is not allowed. " "Please provide a metric name."
-            )
+            raise ValueError("Empty name is not allowed. Please provide a metric name.")
         self._name = name
         self._description = description
         # The default tags key-value pair.

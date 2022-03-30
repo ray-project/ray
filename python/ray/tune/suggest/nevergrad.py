@@ -44,17 +44,17 @@ class NevergradSearch(Searcher):
         $ pip install nevergrad
 
     Parameters:
-        optimizer (nevergrad.optimization.Optimizer|class): Optimizer provided
+        optimizer: Optimizer provided
             from Nevergrad. Alter
-        space (list|nevergrad.parameter.Parameter): Nevergrad parametrization
+        space: Nevergrad parametrization
             to be passed to optimizer on instantiation, or list of parameter
             names if you passed an optimizer object.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
@@ -322,7 +322,7 @@ class NevergradSearch(Searcher):
             sampler = domain.get_sampler()
             if isinstance(sampler, Quantized):
                 logger.warning(
-                    "Nevergrad does not support quantization. " "Dropped quantization."
+                    "Nevergrad does not support quantization. Dropped quantization."
                 )
                 sampler = sampler.get_sampler()
 

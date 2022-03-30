@@ -10,7 +10,6 @@ import ray
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray._private.gcs_utils import use_gcs_for_bootstrap
 from ray.util.metrics import Counter, Histogram, Gauge
 from ray._private.test_utils import (
     wait_for_condition,
@@ -75,10 +74,6 @@ _METRICS = [
     "ray_gcs_new_resource_creation_latency_ms_sum",
     "ray_gcs_actors_count",
 ]
-
-# ray_gcs_latency_sum is a metric in redis context
-if not use_gcs_for_bootstrap():
-    _METRICS.append("ray_gcs_latency_sum")
 
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
@@ -268,10 +263,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     nodes = [cluster.add_node() for _ in range(NUM_NODES)]
     cluster.wait_for_nodes()
     addr = ray.init(address=cluster.address)
-    redis_address = addr["redis_address"]
     writer = PrometheusServiceDiscoveryWriter(
-        redis_address,
-        ray.ray_constants.REDIS_DEFAULT_PASSWORD,
         addr["gcs_address"],
         "/tmp/ray",
     )

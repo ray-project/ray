@@ -5,7 +5,7 @@ import weakref
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.utils import get_runtime_env_info, parse_runtime_env
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
@@ -343,6 +343,10 @@ class ActorClassMetadata:
         )
 
 
+class ActorClassInheritanceException(TypeError):
+    pass
+
+
 class ActorClass:
     """An actor class.
 
@@ -360,11 +364,15 @@ class ActorClass:
         use the '_ray_from_modified_class' classmethod.
 
         Raises:
-            TypeError: Always.
+            ActorClassInheritanceException: When ActorClass is inherited.
+            AssertionError: If ActorClassInheritanceException is not raised i.e.,
+                            conditions for raising it are not met in any
+                            iteration of the loop.
+            TypeError: In all other cases.
         """
         for base in bases:
             if isinstance(base, ActorClass):
-                raise TypeError(
+                raise ActorClassInheritanceException(
                     f"Attempted to define subclass '{name}' of actor "
                     f"class '{base.__ray_metadata__.class_name}'. "
                     "Inheriting from actor classes is "
@@ -430,7 +438,20 @@ class ActorClass:
         # Make sure the actor class we are constructing inherits from the
         # original class so it retains all class properties.
         class DerivedActorClass(cls, modified_class):
-            pass
+            def __init__(self, *args, **kwargs):
+                try:
+                    cls.__init__(self, *args, **kwargs)
+                except Exception as e:
+                    # Delegate call to modified_class.__init__ only
+                    # if the exception raised by cls.__init__ is
+                    # TypeError and not ActorClassInheritanceException(TypeError).
+                    # In all other cases proceed with raise e.
+                    if isinstance(e, TypeError) and not isinstance(
+                        e, ActorClassInheritanceException
+                    ):
+                        modified_class.__init__(self, *args, **kwargs)
+                    else:
+                        raise e
 
         name = f"ActorClass({modified_class.__name__})"
         DerivedActorClass.__module__ = modified_class.__module__
@@ -443,16 +464,7 @@ class ActorClass:
             modified_class.__ray_actor_class__
         )
 
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, str):
-                new_runtime_env = runtime_env
-            else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
-        else:
-            new_runtime_env = None
+        new_runtime_env = parse_runtime_env(runtime_env)
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON,
@@ -491,16 +503,7 @@ class ActorClass:
     ):
         self = ActorClass.__new__(ActorClass)
 
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, str):
-                new_runtime_env = runtime_env
-            else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
-        else:
-            new_runtime_env = None
+        new_runtime_env = parse_runtime_env(runtime_env)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language,
@@ -551,6 +554,7 @@ class ActorClass:
         max_task_retries=None,
         name=None,
         namespace=None,
+        get_if_exists=False,
         lifetime=None,
         placement_group="default",
         placement_group_bundle_index=-1,
@@ -579,19 +583,7 @@ class ActorClass:
 
         actor_cls = self
 
-        # Parse local pip/conda config files here. If we instead did it in
-        # .remote(), it would get run in the Ray Client server, which runs on
-        # a remote node where the files aren't available.
-        if runtime_env:
-            if isinstance(runtime_env, str):
-                new_runtime_env = runtime_env
-            else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
-        else:
-            # Keep the new_runtime_env as None.  In .remote(), we need to know
-            # if runtime_env is None to know whether or not to fall back to the
-            # runtime_env specified in the @ray.remote decorator.
-            new_runtime_env = None
+        new_runtime_env = parse_runtime_env(runtime_env)
 
         cls_options = dict(
             num_cpus=num_cpus,
@@ -616,13 +608,22 @@ class ActorClass:
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
+                # Handle the get-or-create case.
+                if get_if_exists:
+                    if not cls_options.get("name"):
+                        raise ValueError(
+                            "The actor name must be specified to use `get_if_exists`."
+                        )
+                    return self._get_or_create_impl(args, kwargs)
+
+                # Normal create case.
                 return actor_cls._remote(
                     args=args,
                     kwargs=kwargs,
                     **cls_options,
                 )
 
-            def _bind(self, *args, **kwargs):
+            def bind(self, *args, **kwargs):
                 """
                 **Experimental**
 
@@ -637,6 +638,23 @@ class ActorClass:
                     kwargs,
                     cls_options,
                 )
+
+            def _get_or_create_impl(self, args, kwargs):
+                name = cls_options["name"]
+                try:
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
+                except ValueError:
+                    # Attempt to create it (may race with other attempts).
+                    try:
+                        return actor_cls._remote(
+                            args=args,
+                            kwargs=kwargs,
+                            **cls_options,
+                        )
+                    except ValueError:
+                        # We lost the creation race, ignore.
+                        pass
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
 
         return ActorOptionWrapper()
 
@@ -945,15 +963,16 @@ class ActorClass:
                 scheduling_strategy = "DEFAULT"
 
         if runtime_env:
-            if isinstance(runtime_env, str):
-                # Serialzed protobuf runtime env from Ray client.
-                new_runtime_env = runtime_env
-            elif isinstance(runtime_env, ParsedRuntimeEnv):
-                new_runtime_env = runtime_env.serialize()
-            else:
-                raise TypeError(f"Error runtime env type {type(runtime_env)}")
+            new_runtime_env = parse_runtime_env(runtime_env)
         else:
             new_runtime_env = meta.runtime_env
+        serialized_runtime_env_info = None
+        if new_runtime_env is not None:
+            serialized_runtime_env_info = get_runtime_env_info(
+                new_runtime_env,
+                is_job_runtime_env=False,
+                serialize=True,
+            )
 
         concurrency_groups_dict = {}
         for cg_name in meta.concurrency_groups:
@@ -974,6 +993,20 @@ class ActorClass:
                 PythonFunctionDescriptor(module_name, method_name, class_name)
             )
 
+        # Update the creation descriptor based on number of arguments
+        if meta.is_cross_language:
+            func_name = "<init>"
+            if meta.language == Language.CPP:
+                func_name = meta.actor_creation_function_descriptor.function_name
+            meta.actor_creation_function_descriptor = (
+                cross_language.get_function_descriptor_for_actor_method(
+                    meta.language,
+                    meta.actor_creation_function_descriptor,
+                    func_name,
+                    str(len(args) + len(kwargs)),
+                )
+            )
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -989,7 +1022,7 @@ class ActorClass:
             is_asyncio,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            serialized_runtime_env=new_runtime_env or "{}",
+            serialized_runtime_env_info=serialized_runtime_env_info or "{}",
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
@@ -1009,7 +1042,7 @@ class ActorClass:
 
         return actor_handle
 
-    def _bind(self, *args, **kwargs):
+    def bind(self, *args, **kwargs):
         """
         **Experimental**
 
@@ -1137,12 +1170,13 @@ class ActorHandle:
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
             list_args = cross_language.format_args(worker, args, kwargs)
-            function_descriptor = (
-                cross_language.get_function_descriptor_for_actor_method(
-                    self._ray_actor_language,
-                    self._ray_actor_creation_function_descriptor,
-                    method_name,
-                )
+            function_descriptor = cross_language.get_function_descriptor_for_actor_method(  # noqa: E501
+                self._ray_actor_language,
+                self._ray_actor_creation_function_descriptor,
+                method_name,
+                # The signature for xlang should be "{length_of_arguments}" to handle
+                # overloaded methods.
+                signature=str(len(args) + len(kwargs)),
             )
         else:
             function_signature = self._ray_method_signatures[method_name]
@@ -1154,9 +1188,9 @@ class ActorHandle:
             function_descriptor = self._ray_function_descriptor[method_name]
 
         if worker.mode == ray.LOCAL_MODE:
-            assert not self._ray_is_cross_language, (
-                "Cross language remote actor method " "cannot be executed locally."
-            )
+            assert (
+                not self._ray_is_cross_language
+            ), "Cross language remote actor method cannot be executed locally."
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -1194,7 +1228,7 @@ class ActorHandle:
 
                 def remote(self, *args, **kwargs):
                     logger.warning(
-                        f"Actor method {item} is not " "supported by cross language."
+                        f"Actor method {item} is not supported by cross language."
                     )
 
             return FakeActorMethod()

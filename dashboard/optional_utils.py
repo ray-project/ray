@@ -2,6 +2,7 @@
 Optional utils module contains utility methods
 that require optional dependencies.
 """
+from aiohttp.web import Response
 import asyncio
 import collections
 import functools
@@ -12,8 +13,9 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Any
+from typing import Any, Callable
 
+import ray
 import ray.dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
 
@@ -29,6 +31,8 @@ from ray.dashboard.optional_deps import aiohttp, hdrs, PathLike, RouteDef
 from ray.dashboard.utils import to_google_style, CustomEncoder
 
 logger = logging.getLogger(__name__)
+
+RAY_INTERNAL_DASHBOARD_NAMESPACE = "_ray_internal_dashboard"
 
 
 class ClassMethodRouteTable:
@@ -242,3 +246,40 @@ def aiohttp_cache(
         return _wrapper(target_func)
     else:
         return _wrapper
+
+
+def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
+    """Decorator to be used on methods that require being connected to Ray."""
+
+    def decorator_factory(f: Callable) -> Callable:
+        @functools.wraps(f)
+        async def decorator(self, *args, **kwargs):
+            try:
+                if not ray.is_initialized():
+                    try:
+                        address = self._dashboard_head.gcs_address
+                        logger.info(f"Connecting to ray with address={address}")
+                        ray.init(
+                            address=address,
+                            namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE,
+                        )
+                    except Exception as e:
+                        ray.shutdown()
+                        raise e from None
+
+                if connect_to_serve:
+                    from ray import serve
+
+                    serve.start(detached=True, _override_controller_namespace="serve")
+
+                return await f(self, *args, **kwargs)
+            except Exception as e:
+                logger.exception(f"Unexpected error in handler: {e}")
+                return Response(
+                    text=traceback.format_exc(),
+                    status=aiohttp.web.HTTPInternalServerError.status_code,
+                )
+
+        return decorator
+
+    return decorator_factory

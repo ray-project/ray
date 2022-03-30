@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 .. TODO: We need trainers, environments, algorithms, policies, models here. Likely in that order.
     Execution plans are not a "core" concept for users. Sample batches should probably also be left out.
@@ -180,11 +180,12 @@ of a sequence of repeating steps, or *dataflow*, of:
  2. ``ConcatBatches``: The experiences are concatenated into one batch for training.
  3. ``TrainOneStep``: Take a gradient step with respect to the policy loss, and update the worker weights.
 
-In code, this dataflow can be expressed as the following execution plan, which is a simple function that can be passed to ``build_trainer`` to define a new algorithm.
+In code, this dataflow can be expressed as the following execution plan, which is a static method that can be overridden in your custom Trainer sub-classes to define new algorithms.
 It takes in a ``WorkerSet`` and config, and returns an iterator over training results:
 
 .. code-block:: python
 
+    @staticmethod
     def execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         # type: LocalIterator[SampleBatchType]
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
@@ -334,4 +335,4 @@ Examples
 
 
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

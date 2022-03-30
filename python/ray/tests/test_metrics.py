@@ -15,6 +15,8 @@ from ray._private.utils import init_grpc_channel
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
+_WIN32 = os.name == "nt"
+
 
 def test_worker_stats(shutdown_only):
     ray.init(num_cpus=1, include_dashboard=True)
@@ -84,12 +86,14 @@ def test_worker_stats(shutdown_only):
     for stats in reply.core_workers_stats:
         if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
-            assert stats.pid == worker_pid
         else:
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
-    timeout_seconds = 20
+    if _WIN32:
+        timeout_seconds = 40
+    else:
+        timeout_seconds = 20
     start_time = time.time()
     while True:
         if time.time() - start_time > timeout_seconds:
@@ -98,13 +102,13 @@ def test_worker_stats(shutdown_only):
             )
 
         # Wait for the workers to start.
-        if len(reply.core_workers_stats) < num_cpus + 1:
+        if len(reply.core_workers_stats) < num_cpus + 2:
             time.sleep(1)
             reply = try_get_node_stats()
             continue
 
         # Check that the rest of the processes are workers, 1 for each CPU.
-        assert len(reply.core_workers_stats) == num_cpus + 1
+        assert len(reply.core_workers_stats) == num_cpus + 2
         # Check that all processes are Python.
         pids = [worker.pid for worker in reply.core_workers_stats]
         processes = [
@@ -120,8 +124,9 @@ def test_worker_stats(shutdown_only):
                 or "conda" in process
                 or "travis" in process
                 or "runner" in process
+                or "pytest" in process
                 or "ray" in process
-            )
+            ), process
         break
 
 

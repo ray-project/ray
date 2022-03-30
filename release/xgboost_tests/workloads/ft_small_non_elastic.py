@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     _, additional_results, _ = train_ray(
         path="/data/classification.parquet",
-        num_workers=4,
+        num_workers=None,
         num_boost_rounds=100,
         num_files=200,
         regression=False,

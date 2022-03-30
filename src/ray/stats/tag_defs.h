@@ -20,22 +20,22 @@
 using TagKeyType = opencensus::tags::TagKey;
 using TagsType = std::vector<std::pair<opencensus::tags::TagKey, std::string>>;
 
-static const TagKeyType ComponentKey = TagKeyType::Register("Component");
+extern const TagKeyType ComponentKey;
 
-static const TagKeyType JobNameKey = TagKeyType::Register("JobName");
+extern const TagKeyType JobNameKey;
 
-static const TagKeyType CustomKey = TagKeyType::Register("CustomKey");
+extern const TagKeyType CustomKey;
 
-static const TagKeyType NodeAddressKey = TagKeyType::Register("NodeAddress");
+extern const TagKeyType NodeAddressKey;
 
-static const TagKeyType VersionKey = TagKeyType::Register("Version");
+extern const TagKeyType VersionKey;
 
-static const TagKeyType LanguageKey = TagKeyType::Register("Language");
+extern const TagKeyType LanguageKey;
 
-static const TagKeyType WorkerPidKey = TagKeyType::Register("WorkerPid");
+extern const TagKeyType WorkerPidKey;
 
-static const TagKeyType DriverPidKey = TagKeyType::Register("DriverPid");
+extern const TagKeyType DriverPidKey;
 
-static const TagKeyType ResourceNameKey = TagKeyType::Register("ResourceName");
+extern const TagKeyType ResourceNameKey;
 
-static const TagKeyType ActorIdKey = TagKeyType::Register("ActorId");
+extern const TagKeyType ActorIdKey;

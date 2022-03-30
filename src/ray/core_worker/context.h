@@ -44,8 +44,7 @@ class WorkerContext {
 
   const std::string &GetCurrentSerializedRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
-  std::shared_ptr<const rpc::RuntimeEnv> GetCurrentRuntimeEnv() const
-      LOCKS_EXCLUDED(mutex_);
+  std::shared_ptr<rpc::RuntimeEnv> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
@@ -83,6 +82,8 @@ class WorkerContext {
   bool CurrentActorDetached() const LOCKS_EXCLUDED(mutex_);
 
   uint64_t GetNextTaskIndex();
+
+  uint64_t GetTaskIndex();
 
   // Returns the next put object index; used to calculate ObjectIDs for puts.
   ObjectIDIndexType GetNextPutIndex();

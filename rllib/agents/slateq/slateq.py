@@ -19,12 +19,15 @@ from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.train_ops import (
+    MultiGPUTrainOneStep,
+    TrainOneStep,
+    UpdateTargetNetwork,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -33,33 +36,13 @@ from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
-# Defines all SlateQ strategies implemented.
-ALL_SLATEQ_STRATEGIES = [
-    # RANDOM: Randomly select documents for slates.
-    "RANDOM",
-    # MYOP: Select documents that maximize user click probabilities. This is
-    # a myopic strategy and ignores long term rewards. This is equivalent to
-    # setting a zero discount rate for future rewards.
-    "MYOP",
-    # SARSA: Use the SlateQ SARSA learning algorithm.
-    "SARSA",
-    # QL: Use the SlateQ Q-learning algorithm.
-    "QL",
-]
 
 # fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === Model ===
-    # TODO: Unify torch and tf config settings:
     # Dense-layer setup for each the n (document) candidate Q-network stacks.
-    "fcnet_hiddens_per_candidate": [256, 32],  # Only relevant for framework=tf|tf2.
-    # NOTE: The torch default model used does NOT build a separate Q-value stack
-    # per candidate document. Instead, only a single stack is generated. This leads
-    # to SlateQ with framework="torch" not learning as well as its "tf" counterpart.
-    # TODO: Fix the framework="torch" implementation of SlateQ by making it 100%
-    #  analogous to "tf|tf2".
-    "hiddens": [256, 64, 32],  # Only relevant for framework=torch.
+    "fcnet_hiddens_per_candidate": [256, 32],
 
     # === Exploration Settings ===
     "exploration_config": {
@@ -90,7 +73,7 @@ DEFAULT_CONFIG = with_common_config({
     # If True, use huber loss instead of squared loss for critic network
     # Conventionally, no need to clip gradients if using a huber loss
     "use_huber": False,
-    # Threshold of a huber loss
+    # Threshold of the huber loss.
     "huber_threshold": 1.0,
 
     # === Replay buffer ===
@@ -113,21 +96,17 @@ DEFAULT_CONFIG = with_common_config({
     "training_intensity": None,
 
     # === Optimization ===
-    # TODO: Unify torch and tf config settings:
-    # Learning rate for adam optimizer for the user choice model.
-    "lr_choice_model": 1e-3,  # Only relevant for framework=torch.
-    # Learning rate for adam optimizer for the q model.
-    "lr_q_model": 1e-3,  # Only relevant for framework=torch.
-    # TODO: Unify torch and tf config settings:
-    # Learning rate for adam optimizer for the q model.
-    "lr": 0.00025,  # Only relevant for framework=tf|tf2.
+    # Learning rate for RMSprop optimizer for the q-model.
+    "lr": 0.00025,
     # Learning rate schedule.
     # In the format of [[timestep, value], [timestep, value], ...]
     # A schedule should normally start from timestep 0.
-    "lr_schedule": None,  # Only relevant for framework=tf|tf2.
+    "lr_schedule": None,
+    # Learning rate for adam optimizer for the user choice model.
+    "lr_choice_model": 1e-3,  # Only relevant for framework=torch.
 
-    # Adam epsilon hyper parameter.
-    "adam_epsilon": 1e-8,
+    # RMSProp epsilon hyper parameter.
+    "rmsprop_epsilon": 1e-5,
     # If not None, clip gradients during optimization at this value
     "grad_clip": None,
     # How many steps of the model to sample before learning starts.
@@ -150,14 +129,8 @@ DEFAULT_CONFIG = with_common_config({
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
 
-    # === SlateQ specific options ===
-    # Learning method used by the slateq policy. Choose from: RANDOM,
-    # MYOP (myopic), SARSA, QL (Q-Learning),
-    "slateq_strategy": "QL",
-
-    # TODO: Unify torch and tf configs.
-    # Use double_q correction to avoid overestimation of target Q-values.
-    "double_q": True,  # Only relevant for `slateq_strategy="QL"` and framework="torch".
+    # Switch on no-preprocessors for easier Q-model coding.
+    "_disable_preprocessor_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -182,39 +155,8 @@ class SlateQTrainer(Trainer):
         return DEFAULT_CONFIG
 
     @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
-        if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for SlateQ!")
-
-        if config["framework"] == "torch":
-            logger.warning(
-                "SlateQ with framework==torch currently uses a limited Q-model for "
-                "learning Q-values per candidate. This causes it to learn slowly. "
-                "Try framework==tf2 instead."
-            )
-        else:
-            # Switch on no-preprocessors for easier Q-model coding.
-            config["_disable_preprocessor_api"] = True
-
-        if config["slateq_strategy"] not in ALL_SLATEQ_STRATEGIES:
-            raise ValueError(
-                "Unknown slateq_strategy: " f"{config['slateq_strategy']}."
-            )
-
-        if config["slateq_strategy"] == "SARSA":
-            if config["batch_mode"] != "complete_episodes":
-                raise ValueError(
-                    "For SARSA strategy, `batch_mode` must be " "'complete_episodes'"
-                )
-
-    @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
-        if config["slateq_strategy"] == "RANDOM":
-            return RandomPolicy
-        elif config["framework"] == "torch":
+        if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:
             return SlateQTFPolicy
@@ -237,29 +179,36 @@ class SlateQTrainer(Trainer):
             StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"])
         )
 
+        if config["simple_optimizer"]:
+            train_step_op = TrainOneStep(workers)
+        else:
+            train_step_op = MultiGPUTrainOneStep(
+                workers=workers,
+                sgd_minibatch_size=config["train_batch_size"],
+                num_sgd_iter=1,
+                num_gpus=config["num_gpus"],
+                _fake_gpus=config["_fake_gpus"],
+            )
+
         # (2) Read and train on experiences from the replay buffer. Every batch
         # returned from the LocalReplay() iterator is passed to TrainOneStep to
         # take a SGD step.
         replay_op = (
             Replay(local_buffer=kwargs["local_replay_buffer"])
-            .for_each(TrainOneStep(workers))
+            .for_each(train_step_op)
             .for_each(
                 UpdateTargetNetwork(workers, config["target_network_update_freq"])
             )
         )
 
-        if config["slateq_strategy"] != "RANDOM":
-            # Alternate deterministically between (1) and (2). Only return the
-            # output of (2) since training metrics are not available until (2)
-            # runs.
-            train_op = Concurrently(
-                [store_op, replay_op],
-                mode="round_robin",
-                output_indexes=[1],
-                round_robin_weights=calculate_round_robin_weights(config),
-            )
-        else:
-            # No training is needed for the RANDOM strategy.
-            train_op = rollouts
+        # Alternate deterministically between (1) and (2). Only return the
+        # output of (2) since training metrics are not available until (2)
+        # runs.
+        train_op = Concurrently(
+            [store_op, replay_op],
+            mode="round_robin",
+            output_indexes=[1],
+            round_robin_weights=calculate_round_robin_weights(config),
+        )
 
         return StandardMetricsReporting(train_op, workers, config)

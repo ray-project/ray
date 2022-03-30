@@ -45,6 +45,7 @@ def get_kwargs_lines(bound_kwargs):
     """Pretty prints bounded kwargs of a DAGNode, and recursively handle
     DAGNode in list / dict containers.
     """
+    # TODO: (jiaodong) Nits, we're missing keys and indentation was a bit off.
     if not bound_kwargs:
         return "{}"
     indent = get_indentation()

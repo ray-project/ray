@@ -1,18 +1,7 @@
 .. _handling_dependencies:
 
-Handling Dependencies
-=====================
-
-This page might be useful for you if you're trying to:
-
-
-* Run a distributed Ray library or application.
-* Run a distributed Ray script which imports some local files.
-* Quickly iterate on a project with changing dependencies and files while running on a Ray cluster.
-
-
-What problem does this page solve?
-----------------------------------
+Environment Dependencies
+========================
 
 Your Ray application may have dependencies that exist outside of your Ray script. For example:
 
@@ -20,12 +9,11 @@ Your Ray application may have dependencies that exist outside of your Ray script
 * Your Ray script may be looking for some specific environment variables to be available.
 * Your Ray script may import some files outside of the script.
 
-
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
-To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray cluster launcher, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
+To address this problem, you can (1) prepare your dependencies on the cluster in advance using the Ray :ref:`Cluster Launcher <ref-cluster-quick-start>`, or (2) use Ray's :ref:`runtime environments<runtime-environments>` to install them on the fly.
 
-For production usage or non-changing environments, we recommend installing your dependencies into a container image and specifying the image using the Cluster launcher.
+For production usage or non-changing environments, we recommend installing your dependencies into a container image and specifying the image using the Cluster Launcher.
 For dynamic environments (e.g. for development and experimentation), we recommend using runtime environments.
 
 
@@ -48,11 +36,11 @@ Concepts
 Preparing an environment using the Ray Cluster launcher
 -------------------------------------------------------
 
-The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.  
+The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.
 
 - You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration<cluster-config>`.
 
-- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.  
+- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`); these commands will be run as each node joins the cluster.
   Note that for production settings, it is recommended to build any necessary packages into a container image instead.
 
 - You can push local files to the cluster using ``ray rsync_up`` (:ref:`reference<ray-rsync>`).
@@ -64,9 +52,9 @@ Runtime environments
 
 .. note::
 
-    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature is available starting with Ray 1.4.0 and is currently only supported on macOS and Linux.
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature is available starting with Ray 1.4.0 and is currently supported on macOS and Linux. It is experimentally supported on Windows.
 
-The second way to set up dependencies is to install them dynamically while Ray is running.  
+The second way to set up dependencies is to install them dynamically while Ray is running.
 
 A **runtime environment** describes the dependencies your Ray application needs to run, including :ref:`files, packages, environment variables, and more <runtime-environments-api-ref>`.  It is installed dynamically on the cluster at runtime.
 
@@ -82,6 +70,9 @@ Runtime environments also allow you to set dependencies per-task, per-actor, and
     import requests
 
     runtime_env = {"working_dir": "/data/my_files", "pip": ["requests", "pendulum==2.1.2"]}
+    # or use strong-typed api ray.runtime_env.RuntimeEnv
+    # from ray.runtime_env import RuntimeEnv
+    # runtime_env = RuntimeEnv(working_dir="/data/my_files", pip=["requests", "pendulum==2.1.2"])
 
     # To run on a remote cluster instead of a local single-node cluster,
     # simply change to ray.init("ray://123.456.7.8:10001", runtime_env=...)
@@ -92,12 +83,19 @@ Runtime environments also allow you to set dependencies per-task, per-actor, and
       open("my_datafile.txt").read()
       return requests.get("https://www.ray.io")
 
-Here's another example of a runtime environment:
+A runtime environment can be described by a python dict, here is an example:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python
    :start-after: __runtime_env_conda_def_start__
    :end-before: __runtime_env_conda_def_end__
+
+or use :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>`, and here is an example:
+
+.. literalinclude:: /ray-core/doc_code/runtime_env_example.py
+   :language: python
+   :start-after: __strong_typed_api_runtime_env_conda_def_start__
+   :end-before: __strong_typed_api_runtime_env_conda_def_end__
 
 For more examples, jump to the :ref:`API Reference<runtime-environments-api-ref>`.
 
@@ -262,12 +260,14 @@ To ensure your local changes show up across all Ray workers and can be imported 
 
   ray.get(f.remote())
 
+Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
+
 .. _runtime-environments-api-ref:
 
 API Reference
 ^^^^^^^^^^^^^
 
-The ``runtime_env`` is a Python dictionary including one or more of the following fields:
+The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>` including one or more of the following fields:
 
 - ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) an local existing directory with total size at most 100 MiB, (2) a local existing zipped file with total unzipped size at most 100 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored zip file containing the working directory for your job. See :ref:`remote-uris` for details.
   The specified directory will be downloaded to each node on the cluster, and Ray workers will be started in their node's copy of this directory.
@@ -287,7 +287,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   Note: If your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
-  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), or (3) a Python module object.
+  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
 
   - Examples of entries in the list:
 
@@ -299,25 +299,34 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
     - ``my_module # Assumes my_module has already been imported, e.g. via 'import my_module'``
 
+    - ``my_module.whl``
+
   The modules will be downloaded to each node on the cluster.
 
   Note: Setting options (1) and (3) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
   Note: For option (1), if your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
 
+  Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
+
 - ``excludes`` (List[str]): When used with ``working_dir`` or ``py_modules``, specifies a list of files or paths to exclude from being uploaded to the cluster.
   This field also supports the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
 
   - Example: ``["my_file.txt", "path/to/dir", "*.log"]``
 
-- ``pip`` (List[str] | str): Either a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, or a string containing the path to a pip
-  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.
+- ``pip`` (dict | List[str] | str): Either (1) a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing the path to a pip
+  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of pip packages,
+  (b) ``pip_check`` (optional, bool): whether to enable `pip check <https://pip.pypa.io/en/stable/cli/pip_check/>`_ at the end of pip install, defaults to ``False``.
+  (c) ``pip_version`` (optional, str): the version of pip; Ray will spell the package name "pip" in front of the ``pip_version`` to form the final requirement string.
+  The syntax of a requirement specifier is defined in full in `PEP 508 <https://www.python.org/dev/peps/pep-0508/>`_.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
 
   - Example: ``["requests==1.0.0", "aiohttp", "ray[serve]"]``
 
   - Example: ``"./requirements.txt"``
+
+  - Example: ``{"packages":["tensorflow", "requests"], "pip_check": False, "pip_version": "==22.0.2;python_version=='3.8.11'"}``
 
   When specifying a ``requirements.txt`` file, referencing local files `within` that file is not supported (e.g. ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``).
 
@@ -352,6 +361,12 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"eager_install": False}``
 
+- ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the timeout of runtime environment creation, timeout is in seconds.
+
+  - Example: ``{"setup_timeout_seconds": 10}``
+
+  - Example: ``RuntimeEnvConfig(setup_timeout_seconds=10)``
+
 Caching and Garbage Collection
 """"""""""""""""""""""""""""""
 Runtime environment resources on each node (such as conda environments, pip packages, or downloaded ``working_dir`` or ``py_modules`` directories) will be cached on the cluster to enable quick reuse across different runtime environments within a job.  Each field (``working_dir``, ``py_modules``, etc.) has its own cache whose size defaults to 10 GB.  To change this default, you may set the environment variable ``RAY_RUNTIME_ENV_<field>_CACHE_SIZE_GB`` on each node in your cluster before starting Ray e.g. ``export RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB=1.5``.
@@ -363,47 +378,29 @@ To disable all deletion behavior (for example, for debugging purposes) you may s
 Inheritance
 """""""""""
 
-The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden by explicitly specifying a runtime environment for the child task/actor.
+The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor once set, unless it is overridden.
 
-1. By default, all actors and tasks inherit the current runtime env.
+If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
 
-.. code-block:: python
+* The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
+  This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
+* Every other field in the ``runtime_env`` will be *overridden* by the child, not merged.  For example, if ``runtime_env["py_modules"]`` is specified, it will replace the ``runtime_env["py_modules"]`` field of the parent.
 
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Create child actor
-  ChildActor.remote()
-
-  # ChildActor's actual `runtime_env` (inherit from current runtime env)
-  {"pip": ["requests", "chess"]}
-
-2. However, if you specify runtime_env for task/actor, it will override current runtime env.
+Example:
 
 .. code-block:: python
 
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Create child actor
-  ChildActor.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote()
-
-  # ChildActor's actual `runtime_env` (specify runtime_env overrides)
-  {"env_vars": {"A": "a", "B": "b"}}
-
-3. If you'd like to still use current runtime env, you can use the :ref:`ray.get_runtime_context() <runtime-context-apis>` API to get the current runtime env and modify it by yourself.
-
-.. code-block:: python
-
-  # Current `runtime_env`
-  ray.init(runtime_env={"pip": ["requests", "chess"]})
-
-  # Child updates `runtime_env`
-  Actor.options(runtime_env=ray.get_current_runtime_env().update({"env_vars": {"A": "a", "B": "b"}}))
-
-  # Child's actual `runtime_env` (merged with current runtime env)
+  # Parent's `runtime_env`
   {"pip": ["requests", "chess"],
   "env_vars": {"A": "a", "B": "b"}}
+
+  # Child's specified `runtime_env`
+  {"pip": ["torch", "ray[serve]"],
+  "env_vars": {"B": "new", "C", "c"}}
+
+  # Child's actual `runtime_env` (merged with parent's)
+  {"pip": ["torch", "ray[serve]"],
+  "env_vars": {"A": "a", "B": "new", "C", "c"}}
 
 
 .. _remote-uris:
@@ -513,7 +510,7 @@ The first option is to use the remote Git provider's "Download Zip" feature, whi
 This is quick, but it is **not recommended** because it only allows you to download a zip file of a repository branch's latest commit.
 To find a GitHub URL, navigate to your repository on `GitHub <https://github.com/>`_, choose a branch, and click on the green "Code" drop down button:
 
-.. figure:: ray_repo.png
+.. figure:: images/ray_repo.png
    :width: 500px
 
 This will drop down a menu that provides three options: "Clone" which provides HTTPS/SSH links to clone the repository,
@@ -521,7 +518,7 @@ This will drop down a menu that provides three options: "Clone" which provides H
 Right-click on "Download Zip."
 This will open a pop-up near your cursor. Select "Copy Link Address":
 
-.. figure:: download_zip_url.png
+.. figure:: images/download_zip_url.png
    :width: 300px
 
 Now your HTTPS link is copied to your clipboard. You can paste it into your ``runtime_env`` dictionary.
@@ -595,8 +592,8 @@ remotely on GitHub!
 
 Debugging
 ---------
-If runtime_env cannot be set up (e.g., network issues, download failures, etc.), Ray will fail to schedule tasks/actors 
-that require the runtime_env. If you call ``ray.get``, it will raise ``RuntimeEnvSetupError`` with 
+If runtime_env cannot be set up (e.g., network issues, download failures, etc.), Ray will fail to schedule tasks/actors
+that require the runtime_env. If you call ``ray.get``, it will raise ``RuntimeEnvSetupError`` with
 the error message in detail.
 
 .. code-block:: python
@@ -620,8 +617,38 @@ the error message in detail.
     a = A.options(runtime_env=bad_env).remote()
     ray.get(a.f.remote())
 
-You can also enable runtime_env debugging logs by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1``. 
-It will print the full runtime_env setup log messages to the driver.
-The same information can be found from the log file ``runtime_env*.log`` from the log directory. 
+You can also enable ``runtime_env`` debugging log streaming by setting an environment variable ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED=1`` on each node before starting Ray, for example using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`).
+This will print the full ``runtime_env`` setup log messages to the driver (the script that calls ``ray.init()``).
 
-Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
+Example log output:
+
+.. code-block:: text
+
+    >>> ray.init(runtime_env={"pip" ["requests"]})
+
+    (pid=runtime_env) 2022-02-28 14:12:33,653       INFO pip.py:188 -- Creating virtualenv at /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv, current python dir /Users/user/anaconda3/envs/ray-py38
+    (pid=runtime_env) 2022-02-28 14:12:33,653       INFO utils.py:76 -- Run cmd[1] ['/Users/user/anaconda3/envs/ray-py38/bin/python', '-m', 'virtualenv', '--app-data', '/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv_app_data', '--reset-app-data', '--no-periodic-update', '--system-site-packages', '--no-download', '/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv']
+    (pid=runtime_env) 2022-02-28 14:12:34,267       INFO utils.py:97 -- Output of cmd[1]: created virtual environment CPython3.8.11.final.0-64 in 473ms
+    (pid=runtime_env)   creator CPython3Posix(dest=/private/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv, clear=False, no_vcs_ignore=False, global=True)
+    (pid=runtime_env)   seeder FromAppData(download=False, pip=bundle, setuptools=bundle, wheel=bundle, via=copy, app_data_dir=/private/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv_app_data)
+    (pid=runtime_env)     added seed packages: pip==22.0.3, setuptools==60.6.0, wheel==0.37.1
+    (pid=runtime_env)   activators BashActivator,CShellActivator,FishActivator,NushellActivator,PowerShellActivator,PythonActivator
+    (pid=runtime_env)
+    (pid=runtime_env) 2022-02-28 14:12:34,268       INFO utils.py:76 -- Run cmd[2] ['/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv/bin/python', '-c', 'import ray; print(ray.__version__, ray.__path__[0])']
+    (pid=runtime_env) 2022-02-28 14:12:35,118       INFO utils.py:97 -- Output of cmd[2]: 2.0.0.dev0 /Users/user/ray/python/ray
+    (pid=runtime_env)
+    (pid=runtime_env) 2022-02-28 14:12:35,120       INFO pip.py:236 -- Installing python requirements to /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv
+    (pid=runtime_env) 2022-02-28 14:12:35,122       INFO utils.py:76 -- Run cmd[3] ['/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv/bin/python', '-m', 'pip', 'install', '--disable-pip-version-check', '--no-cache-dir', '-r', '/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/requirements.txt']
+    (pid=runtime_env) 2022-02-28 14:12:38,000       INFO utils.py:97 -- Output of cmd[3]: Requirement already satisfied: requests in /Users/user/anaconda3/envs/ray-py38/lib/python3.8/site-packages (from -r /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/requirements.txt (line 1)) (2.26.0)
+    (pid=runtime_env) Requirement already satisfied: idna<4,>=2.5 in /Users/user/anaconda3/envs/ray-py38/lib/python3.8/site-packages (from requests->-r /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/requirements.txt (line 1)) (3.2)
+    (pid=runtime_env) Requirement already satisfied: certifi>=2017.4.17 in /Users/user/anaconda3/envs/ray-py38/lib/python3.8/site-packages (from requests->-r /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/requirements.txt (line 1)) (2021.10.8)
+    (pid=runtime_env) Requirement already satisfied: urllib3<1.27,>=1.21.1 in /Users/user/anaconda3/envs/ray-py38/lib/python3.8/site-packages (from requests->-r /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/requirements.txt (line 1)) (1.26.7)
+    (pid=runtime_env) Requirement already satisfied: charset-normalizer~=2.0.0 in /Users/user/anaconda3/envs/ray-py38/lib/python3.8/site-packages (from requests->-r /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/requirements.txt (line 1)) (2.0.6)
+    (pid=runtime_env)
+    (pid=runtime_env) 2022-02-28 14:12:38,001       INFO utils.py:76 -- Run cmd[4] ['/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv/bin/python', '-c', 'import ray; print(ray.__version__, ray.__path__[0])']
+    (pid=runtime_env) 2022-02-28 14:12:38,804       INFO utils.py:97 -- Output of cmd[4]: 2.0.0.dev0 /Users/user/ray/python/ray
+
+Regardless of the value of ``RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED``, these logs can always be found in the file ``runtime_env_setup-[job_id].log`` for per-actor, per-task and per-job environments, or in
+``runtime_env_setup-ray_client_server_[port].log`` for per-job environments when using Ray Client.
+
+See :ref:`Logging Directory Structure <logging-directory-structure>` for more details.

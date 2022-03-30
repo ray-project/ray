@@ -15,7 +15,7 @@ from ray.experimental.internal_kv import (
 )
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray.runtime_env import RuntimeEnv
 from ray.job_submission import JobInfo
 from ray.dashboard.modules.job.common import (
     JobInfoStorageClient,
@@ -112,7 +112,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             config = {
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": metadata,
-                "runtime_env": ParsedRuntimeEnv.deserialize(
+                "runtime_env": RuntimeEnv.deserialize(
                     job_table_entry.config.runtime_env_info.serialized_runtime_env
                 ),
             }
@@ -144,6 +144,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     "end_time": job_info.end_time,
                     "metadata": job_info.metadata,
                     "runtime_env": job_info.runtime_env,
+                    "entrypoint": job_info.entrypoint,
                 }
                 jobs[job_submission_id] = entry
         return jobs

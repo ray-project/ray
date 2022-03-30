@@ -21,133 +21,6 @@ from ray._private.test_utils import (
 logger = logging.getLogger(__name__)
 
 
-def test_resource_constraints(shutdown_only):
-    num_workers = 20
-    ray.init(num_cpus=10, num_gpus=2)
-
-    @ray.remote(num_cpus=0)
-    def get_worker_id():
-        time.sleep(0.1)
-        return os.getpid()
-
-    # Attempt to wait for all of the workers to start up.
-    while True:
-        if (
-            len(set(ray.get([get_worker_id.remote() for _ in range(num_workers)])))
-            == num_workers
-        ):
-            break
-
-    time_buffer = 2
-
-    # At most 10 copies of this can run at once.
-    @ray.remote(num_cpus=1)
-    def f(n):
-        time.sleep(n)
-
-    start_time = time.time()
-    ray.get([f.remote(0.5) for _ in range(10)])
-    duration = time.time() - start_time
-    assert duration < 0.5 + time_buffer
-    assert duration > 0.5
-
-    start_time = time.time()
-    ray.get([f.remote(0.5) for _ in range(11)])
-    duration = time.time() - start_time
-    assert duration < 1 + time_buffer
-    assert duration > 1
-
-    @ray.remote(num_cpus=3)
-    def f(n):
-        time.sleep(n)
-
-    start_time = time.time()
-    ray.get([f.remote(0.5) for _ in range(3)])
-    duration = time.time() - start_time
-    assert duration < 0.5 + time_buffer
-    assert duration > 0.5
-
-    start_time = time.time()
-    ray.get([f.remote(0.5) for _ in range(4)])
-    duration = time.time() - start_time
-    assert duration < 1 + time_buffer
-    assert duration > 1
-
-    @ray.remote(num_gpus=1)
-    def f(n):
-        time.sleep(n)
-
-    start_time = time.time()
-    ray.get([f.remote(0.5) for _ in range(2)])
-    duration = time.time() - start_time
-    assert duration < 0.5 + time_buffer
-    assert duration > 0.5
-
-    start_time = time.time()
-    ray.get([f.remote(0.5) for _ in range(3)])
-    duration = time.time() - start_time
-    assert duration < 1 + time_buffer
-    assert duration > 1
-
-    start_time = time.time()
-    ray.get([f.remote(0.5) for _ in range(4)])
-    duration = time.time() - start_time
-    assert duration < 1 + time_buffer
-    assert duration > 1
-
-
-def test_multi_resource_constraints(shutdown_only):
-    num_workers = 20
-    ray.init(num_cpus=10, num_gpus=10)
-
-    @ray.remote(num_cpus=0)
-    def get_worker_id():
-        time.sleep(0.1)
-        return os.getpid()
-
-    # Attempt to wait for all of the workers to start up.
-    while True:
-        if (
-            len(set(ray.get([get_worker_id.remote() for _ in range(num_workers)])))
-            == num_workers
-        ):
-            break
-
-    @ray.remote(num_cpus=1, num_gpus=9)
-    def f(n):
-        time.sleep(n)
-
-    @ray.remote(num_cpus=9, num_gpus=1)
-    def g(n):
-        time.sleep(n)
-
-    time_buffer = 2
-
-    start_time = time.time()
-    ray.get([f.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
-    assert duration < 0.5 + time_buffer
-    assert duration > 0.5
-
-    start_time = time.time()
-    ray.get([f.remote(0.5), f.remote(0.5)])
-    duration = time.time() - start_time
-    assert duration < 1 + time_buffer
-    assert duration > 1
-
-    start_time = time.time()
-    ray.get([g.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
-    assert duration < 1 + time_buffer
-    assert duration > 1
-
-    start_time = time.time()
-    ray.get([f.remote(0.5), f.remote(0.5), g.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
-    assert duration < 1 + time_buffer
-    assert duration > 1
-
-
 def test_gpu_ids(shutdown_only):
     num_gpus = 3
     ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
@@ -177,7 +50,7 @@ def test_gpu_ids(shutdown_only):
             break
         if time.time() > start_time + 10:
             raise RayTestTimeoutException(
-                "Timed out while waiting for workers to start " "up."
+                "Timed out while waiting for workers to start up."
             )
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])

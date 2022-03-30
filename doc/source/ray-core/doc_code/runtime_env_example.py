@@ -25,6 +25,19 @@ runtime_env = {
 }
 # __runtime_env_conda_def_end__
 
+# __strong_typed_api_runtime_env_conda_def_start__
+from ray.runtime_env import RuntimeEnv
+runtime_env = RuntimeEnv(
+    conda={
+        "dependencies":
+        ["toolz", "dill", "pip", {
+            "pip": ["pendulum", "ray[serve]"]
+        }]
+    },
+    env_vars={"TF_WARNINGS": "none"}
+)
+# __strong_typed_api_runtime_env_conda_def_end__
+
 # __ray_init_start__
 # Starting a single-node local Ray cluster
 ray.init(runtime_env=runtime_env)

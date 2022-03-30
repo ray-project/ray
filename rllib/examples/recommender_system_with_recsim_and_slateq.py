@@ -16,7 +16,6 @@ import ray
 from ray import tune
 from ray.rllib.agents import slateq
 from ray.rllib.agents import dqn
-from ray.rllib.agents.slateq.slateq import ALL_SLATEQ_STRATEGIES
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,
@@ -31,9 +30,7 @@ parser.add_argument(
     type=str,
     default="SlateQ",
     choices=["SlateQ", "DQN"],
-    help=(
-        "Select agent policy. Choose from: DQN and SlateQ. " "Default value: SlateQ."
-    ),
+    help=("Select agent policy. Choose from: DQN and SlateQ. Default value: SlateQ."),
 )
 parser.add_argument(
     "--framework",
@@ -47,17 +44,6 @@ parser.add_argument(
     default="interest-evolution",
     choices=["interest-evolution", "interest-exploration", "long-term-satisfaction"],
     help=("Select the RecSim env to use."),
-)
-parser.add_argument(
-    "--slateq-strategy",
-    type=str,
-    default="QL",
-    help=(
-        "Strategy for the SlateQ agent. Choose from: "
-        + ", ".join(ALL_SLATEQ_STRATEGIES)
-        + ". "
-        "Default value: QL. Ignored when using Tune."
-    ),
 )
 parser.add_argument("--learning-starts", type=int, default=20000)
 parser.add_argument(
@@ -177,12 +163,6 @@ def main():
             "episode_reward_mean": args.stop_reward,
         }
 
-        if args.run == "SlateQ":
-            config.update(
-                {
-                    "slateq_strategy": args.slateq_strategy,
-                }
-            )
         results = tune.run(
             args.run,
             stop=stop,
@@ -199,11 +179,6 @@ def main():
         if args.run == "DQN":
             trainer = dqn.DQNTrainer(config=config)
         else:
-            config.update(
-                {
-                    "slateq_strategy": args.slateq_strategy,
-                }
-            )
             trainer = slateq.SlateQTrainer(config=config)
         for i in range(10):
             result = trainer.train()

@@ -4,6 +4,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -13,18 +14,25 @@ class OnlineLinearRegression(nn.Module):
         super(OnlineLinearRegression, self).__init__()
         self.d = feature_dim
         self.alpha = alpha
+        # Diagonal matrix of size d (feature_dim).
+        # If lambda=1.0, this will be an identity matrix.
         self.precision = nn.Parameter(
             data=lambda_ * torch.eye(self.d), requires_grad=False
         )
+        # Inverse of the above diagnoal. If lambda=1.0, this is also an
+        # identity matrix.
+        self.covariance = nn.Parameter(
+            data=torch.inverse(self.precision), requires_grad=False
+        )
+        # All-0s vector of size d (feature_dim).
         self.f = nn.Parameter(
             data=torch.zeros(
                 self.d,
             ),
             requires_grad=False,
         )
-        self.covariance = nn.Parameter(
-            data=torch.inverse(self.precision), requires_grad=False
-        )
+        # Dot product between f and covariance matrix
+        # (batch dim stays intact; reduce dim 1).
         self.theta = nn.Parameter(
             data=self.covariance.matmul(self.f), requires_grad=False
         )
@@ -61,7 +69,7 @@ class OnlineLinearRegression(nn.Module):
         theta = self.dist.sample()
         return theta
 
-    def get_ucbs(self, x: torch.Tensor):
+    def get_ucbs(self, x: TensorType):
         """Calculate upper confidence bounds using covariance matrix according
         to algorithm 1: LinUCB
         (http://proceedings.mlr.press/v15/chu11a/chu11a.pdf).
@@ -87,13 +95,12 @@ class OnlineLinearRegression(nn.Module):
             batch_dots = batch_dots.reshape([B, C])
         return batch_dots
 
-    def forward(self, x, sample_theta=False):
+    def forward(self, x: TensorType, sample_theta: bool = False):
         """Predict scores on input batch using the underlying linear model.
 
         Args:
-            x (torch.Tensor): Input feature tensor of shape
-                (batch_size, feature_dim)
-            sample_theta (bool): Whether to sample the weights from its
+            x: Input feature tensor of shape (batch_size, feature_dim)
+            sample_theta: Whether to sample the weights from its
                 posterior distribution to perform Thompson Sampling as per
                 http://proceedings.mlr.press/v28/agrawal13.pdf .
         """
@@ -148,14 +155,13 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
         scores = torch.stack(
             [self.arms[i](x, sample_theta) for i in range(self.num_outputs)], dim=-1
         )
-        self._cur_value = scores
         if use_ucb:
             ucbs = torch.stack(
                 [self.arms[i].get_ucbs(x) for i in range(self.num_outputs)], dim=-1
             )
-            return scores + ucbs
-        else:
-            return scores
+            scores += ucbs
+        self._cur_value = scores
+        return scores
 
     def partial_fit(self, x, y, arms):
         for i, arm in enumerate(arms):
@@ -234,12 +240,11 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
     def predict(self, x, sample_theta=False, use_ucb=False):
         self._cur_ctx = x
         scores = self.arm(x, sample_theta)
-        self._cur_value = scores
         if use_ucb:
             ucbs = self.arm.get_ucbs(x)
-            return scores + 0.3 * ucbs
-        else:
-            return scores
+            scores += 0.3 * ucbs
+        self._cur_value = scores
+        return scores
 
     def partial_fit(self, x, y, arms):
         x = x["item"]

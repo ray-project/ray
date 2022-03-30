@@ -48,6 +48,7 @@ def test_environment_variables_actor(ray_start_regular):
 def test_environment_variables_nested_task(ray_start_regular):
     @ray.remote
     def get_env(key):
+        print(os.environ)
         return os.environ.get(key)
 
     @ray.remote
@@ -106,7 +107,7 @@ def test_environment_variables_multitenancy(shutdown_only):
                 }
             ).remote("foo2")
         )
-        is None
+        == "bar2"
     )
 
 
@@ -163,7 +164,7 @@ def test_environment_variables_complex(shutdown_only):
 
     assert ray.get(a.get.remote("a")) == "b"
     assert ray.get(a.get_task.remote("a")) == "b"
-    assert ray.get(a.nested_get.remote("a")) is None
+    assert ray.get(a.nested_get.remote("a")) == "b"
     assert ray.get(a.nested_get.remote("c")) == "e"
     assert ray.get(a.nested_get.remote("d")) == "dd"
     assert (
@@ -179,9 +180,9 @@ def test_environment_variables_complex(shutdown_only):
         == "b"
     )
 
-    assert ray.get(a.get.remote("z")) is None
-    assert ray.get(a.get_task.remote("z")) is None
-    assert ray.get(a.nested_get.remote("z")) is None
+    assert ray.get(a.get.remote("z")) == "job_z"
+    assert ray.get(a.get_task.remote("z")) == "job_z"
+    assert ray.get(a.nested_get.remote("z")) == "job_z"
     assert (
         ray.get(
             get_env.options(
@@ -192,7 +193,7 @@ def test_environment_variables_complex(shutdown_only):
                 }
             ).remote("z")
         )
-        is None
+        == "job_z"
     )
 
 
