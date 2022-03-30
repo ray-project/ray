@@ -17,6 +17,7 @@ from ray_release.buildkite.settings import (
     Frequency,
     update_settings_from_buildkite,
     Priority,
+    get_test_attr_regex_filters,
 )
 from ray_release.buildkite.step import get_step
 from ray_release.config import Test
@@ -25,7 +26,6 @@ from ray_release.tests.test_glue import MockReturn
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
-from release.ray_release.buildkite.settings import get_test_attr_regex_filters
 
 
 class MockBuildkiteAgent:
