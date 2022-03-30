@@ -399,8 +399,8 @@ def test_inject_dependencies():
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
+    os.environ.get("CI") and sys.platform == "win32",
+    reason=r"Requires wheel in .whl\ray-2.0.0.dev0-cp38-cp38-win_amd64.whl",
 )
 @pytest.mark.parametrize(
     "call_ray_start",

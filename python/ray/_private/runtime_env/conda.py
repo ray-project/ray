@@ -71,7 +71,11 @@ def _inject_ray_to_conda_site(
         python_binary = os.path.join(conda_path, "bin/python")
     site_packages_path = (
         subprocess.check_output(
-            [python_binary, "-c", "import site; print(site.getsitepackages()[0])"]
+            [
+                python_binary,
+                "-c",
+                "import sysconfig; print(sysconfig.get_paths()['purelib'])",
+            ]
         )
         .decode()
         .strip()
@@ -79,7 +83,7 @@ def _inject_ray_to_conda_site(
 
     ray_path = _resolve_current_ray_path()
     logger.warning(
-        f"Injecting {ray_path} to environment {conda_path} "
+        f"Injecting {ray_path} to environment site-packages {site_packages_path} "
         "because _inject_current_ray flag is on."
     )
 
@@ -90,7 +94,7 @@ def _inject_ray_to_conda_site(
 
     # See usage of *.pth file at
     # https://docs.python.org/3/library/site.html
-    with open(os.path.join(site_packages_path, "ray.pth"), "w") as f:
+    with open(os.path.join(site_packages_path, "ray_shared.pth"), "w") as f:
         f.write(ray_path)
 
 
