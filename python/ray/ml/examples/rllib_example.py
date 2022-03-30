@@ -36,7 +36,7 @@ def train_rllib_bc_offline(
     return result
 
 
-def train_rllib_bc_online(num_workers: int, use_gpu: bool = False) -> Result:
+def train_rllib_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
     trainer = RLTrainer(
         run_config=RunConfig(stop={"training_iteration": 5}),
         scaling_config={
@@ -85,4 +85,4 @@ if __name__ == "__main__":
             path=args.path, num_workers=args.num_workers, use_gpu=args.use_gpu
         )
     else:
-        train_rllib_bc_online(num_workers=args.num_workers, use_gpu=args.use_gpu)
+        train_rllib_ppo_online(num_workers=args.num_workers, use_gpu=args.use_gpu)
