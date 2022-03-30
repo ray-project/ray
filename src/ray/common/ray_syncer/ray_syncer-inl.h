@@ -81,9 +81,10 @@ class NodeState {
 
 class NodeSyncConnection {
  public:
-  NodeSyncConnection(RaySyncer &instance,
-                     instrumented_io_context &io_context,
-                     std::string remote_node_id);
+  NodeSyncConnection(
+      instrumented_io_context &io_context,
+      std::string remote_node_id,
+      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor);
 
   /// Push a message to the sending queue to be sent later. Some message
   /// might be dropped if the module think the target node has already got the
@@ -116,14 +117,14 @@ class NodeSyncConnection {
   std::array<int64_t, kComponentArraySize> &GetNodeComponentVersions(
       const std::string &node_id);
 
-  /// The ray syncer this class is working with
-  RaySyncer &instance_;
-
   /// The io context
   instrumented_io_context &io_context_;
 
   /// The remote node id.
   std::string remote_node_id_;
+
+  /// Handler of a message update.
+  std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor_;
 
   /// Buffering all the updates. Sending will be done in an async way.
   absl::flat_hash_map<std::pair<std::string, RayComponentId>,
@@ -140,9 +141,10 @@ class NodeSyncConnection {
 /// SyncConnection for gRPC server side. It has customized logic for sending.
 class ServerSyncConnection : public NodeSyncConnection {
  public:
-  ServerSyncConnection(RaySyncer &instance,
-                       instrumented_io_context &io_context,
-                       const std::string &remote_node_id);
+  ServerSyncConnection(
+      instrumented_io_context &io_context,
+      const std::string &remote_node_id,
+      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor);
 
   ~ServerSyncConnection() override;
 
@@ -167,10 +169,11 @@ class ServerSyncConnection : public NodeSyncConnection {
 /// SyncConnection for gRPC client side. It has customized logic for sending.
 class ClientSyncConnection : public NodeSyncConnection {
  public:
-  ClientSyncConnection(RaySyncer &instance,
-                       instrumented_io_context &io_context,
-                       const std::string &node_id,
-                       std::shared_ptr<grpc::Channel> channel);
+  ClientSyncConnection(
+      instrumented_io_context &io_context,
+      const std::string &node_id,
+      std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor,
+      std::shared_ptr<grpc::Channel> channel);
 
  protected:
   /// Send the message from the pending queue to the target node.

@@ -149,7 +149,10 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
 TEST_F(RaySyncerTest, NodeSyncConnection) {
   auto node_id = NodeID::FromRandom();
 
-  MockNodeSyncConnection sync_connection(*syncer_, io_context_, node_id.Binary());
+  MockNodeSyncConnection sync_connection(
+      io_context_,
+      node_id.Binary(),
+      [](std::shared_ptr<ray::rpc::syncer::RaySyncMessage>) {});
   auto from_node_id = NodeID::FromRandom();
   auto msg = MakeMessage(RayComponentId::RESOURCE_MANAGER, 0, from_node_id);
 

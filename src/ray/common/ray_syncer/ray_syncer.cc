@@ -69,12 +69,13 @@ bool NodeState::ConsumeMessage(std::shared_ptr<const RaySyncMessage> message) {
   return true;
 }
 
-NodeSyncConnection::NodeSyncConnection(RaySyncer &instance,
-                                       instrumented_io_context &io_context,
-                                       std::string remote_node_id)
-    : instance_(instance),
-      io_context_(io_context),
-      remote_node_id_(std::move(remote_node_id)) {}
+NodeSyncConnection::NodeSyncConnection(
+    instrumented_io_context &io_context,
+    std::string remote_node_id,
+    std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor)
+    : io_context_(io_context),
+      remote_node_id_(std::move(remote_node_id)),
+      message_processor_(std::move(message_processor)) {}
 
 void NodeSyncConnection::ReceiveUpdate(RaySyncMessages messages) {
   for (auto &message : *messages.mutable_sync_messages()) {
@@ -85,7 +86,7 @@ void NodeSyncConnection::ReceiveUpdate(RaySyncMessages messages) {
                    << ", local_message_version=" << node_versions[message.component_id()];
     if (node_versions[message.component_id()] < message.version()) {
       node_versions[message.component_id()] = message.version();
-      instance_.BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(message)));
+      message_processor_(std::make_shared<RaySyncMessage>(std::move(message)));
     }
   }
 }
@@ -121,11 +122,12 @@ std::array<int64_t, kComponentArraySize> &NodeSyncConnection::GetNodeComponentVe
   return iter->second;
 }
 
-ClientSyncConnection::ClientSyncConnection(RaySyncer &instance,
-                                           instrumented_io_context &io_context,
-                                           const std::string &node_id,
-                                           std::shared_ptr<grpc::Channel> channel)
-    : NodeSyncConnection(instance, io_context, node_id),
+ClientSyncConnection::ClientSyncConnection(
+    instrumented_io_context &io_context,
+    const std::string &node_id,
+    std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor,
+    std::shared_ptr<grpc::Channel> channel)
+    : NodeSyncConnection(io_context, node_id, std::move(message_processor)),
       stub_(ray::rpc::syncer::RaySyncer::NewStub(channel)) {
   StartLongPolling();
 }
@@ -191,10 +193,11 @@ void ClientSyncConnection::DoSend() {
   }
 }
 
-ServerSyncConnection::ServerSyncConnection(RaySyncer &instance,
-                                           instrumented_io_context &io_context,
-                                           const std::string &remote_node_id)
-    : NodeSyncConnection(instance, io_context, remote_node_id) {}
+ServerSyncConnection::ServerSyncConnection(
+    instrumented_io_context &io_context,
+    const std::string &remote_node_id,
+    std::function<void(std::shared_ptr<RaySyncMessage>)> message_processor)
+    : NodeSyncConnection(io_context, remote_node_id, std::move(message_processor)) {}
 
 ServerSyncConnection::~ServerSyncConnection() {
   // If there is a pending request, we need to cancel it. Otherwise, rpc will
@@ -276,7 +279,10 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
           io_context_.post(
               [this, channel, response]() {
                 auto connection = std::make_unique<ClientSyncConnection>(
-                    *this, io_context_, response->node_id(), channel);
+                    io_context_,
+                    response->node_id(),
+                    [this](auto msg) { BroadcastMessage(msg); },
+                    channel);
                 Connect(std::move(connection));
               },
               "StartSyncCallback");
@@ -385,7 +391,9 @@ grpc::ServerUnaryReactor *RaySyncerService::StartSync(
         }
 
         syncer_.Connect(std::make_unique<ServerSyncConnection>(
-            syncer_, syncer_.GetIOContext(), remote_node_id_));
+            syncer_.GetIOContext(), remote_node_id_, [this](auto msg) {
+              syncer_.BroadcastMessage(msg);
+            }));
         response->set_node_id(syncer_.GetLocalNodeID());
         reactor->Finish(grpc::Status::OK);
       },
