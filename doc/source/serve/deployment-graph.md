@@ -28,11 +28,13 @@ Meanwhile, the size of a model is also growing beyond the memory limit of a sing
 
 We want to leverage the programmable and general purpose distributed computing ability of Ray and double down on its unique strengths (scheduling, communication and shared memory) to facilitate authoring, orchestrating, scaling and deployment of complex serving graphs so a user can program & test multiple models or multiple shards of a single large model dynamically and deploy to production at scale, and able to scale and reconfigure individually.
 
-## Key Features
+## Design Principles 
 - Provide the ability to author a DAG of Serve nodes to form a complex inference graph.
 - Graph authoring experience should be fully Python-programmable with support for dynamic selection, control flows, user business logic, etc.
 - Graph can be instantiated and locally executed using tasks and actors API
 - Graph can be deployed as a group where individual nodes can be reconfigured and scaled indepenently.
+- User should not need to write any YAML file to author, run, iterate, and deployment a graph. 
+- Have a path for DevOps / MLOps people to take actions on operationalizei
 
 __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md)__
 
@@ -48,8 +50,7 @@ __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ra
 
 - **Bind**: A graph building API applicable to decorated class or function.  `decorated_class_or_func.bind(*args, **kwargs)` generates a `DeploymentNode` that can be used to build graph, and bound arguments will be applied at execution time, including dynamic user input.
 
-- **Deployment Graph**: Collection of deployment nodes bound together that forms a DAG that represents an inference graph for complicated tasks, can be deployed and call as a unit. For example: ensemble, chaining, dynamic selection. 
-
+- **Deployment Graph**: Collection of deployment nodes bound together that forms a DAG that represents an inference graph for complicated tasks, can be deployed and call as a unit. For example: ensemble, chaining, dynamic selection.
 
 +++
 
@@ -89,7 +90,7 @@ Let's start with the first layer of DAG: Building user input to two preprocessor
 
 ```python
 from ray import serve
-# We will later 
+# We will later move Ray DAG related components out of experimental in later stable release
 from ray.experimental.dag.input_node import InputNode
 
 @serve.deployment
@@ -298,8 +299,6 @@ Now we've built the entire serve DAG with the topology, args binding and user in
 We expect each DAG has a driver class implementation as root, similar to the example below. This is where HTTP ingress are configured and implemented. We provide a default `DAGDriver` to handle simple HTTP parsing, but in this example we put up a custom implementation. 
 ```
 
-
-
 +++
 
 ```python
@@ -397,10 +396,9 @@ more info on these options.
 
 Now we're done! The full example below covers the full example for you to try out.
 
-+++
-
-```{code-cell} python3
+```{code-cell} ipython3
 :tags: [remove-cell]
+
 import ray
 from ray import serve
 from ray.serve.pipeline.generate import DeploymentNameGenerator
