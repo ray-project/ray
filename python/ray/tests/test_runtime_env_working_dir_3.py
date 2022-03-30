@@ -9,7 +9,6 @@ from pytest_lazyfixture import lazy_fixture
 from unittest import mock
 
 import ray
-from ray.exceptions import GetTimeoutError
 from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 import ray.experimental.internal_kv as kv
 from ray._private.utils import get_directory_size_bytes
@@ -39,135 +38,17 @@ def runtime_env_disable_URI_cache():
         yield
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="Requires PR wheels built in CI, so only run on linux CI machines.",
-)
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
+@pytest.fixture(scope="class")
+def URI_cache_10_MB():
+    with mock.patch.dict(
+        os.environ,
         {
-            "num_nodes": 1,
-            "_system_config": {
-                "num_workers_soft_limit": 0,
-            },
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01",
         },
-        {
-            "num_nodes": 1,
-            "_system_config": {
-                "num_workers_soft_limit": 5,
-            },
-        },
-        {
-            "num_nodes": 1,
-            "_system_config": {
-                "num_workers_soft_limit": 0,
-                # this delay will make worker start slow and time out
-                "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
-                ".InternalKVGet=2000000:2000000",
-                "worker_register_timeout_seconds": 1,
-            },
-        },
-        {
-            "num_nodes": 1,
-            "_system_config": {
-                "num_workers_soft_limit": 5,
-                # this delay will make worker start slow and time out
-                "testing_asio_delay_us": "InternalKVGcsService.grpc_server"
-                ".InternalKVGet=2000000:2000000",
-                "worker_register_timeout_seconds": 1,
-            },
-        },
-    ],
-    indirect=True,
-)
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option):
-    """Tests that task-level working_dir is GC'd when the worker exits."""
-
-    cluster = ray_start_cluster
-
-    soft_limit_zero = False
-    worker_register_timeout = False
-    system_config = cluster.list_all_nodes()[0]._ray_params._system_config
-    if (
-        "num_workers_soft_limit" in system_config
-        and system_config["num_workers_soft_limit"] == 0
     ):
-        soft_limit_zero = True
-    if (
-        "worker_register_timeout_seconds" in system_config
-        and system_config["worker_register_timeout_seconds"] != 0
-    ):
-        worker_register_timeout = True
-
-    @ray.remote
-    def f():
-        import test_module
-
-        test_module.one()
-
-    @ray.remote(num_cpus=1)
-    class A:
-        def check(self):
-            import test_module
-
-            test_module.one()
-
-    if option == "working_dir":
-        runtime_env = {"working_dir": S3_PACKAGE_URI}
-    else:
-        runtime_env = {"py_modules": [S3_PACKAGE_URI]}
-
-    # Note: We should set a bigger timeout if downloads the s3 package slowly.
-    get_timeout = 10
-
-    # Start a task with runtime env
-    if worker_register_timeout:
-        with pytest.raises(GetTimeoutError):
-            ray.get(f.options(runtime_env=runtime_env).remote(), timeout=get_timeout)
-    else:
-        ray.get(f.options(runtime_env=runtime_env).remote())
-    if soft_limit_zero or worker_register_timeout:
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
-    else:
-        # Local files should not be gced because of an enough soft limit.
-        assert not check_local_files_gced(cluster)
-
-    # Start a actor with runtime env
-    actor = A.options(runtime_env=runtime_env).remote()
-    if worker_register_timeout:
-        with pytest.raises(GetTimeoutError):
-            ray.get(actor.check.remote(), timeout=get_timeout)
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
-    else:
-        ray.get(actor.check.remote())
-        assert not check_local_files_gced(cluster)
-
-    # Kill actor
-    ray.kill(actor)
-    if soft_limit_zero or worker_register_timeout:
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
-    else:
-        # Local files should not be gced because of an enough soft limit.
-        assert not check_local_files_gced(cluster)
-
-    # Start a task with runtime env
-    if worker_register_timeout:
-        with pytest.raises(GetTimeoutError):
-            ray.get(f.options(runtime_env=runtime_env).remote(), timeout=get_timeout)
-    else:
-        ray.get(f.options(runtime_env=runtime_env).remote())
-    if soft_limit_zero or worker_register_timeout:
-        # Wait for worker exited and local files gced
-        wait_for_condition(lambda: check_local_files_gced(cluster))
-    else:
-        # Local files should not be gced because of an enough soft limit.
-        assert not check_local_files_gced(cluster)
+        print("URI cache size set to 0.01 GB.")
+        yield
 
 
 def check_internal_kv_gced():
@@ -393,6 +274,45 @@ class TestGC:
                     node.get_runtime_env_dir_path(), "working_dir_files"
                 )
                 assert 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def skip_local_gc():
+    with mock.patch.dict(
+        os.environ,
+        {
+            "RAY_RUNTIME_ENV_SKIP_LOCAL_GC": "1",
+        },
+    ):
+        print("RAY_RUNTIME_ENV_SKIP_LOCAL_GC enabled.")
+        yield
+
+
+@pytest.mark.skip("#23617 must be resolved for skip_local_gc to work.")
+class TestSkipLocalGC:
+    @pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+    def test_skip_local_gc_env_var(
+        self, skip_local_gc, start_cluster, runtime_env_disable_URI_cache, source
+    ):
+        cluster, address = start_cluster
+        ray.init(address, namespace="test", runtime_env={"working_dir": source})
+
+        @ray.remote
+        class A:
+            def test_import(self):
+                import test_module
+
+                test_module.one()
+
+        a = A.remote()
+        ray.get(a.test_import.remote())  # Check working_dir was downloaded
+
+        ray.shutdown()
+
+        time.sleep(1)  # Give time for GC to potentially happen
+        assert not check_local_files_gced(cluster)
 
 
 if __name__ == "__main__":
