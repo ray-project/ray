@@ -314,16 +314,18 @@ def ray_actors(actor_id: str):
 def ray_log(
     ip_address: str,
     node_id: str,
+    actor_id: str,
     filters: str,
     limit: int = 100,
 ):
     """Return the `limit` number of lines of logs."""
     import requests
-
     api_server_url = _get_dashboard_url()
     node_id_query = f"node_id={node_id}&" if node_id else ""
+    actor_id_query = f"actor_id={actor_id}&" if actor_id else ""
     response = requests.get(
-        f"{api_server_url}/v1/api/logs/index?{node_id_query}filters={filters}"
+        f"{api_server_url}/v1/api/logs/index?{node_id_query}"
+        f"{actor_id_query}filters={filters}"
     )
     if response.status_code != 200:
         raise Exception(response.text)

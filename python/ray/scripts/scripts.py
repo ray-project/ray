@@ -1986,7 +1986,7 @@ def logs(
             # If we find more than one match, we output the index.
             filters = ",".join(filters) + \
                                (f",{filename}" if filename is not None else "")
-            api_endpoint, logs_dict = ray_log(node_ip, node_id, filters)
+            api_endpoint, logs_dict = ray_log(node_ip, node_id, actor_id, filters)
             # to_dedup = ["gcs_logs", "dashboard", "autoscaler", "autoscaler_monitor"]
             if len(logs_dict) == 0:
                 raise Exception("Could not find node.")
@@ -2015,9 +2015,7 @@ def logs(
             )
             return lines
 
-        if actor_id:
-            format_print_logs_index(ray_actor_log(actor_id))
-        elif found_many:
+        if found_many:
             print("Warning: More than one log file matches your query. Please add "
                   "additional file name substrings, flags or specify the full filename "
                   "with -f to narrow down the search results to a single file. "

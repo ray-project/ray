@@ -172,20 +172,30 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/v1/api/logs/index")
     async def handle_log_index(self, req):
-        node_id = req.query.get("node_id", None)
+        node_id_query = req.query.get("node_id", None)
+        actor_id = req.query.get("actor_id", None)
         filters = req.query.get("filters", "").split(",")
+        if actor_id is not None:
+            actor_data = DataSource.actors.get(actor_id)
+            if actor_data is None:
+                return aiohttp.web.HTTPNotFound(
+                    reason=f"Actor ID {actor_id} not found.")
+            worker_id = actor_data["address"].get("workerId")
+            if worker_id is None:
+                return aiohttp.web.HTTPNotFound(
+                    reason=f"Worker Id for Actor ID {actor_id} not found.")
+            filters.append(worker_id)
         response = {}
         while self._stubs == {}:
             await asyncio.sleep(0.5)
         tasks = []
-        # TODO: check this is in fact running in parallel
         for node_id, grpc_stub in self._stubs.items():
-            async def coro():
-                response[node_id] = await self.get_logs_json_index(
-                    grpc_stub, filters
-                )
-
-            tasks.append(coro())
+            if node_id_query is None or node_id_query == node_id:
+                async def coro():
+                    response[node_id] = await self.get_logs_json_index(
+                        grpc_stub, filters
+                    )
+                tasks.append(coro())
         await asyncio.gather(*tasks)
         return aiohttp.web.json_response(response)
 
