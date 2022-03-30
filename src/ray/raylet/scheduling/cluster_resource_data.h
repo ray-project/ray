@@ -39,6 +39,9 @@ bool IsPredefinedResource(scheduling::ResourceID resource_id);
 /// "requires_object_store_memory_" field, and rename this class to ResourceSet.
 class ResourceRequest {
  public:
+  using ResourceIdIterator =
+      boost::select_first_range<absl::flat_hash_map<ResourceID, FixedPoint>>;
+
   /// Construct an empty ResourceRequest.
   ResourceRequest() : ResourceRequest({}, false) {}
 
@@ -48,7 +51,7 @@ class ResourceRequest {
 
   ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
                   bool requires_object_store_memory)
-      : equires_object_store_memory_(requires_object_store_memory) {
+      : requires_object_store_memory_(requires_object_store_memory) {
     for (auto entry : resource_map) {
       if (entry.second != 0) {
         resources_[entry.first] = entry.second;
@@ -108,11 +111,8 @@ class ResourceRequest {
   /// Return true if this set is empty.
   bool IsEmpty() const { return resources_.empty(); }
 
-  /// Return a set that contains all resource ids in this set.
-  boost::select_first_range<absl::flat_hash_map<ResourceID, FixedPoint>> ResourceIds()
-      const {
-    return boost::adaptors::keys(resources_);
-  }
+  /// Return a boost::range object that can be used as an iterator of the resource IDs.
+  ResourceIdIterator ResourceIds() const { return boost::adaptors::keys(resources_); }
 
   /// Return a map from the resource ids to the values.
   absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
@@ -235,6 +235,9 @@ class ResourceRequest {
 /// ResourceInstanceSet.
 class TaskResourceInstances {
  public:
+  using ResourceIdIterator =
+      boost::select_first_range<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>;
+
   /// Construct an empty TaskResourceInstances.
   TaskResourceInstances() {}
 
@@ -328,11 +331,8 @@ class TaskResourceInstances {
   /// Remove a particular resource.
   void Remove(ResourceID resource_id) { resources_.erase(resource_id); }
 
-  /// Return a set of all resource ids.
-  boost::select_first_range<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
-  ResourceIds() const {
-    return boost::adaptors::keys(resources_);
-  }
+  /// Return a boost::range object that can be used as an iterator of the resource IDs.
+  ResourceIdIterator ResourceIds() const { return boost::adaptors::keys(resources_); }
 
   /// Return the number of resources in this set.
   size_t Size() const { return resources_.size(); }
