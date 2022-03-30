@@ -465,7 +465,7 @@ class RemoteTaskClient(SyncClient):
 
     def sync_down(
         self, source: Tuple[str, str], target: str, exclude: Optional[List] = None
-    ):
+    ) -> bool:
         if self._sync_future:
             logger.warning(
                 f"Last remote task sync still in progress, "
@@ -479,11 +479,11 @@ class RemoteTaskClient(SyncClient):
         self._last_source_tuple = source_ip, source_path
         self._last_target_tuple = target_ip, target
 
-        self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+        return self._execute_sync(self._last_source_tuple, self._last_target_tuple)
 
     def sync_up(
         self, source: str, target: Tuple[str, str], exclude: Optional[List] = None
-    ):
+    ) -> bool:
         if self._sync_future:
             logger.warning(
                 f"Last remote task sync still in progress, "
@@ -497,11 +497,11 @@ class RemoteTaskClient(SyncClient):
         self._last_source_tuple = source_ip, source
         self._last_target_tuple = target_ip, target_path
 
-        self._execute_sync(self._last_source_tuple, self._last_target_tuple)
+        return self._execute_sync(self._last_source_tuple, self._last_target_tuple)
 
     def _execute_sync(
         self, source_tuple: Tuple[str, str], target_tuple: Tuple[str, str]
-    ):
+    ) -> bool:
         source_ip, source_path = source_tuple
         target_ip, target_path = target_tuple
 
@@ -514,6 +514,7 @@ class RemoteTaskClient(SyncClient):
 
         pack_future = pack_on_source_node.remote(source_path)
         self._sync_future = unpack_on_target_node.remote(pack_future, target_path)
+        return True
 
     def delete(self, target: str):
         pass
@@ -528,6 +529,7 @@ class RemoteTaskClient(SyncClient):
                     f"{self._last_source_tuple} to "
                     f"{self._last_target_tuple}"
                 ) from e
+            self._sync_future = None
 
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0

@@ -209,7 +209,7 @@ class Syncer:
 
     @property
     def _pass_ip_path_tuples(self) -> False:
-        """Return True if the sync client expect (ip, path) tuples instead
+        """Return True if the sync client expects (ip, path) tuples instead
         of rsync strings (user@ip:/path/)."""
         return isinstance(self.sync_client, RemoteTaskClient)
 
