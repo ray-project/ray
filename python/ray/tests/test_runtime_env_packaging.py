@@ -202,7 +202,7 @@ class TestStorePackageInGcs:
     def test_package_size_too_large(self):
         """Check that function throws useful error when package is too large."""
 
-        uri = "gcs:/test.zip"
+        uri = "gcs://test.zip"
         bytes = b"a" * (GCS_STORAGE_MAX_SIZE + 1)
 
         with pytest.raises(ValueError, match="Package size"):
