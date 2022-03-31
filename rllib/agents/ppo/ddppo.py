@@ -204,7 +204,7 @@ class DDPPOTrainer(PPOTrainer):
 
         Returns:
             LocalIterator[dict]: The Policy class to use with PGTrainer.
-                If None, use `default_policy` provided in build_trainer().
+                If None, use `get_default_policy_class()` provided by Trainer.
         """
         assert (
             len(kwargs) == 0

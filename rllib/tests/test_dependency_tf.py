@@ -7,6 +7,13 @@ if __name__ == "__main__":
     # Do not import tf for testing purposes.
     os.environ["RLLIB_TEST_NO_TF_IMPORT"] = "1"
 
+    # Test registering (includes importing) all Trainers.
+    from ray.rllib import _register_all
+
+    # This should surface any dependency on tf, e.g. inside function
+    # signatures/typehints.
+    _register_all()
+
     from ray.rllib.agents.a3c import A2CTrainer
 
     assert (
