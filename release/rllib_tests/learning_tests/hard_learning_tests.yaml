@@ -80,8 +80,6 @@ apex-breakoutnoframeskip-v4:
             epsilon_timesteps: 200000
             final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
-        final_prioritized_replay_beta: 1.0
-        prioritized_replay_beta_annealing_timesteps: 2000000
         num_gpus: 1
         num_workers: 8
         num_envs_per_worker: 8
@@ -327,8 +325,6 @@ dqn-breakoutnoframeskip-v4:
             epsilon_timesteps: 200000
             final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
-        final_prioritized_replay_beta: 1.0
-        prioritized_replay_beta_annealing_timesteps: 2000000
         num_gpus: 0.5
         timesteps_per_iteration: 10000
 
@@ -463,6 +459,7 @@ slateq-interest-evolution-recsim-env:
     stop:
         episode_reward_mean: 162.0
         timesteps_total: 300000
+    num_workers: 12
     config:
         # RLlib/RecSim wrapper specific settings:
         env_config:
@@ -487,7 +484,7 @@ slateq-interest-evolution-recsim-env:
                 convert_to_discrete_action_space: false
                 seed: 0
 
-        num_gpus: 0
+        num_gpus: 1
 
         exploration_config:
             warmup_timesteps: 20000

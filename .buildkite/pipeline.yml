@@ -143,6 +143,13 @@
     - ./ci/travis/ci.sh lint
     - ./ci/travis/ci.sh build
 
+- label: ":book: LinkCheck"
+  commands:
+    - export LINT=1
+    - ./ci/travis/install-dependencies.sh
+    - ./ci/travis/ci.sh check_sphinx_links
+  soft_fail: True
+
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
@@ -189,7 +196,7 @@
       --jobs=2
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
-      -//:gcs_server_rpc_test -//:gcs_server_test
+      -//:gcs_server_rpc_test -//:gcs_client_test
       -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
 
 - label: ":serverless: Dashboard Tests"
@@ -226,7 +233,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
-    - >- 
+    - >-
       set -x;
       python ./scripts/bazel-sharding.py
       --exclude_manual

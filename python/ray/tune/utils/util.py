@@ -1,4 +1,4 @@
-from typing import Dict, List, Union, Callable, Type
+from typing import Dict, List, Union, Type, Callable, Any
 import copy
 import glob
 import logging
@@ -15,6 +15,8 @@ from typing import Optional
 import numpy as np
 import ray
 import psutil
+from ray.ml.checkpoint import Checkpoint
+from ray.util.ml_utils.cloud import clear_bucket
 
 from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
 from ray.util.ml_utils.dict import (  # noqa: F401
@@ -130,12 +132,64 @@ def get_pinned_object(pinned_id):
     return ray.get(pinned_id)
 
 
+def retry_fn(
+    fn: Callable[[], Any],
+    exception_type: Type[Exception],
+    num_retries: int = 3,
+    sleep_time: int = 1,
+):
+    for i in range(num_retries):
+        try:
+            fn()
+        except exception_type as e:
+            logger.warning(e)
+            time.sleep(sleep_time)
+        else:
+            break
+
+
+@ray.remote
+def _serialize_checkpoint(checkpoint_path) -> bytes:
+    checkpoint = Checkpoint.from_directory(checkpoint_path)
+    return checkpoint.to_bytes()
+
+
+def get_checkpoint_from_remote_node(
+    checkpoint_path: str, node_ip: str, timeout: float = 300.0
+) -> Optional[Checkpoint]:
+    if not any(node["NodeManagerAddress"] == node_ip for node in ray.nodes()):
+        logger.warning(
+            f"Could not fetch checkpoint with path {checkpoint_path} from "
+            f"node with IP {node_ip} because the node is not available "
+            f"anymore."
+        )
+        return None
+    fut = _serialize_checkpoint.options(
+        resources={f"node:{node_ip}": 0.01}, num_cpus=0
+    ).remote(checkpoint_path)
+    try:
+        checkpoint_data = ray.get(fut, timeout=timeout)
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch checkpoint with path {checkpoint_path} from "
+            f"node with IP {node_ip} because serialization failed: {e}"
+        )
+        return None
+    return Checkpoint.from_bytes(checkpoint_data)
+
+
+def delete_external_checkpoint(checkpoint_uri: str):
+    clear_bucket(checkpoint_uri)
+
+
 class warn_if_slow:
     """Prints a warning if a given operation is slower than 500ms.
 
     Example:
-        >>> with warn_if_slow("some_operation"):
-        ...    ray.get(something)
+        >>> from ray.tune.utils.util import warn_if_slow
+        >>> something = ... # doctest: +SKIP
+        >>> with warn_if_slow("some_operation"): # doctest: +SKIP
+        ...    ray.get(something) # doctest: +SKIP
     """
 
     DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))

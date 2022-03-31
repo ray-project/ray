@@ -43,7 +43,7 @@ MEAN_MIN = -9.0
 MEAN_MAX = 9.0
 
 
-def _repeat_tensor(t: torch.Tensor, n: int):
+def _repeat_tensor(t: TensorType, n: int):
     # Insert new dimension at posotion 1 into tensor t
     t_rep = t.unsqueeze(1)
     # Repeat tensor t_rep along new dimension n times

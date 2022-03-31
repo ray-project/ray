@@ -125,6 +125,7 @@ test_core() {
         -//:gcs_pub_sub_test
         -//:gcs_server_test
         -//:gcs_server_rpc_test
+        -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
       )
       ;;
   esac
@@ -156,11 +157,11 @@ test_python() {
       -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_object_manager # OOM on test_object_directory_basic
       -python/ray/tests:test_resource_demand_scheduler
-      -python/ray/tests:test_runtime_env_complicated # requires conda
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
+      -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -179,6 +180,10 @@ test_python() {
     bazel test --config=ci \
       --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
+      --test_env=USERPROFILE="${USERPROFILE}" \
+      --test_env=CI=1 \
+      --test_env=RAY_CI_POST_WHEEL_TESTS=1 \
+      --test_output=streamed \
       -- \
       ${test_shard_selection};
   fi
@@ -202,7 +207,6 @@ test_cpp() {
   # run cluster mode test with external cluster
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
-  
   bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example
@@ -263,7 +267,18 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      sphinx-build -q -E -W -T -b html source _build/html
+      make html
+      make doctest
+    fi
+  )
+}
+
+check_sphinx_links() {
+  (
+    cd "${WORKSPACE_DIR}"/doc
+    if [ "${OSTYPE}" = msys ]; then
+      echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
+    else
       make linkcheck
     fi
   )
@@ -415,8 +430,9 @@ build_wheels() {
         # Sync the directory to buildkite artifacts
         rm -rf /artifact-mount/.whl || true
         cp -r .whl /artifact-mount/.whl
+        chmod -R 777 /artifact-mount/.whl
 
-      validate_wheels_commit_str
+        validate_wheels_commit_str
       fi
       ;;
     darwin*)
