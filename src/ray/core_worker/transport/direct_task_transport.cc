@@ -77,10 +77,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                                             : ActorID::Nil(),
             task_spec.GetRuntimeEnvHash(),
             task_spec.IsNodeSchedulingStrategy()
-                ? NodeID::FromBinary(task_spec.GetSchedulingStrategy()
-                                         .node_scheduling_strategy()
-                                         .node_id())
-                : NodeID::Nil());
+                ? std::make_pair(task_spec.GetNodeSchedulingStrategyNodeId(),
+                                 task_spec.GetNodeSchedulingStrategySoft())
+                : std::make_pair(NodeID::Nil(), false));
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
         scheduling_key_entry.resource_spec = task_spec;
@@ -388,8 +387,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                     rpc::RequestWorkerLeaseReply::
                         SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
                 reply.failure_type() ==
-                    rpc::RequestWorkerLeaseReply::
-                        SCHEDULING_CANCELLED_NODE_SCHEDULING_STRATEGY_NODE_DIED) {
+                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE) {
               // We need to actively fail all of the pending tasks in the queue when the
               // placement group was removed or the runtime env failed to be set up. Such
               // an operation is straightforward for the scenario of placement group
@@ -413,10 +411,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                       &error_info));
                 } else if (reply.failure_type() ==
                            rpc::RequestWorkerLeaseReply::
-                               SCHEDULING_CANCELLED_NODE_SCHEDULING_STRATEGY_NODE_DIED) {
+                               SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                  rpc::RayErrorInfo error_info;
+                  *(error_info.mutable_error_message()) =
+                      reply.scheduling_failure_message();
                   RAY_UNUSED(task_finisher_->FailPendingTask(
                       task_spec.TaskId(),
-                      rpc::ErrorType::NODE_SCHEDULING_STRATEGY_NODE_DIED));
+                      rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR,
+                      /*status*/ nullptr,
+                      &error_info));
                 } else {
                   if (task_spec.IsActorCreationTask()) {
                     RAY_UNUSED(task_finisher_->FailPendingTask(
@@ -605,9 +608,9 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
       task_spec.GetRuntimeEnvHash(),
       task_spec.IsNodeSchedulingStrategy()
-          ? NodeID::FromBinary(
-                task_spec.GetSchedulingStrategy().node_scheduling_strategy().node_id())
-          : NodeID::Nil());
+          ? std::make_pair(task_spec.GetNodeSchedulingStrategyNodeId(),
+                           task_spec.GetNodeSchedulingStrategySoft())
+          : std::make_pair(NodeID::Nil(), false));
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);

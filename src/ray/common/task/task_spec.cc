@@ -116,8 +116,13 @@ void TaskSpecification::ComputeResources() {
     const auto &resource_set = GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
-    auto sched_cls_desc =
-        SchedulingClassDescriptor(resource_set, function_descriptor, depth);
+    auto sched_cls_desc = SchedulingClassDescriptor(
+        resource_set,
+        function_descriptor,
+        depth,
+        IsNodeSchedulingStrategy() ? std::make_pair(GetNodeSchedulingStrategyNodeId(),
+                                                    GetNodeSchedulingStrategySoft())
+                                   : std::make_pair(NodeID::Nil(), false));
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
@@ -247,6 +252,16 @@ const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const 
 bool TaskSpecification::IsNodeSchedulingStrategy() const {
   return GetSchedulingStrategy().scheduling_strategy_case() ==
          rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeSchedulingStrategy;
+}
+
+NodeID TaskSpecification::GetNodeSchedulingStrategyNodeId() const {
+  RAY_CHECK(IsNodeSchedulingStrategy());
+  return NodeID::FromBinary(GetSchedulingStrategy().node_scheduling_strategy().node_id());
+}
+
+bool TaskSpecification::GetNodeSchedulingStrategySoft() const {
+  RAY_CHECK(IsNodeSchedulingStrategy());
+  return GetSchedulingStrategy().node_scheduling_strategy().soft();
 }
 
 std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {

@@ -188,9 +188,10 @@ enum ErrorType {
   TASK_PLACEMENT_GROUP_REMOVED = 16;
   // Indicates that the placement group corresponding to an actor has been removed.
   ACTOR_PLACEMENT_GROUP_REMOVED = 17;
-  // Task/Actor is failed to be scheduled because
-  // the node that's specified via strict NodeSchedulingStrategy died.
-  NODE_SCHEDULING_STRATEGY_NODE_DIED = 18;
+  // The task is unschedulable.
+  TASK_UNSCHEDULABLE_ERROR = 18;
+  // The actor is unschedulable.
+  ACTOR_UNSCHEDULABLE_ERROR = 19;
 }
 
 /// The information per ray error type.
@@ -198,6 +199,7 @@ message RayErrorInfo {
   oneof error {
     ActorDeathCause actor_died_error = 2;
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
+    string error_message = 4;
   }
 }
 
@@ -218,12 +220,17 @@ message ActorDeathCause {
     RayException creation_task_failure_context = 1;
     RuntimeEnvFailedContext runtime_env_failed_context = 2;
     ActorDiedErrorContext actor_died_error_context = 3;
+    ActorUnschedulableContext actor_unschedulable_context = 4;
   }
 }
 // ---Actor death contexts start----
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
 message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
+  string error_message = 1;
+}
+
+message ActorUnschedulableContext {
   string error_message = 1;
 }
 

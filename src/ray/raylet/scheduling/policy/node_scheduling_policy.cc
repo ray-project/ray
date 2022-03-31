@@ -26,10 +26,10 @@ scheduling::NodeID NodeSchedulingPolicy::Schedule(const ResourceRequest &resourc
       continue;
     }
     if (!is_node_available_(node_id)) {
-      continue;
+      break;
     }
     if (!node.GetLocalView().IsFeasible(resource_request)) {
-      return scheduling::NodeID::Nil();
+      break;
     }
     return node_id;
   }

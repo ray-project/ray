@@ -26,7 +26,8 @@ from ray.exceptions import (
     TaskPlacementGroupRemoved,
     ActorPlacementGroupRemoved,
     LocalRayletDiedError,
-    NodeSchedulingStrategyNodeDiedError,
+    TaskUnschedulableError,
+    ActorUnschedulableError,
 )
 from ray._raylet import (
     split_buffer,
@@ -308,8 +309,12 @@ class SerializationContext:
                 return TaskPlacementGroupRemoved()
             elif error_type == ErrorType.Value("ACTOR_PLACEMENT_GROUP_REMOVED"):
                 return ActorPlacementGroupRemoved()
-            elif error_type == ErrorType.Value("NODE_SCHEDULING_STRATEGY_NODE_DIED"):
-                return NodeSchedulingStrategyNodeDiedError()
+            elif error_type == ErrorType.Value("TASK_UNSCHEDULABLE_ERROR"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return TaskUnschedulableError(error_info.error_message)
+            elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                return ActorUnschedulableError(error_info.error_message)
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:

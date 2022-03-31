@@ -285,7 +285,8 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
                 scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=False)
             ).remote()
         )
-        # Doesn't hang since soft is true.
+
+        # Doesn't fail when the node doesn't exist since soft is true.
         ray.get(
             get_node_id.options(
                 scheduling_strategy=NodeSchedulingStrategy(
@@ -293,6 +294,82 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
                 )
             ).remote()
         )
+
+        # Doesn't fail when the node is infeasible since soft is true.
+        assert worker_node_id == ray.get(
+            get_node_id.options(
+                scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=True),
+                resources={"worker": 1},
+            ).remote()
+        )
+
+        # Fail when the node doesn't exist.
+        with pytest.raises(ray.exceptions.TaskUnschedulableError):
+            ray.get(
+                get_node_id.options(
+                    scheduling_strategy=NodeSchedulingStrategy(
+                        ray.NodeID.from_random().hex(), soft=False
+                    )
+                ).remote()
+            )
+
+        # Fail when the node is infeasible.
+        with pytest.raises(ray.exceptions.TaskUnschedulableError):
+            ray.get(
+                get_node_id.options(
+                    scheduling_strategy=NodeSchedulingStrategy(
+                        head_node_id, soft=False
+                    ),
+                    resources={"not_exist": 1},
+                ).remote()
+            )
+
+        @ray.remote(num_cpus=1)
+        class Actor:
+            def get_node_id(self):
+                return ray.get_runtime_context().node_id.hex()
+
+        actor = Actor.options(
+            scheduling_strategy=NodeSchedulingStrategy(worker_node_id, soft=False)
+        ).remote()
+        assert worker_node_id == ray.get(actor.get_node_id.remote())
+
+        actor = Actor.options(
+            scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=False)
+        ).remote()
+        assert head_node_id == ray.get(actor.get_node_id.remote())
+
+        # Doesn't fail when the node doesn't exist since soft is true.
+        actor = Actor.options(
+            scheduling_strategy=NodeSchedulingStrategy(
+                ray.NodeID.from_random().hex(), soft=True
+            )
+        ).remote()
+        assert ray.get(actor.get_node_id.remote())
+
+        # Doesn't fail when the node is infeasible since soft is true.
+        actor = Actor.options(
+            scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=True),
+            resources={"worker": 1},
+        ).remote()
+        assert worker_node_id == ray.get(actor.get_node_id.remote())
+
+        # Fail when the node doesn't exist.
+        with pytest.raises(ray.exceptions.ActorUnschedulableError):
+            actor = Actor.options(
+                scheduling_strategy=NodeSchedulingStrategy(
+                    ray.NodeID.from_random().hex(), soft=False
+                )
+            ).remote()
+            ray.get(actor.get_node_id.remote())
+
+        # Fail when the node is infeasible.
+        with pytest.raises(ray.exceptions.ActorUnschedulableError):
+            actor = Actor.options(
+                scheduling_strategy=NodeSchedulingStrategy(worker_node_id, soft=False),
+                resources={"not_exist": 1},
+            ).remote()
+            ray.get(actor.get_node_id.remote())
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])

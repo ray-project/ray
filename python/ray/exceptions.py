@@ -563,9 +563,30 @@ class PendingCallsLimitExceeded(RayError):
     pass
 
 
-class NodeSchedulingStrategyNodeDiedError(RayError):
+class TaskUnschedulableError(RayError):
+    """Raised when the task cannot be scheduled for some reasons.
+
+    One example is that the node specified through NodeSchedulingStrategy is dead.
+    """
+
+    def __init__(self, error_message: str):
+        self.error_message = error_message
+
     def __str__(self):
-        return "The node that's specified via strict NodeSchedulingStrategy is dead."
+        return f"The task is not schedulable: {self.error_message}"
+
+
+class ActorUnschedulableError(RayError):
+    """Raised when the actor cannot be scheduled for some reasons.
+
+    One example is that the node specified through NodeSchedulingStrategy is dead.
+    """
+
+    def __init__(self, error_message: str):
+        self.error_message = error_message
+
+    def __str__(self):
+        return f"The actor is not schedulable: {self.error_message}"
 
 
 RAY_EXCEPTION_TYPES = [
@@ -589,5 +610,6 @@ RAY_EXCEPTION_TYPES = [
     ActorPlacementGroupRemoved,
     PendingCallsLimitExceeded,
     LocalRayletDiedError,
-    NodeSchedulingStrategyNodeDiedError,
+    TaskUnschedulableError,
+    ActorUnschedulableError,
 ]

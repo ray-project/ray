@@ -26,6 +26,11 @@ std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForTask(
     return std::make_pair(fallback_rpc_address_, false);
   }
 
+  if (spec.GetMessage().scheduling_strategy().scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeSchedulingStrategy) {
+    return std::make_pair(fallback_rpc_address_, false);
+  }
+
   if (auto node_id = GetBestNodeIdForTask(spec)) {
     if (auto addr = node_addr_factory_(node_id.value())) {
       return std::make_pair(addr.value(), true);

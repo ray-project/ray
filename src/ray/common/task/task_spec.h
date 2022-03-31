@@ -25,6 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
+#include "ray/util/container_util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -34,15 +35,20 @@ typedef int SchedulingClass;
 
 struct SchedulingClassDescriptor {
  public:
-  explicit SchedulingClassDescriptor(ResourceSet rs, FunctionDescriptor fd, int64_t d)
+  explicit SchedulingClassDescriptor(ResourceSet rs,
+                                     FunctionDescriptor fd,
+                                     int64_t d,
+                                     std ::pair<NodeID, bool> node_scheduling_strategy)
       : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
   ResourceSet resource_set;
   FunctionDescriptor function_descriptor;
   int64_t depth;
+  std::pair<NodeID, bool> node_scheduling_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
-           function_descriptor == other.function_descriptor;
+           function_descriptor == other.function_descriptor &&
+           node_scheduling_strategy == other.node_scheduling_strategy;
   }
 
   std::string DebugString() const {
@@ -50,6 +56,7 @@ struct SchedulingClassDescriptor {
     buffer << "{"
            << "depth=" << depth << " "
            << "function_descriptor=" << function_descriptor->ToString() << " "
+           << "node_scheduling_strategy=" << debug_string(node_scheduling_strategy) << " "
            << "resource_set="
            << "{";
     for (const auto &pair : resource_set.GetResourceMap()) {
@@ -68,6 +75,8 @@ struct hash<ray::SchedulingClassDescriptor> {
     size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
     hash ^= sched_cls.function_descriptor->Hash();
     hash ^= sched_cls.depth;
+    hash ^= sched_cls.node_scheduling_strategy.first.Hash();
+    hash ^= sched_cls.node_scheduling_strategy.second;
     return hash;
   }
 };
@@ -208,6 +217,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
 
   bool IsNodeSchedulingStrategy() const;
+
+  NodeID GetNodeSchedulingStrategyNodeId() const;
+
+  bool GetNodeSchedulingStrategySoft() const;
 
   /// Return the resources that are required for a task to be placed on a node.
   /// This will typically be the same as the resources acquired during execution

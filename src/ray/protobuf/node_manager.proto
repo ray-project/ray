@@ -66,9 +66,8 @@ message RequestWorkerLeaseReply {
     // Scheduling is cancelled because task/actor is intentionally cancelled. E.g.,
     // ray.kill or ray.cancel
     SCHEDULING_CANCELLED_INTENDED = 4;
-    // Scheduling is cancelled because task/actor has strict NodeSchedulingStrategy
-    // but the node is dead (i.e. doesn't exist any more).
-    SCHEDULING_CANCELLED_NODE_SCHEDULING_STRATEGY_NODE_DIED = 5;
+    // Scheduling is cancelled because the task/actor is no longer schedulable.
+    SCHEDULING_CANCELLED_UNSCHEDULABLE = 5;
   }
 
   // Address of the leased worker. If this is empty, then the request should be
