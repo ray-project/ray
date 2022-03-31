@@ -314,7 +314,8 @@ def build_eager_tf_policy(
             # Global timestep should be a tensor.
             self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
             self.explore = tf.Variable(
-                self.config["explore"], trainable=False, dtype=tf.bool)
+                self.config["explore"], trainable=False, dtype=tf.bool
+            )
 
             # Log device and worker index.
             from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -481,12 +482,12 @@ def build_eager_tf_policy(
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
             )
 
-            #TEST:
-            #input_dict.set_get_interceptor(None)
-            #for k in input_dict.keys():
+            # TEST:
+            # input_dict.set_get_interceptor(None)
+            # for k in input_dict.keys():
             #    input_dict[k] = _convert_to_tf(input_dict[k])
-                #input_dict = _convert_to_tf(input_dict)
-            #END: TEST
+            # input_dict = _convert_to_tf(input_dict)
+            # END: TEST
 
             ret = self._compute_actions_helper(
                 input_dict,
@@ -497,8 +498,7 @@ def build_eager_tf_policy(
                 timestep,
             )
             # Update our global timestep by the batch size.
-            self.global_timestep.assign_add(
-                tree.flatten(ret[0])[0].shape.as_list()[0])
+            self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
             return convert_to_numpy(ret)
 
         @override(Policy)
