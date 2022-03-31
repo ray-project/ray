@@ -1068,13 +1068,16 @@ void GcsActorManager::OnActorSchedulingFailed(
     const std::string &scheduling_failure_message) {
   if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED) {
     // We will attempt to schedule this actor once resource becomes available.
-    if (actor->GetActorWorkerAssignment() &&
-        actor->GetActorWorkerAssignment()->IsInfeasible()) {
-      infeasible_actors_[actor->GetActorWorkerAssignment()->GetSchedulingClass()]
-          .push_back(actor);
+    if (actor->GetActorWorkerAssignment()) {
+      if (actor->GetActorWorkerAssignment()->IsInfeasible()) {
+        infeasible_actors_[actor->GetActorWorkerAssignment()->GetSchedulingClass()]
+            .push_back(std::move(actor));
+      } else {
+        actors_to_schedule_[actor->GetCreationTaskSpecification().GetSchedulingClass()]
+            .push_back(std::move(actor));
+      }
     } else {
-      actors_to_schedule_[actor->GetCreationTaskSpecification().GetSchedulingClass()]
-          .push_back(actor);
+      pending_actors_.emplace_back(std::move(actor));
     }
     return;
   }
@@ -1157,64 +1160,52 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
 
 void GcsActorManager::SchedulePendingActors() {
   schedule_pending_actors_posted_ = false;
-  if (infeasible_actors_.empty() && actors_to_schedule_.empty()) {
+  if (pending_actors_.empty() && infeasible_actors_.empty() &&
+      actors_to_schedule_.empty()) {
     return;
   }
 
   RAY_LOG(DEBUG) << "Scheduling actor creation tasks, size = " << GetPendingActorsCount();
 
-  auto infeasible_actors = std::move(infeasible_actors_);
-  for (auto shapes_it = infeasible_actors.begin();
-       shapes_it != infeasible_actors.end();) {
-    auto current = shapes_it++;
-    auto &actor_queue = current->second;
-    while (!actor_queue.empty()) {
-      auto actor = actor_queue.front();
-      actor_queue.pop_front();
-      actor->SetActorWorkerAssignment(nullptr);
-      gcs_actor_scheduler_->Schedule(actor);
-      if (actor->GetActorWorkerAssignment()->IsInfeasible()) {
-        break;
-      }
-    }
-    if (actor_queue.empty()) {
-      infeasible_actors.erase(current);
-    }
-  }
-  if (!infeasible_actors.empty()) {
-    for (auto shapes_it = infeasible_actors.begin(); shapes_it != infeasible_actors.end();
-         ++shapes_it) {
-      auto &actor_queue = infeasible_actors_[shapes_it->first];
-      actor_queue.insert(
-          actor_queue.end(), shapes_it->second.begin(), shapes_it->second.end());
-    }
-  }
-
-  auto actors_to_schedule = std::move(actors_to_schedule_);
-  for (auto shapes_it = actors_to_schedule.begin();
-       shapes_it != actors_to_schedule.end();) {
-    auto current = shapes_it++;
-    auto &actor_queue = current->second;
-    while (!actor_queue.empty()) {
-      auto actor = actor_queue.front();
-      actor_queue.pop_front();
-      actor->SetActorWorkerAssignment(nullptr);
-      gcs_actor_scheduler_->Schedule(actor);
-      if (actor->GetActorWorkerAssignment()->GetNodeID().IsNil()) {
-        break;
-      }
-    }
-    if (actor_queue.empty()) {
-      actors_to_schedule.erase(current);
-    }
-  }
-  if (!actors_to_schedule.empty()) {
-    for (auto shapes_it = actors_to_schedule.begin();
-         shapes_it != actors_to_schedule.end();
-         ++shapes_it) {
-      auto &actor_queue = actors_to_schedule_[shapes_it->first];
-      actor_queue.insert(
-          actor_queue.end(), shapes_it->second.begin(), shapes_it->second.end());
+  if (pending_actors_.empty()) {
+    auto schedule_actor_map =
+        [this](absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
+                   &actor_map) {
+          if (actor_map.empty()) {
+            return;
+          }
+          auto actor_shapes = std::move(actor_map);
+          for (auto shapes_it = actor_shapes.begin(); shapes_it != actor_shapes.end();) {
+            auto current = shapes_it++;
+            auto &actor_queue = current->second;
+            while (!actor_queue.empty()) {
+              auto actor = actor_queue.front();
+              actor_queue.pop_front();
+              actor->SetActorWorkerAssignment(nullptr);
+              gcs_actor_scheduler_->Schedule(actor);
+              if (actor->GetActorWorkerAssignment()->GetNodeID().IsNil()) {
+                break;
+              }
+            }
+            if (actor_queue.empty()) {
+              actor_shapes.erase(current);
+            }
+          }
+          if (!actor_shapes.empty()) {
+            for (auto shapes_it = actor_shapes.begin(); shapes_it != actor_shapes.end();
+                 ++shapes_it) {
+              auto &actor_queue = actor_map[shapes_it->first];
+              actor_queue.insert(
+                  actor_queue.end(), shapes_it->second.begin(), shapes_it->second.end());
+            }
+          }
+        };
+    schedule_actor_map(infeasible_actors_);
+    schedule_actor_map(actors_to_schedule_);
+  } else {
+    auto actors = std::move(pending_actors_);
+    for (auto &actor : actors) {
+      gcs_actor_scheduler_->Schedule(std::move(actor));
     }
   }
 }
@@ -1229,16 +1220,20 @@ void GcsActorManager::SetSchedulePendingActorsPosted(bool posted) {
 
 size_t GcsActorManager::GetPendingActorsCount() const {
   size_t count = 0;
-  for (auto shapes_it = infeasible_actors_.begin(); shapes_it != infeasible_actors_.end();
-       shapes_it++) {
-    count += shapes_it->second.size();
+  if (pending_actors_.empty()) {
+    for (auto shapes_it = infeasible_actors_.begin();
+         shapes_it != infeasible_actors_.end();
+         shapes_it++) {
+      count += shapes_it->second.size();
+    }
+    for (auto shapes_it = actors_to_schedule_.begin();
+         shapes_it != actors_to_schedule_.end();
+         shapes_it++) {
+      count += shapes_it->second.size();
+    }
+    return count;
   }
-  for (auto shapes_it = actors_to_schedule_.begin();
-       shapes_it != actors_to_schedule_.end();
-       shapes_it++) {
-    count += shapes_it->second.size();
-  }
-  return count;
+  return pending_actors_.size();
 }
 
 const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
@@ -1515,6 +1510,18 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
       };
       if (pending_actor_handler(infeasible_actors_) ||
           pending_actor_handler(actors_to_schedule_)) {
+        return;
+      }
+    } else {
+      auto pending_it = std::find_if(pending_actors_.begin(),
+                                     pending_actors_.end(),
+                                     [actor_id](const std::shared_ptr<GcsActor> &actor) {
+                                       return actor->GetActorID() == actor_id;
+                                     });
+
+      // The actor was pending scheduling. Remove it from the queue.
+      if (pending_it != pending_actors_.end()) {
+        pending_actors_.erase(pending_it);
         return;
       }
     }

@@ -41,7 +41,9 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
-    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+        scheduling::NodeID::Nil(),
+        [](scheduling::NodeID node_id) { return !node_id.IsNil(); });
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
     gcs_actor_scheduler_ =

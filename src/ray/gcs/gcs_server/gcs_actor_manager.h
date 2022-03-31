@@ -558,10 +558,18 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Indicate whether a call of SchedulePendingActors has been posted.
   bool schedule_pending_actors_posted_;
 
-  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
-      actors_to_schedule_;
+  /// The pending actors which will not be scheduled until there's a resource change.
+  /// This queue is only used by the raylet-based actor scheduler.
+  std::vector<std::shared_ptr<GcsActor>> pending_actors_;
+
+  /// The pending actors which have not found feasible nodes.
+  /// This queue is only used by the gcs-based actor scheduler.
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
       infeasible_actors_;
+  /// The pending actors which have not found available nodes.
+  /// This queue is only used by the gcs-based actor scheduler.
+  absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
+      actors_to_schedule_;
 
   // Debug info.
   enum CountType {

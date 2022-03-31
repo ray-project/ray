@@ -179,8 +179,10 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto resources_data = get_gcs_node_resources_();
-  UpdateNodeResourceUsage(NodeID::Nil(), *(resources_data.get()));
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    auto resources_data = get_gcs_node_resources_();
+    UpdateNodeResourceUsage(NodeID::Nil(), *(resources_data.get()));
+  }
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
