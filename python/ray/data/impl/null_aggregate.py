@@ -133,7 +133,7 @@ def _null_wrap_merge(
     return _merge
 
 
-def _null_wrap_accumulate(
+def _null_wrap_accumulate_row(
     ignore_nulls: bool,
     on_fn: Callable[[T], T],
     accum: Callable[[AggType, T], AggType],
@@ -148,7 +148,7 @@ def _null_wrap_accumulate(
     1. If r is null and ignore_nulls=False, return None.
     2. If r is null and ignore_nulls=True, return a.
     3. If r is non-null and a is None, return None.
-    5. If r is non-null and a is non-None, return accum(a[:-1], r).
+    4. If r is non-null and a is non-None, return accum(a[:-1], r).
 
     Args:
         ignore_nulls: Whether nulls should be ignored or cause a None result.
@@ -185,21 +185,28 @@ def _null_wrap_accumulate(
 
 def _null_wrap_accumulate_block(
     ignore_nulls: bool,
-    vec_agg: Callable[[BlockAccessor[T]], AggType],
+    accum_block: Callable[[BlockAccessor[T]], AggType],
 ) -> Callable[[AggType, BlockAccessor[T]], AggType]:
     """
     Wrap vectorized aggregate function with null handling.
 
+    This performs a block accumulation subject to the following null rules:
+    1. If any row is null and ignore_nulls=False, return None.
+    2. If at least one row is not null and ignore_nulls=True, return the block
+       accumulation.
+    3. If all rows are null and ignore_nulls=True, return the base accumulation.
+    4. If all rows non-null, return the block accumulation.
+
     Args:
         ignore_nulls: Whether nulls should be ignored or cause a None result.
-        vec_agg: The core vectorized aggregate function to wrap.
+        accum_block: The core vectorized aggregate function to wrap.
 
     Returns:
         A new vectorized aggregate function that handles nulls.
     """
 
-    def _vec_agg(a: AggType, block_acc: BlockAccessor[T]) -> AggType:
-        ret = vec_agg(block_acc)
+    def _accum_block_null(a: AggType, block_acc: BlockAccessor[T]) -> AggType:
+        ret = accum_block(block_acc)
         if ret is None:
             if ignore_nulls:
                 # This can happen if we're ignoring nulls but the entire block only
@@ -211,7 +218,7 @@ def _null_wrap_accumulate_block(
         else:
             return _wrap_acc(ret, has_data=True)
 
-    return _vec_agg
+    return _accum_block_null
 
 
 def _null_wrap_finalize(

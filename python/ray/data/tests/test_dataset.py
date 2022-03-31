@@ -1839,14 +1839,14 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     agg_ds = grouped_ds.aggregate(
         AggregateFn(
             init=lambda k: [0, 0],
-            accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
+            accumulate_row=lambda a, r: [a[0] + r["B"], a[1] + 1],
             merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
             finalize=lambda a: a[0] / a[1],
             name="foo",
         ),
         AggregateFn(
             init=lambda k: [0, 0],
-            accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
+            accumulate_row=lambda a, r: [a[0] + r["B"], a[1] + 1],
             merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
             finalize=lambda a: a[0] / a[1],
             name="foo",
@@ -1861,19 +1861,24 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_groupby_tabular_count(ray_start_regular_shared, ds_format, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = (
-        ray.data.from_items([{"A": (x % 3), "B": x} for x in xs])
-        .repartition(num_parts)
-        .groupby("A")
-        .count()
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in xs]).repartition(
+        num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    agg_ds = ds.groupby("A").count()
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
         {"A": 0, "count()": 34},
@@ -2566,7 +2571,7 @@ def test_groupby_simple(ray_start_regular_shared):
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
         AggregateFn(
             init=lambda k: (0, 0),
-            accumulate=lambda a, r: (a[0] + r[1], a[1] + 1),
+            accumulate_row=lambda a, r: (a[0] + r[1], a[1] + 1),
             merge=lambda a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
             finalize=lambda a: a[0] / a[1],
         )
@@ -2583,7 +2588,7 @@ def test_groupby_simple(ray_start_regular_shared):
     agg_ds = ds.groupby(lambda r: str(r)).aggregate(
         AggregateFn(
             init=lambda k: 0,
-            accumulate=lambda a, r: a + 1,
+            accumulate_row=lambda a, r: a + 1,
             merge=lambda a1, a2: a1 + a2,
         )
     )
@@ -2599,7 +2604,7 @@ def test_groupby_simple(ray_start_regular_shared):
     agg_ds = ds.groupby(lambda r: r[0]).aggregate(
         AggregateFn(
             init=lambda k: 1 / 0,  # should never reach here
-            accumulate=lambda a, r: 1 / 0,
+            accumulate_row=lambda a, r: 1 / 0,
             merge=lambda a1, a2: 1 / 0,
             finalize=lambda a: 1 / 0,
         )

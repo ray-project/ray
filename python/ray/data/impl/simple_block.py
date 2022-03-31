@@ -88,6 +88,9 @@ class SimpleBlockAccessor(BlockAccessor):
 
         return pyarrow.Table.from_pandas(self.to_pandas())
 
+    def to_block(self) -> List[T]:
+        return self._items
+
     def size_bytes(self) -> int:
         return sys.getsizeof(self._items)
 
@@ -283,11 +286,11 @@ class SimpleBlockAccessor(BlockAccessor):
                 f"got: {type(key)}."
             )
 
-        def iter_groups() -> Iterator[Tuple[KeyType, BlockAccessor]]:
+        def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
             """Creates an iterator over zero-copy group views."""
             if key is None:
                 # Global aggregation consists of a single "group", so we short-circuit.
-                yield None, self
+                yield None, self.to_block()
                 return
 
             start = end = 0
@@ -311,9 +314,7 @@ class SimpleBlockAccessor(BlockAccessor):
                             has_next_row = False
                             next_row = None
                             break
-                    yield next_key, BlockAccessor.for_block(
-                        self.slice(start, end, copy=False)
-                    )
+                    yield next_key, self.slice(start, end, copy=False)
                     start = end
                 except StopIteration:
                     break

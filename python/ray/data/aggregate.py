@@ -29,7 +29,7 @@ class AggregateFn(object):
         self,
         init: Callable[[KeyType], AggType],
         merge: Callable[[AggType, AggType], AggType],
-        accumulate: Callable[[AggType, T], AggType] = None,
+        accumulate_row: Callable[[AggType, T], AggType] = None,
         accumulate_block: Callable[[AggType, Block[T]], AggType] = None,
         finalize: Callable[[AggType], U] = lambda a: a,
         name: Optional[str] = None,
@@ -46,31 +46,32 @@ class AggregateFn(object):
                 For example, an empty accumulator for a sum would be 0.
             merge: This may be called multiple times, each time to merge
                 two accumulators into one.
-            accumulate: This is called once per row of the same group.
+            accumulate_row: This is called once per row of the same group.
                 This combines the accumulator and the row, returns the updated
-                accumulator. Exactly one of accumulate and accumulate_block must
+                accumulator. Exactly one of accumulate_row and accumulate_block must
                 be provided.
             accumulate_block: This is used to calculate the aggregation for a
                 single block, and is vectorized alternative to accumulate. This will be
-                given the empty accumulator and the entire block, allowing for
-                vectorized aggregation of the block. Exactly one of accumulate and
+                given a base accumulation and the entire block, allowing for
+                vectorized aggregation of the block. Exactly one of accumulate_row and
                 accumulate_block must be provided.
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
             name: The name of the aggregation. This will be used as the output
                 column name in the case of Arrow dataset.
         """
-        if (accumulate is None and accumulate_block is None) or (
-            accumulate is not None and accumulate_block is not None
+        if (accumulate_row is None and accumulate_block is None) or (
+            accumulate_row is not None and accumulate_block is not None
         ):
             raise ValueError(
-                "Exactly one of accumulate or accumulate_block must be provided."
+                "Exactly one of accumulate_row or accumulate_block must be provided."
             )
         if accumulate_block is None:
 
-            def accumulate_block(a: AggType, block_acc: BlockAccessor[T]) -> AggType:
+            def accumulate_block(a: AggType, block: Block[T]) -> AggType:
+                block_acc = BlockAccessor.for_block(block)
                 for r in block_acc.iter_rows():
-                    a = accumulate(a, r)
+                    a = accumulate_row(a, r)
                 return a
 
         self.init = init
@@ -99,7 +100,7 @@ class Count(AggregateFn):
     def __init__(self):
         super().__init__(
             init=lambda k: 0,
-            accumulate=lambda a, r: a + 1,
+            accumulate_row=lambda a, r: a + 1,
             merge=lambda a1, a2: a1 + a2,
             name="count()",
         )
@@ -117,7 +118,7 @@ class Sum(_AggregateOnKeyBase):
             merge=_null_wrap_merge(ignore_nulls, lambda a1, a2: a1 + a2),
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                lambda block_acc: block_acc.sum(on, ignore_nulls),
+                lambda block: BlockAccessor.for_block(block).sum(on, ignore_nulls),
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"sum({str(on)})"),
@@ -136,7 +137,7 @@ class Min(_AggregateOnKeyBase):
             merge=_null_wrap_merge(ignore_nulls, min),
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                lambda block_acc: block_acc.min(on, ignore_nulls),
+                lambda block: BlockAccessor.for_block(block).min(on, ignore_nulls),
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"min({str(on)})"),
@@ -155,7 +156,7 @@ class Max(_AggregateOnKeyBase):
             merge=_null_wrap_merge(ignore_nulls, max),
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                lambda block_acc: block_acc.max(on, ignore_nulls),
+                lambda block: BlockAccessor.for_block(block).max(on, ignore_nulls),
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"max({str(on)})"),
@@ -169,7 +170,8 @@ class Mean(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
-        def vectorized_mean(block_acc: BlockAccessor[T]) -> AggType:
+        def vectorized_mean(block: Block[T]) -> AggType:
+            block_acc = BlockAccessor.for_block(block)
             sum_ = block_acc.sum(on, ignore_nulls)
             if sum_ is None:
                 return None
@@ -211,7 +213,8 @@ class Std(_AggregateOnKeyBase):
     ):
         self._set_key_fn(on)
 
-        def vectorized_agg(block_acc: BlockAccessor[T]) -> AggType:
+        def vectorized_agg(block: Block[T]) -> AggType:
+            block_acc = BlockAccessor.for_block(block)
             count = block_acc.count(on, ignore_nulls)
             if count == 0:
                 return None

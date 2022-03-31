@@ -321,11 +321,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 f"got: {type(key)}."
             )
 
-        def iter_groups() -> Iterator[Tuple[KeyType, BlockAccessor]]:
+        def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
             """Creates an iterator over zero-copy group views."""
             if key is None:
                 # Global aggregation consists of a single "group", so we short-circuit.
-                yield None, self
+                yield None, self.to_block()
                 return
 
             start = end = 0
@@ -343,9 +343,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                         except StopIteration:
                             next_row = None
                             break
-                    yield next_key, BlockAccessor.for_block(
-                        self.slice(start, end, copy=False)
-                    )
+                    yield next_key, self.slice(start, end, copy=False)
                     start = end
                 except StopIteration:
                     break
