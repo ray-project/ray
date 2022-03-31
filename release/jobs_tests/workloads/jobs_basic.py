@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import time
+from typing import Optional
 from ray.dashboard.modules.job.common import JobStatus
 
 from ray.job_submission import JobSubmissionClient
@@ -24,7 +25,7 @@ def wait_until_finish(
     job_id: str,
     timeout_s: int = 10 * 60,
     retry_interval_s: int = 1,
-):
+) -> Optional[JobStatus]:
     start_time_s = time.time()
     while time.time() - start_time_s <= timeout_s:
         status = client.get_job_status(job_id)
@@ -32,6 +33,7 @@ def wait_until_finish(
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             return status
         time.sleep(retry_interval_s)
+    return None
 
 
 if __name__ == "__main__":
@@ -62,10 +64,11 @@ if __name__ == "__main__":
         runtime_env={"pip": ["ray[tune]"], "working_dir": args.working_dir},
     )
     timeout_s = 10 * 60
-    assert (
-        wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s)
-        == JobStatus.SUCCEEDED
-    )
+    status = wait_until_finish(client=client, job_id=job_id, timeout_s=timeout_s)
+
+    print("Status message: ", client.get_job_info(job_id=job_id).message)
+
+    assert status == JobStatus.SUCCEEDED
 
     taken = time.time() - start
     result = {
