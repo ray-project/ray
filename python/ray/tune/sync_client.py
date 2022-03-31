@@ -521,7 +521,7 @@ class RemoteTaskClient(SyncClient):
         if not self._sync_future:
             return False
 
-        ready, not_ready = ray.wait(self._sync_future, timeout=0.0)
+        ready, not_ready = ray.wait([self._sync_future], timeout=0.0)
         if self._sync_future in ready:
             self.wait()
             return True
