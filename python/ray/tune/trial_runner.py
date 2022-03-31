@@ -172,6 +172,8 @@ class _ExperimentCheckpointManager:
             exclude = ["*/checkpoint_*"]
 
         if force:
+            # Wait until previous sync command finished
+            self._syncer.wait()
             self._syncer.sync_up(exclude=exclude)
         else:
             self._syncer.sync_up_if_needed(exclude=exclude)
@@ -608,7 +610,9 @@ class TrialRunner:
             "something significantly higher than this duration "
             "to ensure compute time is mostly spent on the main "
             "training loop.",
-            disable=self._checkpoint_manager.auto_checkpoint_enabled,
+            # No backlog warning if forced checkpoint as we wait
+            # for previous sync to finish.
+            disable=self._checkpoint_manager.auto_checkpoint_enabled or force,
         ):
 
             self._checkpoint_manager.checkpoint(

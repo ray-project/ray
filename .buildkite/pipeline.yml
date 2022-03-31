@@ -143,6 +143,13 @@
     - ./ci/travis/ci.sh lint
     - ./ci/travis/ci.sh build
 
+- label: ":book: LinkCheck"
+  commands:
+    - export LINT=1
+    - ./ci/travis/install-dependencies.sh
+    - ./ci/travis/ci.sh check_sphinx_links
+  soft_fail: True
+
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:

@@ -21,21 +21,19 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 
 namespace ray {
 namespace gcs {
-
-using ClusterResourceScheduler = gcs::GcsResourceScheduler;
 
 struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
