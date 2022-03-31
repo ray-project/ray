@@ -1,5 +1,3 @@
-import dataclasses
-
 from ray.data import Dataset
 from ray.ml.config import ScalingConfigDataClass
 from ray.tune.sample import Categorical
@@ -40,9 +38,4 @@ def process_scaling_config(params_space: dict):
     scaling_config = params_space.get("scaling_config", None)
     if not isinstance(scaling_config, ScalingConfigDataClass):
         return
-    scaling_config_dict = dict()
-    for field in dataclasses.fields(scaling_config):
-        attr = getattr(scaling_config, field.name)
-        if attr:
-            scaling_config_dict[field.name] = attr
-    params_space[_KEY_SCALING_CONFIG] = scaling_config_dict
+    params_space[_KEY_SCALING_CONFIG] = scaling_config.__dict__.copy()
