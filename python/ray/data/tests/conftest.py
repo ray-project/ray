@@ -2,12 +2,16 @@ import os
 
 import pytest
 import pyarrow as pa
+import pandas as pd
 
 import ray
 
 from ray.data.block import BlockAccessor
 from ray.data.tests.mock_server import *  # noqa
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.data.datasource.file_based_datasource import (
+    BlockWritePathProvider,
+    _unwrap_protocol,
+)
 
 
 @pytest.fixture(scope="function")
@@ -101,7 +105,109 @@ def test_block_write_path_provider():
             suffix = (
                 f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
             )
-            print(f"Writing to: {base_path}/{suffix}")
             return f"{base_path}/{suffix}"
 
     yield TestBlockWritePathProvider()
+
+
+@pytest.fixture(scope="function")
+def base_partitioned_df():
+    return pd.DataFrame(
+        {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
+    )
+
+
+@pytest.fixture(scope="function")
+def write_partitioned_df():
+    def _write_partitioned_df(
+        df,
+        partition_keys,
+        partition_path_generator,
+        fs,
+        file_writer_fn,
+    ):
+        df_partitions = [df for _, df in df.groupby(partition_keys, as_index=False)]
+        for df_partition in df_partitions:
+            partition_values = []
+            for key in partition_keys:
+                partition_values.append(str(df_partition[key].iloc[0]))
+            path = partition_path_generator(partition_values, fs)
+            if fs is None:
+                os.makedirs(path)
+            else:
+                fs.create_dir(_unwrap_protocol(path))
+            path = os.path.join(path, "test.tmp")
+            file_writer_fn(df_partition, path)
+
+    return _write_partitioned_df
+
+
+@pytest.fixture(scope="function")
+def write_base_partitioned_df(base_partitioned_df, write_partitioned_df):
+    def _write_base_partitioned_df(
+        partition_keys,
+        partition_path_generator,
+        fs,
+        file_writer_fn,
+    ):
+        write_partitioned_df(
+            base_partitioned_df,
+            partition_keys,
+            partition_path_generator,
+            fs,
+            file_writer_fn,
+        )
+
+    return _write_base_partitioned_df
+
+
+@pytest.fixture(scope="function")
+def assert_base_partitioned_ds():
+    def _assert_base_partitioned_ds(
+        ds,
+        count=6,
+        input_files=2,
+        num_rows=None,
+        schema="{one: int64, two: string}",
+        num_computed=2,
+        sorted_values=None,
+        ds_take_transform_fn=lambda taken: [[s["one"], s["two"]] for s in taken],
+        sorted_values_transform_fn=lambda sorted_values: sorted_values,
+    ):
+        if sorted_values is None:
+            sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
+        # Test metadata ops.
+        if num_computed is not None:
+            assert (
+                ds._plan.execute()._num_computed() == 1
+            ), f"{ds._plan.execute()._num_computed()} != 1"
+        assert ds.count() == count, f"{ds.count()} != {count}"
+        assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
+        assert ds.schema() is not None
+        actual_input_files = ds.input_files()
+        assert len(actual_input_files) == input_files, actual_input_files
+        assert (
+            str(ds) == f"Dataset(num_blocks={input_files}, num_rows={num_rows}, "
+            f"schema={schema})"
+        ), ds
+        assert (
+            repr(ds) == f"Dataset(num_blocks={input_files}, num_rows={num_rows}, "
+            f"schema={schema})"
+        ), ds
+        if num_computed is not None:
+            assert (
+                ds._plan.execute()._num_computed() == num_computed
+            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
+
+        # Force a data read.
+        values = ds_take_transform_fn(ds.take())
+        if num_computed is not None:
+            assert (
+                ds._plan.execute()._num_computed() == num_computed
+            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
+        actual_sorted_values = sorted_values_transform_fn(sorted(values))
+        assert (
+            actual_sorted_values == sorted_values
+        ), f"{actual_sorted_values} != {sorted_values}"
+
+    return _assert_base_partitioned_ds

@@ -33,8 +33,163 @@ class PartitionStyle(str, Enum):
 
 
 @DeveloperAPI
-class PathPartitionParser:
-    """Partition parser and utilities for path-based partition formats.
+class PathPartitionBase:
+    """Base class for path-based partition formats.
+
+    Two path partition formats are currently supported - HIVE and DIRECTORY.
+
+    Path-based partition formats embed all partition keys and values directly in
+    their dataset file paths.
+    """
+
+    def __init__(
+        self,
+        style: PartitionStyle,
+        base_dir: Optional[str],
+        field_names: Optional[List[str]],
+    ):
+        """Creates a new path-based dataset partition scheme.
+
+        Args:
+            style: The partition style - may be either HIVE or DIRECTORY.
+            base_dir: "/"-delimited base directory that all partitioned paths should
+                exist under (exclusive).
+            field_names: The partition key field names (i.e. column names for tabular
+                datasets). Required when parsing DIRECTORY partitioned paths or
+                generating HIVE partitioned paths.
+        """
+        self._style = style
+        self._base_dir = base_dir or ""
+        self._field_names = field_names
+
+    @property
+    def style(self) -> PartitionStyle:
+        return self._style
+
+    @property
+    def base_dir(self) -> Optional[str]:
+        return self._base_dir
+
+    @property
+    def field_names(self) -> Optional[List[str]]:
+        return self._field_names
+
+    def _normalize_base_dir(self, filesystem: "pyarrow.fs.FileSystem"):
+        """Normalizes the partition base directory for compatibility with the
+        given filesystem.
+
+        This should be called once a filesystem has been resolved to ensure that this
+        base directory is correctly discovered at the root of all partitioned file
+        paths.
+        """
+        from ray.data.datasource.file_based_datasource import (
+            _resolve_paths_and_filesystem,
+        )
+
+        paths, _ = _resolve_paths_and_filesystem(
+            self._base_dir,
+            filesystem,
+        )
+        assert (
+            len(paths) == 1
+        ), f"Expected 1 normalized base directory, but found {len(paths)}"
+        new_base_dir = paths[0]
+        if len(new_base_dir) and not new_base_dir.endswith("/"):
+            new_base_dir += "/"
+        self._base_dir = new_base_dir
+
+
+@DeveloperAPI
+class PathPartitionGenerator(PathPartitionBase):
+    """Callable that generates directory paths for path-based partition formats.
+
+    Path-based partition formats embed all partition keys and values directly in
+    their dataset file paths.
+
+    Two path partition formats are currently supported - HIVE and DIRECTORY.
+
+    For HIVE Partitioning, all partition directories will be generated using a
+    "{key1}={value1}/{key2}={value2}" naming convention under the base directory.
+    An accompanying ordered list of partition key field names must also be
+    provided, where the order and length of all partition values must match the
+    order and length of field names
+
+    For DIRECTORY Partitioning, all directories will be generated from partition
+    values using a "{value1}/{value2}" naming convention under the base directory.
+    """
+
+    def __init__(
+        self,
+        style: PartitionStyle = PartitionStyle.HIVE,
+        base_dir: Optional[str] = None,
+        field_names: Optional[List[str]] = None,
+    ):
+        """Creates a new partition path generator.
+
+        Args:
+            style: The partition style - may be either HIVE or DIRECTORY.
+            base_dir: "/"-delimited base directory that all partition paths will be
+                generated under (exclusive).
+            field_names: The partition key field names (i.e. column names for tabular
+                datasets). Required for HIVE partition paths, ignored for DIRECTORY
+                partition paths. When non-empty, the order and length of partition key
+                field names must match the order and length of partition values.
+        """
+        super(PathPartitionGenerator, self).__init__(style, base_dir, field_names)
+        if self.style == PartitionStyle.HIVE and not self.field_names:
+            raise ValueError(
+                "Hive partition path generation requires a corresponding list of "
+                "partition key field names. Please retry your request with one "
+                "or more field names specified."
+            )
+        generators = {
+            PartitionStyle.HIVE: self._generate_hive_partition_dirs,
+            PartitionStyle.DIRECTORY: self._generate_directory_partition_dirs,
+        }
+        self._generator_fn: Callable[[List[str]], List[str]] = generators.get(style)
+        if self._generator_fn is None:
+            raise ValueError(
+                f"Unsupported partition style: {style}. "
+                f"Supported styles: {generators.keys()}"
+            )
+
+    def _generate_hive_partition_dirs(self, values: List[str]) -> List[str]:
+        """Generates Hive directory names for the given values."""
+        return [f"{self._field_names[i]}={val}" for i, val in enumerate(values)]
+
+    def _generate_directory_partition_dirs(self, values: List[str]) -> List[str]:
+        """Generates Directory partition directory names for the given values."""
+        return values
+
+    def _generate_partition_dirs(self, values: List[str]) -> List[str]:
+        """Generates a list of partition directory names for the given values."""
+        return self._generator_fn(values)
+
+    def __call__(
+        self,
+        partition_values: List[str],
+        filesystem: "pyarrow.fs.FileSystem",
+    ):
+        """Returns the partition directory path for the given partition value strings.
+
+        All files for this partition should be written to this directory. If a base
+        directory is set, then the partition directory path will be given relative
+        to this base directory.
+
+        Args:
+            partition_values: The partition value strings to include in the partition
+                path. For HIVE partition paths, the order and length of partition
+                values must match the order and length of partition key field names.
+            filesystem: Filesystem that will be used for partition path file I/O.
+        """
+        self._normalize_base_dir(filesystem)
+        partition_dirs = self._generate_partition_dirs(partition_values)
+        return posixpath.join(self._base_dir, *partition_dirs)
+
+
+@DeveloperAPI
+class PathPartitionParser(PathPartitionBase):
+    """Partition parser and associated utilities for path-based partition formats.
 
     Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
@@ -70,7 +225,7 @@ class PathPartitionParser:
         field_names: Optional[List[str]] = None,
         filter_fn: Optional[Callable[[Dict[str, str]], bool]] = None,
     ):
-        """Creates a new path-based dataset partition scheme.
+        """Creates a new path-based dataset partition parser.
 
         Args:
             style: The partition style - may be either HIVE or DIRECTORY.
@@ -80,14 +235,15 @@ class PathPartitionParser:
                 partitions in all file path directories.
             field_names: The partition key names. Required for DIRECTORY partitioning.
                 Optional for HIVE partitioning. When non-empty, the order and length of
-                of partition key field names must match the order and length of
-                partition directories discovered. Partition key field names are not
-                required to exist in the dataset schema.
+                partition key field names must match the order and length of partition
+                directories discovered. Partition key field names are not required to
+                exist in the dataset schema.
             filter_fn: Callback used to filter partitions. Takes a dictionary mapping
                 partition keys to values as input. Unpartitioned files are denoted with
-                an empty input dictionary. Returns `True` to read a partition or `False`
-                to skip it. Partition keys and values are always strings read from the
-                filesystem path. For example, this removes all unpartitioned files:
+                an empty input dictionary. Returns `True` to read a file for that
+                partition or `False` to skip it. Partition keys and values are always
+                strings read from the filesystem path. For example, this removes all
+                unpartitioned files:
                 ``lambda d: True if d else False``
                 This raises an assertion error for any unpartitioned file found:
                 ``def do_assert(val, msg):
@@ -96,26 +252,24 @@ class PathPartitionParser:
                 And this only reads files from January, 2022 partitions:
                 ``lambda d: d["month"] == "January" and d["year"] == "2022"``
         """
-        self._style = style
-        self._base_dir = base_dir or ""
+        super(PathPartitionParser, self).__init__(style, base_dir, field_names)
         if style == PartitionStyle.DIRECTORY and not field_names:
             raise ValueError(
                 "Directory partitioning requires a corresponding list of "
                 "partition key field names. Please retry your request with one "
                 "or more field names specified."
             )
-        self._field_names = field_names
-        self._filter_fn = filter_fn
-        kv_parser_map = {
+        parsers = {
             PartitionStyle.HIVE: self._parse_hive_path,
             PartitionStyle.DIRECTORY: self._parse_dir_path,
         }
-        self._parser_fn: Callable[[str], Dict[str, str]] = kv_parser_map.get(style)
+        self._parser_fn: Callable[[str], Dict[str, str]] = parsers.get(style)
         if self._parser_fn is None:
             raise ValueError(
                 f"Unsupported partition style: {style}. "
-                f"Supported styles: {kv_parser_map.keys()}"
+                f"Supported styles: {parsers.keys()}"
             )
+        self._filter_fn = filter_fn
 
     @property
     def style(self) -> PartitionStyle:
@@ -134,12 +288,13 @@ class PathPartitionParser:
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
     ) -> List[str]:
-        """Removes all paths that don't pass this partition scheme's partition
-        filter. If no partition filter is set, then returns all input paths. If
-        a base directory is set, then only paths under this base directory will
-        be parsed for partitions. All paths outside of this base directory will
-        automatically be considered unpartitioned, and passed into the filter
-        function as empty dictionaries.
+        """Removes all paths that don't pass this partition scheme's partition filter.
+
+        If no partition filter is set, then returns all input paths. If a base
+        directory is set, then only paths under this base directory will be parsed
+        for partitions. All paths outside of this base directory will automatically
+        be considered unpartitioned, and passed into the filter function as empty
+        dictionaries.
 
         Also normalizes the partition base directory for compatibility with the
         given filesystem before applying the filter.
@@ -161,29 +316,16 @@ class PathPartitionParser:
             ]
         return filtered_paths
 
-    def _normalize_base_dir(self, filesystem: "pyarrow.fs.FileSystem"):
-        """Normalizes the partition base directory for compatibility with the
-        given filesystem.
+    def _dir_path_trim_base(self, path: str) -> Optional[str]:
+        """Trims the base directory and returns the directory path.
 
-        This should be called once a filesystem has been resolved for reading all
-        dataset file paths to ensure that this base directory is correctly discovered
-        at the root of all partitioned file paths.
+        Returns None if the path does not start with the base directory.
+        Simply returns the directory path if the base directory is undefined.
         """
-        from ray.data.datasource.file_based_datasource import (
-            _resolve_paths_and_filesystem,
-        )
-
-        paths, _ = _resolve_paths_and_filesystem(
-            self._base_dir,
-            filesystem,
-        )
-        assert (
-            len(paths) == 1
-        ), f"Expected 1 normalized base directory, but found {len(paths)}"
-        new_base_dir = paths[0]
-        if len(new_base_dir) and not new_base_dir.endswith("/"):
-            new_base_dir += "/"
-        self._base_dir = new_base_dir
+        if not path.startswith(self._base_dir):
+            return None
+        path = path[len(self._base_dir) :]
+        return posixpath.dirname(path)
 
     def _parse_hive_path(self, path: str) -> Dict[str, str]:
         """Hive partition path parser.
@@ -192,10 +334,9 @@ class PathPartitionParser:
         partition path of the form "{key1}={value1}/{key2}={value2}/..." or an empty
         dictionary for unpartitioned files.
         """
-        if not path.startswith(self._base_dir):
+        dir_path = self._dir_path_trim_base(path)
+        if not dir_path:
             return {}
-        path = path[len(self._base_dir) :]
-        dir_path = posixpath.dirname(path)
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
         if self._field_names:
@@ -216,10 +357,9 @@ class PathPartitionParser:
         Requires a corresponding ordered list of partition key field names to map the
         correct key to each value.
         """
-        if not path.startswith(self._base_dir):
+        dir_path = self._dir_path_trim_base(path)
+        if not dir_path:
             return {}
-        path = path[len(self._base_dir) :]
-        dir_path = posixpath.dirname(path)
         dirs = [d for d in dir_path.split("/") if d]
         assert not dirs or len(dirs) == len(self._field_names), (
             f"Expected {len(self._field_names)} partition value(s) but found "
