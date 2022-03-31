@@ -52,7 +52,7 @@ def fetch_dir_from_node(
         _unpack(packed, local_dir)
     except Exception as e:
         print(
-            f"Warning: Could not fetch remote directory contents. Message: " f"{str(e)}"
+            f"Warning: Could not fetch remote directory contents. Message: {str(e)}"
         )
 
 
