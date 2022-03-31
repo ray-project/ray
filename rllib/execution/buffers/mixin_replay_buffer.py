@@ -22,31 +22,32 @@ class MixInMultiAgentReplayBuffer:
     according to the "replay ratio").
 
     Examples:
+        >>> from ray.rllib.execution.replay_buffer import MixInMultiAgentReplayBuffer
         # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
-        >>> buffer = MixInMultiAgentReplayBuffer(capacity=100,
-        ...                                      replay_ratio=0.66)
-        >>> buffer.add_batch(<A>)
-        >>> buffer.add_batch(<B>)
-        >>> buffer.replay()
-        ... [<A>, <B>, <B>]
-        >>> buffer.add_batch(<C>)
-        >>> buffer.replay()
-        ... [<C>, <A>, <B>]
-        >>> # or: [<C>, <A>, <A>] or [<C>, <B>, <B>], but always <C> as it
+        >>> buffer = MixInMultiAgentReplayBuffer(capacity=100, # doctest: +SKIP
+        ...                                      replay_ratio=0.66) # doctest: +SKIP
+        >>> A, B, C, D = ... # doctest: +SKIP
+        >>> buffer.add_batch(A) # doctest: +SKIP
+        >>> buffer.add_batch(B) # doctest: +SKIP
+        >>> buffer.replay() # doctest: +SKIP
+        [A, B, B]
+        >>> buffer.add_batch(C) # doctest: +SKIP
+        >>> buffer.replay() # doctest: +SKIP
+        [C, A, B]
+        >>> # or: [C, A, A] or [C, B, B], but always C as it
         >>> # is the newest sample
-
-        >>> buffer.add_batch(<D>)
-        >>> buffer.replay()
-        ... [<D>, <A>, <C>]
-
-        # replay proportion 0.0 -> replay disabled:
-        >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0)
-        >>> buffer.add_batch(<A>)
-        >>> buffer.replay()
-        ... [<A>]
-        >>> buffer.add_batch(<B>)
-        >>> buffer.replay()
-        ... [<B>]
+        >>> buffer.add_batch(D) # doctest: +SKIP
+        >>> buffer.replay() # doctest: +SKIP
+        [D, A, C]
+        >>> # replay proportion 0.0 -> replay disabled:
+        >>> from ray.rllib.execution import MixInReplay
+        >>> buffer = MixInReplay(capacity=100, replay_ratio=0.0) # doctest: +SKIP
+        >>> buffer.add_batch(A) # doctest: +SKIP
+        >>> buffer.replay() # doctest: +SKIP
+        [A]
+        >>> buffer.add_batch(B) # doctest: +SKIP
+        >>> buffer.replay() # doctest: +SKIP
+        [B]
     """
 
     def __init__(self, capacity: int, replay_ratio: float):

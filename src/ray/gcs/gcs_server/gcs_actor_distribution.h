@@ -152,7 +152,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// The resource changed listeners.
   std::vector<std::function<void()>> resource_changed_listeners_;
 
-  /// Gcs resource scheduler
+  /// Cluster resource scheduler
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
   /// Normal task resources changed callback.

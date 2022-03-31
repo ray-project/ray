@@ -12,21 +12,22 @@ from unittest.mock import patch
 
 driver_script = """
 import time
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def foo(x):
     time.sleep(1)
     if x < 20:
-        return foo.step(x + 1)
+        return workflow.continuation(foo.bind(x + 1))
     else:
         return 20
 
 
 if __name__ == "__main__":
     workflow.init()
-    output = foo.step(0).run_async(workflow_id="driver_terminated")
+    output = workflow.create(foo.bind(0)).run_async(workflow_id="driver_terminated")
     time.sleep({})
 """
 

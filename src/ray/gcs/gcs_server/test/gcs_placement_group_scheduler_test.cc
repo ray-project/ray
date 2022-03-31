@@ -19,6 +19,7 @@
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
 namespace ray {
 
@@ -28,8 +29,6 @@ enum class GcsPlacementGroupStatus : int32_t {
 };
 
 class GcsPlacementGroupSchedulerTest : public ::testing::Test {
-  using ClusterResourceScheduler = gcs::GcsResourceScheduler;
-
  public:
   void SetUp() override {
     thread_io_service_.reset(new std::thread([this] {

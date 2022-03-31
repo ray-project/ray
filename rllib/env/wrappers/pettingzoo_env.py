@@ -24,6 +24,7 @@ class PettingZooEnv(MultiAgentEnv):
 
     Examples:
         >>> from pettingzoo.butterfly import prison_v3
+        >>> from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
         >>> env = PettingZooEnv(prison_v3.env())
         >>> obs = env.reset()
         >>> print(obs)

@@ -329,25 +329,23 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   SchedulingResources local_resources(config.resource_config);
-  cluster_resource_scheduler_ =
-      std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
-          scheduling::NodeID(self_node_id_.Binary()),
-          local_resources.GetTotalResources().GetResourceMap(),
-          /*is_node_available_fn*/
-          [this](scheduling::NodeID node_id) {
-            return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) !=
-                   nullptr;
-          },
-          /*get_used_object_store_memory*/
-          [this]() {
-            if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
-              return local_object_manager_.GetPinnedBytes();
-            } else {
-              return object_manager_.GetUsedMemory();
-            }
-          },
-          /*get_pull_manager_at_capacity*/
-          [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
+  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      scheduling::NodeID(self_node_id_.Binary()),
+      local_resources.GetTotalResources().GetResourceMap(),
+      /*is_node_available_fn*/
+      [this](scheduling::NodeID node_id) {
+        return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
+      },
+      /*get_used_object_store_memory*/
+      [this]() {
+        if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
+          return local_object_manager_.GetPinnedBytes();
+        } else {
+          return object_manager_.GetUsedMemory();
+        }
+      },
+      /*get_pull_manager_at_capacity*/
+      [this]() { return object_manager_.PullManagerHasPullsQueued(); });
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);

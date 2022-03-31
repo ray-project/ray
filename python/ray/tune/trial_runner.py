@@ -29,7 +29,7 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
-from ray.tune.trial import Checkpoint, Trial
+from ray.tune.trial import _TuneCheckpoint, Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -68,7 +68,9 @@ def load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        new_trial = Trial(trial_cp["trainable_name"], stub=stub)
+        new_trial = Trial(
+            trial_cp["trainable_name"], stub=stub, _setup_default_resource=False
+        )
         new_trial.__setstate__(trial_cp)
         trials.append(new_trial)
 
@@ -170,6 +172,8 @@ class _ExperimentCheckpointManager:
             exclude = ["*/checkpoint_*"]
 
         if force:
+            # Wait until previous sync command finished
+            self._syncer.wait()
             self._syncer.sync_up(exclude=exclude)
         else:
             self._syncer.sync_up_if_needed(exclude=exclude)
@@ -606,7 +610,9 @@ class TrialRunner:
             "something significantly higher than this duration "
             "to ensure compute time is mostly spent on the main "
             "training loop.",
-            disable=self._checkpoint_manager.auto_checkpoint_enabled,
+            # No backlog warning if forced checkpoint as we wait
+            # for previous sync to finish.
+            disable=self._checkpoint_manager.auto_checkpoint_enabled or force,
         ):
 
             self._checkpoint_manager.checkpoint(
@@ -1108,7 +1114,7 @@ class TrialRunner:
                 checkpoint=trial.saving_to,
             )
             trial.on_checkpoint(trial.saving_to)
-            if trial.checkpoint.storage != Checkpoint.MEMORY:
+            if trial.checkpoint.storage != _TuneCheckpoint.MEMORY:
                 self.trial_executor.mark_trial_to_checkpoint(trial)
         except Exception:
             logger.exception("Trial %s: Error handling checkpoint %s", trial, result)
@@ -1191,7 +1197,7 @@ class TrialRunner:
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
             if trial.runner:
-                self.trial_executor.save(trial, storage=Checkpoint.PERSISTENT)
+                self.trial_executor.save(trial, storage=_TuneCheckpoint.PERSISTENT)
 
     def _try_recover(self, trial: Trial, error_msg: str):
         """Tries to recover trial.

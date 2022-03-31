@@ -65,6 +65,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client.py",
+    "test_client_reconnect.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -82,7 +83,6 @@ py_test_module_list(
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
-    "test_client_reconnect.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -168,6 +168,7 @@ py_test_module_list(
     "test_environ.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
+    "test_get_or_create_actor.py",
   ],
   size = "small",
   extra_srcs = SRCS,

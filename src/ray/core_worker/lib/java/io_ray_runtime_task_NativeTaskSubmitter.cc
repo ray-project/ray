@@ -122,6 +122,8 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
   std::unordered_map<std::string, double> resources;
   std::string name = "";
   std::string concurrency_group_name = "";
+  std::string serialzied_runtime_env_info = "";
+
   if (callOptions) {
     jobject java_resources =
         env->GetObjectField(callOptions, java_base_task_options_resources);
@@ -137,9 +139,19 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
     if (java_concurrency_group_name) {
       concurrency_group_name = JavaStringToNativeString(env, java_concurrency_group_name);
     }
+
+    auto java_serialized_runtime_env_info = reinterpret_cast<jstring>(
+        env->GetObjectField(callOptions, java_call_options_serialized_runtime_env_info));
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    RAY_CHECK(java_serialized_runtime_env_info != nullptr);
+    if (java_serialized_runtime_env_info) {
+      serialzied_runtime_env_info =
+          JavaStringToNativeString(env, java_serialized_runtime_env_info);
+    }
   }
 
-  TaskOptions task_options{name, numReturns, resources, concurrency_group_name};
+  TaskOptions task_options{
+      name, numReturns, resources, concurrency_group_name, serialzied_runtime_env_info};
   return task_options;
 }
 
