@@ -517,10 +517,20 @@ class RemoteTaskClient(SyncClient):
         self._last_target_tuple = None
         self._last_files_stats = None
 
+    def _sync_still_running(self) -> bool:
+        if not self._sync_future:
+            return False
+
+        ready, not_ready = ray.wait(self._sync_future, timeout=0.0)
+        if self._sync_future in ready:
+            self.wait()
+            return True
+        return False
+
     def sync_down(
         self, source: Tuple[str, str], target: str, exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_future:
+        if self._sync_still_running():
             logger.warning(
                 f"Last remote task sync still in progress, "
                 f"skipping sync from {source} to {target}."
@@ -543,7 +553,7 @@ class RemoteTaskClient(SyncClient):
     def sync_up(
         self, source: str, target: Tuple[str, str], exclude: Optional[List] = None
     ) -> bool:
-        if self._sync_future:
+        if self._sync_still_running():
             logger.warning(
                 f"Last remote task sync still in progress, "
                 f"skipping sync from {source} to {target}."
