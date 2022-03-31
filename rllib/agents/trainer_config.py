@@ -137,7 +137,7 @@ class TrainerConfig:
         self.gamma = 0.99
         self.lr = 0.001
         self.train_batch_size = 32
-        self.model = MODEL_DEFAULTS
+        self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
 
         # `self.callbacks()`
