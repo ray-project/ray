@@ -45,9 +45,13 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id
                 << ", address = " << request.node_info().node_manager_address()
                 << report_node_name;
-  auto on_done = [this, node_id, request, reply, report_node_name, send_reply_callback](
+  auto on_done = [this, node_id, request, reply, send_reply_callback](
                      const Status &status) {
     RAY_CHECK_OK(status);
+    std::string report_node_name =
+        request.node_info().has_node_name()
+            ? ", node name = " + request.node_info().node_name()
+            : "";
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
                   << ", address = " << request.node_info().node_manager_address()
                   << report_node_name;
