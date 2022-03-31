@@ -1171,6 +1171,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   const auto &jobs = gcs_init_data.Jobs();
   const auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
+  std::vector<ActorID> dead_actors;
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
     auto job_iter = jobs.find(actor_id.JobId());
     auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
@@ -1208,12 +1209,15 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
         node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
       }
     } else {
+      dead_actors.push_back(actor_id);
       auto actor = std::make_shared<GcsActor>(actor_table_data);
       destroyed_actors_.emplace(actor_id, actor);
       sorted_destroyed_actor_list_.emplace_back(actor_id,
                                                 (int64_t)actor_table_data.timestamp());
     }
   }
+  RAY_CHECK_OK(
+      gcs_table_storage_->ActorTaskSpecTable().BatchDelete(dead_actors, nullptr));
   sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
                                        const std::pair<ActorID, int64_t> &right) {
     return left.second < right.second;
