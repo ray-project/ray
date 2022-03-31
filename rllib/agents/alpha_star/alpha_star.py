@@ -2,9 +2,8 @@
 A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
-from collections import defaultdict
 import gym
-from typing import DefaultDict, Optional, Type
+from typing import Optional, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -474,9 +473,11 @@ class AlphaStarTrainer(appo.APPOTrainer):
     @override(appo.APPOTrainer)
     def __getstate__(self) -> dict:
         state = super().__getstate__()
-        state.update({
-            "league_builder": self.league_builder.__getstate__(),
-        })
+        state.update(
+            {
+                "league_builder": self.league_builder.__getstate__(),
+            }
+        )
         return state
 
     @override(appo.APPOTrainer)

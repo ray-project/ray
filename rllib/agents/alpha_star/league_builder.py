@@ -41,6 +41,14 @@ class LeagueBuilder(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    def __getstate__(self) -> Dict[str, Any]:
+        """Returns a state dict, mapping str keys to state variables.
+
+        Returns:
+            The current state dict of this LeagueBuilder.
+        """
+        return {}
+
 
 @ExperimentalAPI
 class NoLeagueBuilder(LeagueBuilder):
