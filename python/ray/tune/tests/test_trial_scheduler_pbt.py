@@ -510,6 +510,17 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
 
         self.assertEqual(trial4.config["num"], 3)
 
+        # Assert that trials do not hang after `burn_in_period`
+        self.assertTrue(all(t.status == "PAUSED" for t in runner.get_trials()))
+        self.assertTrue(scheduler.choose_trial_to_run(runner))
+
+        # Assert that trials do not hang when a terminated trial is added
+        trial5 = Trial("PPO", config=dict(num=5))
+        runner.add_trial(trial5)
+        scheduler.on_trial_add(runner, trial5)
+        trial5.set_status(Trial.TERMINATED)
+        self.assertTrue(scheduler.choose_trial_to_run(runner))
+
 
 if __name__ == "__main__":
     import pytest
