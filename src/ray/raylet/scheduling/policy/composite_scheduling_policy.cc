@@ -44,8 +44,21 @@ SchedulingResult CompositeSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
     SchedulingContext *context) {
-  // TODO(Shanly): To be implemented.
-  return SchedulingResult();
+  switch (options.scheduling_type) {
+  case SchedulingType::BUNDLE_PACK:
+    return bundle_pack_policy_.Schedule(resource_request_list, options, context);
+  case SchedulingType::BUNDLE_SPREAD:
+    return bundle_spread_policy_.Schedule(resource_request_list, options, context);
+  case SchedulingType::BUNDLE_STRICT_PACK:
+    return bundle_strict_pack_policy_.Schedule(resource_request_list, options, context);
+  case SchedulingType::BUNDLE_STRICT_SPREAD:
+    return bundle_strict_spread_policy_.Schedule(resource_request_list, options, context);
+  default:
+    RAY_LOG(FATAL) << "Unsupported scheduling type: "
+                   << static_cast<typename std::underlying_type<SchedulingType>::type>(
+                          options.scheduling_type);
+  }
+  UNREACHABLE;
 }
 
 }  // namespace raylet_scheduling_policy

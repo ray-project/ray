@@ -74,7 +74,7 @@ class ClusterResourceScheduler {
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options,
-      SchedulingContext *context);
+      SchedulingContext *context = nullptr);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -124,6 +124,10 @@ class ClusterResourceScheduler {
   }
 
  private:
+  void Init(const NodeResources &local_node_resources,
+            std::function<int64_t(void)> get_used_object_store_memory,
+            std::function<bool(void)> get_pull_manager_at_capacity);
+
   bool NodeAlive(scheduling::NodeID node_id) const;
 
   /// Decrease the available resources of a node when a resource request is
