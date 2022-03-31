@@ -20,16 +20,14 @@
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "mock/ray/pubsub/publisher.h"
 // clang-format on
 
 namespace ray {
 namespace gcs {
-
-using ClusterResourceScheduler = gcs::GcsResourceScheduler;
 
 class GcsBasedActorSchedulerTest : public ::testing::Test {
  public:

@@ -288,7 +288,7 @@ class TestSyncFunctionality(unittest.TestCase):
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
-                "local_target --only-show-errors",
+                "local_target --exact-timestamps --only-show-errors",
             )
 
             s3_client.sync_down(
@@ -299,7 +299,7 @@ class TestSyncFunctionality(unittest.TestCase):
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
-                "local_target --only-show-errors "
+                "local_target --exact-timestamps --only-show-errors "
                 "--exclude '*/checkpoint_*'",
             )
 
@@ -311,7 +311,7 @@ class TestSyncFunctionality(unittest.TestCase):
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
-                "local_target --only-show-errors "
+                "local_target --exact-timestamps --only-show-errors "
                 "--exclude '*/checkpoint_*' --exclude '*.big'",
             )
 
