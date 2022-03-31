@@ -4,7 +4,7 @@ from typing import Optional
 
 from ray.serve.constants import DEBUG_LOG_ENV_VAR
 
-COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component} {component_id} - %(message)s"
+COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component} {component_id} %(filename)s:%(lineno)d - %(message)s"
 
 
 def access_log(*, method: str, route: str, status: str, latency_ms: float):
