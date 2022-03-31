@@ -131,7 +131,7 @@ With sharded training, leverage the scalability of data parallel training while 
    trainer = pl.Trainer(..., plugins=[plugin])
    trainer.fit(ptl_model)
 
-See the `Pytorch Lightning docs <https://pytorch-lightning.readthedocs.io/en/stable/advanced/multi_gpu.html#sharded-training>`__ for more information on sharded training.
+See the `Pytorch Lightning docs <https://pytorch-lightning.readthedocs.io/en/stable/advanced/model_parallel.html#sharded-training>`__ for more information on sharded training.
 
 .. _ray-lightning-tuning:
 
