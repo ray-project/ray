@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class PPOConfig(TrainerConfig):
-    """Defines a PPOTrainer configuration class.
+    """Defines a PPOTrainer configuration class from which a PPOTrainer can be built.
 
     Example:
         >>> config = PPOConfig(kl_coeff=0.3).training(gamma=0.9, lr=0.01)\
@@ -53,7 +53,7 @@ class PPOConfig(TrainerConfig):
         >>> # Print out some default values.
         >>> print(config.clip_param)
         >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]), clip_param=0.2)
         >>> # Set the config object's env.
         >>> config.environment(env="CartPole-v1")
         >>> # Use to_dict() to get the old-style python config dict
@@ -65,29 +65,58 @@ class PPOConfig(TrainerConfig):
         ... )
     """
 
-    def __init__(
-        self,
-        *,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-        use_critic: bool = True,
-        use_gae: bool = True,
-        lambda_: float = 1.0,
-        kl_coeff: float = 0.2,
-        sgd_minibatch_size: int = 128,
-        num_sgd_iter: int = 30,
-        shuffle_sequences: bool = True,
-        vf_loss_coeff: float = 1.0,
-        entropy_coeff: float = 0.0,
-        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
-        clip_param: float = 0.3,
-        vf_clip_param: float = 10.0,
-        grad_clip: Optional[float] = None,
-        kl_target: float = 0.01,
-    ):
-        """Initializes a PPOConfig instance.
+    def __init__(self):
+        """Initializes a PPOConfig instance."""
+        super().__init__(trainer_class=PPOTrainer)
 
         # fmt: off
         # __sphinx_doc_begin__
+        #
+        self.lr_schedule = None
+        self.use_critic = True
+        self.use_gae = True
+        self.lambda_ = 1.0
+        self.kl_coeff = 0.2
+        self.sgd_minibatch_size = 128
+        self.num_sgd_iter = 30
+        self.shuffle_sequences = True
+        self.vf_loss_coeff = 1.0
+        self.entropy_coeff = 0.0
+        self.entropy_coeff_schedule = None
+        self.clip_param = 0.3
+        self.vf_clip_param = 10.0
+        self.grad_clip = None
+        self.kl_target = 0.01
+        # __sphinx_doc_end__
+        # fmt: on
+
+        # Override some of TrainerConfig's default values with PPO-specific values.
+        self.rollout_fragment_length = 200
+        self.train_batch_size = 4000
+        self.lr = 5e-5
+        self.model["vf_share_layers"] = False
+
+    @override(TrainerConfig)
+    def training(self,
+                 *,
+                 lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+                 use_critic: Optional[bool] = None,
+                 use_gae: Optional[bool] = None,
+                 lambda_: Optional[float] = None,
+                 kl_coeff: Optional[float] = None,
+                 sgd_minibatch_size: Optional[int] = None,
+                 num_sgd_iter: Optional[int] = None,
+                 shuffle_sequences: Optional[bool] = None,
+                 vf_loss_coeff: Optional[float] = None,
+                 entropy_coeff: Optional[float] = None,
+                 entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
+                 clip_param: Optional[float] = None,
+                 vf_clip_param: Optional[float] = None,
+                 grad_clip: Optional[float] = None,
+                 kl_target: Optional[float] = None,
+                 **kwargs,
+                 ) -> "PPOConfig":
+        """Sets the training related configuration.
 
         Args:
             lr_schedule: Learning rate schedule. In the format of
@@ -117,33 +146,44 @@ class PPOConfig(TrainerConfig):
             grad_clip: If specified, clip the global norm of gradients by this amount.
             kl_target: Target value for KL divergence.
 
-        # __sphinx_doc_end__
-        # fmt: on
+        Returns:
+            This updated TrainerConfig object.
         """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
 
-        super().__init__(trainer_class=PPOTrainer)
+        if lr_schedule is not None:
+            self.lr_schedule = lr_schedule
+        if use_critic is not None:
+            self.use_critic = use_critic
+        if use_gae is not None:
+            self.use_gae = use_gae
+        if lambda_ is not None:
+            self.lambda_ = lambda_
+        if kl_coeff is not None:
+            self.kl_coeff = kl_coeff
+        if sgd_minibatch_size is not None:
+            self.sgd_minibatch_size = sgd_minibatch_size
+        if num_sgd_iter is not None:
+            self.num_sgd_iter = num_sgd_iter
+        if shuffle_sequences is not None:
+            self.shuffle_sequences = shuffle_sequences
+        if vf_loss_coeff is not None:
+            self.vf_loss_coeff = vf_loss_coeff
+        if entropy_coeff is not None:
+            self.entropy_coeff = entropy_coeff
+        if entropy_coeff_schedule is not None:
+            self.entropy_coeff_schedule = entropy_coeff_schedule
+        if clip_param is not None:
+            self.clip_param = clip_param
+        if vf_clip_param is not None:
+            self.vf_clip_param = vf_clip_param
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
+        if kl_target is not None:
+            self.kl_target = kl_target
 
-        self.lr_schedule = lr_schedule
-        self.use_critic = use_critic
-        self.use_gae = use_gae
-        self.lambda_ = lambda_
-        self.kl_coeff = kl_coeff
-        self.sgd_minibatch_size = sgd_minibatch_size
-        self.num_sgd_iter = num_sgd_iter
-        self.shuffle_sequences = shuffle_sequences
-        self.vf_loss_coeff = vf_loss_coeff
-        self.entropy_coeff = entropy_coeff
-        self.entropy_coeff_schedule = entropy_coeff_schedule
-        self.clip_param = clip_param
-        self.vf_clip_param = vf_clip_param
-        self.grad_clip = grad_clip
-        self.kl_target = kl_target
-
-        # Override some of TrainerConfig's default values with PPO-specific values.
-        self.rollout_fragment_length = 200
-        self.train_batch_size = 4000
-        self.lr = 5e-5
-        self.model["vf_share_layers"] = False
+        return self
 
 
 # Deprecated: Use ray.rllib.agents.ppo.PPOConfig instead!
