@@ -258,13 +258,14 @@ class ReplicaConfig:
             raise ValueError("num_gpus in ray_actor_options must be >= 0.")
         self.resource_dict["GPU"] = num_gpus
 
-        if self.ray_actor_options.get("memory", None) is None:
-            self.ray_actor_options["memory"] = 1
+        self.ray_actor_options.setdefault("memory", None)
         memory = self.ray_actor_options["memory"]
-        if not isinstance(memory, (int, float)):
-            raise TypeError("memory in ray_actor_options must be an int or a float.")
-        elif memory < 0:
-            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
+        if memory is not None and not isinstance(memory, (int, float)):
+            raise TypeError(
+                "memory in ray_actor_options must be an int, a float, or None."
+            )
+        elif memory is not None and memory <= 0:
+            raise ValueError("memory in ray_actor_options must be > 0.")
         self.resource_dict["memory"] = memory
 
         if self.ray_actor_options.get("object_store_memory", None) is None:

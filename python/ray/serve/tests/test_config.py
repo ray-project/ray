@@ -8,7 +8,6 @@ from ray.serve.config import (
     ReplicaConfig,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.ray_constants import to_memory_units
 
 
 def test_autoscaling_config_validation():
@@ -139,19 +138,15 @@ def test_replica_config_validation():
     "memory_omitted_options",
     [None, {}, {"CPU": 1, "GPU": 3}, {"CPU": 1, "GPU": 3, "memory": None}],
 )
-def test_replica_config_default_memory_minimum(memory_omitted_options):
-    """Checks that ReplicaConfig's default memory is not lower than minimum."""
+def test_replica_config_default_memory_none(memory_omitted_options):
+    """Checks that ReplicaConfig's default memory is None."""
 
     if memory_omitted_options is None:
         config = ReplicaConfig("fake.import_path")
-
-        # Should not raise ValueError
-        to_memory_units(config.ray_actor_options["memory"], round_up=False)
+        assert config.ray_actor_options["memory"] is None
 
     config = ReplicaConfig("fake.import_path", ray_actor_options=memory_omitted_options)
-
-    # Should not raise ValueError
-    to_memory_units(config.ray_actor_options["memory"], round_up=False)
+    assert config.ray_actor_options["memory"] is None
 
 
 def test_http_options():
