@@ -1,5 +1,8 @@
 import logging
+import os
 from typing import Optional
+
+from ray.serve.constants import DEBUG_LOG_ENV_VAR
 
 COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component} {component_id} - %(message)s"
 
@@ -27,6 +30,9 @@ def get_component_logger(
     logger = logging.getLogger("ray.serve")
     logger.propagate = False
     logger.setLevel(log_level)
+    if os.environ.get(DEBUG_LOG_ENV_VAR, "0") != "0":
+        logger.setLevel(logging.DEBUG)
+
     formatter = logging.Formatter(
         COMPONENT_LOG_FMT.format(component=component, component_id=component_id)
     )

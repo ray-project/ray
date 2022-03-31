@@ -1,5 +1,8 @@
 from enum import Enum
 
+#: Used for debugging to turn on DEBUG-level logs
+DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
+
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
