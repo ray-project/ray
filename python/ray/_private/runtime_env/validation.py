@@ -46,6 +46,22 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     return py_modules
 
 
+def parse_and_validate_ray_libraries(ray_libraries: List[str]) -> List[str]:
+    """Parses and validates a 'ray_libraries' option.
+
+    This should be a list of URIs.
+    """
+    if not isinstance(ray_libraries, list):
+        raise TypeError(
+            "`ray_libraries` must be a list of strings, got " f"{type(ray_libraries)}."
+        )
+
+    for uri in ray_libraries:
+        validate_uri(uri)
+
+    return ray_libraries
+
+
 def parse_and_validate_working_dir(working_dir: str) -> str:
     """Parses and validates a 'working_dir' option.
 
@@ -257,6 +273,7 @@ def parse_and_validate_eager_install(eager_install: bool) -> bool:
 # validate them.
 OPTION_TO_VALIDATION_FN = {
     "py_modules": parse_and_validate_py_modules,
+    "ray_libraries": parse_and_validate_ray_libraries,
     "working_dir": parse_and_validate_working_dir,
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,

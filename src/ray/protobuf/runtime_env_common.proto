@@ -78,16 +78,18 @@ message PythonRuntimeEnv {
   /// PYTHONPATH.
   ///   - Example: `http://example.com/my_module.zip`.
   repeated string py_modules = 1;
+  /// TODO: comment
+  repeated string ray_libraries = 2;
   /// The concrete Runtime Env for Python workers. Use only one of them, or none at all.
   oneof python_runtime_env {
     /// Only set when PipRuntimeEnv is used.
-    PipRuntimeEnv pip_runtime_env = 2;
+    PipRuntimeEnv pip_runtime_env = 3;
     /// Only set when CondaRuntimeEnv is used.
-    CondaRuntimeEnv conda_runtime_env = 3;
+    CondaRuntimeEnv conda_runtime_env = 4;
     /// Only set when ContainerRuntimeEnv is used.
-    ContainerRuntimeEnv container_runtime_env = 4;
+    ContainerRuntimeEnv container_runtime_env = 5;
     /// Only set when PluginRuntimeEnv is used.
-    PluginRuntimeEnv plugin_runtime_env = 5;
+    PluginRuntimeEnv plugin_runtime_env = 6;
   }
 }
 
@@ -158,6 +160,7 @@ message RuntimeEnvUris {
   string pip_uri = 4;
   /// plugin uris
   repeated string plugin_uris = 5;
+  repeated string ray_libraries_uris = 6;
 }
 
 /// The runtime environment describes all the runtime packages needed to

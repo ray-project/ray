@@ -1489,6 +1489,16 @@ rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
     result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
         child.uris().py_modules_uris());
   }
+  if (child.python_runtime_env().ray_libraries().size() > 0 &&
+      parent->python_runtime_env().ray_libraries().size() > 0) {
+    result_runtime_env.mutable_python_runtime_env()->clear_ray_libraries();
+    for (auto &module : child.python_runtime_env().ray_libraries()) {
+      result_runtime_env.mutable_python_runtime_env()->add_ray_libraries(module);
+    }
+    result_runtime_env.mutable_uris()->clear_ray_libraries_uris();
+    result_runtime_env.mutable_uris()->mutable_ray_libraries_uris()->CopyFrom(
+        child.uris().ray_libraries_uris());
+  }
   if (child.python_runtime_env().has_pip_runtime_env() &&
       parent->python_runtime_env().has_pip_runtime_env()) {
     result_runtime_env.mutable_python_runtime_env()->clear_pip_runtime_env();
@@ -1520,6 +1530,9 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   }
   for (const auto &uri : runtime_env->uris().py_modules_uris()) {
     result.emplace_back(encode_plugin_uri("py_modules", uri));
+  }
+  for (const auto &uri : runtime_env->uris().ray_libraries_uris()) {
+    result.emplace_back(encode_plugin_uri("ray_libraries", uri));
   }
   if (!runtime_env->uris().conda_uri().empty()) {
     const auto &uri = runtime_env->uris().conda_uri();

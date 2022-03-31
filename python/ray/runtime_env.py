@@ -292,10 +292,12 @@ class RuntimeEnv(dict):
         config (dict | RuntimeEnvConfig): config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
+        ray_libraries: experimental TODO
     """
 
     known_fields: Set[str] = {
         "py_modules",
+        "ray_libraries",
         "working_dir",
         "conda",
         "pip",
@@ -430,6 +432,9 @@ class RuntimeEnv(dict):
         if "py_modules" in self:
             for uri in self["py_modules"]:
                 plugin_uris.append(encode_plugin_uri("py_modules", uri))
+        if "ray_libraries" in self:
+            for uri in self["ray_libraries"]:
+                plugin_uris.append(encode_plugin_uri("ray_libraries", uri))
         if "conda" in self:
             uri = get_conda_uri(self)
             if uri is not None:
@@ -492,6 +497,15 @@ class RuntimeEnv(dict):
             # set py_modules uris
             proto_runtime_env.uris.py_modules_uris.extend(py_modules_uris)
 
+        # set ray_libraries
+        ray_libraries_uris = self.ray_libraries_uris()
+        if ray_libraries_uris:
+            proto_runtime_env.python_runtime_env.ray_libraries.extend(
+                ray_libraries_uris
+            )
+            # set ray_libraries uris
+            proto_runtime_env.uris.ray_libraries_uris.extend(ray_libraries_uris)
+
         # set conda uri
         conda_uri = self.conda_uri()
         if conda_uri is not None:
@@ -527,6 +541,10 @@ class RuntimeEnv(dict):
             initialize_dict["py_modules"] = list(
                 proto_runtime_env.python_runtime_env.py_modules
             )
+        if proto_runtime_env.python_runtime_env.ray_libraries:
+            initialize_dict["ray_libraries"] = list(
+                proto_runtime_env.python_runtime_env.ray_libraries
+            )
         if proto_runtime_env.working_dir:
             initialize_dict["working_dir"] = proto_runtime_env.working_dir
         if proto_runtime_env.env_vars:
@@ -546,6 +564,7 @@ class RuntimeEnv(dict):
             or self.conda_uri()
             or self.pip_uri()
             or self.plugin_uris()
+            or self.ray_libraries_uris()
         ):
             return True
         return False
@@ -557,6 +576,10 @@ class RuntimeEnv(dict):
         if "py_modules" in self:
             return list(self["py_modules"])
         return []
+
+    def ray_libraries_uris(self) -> List[str]:
+        if "ray_libraries" in self:
+            return list(self["ray_libraries"])
 
     def conda_uri(self) -> Optional[str]:
         if "conda" in self:
@@ -578,6 +601,11 @@ class RuntimeEnv(dict):
     def py_modules(self) -> List[str]:
         if "py_modules" in self:
             return list(self["py_modules"])
+        return []
+
+    def ray_libraries(self) -> List[str]:
+        if "ray_libraries" in self:
+            return list(self["ray_libraries"])
         return []
 
     def env_vars(self) -> Dict:

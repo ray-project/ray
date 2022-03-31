@@ -66,7 +66,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         uris = v.get("py_modules", [])
         if "working_dir" in v:
             uris.append(v["working_dir"])
-
+        uris += v.get("ray_libraries", [])
         for uri in uris:
             if uri is not None:
                 parse_uri(uri)
