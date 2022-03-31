@@ -300,7 +300,7 @@ class TaskResourceInstances {
     if (instances.size() == 0) {
       Remove(resource_id);
     } else {
-      resources_.emplace(resource_id, instances);
+      resources_[resource_id] = instances;
     }
     return *this;
   }

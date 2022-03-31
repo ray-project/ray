@@ -180,6 +180,9 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   task_resource_instances.Set(custom_id1, FixedPointVectorFromDouble({1}));
   ASSERT_TRUE(task_resource_instances.Has(custom_id1));
   ASSERT_EQ(task_resource_instances.Get(custom_id1), FixedPointVectorFromDouble({1}));
+  task_resource_instances.Set(custom_id1, FixedPointVectorFromDouble({2}));
+  ASSERT_TRUE(task_resource_instances.Has(custom_id1));
+  ASSERT_EQ(task_resource_instances.Get(custom_id1), FixedPointVectorFromDouble({2}));
 
   // Test Clear
   task_resource_instances.Remove(custom_id1);
