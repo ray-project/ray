@@ -2166,9 +2166,7 @@ std::string NodeManager::DebugString() const {
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
   result << "\nNode ID: " << self_node_id_;
-  if (self_node_name_ != "") {
-    result << "\nNode name: " << self_node_name_;
-  }
+  result << "\nNode name: " << self_node_name_;
   result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
   if (cluster_task_manager_ != nullptr) {
     result << "\nClusterTaskManager:\n";

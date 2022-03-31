@@ -39,22 +39,15 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
-  std::string report_node_name = request.node_info().has_node_name()
-                                     ? ", node name = " + request.node_info().node_name()
-                                     : "";
   RAY_LOG(INFO) << "Registering node info, node id = " << node_id
                 << ", address = " << request.node_info().node_manager_address()
-                << report_node_name;
+                << ", node name = " << request.node_info().node_name();
   auto on_done = [this, node_id, request, reply, send_reply_callback](
                      const Status &status) {
     RAY_CHECK_OK(status);
-    std::string report_node_name =
-        request.node_info().has_node_name()
-            ? ", node name = " + request.node_info().node_name()
-            : "";
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
                   << ", address = " << request.node_info().node_manager_address()
-                  << report_node_name;
+                  << ", node name = " << request.node_info().node_name();
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -213,12 +206,10 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       // TODO(rkn): Define this constant somewhere else.
       std::string type = "node_removed";
       std::ostringstream error_message;
-      std::string report_node_name = removed_node->has_node_name()
-                                         ? " and node name: " + removed_node->node_name()
-                                         : "";
       error_message << "The node with node id: " << node_id
                     << " and address: " << removed_node->node_manager_address()
-                    << report_node_name << " has been marked dead because the detector"
+                    << " and node name: " << removed_node->node_name()
+                    << " has been marked dead because the detector"
                     << " has missed too many heartbeats from it. This can happen when a "
                        "raylet crashes unexpectedly or has lagging heartbeats.";
       RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
@@ -236,9 +227,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       listener(removed_node);
     }
   }
-  std::string report_node_name =
-      removed_node->has_node_name() ? ", node name = " + removed_node->node_name() : "";
-  RAY_LOG(INFO) << "Removing node, node id = " << node_id << report_node_name;
+  RAY_LOG(INFO) << "Removing node, node id = " << node_id
+                << ", node name = " << removed_node->node_name();
   return removed_node;
 }
 

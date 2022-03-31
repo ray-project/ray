@@ -87,7 +87,8 @@ int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
   const std::string store_socket_name = FLAGS_store_socket_name;
-  const std::string node_name = FLAGS_node_name;
+  const std::string node_name =
+      (FLAGS_node_name == "") ? FLAGS_node_ip_address : FLAGS_node_name;
   const int object_manager_port = static_cast<int>(FLAGS_object_manager_port);
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
