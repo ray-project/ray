@@ -173,7 +173,7 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
     pipe.take()
     expect_stages(
         pipe,
-        2,
+        3,
         [
             "read",
             "map_batches",

@@ -411,11 +411,11 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     assert len(input_files) == 2, input_files
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, one: int32})"
+        "schema={two: string, one: int64})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-        "schema={two: string, one: int32})"
+        "schema={two: string, one: int64})"
     ), ds
     assert ds._plan.execute()._num_computed() == 1
 
@@ -736,7 +736,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "Dataset(num_blocks=2, num_rows=10, "
+        "Dataset(num_blocks=2, num_rows=None, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"

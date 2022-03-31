@@ -1,13 +1,5 @@
 import math
-from typing import (
-    Callable,
-    List,
-    Iterator,
-    Tuple,
-    Optional,
-    Dict,
-    Any,
-)
+from typing import List, Iterator, Tuple, Optional, Dict, Any
 import uuid
 
 import numpy as np
@@ -35,6 +27,7 @@ def execute_read_task(
     task: ReadTask,
     context: DatasetContext,
     stats_uuid: str,
+    stats_actor: ray.actor.ActorHandle,
 ) -> Tuple[MaybeBlockPartition, BlockPartitionMetadata]:
     DatasetContext._set_current(context)
     stats = BlockExecStats.builder()
@@ -49,7 +42,6 @@ def execute_read_task(
         metadata = BlockAccessor.for_block(block).get_metadata(
             input_files=metadata.input_files, exec_stats=stats.build()
         )
-    stats_actor = _get_or_create_stats_actor()
     stats_actor.record_task.remote(stats_uuid, i, metadata)
     return block, metadata
 
@@ -67,11 +59,8 @@ class LazyBlockList(BlockList):
         tasks: List[ReadTask],
         block_partitions: Optional[List[ObjectRef[MaybeBlockPartition]]] = None,
         block_partitions_meta: Optional[List[ObjectRef[BlockPartitionMetadata]]] = None,
-        pushdown_fn: Optional[Callable[[Block], Block]] = None,
-        base_block_partitions: Optional[List[ObjectRef[MaybeBlockPartition]]] = None,
         fetched_metadata: Optional[List[BlockPartitionMetadata]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        name: str = "read",
         stats_uuid: str = None,
     ):
         """Create a LazyBlockList on the provided read tasks.
@@ -83,29 +72,17 @@ class LazyBlockList(BlockList):
                 argument.
             block_partitions_meta: An optional list of block partition metadata refs.
                 This should be the same length as the tasks argument.
-            pushdown_fn: A block -> iter(block) function that this lazy block list
-                should push down into its read tasks.
-            base_block_partitions: An optional list of precomputed block partition
-                references that serve as alternative source of input blocks to the read
-                tasks. When creating a new lwzy block list with pushdown functions off
-                of an old lazy block list that has already started executing, setting
-                these base bloc partitions to the old block list's block partitions is a
-                nice way to avoid redundant task execution.
             fetched_metadata: An optional list of already computed AND fetched metadata.
                 This serves as a cache of fetched block metadata.
             ray_remote_args: Ray remote arguments for the read tasks.
-            name: A human-readable name for the read stage that underlies this lazy
-                block list. Defaults to "read".
             stats_uuid: UUID for the dataset stats, used to group and fetch read task
                 stats. If not provided, a new UUID will be created.
         """
         self._tasks = tasks
         self._num_blocks = len(self._tasks)
-        self._pushdown_fn = pushdown_fn
         if stats_uuid is None:
             stats_uuid = uuid.uuid4()
         self._stats_uuid = stats_uuid
-        self._name = name
         self._execution_started = False
         self._remote_args = ray_remote_args or {}
         # Block partition metadata that have already been computed and fetched.
@@ -113,12 +90,6 @@ class LazyBlockList(BlockList):
             self._fetched_metadata = fetched_metadata
         else:
             self._fetched_metadata = [None] * len(tasks)
-        # Computed block partitions for this lazy block list sans the pushdown function.
-        # This is used to avoid redundantly repeating reads.
-        if base_block_partitions is not None:
-            self._base_block_partitions = base_block_partitions
-        else:
-            self._base_block_partitions = [None] * len(tasks)
         # Block partition metadata that have already been computed.
         if block_partitions_meta is not None:
             self._block_partitions_meta = block_partitions_meta
@@ -136,10 +107,6 @@ class LazyBlockList(BlockList):
         assert len(tasks) == len(self._block_partitions_meta), (
             tasks,
             self._block_partitions_meta,
-        )
-        assert len(tasks) == len(self._base_block_partitions), (
-            tasks,
-            self._base_block_partitions,
         )
         assert len(tasks) == len(self._fetched_metadata), (
             tasks,
@@ -163,54 +130,19 @@ class LazyBlockList(BlockList):
     def stats(self) -> DatasetStats:
         """Create DatasetStats for this LazyBlockList."""
         return DatasetStats(
-            stages={self._name: self.get_metadata(fetch_if_missing=False)},
+            stages={"read": self.get_metadata(fetch_if_missing=False)},
             parent=None,
             needs_stats_actor=True,
             stats_uuid=self._stats_uuid,
         )
 
     def _submit_task(self, task_idx: int) -> ObjectRef[MaybeBlockPartition]:
-        """Submit the task with index task_idx.
-
-        This will apply the pushdown function and use the base partition, if it exists.
-        """
+        """Submit the task with index task_idx."""
+        stats_actor = _get_or_create_stats_actor()
         if not self._execution_started:
-            stats_actor = _get_or_create_stats_actor()
-            stats_actor.record_start.remote(self._stats_uuid, self._name)
+            stats_actor.record_start.remote(self._stats_uuid)
             self._execution_started = True
         task = self._tasks[task_idx]
-        if self._pushdown_fn is not None:
-            # If pushdown exists, compose pushdown function with read function.
-            base_part = self._base_block_partitions[task_idx]
-            pushdown_fn = self._pushdown_fn
-            if base_part is not None:
-                # If base partition exists, use it instead of reinvoking read function.
-                context = DatasetContext.get_current()
-
-                def read_fn():
-                    # TODO(Clark): Add base_part as an optional task dependency.
-                    part = ray.get(base_part)
-                    if context.block_splitting_enabled:
-                        # If dynamic block splitting enabled, fetch individual blocks
-                        # from within the partition and feed each block to the pushdown
-                        # function.
-                        for block_and_meta in part:
-                            block, _ = block_and_meta
-                            block = ray.get(block)
-                            yield from pushdown_fn(block)
-                    else:
-                        yield from pushdown_fn(part)
-
-                self._base_block_partitions[task_idx] = None
-            else:
-                # Otherwise, invoke read function.
-                read_fn_ = task._read_fn
-
-                def read_fn():
-                    for block in read_fn_():
-                        yield from pushdown_fn(block)
-
-            task = ReadTask(read_fn, task._metadata)
         return (
             cached_remote_fn(execute_read_task)
             .options(num_returns=2, **self._remote_args)
@@ -219,6 +151,7 @@ class LazyBlockList(BlockList):
                 task=task,
                 context=DatasetContext.get_current(),
                 stats_uuid=self._stats_uuid,
+                stats_actor=stats_actor,
             )
         )
 
@@ -227,11 +160,8 @@ class LazyBlockList(BlockList):
             self._tasks.copy(),
             block_partitions=self._block_partitions.copy(),
             block_partitions_meta=self._block_partitions_meta.copy(),
-            pushdown_fn=self._pushdown_fn,
-            base_block_partitions=self._base_block_partitions.copy(),
             fetched_metadata=self._fetched_metadata,
             ray_remote_args=self._remote_args.copy(),
-            name=self._name,
             stats_uuid=self._stats_uuid,
         )
 
@@ -241,7 +171,6 @@ class LazyBlockList(BlockList):
         """
         self._block_partitions = [None for _ in self._block_partitions]
         self._block_partitions_meta = [None for _ in self._block_partitions_meta]
-        self._base_block_partitions = [None for _ in self._base_block_partitions]
         self._fetched_metadata = [None for _ in self._fetched_metadata]
 
     def _check_if_cleared(self):
@@ -357,7 +286,7 @@ class LazyBlockList(BlockList):
             # Short-circuit on empty set of block partitions.
             assert not blocks, blocks
             return [], []
-        read_progress_bar = ProgressBar(self._name + " progress", total=len(meta_refs))
+        read_progress_bar = ProgressBar("Read progress", total=len(meta_refs))
         # Fetch the metadata in bulk.
         # Handle duplicates (e.g. due to unioning the same dataset).
         unique_meta_refs = set(meta_refs)

@@ -31,7 +31,7 @@ def test_dataset_stats_basic(ray_start_regular_shared):
     stats = canonicalize(ds.stats())
     assert (
         stats
-        == """Stage Z read->map_batches: N/N blocks executed in T
+        == """Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -138,7 +138,7 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
     stats = canonicalize(ds.stats())
     assert (
         stats
-        == """Stage Z read->map: N/N blocks executed in T
+        == """Stage N read->map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -161,7 +161,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
     assert (
         stats
         == """== Pipeline Window N ==
-Stage Z read->map_batches: N/N blocks executed in T
+Stage N read->map_batches: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -176,7 +176,7 @@ Stage N map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 == Pipeline Window N ==
-Stage Z read->map_batches: [execution cached]
+Stage N read->map_batches: [execution cached]
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -185,7 +185,7 @@ Stage N map: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 == Pipeline Window N ==
-Stage Z read->map_batches: [execution cached]
+Stage N read->map_batches: [execution cached]
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
@@ -224,7 +224,7 @@ def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
     assert (
         canonicalize(stats[0])
         == """== Pipeline Window Z ==
-Stage Z read: N/N blocks executed in T
+Stage N read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -232,7 +232,7 @@ Stage Z read: N/N blocks executed in T
 * Tasks per node: N min, N max, N mean; N nodes used
 
 == Pipeline Window N ==
-Stage Z read: N/N blocks executed in T
+Stage N read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total

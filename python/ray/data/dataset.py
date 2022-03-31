@@ -2534,22 +2534,22 @@ Dict[str, List[str]]]): The names of the columns
                 to repeat indefinitely.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+        from ray.data.impl.plan import _rewrite_read_stage
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks = self._plan._in_blocks.copy()
-            assert isinstance(blocks, LazyBlockList)
+            blocks, _ = self._plan._get_source_blocks()
             blocks.clear()
-            outer_stats = blocks.stats()
-            starts_with_read = True
+            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
-            starts_with_read = False
+            read_stage = None
+        uuid = self._get_uuid()
+        outer_stats.dataset_uuid = uuid
 
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
-        uuid = self._get_uuid()
 
         class Iterator:
             def __init__(self, blocks):
@@ -2581,11 +2581,13 @@ Dict[str, List[str]]]): The names of the columns
             def __iter__(self):
                 return Iterator(self._blocks)
 
-        pipe = DatasetPipeline(
-            Iterable(blocks),
-            length=times or float("inf"),
-            _starts_with_read=starts_with_read,
-        )
+        pipe = DatasetPipeline(Iterable(blocks), length=times or float("inf"))
+        if read_stage:
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage: Dataset(
+                    ds._plan.with_stage(read_stage), ds._epoch, True
+                )
+            )
         return pipe
 
     def window(
@@ -2645,6 +2647,7 @@ Dict[str, List[str]]]): The names of the columns
                 exclusive with ``blocks_per_window``.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+        from ray.data.impl.plan import _rewrite_read_stage
 
         if blocks_per_window is not None and bytes_per_window is not None:
             raise ValueError("Only one windowing scheme can be specified.")
@@ -2654,15 +2657,13 @@ Dict[str, List[str]]]): The names of the columns
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks = self._plan._in_blocks.copy()
-            assert isinstance(blocks, LazyBlockList)
+            blocks, _ = self._plan._get_source_blocks()
             blocks.clear()
-            outer_stats = blocks.stats()
-            starts_with_read = True
+            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
             blocks = self._plan.execute()
             outer_stats = self._plan.stats()
-            starts_with_read = False
+            read_stage = None
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2722,9 +2723,13 @@ Dict[str, List[str]]]): The names of the columns
                 return Iterator(self._splits, self._epoch)
 
         it = Iterable(blocks, self._epoch)
-        pipe = DatasetPipeline(
-            it, length=len(it._splits), _starts_with_read=starts_with_read
-        )
+        pipe = DatasetPipeline(it, length=len(it._splits))
+        if read_stage:
+            pipe = pipe.foreach_window(
+                lambda ds, read_stage=read_stage: Dataset(
+                    ds._plan.with_stage(read_stage), ds._epoch, True
+                )
+            )
         return pipe
 
     def fully_executed(self) -> "Dataset[T]":
@@ -2736,7 +2741,7 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        plan = self._plan.deep_copy()
+        plan = self._plan.deep_copy(preserve_uuid=True)
         plan.execute(force_read=True)
         ds = Dataset(plan, self._epoch, lazy=False)
         ds._set_uuid(self._get_uuid())
@@ -2801,7 +2806,11 @@ Dict[str, List[str]]]): The names of the columns
         ds._set_uuid(self._get_uuid())
 
         def _reduce(rf: ray.remote_function.RemoteFunction):
+            # Custom reducer for Ray remote function handles that allows for
+            # cross-cluster serialization.
             reconstructor, args, state = rf.__reduce__()
+            # Manually unset last export session and job to force re-exporting of the
+            # function when the handle is deserialized on a new cluster.
             state["_last_export_session_and_job"] = None
             return reconstructor, args, state
 

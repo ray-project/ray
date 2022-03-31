@@ -91,11 +91,9 @@ class _StatsActor:
         self.metadata = collections.defaultdict(dict)
         self.last_time = {}
         self.start_time = {}
-        self.names = {}
 
-    def record_start(self, stats_uuid, name):
+    def record_start(self, stats_uuid):
         self.start_time[stats_uuid] = time.perf_counter()
-        self.names[stats_uuid] = name
 
     def record_task(self, stats_uuid, i, metadata):
         self.metadata[stats_uuid][i] = metadata
@@ -103,11 +101,10 @@ class _StatsActor:
 
     def get(self, stats_uuid):
         if stats_uuid not in self.metadata:
-            return {}, 0.0, ""
+            return {}, 0.0
         return (
             self.metadata[stats_uuid],
             self.last_time[stats_uuid] - self.start_time[stats_uuid],
-            self.names[stats_uuid],
         )
 
 
@@ -116,25 +113,14 @@ _stats_actor = [None, None]
 
 
 def _get_or_create_stats_actor():
+    # Need to re-create it if Ray restarts (mostly for unit tests).
     if (
-        _stats_actor[0] is None
+        not _stats_actor[0]
         or not ray.is_initialized()
         or _stats_actor[1] != ray.get_runtime_context().job_id.hex()
     ):
-        # Stats actor either doesn't exist or we haven't fetched it yet;
-        # first, try to fetch it.
+        _stats_actor[0] = _StatsActor.remote()
         _stats_actor[1] = ray.get_runtime_context().job_id.hex()
-        name = "stats_actor"
-        try:
-            _stats_actor[0] = ray.get_actor(name)
-        except ValueError:
-            # Stats actor doesn't exist, so we create it.
-            try:
-                _stats_actor[0] = _StatsActor.options(name=name).remote()
-            except ValueError:
-                # Stats actor must have been created in the meantime by another worker,
-                # so we try to fetch it again.
-                _stats_actor[0] = ray.get_actor(name)
 
         # Clear the actor handle after Ray reinits since it's no longer valid.
         def clear_actor():
@@ -219,11 +205,11 @@ class DatasetStats:
 
         if self.needs_stats_actor:
             # XXX this is a super hack, clean it up.
-            stats_map, self.time_total_s, name = ray.get(
+            stats_map, self.time_total_s = ray.get(
                 self.stats_actor.get.remote(self.stats_uuid)
             )
             for i, metadata in stats_map.items():
-                self.stages[name][i] = metadata
+                self.stages["read"][i] = metadata
         out = ""
         if self.parents:
             for p in self.parents:

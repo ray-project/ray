@@ -1,5 +1,4 @@
 import copy
-import functools
 from typing import (
     Callable,
     List,
@@ -226,9 +225,7 @@ class ExecutionPlan:
         return None
 
     def execute(
-        self,
-        clear_input_blocks: bool = True,
-        force_read: bool = False,
+        self, clear_input_blocks: bool = True, force_read: bool = False
     ) -> BlockList:
         """Execute this plan.
 
@@ -256,12 +253,7 @@ class ExecutionPlan:
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
             self._stages_before_snapshot += self._stages_after_snapshot
             self._stages_after_snapshot = []
-        if isinstance(self._snapshot_blocks, LazyBlockList) and (
-            force_read or self._snapshot_blocks._pushdown_fn is not None
-        ):
-            # If we have a lazy datasource that we've pushed downstream tasks into,
-            # materialize it as a concrete BlockList to preserve the default eager
-            # semantics.
+        if _is_lazy(self._snapshot_blocks) and force_read:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
         return self._snapshot_blocks
 
@@ -287,19 +279,21 @@ class ExecutionPlan:
     def _optimize(self) -> Tuple[BlockList, DatasetStats, List[Stage]]:
         """Apply stage fusion optimizations, updating this plan."""
         context = DatasetContext.get_current()
-        blocks, stats = self._get_input_blocks()
+        blocks, stats = self._get_source_blocks()
         stages = self._stages_after_snapshot.copy()
-        if isinstance(blocks, LazyBlockList) and context.optimize_fuse_read_stages:
-            # If using a lazy datasource, fuse downstream tasks into the read stage.
-            blocks, stats, stages = _fuse_into_read_stage(blocks, stats, stages)
-            stats.dataset_uuid = self._dataset_uuid
         if context.optimize_fuse_stages:
+            if context.optimize_fuse_read_stages:
+                # If using a lazy datasource, rewrite read stage into one-to-one stage
+                # so it can be fused into downstream stages.
+                blocks, stats, stages = _rewrite_read_stages(
+                    blocks, stats, stages, self._dataset_uuid
+                )
             stages = _fuse_one_to_one_stages(stages)
-        self._last_optimized_stages = stages
+            self._last_optimized_stages = stages
         return blocks, stats, stages
 
-    def _get_input_blocks(self) -> Tuple[BlockList, DatasetStats]:
-        """Get the input blocks (and corresponding stats) for plan execution.
+    def _get_source_blocks(self) -> Tuple[BlockList, DatasetStats]:
+        """Get the source blocks (and corresponding stats) for plan execution.
 
         Options include the input block list that the plan was created with, and the
         computation snapshot of some stage prefix of the execution plan.
@@ -326,7 +320,7 @@ class ExecutionPlan:
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
-        return isinstance(self._in_blocks, LazyBlockList)
+        return _is_lazy(self._in_blocks)
 
     def is_read_stage(self) -> bool:
         """Return whether this plan only consists of a read stage."""
@@ -334,10 +328,6 @@ class ExecutionPlan:
             self.has_lazy_input()
             and not self._stages_before_snapshot
             and not self._stages_after_snapshot
-            and (
-                self._snapshot_blocks is None
-                or self._snapshot_blocks._pushdown_fn is None
-            )
         )
 
     def has_computed_output(self) -> bool:
@@ -405,14 +395,12 @@ class AllToAllStage(Stage):
         supports_block_udf: bool = False,
         block_udf=None,
         remote_args=None,
-        is_expecting_read_tasks: bool = False,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
         self.supports_block_udf = supports_block_udf
         self.block_udf = block_udf
         self.ray_remote_args = remote_args or {}
-        self.is_expecting_read_tasks = is_expecting_read_tasks
 
     def can_fuse(self, prev: Stage):
         context = DatasetContext.get_current()
@@ -439,19 +427,6 @@ class AllToAllStage(Stage):
     def __call__(
         self, blocks: BlockList, clear_input_blocks: bool
     ) -> Tuple[BlockList, dict]:
-        if self.is_expecting_read_tasks:
-            assert isinstance(blocks, LazyBlockList)
-            blocks = BlockList(
-                [
-                    # Use block partition future if the read task has already been
-                    # submitted, otherwise use the read task that the block UDF will
-                    # execute.
-                    # TODO(Clark): Remove shoe-horning of read tasks into block list.
-                    part if part is not None else ray.put(t._read_fn)
-                    for part, t in zip(blocks._block_partitions, blocks._tasks)
-                ],
-                [t.get_metadata() for t in blocks._tasks],
-            )
         blocks, stage_info = self.fn(
             blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
         )
@@ -459,102 +434,72 @@ class AllToAllStage(Stage):
         return blocks, stage_info
 
 
-def _fuse_into_read_stage(
-    blocks: LazyBlockList,
+def _rewrite_read_stages(
+    blocks: BlockList,
     stats: DatasetStats,
     stages: List[Stage],
-) -> Tuple[BlockList, DatasetStats]:
-    """Fuse downstream stages into the LazyBlockList read stage.
+    dataset_uuid: str,
+) -> Tuple[BlockList, DatasetStats, List[Stage]]:
+    """Rewrites read stages into one-to-one stages, if needed."""
+    if _is_lazy(blocks) and stages:
+        blocks, stats, stage = _rewrite_read_stage(blocks)
+        stats.dataset_uuid = dataset_uuid
+        stages.insert(0, stage)
+    return blocks, stats, stages
+
+
+def _rewrite_read_stage(blocks: LazyBlockList) -> Tuple[BlockList, DatasetStats, Stage]:
+    """Rewrite the read stage to a OneToOne stage over read tasks as input.
+
+    For example, suppose the plan was [Read -> MapBatches(Fn)]. These stages cannot
+    be fused, since read stages are handled specially.
+    After rewriting to [GetReadTasks -> MapBatches(DoRead) -> MapBatches(Fn)],
+    now we can fuse the latter two MapBatches stages into a single OneToOne stage:
+    [GetReadTasks -> MapBatches(DoRead -> Fn)].
 
     Args:
-        blocks: Lazy block list representing read stage. Compatible downstream stages
-            will be fused into this block list as pushdown functions.
-        stats: Current stats for this stage. This is overridden if fusion takes place.
-        stages: The candidate downstream stages to fuse.
+        blocks: Lazy block list representing read stage.
 
     Returns:
-        Lazy block list with fused pushdown functions, and the corresponding stats for
-        the modified read stage.
+        Non-lazy block list containing already-read partitions and read tasks for
+        not-yet-read partitions, new stats for the block list, and the new
+        one-to-one read stage.
     """
     context = DatasetContext.get_current()
-    assert isinstance(blocks, LazyBlockList)
-    pushdown_fns = []
+    # Generate the "GetReadTasks" stage blocks.
     remote_args = blocks._remote_args
-    name = blocks._name
-    # Gather compatible stages into a set of pushdown functions.
-    for stage in stages:
-        if not isinstance(stage, OneToOneStage):
-            break
-        if not _are_remote_args_compatible(remote_args, stage.ray_remote_args):
-            break
-        if stage.compute != "tasks":
-            break
-        pushdown_fns.append(stage.block_fn)
-        name += "->" + stage.name
-    # Compose pushdown functions into single Block -> Iterator[Block] function.
-    composed_pushdown_fn = compose_block_funcs(*pushdown_fns[::-1])
-    if blocks._pushdown_fn is not None:
-        # Lazy block list already has a pushdown function, so we compose our new
-        # pushdown function with it.
-        composed_pushdown_fn = compose(composed_pushdown_fn, blocks._pushdown_fn)
-    # Slice off fused stages.
-    stages = stages[len(pushdown_fns) :]
-    next_stage = next(iter(stages), None)
-    if (
-        context.optimize_fuse_shuffle_stages
-        and isinstance(next_stage, AllToAllStage)
-        # Stage is already fused/optimized, e.g. if this is being executed in a
-        # pipeline.
-        and not next_stage.is_expecting_read_tasks
-        and next_stage.supports_block_udf
-        and all(k in INHERITABLE_REMOTE_ARGS for k in remote_args)
-    ):
-        # Push read stage into all-to-all stage.
+    blocks = BlockList(
+        [
+            # Use block partition future if the read task has already been
+            # submitted, otherwise use the read task that the block UDF will
+            # execute.
+            # TODO(Clark): Remove shoe-horning of read tasks into block list.
+            part if part is not None else ray.put(t._read_fn)
+            for part, t in zip(blocks._block_partitions, blocks._tasks)
+        ],
+        [t.get_metadata() for t in blocks._tasks],
+    )
 
-        def block_udf(
-            part_or_read_fn: Union[
-                ObjectRef[BlockPartition], Callable[[], Iterator[Block]]
-            ]
-        ) -> Iterator[Block]:
-            if not callable(part_or_read_fn):
-                # Block partition was provided.
-                if context.block_splitting_enabled:
-                    for block_and_meta in part_or_read_fn:
-                        block, _ = block_and_meta
-                        block = ray.get(block)
-                        yield from composed_pushdown_fn(block)
-                else:
-                    yield from composed_pushdown_fn(part_or_read_fn)
+    def block_fn(
+        part_or_read_fn: Union[ObjectRef[BlockPartition], Callable[[], Iterator[Block]]]
+    ) -> Iterator[Block]:
+        if not callable(part_or_read_fn):
+            # Block partition was provided.
+            if context.block_splitting_enabled:
+                for block_and_meta in part_or_read_fn:
+                    block, _ = block_and_meta
+                    block = ray.get(block)
+                    yield block
             else:
-                # Read task was provided.
-                for block in part_or_read_fn():
-                    yield from composed_pushdown_fn(block)
+                yield part_or_read_fn
+        else:
+            # Read task was provided.
+            for block in part_or_read_fn():
+                yield block
 
-        new_stage = AllToAllStage(
-            name=name + "->" + next_stage.name,
-            num_blocks=next_stage.num_blocks,
-            fn=next_stage.fn,
-            supports_block_udf=True,
-            block_udf=block_udf,
-            remote_args=remote_args,
-            is_expecting_read_tasks=True,
-        )
-        # Overwrite stage.
-        stages[0] = new_stage
-        stats = DatasetStats(stages={}, parent=None)
-    elif pushdown_fns:
-        # Create the new read stage with the new pushdown functions.
-        blocks = LazyBlockList(
-            blocks._tasks,
-            block_partitions=None,
-            pushdown_fn=composed_pushdown_fn,
-            base_block_partitions=blocks._block_partitions,
-            ray_remote_args=remote_args,
-            name=name,
-            stats_uuid=blocks._stats_uuid,
-        )
-        stats = blocks.stats()
-    return blocks, stats, stages
+    stage = OneToOneStage("read", block_fn, "tasks", remote_args)
+    stats = DatasetStats(stages={}, parent=None)
+    return blocks, stats, stage
 
 
 def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
@@ -595,21 +540,6 @@ def _are_remote_args_compatible(prev_args, next_args):
     return True
 
 
-def compose(
-    f: Callable[[Block], Iterator[Block]],
-    g: Callable[[Block], Iterator[Block]],
-) -> Callable[[Block], Iterator[Block]]:
-    def _fn(block: Block):
-        for b in g(block):
-            yield from f(b)
-
-    return _fn
-
-
-def compose_block_funcs(
-    *block_funcs: Callable[[Block], Iterator[Block]],
-) -> Callable[[Block], Iterator[Block]]:
-    if not block_funcs:
-        return lambda block: [block]
-
-    return functools.reduce(compose, block_funcs)
+def _is_lazy(blocks: BlockList) -> bool:
+    """Whether the provided block list is lazy."""
+    return isinstance(blocks, LazyBlockList)
