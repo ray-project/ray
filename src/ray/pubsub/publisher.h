@@ -382,7 +382,6 @@ class Publisher : public PublisherInterface {
   int publish_batch_size_;
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
-
 };
 
 }  // namespace pubsub
