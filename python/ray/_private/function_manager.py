@@ -312,6 +312,10 @@ class FunctionActorManager:
                     function=function, function_name=function_name, max_calls=max_calls
                 )
 
+    def register_imported_actor(self, key):
+        with self.lock:
+            self.imported_actor_classes.add(key)
+
     def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
         Args:
