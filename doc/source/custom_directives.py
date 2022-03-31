@@ -1,6 +1,7 @@
 import urllib
 import mock
 import sys
+from preprocess_github_markdown import preprocess_github_markdown_file
 
 # Note: the scipy import has to stay here, it's used implicitly down the line
 import scipy.stats  # noqa: F401
@@ -10,6 +11,7 @@ __all__ = [
     "fix_xgb_lgbm_docs",
     "mock_modules",
     "update_context",
+    "download_and_preprocess_ecosystem_docs",
 ]
 
 try:
@@ -174,3 +176,51 @@ def mock_modules():
 
     for mod_name in CHILD_MOCK_MODULES:
         sys.modules[mod_name] = ChildClassMock()
+
+
+# Add doc files from external repositories to be downloaded during build here
+# (repo, ref, path to get, path to save on disk)
+EXTERNAL_MARKDOWN_FILES = [
+    ("ray-project/xgboost_ray", "master", "README.md", "ray-more-libs/xgboost-ray.md"),
+    (
+        "ray-project/lightgbm_ray",
+        "master",
+        "README.md",
+        "ray-more-libs/lightgbm-ray.md",
+    ),
+]
+
+
+def download_and_preprocess_ecosystem_docs():
+    """
+    This function downloads markdown readme files for various
+    ecosystem libraries, saves them in specified locations and preprocesses
+    them before sphinx build starts.
+
+    If you have ecosystem libraries that live in a separate repo from Ray,
+    adding them here will allow for their docs to be present in Ray docs
+    without the need for duplicate files. For more details, see ``doc/README.md``.
+    """
+
+    import urllib.request
+    import requests
+
+    def get_latest_release_tag(repo: str) -> str:
+        """repo is just the repo name, eg. ray-project/ray"""
+        response = requests.get(f"https://api.github.com/repos/{repo}/releases/latest")
+        return response.json()["tag_name"]
+
+    def get_file_from_github(
+        repo: str, ref: str, path_to_get: str, path_to_save_on_disk: str
+    ) -> None:
+        """If ``ref == "latest"``, use latest release"""
+        if ref == "latest":
+            ref = get_latest_release_tag(repo)
+        urllib.request.urlretrieve(
+            f"https://raw.githubusercontent.com/{repo}/{ref}/{path_to_get}",
+            path_to_save_on_disk,
+        )
+
+    for x in EXTERNAL_MARKDOWN_FILES:
+        get_file_from_github(*x)
+        preprocess_github_markdown_file(x[-1])

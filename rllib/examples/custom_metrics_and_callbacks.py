@@ -80,7 +80,7 @@ class MyCallbacks(DefaultCallbacks):
     ):
         # Check if there are multiple episodes in a batch, i.e.
         # "batch_mode": "truncate_episodes".
-        if worker.sampler.sample_collector.multiple_episodes_in_batch:
+        if worker.policy_config["batch_mode"] == "truncate_episodes":
             # Make sure this episode is really done.
             assert episode.batch_builder.policy_collectors["default_policy"].batches[
                 -1

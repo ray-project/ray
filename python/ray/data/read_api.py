@@ -242,6 +242,16 @@ def read_datasource(
             )
         )
 
+    if len(read_tasks) < parallelism and (
+        len(read_tasks) < ray.available_resources().get("CPU", parallelism) // 2
+    ):
+        logger.warning(
+            "The number of blocks in this dataset ({}) limits its parallelism to {} "
+            "concurrent tasks. This is much less than the number of available "
+            "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
+            "dataset blocks.".format(len(read_tasks), len(read_tasks))
+        )
+
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
     stats_uuid = uuid.uuid4()
