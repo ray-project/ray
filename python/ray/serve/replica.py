@@ -402,6 +402,7 @@ class RayServeReplica:
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()
         except Exception as e:
+            self._logger.exception("Request failed:")
             success = False
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
