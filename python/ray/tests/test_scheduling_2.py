@@ -324,6 +324,36 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
                 ).remote()
             )
 
+        crashed_worker_node = cluster.add_node(
+            num_cpus=8, resources={"crashed_worker": 1}
+        )
+        cluster.wait_for_nodes()
+        crashed_worker_node_id = ray.get(
+            get_node_id.options(num_cpus=0, resources={"crashed_worker": 1}).remote()
+        )
+
+        @ray.remote(
+            max_retries=-1,
+            scheduling_strategy=NodeSchedulingStrategy(
+                crashed_worker_node_id, soft=True
+            ),
+        )
+        def crashed_get_node_id():
+            if ray.get_runtime_context().node_id.hex() == crashed_worker_node_id:
+                internal_kv._internal_kv_put(
+                    "crashed_get_node_id", "crashed_worker_node_id"
+                )
+                while True:
+                    time.sleep(1)
+            else:
+                return ray.get_runtime_context().node_id.hex()
+
+        r = crashed_get_node_id.remote()
+        while not internal_kv._internal_kv_exists("crashed_get_node_id"):
+            time.sleep(0.1)
+        cluster.remove_node(crashed_worker_node, allow_graceful=False)
+        assert ray.get(r) in {head_node_id, worker_node_id}
+
         @ray.remote(num_cpus=1)
         class Actor:
             def get_node_id(self):
@@ -338,6 +368,16 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
             scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=False)
         ).remote()
         assert head_node_id == ray.get(actor.get_node_id.remote())
+
+        # Wait until the target node becomes available.
+        worker_actor = Actor.options(resources={"worker": 1}).remote()
+        assert worker_node_id == ray.get(worker_actor.get_node_id.remote())
+        actor = Actor.options(
+            scheduling_strategy=NodeSchedulingStrategy(worker_node_id, soft=True),
+            resources={"worker": 1},
+        ).remote()
+        del worker_actor
+        assert worker_node_id == ray.get(actor.get_node_id.remote())
 
         # Doesn't fail when the node doesn't exist since soft is true.
         actor = Actor.options(

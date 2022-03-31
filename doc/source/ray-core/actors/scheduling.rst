@@ -26,9 +26,21 @@ See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 Scheduling Strategy
 -------------------
 Actors support ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
-Currently the only supported strategy for actors is "DEFAULT".
-"DEFAULT" is the default strategy used by Ray. With the current implementation, Ray will try to pack actors on nodes
+Currently the supported strategy for actors are ``"DEFAULT"`` and ``ray.util.scheduling_strategies.NodeSchedulingStrategy(node_id, soft)``.
+
+``"DEFAULT"`` is the default strategy used by Ray. With the current implementation, Ray will try to pack actors on nodes
 until the resource utilization is beyond a certain threshold and spread actors afterwards.
+
+NodeSchedulingStrategy is the low level strategy that allows an actor to be scheduled onto a particular node specified by the hex node id.
+The ``soft`` flag specifies whether the actor is allowed to run somewhere else if the specified node doesn't exist (e.g. the node dies)
+or is infeasible for the required resources. If it is True, the actor will be scheduled onto other feasible nodes under such case.
+If it's False, the actor will fail with ``ActorUnschedulableError``.
+As long as the specified node is alive and feasible, the actor will only run there
+regardless of the ``soft`` flag. This means if the node currently has no available resources, the actor will wait until resources
+become available.
+This strategy should ONLY be used if other high level scheduling strategies (e.g. placement group) cannot give the
+desired actor placements.
+
 Currently Ray handles actors that don't require any resources (i.e., ``num_cpus=0`` with no other resources) specially by randomly choosing a node in the cluster without considering resource utilization.
 Since nodes are randomly chosen, actors that don't require any resources are effectively SPREAD across the cluster.
 
@@ -45,3 +57,11 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
 
         # Zero-CPU (and no other resources) actors are randomly assigned to nodes.
         a2 = Actor.options(num_cpus=0).remote()
+
+        # Only run the actor on the local node.
+        a3 = Actor.options(
+            scheduling_strategy=NodeSchedulingStrategy(
+                node_id = ray.get_runtime_context().node_id.hex(),
+                soft = False,
+            )
+        ).remote()

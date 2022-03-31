@@ -22,10 +22,27 @@ See :ref:`Placement Group <ray-placement-group-doc-ref>` for more details.
 Scheduling Strategy
 -------------------
 Tasks support ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
-Currently the supported strategies are "DEFAULT" and "SPREAD".
+Currently the supported strategies are ``"DEFAULT"``, ``"SPREAD"`` and
+``ray.util.scheduling_strategies.NodeSchedulingStrategy(node_id, soft)``.
+
 "DEFAULT" is the default strategy used by Ray. With the current implementation, Ray will try to pack tasks on nodes
 until the resource utilization is beyond a certain threshold and spread tasks afterwards.
+
 "SPREAD" strategy will try to spread the tasks among available nodes.
+
+NodeSchedulingStrategy is the low level strategy that allows a task to be scheduled onto a particular node specified by the hex node id.
+The ``soft`` flag specifies whether the task is allowed to run somewhere else if the specified node doesn't exist (e.g. the node dies)
+or is infeasible for the required resources. If it is True, the task will be scheduled onto other feasible nodes under such case.
+If it's False, the task will fail with ``TaskUnschedulableError``.
+As long as the specified node is alive and feasible, the task will only run there
+regardless of the ``soft`` flag. This means if the node currently has no available resources, the task will wait until resources
+become available.
+This strategy should ONLY be used if other high level scheduling strategies (e.g. placement group) cannot give the
+desired task placements. It has the following known limitations:
+1. It's a low level strategy which prevents optimizations by a smart scheduler.
+2. It cannot fully utilize an autoscaling cluster since node ids must be known when the tasks are created.
+3. Users normally don't have enough information to make the best static task placement decision
+especially in a multi-tenant cluster: for example, they don't know what else are being scheduled onto those nodes as well.
 
 .. tabbed:: Python
 
@@ -48,9 +65,29 @@ until the resource utilization is beyond a certain threshold and spread tasks af
         # Spread tasks across the cluster.
         [spread_function.remote() for i in range(100)]
 
+        @ray.remote
+        def node_function():
+            return 3
+
+        # Only run the task on the local node.
+        node_function.options(
+            scheduling_strategy=NodeSchedulingStrategy(
+                node_id = ray.get_runtime_context().node_id.hex(),
+                soft = False,
+            )
+        ).remote()
+
+        # Run the task on the remote node if possible.
+        node_function.options(
+            scheduling_strategy=NodeSchedulingStrategy(
+                node_id = remote_node_id,
+                soft = True,
+            )
+        ).remote()
+
 Locality-Aware Scheduling
 -------------------------
-When the scheduling strategy is "DEFAULT", Ray also prefers nodes that have large task arguments locally
+When the scheduling strategy is ``"DEFAULT"``, Ray also prefers nodes that have large task arguments locally
 to avoid transferring data over the network.
 If there are multiple large task arguments, the node with most object bytes local is preferred.
 Note: Locality-aware scheduling is only for tasks not actors.
