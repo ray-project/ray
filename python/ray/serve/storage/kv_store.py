@@ -204,7 +204,9 @@ class RayS3KVStore(KVStoreBase):
         aws_access_key_id=None,
         aws_secret_access_key=None,
         aws_session_token=None,
+        logger: logging.Logger = default_logger,
     ):
+        self._logger = logger
         self._namespace = namespace
         self._bucket = bucket
         self._prefix = prefix

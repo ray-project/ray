@@ -1,6 +1,5 @@
 from contextlib import redirect_stderr
 import io
-import os
 import logging
 import time
 
@@ -10,11 +9,10 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve.utils import block_until_http_ready
 
 
 def test_handle_access_log(serve_instance):
-    name="handler"
+    name = "handler"
 
     @serve.deployment(name=name)
     class Handler:
@@ -32,26 +30,33 @@ def test_handle_access_log(serve_instance):
 
     f = io.StringIO()
     with redirect_stderr(f):
+
         def check_log(replica_tag: str, method_name: str, fail: bool = False):
             s = f.getvalue()
-            return all([
-                name in s,
-                replica_tag in s,
-                method_name in s,
-                ("ERROR" if fail else "OK") in s,
-                "ms" in s
-            ])
+            return all(
+                [
+                    name in s,
+                    replica_tag in s,
+                    method_name in s,
+                    ("ERROR" if fail else "OK") in s,
+                    "ms" in s,
+                ]
+            )
 
         replica_tag = ray.get(h.remote())
         wait_for_condition(check_log, replica_tag=replica_tag, method_name="__call__")
 
         ray.get(h.other_method.remote())
-        wait_for_condition(check_log, replica_tag=replica_tag, method_name="other_method")
+        wait_for_condition(
+            check_log, replica_tag=replica_tag, method_name="other_method"
+        )
 
         with pytest.raises(RuntimeError, match="blah blah blah"):
             ray.get(h.throw.remote())
 
-        wait_for_condition(check_log, replica_tag=replica_tag, method_name="throw", fail=True)
+        wait_for_condition(
+            check_log, replica_tag=replica_tag, method_name="throw", fail=True
+        )
 
 
 def test_http_access_log(serve_instance):
@@ -68,16 +73,18 @@ def test_http_access_log(serve_instance):
 
     f = io.StringIO()
     with redirect_stderr(f):
+
         def check_log(fail: bool = False):
             s = f.getvalue()
-            return all([
-                "http_proxy" in s,
-                "127.0.0.1" in s,
-                prefix in s,
-                ("500" if fail else "200") in s,
-                "ms" in s
-            ])
-
+            return all(
+                [
+                    "http_proxy" in s,
+                    "127.0.0.1" in s,
+                    prefix in s,
+                    ("500" if fail else "200") in s,
+                    "ms" in s,
+                ]
+            )
 
         requests.get(f"http://127.0.0.1:8000{prefix}").raise_for_status()
         wait_for_condition(check_log)
@@ -103,13 +110,10 @@ def test_user_logs(serve_instance):
 
     f = io.StringIO()
     with redirect_stderr(f):
+
         def check_log(replica_tag: str):
             s = f.getvalue()
-            return all([
-                name in s,
-                replica_tag in s,
-                msg in s
-            ])
+            return all([name in s, replica_tag in s, msg in s])
 
         replica_tag = ray.get(handle.remote())
         wait_for_condition(check_log, replica_tag=replica_tag)
