@@ -1490,7 +1490,7 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
       const auto scheduling_class =
           actor->GetActorWorkerAssignment()->GetSchedulingClass();
       auto pending_actor_handler =
-          [this, scheduling_class, &actor_id](
+          [scheduling_class, &actor_id](
               absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
                   &shape_map) -> bool {
         auto iter = shape_map.find(scheduling_class);
