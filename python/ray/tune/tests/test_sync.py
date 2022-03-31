@@ -390,7 +390,10 @@ class TestSyncFunctionality(unittest.TestCase):
             )
             self.assertTrue(issubclass(syncer, DockerSyncer))
 
-    @patch("ray.tune.syncer.log_sync_template", lambda: "rsync {source} {target}")
+    @patch(
+        "ray.tune.syncer.get_rsync_template_if_available",
+        lambda: "rsync {source} {target}",
+    )
     def testNoSyncToDriver(self):
         """Test that sync to driver is disabled"""
 
