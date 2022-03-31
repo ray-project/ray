@@ -60,6 +60,7 @@ class PathPartitionBase:
         """
         self._style = style
         self._base_dir = base_dir or ""
+        self._normalized_base_dir = None
         self._field_names = field_names
 
     @property
@@ -67,8 +68,12 @@ class PathPartitionBase:
         return self._style
 
     @property
-    def base_dir(self) -> Optional[str]:
+    def base_dir(self) -> str:
         return self._base_dir
+
+    @property
+    def normalized_base_dir(self) -> Optional[str]:
+        return self._normalized_base_dir
 
     @property
     def field_names(self) -> Optional[List[str]]:
@@ -93,10 +98,10 @@ class PathPartitionBase:
         assert (
             len(paths) == 1
         ), f"Expected 1 normalized base directory, but found {len(paths)}"
-        new_base_dir = paths[0]
-        if len(new_base_dir) and not new_base_dir.endswith("/"):
-            new_base_dir += "/"
-        self._base_dir = new_base_dir
+        normalized_base_dir = paths[0]
+        if len(normalized_base_dir) and not normalized_base_dir.endswith("/"):
+            normalized_base_dir += "/"
+        self._normalized_base_dir = normalized_base_dir
 
 
 @DeveloperAPI
@@ -169,7 +174,7 @@ class PathPartitionGenerator(PathPartitionBase):
         self,
         partition_values: List[str],
         filesystem: "pyarrow.fs.FileSystem",
-    ):
+    ) -> str:
         """Returns the partition directory path for the given partition value strings.
 
         All files for this partition should be written to this directory. If a base
@@ -184,7 +189,7 @@ class PathPartitionGenerator(PathPartitionBase):
         """
         self._normalize_base_dir(filesystem)
         partition_dirs = self._generate_partition_dirs(partition_values)
-        return posixpath.join(self._base_dir, *partition_dirs)
+        return posixpath.join(self._normalized_base_dir, *partition_dirs)
 
 
 @DeveloperAPI
@@ -271,18 +276,6 @@ class PathPartitionParser(PathPartitionBase):
             )
         self._filter_fn = filter_fn
 
-    @property
-    def style(self) -> PartitionStyle:
-        return self._style
-
-    @property
-    def base_dir(self) -> Optional[str]:
-        return self._base_dir
-
-    @property
-    def field_names(self) -> Optional[List[str]]:
-        return self._field_names
-
     def filter_paths(
         self,
         paths: List[str],
@@ -317,14 +310,14 @@ class PathPartitionParser(PathPartitionBase):
         return filtered_paths
 
     def _dir_path_trim_base(self, path: str) -> Optional[str]:
-        """Trims the base directory and returns the directory path.
+        """Trims the normalized base directory and returns the directory path.
 
-        Returns None if the path does not start with the base directory.
+        Returns None if the path does not start with the normalized base directory.
         Simply returns the directory path if the base directory is undefined.
         """
-        if not path.startswith(self._base_dir):
+        if not path.startswith(self._normalized_base_dir):
             return None
-        path = path[len(self._base_dir) :]
+        path = path[len(self._normalized_base_dir) :]
         return posixpath.dirname(path)
 
     def _parse_hive_path(self, path: str) -> Dict[str, str]:

@@ -1,4 +1,5 @@
 import os
+import posixpath
 
 import pytest
 import pyarrow as pa
@@ -8,10 +9,7 @@ import ray
 
 from ray.data.block import BlockAccessor
 from ray.data.tests.mock_server import *  # noqa
-from ray.data.datasource.file_based_datasource import (
-    BlockWritePathProvider,
-    _unwrap_protocol,
-)
+from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 
 
 @pytest.fixture(scope="function")
@@ -44,13 +42,23 @@ def data_dir_with_space():
 
 
 @pytest.fixture(scope="function")
+def data_dir_with_special_chars():
+    yield "test data#fragment?query=test/"
+
+
+@pytest.fixture(scope="function")
 def s3_path(tmp_path, data_dir):
-    yield "s3://" + os.path.join(tmp_path, data_dir).strip("/")
+    yield "s3://" + posixpath.join(tmp_path, data_dir).strip("/")
 
 
 @pytest.fixture(scope="function")
 def s3_path_with_space(tmp_path, data_dir_with_space):
-    yield "s3://" + os.path.join(tmp_path, data_dir_with_space).strip("/")
+    yield "s3://" + posixpath.join(tmp_path, data_dir_with_space).strip("/")
+
+
+@pytest.fixture(scope="function")
+def s3_path_with_special_chars(tmp_path, data_dir_with_special_chars):
+    yield "s3://" + posixpath.join(tmp_path, data_dir_with_special_chars).lstrip("/")
 
 
 @pytest.fixture(scope="function")
@@ -61,6 +69,11 @@ def s3_fs(aws_credentials, s3_server, s3_path):
 @pytest.fixture(scope="function")
 def s3_fs_with_space(aws_credentials, s3_server, s3_path_with_space):
     yield from _s3_fs(aws_credentials, s3_server, s3_path_with_space)
+
+
+@pytest.fixture(scope="function")
+def s3_fs_with_special_chars(aws_credentials, s3_server, s3_path_with_special_chars):
+    yield from _s3_fs(aws_credentials, s3_server, s3_path_with_special_chars)
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
@@ -112,7 +125,7 @@ def test_block_write_path_provider():
 
 @pytest.fixture(scope="function")
 def base_partitioned_df():
-    return pd.DataFrame(
+    yield pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
     )
 
@@ -126,6 +139,8 @@ def write_partitioned_df():
         fs,
         file_writer_fn,
     ):
+        import urllib.parse
+
         df_partitions = [df for _, df in df.groupby(partition_keys, as_index=False)]
         for df_partition in df_partitions:
             partition_values = []
@@ -135,11 +150,16 @@ def write_partitioned_df():
             if fs is None:
                 os.makedirs(path)
             else:
-                fs.create_dir(_unwrap_protocol(path))
-            path = os.path.join(path, "test.tmp")
+                fs.create_dir(path)
+            parsed_base_dir = urllib.parse.urlparse(partition_path_generator.base_dir)
+            if parsed_base_dir.scheme:
+                # replace the protocol removed by the partition path generator
+                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", "test.tmp")
+            else:
+                path = os.path.join(path, "test.tmp")
             file_writer_fn(df_partition, path)
 
-    return _write_partitioned_df
+    yield _write_partitioned_df
 
 
 @pytest.fixture(scope="function")
@@ -158,7 +178,7 @@ def write_base_partitioned_df(base_partitioned_df, write_partitioned_df):
             file_writer_fn,
         )
 
-    return _write_base_partitioned_df
+    yield _write_base_partitioned_df
 
 
 @pytest.fixture(scope="function")
@@ -210,4 +230,4 @@ def assert_base_partitioned_ds():
             actual_sorted_values == sorted_values
         ), f"{actual_sorted_values} != {sorted_values}"
 
-    return _assert_base_partitioned_ds
+    yield _assert_base_partitioned_ds
