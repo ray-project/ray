@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 Examples
 ========
@@ -207,7 +207,7 @@ Community Examples
    A dense traffic simulating environment with RLlib-generated baselines.
 - `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
    Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
-- `Neural MMO <https://jsuarez5341.github.io/neural-mmo/build/html/rst/userguide.html>`__:
+- `Neural MMO <https://github.com/NeuralMMO/environment>`__:
    A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games –
    self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures,
    and ad-hoc high-stakes single and team based conflict.
@@ -224,4 +224,4 @@ Community Examples
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

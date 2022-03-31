@@ -1,9 +1,11 @@
 import os
 import pytest
+from timeit import default_timer as timer
 
 import torch
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
+import torchvision
 
 import ray
 import ray.train as train
@@ -26,6 +28,13 @@ def ray_start_4_cpus_2_gpus():
     address_info = ray.init(num_cpus=4, num_gpus=2)
     yield address_info
     # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_1_cpu_1_gpu():
+    address_info = ray.init(num_cpus=1, num_gpus=1)
+    yield address_info
     ray.shutdown()
 
 
@@ -70,6 +79,111 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
     trainer = Trainer("torch", num_workers=2, use_gpu=True)
     trainer.start()
     trainer.run(train_fn)
+    trainer.shutdown()
+
+
+@pytest.mark.parametrize("use_gpu", (False, True))
+def test_enable_reproducibility(ray_start_4_cpus_2_gpus, use_gpu):
+    # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
+    # identical hardware and software dependencies. This test should be okay given that
+    # it only runs for two epochs on a small dataset.
+    # NOTE: I've chosen to use a ResNet model over a more simple model, because
+    # `enable_reproducibility` disables CUDA convolution benchmarking, and a simpler
+    # model (e.g., linear) might not test this feature.
+    def train_func():
+        train.torch.enable_reproducibility()
+
+        model = torchvision.models.resnet18()
+        model = train.torch.prepare_model(model)
+
+        dataset_length = 128
+        dataset = torch.utils.data.TensorDataset(
+            torch.randn(dataset_length, 3, 32, 32),
+            torch.randint(low=0, high=1000, size=(dataset_length,)),
+        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        dataloader = train.torch.prepare_data_loader(dataloader)
+
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+
+        model.train()
+        for epoch in range(2):
+            for images, targets in dataloader:
+                optimizer.zero_grad()
+
+                outputs = model(images)
+                loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+                loss.backward()
+                optimizer.step()
+
+        return loss.item()
+
+    trainer = Trainer("torch", num_workers=2, use_gpu=use_gpu)
+    trainer.start()
+    result1 = trainer.run(train_func)
+    result2 = trainer.run(train_func)
+    trainer.shutdown()
+
+    assert result1 == result2
+
+
+def test_torch_amp(ray_start_4_cpus_2_gpus):
+    def train_func(config):
+        train.torch.accelerate(amp=config["amp"])
+
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+
+        dataset_length = 1000
+        dataset = torch.utils.data.TensorDataset(
+            torch.randn(dataset_length, 3, 224, 224),
+            torch.randint(low=0, high=1000, size=(dataset_length,)),
+        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        dataloader = train.torch.prepare_data_loader(dataloader)
+
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        optimizer = train.torch.prepare_optimizer(optimizer)
+
+        model.train()
+        for epoch in range(1):
+            for images, targets in dataloader:
+                optimizer.zero_grad()
+
+                outputs = model(images)
+                loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+                train.torch.backward(loss)
+                optimizer.step()
+
+    def latency(amp: bool) -> float:
+        trainer = Trainer("torch", num_workers=2, use_gpu=True)
+        trainer.start()
+        start_time = timer()
+        trainer.run(train_func, {"amp": amp})
+        end_time = timer()
+        trainer.shutdown()
+        return end_time - start_time
+
+    # Training should be at least 5% faster with AMP.
+    assert 1.05 * latency(amp=True) < latency(amp=False)
+
+
+def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
+    """Test that model with AMP is serializable."""
+
+    def train_func():
+        train.torch.accelerate(amp=True)
+
+        model = torchvision.models.resnet101()
+        model = train.torch.prepare_model(model)
+
+        train.save_checkpoint(model=model)
+
+    trainer = Trainer("torch", num_workers=1, use_gpu=True)
+    trainer.start()
+    trainer.run(train_func)
     trainer.shutdown()
 
 
@@ -222,6 +336,58 @@ def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     results = train_tensorflow_linear(num_workers=2, use_gpu=True)
     for result in results:
         assert result[-1]["loss"] < result[0]["loss"]
+
+
+@pytest.mark.parametrize(
+    ("device_choice", "auto_transfer"),
+    [
+        ("cpu", True),
+        ("cpu", False),
+        ("cuda", True),
+        ("cuda", False),
+    ],
+)
+def test_auto_transfer_data_from_host_to_device(
+    ray_start_1_cpu_1_gpu, device_choice, auto_transfer
+):
+    import torch
+    import numpy as np
+
+    def compute_average_runtime(func):
+        device = torch.device(device_choice)
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        runtime = []
+        for _ in range(10):
+            torch.cuda.synchronize()
+            start.record()
+            func(device)
+            end.record()
+            torch.cuda.synchronize()
+        runtime.append(start.elapsed_time(end))
+        return np.mean(runtime)
+
+    small_dataloader = [
+        (torch.randn((1024 * 4, 1024 * 4), device="cpu"),) for _ in range(10)
+    ]
+
+    def host_to_device(device):
+        for (x,) in small_dataloader:
+            x = x.to(device)
+            torch.matmul(x, x)
+
+    def host_to_device_auto_pipeline(device):
+        wrapped_dataloader = ray.train.torch._WrappedDataLoader(
+            small_dataloader, device, auto_transfer
+        )
+        for (x,) in wrapped_dataloader:
+            torch.matmul(x, x)
+
+    # test if all four configurations are okay
+    with_auto_transfer = compute_average_runtime(host_to_device_auto_pipeline)
+
+    if device_choice == "cuda" and auto_transfer:
+        assert compute_average_runtime(host_to_device) >= with_auto_transfer
 
 
 if __name__ == "__main__":

@@ -57,7 +57,8 @@ class ActorManager {
   ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                               const ObjectID &outer_object_id,
                               const std::string &call_site,
-                              const rpc::Address &caller_address, bool is_self = false);
+                              const rpc::Address &caller_address,
+                              bool is_self = false);
 
   /// Get a handle to an actor.
   ///
@@ -76,8 +77,10 @@ class ActorManager {
   /// \param[in] caller_address The rpc address of the calling task.
   /// \return KV pair of actor handle pointer and status.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
-      const std::string &name, const std::string &ray_namespace,
-      const std::string &call_site, const rpc::Address &caller_address);
+      const std::string &name,
+      const std::string &ray_namespace,
+      const std::string &call_site,
+      const rpc::Address &caller_address);
 
   /// Check if an actor handle that corresponds to an actor_id exists.
   /// \param[in] actor_id The actor id of a handle.
@@ -100,7 +103,8 @@ class ActorManager {
   /// actor. \return True if the handle was added and False if we already had a handle to
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string &call_site, const rpc::Address &caller_address,
+                         const std::string &call_site,
+                         const rpc::Address &caller_address,
                          bool is_detached);
 
   /// Wait for actor out of scope.
@@ -124,7 +128,8 @@ class ActorManager {
  private:
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                          const std::string &cached_actor_name,
-                         const std::string &call_site, const rpc::Address &caller_address,
+                         const std::string &call_site,
+                         const rpc::Address &caller_address,
                          bool is_detached);
 
   /// Give this worker a handle to an actor.
@@ -148,9 +153,12 @@ class ActorManager {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                      const std::string &cached_actor_name, bool is_owner_handle,
-                      const std::string &call_site, const rpc::Address &caller_address,
-                      const ActorID &actor_id, const ObjectID &actor_creation_return_id,
+                      const std::string &cached_actor_name,
+                      bool is_owner_handle,
+                      const std::string &call_site,
+                      const rpc::Address &caller_address,
+                      const ActorID &actor_id,
+                      const ObjectID &actor_creation_return_id,
                       bool is_self = false);
 
   /// Check if named actor is cached locally.

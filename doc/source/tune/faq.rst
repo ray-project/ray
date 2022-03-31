@@ -10,6 +10,36 @@ If you still have questions after reading this FAQ, let us know!
     :local:
     :depth: 1
 
+
+What are Hyperparameters?
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+What are *hyperparameters?* And how are they different from *model parameters*?
+
+In supervised learning, we train a model with labeled data so the model can properly identify new data values.
+Everything about the model is defined by a set of parameters, such as the weights in a linear regression. These
+are *model parameters*; they are learned during training.
+
+.. image:: /images/hyper-model-parameters.png
+
+In contrast, the *hyperparameters* define structural details about the kind of model itself, like whether or not
+we are using a linear regression or classification, what architecture is best for a neural network,
+how many layers, what kind of filters, etc. They are defined before training, not learned.
+
+.. image:: /images/hyper-network-params.png
+
+Other quantities considered *hyperparameters* include learning rates, discount rates, etc. If we want our training
+process and resulting model to work well, we first need to determine the optimal or near-optimal set of *hyperparameters*.
+
+How do we determine the optimal *hyperparameters*? The most direct approach is to perform a loop where we pick
+a candidate set of values from some reasonably inclusive list of possible values, train a model, compare the results
+achieved with previous loop iterations, and pick the set that performed best. This process is called
+*Hyperparameter Tuning* or *Optimization* (HPO). And *hyperparameters* are specified over a configured and confined
+search space, collectively defined for each *hyperparameter* in a ``config`` dictionary.
+
+
+.. TODO: We *really* need to improve this section.
+
 Which search algorithm/scheduler should I choose?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray Tune offers :ref:`many different search algorithms <tune-search-alg>`
@@ -56,10 +86,12 @@ work, but less good with an increasing number of categories.
 or a TPE-based Bayesian Optimization algorithm such as :ref:`Optuna <tune-optuna>` or
 :ref:`HyperOpt <tune-hyperopt>`.
 
-**Our go-to solution** is usually to use **random search** with :ref:`ASHA for early stopping <tune-scheduler-hyperband>`
-for smaller problems. Use :ref:`BOHB <tune-scheduler-bohb>` for **larger problems** with a **small number of hyperparameters**
-and :ref:`Population Based Training <tune-scheduler-pbt>` for **larger problems** with a **large number of hyperparameters**
-if a learning schedule is acceptable.
+**Our go-to solution** is usually to use **random search** with
+:ref:`ASHA for early stopping <tune-scheduler-hyperband>` for smaller problems.
+Use :ref:`BOHB <tune-scheduler-bohb>` for **larger problems** with a **small number of hyperparameters**
+and :ref:`Population Based Training <tune-scheduler-pbt>` for **larger problems** with a
+**large number of hyperparameters** if a learning schedule is acceptable.
+
 
 How do I choose hyperparameter ranges?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -86,6 +118,7 @@ For **discount factors** in reinforcement learning we suggest sampling uniformly
 between 0.9 and 1.0. Depending on the problem, a much stricter range above 0.97
 or oeven above 0.99 can make sense (e.g. for Atari).
 
+
 How can I use nested/conditional search spaces?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Sometimes you might need to define parameters whose value depend on the value
@@ -95,16 +128,13 @@ Nested spaces
 '''''''''''''
 You can nest hyperparameter definition in sub dictionaries:
 
-.. code-block:: python
-
-    config = {
-        "a": {
-            "x": tune.uniform(0, 10)
-        },
-        "b": tune.choice([1, 2, 3])
-    }
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __basic_config_start__
+    :end-before: __basic_config_end__
 
 The trial config will be nested exactly like the input config.
+
 
 Conditional spaces
 ''''''''''''''''''
@@ -112,12 +142,11 @@ Conditional spaces
 In short, you can pass custom functions to ``tune.sample_from()`` that can
 return values that depend on other values:
 
-.. code-block:: python
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __conditional_spaces_start__
+    :end-before: __conditional_spaces_end__
 
-    config = {
-        "a": tune.randint(5, 10)
-        "b": tune.sample_from(lambda spec: np.random.randint(0, spec.config.a))
-    }
 
 Conditional grid search
 '''''''''''''''''''''''
@@ -129,19 +158,15 @@ cannot use ``tune.sample_from`` because it doesn't support grid searching.
 The solution here is to create a list of valid *tuples* with the help of a
 helper function, like this:
 
-.. code-block:: python
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __iter_start__
+    :end-before: __iter_end__
 
-    def _iter():
-        for a in range(5, 10):
-            for b in range(a):
-                yield a, b
-
-    config = {
-        "ab": tune.grid_search(list(_iter())),
-    }
 
 Your trainable then can do something like ``a, b = config["ab"]`` to split
 the a and b variables and use them afterwards.
+
 
 How does early termination (e.g. Hyperband/ASHA) work?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -157,6 +182,7 @@ In ASHA, you can decide how many trials are early terminated.
 time they are reduced. With ``grace_period=n`` you can force ASHA to
 train each trial at least for ``n`` epochs.
 
+
 Why are all my trials returning "1" iteration?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -171,6 +197,7 @@ Note that it might make sense to report metrics more often than once. For
 instance, if you train your algorithm for 1000 timesteps, consider reporting
 intermediate performance values every 100 steps. That way, schedulers
 like Hyperband/ASHA can terminate bad performing trials early.
+
 
 What are all these extra outputs?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -209,17 +236,11 @@ If you want to allocate specific resources to a trial, you can use the
 ``resources_per_trial`` parameter of ``tune.run()``, to which you can pass
 a dict or a :class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>` object:
 
-
-.. code-block:: python
-
-    tune.run(
-        train_fn,
-        resources_per_trial={
-            "cpu": 2,
-            "gpu": 0.5,
-            "custom_resources": {"hdd": 80}
-        }
-    )
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_start__
+    :end-before: __resources_end__
 
 The example above showcases three things:
 
@@ -245,15 +266,11 @@ In some cases your trainable might want to start other remote actors, for instan
 leveraging distributed training via Ray Train. In these cases, you can use
 :ref:`placement groups <ray-placement-group-doc-ref>` to request additional resources:
 
-.. code-block:: python
-
-    tune.run(
-        train_fn,
-        resources_per_trial=tune.PlacementGroupFactory([
-            {"CPU": 2, "GPU": 0.5, "hdd": 80},
-            {"CPU": 1},
-            {"CPU": 1},
-        ], strategy="PACK")
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __resources_pgf_start__
+    :end-before: __resources_pgf_end__
 
 Here, you're requesting 2 additional CPUs for remote tasks. These two additional
 actors do not necessarily have to live on the same node as your main trainable.
@@ -277,20 +294,12 @@ For example, if your trainable is using Modin dataframes, operations on those wi
 Ray tasks. By allocating an additional CPU bundle to the trial, those tasks will be able
 to run without being starved of resources.
 
-.. code-block:: python
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __modin_start__
+    :end-before: __modin_end__
 
-    import modin.pandas as pd
-
-    def train_fn(config, checkpoint_dir=None):
-        # some Modin operations here
-        tune.report(metric=metric)
-
-    tune.run(
-        train_fn,
-        resources_per_trial=tune.PlacementGroupFactory([
-            {"CPU": 1},  # this bundle will be used by the trainable itself
-            {"CPU": 1},  # this bundle will be used by Modin
-        ], strategy="PACK")
 
 How can I pass further parameter values to my trainable?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -301,22 +310,10 @@ you want to pass constant arguments, like the number of epochs to run,
 or a dataset to train on. Ray Tune offers a wrapper function to achieve
 just that, called :func:`tune.with_parameters() <ray.tune.with_parameters>`:
 
-.. code-block:: python
-
-    from ray import tune
-
-    import numpy as np
-
-    def train(config, checkpoint_dir=None, num_epochs=10, data=None):
-        for i in range(num_epochs):
-            for sample in data:
-                # ... train on sample
-
-    # Some huge dataset
-    data = np.random.random(size=100000000)
-
-    tune.run(
-        tune.with_parameters(train, num_epochs=10, data=data))
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __huge_data_start__
+    :end-before: __huge_data_end__
 
 
 This function works similarly to ``functools.partial``, but it stores
@@ -344,28 +341,20 @@ there are sophisticated algorithms that generate numbers that *seem* to be rando
 fulfill all properties of a random distribution. These algorithms can be *seeded* with
 an initial state, after which the generated random numbers are always the same.
 
-.. code-block:: python
-
-    import random
-    random.seed(1234)
-    print([random.randint(0, 100) for _ in range(10)])
-
-    # The output of this will always be
-    # [99, 56, 14, 0, 11, 74, 4, 85, 88, 10]
-
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __seeded_1_start__
+    :end-before: __seeded_1_end__
 
 The most commonly used random number generators from Python libraries are those in the
 native ``random`` submodule and the ``numpy.random`` module.
 
-.. code-block:: python
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __seeded_2_start__
+    :end-before: __seeded_2_end__
 
-    # This should suffice to initialize the RNGs for most Python-based libraries
-    import random
-    import numpy as np
-    random.seed(1234)
-    np.random.seed(5678)
-
-In your tuning and training run, there are several places where randomness occurrs, and
+In your tuning and training run, there are several places where randomness occurs, and
 at all these places we will have to introduce seeds to make sure we get the same behavior.
 
 * **Search algorithm**: Search algorithms have to be seeded to generate the same
@@ -381,13 +370,10 @@ at all these places we will have to introduce seeds to make sure we get the same
 
 PyTorch and TensorFlow use their own RNGs, which have to be initialized, too:
 
-.. code-block:: python
-
-    import torch
-    torch.manual_seed(0)
-
-    import tensorflow as tf
-    tf.random.set_seed(0)
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __torch_tf_seeds_start__
+    :end-before: __torch_tf_seeds_end__
 
 You should thus seed both Ray Tune's schedulers and search algorithms, and the
 training code. The schedulers and search algorithms should always be seeded with the
@@ -396,35 +382,11 @@ the seeds differ *between different training runs*.
 
 Here's a blueprint on how to do all this in your training code:
 
-.. code-block:: python
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __torch_seed_example_start__
+    :end-before: __torch_seed_example_end__
 
-    import random
-    import numpy as np
-    from ray import tune
-
-
-    def trainable(config):
-        # config["seed"] is set deterministically, but differs between training runs
-        random.seed(config["seed"])
-        np.random.seed(config["seed"])
-        # torch.manual_seed(config["seed"])
-        # ... training code
-
-
-    config = {
-        "seed": tune.randint(0, 10000),
-        # ...
-    }
-
-    if __name__ == "__main__":
-        # Set seed for the search algorithms/schedulers
-        random.seed(1234)
-        np.random.seed(1234)
-        # Don't forget to check if the search alg has a `seed` parameter
-        tune.run(
-            trainable,
-            config=config
-        )
 
 **Please note** that it is not always possible to control all sources of non-determinism.
 For instance, if you use schedulers like ASHA or PBT, some trials might finish earlier
@@ -537,16 +499,16 @@ How can I get started contributing to Tune?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 We use Github to track issues, feature requests, and bugs. Take a look at the
-ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start. Look for issues with "[tune]" in the title.
+ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start.
+Look for issues with "[tune]" in the title.
 
 .. note::
 
-  If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title and add a ``tune`` label.
+    If raising a new issue or PR related to Tune, be sure to include "[tune]" in the title and add a ``tune`` label.
 
 For project organization, Tune maintains a relatively up-to-date organization of
 issues on the `Tune Github Project Board <https://github.com/ray-project/ray/projects/4>`__.
 Here, you can track and identify how issues are organized.
-
 
 
 .. _tune-reproducible:
@@ -576,33 +538,11 @@ places where you'll have to set random seeds:
 Here is an example that will always produce the same result (except for trial
 runtimes).
 
-.. code-block:: python
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __reproducible_start__
+    :end-before: __reproducible_end__
 
-    import numpy as np
-    from ray import tune
-
-
-    def train(config):
-        # Set seed for trainable random result.
-        # If you remove this line, you will get different results
-        # each time you run the trial, even if the configuration
-        # is the same.
-        np.random.seed(config["seed"])
-        random_result = np.random.uniform(0, 100, size=1).item()
-        tune.report(result=random_result)
-
-
-    # Set seed for Ray Tune's random search.
-    # If you remove this line, you will get different configurations
-    # each time you run the script.
-    np.random.seed(1234)
-    tune.run(
-        train,
-        config={
-            "seed": tune.randint(0, 1000)
-        },
-        search_alg=tune.suggest.BasicVariantGenerator(),
-        num_samples=10)
 
 Some searchers use their own random states to sample new configurations.
 These searchers usually accept a ``seed`` parameter that can be passed on
@@ -627,19 +567,10 @@ be automatically fetched and passed to your trainable as a parameter.
 
 .. tip:: If the objects are small in size or already exist in the :ref:`Ray Object Store <objects-in-ray>`, there's no need to use ``tune.with_parameters()``. You can use `partials <https://docs.python.org/3/library/functools.html#functools.partial>`__ or pass in directly to ``config`` instead.
 
-.. code-block:: python
-
-    from ray import tune
-
-    import numpy as np
-
-    def f(config, data=None):
-        pass
-        # use data
-
-    data = np.random.random(size=100000000)
-
-    tune.run(tune.with_parameters(f, data=data))
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __large_data_start__
+    :end-before: __large_data_end__
 
 
 How can I upload my Tune results to cloud storage?
@@ -649,39 +580,28 @@ If an upload directory is provided, Tune will automatically sync results from th
 natively supporting standard URIs for systems like S3, gsutil or HDFS.
 Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
 
-.. code-block:: python
-
-    tune.run(
-        MyTrainableClass,
-        local_dir="~/ray_results",
-        sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir")
-    )
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __log_1_start__
+    :end-before: __log_1_end__
 
 You can customize this to specify arbitrary storages with the ``syncer`` argument in ``tune.SyncConfig``.
 This argument supports either strings with the same replacement fields OR arbitrary functions.
 
-.. code-block:: python
-
-    tune.run(
-        MyTrainableClass,
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://my-log-dir",
-            syncer=custom_sync_str_or_func
-        )
-    )
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __log_2_start__
+    :end-before: __log_2_end__
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like
 ``s3 sync {source} {target}``. Alternatively, a function can be provided with the following signature:
 
-.. code-block:: python
-
-    def custom_sync_func(source, target):
-        # do arbitrary things inside
-        sync_cmd = "s3 {source} {target}".format(
-            source=source,
-            target=target)
-        sync_process = subprocess.Popen(sync_cmd, shell=True)
-        sync_process.wait()
+.. literalinclude:: doc_code/faq.py
+    :language: python
+    :start-after: __sync_start__
+    :end-before: __sync_end__
 
 By default, syncing occurs every 300 seconds.
 To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
@@ -707,14 +627,11 @@ To make this work in your Docker cluster, e.g. when you are using the Ray autosc
 with docker containers, you will need to pass a
 ``DockerSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
 
-.. code-block:: python
-
-    from ray.tune.integration.docker import DockerSyncer
-    sync_config = tune.SyncConfig(
-        syncer=DockerSyncer)
-
-    tune.run(train, sync_config=sync_config)
-
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __docker_start__
+    :end-before: __docker_end__
 
 .. _tune-kubernetes:
 
@@ -731,49 +648,30 @@ is necessary. There are two main options.
 First, you can use the :ref:`SyncConfig <tune-sync-config>` to store your
 logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
 
-.. code-block:: python
-
-    from ray import tune
-
-    tune.run(
-        tune.durable(train_fn),
-        # ...,
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://your-s3-bucket/durable-trial/"
-        )
-    )
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __s3_start__
+    :end-before: __s3_end__
 
 Second, you can set up a shared file system like NFS. If you do this, disable automatic trial syncing:
 
-.. code-block:: python
-
-    from ray import tune
-
-    tune.run(
-        train_fn,
-        # ...,
-        local_dir="/path/to/shared/storage",
-        sync_config=tune.SyncConfig(
-            # Do not sync because we are on shared storage
-            syncer=None
-        )
-    )
-
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __sync_config_start__
+    :end-before: __sync_config_end__
 
 Lastly, if you still want to use SSH for trial synchronization, but are not running
 on the Ray cluster launcher, you might need to pass a
 ``KubernetesSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
 You have to specify your Kubernetes namespace explicitly:
 
-.. code-block:: python
-
-    from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
-    sync_config = tune.SyncConfig(
-        syncer=NamespacedKubernetesSyncer("ray")
-    )
-
-    tune.run(train, sync_config=sync_config)
-
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __k8s_start__
+    :end-before: __k8s_end__
 
 Please note that we strongly encourage you to use one of the other two options instead, as they will
 result in less overhead and don't require pods to SSH into each other.
@@ -789,15 +687,16 @@ However, if you need to debug your training process, it may be easier to do ever
 You can force all Ray functions to occur on a single process with ``local_mode`` by calling the following
 before ``tune.run``.
 
-.. code-block:: python
-
-    ray.init(local_mode=True)
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __local_start__
+    :end-before: __local_end__
 
 Local mode with multiple configuration evaluations will interleave computation,
 so it is most naturally used when running a single configuration evaluation.
 
 Note that ``local_mode`` has some known issues, so please read :ref:`these tips <local-mode-tips>` for more info.
-
 
 
 .. _tune-default-search-space:
@@ -807,38 +706,21 @@ How do I configure search spaces?
 
 You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=...)``.
 
-.. code-block:: python
-
-    parameters = {
-        "qux": tune.sample_from(lambda spec: 2 + 2),
-        "bar": tune.grid_search([True, False]),
-        "foo": tune.grid_search([1, 2, 3]),
-        "baz": "asd",  # a constant value
-    }
-
-    tune.run(trainable, config=parameters)
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __grid_search_start__
+    :end-before: __grid_search_end__
 
 By default, each random variable and grid search point is sampled once.
 To take multiple random samples, add ``num_samples: N`` to the experiment config.
 If `grid_search` is provided as an argument, the grid will be repeated ``num_samples`` of times.
 
-.. code-block:: python
-   :emphasize-lines: 13
-
-    # num_samples=10 repeats the 3x3 grid search 10 times, for a total of 90 trials
-    tune.run(
-        my_trainable,
-        name="my_trainable",
-        config={
-            "alpha": tune.uniform(100),
-            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
-            "nn_layers": [
-                tune.grid_search([16, 64, 256]),
-                tune.grid_search([16, 64, 256]),
-            ],
-        },
-        num_samples=10
-    )
+.. literalinclude:: doc_code/faq.py
+    :emphasize-lines: 13
+    :language: python
+    :start-after: __grid_search_2_start__
+    :end-before: __grid_search_2_end__
 
 Note that search spaces may not be interoperable across different search algorithms.
 For example, for many search algorithms, you will not be able to use a ``grid_search`` or ``sample_from`` parameters.

@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Type
+from typing import Callable, Dict, Type, Optional
 
 from contextlib import contextmanager
 import os
@@ -43,8 +43,8 @@ def distributed_checkpoint_dir(step: int, disable: bool = False):
     redundant work.
 
     Args:
-        step (int): Used to label the checkpoint
-        disable (bool): Disable for prototyping.
+        step: Used to label the checkpoint
+        disable: Disable for prototyping.
 
     Yields:
         str: A path to a directory. This path will be used
@@ -79,12 +79,12 @@ class _HorovodTrainable(DistributedTrainable):
 
     # Callable function for training.
     _function = None
+    # Number of workers to allocate per trial.
+    _num_workers: Optional[int] = (None,)
     # Number of hosts (nodes) to allocate per trial
-    _num_hosts: int = 1
-    # Number of workers (slots) to place on each host.
-    _num_slots: int = 1
+    _num_hosts: Optional[int] = (None,)
     # Number of CPU resources to reserve for each worker.
-    _num_cpus_per_slot: int = 1
+    _num_cpus_per_worker: int = 1
     # Whether to reserve and pass GPU resources through.
     _use_gpu: bool = False
     # bool: Whether a the function has completed training
@@ -97,7 +97,7 @@ class _HorovodTrainable(DistributedTrainable):
 
     @property
     def num_workers(self):
-        return self._num_hosts * self._num_slots
+        return self._num_workers
 
     def setup(self, config: Dict):
         trainable = wrap_function(self.__class__._function)
@@ -115,10 +115,9 @@ class _HorovodTrainable(DistributedTrainable):
 
         self.executor = RayExecutor(
             settings,
-            cpus_per_slot=self._num_cpus_per_slot,
+            cpus_per_worker=self._num_cpus_per_worker,
             use_gpu=self._use_gpu,
-            num_hosts=self._num_hosts,
-            num_slots=self._num_slots,
+            num_workers=self._num_workers,
         )
 
         new_config = DistributedTrainable.build_config(self, config)
@@ -161,11 +160,11 @@ class _HorovodTrainable(DistributedTrainable):
 
 
 def DistributedTrainableCreator(
-    func: Callable,
+    func: Callable[[Dict], None],
     use_gpu: bool = False,
-    num_hosts: int = 1,
-    num_slots: int = 1,
-    num_cpus_per_slot: int = 1,
+    num_hosts: Optional[int] = None,
+    num_workers: int = 1,
+    num_cpus_per_worker: int = 1,
     timeout_s: int = 30,
     replicate_pem: bool = False,
 ) -> Type[_HorovodTrainable]:
@@ -180,8 +179,8 @@ def DistributedTrainableCreator(
     of a trial will be placed evenly across different machines.
 
     It is recommended that if `num_hosts` per trial > 1, you set
-    num_slots == the size (or number of GPUs) of a single host.
-    If num_hosts == 1, then you can set num_slots to be <=
+    num_workers == the size (or number of GPUs) of a single host.
+    If num_hosts == 1, then you can set num_workers to be <=
     the size (number of GPUs) of a single host.
 
     This above assumption can be relaxed - please file a feature request
@@ -197,20 +196,19 @@ def DistributedTrainableCreator(
     support function checkpointing.
 
     Args:
-        func (Callable[[dict], None]): A training function that takes in
+        func: A training function that takes in
             a config dict for hyperparameters and should initialize
             horovod via horovod.init.
-        use_gpu (bool); Whether to allocate a GPU per worker.
-        num_cpus_per_slot (int): Number of CPUs to request
+        use_gpu: Whether to allocate a GPU per worker.
+        num_cpus_per_worker: Number of CPUs to request
             from Ray per worker.
-        num_hosts (int): Number of hosts that each trial is expected
+        num_hosts: Number of hosts that each trial is expected
             to use.
-        num_slots (int): Number of slots (workers) to start on each host.
-        timeout_s (int): Seconds for Horovod rendezvous to timeout.
-        replicate_pem (bool): THIS MAY BE INSECURE. If true, this will
+        num_workers: Number of workers to start on each host.
+        timeout_s: Seconds for Horovod rendezvous to timeout.
+        replicate_pem: THIS MAY BE INSECURE. If true, this will
             replicate the underlying Ray cluster ssh key across all hosts.
             This may be useful if using the Ray Autoscaler.
-
 
     Returns:
         Trainable class that can be passed into `tune.run`.
@@ -225,7 +223,7 @@ def DistributedTrainableCreator(
 
         from ray.tune.integration.horovod import DistributedTrainableCreator
         trainable_cls = DistributedTrainableCreator(
-            train, num_hosts=1, num_slots=2, use_gpu=True)
+            train, num_hosts=1, num_workers=2, use_gpu=True)
 
         tune.run(trainable_cls)
 
@@ -246,8 +244,8 @@ def DistributedTrainableCreator(
     class WrappedHorovodTrainable(_HorovodTrainable):
         _function = func
         _num_hosts = num_hosts
-        _num_slots = num_slots
-        _num_cpus_per_slot = num_cpus_per_slot
+        _num_workers = num_workers
+        _num_cpus_per_worker = num_cpus_per_worker
         _use_gpu = use_gpu
         _ssh_identity_file = ssh_identity_file
         _ssh_str = sshkeystr
@@ -257,8 +255,8 @@ def DistributedTrainableCreator(
         def default_resource_request(cls, config: Dict):
             return PlacementGroupFactory(
                 [{}]
-                + [{"CPU": cls._num_cpus_per_slot, "GPU": int(use_gpu)}]
-                * (num_hosts * num_slots)
+                + [{"CPU": cls._num_cpus_per_worker, "GPU": int(use_gpu)}]
+                * (num_workers)
             )
 
     return WrappedHorovodTrainable

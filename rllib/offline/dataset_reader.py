@@ -38,7 +38,7 @@ def get_dataset_and_shards(
             " when using Ray dataset input."
         )
 
-    parallelism = input_config.get("parallelism", num_workers)
+    parallelism = input_config.get("parallelism", num_workers or 1)
     cpus_per_task = input_config.get(
         "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
     )

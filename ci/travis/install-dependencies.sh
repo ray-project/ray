@@ -309,13 +309,8 @@ install_dependencies() {
   if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
     if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
-      # PyTorch is installed first since we are using a "-f" directive to find the wheels.
       # We want to install the CPU version only.
-      local torch_url="https://download.pytorch.org/whl/torch_stable.html"
-      case "${OSTYPE}" in
-        darwin*) pip install torch torchvision;;
-        *) pip install torch==1.9.0+cpu torchvision==0.10.0+cpu -f "${torch_url}";;
-      esac
+      pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
     fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
@@ -415,7 +410,7 @@ install_dependencies() {
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git@06aa579c9966035453f92208706157dee14c14ab
+    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git@a1f17d81f01543196b2c23240da692d9ae310942
   fi
 
   CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"

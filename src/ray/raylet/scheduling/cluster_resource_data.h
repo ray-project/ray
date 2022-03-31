@@ -27,133 +27,536 @@
 
 namespace ray {
 
-/// List of predefined resources.
-enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
+using scheduling::ResourceID;
 
-const std::string ResourceEnumToString(PredefinedResources resource);
+bool IsPredefinedResource(scheduling::ResourceID resource_id);
 
-const PredefinedResources ResourceStringToEnum(const std::string &resource);
-
-/// Helper function to compare two vectors with FixedPoint values.
-bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
-
-/// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
-
-/// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorFixedPointToVectorDouble(
-    const std::vector<FixedPoint> &vector_fp);
-
-struct ResourceCapacity {
-  FixedPoint total;
-  FixedPoint available;
-  ResourceCapacity() {}
-  ResourceCapacity(FixedPoint &&_available, FixedPoint &&_total)
-      : total(_total), available(_available) {}
-};
-
-/// Capacities of each instance of a resource.
-struct ResourceInstanceCapacities {
-  std::vector<FixedPoint> total;
-  std::vector<FixedPoint> available;
-};
-
-// Data structure specifying the capacity of each resource requested by a task.
+/// Represents a set of resources.
+/// NOTE: negative values are valid in this set, while 0 is not. This means if any
+/// resource value is changed to 0, the resource will be removed.
+/// TODO(hchen): This class should be independent with tasks. We should move out the
+/// "requires_object_store_memory_" field, and rename this class to ResourceSet.
 class ResourceRequest {
  public:
-  /// List of predefined resources required by the task.
-  std::vector<FixedPoint> predefined_resources;
-  /// List of custom resources required by the task.
-  absl::flat_hash_map<int64_t, FixedPoint> custom_resources;
+  /// Construct an empty ResourceRequest.
+  ResourceRequest() : ResourceRequest({}, false) {}
+
+  /// Construct a ResourceRequest with a given resource map.
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map)
+      : ResourceRequest(resource_map, false){};
+
+  ResourceRequest(absl::flat_hash_map<ResourceID, FixedPoint> resource_map,
+                  bool requires_object_store_memory)
+      : predefined_resources_(PredefinedResourcesEnum_MAX, 0),
+        requires_object_store_memory_(requires_object_store_memory) {
+    for (auto entry : resource_map) {
+      Set(entry.first, entry.second);
+    }
+  }
+
+  ResourceRequest &operator=(const ResourceRequest &other) = default;
+
+  bool RequiresObjectStoreMemory() const { return requires_object_store_memory_; }
+
+  /// Get the value of a particular resource.
+  /// If the resource doesn't exist, return 0.
+  FixedPoint Get(ResourceID resource_id) const {
+    auto ptr = GetPointer(resource_id);
+    if (ptr == nullptr) {
+      return FixedPoint(0);
+    } else {
+      return *ptr;
+    }
+  }
+
+  /// Set a resource to the given value.
+  /// NOTE: if the new value is 0, the resource will be removed.
+  ResourceRequest &Set(ResourceID resource_id, FixedPoint value) {
+    if (value == 0) {
+      if (IsPredefinedResource(resource_id)) {
+        predefined_resources_[resource_id.ToInt()] = 0;
+      } else {
+        custom_resources_.erase(resource_id.ToInt());
+      }
+    } else {
+      auto ptr = GetPointer(resource_id);
+      if (ptr == nullptr) {
+        custom_resources_[resource_id.ToInt()] = value;
+      } else {
+        *ptr = value;
+      }
+    }
+    return *this;
+  }
+
+  /// Check whether a particular resource exist.
+  bool Has(ResourceID resource_id) const {
+    auto ptr = GetPointer(resource_id);
+    return ptr != nullptr && *ptr != 0;
+  }
+
+  /// Clear the whole set.
+  void Clear() {
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      predefined_resources_[i] = 0;
+    }
+    custom_resources_.clear();
+  }
+
+  /// Remove the negative values in this set.
+  void RemoveNegative() {
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      if (predefined_resources_[i] < 0) {
+        predefined_resources_[i] = 0;
+      }
+    }
+    for (auto it = custom_resources_.begin(); it != custom_resources_.end();) {
+      if (it->second < 0) {
+        custom_resources_.erase(it++);
+      } else {
+        it++;
+      }
+    }
+  }
+
+  /// Return the number of resources in this set.
+  size_t Size() const {
+    size_t size = custom_resources_.size();
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      if (predefined_resources_[i] != 0) {
+        size++;
+      }
+    }
+    return size;
+  }
+
+  /// Return true if this set is empty.
+  bool IsEmpty() const { return Size() == 0; }
+
+  /// Return a set that contains all resource ids in this set.
+  absl::flat_hash_set<ResourceID> ResourceIds() const {
+    absl::flat_hash_set<ResourceID> res;
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      if (predefined_resources_[i] != 0) {
+        res.insert(ResourceID(i));
+      }
+    }
+    for (auto &entry : custom_resources_) {
+      res.insert(ResourceID(entry.first));
+    }
+    return res;
+  }
+
+  /// Return a map from the resource ids to the values.
+  absl::flat_hash_map<ResourceID, FixedPoint> ToMap() const {
+    absl::flat_hash_map<ResourceID, FixedPoint> res;
+    for (auto &resource_id : ResourceIds()) {
+      res.emplace(resource_id, Get(resource_id));
+    }
+    return res;
+  }
+
+  ResourceRequest operator+(const ResourceRequest &other) {
+    ResourceRequest res = *this;
+    res += other;
+    return res;
+  }
+
+  ResourceRequest operator-(const ResourceRequest &other) {
+    ResourceRequest res = *this;
+    res -= other;
+    return res;
+  }
+
+  ResourceRequest &operator+=(const ResourceRequest &other) {
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      predefined_resources_[i] += other.predefined_resources_[i];
+    }
+
+    for (auto &entry : other.custom_resources_) {
+      auto it = custom_resources_.find(entry.first);
+      if (it != custom_resources_.end()) {
+        it->second += entry.second;
+        if (it->second == 0) {
+          custom_resources_.erase(it);
+        }
+      } else {
+        custom_resources_.emplace(entry.first, entry.second);
+      }
+    }
+    return *this;
+  }
+
+  ResourceRequest &operator-=(const ResourceRequest &other) {
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      predefined_resources_[i] -= other.predefined_resources_[i];
+    }
+
+    for (auto &entry : other.custom_resources_) {
+      auto it = custom_resources_.find(entry.first);
+      if (it != custom_resources_.end()) {
+        it->second -= entry.second;
+        if (it->second == 0) {
+          custom_resources_.erase(it);
+        }
+      } else {
+        custom_resources_.emplace(entry.first, -entry.second);
+      }
+    }
+    return *this;
+  }
+
+  bool operator==(const ResourceRequest &other) const {
+    return predefined_resources_ == other.predefined_resources_ &&
+           this->custom_resources_ == other.custom_resources_;
+  }
+
+  bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
+
+  /// Check whether this set is a subset of another one.
+  /// If A <= B, it means for each resource, its value in A is less than or equqal to that
+  /// in B.
+  bool operator<=(const ResourceRequest &other) const {
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      if (predefined_resources_[i] > other.predefined_resources_[i]) {
+        return false;
+      }
+    }
+    // Check all resources that exist in this.
+    for (auto &entry : custom_resources_) {
+      auto &this_value = entry.second;
+      auto other_value = FixedPoint(0);
+      auto it = other.custom_resources_.find(entry.first);
+      if (it != other.custom_resources_.end()) {
+        other_value = it->second;
+      }
+      if (this_value > other_value) {
+        return false;
+      }
+    }
+    // Check all resources that exist in other, but not in this.
+    for (auto &entry : other.custom_resources_) {
+      if (!custom_resources_.contains(entry.first)) {
+        if (entry.second < 0) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /// Check whether this set is a super set of another one.
+  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// that in B.
+  bool operator>=(const ResourceRequest &other) const { return other <= *this; }
+
+  /// Return a human-readable string for this set.
+  std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "{";
+    bool first = true;
+    for (auto &resource_id : ResourceIds()) {
+      if (!first) {
+        buffer << ", ";
+      }
+      first = false;
+      buffer << resource_id.Binary() << ": " << Get(resource_id);
+    }
+    buffer << "}";
+    return buffer.str();
+  }
+
+ private:
+  /// Return a pointer to the given resource, or nullptr if the resource doesn't exist.
+  /// NOTE, this function doesn't mutate values. But it returns non-const pointer, so it's
+  /// not marked as const.
+  FixedPoint *GetPointer(ResourceID id) {
+    if (IsPredefinedResource(id)) {
+      return &predefined_resources_[id.ToInt()];
+    } else {
+      auto it = custom_resources_.find(id.ToInt());
+      if (it == custom_resources_.end()) {
+        return nullptr;
+      } else {
+        return &it->second;
+      }
+    }
+  }
+
+  /// The const version of GetPointer.
+  const FixedPoint *GetPointer(ResourceID id) const {
+    return const_cast<ResourceRequest *>(this)->GetPointer(id);
+  }
+
+  /// The predefined resources.
+  std::vector<FixedPoint> predefined_resources_;
+  /// The custom resources.
+  absl::flat_hash_map<int64_t, FixedPoint> custom_resources_;
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
-  bool requires_object_store_memory = false;
-  /// Check whether the request contains no resources.
-  bool IsEmpty() const;
-  /// Returns human-readable string for this task request.
-  std::string DebugString() const;
+  bool requires_object_store_memory_ = false;
 };
 
-// Data structure specifying the capacity of each instance of each resource
-// allocated to a task.
+/// Represents a resource set that contains the per-instance resource values.
+/// NOTE, unlike ResourceRequest, zero values won't be automatically removed in this
+/// class. Because otherwise we will lose the number of instances the set originally had
+/// for the particular resource.
+/// TODO(hchen): due to the same reason of ResourceRequest, we should rename it to
+/// ResourceInstanceSet.
 class TaskResourceInstances {
  public:
-  /// The list of instances of each predifined resource allocated to a task.
-  std::vector<std::vector<FixedPoint>> predefined_resources;
-  /// The list of instances of each custom resource allocated to a task.
-  absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
-  bool operator==(const TaskResourceInstances &other);
-  /// Get instances based on the string.
-  const std::vector<FixedPoint> &Get(const std::string &resource_name,
-                                     const StringIdMap &string_id_map) const;
-  /// For each resource of this request aggregate its instances.
-  ResourceRequest ToResourceRequest() const;
-  /// Get CPU instances only.
-  std::vector<FixedPoint> GetCPUInstances() const {
-    if (!this->predefined_resources.empty()) {
-      return this->predefined_resources[CPU];
-    } else {
-      return {};
+  /// Construct an empty TaskResourceInstances.
+  TaskResourceInstances() {
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      this->predefined_resources_.push_back({});
     }
-  };
-  std::vector<double> GetCPUInstancesDouble() const {
-    if (!this->predefined_resources.empty()) {
-      return VectorFixedPointToVectorDouble(this->predefined_resources[CPU]);
-    } else {
-      return {};
+  }
+
+  /// Construct a TaskResourceInstances with the values from a ResourceRequest.
+  TaskResourceInstances(const ResourceRequest &request) {
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      this->predefined_resources_.push_back({});
     }
-  };
-  /// Get GPU instances only.
-  std::vector<FixedPoint> GetGPUInstances() const {
-    if (!this->predefined_resources.empty()) {
-      return this->predefined_resources[GPU];
-    } else {
-      return {};
+    for (auto &resource_id : request.ResourceIds()) {
+      std::vector<FixedPoint> instances;
+      auto value = request.Get(resource_id);
+      if (resource_id.IsUnitInstanceResource()) {
+        size_t num_instances = static_cast<size_t>(value.Double());
+        for (size_t i = 0; i < num_instances; i++) {
+          instances.push_back(1.0);
+        };
+      } else {
+        instances.push_back(value);
+      }
+      Set(resource_id, instances);
     }
-  };
-  std::vector<double> GetGPUInstancesDouble() const {
-    if (!this->predefined_resources.empty()) {
-      return VectorFixedPointToVectorDouble(this->predefined_resources[GPU]);
+  }
+
+  /// Get the per-instance values of a particular resource.
+  /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
+  /// check fail will occur.
+  const std::vector<FixedPoint> &Get(const ResourceID resource_id) const {
+    auto ptr = GetPointer(resource_id);
+    RAY_CHECK(ptr != nullptr) << "Resource ID not found " << resource_id;
+    return *ptr;
+  }
+
+  /// Get the per-instance double values of a particular resource.
+  /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
+  /// check fail will occur.
+  std::vector<double> GetDouble(const ResourceID resource_id) const {
+    return FixedPointVectorToDouble(Get(resource_id));
+  }
+
+  /// Get the sum of per-instance values of a particular resource.
+  /// If the resource doesn't exist, return 0.
+  FixedPoint Sum(const ResourceID resource_id) const {
+    if (Has(resource_id)) {
+      return FixedPoint::Sum(Get(resource_id));
     } else {
-      return {};
+      return FixedPoint(0);
     }
-  };
-  /// Get mem instances only.
-  std::vector<FixedPoint> GetMemInstances() const {
-    if (!this->predefined_resources.empty()) {
-      return this->predefined_resources[MEM];
+  }
+
+  /// Get the mutable per-instance values of a particular resource.
+  /// NOTE: the resource MUST already exist in this TaskResourceInstances, otherwise a
+  /// check fail will occur.
+  /// TODO(hchen): We should hide this method, and encapsulate all mutation operations.
+  std::vector<FixedPoint> &GetMutable(const ResourceID resource_id) {
+    auto ptr = GetPointer(resource_id);
+    RAY_CHECK(ptr != nullptr) << "Resource ID not found " << resource_id;
+    return *ptr;
+  }
+
+  /// Check whether a particular resource exists.
+  bool Has(ResourceID resource_id) const {
+    auto ptr = GetPointer(resource_id);
+    return ptr != nullptr && ptr->size() > 0;
+  }
+
+  /// Set the per-instance values for a particular resource.
+  TaskResourceInstances &Set(const ResourceID resource_id,
+                             const std::vector<FixedPoint> &instances) {
+    if (instances.size() == 0) {
+      Remove(resource_id);
     } else {
-      return {};
+      auto ptr = GetPointer(resource_id);
+      if (ptr != nullptr) {
+        *ptr = instances;
+      } else {
+        custom_resources_.emplace(resource_id.ToInt(), instances);
+      }
     }
-  };
-  std::vector<double> GetMemInstancesDouble() const {
-    if (!this->predefined_resources.empty()) {
-      return VectorFixedPointToVectorDouble(this->predefined_resources[MEM]);
+    return *this;
+  }
+
+  /// Add values for each instance of the given resource.
+  /// Note, if the number of instances in this set is less than the given instance vector,
+  /// more instances will be appended to match the number.
+  void Add(const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
+    if (!Has(resource_id)) {
+      Set(resource_id, instances);
     } else {
-      return {};
+      auto &resource_instances = GetMutable(resource_id);
+      if (resource_instances.size() <= instances.size()) {
+        resource_instances.resize(instances.size());
+      }
+      for (size_t i = 0; i < instances.size(); ++i) {
+        resource_instances[i] += instances[i];
+      }
     }
-  };
-  /// Clear only the CPU instances field.
-  void ClearCPUInstances();
-  /// Check whether there are no resource instances.
-  bool IsEmpty() const;
+  }
+
+  /// Remove a particular resource.
+  void Remove(ResourceID resource_id) {
+    if (IsPredefinedResource(resource_id)) {
+      auto &instances = GetMutable(resource_id);
+      instances.clear();
+    } else {
+      custom_resources_.erase(resource_id.ToInt());
+    }
+  }
+
+  /// Return a set of all resource ids.
+  absl::flat_hash_set<ResourceID> ResourceIds() const {
+    absl::flat_hash_set<ResourceID> res;
+    for (size_t i = 0; i < predefined_resources_.size(); i++) {
+      if (predefined_resources_[i].size() > 0) {
+        res.insert(ResourceID(i));
+      }
+    }
+    for (auto &entry : custom_resources_) {
+      res.insert(ResourceID(entry.first));
+    }
+    return res;
+  }
+
+  /// Return the number of resources in this set.
+  size_t Size() const {
+    size_t size = custom_resources_.size();
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      if (predefined_resources_[i].size() > 0) {
+        size++;
+      }
+    }
+    return size;
+  }
+
+  /// Check whether this set is empty.
+  bool IsEmpty() const { return Size() == 0; }
+
+  bool operator==(const TaskResourceInstances &other) const {
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      if (this->predefined_resources_[i] != other.predefined_resources_[i]) {
+        return false;
+      }
+    }
+    return this->custom_resources_ == other.custom_resources_;
+  }
+
+  /// Return a ResourceRequest with the aggregated per-instance values.
+  ResourceRequest ToResourceRequest() const {
+    ResourceRequest resource_request;
+    for (auto &resource_id : ResourceIds()) {
+      resource_request.Set(resource_id, Sum(resource_id));
+    }
+    return resource_request;
+  }
+
   /// Returns human-readable string for these resources.
-  [[nodiscard]] std::string DebugString(const StringIdMap &string_id_map) const;
+  [[nodiscard]] std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "{";
+    bool first = true;
+    for (auto &resource_id : ResourceIds()) {
+      if (!first) {
+        buffer << ", ";
+      }
+      first = false;
+      buffer << resource_id.Binary() << ": "
+             << FixedPointVectorToString(Get(resource_id));
+    }
+    buffer << "}";
+    return buffer.str();
+  }
+
+  std::string SerializeAsJson() const {
+    bool has_added_resource = false;
+    std::stringstream buffer;
+    buffer << "{";
+    for (size_t i = 0; i < PredefinedResourcesEnum_MAX; i++) {
+      std::vector<FixedPoint> resource = predefined_resources_[i];
+      if (resource.empty()) {
+        continue;
+      }
+      if (has_added_resource) {
+        buffer << ",";
+      }
+      std::string resource_name = ResourceID(i).Binary();
+      buffer << "\"" << resource_name << "\":";
+      if (!ResourceID(i).IsUnitInstanceResource()) {
+        buffer << resource[0];
+      } else {
+        buffer << "[";
+        for (size_t i = 0; i < resource.size(); i++) {
+          buffer << resource[i];
+          if (i < resource.size() - 1) {
+            buffer << ", ";
+          }
+        }
+        buffer << "]";
+      }
+      has_added_resource = true;
+    }
+    // TODO (chenk008): add custom_resources_
+    buffer << "}";
+    return buffer.str();
+  }
+
+ private:
+  std::vector<FixedPoint> *GetPointer(ResourceID id) {
+    if (IsPredefinedResource(id)) {
+      return &predefined_resources_[id.ToInt()];
+    } else {
+      auto it = custom_resources_.find(id.ToInt());
+      if (it == custom_resources_.end()) {
+        return nullptr;
+      } else {
+        return &it->second;
+      }
+    }
+  }
+
+  const std::vector<FixedPoint> *GetPointer(ResourceID id) const {
+    return const_cast<TaskResourceInstances *>(this)->GetPointer(id);
+  }
+
+  /// The predefined resources.
+  std::vector<std::vector<FixedPoint>> predefined_resources_;
+  /// The custom resources.
+  absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources_;
 };
 
 /// Total and available capacities of each resource of a node.
 class NodeResources {
  public:
   NodeResources() {}
+  NodeResources(const ResourceRequest &request) : total(request), available(request) {}
   NodeResources(const NodeResources &other)
-      : predefined_resources(other.predefined_resources),
-        custom_resources(other.custom_resources),
+      : total(other.total),
+        available(other.available),
+        normal_task_resources(other.normal_task_resources),
+        latest_resources_normal_task_timestamp(
+            other.latest_resources_normal_task_timestamp),
         object_pulls_queued(other.object_pulls_queued) {}
-  /// Available and total capacities for predefined resources.
-  std::vector<ResourceCapacity> predefined_resources;
-  /// Map containing custom resources. The key of each entry represents the
-  /// custom resource ID.
-  absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
+  ResourceRequest total;
+  ResourceRequest available;
+  /// Resources owned by normal tasks.
+  ResourceRequest normal_task_resources;
+  /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
+  /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
+  /// upload is latest.
+  int64_t latest_resources_normal_task_timestamp = 0;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
@@ -167,29 +570,28 @@ class NodeResources {
   /// Note: This doesn't account for the binpacking of unit resources.
   bool IsFeasible(const ResourceRequest &resource_request) const;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResources &other);
-  bool operator!=(const NodeResources &other);
+  bool operator==(const NodeResources &other) const;
+  bool operator!=(const NodeResources &other) const;
   /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
+  std::string DebugString() const;
   /// Returns compact dict-like string.
-  std::string DictString(StringIdMap string_to_int_map) const;
+  std::string DictString() const;
 };
 
 /// Total and available capacities of each resource instance.
 /// This is used to describe the resources of the local node.
 class NodeResourceInstances {
  public:
-  /// Available and total capacities for each instance of a predefined resource.
-  std::vector<ResourceInstanceCapacities> predefined_resources;
-  /// Map containing custom resources. The key of each entry represents the
-  /// custom resource ID.
-  absl::flat_hash_map<int64_t, ResourceInstanceCapacities> custom_resources;
+  TaskResourceInstances available;
+  TaskResourceInstances total;
   /// Extract available resource instances.
   TaskResourceInstances GetAvailableResourceInstances();
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  [[nodiscard]] std::string DebugString(StringIdMap string_to_int_map) const;
+  [[nodiscard]] std::string DebugString() const;
+  /// Returns true if it contains this resource.
+  bool Contains(scheduling::ResourceID id) const;
 };
 
 struct Node {
@@ -211,13 +613,11 @@ struct Node {
 
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available);
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
-    StringIdMap &string_to_int_map,
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory);
 

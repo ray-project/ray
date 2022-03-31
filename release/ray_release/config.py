@@ -1,9 +1,12 @@
 import copy
 import datetime
+import json
 import os
+import re
 from typing import Dict, List, Optional
 
 import jinja2
+import jsonschema
 import yaml
 
 from ray_release.anyscale_util import find_cloud_by_name
@@ -20,6 +23,7 @@ DEFAULT_WHEEL_WAIT_TIMEOUT = 7200  # Two hours
 DEFAULT_COMMAND_TIMEOUT = 1800
 DEFAULT_BUILD_TIMEOUT = 1800
 DEFAULT_CLUSTER_TIMEOUT = 1800
+DEFAULT_AUTOSUSPEND_MINS = 120
 
 DEFAULT_CLOUD_ID = "cld_4F7k8814aZzGG8TNUGPKnc"
 
@@ -38,6 +42,10 @@ DEFAULT_ENV = {
 }
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+RELEASE_TEST_SCHEMA_FILE = os.path.join(
+    RELEASE_PACKAGE_DIR, "ray_release", "schema.json"
+)
 
 
 class TestEnvironment(dict):
@@ -75,20 +83,45 @@ def read_and_validate_release_test_collection(config_file: str) -> List[Test]:
     return test_config
 
 
-def validate_release_test_collection(test_collection: List[Test]):
-    errors = []
-    for test in test_collection:
-        errors += validate_test(test)
+def load_schema_file(path: Optional[str] = None) -> Dict:
+    path = path or RELEASE_TEST_SCHEMA_FILE
+    with open(path, "rt") as fp:
+        return json.load(fp)
 
-    if errors:
+
+def validate_release_test_collection(test_collection: List[Test]):
+    try:
+        schema = load_schema_file()
+    except Exception as e:
         raise ReleaseTestConfigError(
-            f"Release test configuration error: Found {len(errors)} warnings."
+            f"Could not load release test validation schema: {e}"
+        ) from e
+
+    num_errors = 0
+    for test in test_collection:
+        error = validate_test(test, schema)
+        if error:
+            logger.error(
+                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
+            )
+            num_errors += 1
+
+    if num_errors > 0:
+        raise ReleaseTestConfigError(
+            f"Release test configuration error: Found {num_errors} test "
+            f"validation errors."
         )
 
 
-def validate_test(test: Test):
-    # Todo: implement Schema validation
-    return []
+def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
+    schema = schema or load_schema_file()
+
+    try:
+        jsonschema.validate(test, schema=schema)
+    except (jsonschema.ValidationError, jsonschema.SchemaError) as e:
+        return str(e.message)
+    except Exception as e:
+        return str(e)
 
 
 def find_test(test_collection: List[Test], test_name: str) -> Optional[Test]:
@@ -146,7 +179,7 @@ def load_and_render_yaml_template(
         render_env.update(env)
 
     try:
-        content = jinja2.Template(content).render(env=env)
+        content = jinja2.Template(content).render(env=render_env)
         return yaml.safe_load(content)
     except Exception as e:
         raise ReleaseTestConfigError(
@@ -162,6 +195,12 @@ def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
     env = get_test_environment()
 
     commit = env.get("RAY_COMMIT", None)
+
+    if not commit:
+        match = re.search(r"/([a-f0-9]{40})/", ray_wheels_url)
+        if match:
+            commit = match.group(1)
+
     env["RAY_WHEELS_SANITY_CHECK"] = get_wheels_sanity_check(commit)
     env["RAY_WHEELS"] = ray_wheels_url
 

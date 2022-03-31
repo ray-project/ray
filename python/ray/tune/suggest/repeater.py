@@ -30,11 +30,11 @@ class _TrialGroup:
     This is used when repeating trials for reducing training variance.
 
     Args:
-        primary_trial_id (str): Trial ID of the "primary trial".
+        primary_trial_id: Trial ID of the "primary trial".
             This trial is the one that the Searcher is aware of.
-        config (dict): Suggested configuration shared across all trials
+        config: Suggested configuration shared across all trials
             in the trial group.
-        max_trials (int): Max number of trials to execute within this group.
+        max_trials: Max number of trials to execute within this group.
 
     """
 
@@ -82,14 +82,14 @@ class Repeater(Searcher):
     simultaneously.
 
     Args:
-        searcher (Searcher): Searcher object that the
+        searcher: Searcher object that the
             Repeater will optimize. Note that the Searcher
             will only see 1 trial among multiple repeated trials.
             The result/metric passed to the Searcher upon
             trial completion will be averaged among all repeats.
-        repeat (int): Number of times to generate a trial with a repeated
+        repeat: Number of times to generate a trial with a repeated
             configuration. Defaults to 1.
-        set_index (bool): Sets a tune.suggest.repeater.TRIAL_INDEX in
+        set_index: Sets a tune.suggest.repeater.TRIAL_INDEX in
             Trainable/Function config which corresponds to the index of the
             repeated trial. This can be used for seeds. Defaults to True.
 

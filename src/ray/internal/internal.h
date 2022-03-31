@@ -16,6 +16,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
+#include "ray/stats/metric.h"
 
 // This header is used to warp some internal code so we can reduce suspicious
 // symbols export.
@@ -31,7 +32,9 @@ using ray::core::RayFunction;
 /// \param[out] return_ids return ids from SubmitActorTask.
 std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
                                                std::shared_ptr<LocalMemoryBuffer> buffer,
-                                               RayFunction &function, int return_num);
+                                               RayFunction &function,
+                                               int return_num);
 
+const stats::TagKeyType TagRegister(const std::string tag_name);
 }  // namespace internal
 }  // namespace ray

@@ -32,18 +32,22 @@ class PullManagerTestWithCapacity {
         num_restore_spilled_object_calls_(0),
         fake_time_(0),
         pull_manager_(
-            self_node_id_, [this](const ObjectID &object_id) { return object_is_local_; },
+            self_node_id_,
+            [this](const ObjectID &object_id) { return object_is_local_; },
             [this](const ObjectID &object_id, const NodeID &node_id) {
               num_send_pull_request_calls_++;
             },
             [this](const ObjectID &object_id) { num_abort_calls_[object_id]++; },
             [this](const ObjectID &object_id) { timed_out_objects_.insert(object_id); },
-            [this](const ObjectID &, const std::string &,
+            [this](const ObjectID &,
+                   const std::string &,
                    std::function<void(const ray::Status &)> callback) {
               num_restore_spilled_object_calls_++;
               restore_object_callback_ = callback;
             },
-            [this]() { return fake_time_; }, 10000, num_available_bytes,
+            [this]() { return fake_time_; },
+            10000,
+            num_available_bytes,
             [this](const ObjectID &object_id) { return PinReturn(); },
             [this](const ObjectID &object_id) {
               return GetLocalSpilledObjectURL(object_id);
@@ -88,8 +92,8 @@ class PullManagerTestWithCapacity {
   std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
-  std::unordered_map<ObjectID, int> num_abort_calls_;
-  std::unordered_map<ObjectID, std::string> spilled_url_;
+  absl::flat_hash_map<ObjectID, int> num_abort_calls_;
+  absl::flat_hash_map<ObjectID, std::string> spilled_url_;
   std::unordered_set<ObjectID> timed_out_objects_;
 };
 
@@ -200,8 +204,8 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
   NodeID node_that_object_spilled = NodeID::FromRandom();
   fake_time_ += 10.;
   ObjectSpilled(obj1, "remote_url/foo/bar");
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 node_that_object_spilled, false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", node_that_object_spilled, false, 0);
 
   // We request a remote pull to restore the object.
   ASSERT_EQ(num_send_pull_request_calls_, 1);
@@ -209,8 +213,8 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
 
   // No retry yet.
   ObjectSpilled(obj1, "remote_url/foo/bar");
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 node_that_object_spilled, false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", node_that_object_spilled, false, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
@@ -218,16 +222,16 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
   client_ids.insert(node_that_object_spilled);
   fake_time_ += 10.;
   ObjectSpilled(obj1, "remote_url/foo/bar");
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 node_that_object_spilled, false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", node_that_object_spilled, false, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 2);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   // Don't restore an object if it's local.
   object_is_local_ = true;
   ObjectSpilled(obj1, "remote_url/foo/bar");
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 NodeID::FromRandom(), false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", NodeID::FromRandom(), false, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 2);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
@@ -262,8 +266,8 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
 
   fake_time_ += 10.;
   ObjectSpilled(obj1, "remote_url/foo/bar");
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
-                                 false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", self_node_id_, false, 0);
 
   // We request a local restore.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -271,16 +275,16 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
 
   // No retry yet.
   ObjectSpilled(obj1, "remote_url/foo/bar");
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
-                                 false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", self_node_id_, false, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
   // The call can be retried after a delay.
   fake_time_ += 10.;
   ObjectSpilled(obj1, "remote_url/foo/bar");
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
-                                 false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", self_node_id_, false, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
@@ -327,8 +331,8 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnLocalStorage) {
   // The call can be retried after a delay, and the url in the remote object directory is
   // updated now.
   fake_time_ += 10.;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
-                                 false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", self_node_id_, false, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
@@ -367,16 +371,16 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
   ObjectSpilled(obj1, "");
   // If objects are spilled to external storages, the node id should be Nil().
   // So this shouldn't invoke restoration.
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
-                                 false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", self_node_id_, false, 0);
 
   // We request a local restore.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   // Now Nil ID is properly updated.
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
-                                 false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(), false, 0);
 
   // We request a local restore.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -384,8 +388,8 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectOnExternalStorage) {
 
   // The call can be retried after a delay.
   fake_time_ += 10.;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(),
-                                 false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", NodeID::Nil(), false, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
@@ -422,8 +426,8 @@ TEST_P(PullManagerTest, TestLoadBalancingRestorationRequest) {
   client_ids.insert(copy_node1);
   client_ids.insert(copy_node2);
   ObjectSpilled(obj1, "remote_url/foo/bar");
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 remote_node_that_spilled_object, false, 0);
+  pull_manager_.OnLocationChange(
+      obj1, client_ids, "remote_url/foo/bar", remote_node_that_spilled_object, false, 0);
 
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   // Make sure the restore request wasn't sent since there are nodes that have a copied
@@ -779,8 +783,8 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
     ASSERT_FALSE(pull_manager_.IsObjectActive(oids[i]));
-    pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), false,
-                                   object_size);
+    pull_manager_.OnLocationChange(
+        oids[i], client_ids, "", NodeID::Nil(), false, object_size);
   }
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
@@ -847,8 +851,8 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
   client_ids.insert(NodeID::FromRandom());
   for (auto &oids : bundles) {
     for (size_t i = 0; i < oids.size(); i++) {
-      pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), false,
-                                     object_size);
+      pull_manager_.OnLocationChange(
+          oids[i], client_ids, "", NodeID::Nil(), false, object_size);
     }
   }
 
@@ -895,7 +899,9 @@ TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
   /// Test admission control while requests are cancelled out-of-order. When an
   /// active request is cancelled, we should activate another request in the
   /// queue, if there is one that satisfies the reported capacity.
-  auto test_cancel = [&](std::vector<int> object_sizes, int capacity, size_t cancel_idx,
+  auto test_cancel = [&](std::vector<int> object_sizes,
+                         int capacity,
+                         size_t cancel_idx,
                          int num_active_requests_expected_before,
                          int num_active_requests_expected_after) {
     pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);
@@ -908,24 +914,28 @@ TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
       req_ids.push_back(req_id);
     }
     for (size_t i = 0; i < object_sizes.size(); i++) {
-      pull_manager_.OnLocationChange(oids[i], {}, "", NodeID::Nil(), false,
-                                     object_sizes[i]);
+      pull_manager_.OnLocationChange(
+          oids[i], {}, "", NodeID::Nil(), false, object_sizes[i]);
     }
     AssertNumActiveRequestsEquals(num_active_requests_expected_before);
     pull_manager_.CancelPull(req_ids[cancel_idx]);
     AssertNumActiveRequestsEquals(num_active_requests_expected_after);
 
     // Request is really canceled.
-    pull_manager_.OnLocationChange(oids[cancel_idx], {NodeID::FromRandom()}, "",
-                                   NodeID::Nil(), false, object_sizes[cancel_idx]);
+    pull_manager_.OnLocationChange(oids[cancel_idx],
+                                   {NodeID::FromRandom()},
+                                   "",
+                                   NodeID::Nil(),
+                                   false,
+                                   object_sizes[cancel_idx]);
     ASSERT_EQ(num_send_pull_request_calls_, 0);
 
     // The expected number of requests at the head of the queue are pulled.
     int num_active = 0;
     for (size_t i = 0; i < refs.size() && num_active < num_active_requests_expected_after;
          i++) {
-      pull_manager_.OnLocationChange(oids[i], {NodeID::FromRandom()}, "", NodeID::Nil(),
-                                     false, object_sizes[i]);
+      pull_manager_.OnLocationChange(
+          oids[i], {NodeID::FromRandom()}, "", NodeID::Nil(), false, object_sizes[i]);
       if (i != cancel_idx) {
         num_active++;
       }
@@ -981,8 +991,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (auto &oid : task_oids) {
-    pull_manager_.OnLocationChange(oid, client_ids, "", NodeID::Nil(), false,
-                                   object_size);
+    pull_manager_.OnLocationChange(
+        oid, client_ids, "", NodeID::Nil(), false, object_size);
   }
 
   // Two requests can be pulled at a time.
@@ -996,8 +1006,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   auto wait_req_id =
       pull_manager_.Pull(refs, BundlePriority::WAIT_REQUEST, &objects_to_locate);
   wait_oids.push_back(ObjectRefsToIds(refs)[0]);
-  pull_manager_.OnLocationChange(wait_oids[0], client_ids, "", NodeID::Nil(), false,
-                                 object_size);
+  pull_manager_.OnLocationChange(
+      wait_oids[0], client_ids, "", NodeID::Nil(), false, object_size);
   AssertNumActiveRequestsEquals(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(wait_oids[0]));
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oids[0]));
@@ -1017,8 +1027,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   // Worker request takes priority over the wait and task requests once its size is
   // available.
   for (auto &oid : get_oids) {
-    pull_manager_.OnLocationChange(oid, client_ids, "", NodeID::Nil(), false,
-                                   object_size);
+    pull_manager_.OnLocationChange(
+        oid, client_ids, "", NodeID::Nil(), false, object_size);
   }
   AssertNumActiveRequestsEquals(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
@@ -1038,8 +1048,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
   for (auto &oid : get_oids) {
-    pull_manager_.OnLocationChange(oid, client_ids, "", NodeID::Nil(), false,
-                                   object_size);
+    pull_manager_.OnLocationChange(
+        oid, client_ids, "", NodeID::Nil(), false, object_size);
   }
   AssertNumActiveRequestsEquals(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
@@ -1179,10 +1189,12 @@ TEST_P(PullManagerTest, TestTimeOutAfterFailedPull) {
   AssertNoLeaks();
 }
 
-INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests, PullManagerTest,
+INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests,
+                         PullManagerTest,
                          testing::Values(true, false));
 
-INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests, PullManagerWithAdmissionControlTest,
+INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests,
+                         PullManagerWithAdmissionControlTest,
                          testing::Values(true, false));
 }  // namespace ray
 

@@ -23,7 +23,7 @@
                     ],
                     "working_dir": null
                 },
-                "num_cpus": 1.0,
+                "num_cpus": 0.1,
                 "num_gpus": 0.0,
                 "memory": 0.0,
                 "object_store_memory": 0.0,
@@ -54,7 +54,7 @@
                     ],
                     "working_dir": null
                 },
-                "num_cpus": 1.0,
+                "num_cpus": 0.1,
                 "num_gpus": 0.0,
                 "memory": 0.0,
                 "object_store_memory": 0.0,

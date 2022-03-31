@@ -69,7 +69,7 @@ parser.add_argument(
     default="",
     type=str,
     metavar="PATH",
-    help="Resume full model and optimizer state from checkpoint " "(default: none)",
+    help="Resume full model and optimizer state from checkpoint (default: none)",
 )
 parser.add_argument(
     "--no-resume-opt",
@@ -89,7 +89,7 @@ parser.add_argument(
     default="avg",
     type=str,
     metavar="POOL",
-    help=("Type of global pool, 'avg', 'max', 'avgmax', 'avgmaxc' " "(default: 'avg')"),
+    help="Type of global pool, 'avg', 'max', 'avgmax', 'avgmaxc' (default: 'avg')",
 )
 parser.add_argument(
     "--img-size",

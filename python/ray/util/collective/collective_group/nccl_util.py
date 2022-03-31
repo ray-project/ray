@@ -162,7 +162,7 @@ def get_tensor_ptr(tensor):
         if isinstance(tensor, torch.Tensor):
             if not tensor.is_cuda:
                 raise RuntimeError(
-                    "Torch tensor must be on GPU " "when using NCCL collectives."
+                    "Torch tensor must be on GPU when using NCCL collectives."
                 )
             return tensor.data_ptr()
     raise ValueError(
@@ -226,7 +226,7 @@ def get_tensor_device(tensor):
         if not isinstance(device, int):
             raise RuntimeError("The tensor is not on a valid GPU.")
     else:
-        raise ValueError("Unsupported tensor type. " "Got: {}.".format(type(tensor)))
+        raise ValueError("Unsupported tensor type. Got: {}.".format(type(tensor)))
     return device
 
 

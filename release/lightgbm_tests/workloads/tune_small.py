@@ -25,7 +25,7 @@ from ray.util.lightgbm.release_test_util import train_ray
 def train_wrapper(config, ray_params):
     train_ray(
         path="/data/classification.parquet",
-        num_workers=4,
+        num_workers=None,
         num_boost_rounds=100,
         num_files=25,
         regression=False,
@@ -47,8 +47,8 @@ if __name__ == "__main__":
     ray_params = RayParams(
         elastic_training=False,
         max_actor_restarts=2,
-        num_actors=4,
-        cpus_per_actor=1,
+        num_actors=2,
+        cpus_per_actor=2,
         gpus_per_actor=0,
     )
 

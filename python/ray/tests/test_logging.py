@@ -1,12 +1,16 @@
 import os
 import re
+import sys
 
 from datetime import datetime
 from collections import defaultdict, Counter
 from pathlib import Path
+import subprocess
+import tempfile
 import pytest
 
 import ray
+from ray.cross_language import java_actor_class
 from ray import ray_constants
 from ray._private.test_utils import (
     get_log_batch,
@@ -17,21 +21,21 @@ from ray._private.test_utils import (
 )
 
 
-def set_logging_config(max_bytes, backup_count):
-    os.environ["RAY_ROTATION_MAX_BYTES"] = str(max_bytes)
-    os.environ["RAY_ROTATION_BACKUP_COUNT"] = str(backup_count)
+def set_logging_config(monkeypatch, max_bytes, backup_count):
+    monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
+    monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
 
 
-def test_log_rotation_config(ray_start_cluster):
+def test_log_rotation_config(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     max_bytes = 100
     backup_count = 3
 
     # Create a cluster.
-    set_logging_config(max_bytes, backup_count)
+    set_logging_config(monkeypatch, max_bytes, backup_count)
     head_node = cluster.add_node(num_cpus=0)
     # Set a different env var for a worker node.
-    set_logging_config(0, 0)
+    set_logging_config(monkeypatch, 0, 0)
     worker_node = cluster.add_node(num_cpus=0)
     cluster.wait_for_nodes()
 
@@ -43,10 +47,10 @@ def test_log_rotation_config(ray_start_cluster):
     assert config["log_rotation_backup_count"] == 0
 
 
-def test_log_rotation(shutdown_only):
+def test_log_rotation(shutdown_only, monkeypatch):
     max_bytes = 1
     backup_count = 3
-    set_logging_config(max_bytes, backup_count)
+    set_logging_config(monkeypatch, max_bytes, backup_count)
     ray.init(num_cpus=1)
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
@@ -82,34 +86,37 @@ def test_log_rotation(shutdown_only):
                 return True
         return False
 
-    def component_file_size_small_enough(component):
-        """Although max_bytes is 1, the file can have size that is big.
-        For example, if the logger prints the traceback, it can be
-        much bigger. So, we shouldn't make the assertion too tight.
+    def component_file_only_one_log_entry(component):
+        """Since max_bytes is 1, the log file should
+        only have at most one log entry.
         """
-        small_enough_bytes = 512  # 512 bytes.
         for path in paths:
             if not component_exist(component, [path]):
                 continue
 
-            if path.stat().st_size > small_enough_bytes:
-                return False
+            with open(path) as file:
+                found = False
+                for line in file:
+                    if re.match(r"^\[?\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d", line):
+                        if found:
+                            return False
+                        found = True
         return True
 
     for component in log_rotating_component:
         assert component_exist(component, paths)
-        assert component_file_size_small_enough(component)
+        assert component_file_only_one_log_entry(component)
 
     # Check if the backup count is respected.
     file_cnts = defaultdict(int)
     for path in paths:
-        filename = path.stem
-        filename_without_suffix = filename.split(".")[0]
-        file_cnts[filename_without_suffix] += 1
+        filename = path.name
+        parts = filename.split(".")
+        if len(parts) == 3:
+            filename_without_suffix = parts[0]
+            file_cnts[filename_without_suffix] += 1
     for filename, file_cnt in file_cnts.items():
-        # There could be backup_count + 1 files.
-        # EX) *.log, *.log.* (as many as backup count).
-        assert file_cnt <= backup_count + 1, (
+        assert file_cnt <= backup_count, (
             f"{filename} has files that are more than "
             f"backup count {backup_count}, file count: {file_cnt}"
         )
@@ -218,12 +225,15 @@ def test_log_pid_with_hex_job_id(ray_start_cluster):
         submit_job()
 
 
-def test_log_monitor_backpressure(ray_start_cluster):
+def test_log_monitor_backpressure(ray_start_cluster, monkeypatch):
     update_interval = 3
-    os.environ["LOG_NAME_UPDATE_INTERVAL_S"] = str(update_interval)
+    monkeypatch.setenv("LOG_NAME_UPDATE_INTERVAL_S", str(update_interval))
     # Intentionally set low to trigger the backpressure condition.
-    os.environ["RAY_LOG_MONITOR_MANY_FILES_THRESHOLD"] = "1"
-    expected_str = "abc"
+    monkeypatch.setenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", "1")
+    expected_str = "abcxyz"
+
+    def matcher(line):
+        return line == expected_str
 
     # Test log monitor still works with backpressure.
     cluster = ray_start_cluster
@@ -231,8 +241,6 @@ def test_log_monitor_backpressure(ray_start_cluster):
     # Connect a driver to the Ray cluster.
     ray.init(address=cluster.address)
     p = init_log_pubsub()
-    # It always prints the monitor messages.
-    logs = get_log_message(p, 1)
 
     @ray.remote
     class Actor:
@@ -241,9 +249,9 @@ def test_log_monitor_backpressure(ray_start_cluster):
 
     now = datetime.now()
     a = Actor.remote()
-    a.print.remote()
-    logs = get_log_message(p, 1)
-    assert logs[0] == expected_str
+    ray.get(a.print.remote())
+    logs = get_log_message(p, 1, matcher=matcher)
+    assert logs[0][0] == expected_str
     # Since the log file update is delayed,
     # it should take more than update_interval
     # to publish a message for a new worker.
@@ -251,9 +259,9 @@ def test_log_monitor_backpressure(ray_start_cluster):
 
     now = datetime.now()
     a = Actor.remote()
-    a.print.remote()
-    logs = get_log_message(p, 1)
-    assert logs[0] == expected_str
+    ray.get(a.print.remote())
+    logs = get_log_message(p, 1, matcher=matcher)
+    assert logs[0][0] == expected_str
     assert (datetime.now() - now).seconds >= update_interval
 
 
@@ -273,7 +281,7 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
     )
 
     assert len(msgs) == 1, msgs
-    assert msgs.pop() == "done"
+    assert msgs[0][0] == "done"
 
 
 def test_log_redirect_to_stderr(shutdown_only, capfd):
@@ -293,9 +301,6 @@ def test_log_redirect_to_stderr(shutdown_only, capfd):
         ray_constants.PROCESS_TYPE_RAYLET: "Starting object store with directory",
         # No reaper process run (kernel fate-sharing).
         ray_constants.PROCESS_TYPE_REAPER: "",
-        ray_constants.PROCESS_TYPE_REDIS_SERVER: (
-            "oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo"
-        ),
         # No reporter process run.
         ray_constants.PROCESS_TYPE_REPORTER: "",
         # No web UI process run.
@@ -372,6 +377,44 @@ def test_segfault_stack_trace(ray_start_cluster, capsys):
     assert (
         "Fatal Python error: Segmentation fault" in stderr
     ), f"Python stack trace not found in stderr: {stderr}"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or sys.platform == "darwin",
+    reason="TODO(simon): Failing on Windows and OSX.",
+)
+def test_log_java_worker_logs(shutdown_only, capsys):
+    tmp_dir = tempfile.mkdtemp()
+    print("using tmp_dir", tmp_dir)
+    with open(os.path.join(tmp_dir, "MyClass.java"), "w") as f:
+        f.write(
+            """
+public class MyClass {
+    public int printToLog(String line) {
+        System.err.println(line);
+        return 0;
+    }
+}
+        """
+        )
+    subprocess.check_call(["javac", "MyClass.java"], cwd=tmp_dir)
+    subprocess.check_call(["jar", "-cf", "myJar.jar", "MyClass.class"], cwd=tmp_dir)
+
+    ray.init(
+        job_config=ray.job_config.JobConfig(code_search_path=[tmp_dir]),
+    )
+
+    handle = java_actor_class("MyClass").remote()
+    ray.get(handle.printToLog.remote("here's my random line!"))
+
+    def check():
+        out, err = capsys.readouterr()
+        out += err
+        with capsys.disabled():
+            print(out)
+        return "here's my random line!" in out
+
+    wait_for_condition(check)
 
 
 if __name__ == "__main__":

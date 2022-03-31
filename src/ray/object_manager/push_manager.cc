@@ -20,7 +20,8 @@
 
 namespace ray {
 
-void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
+void PushManager::StartPush(const NodeID &dest_id,
+                            const ObjectID &obj_id,
                             int64_t num_chunks,
                             std::function<void(int64_t)> send_chunk_fn) {
   auto push_id = std::make_pair(dest_id, obj_id);

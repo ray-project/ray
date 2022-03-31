@@ -50,6 +50,9 @@ class Counter {
   bool is_restared = false;
 };
 
+inline Counter *CreateCounter() { return new Counter(0); }
+RAY_REMOTE(CreateCounter);
+
 class CountDownLatch {
  public:
   explicit CountDownLatch(size_t count) : m_count(count) {}

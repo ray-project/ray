@@ -35,8 +35,8 @@ namespace rpc {
 /// sent to the client.
 /// \param failure Failure callback which will be invoked when the reply fails to be
 /// sent to the client.
-using SendReplyCallback = std::function<void(Status status, std::function<void()> success,
-                                             std::function<void()> failure)>;
+using SendReplyCallback = std::function<void(
+    Status status, std::function<void()> success, std::function<void()> failure)>;
 
 /// Represents state of a `ServerCall`.
 enum class ServerCallState {
@@ -113,7 +113,8 @@ class ServerCallFactory {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
-using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
+using HandleRequestFunction = void (ServiceHandler::*)(const Request &,
+                                                       Reply *,
                                                        SendReplyCallback);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
@@ -132,9 +133,11 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] io_service The event loop.
   ServerCallImpl(
-      const ServerCallFactory &factory, ServiceHandler &service_handler,
+      const ServerCallFactory &factory,
+      ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      instrumented_io_context &io_service, std::string call_name)
+      instrumented_io_context &io_service,
+      std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -181,9 +184,10 @@ class ServerCallImpl : public ServerCall {
       factory.CreateCall();
     }
     (service_handler_.*handle_request_function_)(
-        request_, reply_,
-        [this](Status status, std::function<void()> success,
-               std::function<void()> failure) {
+        request_,
+        reply_,
+        [this](
+            Status status, std::function<void()> success, std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
           // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
@@ -284,9 +288,13 @@ class ServerCallImpl : public ServerCall {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
-using RequestCallFunction = void (GrpcService::AsyncService::*)(
-    grpc::ServerContext *, Request *, grpc::ServerAsyncResponseWriter<Reply> *,
-    grpc::CompletionQueue *, grpc::ServerCompletionQueue *, void *);
+using RequestCallFunction =
+    void (GrpcService::AsyncService::*)(grpc::ServerContext *,
+                                        Request *,
+                                        grpc::ServerAsyncResponseWriter<Reply> *,
+                                        grpc::CompletionQueue *,
+                                        grpc::ServerCompletionQueue *,
+                                        void *);
 
 /// Implementation of `ServerCallFactory`
 ///
@@ -316,7 +324,9 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
+      instrumented_io_context &io_service,
+      std::string call_name,
+      int64_t max_active_rpcs)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -333,8 +343,11 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
-    (service_.*request_call_function_)(&call->context_, &call->request_,
-                                       &call->response_writer_, cq_.get(), cq_.get(),
+    (service_.*request_call_function_)(&call->context_,
+                                       &call->request_,
+                                       &call->response_writer_,
+                                       cq_.get(),
+                                       cq_.get(),
                                        call);
   }
 

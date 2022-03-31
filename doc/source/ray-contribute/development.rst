@@ -67,16 +67,12 @@ For Ubuntu, run the following commands:
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip psmisc
 
-  pip install cython==0.29.26 pytest
-
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
 .. code-block:: bash
 
   sudo yum groupinstall 'Development Tools'
   sudo yum install psmisc
-
-  pip install cython==0.29.26 pytest
 
 Install bazel manually from link: https://docs.bazel.build/versions/main/install-redhat.html 
 
@@ -90,8 +86,6 @@ For MacOS, run the following commands:
 
   brew update
   brew install wget
-
-  pip install cython==0.29.26 pytest
 
 Ray can be built from the repository as follows.
 
@@ -124,34 +118,9 @@ directory will take effect without reinstalling the package.
 
   If your machine is running out of memory during the build or the build is causing other programs to crash, try adding the following line to ``~/.bazelrc``:
 
-  ``build --disk_cache=~/bazel-cache --local_ram_resources=HOST_RAM*.5 --local_cpu_resources=4``
+  ``build --local_ram_resources=HOST_RAM*.5 --local_cpu_resources=4``
 
-
-Environment variables that influence this step
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can tweak the build with the following environment variables (in `setup.py`):
-
-- ``BUILD_JAVA``: If set and equal to ``1``, extra build steps will be executed
-  to build java portions of the codebase
-- ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
-- ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
-  ``cpp``) build will not provide some ``cpp`` interfaces
-- ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no bazel build steps will be
-  executed
-- ``SKIP_THIRDPARTY_INSTALL``: If set will skip installation of third-party
-  python packages
-- ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
-  other value will be ignored
-- ``BAZEL_LIMIT_CPUS``: If set, it must be an integers. This will be fed to the
-  ``--local_cpu_resources`` argument for the call to bazel, which will limit the
-  number of CPUs used during bazel steps.
-- ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
-- ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
-  ``None`` which is ``cwd()``
-- ``BAZEL_SH``: used on Windows to find a ``bash.exe``, see below
-- ``BAZEL_PATH``: used on Windows to find ``bazel.exe``, see below
-- ``MINGW_DIR``: used on Windows to find ``bazel.exe`` if not found in ``BAZEL_PATH``
+  The ``build --disk_cache=~/bazel-cache`` option can be useful to speed up repeated builds too.
 
 Building Ray on Windows (full)
 ------------------------------
@@ -189,13 +158,7 @@ Define an environment variable BAZEL_PATH to full exe path (example:
 ``set BAZEL_PATH=C:\bazel\bazel.exe``). Also add the bazel directory to the
 ``PATH`` (example: ``set PATH=%PATH%;C:\bazel``)
 
-5. Install cython and pytest:
-
-.. code-block:: shell
-
-  pip install cython==0.29.26 pytest
-
-6. Download ray source code and build it.
+5. Download ray source code and build it.
 
 .. code-block:: shell
 
@@ -203,6 +166,49 @@ Define an environment variable BAZEL_PATH to full exe path (example:
   git clone -c core.symlinks=true https://github.com/ray-project/ray.git
   cd ray\python
   pip install -e . --verbose
+
+Environment variables that influence builds
+--------------------------------------------
+
+You can tweak the build with the following environment variables (when running ``setup.py``):
+
+- ``BUILD_JAVA``: If set and equal to ``1``, extra build steps will be executed
+  to build java portions of the codebase
+- ``RAY_INSTALL_CPP``: If set and equal to ``1``, ``ray-cpp`` will be installed
+- ``RAY_DISABLE_EXTRA_CPP``: If set and equal to ``1``, a regular (non -
+  ``cpp``) build will not provide some ``cpp`` interfaces
+- ``SKIP_BAZEL_BUILD``: If set and equal to ``1``, no bazel build steps will be
+  executed
+- ``SKIP_THIRDPARTY_INSTALL``: If set will skip installation of third-party
+  python packages
+- ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
+  other value will be ignored
+- ``BAZEL_LIMIT_CPUS``: If set, it must be an integers. This will be fed to the
+  ``--local_cpu_resources`` argument for the call to bazel, which will limit the
+  number of CPUs used during bazel steps.
+- ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
+- ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
+  ``None`` which is ``cwd()``
+- ``BAZEL_SH``: used on Windows to find a ``bash.exe``, see below
+- ``BAZEL_PATH``: used on Windows to find ``bazel.exe``, see below
+- ``MINGW_DIR``: used on Windows to find ``bazel.exe`` if not found in ``BAZEL_PATH``
+
+Installing additional dependencies for development
+--------------------------------------------------
+
+Dependencies for the linter (``scripts/format.h``) can be installed with:
+
+.. code-block:: shell
+
+ pip install -r python/requirements_linters.txt
+
+Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
+
+.. code-block:: shell
+
+ pip install -r python/requirements.txt
+
+Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
 
 Fast, Debug, and Optimized Builds
 ---------------------------------
@@ -246,7 +252,6 @@ correctly. `Sphinx <http://sphinx-doc.org/>`_ is used to generate the documentat
 
     cd doc
     pip install -r requirements-doc.txt
-    pip install -U -r requirements-rtd.txt # important for reproducing the deployment environment
     make html
 
 Once done, the docs will be in ``doc/_build/html``. For example, on Mac
