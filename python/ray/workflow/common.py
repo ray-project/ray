@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import json
 
 from ray import cloudpickle
 from collections import deque
@@ -45,6 +46,19 @@ def get_qualname(f):
 def ensure_ray_initialized():
     if not ray.is_initialized():
         ray.init()
+
+
+def validate_user_metadata(metadata):
+    if metadata is not None:
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict.")
+        try:
+            json.dumps(metadata)
+        except TypeError as e:
+            raise ValueError(
+                "metadata must be JSON serializable, instead, "
+                "we got 'TypeError: {}'".format(e)
+            )
 
 
 @dataclass

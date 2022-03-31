@@ -15,7 +15,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.checkpoint_manager import _TuneCheckpoint, CheckpointManager
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -99,7 +99,7 @@ class CheckpointDeleter:
         self.trial_id = trial_id
         self.runner = runner
 
-    def __call__(self, checkpoint: Checkpoint):
+    def __call__(self, checkpoint: _TuneCheckpoint):
         """Requests checkpoint deletion asynchronously.
 
         Args:
@@ -108,7 +108,7 @@ class CheckpointDeleter:
         if not self.runner:
             return
 
-        if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+        if checkpoint.storage == _TuneCheckpoint.PERSISTENT and checkpoint.value:
             checkpoint_path = checkpoint.value
 
             logger.debug(
@@ -464,7 +464,7 @@ class Trial:
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
         if checkpoint.value is None:
-            checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
+            checkpoint = _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, self.restore_path)
         return checkpoint
 
     @classmethod
@@ -531,6 +531,7 @@ class Trial:
             self.logdir = create_logdir(self._generate_dirname(), self.local_dir)
         else:
             os.makedirs(self.logdir, exist_ok=True)
+
         self.invalidate_json_state()
 
     def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
@@ -645,7 +646,7 @@ class Trial:
         self.restoring_from = None
         self.invalidate_json_state()
 
-    def on_checkpoint(self, checkpoint: Checkpoint):
+    def on_checkpoint(self, checkpoint: _TuneCheckpoint):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
