@@ -589,9 +589,11 @@ class ReporterAgent(
         """Get any changes to the log files and push updates to kv."""
         while True:
             try:
-                formatted_status_string = internal_kv._internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS
-                )
+                formatted_status_string = None
+                if self._is_head_node:
+                    formatted_status_string = internal_kv._internal_kv_get(
+                        DEBUG_AUTOSCALING_STATUS
+                    )
                 cluster_stats = (
                     json.loads(formatted_status_string.decode())
                     if formatted_status_string
