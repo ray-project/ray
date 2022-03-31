@@ -229,8 +229,6 @@ struct SyncerServerTest {
           msg.set_component_id(static_cast<RayComponentId>(cid));
           msg.set_version(local_versions[cid]);
           msg.set_node_id(syncer->GetLocalNodeID());
-          std::string dbg_message;
-          google::protobuf::util::MessageToJsonString(msg, &dbg_message);
           snapshot_taken++;
           return std::make_optional(std::move(msg));
         }
