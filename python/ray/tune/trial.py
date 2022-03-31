@@ -532,18 +532,6 @@ class Trial:
         else:
             os.makedirs(self.logdir, exist_ok=True)
 
-        # Add restored checkpoint
-        if self.restore_path and self.restore_path.startswith(self.logdir):
-            checkpoint_metadata = (
-                TrainableUtil.load_checkpoint_metadata(self.restore_path) or {}
-            )
-            checkpoint = _TuneCheckpoint(
-                _TuneCheckpoint.PERSISTENT,
-                self.restore_path,
-                checkpoint_metadata.get("last_result", None),
-            )
-            self.checkpoint_manager.on_checkpoint(checkpoint)
-
         self.invalidate_json_state()
 
     def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):

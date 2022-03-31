@@ -148,6 +148,7 @@
     - export LINT=1
     - ./ci/travis/install-dependencies.sh
     - ./ci/travis/ci.sh check_sphinx_links
+  soft_fail: True
 
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]

@@ -134,11 +134,9 @@ def ParallelRollouts(
     if not workers.remote_workers():
         # Handle the `num_workers=0` case, in which the local worker
         # has to do sampling as well.
-        def sampler(_):
-            while True:
-                yield workers.local_worker().sample()
-
-        return LocalIterator(sampler, SharedMetrics()).for_each(report_timesteps)
+        return LocalIterator(
+            lambda timeout: workers.local_worker().item_generator, SharedMetrics()
+        ).for_each(report_timesteps)
 
     # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
