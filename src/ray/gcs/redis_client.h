@@ -104,8 +104,6 @@ class RedisClient {
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_subscribe_clients_;
   // The following context writes everything to the primary shard
   std::shared_ptr<RedisContext> primary_context_;
-  std::unique_ptr<RedisAsioClient> asio_async_auxiliary_client_;
-  std::unique_ptr<RedisAsioClient> asio_subscribe_auxiliary_client_;
 };
 
 }  // namespace gcs
