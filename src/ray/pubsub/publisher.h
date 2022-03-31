@@ -344,6 +344,9 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
+  friend class MockPublisher;
+  Publisher() {}
+
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
@@ -358,10 +361,10 @@ class Publisher : public PublisherInterface {
   PeriodicalRunner *periodical_runner_;
 
   /// Callback to get the current time.
-  const std::function<double()> get_time_ms_;
+  std::function<double()> get_time_ms_;
 
   /// The timeout where subscriber is considered as dead.
-  const uint64_t subscriber_timeout_ms_;
+  uint64_t subscriber_timeout_ms_;
 
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
@@ -376,9 +379,10 @@ class Publisher : public PublisherInterface {
       subscription_index_map_ GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
-  const int publish_batch_size_;
+  int publish_batch_size_;
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
+
 };
 
 }  // namespace pubsub
