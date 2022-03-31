@@ -40,7 +40,9 @@ def test_handle_access_log(serve_instance):
                     method_name in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
-                    "blah blah blah" if fail else True,  # Check for stacktrace.
+                    ("blah blah blah" in s and "RuntimeError" in s)
+                    if fail
+                    else True,  # Check for stacktrace.
                 ]
             )
 
