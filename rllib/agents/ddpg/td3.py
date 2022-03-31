@@ -51,10 +51,19 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "num_workers": 0,
         "num_gpus_per_worker": 0,
         "worker_side_prioritization": False,
-        "buffer_size": 1000000,
-        "prioritized_replay": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
+        # === Replay buffer ===
+        # Deprecated, use capacity in replay_buffer_config instead.
+        "replay_buffer_config": {
+            # For now we don't use the new ReplayBuffer API here
+            "_enable_replay_buffer_api": False,
+            "type": "MultiAgentReplayBuffer",
+            # Size of the replay buffer. Note that if async_updates is set,
+            # then each worker will have a replay buffer of this size.
+            "capacity": 1000000,
+            "replay_batch_size": 100,
+        },
     },
 )
 

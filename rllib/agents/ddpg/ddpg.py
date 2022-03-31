@@ -90,12 +90,21 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False
     },
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
+    # Deprecated, use capacity in replay_buffer_config instead.
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
+        # For now we don't use the new ReplayBuffer API here
+        "_enable_replay_buffer_api": False,
         "type": "MultiAgentReplayBuffer",
+        # Size of the replay buffer. Note that if async_updates is set,
+        # then each worker will have a replay buffer of this size.
         "capacity": 50000,
+        "replay_batch_size": 256,
+        "prioritized_replay_alpha": 0.6,
+        # Beta parameter for sampling from prioritized replay buffer.
+        "prioritized_replay_beta": 0.4,
+        # Epsilon to add to the TD errors when updating priorities.
+        "prioritized_replay_eps": 1e-6,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -105,17 +114,11 @@ DEFAULT_CONFIG = with_common_config({
     # - This is False AND restoring from a checkpoint that does contain
     #   buffer data.
     "store_buffer_in_checkpoints": False,
-    # If True prioritized replay buffer will be used.
-    "prioritized_replay": True,
-    # Alpha parameter for prioritized replay buffer.
-    "prioritized_replay_alpha": 0.6,
-    # Beta parameter for sampling from prioritized replay buffer.
-    "prioritized_replay_beta": 0.4,
-    # Epsilon to add to the TD errors when updating priorities.
-    "prioritized_replay_eps": 1e-6,
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-
     # The intensity with which to update the model (vs collecting samples from
     # the env). If None, uses the "natural" value of:
     # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
