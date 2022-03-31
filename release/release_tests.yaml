@@ -1681,7 +1681,7 @@
 
   run:
     timeout: 600
-    script: python workloads/jobs_basic.py --working-dir "./"
+    script: python workloads/jobs_basic.py --working-dir "workloads"
     wait_for_nodes:
       num_nodes: 4
       timeout: 600
