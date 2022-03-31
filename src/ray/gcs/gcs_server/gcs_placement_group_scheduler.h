@@ -35,6 +35,7 @@ namespace gcs {
 
 class GcsPlacementGroup;
 
+using ClusterResourceScheduler = gcs::ClusterResourceScheduler;
 using ScheduleContext = raylet_scheduling_policy::BundleSchedulingContext;
 
 using ReserveResourceClientFactoryFn =
@@ -104,7 +105,7 @@ class GcsScheduleStrategy {
   virtual ScheduleResult Schedule(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
-      GcsResourceScheduler &cluster_resource_scheduler) = 0;
+      ClusterResourceScheduler &cluster_resource_scheduler) = 0;
 
  protected:
   /// Get required resources from bundles.
@@ -134,7 +135,7 @@ class GcsPackStrategy : public GcsScheduleStrategy {
   ScheduleResult Schedule(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
-      GcsResourceScheduler &cluster_resource_scheduler) override;
+      ClusterResourceScheduler &cluster_resource_scheduler) override;
 };
 
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
@@ -143,7 +144,7 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
   ScheduleResult Schedule(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
-      GcsResourceScheduler &cluster_resource_scheduler) override;
+      ClusterResourceScheduler &cluster_resource_scheduler) override;
 };
 
 /// The `GcsStrictPackStrategy` is that all bundles must be scheduled to one node. If one
@@ -153,7 +154,7 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
   ScheduleResult Schedule(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
-      GcsResourceScheduler &cluster_resource_scheduler) override;
+      ClusterResourceScheduler &cluster_resource_scheduler) override;
 };
 
 /// The `GcsStrictSpreadStrategy` is that spread all bundles in different nodes.
@@ -164,7 +165,7 @@ class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
   ScheduleResult Schedule(
       const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context,
-      GcsResourceScheduler &cluster_resource_scheduler) override;
+      ClusterResourceScheduler &cluster_resource_scheduler) override;
 };
 
 enum class LeasingState {
@@ -403,7 +404,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager,
       GcsResourceManager &gcs_resource_manager,
-      GcsResourceScheduler &cluster_resource_scheduler,
+      ClusterResourceScheduler &cluster_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       syncer::RaySyncer &ray_syncer);
 
@@ -560,8 +561,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
-  /// Reference of GcsResourceScheduler.
-  GcsResourceScheduler &cluster_resource_scheduler_;
+  /// Reference of ClusterResourceScheduler.
+  ClusterResourceScheduler &cluster_resource_scheduler_;
 
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;

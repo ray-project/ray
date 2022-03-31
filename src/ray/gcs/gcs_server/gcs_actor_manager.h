@@ -130,8 +130,6 @@ class GcsActor {
 
   std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
 
-  std::shared_ptr<GcsActorWorkerAssignment> GetMutableWorkerAssignment() const;
-
   void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
 
  private:
