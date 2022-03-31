@@ -297,7 +297,9 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitClusterResourceScheduler() {
-  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
+  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      scheduling::NodeID::Nil(),
+      [](scheduling::NodeID node_id) { return !node_id.IsNil(); });
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {

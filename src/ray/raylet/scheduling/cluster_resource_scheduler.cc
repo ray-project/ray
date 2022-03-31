@@ -28,21 +28,9 @@ ClusterResourceScheduler::ClusterResourceScheduler()
       is_node_available_fn_([](auto) { return true; }) {
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
   NodeResources node_resources;
-  local_resource_manager_ = std::make_unique<LocalResourceManager>(
-      local_node_id_,
-      node_resources,
-      /*get_used_object_store_memory*/ nullptr,
-      /*get_pull_manager_at_capacity*/ nullptr,
-      [&](const NodeResources &local_resource_update) {
-        cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
-      });
-  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, node_resources);
-  scheduling_policy_ =
-      std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
-          local_node_id_,
-          *cluster_resource_manager_,
-          /*is_node_available_fn*/
-          [this](scheduling::NodeID node_id) { return !node_id.IsNil(); });
+  Init(node_resources,
+       /*get_used_object_store_memory=*/nullptr,
+       /*get_pull_manager_at_capacity=*/nullptr);
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -65,6 +53,30 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   NodeResources node_resources =
       ResourceMapToNodeResources(local_node_resources, local_node_resources);
   Init(node_resources, get_used_object_store_memory, get_pull_manager_at_capacity);
+}
+
+ClusterResourceScheduler::ClusterResourceScheduler(
+    scheduling::NodeID local_node_id,
+    std::function<bool(scheduling::NodeID)> is_node_available_fn) {
+  RAY_CHECK(local_node_id.IsNil());
+  NodeResources local_node_resources;
+  is_node_available_fn_ = std::move(is_node_available_fn);
+  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
+  local_resource_manager_ = std::make_unique<LocalResourceManager>(
+      local_node_id_,
+      local_node_resources,
+      /*get_used_object_store_memory*/ nullptr,
+      /*get_pull_manager_at_capacity*/ nullptr,
+      [&](const NodeResources &local_resource_update) {
+        cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
+      });
+  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
+  scheduling_policy_ =
+      std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
+          local_node_id_,
+          *cluster_resource_manager_,
+          /*is_node_available_fn*/
+          is_node_available_fn_);
 }
 
 void ClusterResourceScheduler::Init(

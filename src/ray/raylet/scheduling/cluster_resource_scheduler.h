@@ -46,6 +46,7 @@ using rpc::HeartbeatTableData;
 class ClusterResourceScheduler {
  public:
   ClusterResourceScheduler();
+
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
@@ -61,6 +62,12 @@ class ClusterResourceScheduler {
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
+
+  // This constructor is only used by gcs scheduler. So the
+  // `local_node_id` has to be nil and `is_node_available_fn`
+  // has to exclude the local node.
+  ClusterResourceScheduler(scheduling::NodeID local_node_id,
+                           std::function<bool(scheduling::NodeID)> is_node_available_fn);
 
   /// Schedule the specified resources to the cluster nodes.
   ///

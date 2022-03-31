@@ -1486,39 +1486,43 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
     // The actor was being scheduled and has now been canceled.
     RAY_CHECK(canceled_actor_id == actor_id);
   } else {
-    const auto scheduling_class = actor->GetActorWorkerAssignment()->GetSchedulingClass();
-    auto pending_actor_handler =
-        [this, scheduling_class, &actor_id](
-            absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
-                &shape_map) -> bool {
-      auto iter = shape_map.find(scheduling_class);
-      if (iter != shape_map.end()) {
-        auto &actor_queue = iter->second;
-        auto pending_it =
-            std::find_if(actor_queue.begin(),
-                         actor_queue.end(),
-                         [actor_id](const std::shared_ptr<GcsActor> &actor) {
-                           return actor->GetActorID() == actor_id;
-                         });
-        // The actor was pending scheduling. Remove it from the queue.
-        if (pending_it != actor_queue.end()) {
-          actor_queue.erase(pending_it);
-          if (actor_queue.empty()) {
-            shape_map.erase(iter);
+    if (actor->GetActorWorkerAssignment()) {
+      const auto scheduling_class =
+          actor->GetActorWorkerAssignment()->GetSchedulingClass();
+      auto pending_actor_handler =
+          [this, scheduling_class, &actor_id](
+              absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<GcsActor>>>
+                  &shape_map) -> bool {
+        auto iter = shape_map.find(scheduling_class);
+        if (iter != shape_map.end()) {
+          auto &actor_queue = iter->second;
+          auto pending_it =
+              std::find_if(actor_queue.begin(),
+                           actor_queue.end(),
+                           [actor_id](const std::shared_ptr<GcsActor> &actor) {
+                             return actor->GetActorID() == actor_id;
+                           });
+          // The actor was pending scheduling. Remove it from the queue.
+          if (pending_it != actor_queue.end()) {
+            actor_queue.erase(pending_it);
+            if (actor_queue.empty()) {
+              shape_map.erase(iter);
+            }
+            return true;
           }
-          return true;
         }
+        return false;
+      };
+      if (pending_actor_handler(infeasible_actors_) ||
+          pending_actor_handler(actors_to_schedule_)) {
+        return;
       }
-      return false;
-    };
-    if (!pending_actor_handler(infeasible_actors_) &&
-        !pending_actor_handler(actors_to_schedule_)) {
-      // When actor creation request of this actor id is pending in raylet,
-      // it doesn't responds, and the actor should be still in leasing state.
-      // NOTE: We will cancel outstanding lease request by calling
-      // `raylet_client->CancelWorkerLease`.
-      gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
     }
+    // When actor creation request of this actor id is pending in raylet,
+    // it doesn't responds, and the actor should be still in leasing state.
+    // NOTE: We will cancel outstanding lease request by calling
+    // `raylet_client->CancelWorkerLease`.
+    gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
   }
 }
 
