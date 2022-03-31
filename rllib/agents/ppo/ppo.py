@@ -97,25 +97,26 @@ class PPOConfig(TrainerConfig):
         self.model["vf_share_layers"] = False
 
     @override(TrainerConfig)
-    def training(self,
-                 *,
-                 lr_schedule: Optional[List[List[Union[int, float]]]] = None,
-                 use_critic: Optional[bool] = None,
-                 use_gae: Optional[bool] = None,
-                 lambda_: Optional[float] = None,
-                 kl_coeff: Optional[float] = None,
-                 sgd_minibatch_size: Optional[int] = None,
-                 num_sgd_iter: Optional[int] = None,
-                 shuffle_sequences: Optional[bool] = None,
-                 vf_loss_coeff: Optional[float] = None,
-                 entropy_coeff: Optional[float] = None,
-                 entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
-                 clip_param: Optional[float] = None,
-                 vf_clip_param: Optional[float] = None,
-                 grad_clip: Optional[float] = None,
-                 kl_target: Optional[float] = None,
-                 **kwargs,
-                 ) -> "PPOConfig":
+    def training(
+        self,
+        *,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
+        use_critic: Optional[bool] = None,
+        use_gae: Optional[bool] = None,
+        lambda_: Optional[float] = None,
+        kl_coeff: Optional[float] = None,
+        sgd_minibatch_size: Optional[int] = None,
+        num_sgd_iter: Optional[int] = None,
+        shuffle_sequences: Optional[bool] = None,
+        vf_loss_coeff: Optional[float] = None,
+        entropy_coeff: Optional[float] = None,
+        entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = None,
+        clip_param: Optional[float] = None,
+        vf_clip_param: Optional[float] = None,
+        grad_clip: Optional[float] = None,
+        kl_target: Optional[float] = None,
+        **kwargs,
+    ) -> "PPOConfig":
         """Sets the training related configuration.
 
         Args:

@@ -95,7 +95,8 @@ class TestPPO(unittest.TestCase):
 
         # Build a PPOConfig object.
         config = (
-            ppo.PPOConfig().training(
+            ppo.PPOConfig()
+            .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing.
                 lr_schedule=[[0, 5e-5], [128, 0.0]],
