@@ -1,8 +1,10 @@
 from typing import Any, Callable, Optional, Dict, Union, Type
 
 from transformers.trainer import Trainer
+from torch.utils.data import Dataset
 
 from ray.train.torch import TorchConfig
+from ray.train.utils import construct_train_func
 from ray.ml.trainer import GenDataset
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.config import ScalingConfig, RunConfig
@@ -17,33 +19,30 @@ def _huggingface_train_loop_per_worker(config: Dict[str, Any]):
 
 
 @PublicAPI(stability="alpha")
-class HuggingFaceTorchTrainer(TorchTrainer):
+class HuggingFaceTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
 
     This Trainer runs the ``transformers.Trainer.train()`` method on multiple
     Ray Actors. The training is carried out in a distributed fashion through PyTorch
     DDP. These actors already have the necessary torch process group already
-    configured for distributed pytorch training.
+    configured for distributed PyTorch training.
 
-    The training function ran on every Actor will first initialize a
-    ``transformers.TrainingArguments`` object using the ``args`` dict,
-    and then use it alongside ``trainer_kwargs`` to initialize an
-    object with a ``trainer_class`` class (by default, this is
-    ``transformers.Trainer``) and run ``train()``, using the
-    provided datasets.
-
-    It is important to ensure that all contents of ``args`` and
-    ``trainer_kwargs`` are serializable by Ray. In case you have
-    arguments that are not serializable, you can specify a
-    ``pre_init_function`` taking in the ``args`` and
-    ``trainer_kwargs`` dicts to modify them in-place on every
-    Actor separately. This can be used to eg. obtain a Transformers
-    model from hub.
+    The training function ran on every Actor will first run the
+    specified ``trainer_init_per_worker`` function to obtain an instantiated
+    ``transformers.Trainer`` object. The ``trainer_init_per_worker`` function
+    will have access to preprocessed train and evaluation datsets.
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
     shards, with each Actor training on a single shard.
     All the other datasets will not be split.
+
+    Please note that if you use a custom ``transformers.Trainer`` subclass,
+    the ``get_train_dataloader`` method will be overriden to disable distributed
+    sampling, as the dataset will already be sharded.
+
+    Hugging Face loggers will be automatically disabled, and the ``local_rank``
+    argument in ``TrainingArguments`` will be automatically set.
 
     Example:
         .. code-block:: python
@@ -53,9 +52,10 @@ class HuggingFaceTorchTrainer(TorchTrainer):
             # Hugging Face imports
             from datasets import load_dataset
             from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+            from transformers import Trainer, TrainingArguments
 
             import ray
-            from ray.ml.train.integrations.huggingface import HuggingFaceTorchTrainer
+            from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
 
             model_checkpoint = "gpt2"
             tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
@@ -103,35 +103,38 @@ class HuggingFaceTorchTrainer(TorchTrainer):
                 lm_datasets["validation"]._data.table
             )
 
-            def pre_init_function(args, trainer_kwargs):
+            def trainer_init_per_worker(train_dataset, eval_dataset, **config):
                 model_config = AutoConfig.from_pretrained(model_checkpoint)
                 model = AutoModelForCausalLM.from_config(model_config)
-                trainer_kwargs["model"] = model
+                args = TrainingArguments(
+                    output_dir=f"{model_checkpoint}-wikitext2",
+                    evaluation_strategy="epoch",
+                    learning_rate=2e-5,
+                    weight_decay=0.01,
+                )
+                return Trainer(
+                    model=model,
+                    args=args,
+                    train_dataset=train_dataset,
+                    eval_dataset=eval_dataset,
+                )
 
             scaling_config = {"num_workers": 3}
             # If using GPUs, use the below scaling config instead.
             # scaling_config = {"num_workers": 3, "use_gpu": True}
-            trainer = HuggingFaceTorchTrainer(
-                args={
-                    "output_dir": f"{model_checkpoint}-wikitext2",
-                    "evaluation_strategy": "epoch",
-                    "learning_rate": 2e-5,
-                    "weight_decay": 0.01,
-                },
-                pre_init_function=pre_init_function,
+            trainer = HuggingFaceTrainer(
+                trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
                 datasets={"train": ray_train_ds, "validation": ray_validation_ds},
             )
             result = trainer.fit()
 
     Args:
-        trainer_class: A subclass of ``transformers.Trainer`` to use.
-            Defaults to ``transformers.Trainer``.
-        args: Keyword arguments passed to ``transformers.TrainingArguments``
-            during initialization on every Actor.
-        pre_init_function: A function taking in the ``args`` and ``trainer_kwargs``
-            dicts to modify them in-place on every Actor before ``trainer_class``
-            object is initialized.
+        trainer_init_per_worker: The function that returns an instantiated
+            ``transformers.Trainer`` object and takes in the following arguments:
+            train datset, optional evaluation datset, and config as kwargs.
+        trainer_init_config: Configurations to pass into
+            ``trainer_init_per_worker`` as kwargs.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
@@ -147,39 +150,27 @@ class HuggingFaceTorchTrainer(TorchTrainer):
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
-        **trainer_kwargs: Additional kwargs to pass to ``trainer_class``
-            object during initailization on every Actor.
     """
 
     def __init__(
         self,
-        trainer_class: Type[Trainer] = Trainer,
-        args: Optional[Dict[str, Any]] = None,
-        pre_init_function: Optional[
-            Callable[[Dict[str, Any], Dict[str, Any]], None]
-        ] = None,
+        trainer_init_per_worker: Callable[[Dataset, Optional[Dataset], Any], Trainer],
+        trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        **trainer_kwargs
     ):
-        # Will improve during implementation
-        assert "local_rank" not in args
-        assert "no_cuda" not in args
-        assert "train_dataset" not in trainer_kwargs
-        assert "eval_dataset" not in trainer_kwargs
 
-        self.trainer_class = trainer_class
-        self.args = args
-        self.trainer_kwargs = trainer_kwargs
-        self.pre_init_function = pre_init_function
+        self._validate_train_loop_per_worker(
+            trainer_init_per_worker, "trainer_init_per_worker"
+        )
 
         super().__init__(
-            None,
-            None,
+            self._create_train_func(trainer_init_per_worker),
+            trainer_init_config,
             torch_config,
             scaling_config,
             run_config,
@@ -188,30 +179,11 @@ class HuggingFaceTorchTrainer(TorchTrainer):
             resume_from_checkpoint,
         )
 
-    def _validate_train_loop_per_worker(self):
-        return
+    def _create_train_func(self, trainer_init_per_worker):
+        def train_loop_per_worker(config):
+            train_dataset = None
+            eval_dataset = None
+            trainer = trainer_init_per_worker(train_dataset, eval_dataset, **config)
+            trainer.train()
 
-    @property
-    def train_loop_per_worker(
-        self,
-    ) -> Union[Callable[[], None], Callable[[Dict], None]]:
-        return _huggingface_train_loop_per_worker
-
-    @train_loop_per_worker.setter
-    def train_loop_per_worker(
-        self, val: Union[Callable[[], None], Callable[[Dict], None]]
-    ):
-        pass
-
-    @property
-    def train_loop_config(self) -> Optional[Dict]:
-        return {
-            "trainer_class": self.trainer_class,
-            "args": self.args,
-            "trainer_kwargs": self.trainer_kwargs,
-            "pre_init_function": self.pre_init_function,
-        }
-
-    @train_loop_config.setter
-    def train_loop_config(self, val: Optional[Dict]):
-        pass
+        return train_loop_per_worker

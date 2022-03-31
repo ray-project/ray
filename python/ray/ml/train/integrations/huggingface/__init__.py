@@ -1,5 +1,5 @@
-from ray.ml.train.integrations.huggingface.huggingface_torch_trainer import (
-    HuggingFaceTorchTrainer,
+from ray.ml.train.integrations.huggingface.huggingface_trainer import (
+    HuggingFaceTrainer,
 )
 
-__all__ = ["HuggingFaceTorchTrainer"]
+__all__ = ["HuggingFaceTrainer"]
