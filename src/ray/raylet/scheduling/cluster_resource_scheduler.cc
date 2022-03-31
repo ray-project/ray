@@ -59,6 +59,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     std::function<bool(scheduling::NodeID)> is_node_available_fn) {
   RAY_CHECK(local_node_id.IsNil());
+  local_node_id_ = local_node_id;
+  // The GCS itself should have no resources for running tasks.
   NodeResources local_node_resources;
   is_node_available_fn_ = std::move(is_node_available_fn);
   cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
