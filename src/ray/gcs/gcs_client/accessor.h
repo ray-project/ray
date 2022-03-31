@@ -175,9 +175,7 @@ class ActorInfoAccessor {
   /// PubSub server restart will cause GCS server restart. In this case, we need to
   /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
   /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted);
+  virtual void AsyncResubscribe();
 
   /// Check if the specified actor is unsubscribed.
   ///
@@ -245,9 +243,7 @@ class JobInfoAccessor {
   /// PubSub server restart will cause GCS server restart. In this case, we need to
   /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
   /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted);
+  virtual void AsyncResubscribe();
 
   /// Increment and get next job id. This is not idempotent.
   ///
@@ -381,9 +377,7 @@ class NodeInfoAccessor {
   /// PubSub server restart will cause GCS server restart. In this case, we need to
   /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
   /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted);
+  virtual void AsyncResubscribe();
 
   /// Get the internal config string from GCS.
   ///
@@ -462,9 +456,7 @@ class NodeResourceInfoAccessor {
   /// PubSub server restart will cause GCS server restart. In this case, we need to
   /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
   /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted);
+  virtual void AsyncResubscribe();
 
   /// Report resource usage of a node to GCS asynchronously.
   ///
@@ -489,16 +481,6 @@ class NodeResourceInfoAccessor {
   /// \return Status
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
-
-  /// Subscribe batched state of all nodes from GCS.
-  ///
-  /// \param subscribe Callback that will be called each time when batch resource usage is
-  /// updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeBatchedResourceUsage(
-      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-      const StatusCallback &done);
 
   /// Fill resource fields with cached resources. Used by light resource usage report.
   virtual void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
@@ -638,9 +620,7 @@ class WorkerInfoAccessor {
   /// PubSub server restart will cause GCS server restart. In this case, we need to
   /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
   /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted);
+  virtual void AsyncResubscribe();
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when GCS
