@@ -24,7 +24,38 @@ from ray.util.collective.types import (
 )
 from ray.util.collective.const import get_store_name
 
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_utils import GcsClient
+
 logger = logging.getLogger(__name__)
+
+
+# TODO this should be moved to util.
+class RayInternalKvStore:
+    def __init__(self):
+        gcs_address = ray.worker._global_node.gcs_address
+        self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
+        internal_kv._initialize_internal_kv(self._gcs_client)
+
+    def set(self, key: str, data: bytes) -> bool:
+        ret = internal_kv._internal_kv_put(key, data)
+        return ret
+
+    def get(self, key: str) -> bytes:
+        ret = internal_kv._internal_kv_get(key)
+        return ret
+
+    def wait(self, keys: list):
+        while(True):
+            all_exist = True
+            for key in keys:
+                result = internal_kv._internal_kv_exists(key)
+                if not result:
+                    all_exist = False
+                    break
+            if all_exist:
+                return True
+            time.sleep(1)
 
 
 class Rendezvous:
@@ -43,10 +74,11 @@ class Rendezvous:
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
+        redis_address = ray.worker._global_node.redis_address
         (
             self._redis_ip_address,
             self._redis_port,
-        ) = ray.worker._global_node.redis_address.split(":")
+        ) = redis_address.split(":") if store_type == "redis" else (None, None)
         self._process_ip_address = ray.util.get_node_ip_address()
         logger.debug(
             "Redis address: {}, port: {}, this actor address: {}.".format(
@@ -61,7 +93,10 @@ class Rendezvous:
         self.create_device(device_type)
 
     def create_store(self, store_type):
-        if store_type == "redis":
+        if store_type == "ray_internal_kv":
+            ray_internal_kv_store = RayInternalKvStore()
+            self._store = pygloo.rendezvous.CustomStore(ray_internal_kv_store)
+        elif store_type == "redis":
             redisStore = pygloo.rendezvous.RedisStore(
                 self._redis_ip_address, int(self._redis_port)
             )
@@ -115,9 +150,10 @@ class Rendezvous:
         start_time = datetime.datetime.now()
         q, s = None, None
 
-        if self._store_type == "redis":
+        if self._store_type == "redis" or self._store_type == "ray_internal_kv":
             while elapsed < timeout_delta:
                 try:
+                    # I don't quite understand why we need gloo queue actor.
                     q = ray.get_actor("gloo_queue")
                     s = ray.get_actor(f"gloo_{self._group_name}_signal")
                     break
@@ -141,6 +177,7 @@ class Rendezvous:
                 ray.get(q.put_nowait.remote(self._group_name))
             while ray.get(q.index.remote(self._group_name)):
                 time.sleep(0.1)
+            
             self._context.connectFullMesh(self._store, self._device)
             ray.get(s.send.remote(self._context.rank))
             if self._context.rank == 0:
@@ -148,7 +185,8 @@ class Rendezvous:
                 keys = []
                 keys += [f"rank_{i}" for i in range(self._context.size)]
                 keys += [f"{i}" for i in range(self._context.size)]
-                self._store.delKeys(keys)
+                # TODO: delelte keys
+                # self._store.delKeys(keys)
                 group_name = ray.get(q.get_nowait.remote())
                 assert group_name == self._group_name
                 ray.kill(s)
@@ -176,7 +214,7 @@ class Rendezvous:
 
 class GLOOGroup(BaseGroup):
     def __init__(
-        self, world_size, rank, group_name, store_type="redis", device_type="tcp"
+        self, world_size, rank, group_name, store_type="ray_internal_kv", device_type="tcp"
     ):
         """Init an GLOO collective group.
 
