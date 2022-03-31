@@ -22,16 +22,14 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
-
-using ClusterResourceScheduler = gcs::GcsResourceScheduler;
 
 /// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a
 /// worker process.
@@ -155,7 +153,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// The resource changed listeners.
   std::vector<std::function<void()>> resource_changed_listeners_;
 
-  /// Gcs resource scheduler
+  /// Cluster resource scheduler
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
   /// Normal task resources changed callback.

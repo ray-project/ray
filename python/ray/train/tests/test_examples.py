@@ -105,6 +105,24 @@ def test_torch_linear(ray_start_2_cpus, num_workers):
         assert result[-1]["loss"] < result[0]["loss"]
 
 
+def test_torch_linear_failure(ray_start_2_cpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("torch", num_workers=num_workers)
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
+    trainer.start()
+    kill_callback = KillCallback(fail_on=1, trainer=trainer)
+    results = trainer.run(linear_train_func, config, callbacks=[kill_callback])
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+
+    for result in results:
+        assert len(result) == epochs
+        assert result[-1]["loss"] < result[0]["loss"]
+
+
 def test_torch_fashion_mnist(ray_start_2_cpus):
     num_workers = 2
     epochs = 3
