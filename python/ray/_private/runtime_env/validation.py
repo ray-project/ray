@@ -51,9 +51,10 @@ def parse_and_validate_ray_libraries(ray_libraries: List[str]) -> List[str]:
 
     This should be a list of URIs.
     """
-    if not isinstance(ray_libraries, list):
+    print(ray_libraries)
+    if not isinstance(ray_libraries, dict):
         raise TypeError(
-            "`ray_libraries` must be a list of strings, got " f"{type(ray_libraries)}."
+            "`ray_libraries` must be a dict from name to uri " f"{type(ray_libraries)}."
         )
 
     for uri in ray_libraries:

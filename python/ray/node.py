@@ -360,7 +360,7 @@ class Node:
                 "    Ray: " + version_info[0] + "\n"
                 "    Python: " + version_info[1] + "\n"
             )
-            if version_info[:2] != true_version_info[:2]:
+            if version_info[:1] != true_version_info[:1]:
                 raise RuntimeError(error_message)
             else:
                 logger.warning(error_message)

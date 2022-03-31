@@ -758,6 +758,7 @@ class Trainer(Trainable):
         # Trainer's `COMMON_CONFIG` (see above)). Will get merged with
         # COMMON_CONFIG in self.setup().
         config = config or {}
+        assert False, "Avnish and Archit were here :)"
 
         # Convert `env` provided in config into a string:
         # - If `env` is a string: `self._env_id` = `env`.
