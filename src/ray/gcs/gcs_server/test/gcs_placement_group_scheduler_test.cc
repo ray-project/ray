@@ -46,7 +46,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
-    ray_syncer_ = std::make_shared<ray::syncer::RaySyncer>(
+    ray_syncer_ = std::make_shared<ray::gcs_syncer::RaySyncer>(
         io_service_, nullptr, *gcs_resource_manager_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
@@ -275,7 +275,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
-  std::shared_ptr<ray::syncer::RaySyncer> ray_syncer_;
+  std::shared_ptr<ray::gcs_syncer::RaySyncer> ray_syncer_;
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadScheduleFailedWithZeroNode) {
