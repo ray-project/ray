@@ -327,12 +327,23 @@ void LocalTaskManager::SpillWaitingTasks() {
     // the most memory availability.
     scheduling::NodeID scheduling_node_id;
     if (task_dependencies_blocked) {
-      scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-          (*it)->task.GetTaskSpecification(),
-          /*prioritize_local_node*/ true,
-          /*exclude_local_node*/ true,
-          /*requires_object_store_memory*/ true,
-          &is_infeasible);
+      if ((*it)
+              ->task.GetTaskSpecification()
+              .GetMessage()
+              .scheduling_strategy()
+              .scheduling_strategy_case() ==
+          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
+        // Prefer honoring spread decision and waiting for task dependencies to be pulled
+        // locally than spilling back and causing uneven spread.
+        scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
+      } else {
+        scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
+            (*it)->task.GetTaskSpecification(),
+            /*prioritize_local_node*/ true,
+            /*exclude_local_node*/ true,
+            /*requires_object_store_memory*/ true,
+            &is_infeasible);
+      }
     } else {
       // If the pulling is active, we should avoid spillback.
       scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
