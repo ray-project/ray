@@ -595,7 +595,7 @@ def _unwrap_protocol(path):
     Slice off any protocol prefixes on path.
     """
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
-    query = parsed.query or ""  # support '?' in path
+    query = "?" + parsed.query if parsed.query else ""  # support '?' in path
     return parsed.netloc + parsed.path + query
 
 

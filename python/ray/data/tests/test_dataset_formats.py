@@ -1543,9 +1543,10 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     else:
         fs.delete_dir(_unwrap_protocol(path))
 
-    # Two directories, three files.
-    path1 = os.path.join(data_path, "test_csv_dir1")
-    path2 = os.path.join(data_path, "test_csv_dir2")
+    # Two directories, three files
+    # URL fragment, query, and trailing forward-slash chars in directory names.
+    path1 = os.path.join(data_path, "test_csv_dir1#fragment?query=0/")
+    path2 = os.path.join(data_path, "test_csv_dir2#fragment?query/")
     if fs is None:
         os.mkdir(path1)
         os.mkdir(path2)
@@ -1825,10 +1826,11 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     file_path = os.path.join(data_path, "data_000000.csv")
     assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
 
-    # Two blocks.
+    # Two blocks with URL fragment, query, and trailing forward-slash in write path.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.data.from_pandas([df1, df2])
     ds._set_uuid("data")
+    data_path += "#fragment?query=test/"
     ds.write_csv(data_path, filesystem=fs)
     file_path2 = os.path.join(data_path, "data_000001.csv")
     df = pd.concat([df1, df2])
