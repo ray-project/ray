@@ -193,6 +193,7 @@ class _deprecated_default_config(dict):
         super().__init__(
             with_common_config(
                 {
+                    # PPO specific keys:
                     "use_critic": True,
                     "use_gae": True,
                     "lambda": 1.0,
@@ -200,7 +201,6 @@ class _deprecated_default_config(dict):
                     "sgd_minibatch_size": 128,
                     "shuffle_sequences": True,
                     "num_sgd_iter": 30,
-                    "lr": 5e-5,
                     "lr_schedule": None,
                     "vf_loss_coeff": 1.0,
                     "entropy_coeff": 0.0,
@@ -209,6 +209,10 @@ class _deprecated_default_config(dict):
                     "vf_clip_param": 10.0,
                     "grad_clip": None,
                     "kl_target": 0.01,
+                    "rollout_fragment_length": 200,
+                    # TrainerConfig overrides:
+                    "train_batch_size": 4000,
+                    "lr": 5e-5,
                     "model": {
                         "vf_share_layers": False,
                     },
