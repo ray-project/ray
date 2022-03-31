@@ -107,6 +107,12 @@ DEFINE_stats(pull_manager_retries_total,
              (),
              (),
              ray::stats::GAUGE);
+DEFINE_stats(
+    pull_manager_num_object_pins,
+    "Number of object pin attempts by the pull manager, can be {Success, Failure}.",
+    ("Type"),
+    (),
+    ray::stats::GAUGE);
 DEFINE_stats(pull_manager_object_request_time_ms,
              "Time between initial object pull request and local pinning of the object. ",
              ("Type"),

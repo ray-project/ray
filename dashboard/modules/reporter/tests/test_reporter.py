@@ -205,6 +205,8 @@ def test_report_stats():
         },
         "bootTime": 1612934656.0,
         "loadAvg": ((4.4521484375, 3.61083984375, 3.5400390625), (0.56, 0.45, 0.44)),
+        "disk_io": (100, 100, 100, 100),
+        "disk_io_speed": (100, 100, 100, 100),
         "disk": {
             "/": Bunch(
                 total=250790436864, used=11316781056, free=22748921856, percent=33.2
@@ -228,21 +230,21 @@ def test_report_stats():
     }
 
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 16
+    assert len(records) == 24
     # Test stats without raylets
     test_stats["raylet"] = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 14
+    assert len(records) == 22
     # Test stats with gpus
     test_stats["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
     ]
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 18
+    assert len(records) == 26
     # Test stats without autoscaler report
     cluster_stats = {}
     records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
-    assert len(records) == 16
+    assert len(records) == 24
 
 
 if __name__ == "__main__":

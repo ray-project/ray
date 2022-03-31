@@ -189,7 +189,7 @@ class ReporterAgent(
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
-        self._disk_stats_hist = [
+        self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_agent = MetricsAgent(
@@ -313,7 +313,7 @@ class ReporterAgent(
         }
 
     @staticmethod
-    def _get_disk_io():
+    def _get_disk_io_stats():
         stats = psutil.disk_io_counters()
         return (
             stats.read_bytes,
@@ -403,9 +403,9 @@ class ReporterAgent(
         self._network_stats_hist.append((now, network_stats))
         network_speed_stats = self._compute_speed_from_hist(self._network_stats_hist)
 
-        disk_stats = self._get_disk_io()
-        self._disk_stats_hist.append((now, disk_stats))
-        disk_speed_stats = self._compute_speed_from_hist(self._disk_stats_hist)
+        disk_stats = self._get_disk_io_stats()
+        self._disk_io_stats_hist.append((now, disk_stats))
+        disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
         return {
             "now": now,

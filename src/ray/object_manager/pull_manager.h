@@ -392,6 +392,8 @@ class PullManager {
   ObjectID max_timeout_object_id_;
   int64_t num_tries_total_ = 0;
   int64_t num_retries_total_ = 0;
+  int64_t num_succeeded_pins_total_ = 0;
+  int64_t num_failed_pins_total_ = 0;
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;

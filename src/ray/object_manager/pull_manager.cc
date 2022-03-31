@@ -16,6 +16,7 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 
@@ -171,9 +172,8 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       if (needs_pull) {
         RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
-        auto it = object_pull_requests_.find(obj_id);
-        RAY_CHECK(it != object_pull_requests_.end());
-        it->second.activate_time_ms = absl::GetCurrentTimeNanos() / 1e3;
+        auto &request = map_find_or_die(object_pull_requests_, obj_id);
+        request.activate_time_ms = absl::GetCurrentTimeNanos() / 1e3;
 
         TryPinObject(obj_id);
         objects_to_pull->push_back(obj_id);
@@ -647,6 +647,7 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
   if (pinned_objects_.count(object_id) == 0) {
     auto ref = pin_object_(object_id);
     if (ref != nullptr) {
+      num_succeeded_pins_total_++;
       pinned_objects_size_ += ref->GetSize();
       pinned_objects_[object_id] = std::move(ref);
 
@@ -660,6 +661,8 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
             absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
             "MemoryAvailableToPin");
       }
+    } else {
+      num_failed_pins_total_++;
     }
   }
   return pinned_objects_.count(object_id) > 0;
@@ -795,6 +798,11 @@ void PullManager::RecordMetrics() const {
   ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
   ray::stats::STATS_pull_manager_retries_total.Record(num_retries_total_);
   ray::stats::STATS_pull_manager_retries_total.Record(num_tries_total_);
+
+  ray::stats::STATS_pull_manager_num_object_pins.Record(num_succeeded_pins_total_,
+                                                        "Success");
+  ray::stats::STATS_pull_manager_num_object_pins.Record(num_failed_pins_total_,
+                                                        "Failure");
 }
 
 std::string PullManager::DebugString() const {
