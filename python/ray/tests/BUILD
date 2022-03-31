@@ -251,7 +251,9 @@ py_test_module_list(
     "test_runtime_env_working_dir.py",
     "test_runtime_env_working_dir_2.py",
     "test_runtime_env_working_dir_3.py",
-    "test_runtime_env_working_dir_remote_uri.py"
+    "test_runtime_env_working_dir_remote_uri.py",
+    "test_runtime_env_working_dir_remote_uri_2.py",
+    "test_runtime_env_working_dir_remote_uri_3.py",
   ],
   size = "large",
   extra_srcs = SRCS,
