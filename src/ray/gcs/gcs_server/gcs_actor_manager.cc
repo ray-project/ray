@@ -1225,8 +1225,10 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
                                                 (int64_t)actor_table_data.timestamp());
     }
   }
-  RAY_CHECK_OK(
-      gcs_table_storage_->ActorTaskSpecTable().BatchDelete(dead_actors, nullptr));
+  if (!dead_actors.emtpy()) {
+    RAY_CHECK_OK(
+        gcs_table_storage_->ActorTaskSpecTable().BatchDelete(dead_actors, nullptr));
+  }
   sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
                                        const std::pair<ActorID, int64_t> &right) {
     return left.second < right.second;
