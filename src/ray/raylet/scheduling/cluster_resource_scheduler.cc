@@ -40,7 +40,7 @@ ClusterResourceScheduler::ClusterResourceScheduler()
   scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
-          cluster_resource_manager_,
+          *cluster_resource_manager_,
           /*is_node_available_fn*/
           [this](scheduling::NodeID node_id) { return !node_id.IsNil(); });
 }

@@ -151,33 +151,30 @@ TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskAndAvailableResources) {
 
   manager->UpdateNodeNormalTaskAndAvailableResources(node0, resources_data);
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
-  ASSERT_TRUE(
-      prev_available_cpu ==
-      node_resources.available.Get(ResourceID::CPU()) + 0.5);
+  ASSERT_TRUE(prev_available_cpu ==
+              node_resources.available.Get(ResourceID::CPU()) + 0.5);
 
   (*resources_data.mutable_resources_normal_task())["CPU"] = 0.8;
   resources_data.set_resources_normal_task_changed(false);
   resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
   manager->UpdateNodeNormalTaskAndAvailableResources(node0, resources_data);
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
-  ASSERT_TRUE(
-      prev_available_cpu == node_resources.available.Get(ResourceID::CPU()) + 0.5);
+  ASSERT_TRUE(prev_available_cpu ==
+              node_resources.available.Get(ResourceID::CPU()) + 0.5);
 
   resources_data.set_resources_normal_task_changed(true);
   resources_data.set_resources_normal_task_timestamp(0);
   manager->UpdateNodeNormalTaskAndAvailableResources(node0, resources_data);
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
-  ASSERT_TRUE(
-      prev_available_cpu ==
-      node_resources.available.Get(ResourceID::CPU()) + 0.5);
+  ASSERT_TRUE(prev_available_cpu ==
+              node_resources.available.Get(ResourceID::CPU()) + 0.5);
 
   resources_data.set_resources_normal_task_changed(true);
   resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
   manager->UpdateNodeNormalTaskAndAvailableResources(node0, resources_data);
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.8);
-  ASSERT_TRUE(
-      prev_available_cpu ==
-      node_resources.available.Get(ResourceID::CPU()) + 0.8);
+  ASSERT_TRUE(prev_available_cpu ==
+              node_resources.available.Get(ResourceID::CPU()) + 0.8);
 }
 
 }  // namespace ray
