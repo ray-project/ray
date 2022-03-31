@@ -1,28 +1,20 @@
+import io
 import tarfile
-import tempfile
 from typing import Optional
 
 from ray_release.file_manager.file_manager import FileManager
 
 
 def _pack(source_dir: str) -> bytes:
-    tmpfile = tempfile.mktemp()
-    with tarfile.open(tmpfile, "w:gz") as tar:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
         tar.add(source_dir, arcname="")
 
-    with open(tmpfile, "rb") as f:
-        stream = f.read()
-
-    return stream
+    return stream.getvalue()
 
 
 def _unpack(stream: bytes, target_dir: str):
-    tmpfile = tempfile.mktemp()
-
-    with open(tmpfile, "wb") as f:
-        f.write(stream)
-
-    with tarfile.open(tmpfile) as tar:
+    with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
         tar.extractall(target_dir)
 
 

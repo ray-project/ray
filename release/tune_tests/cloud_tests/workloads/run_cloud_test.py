@@ -29,6 +29,7 @@ More details on the expected results can be found in the scenario descriptions.
 
 import argparse
 import csv
+import io
 import tarfile
 from dataclasses import dataclass
 import json
@@ -407,22 +408,16 @@ def fetch_remote_directory_content(
     local_dir: str,
 ):
     def _pack(dir: str):
-        _, tmpfile = tempfile.mkstemp()
-        with tarfile.open(tmpfile, "w:gz") as tar:
+        stream = io.BytesIO()
+        with tarfile.open(
+            fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT
+        ) as tar:
             tar.add(dir, arcname="")
 
-        with open(tmpfile, "rb") as f:
-            stream = f.read()
-
-        return stream
+        return stream.getvalue()
 
     def _unpack(stream: str, dir: str):
-        _, tmpfile = tempfile.mkstemp()
-
-        with open(tmpfile, "wb") as f:
-            f.write(stream)
-
-        with tarfile.open(tmpfile) as tar:
+        with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
             tar.extractall(dir)
 
     try:
