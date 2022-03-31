@@ -22,6 +22,7 @@
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "mock/ray/pubsub/publisher.h"
 // clang-format on
 
 namespace ray {
@@ -99,7 +100,8 @@ class GcsActorManagerTest : public ::testing::Test {
       : mock_actor_scheduler_(new MockActorScheduler()),
         delayed_to_run_(nullptr),
         delay_(0),
-        skip_delay_(true) {
+        skip_delay_(true),
+        periodical_runner_(io_service_) {
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -111,8 +113,17 @@ class GcsActorManagerTest : public ::testing::Test {
     worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
     runtime_env_mgr_ =
         std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
-        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
+    std::vector<rpc::ChannelType> channels = {rpc::ChannelType::GCS_ACTOR_CHANNEL};
+    auto publisher = std::make_unique<ray::pubsub::Publisher>(
+        std::vector<rpc::ChannelType>{
+            rpc::ChannelType::GCS_ACTOR_CHANNEL,
+        },
+        /*periodic_runner=*/&periodical_runner_,
+        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
+        /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
+        /*batch_size=*/100);
+
+    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(std::move(publisher));
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
@@ -235,7 +246,6 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
-  std::shared_ptr<gcs::RedisClient> redis_client_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   std::function<void(void)> delayed_to_run_;
@@ -243,6 +253,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   bool skip_delay_;
+  PeriodicalRunner periodical_runner_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {

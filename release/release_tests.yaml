@@ -828,7 +828,7 @@
 
   run:
     timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --bucket s3://data-test-ilr/durable_upload
+    script: python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
 
     wait_for_nodes:
       num_nodes: 4
@@ -860,7 +860,7 @@
     timeout: 600
 
     script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-      --bucket s3://data-test-ilr/durable_upload_rllib_str
+      --bucket s3://tune-cloud-tests/durable_upload_rllib_str
 
     wait_for_nodes:
       num_nodes: 4
@@ -891,7 +891,7 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
-      --bucket s3://data-test-ilr/durable_upload_rllib_trainer
+      --bucket s3://tune-cloud-tests/durable_upload_rllib_trainer
 
     wait_for_nodes:
       num_nodes: 4
@@ -925,6 +925,10 @@
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
     type: client
 
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 1200
+
   alert: tune_tests
 
 - name: tune_cloud_gcp_k8s_ssh_sync
@@ -950,6 +954,10 @@
     script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
     type: client
 
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 1200
+
   alert: tune_tests
 
 - name: tune_cloud_gcp_k8s_durable_upload
@@ -972,8 +980,12 @@
 
   run:
     timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://jun-riot-test/durable_upload
+    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
     type: client
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 1200
 
   alert: tune_tests
 
@@ -1022,7 +1034,7 @@
 
   run:
     timeout: 900
-    script: python workloads/test_durable_trainable.py --bucket data-test-ilr
+    script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
     wait_for_nodes:
       num_nodes: 16
       timeout: 600
@@ -1091,7 +1103,7 @@
     frequency: nightly
 
     cluster:
-      compute_template: tpl_20x2.yaml
+      cluster_compute: tpl_20x2.yaml
 
     run:
       timeout: 400
@@ -1283,7 +1295,7 @@
     script: python workloads/actor_deaths.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1372,7 +1384,7 @@
     script: python workloads/many_actor_tasks.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1401,7 +1413,7 @@
     script: python workloads/many_drivers.py --iteration-num=4000
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1462,7 +1474,7 @@
     script: python workloads/many_tasks.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1491,7 +1503,7 @@
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1520,7 +1532,7 @@
     script: python workloads/node_failures.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1937,6 +1949,34 @@
   alert: default
 
 ########################
+# Train tests
+########################
+
+- name: train_horovod_multi_node_test
+  group: Train tests
+  working_dir: train_tests/horovod
+
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 3000
+    script: python train_horovod_multi_node_test.py
+
+    wait_for_nodes:
+      num_nodes: 2
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+########################
 # RLLib tests
 ########################
 
@@ -2094,7 +2134,7 @@
   run:
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=200e6
-    
+
     type: sdk_command
     file_manager: sdk
 
@@ -2489,7 +2529,7 @@
     frequency: multi
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
-      compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
 
     run:
       timeout: 7200
@@ -2529,7 +2569,7 @@
     frequency: multi
     cluster:
       app_config: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
-      compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
 
     run:
       timeout: 7200
@@ -2563,7 +2603,7 @@
     frequency: multi
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
-      compute_template: stress_tests/smoke_test_compute.yaml
+      cluster_compute: stress_tests/smoke_test_compute.yaml
 
     run:
       timeout: 3600
@@ -2592,7 +2632,7 @@
     frequency: multi
     cluster:
       app_config: stress_tests/stress_tests_app_config.yaml
-      compute_template: stress_tests/smoke_test_compute.yaml
+      cluster_compute: stress_tests/smoke_test_compute.yaml
 
     run:
       timeout: 3600
@@ -2652,7 +2692,7 @@
 #     frequency: nightly
 #     cluster:
 #       app_config: stress_tests/stress_tests_app_config.yaml
-#       compute_template: stress_tests/smoke_test_compute.yaml
+#       cluster_compute: stress_tests/smoke_test_compute.yaml
 #
 #     run:
 #       timeout: 3600
@@ -2909,28 +2949,18 @@
     type: sdk_command
     file_manager: sdk
 
-- name: many_tasks_smoke_test
-  group: core-scalability-test
-  working_dir: benchmarks
-  legacy:
-    test_name: many_tasks_smoke_test
-    test_suite: benchmark_tests
+  smoke_test:
+    frequency: multi
+    cluster:
+      cluster_env: app_config.yaml
+      cluster_compute: distributed_smoke_test.yaml
+    run:
+      timeout: 3600
+      script: python distributed/test_many_tasks.py --num-tasks=100
+      wait_for_nodes:
+        num_nodes: 2
+        timeout: 600
 
-  frequency: multi
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: distributed_smoke_test.yaml
-
-  run:
-    timeout: 3600
-    script: python distributed/test_many_tasks.py --num-tasks=100
-    wait_for_nodes:
-      num_nodes: 2
-      timeout: 600
-
-    type: sdk_command
-    file_manager: sdk
 
 - name: many_pgs
   group: core-scalability-test
@@ -3270,7 +3300,7 @@
     frequency: multi
     cluster:
       app_config: ray_sgd_training_app.yaml
-      compute_template: ray_sgd_training_smoke_compute.yaml
+      cluster_compute: ray_sgd_training_smoke_compute.yaml
 
     run:
       timeout: 3600
@@ -3526,31 +3556,21 @@
 
     type: job
     file_manager: job
-  stable: false
 
-- name: k8s_many_tasks_smoke_test
-  group: core-scalability-test
-  working_dir: benchmarks
-  legacy:
-    test_name: many_tasks_smoke_test
-    test_suite: benchmark_tests
+  smoke_test:
+    frequency: multi
+    cluster:
+      cluster_env: app_config.yaml
+      cluster_compute: distributed_smoke_test.yaml
+    run:
+      timeout: 3600
+      script: python distributed/test_many_tasks.py --num-tasks=100
+      wait_for_nodes:
+        num_nodes: 2
+        timeout: 600
 
-  frequency: multi
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: distributed_smoke_test.yaml
-    cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
-
-  run:
-    timeout: 3600
-    script: python distributed/test_many_tasks.py --num-tasks=100
-    wait_for_nodes:
-      num_nodes: 2
-      timeout: 600
-
-    type: job
-    file_manager: job
+      type: job
+      file_manager: job
   stable: false
 
 - name: k8s_many_pgs
@@ -3792,7 +3812,7 @@
   team: core
   cluster:
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
+    cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
 
   run:
     timeout: 7200

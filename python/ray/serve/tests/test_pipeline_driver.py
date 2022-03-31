@@ -24,9 +24,12 @@ def test_loading_check():
             return a
 
         load_input_schema(func)
-    assert (
-        load_input_schema("ray.serve.tests.test_pipeline_driver.my_resolver")
-        == my_resolver
+
+    loaded_my_resolver = load_input_schema(
+        "ray.serve.tests.test_pipeline_driver.my_resolver"
+    )
+    assert (loaded_my_resolver == my_resolver) or (
+        loaded_my_resolver.__code__.co_code == my_resolver.__code__.co_code
     )
 
 

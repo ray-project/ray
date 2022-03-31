@@ -92,14 +92,14 @@ class JobSubmissionClient(SubmissionClient):
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
-            >>> client.submit_job(
-            >>>     entrypoint="python script.py",
-            >>>     runtime_env={
-            >>>         "working_dir": "./",
-            >>>         "pip": ["requests==2.26.0"]
-            >>>     }
-            >>> )
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> client.submit_job( # doctest: +SKIP
+            ...     entrypoint="python script.py",
+            ...     runtime_env={
+            ...         "working_dir": "./",
+            ...         "pip": ["requests==2.26.0"]
+            ...     }
+            ... )  # doctest: +SKIP
             'raysubmit_4LamXRuQpYdSMg7J'
 
         Args:
@@ -150,9 +150,9 @@ class JobSubmissionClient(SubmissionClient):
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
-            >>> job_id = client.submit_job(entrypoint="sleep 10")
-            >>> client.stop_job(job_id)
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> job_id = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
+            >>> client.stop_job(job_id) # doctest: +SKIP
             True
 
         Args:
@@ -182,9 +182,9 @@ class JobSubmissionClient(SubmissionClient):
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
-            >>> job_id = client.submit_job(entrypoint="sleep 1")
-            >>> job_submission_client.get_job_info(job_id)
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> job_id = client.submit_job(entrypoint="sleep 1") # doctest: +SKIP
+            >>> job_submission_client.get_job_info(job_id) # doctest: +SKIP
             JobInfo(status='SUCCEEDED', message='Job finished successfully.',
             error_type=None, start_time=1647388711, end_time=1647388712,
             metadata={}, runtime_env={})
@@ -215,10 +215,10 @@ class JobSubmissionClient(SubmissionClient):
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
-            >>> client.submit_job(entrypoint="echo hello")
-            >>> client.submit_job(entrypoint="sleep 2")
-            >>> job_submission_client.list_jobs()
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.submit_job(entrypoint="sleep 2") # doctest: +SKIP
+            >>> client.list_jobs() # doctest: +SKIP
             {'raysubmit_4LamXRuQpYdSMg7J': JobInfo(status='SUCCEEDED',
             message='Job finished successfully.', error_type=None,
             start_time=1647388711, end_time=1647388712, metadata={}, runtime_env={}),
@@ -250,9 +250,9 @@ class JobSubmissionClient(SubmissionClient):
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
-            >>> client.submit_job(entrypoint="echo hello")
-            >>> client.get_job_info("raysubmit_4LamXRuQpYdSMg7J")
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.get_job_info("raysubmit_4LamXRuQpYdSMg7J") # doctest: +SKIP
             'SUCCEEDED'
 
         Args:
@@ -273,9 +273,9 @@ class JobSubmissionClient(SubmissionClient):
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
-            >>> job_id = client.submit_job(entrypoint="echo hello")
-            >>> job_submission_client.get_job_logs(job_id)
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> job_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.get_job_logs(job_id) # doctest: +SKIP
             'hello\\n'
 
         Args:
@@ -301,10 +301,12 @@ class JobSubmissionClient(SubmissionClient):
 
         Example:
             >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265")
-            >>> job_id = client.submit_job(entrypoint="echo hi && sleep 5 && echo hi2")
-            >>> async for lines in client.tail_job_logs('raysubmit_Xe7cvjyGJCyuCvm2'):
-            >>>     print(lines, end="")
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> job_id = client.submit_job( # doctest: +SKIP
+            ...     entrypoint="echo hi && sleep 5 && echo hi2")
+            >>> async for lines in client.tail_job_logs( # doctest: +SKIP
+            ...           'raysubmit_Xe7cvjyGJCyuCvm2'):
+            ...     print(lines, end="") # doctest: +SKIP
             hi
             hi2
 
