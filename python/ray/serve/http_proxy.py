@@ -23,9 +23,9 @@ from ray.serve.http_util import (
     Response,
 )
 from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.long_poll import LongPollNamespace
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.logging_utils import access_log, get_component_logger
-from ray.serve.long_poll import LongPollClient
+from ray.serve.utils import node_id_to_ip_addr
 
 default_logger = logging.getLogger(__file__)
 
@@ -344,7 +344,9 @@ class HTTPProxyActor:
         node_id: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
-        logger = get_component_logger(component="http_proxy", component_id=node_id)
+        logger = get_component_logger(
+            component="http_proxy", component_id=node_id_to_ip_addr(node_id)
+        )
 
         if http_middlewares is None:
             http_middlewares = []

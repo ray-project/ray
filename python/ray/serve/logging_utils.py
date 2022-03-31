@@ -1,9 +1,7 @@
 import logging
 from typing import Optional
 
-COMPONENT_LOG_FMT = (
-    "%(levelname)s %(asctime)s %(component)s %(component_id)s - %(message)s"
-)
+COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component} {component_id} - %(message)s"
 
 
 def access_log(*, method: str, route: str, status: str, latency_ms: float):
@@ -29,7 +27,9 @@ def get_component_logger(
     logger = logging.getLogger("ray.serve")
     logger.propagate = False
     logger.setLevel(log_level)
-    formatter = logging.Formatter(COMPONENT_LOG_FMT)
+    formatter = logging.Formatter(
+        COMPONENT_LOG_FMT.format(component=component, component_id=component_id)
+    )
     if log_to_stream:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)

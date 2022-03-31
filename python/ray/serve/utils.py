@@ -156,6 +156,17 @@ def get_all_node_ids():
     return node_ids
 
 
+def node_id_to_ip_addr(node_id: str):
+    """Recovers the IP address for an entry from get_all_node_ids."""
+    if ":" in node_id:
+        node_id = node_id.split(":")[1]
+
+    if "-" in node_id:
+        node_id = node_id.split("-")[0]
+
+    return node_id
+
+
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
