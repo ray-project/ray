@@ -209,6 +209,9 @@ class _deprecated_default_config(dict):
                     "vf_clip_param": 10.0,
                     "grad_clip": None,
                     "kl_target": 0.01,
+                    "model": {
+                        "vf_share_layers": False,
+                    },
                 }
             )
         )
