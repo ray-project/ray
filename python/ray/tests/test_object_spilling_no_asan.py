@@ -38,7 +38,7 @@ def test_spill_fusion(fs_only_object_spilling_config, shutdown_only):
     under_min, over_min = 0, 0
     for filename in os.listdir(spill_dir):
         size = os.stat(os.path.join(spill_dir, filename)).st_size
-        if size < min_spilling_size:
+        if size < 2 * object_size // 8:
             under_min += 1
         else:
             over_min += 1
