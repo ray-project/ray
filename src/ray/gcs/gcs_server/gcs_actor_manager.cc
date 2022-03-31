@@ -1219,8 +1219,8 @@ void GcsActorManager::SetSchedulePendingActorsPosted(bool posted) {
 }
 
 size_t GcsActorManager::GetPendingActorsCount() const {
-  size_t count = 0;
   if (pending_actors_.empty()) {
+    size_t count = 0;
     for (auto shapes_it = infeasible_actors_.begin();
          shapes_it != infeasible_actors_.end();
          shapes_it++) {
