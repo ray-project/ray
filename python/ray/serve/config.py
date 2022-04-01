@@ -272,7 +272,8 @@ class ReplicaConfig:
         object_store_memory = self.ray_actor_options.get("object_store_memory")
         if not isinstance(object_store_memory, (int, float, type(None))):
             raise TypeError(
-                "object_store_memory in ray_actor_options must be an int, float or None."
+                "object_store_memory in ray_actor_options must be an int, float "
+                "or None."
             )
         elif object_store_memory is not None and object_store_memory < 0:
             raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
