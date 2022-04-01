@@ -482,13 +482,6 @@ def build_eager_tf_policy(
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
             )
 
-            # TEST:
-            # input_dict.set_get_interceptor(None)
-            # for k in input_dict.keys():
-            #    input_dict[k] = _convert_to_tf(input_dict[k])
-            # input_dict = _convert_to_tf(input_dict)
-            # END: TEST
-
             ret = self._compute_actions_helper(
                 input_dict,
                 state_batches,
@@ -705,6 +698,7 @@ def build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = super().get_state()
+            state["global_timestep"] = state["global_timestep"].numpy()
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
@@ -714,6 +708,7 @@ def build_eager_tf_policy(
         @override(Policy)
         def set_state(self, state):
             state = state.copy()  # shallow copy
+            state["global_timestep"] = self.global_timestep.numpy()
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():
@@ -730,6 +725,11 @@ def build_eager_tf_policy(
                 self.exploration.set_state(state=state["_exploration_state"])
             # Then the Policy's (NN) weights.
             super().set_state(state)
+
+        @override(Policy)
+        def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
+            # Make sure, we keep global_timestep as a Tensor.
+            self.global_timestep.assign(global_vars["timestep"])
 
         @override(Policy)
         def export_checkpoint(self, export_dir):
