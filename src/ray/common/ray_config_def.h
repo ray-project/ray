@@ -330,6 +330,9 @@ RAY_CONFIG(int32_t, gcs_rpc_server_reconnect_timeout_s, 60)
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
+/// Feature flag to use the ray syncer for resource synchronization
+RAY_CONFIG(bool, use_ray_syncer, false)
+
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)

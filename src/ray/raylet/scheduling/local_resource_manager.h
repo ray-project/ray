@@ -23,6 +23,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
@@ -37,7 +38,7 @@ namespace ray {
 /// it also supports creating a new resource or delete an existing resource.
 /// Whenever the resouce changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
-class LocalResourceManager {
+class LocalResourceManager : public syncer::ReporterInterface {
  public:
   LocalResourceManager(
       scheduling::NodeID local_node_id,
@@ -145,6 +146,7 @@ class LocalResourceManager {
   /// \return true, if exist. otherwise, false.
   bool ResourcesExist(scheduling::ResourceID resource_id) const;
 
+  std::optional<syncer::RaySyncMessage> Snapshot(int64_t version_after, syncer::RayComponentId component_id) const override;
  private:
   /// Notify the subscriber that the local resouces has changed.
   void OnResourceChanged();
@@ -237,7 +239,7 @@ class LocalResourceManager {
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
+  mutable std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.
@@ -250,6 +252,9 @@ class LocalResourceManager {
 
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
+
+  // Version of this resource. It will incr by one whenever when the state changed.
+  int64_t version_ = 0;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

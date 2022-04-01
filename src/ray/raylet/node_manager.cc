@@ -325,7 +325,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
-      next_resource_seq_no_(0) {
+      next_resource_seq_no_(0),
+      ray_syncer_(io_service_, self_node_id_.Binary()),
+      ray_syncer_service_(ray_syncer_) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   SchedulingResources local_resources(config.resource_config);
@@ -401,6 +403,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
   node_manager_server_.RegisterService(agent_manager_service_);
+  node_manager_server_.RegisterService(ray_syncer_service_);
   node_manager_server_.Run();
 
   worker_pool_.SetNodeManagerPort(GetServerPort());
@@ -606,7 +609,7 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
 
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
-  resources_data.set_node_manager_address(initial_config_.node_manager_address);
+  // resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->GetLocalResourceManager().ResetLastReportResourceUsage(
