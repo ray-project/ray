@@ -1225,7 +1225,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
                                                 (int64_t)actor_table_data.timestamp());
     }
   }
-  if (!dead_actors.emtpy()) {
+  if (!dead_actors.empty()) {
     RAY_CHECK_OK(
         gcs_table_storage_->ActorTaskSpecTable().BatchDelete(dead_actors, nullptr));
   }
