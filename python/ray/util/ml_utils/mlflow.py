@@ -195,6 +195,7 @@ class MLflowLoggerUtil:
         from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 
         client = self._get_client()
+        tags = tags or {}
         tags[MLFLOW_RUN_NAME] = run_name
         run = client.create_run(experiment_id=self.experiment_id, tags=tags)
 
