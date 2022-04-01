@@ -233,6 +233,31 @@ NOOP = FunctionBasedClient(noop, noop)
 
 
 class CommandBasedClient(SyncClient):
+    """Syncs between two directories with the given command.
+
+    If a sync is already in-flight when calling ``sync_down`` or
+    ``sync_up``, a warning will be printed and the new sync command is
+    ignored. To force a new sync, either use ``wait()``
+    (or ``wait_or_retry()``) to wait until the previous sync has finished,
+    or call ``reset()`` to detach from the previous sync. Note that this
+    will not kill the previous sync command, so it may still be executed.
+
+    Arguments:
+        sync_up_template: A runnable string template; needs to
+            include replacement fields ``{source}``, ``{target}``, and
+            ``{options}``.
+        sync_down_template: A runnable string template; needs to
+            include replacement fields ``{source}``, ``{target}``, and
+            ``{options}``.
+        delete_template: A runnable string template; needs
+            to include replacement field ``{target}``. Noop by default.
+        exclude_template: A pattern with possible
+            replacement fields ``{pattern}`` and ``{regex_pattern}``.
+            Will replace ``{options}}`` in the sync up/down templates
+            if files/directories to exclude are passed.
+
+    """
+
     def __init__(
         self,
         sync_up_template: str,
@@ -240,22 +265,6 @@ class CommandBasedClient(SyncClient):
         delete_template: Optional[str] = noop_template,
         exclude_template: Optional[str] = None,
     ):
-        """Syncs between two directories with the given command.
-
-        Arguments:
-            sync_up_template: A runnable string template; needs to
-                include replacement fields ``{source}``, ``{target}``, and
-                ``{options}``.
-            sync_down_template: A runnable string template; needs to
-                include replacement fields ``{source}``, ``{target}``, and
-                ``{options}``.
-            delete_template: A runnable string template; needs
-                to include replacement field ``{target}``. Noop by default.
-            exclude_template: A pattern with possible
-                replacement fields ``{pattern}`` and ``{regex_pattern}``.
-                Will replace ``{options}}`` in the sync up/down templates
-                if files/directories to exclude are passed.
-        """
         self._validate_sync_string(sync_up_template)
         self._validate_sync_string(sync_down_template)
         self._validate_exclude_template(exclude_template)
@@ -332,7 +341,7 @@ class CommandBasedClient(SyncClient):
 
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
-        for i in range(max_retries - 1):
+        for _ in range(max_retries - 1):
             try:
                 self.wait()
             except TuneError as e:
@@ -504,6 +513,13 @@ class RemoteTaskClient(SyncClient):
     differ to those in the target directory by size or mtime will be
     transferred. This is similar to the implementations of most cloud
     synchronization implementations (e.g. aws s3 sync).
+
+    If a sync is already in-flight when calling ``sync_down`` or
+    ``sync_up``, a warning will be printed and the new sync command is
+    ignored. To force a new sync, either use ``wait()``
+    (or ``wait_or_retry()``) to wait until the previous sync has finished,
+    or call ``reset()`` to detach from the previous sync. Note that this
+    will not kill the previous sync command, so it may still be executed.
     """
 
     def __init__(self, store_pack_future: bool = False):
@@ -616,7 +632,7 @@ class RemoteTaskClient(SyncClient):
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
 
-        for i in range(max_retries - 1):
+        for _ in range(max_retries - 1):
             try:
                 self.wait()
             except TuneError as e:
