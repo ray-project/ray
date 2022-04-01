@@ -511,7 +511,7 @@ class RemoteTaskClient(SyncClient):
     files with their respective mtimes and sizes on the (possibly remote)
     target directory. Only files that are not in the target directory or
     differ to those in the target directory by size or mtime will be
-    transferred. This is similar to the implementations of most cloud
+    transferred. This is similar to most cloud
     synchronization implementations (e.g. aws s3 sync).
 
     If a sync is already in-flight when calling ``sync_down`` or
@@ -540,8 +540,8 @@ class RemoteTaskClient(SyncClient):
         ready, not_ready = ray.wait([self._sync_future], timeout=0.0)
         if self._sync_future in ready:
             self.wait()
-            return True
-        return False
+            return False
+        return True
 
     def sync_down(
         self, source: Tuple[str, str], target: str, exclude: Optional[List] = None
