@@ -139,8 +139,9 @@ class SampleBatch(dict):
             # all values are nested dicts/tuples of more complex underlying
             # structures.
             try:
-                len_ = len(v)
-                lengths.append(len_)
+                len_ = len(v) if not isinstance(v, (dict, tuple)) else None
+                if len_:
+                    lengths.append(len_)
             except Exception:
                 pass
 
