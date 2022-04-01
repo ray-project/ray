@@ -390,7 +390,7 @@ class ServeController:
             name(str): the name of the deployment.
 
         Returns:
-            DeploymentRoute's protobuf
+            DeploymentRoute's protobuf serialized bytes
 
         Raises:
             KeyError if the deployment doesn't exist.
@@ -443,7 +443,7 @@ class ServeController:
                 deployments that have been deleted.
 
         Returns:
-            DeploymentRoute's protobuf
+            DeploymentRouteList's protobuf serialized bytes
         """
         from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentRoute
 
@@ -462,6 +462,11 @@ class ServeController:
         return deployment_route_list.SerializeToString()
 
     def get_deployment_statuses(self) -> bytes:
+        """Gets the current status information about all deployments.
+
+        Returns:
+            DeploymentStatusInfoList's protobuf serialized bytes
+        """
         from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
 
         deployment_status_info_list = DeploymentStatusInfoList()
