@@ -241,7 +241,7 @@ def run_release_test(
                 # Only raise error if command is not long running
                 raise TestCommandTimeout(e)
 
-        buildkite_group(":spiral_note_pad: Fetching results")
+        buildkite_group(":floppy_disk: Fetching results")
         try:
             command_results = command_runner.fetch_results()
         except Exception as e:
