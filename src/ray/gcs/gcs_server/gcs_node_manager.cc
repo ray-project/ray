@@ -196,6 +196,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     removed_node = std::move(iter->second);
+    RAY_LOG(INFO) << "Removing node, node id = " << node_id
+                  << ", node name = " << removed_node->node_name();
     // Record stats that there's a new removed node.
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
@@ -227,8 +229,6 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       listener(removed_node);
     }
   }
-  // RAY_LOG(INFO) << "Removing node, node id = " << node_id
-  //               << ", node name = " << removed_node->node_name();
   return removed_node;
 }
 
