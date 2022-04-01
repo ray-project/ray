@@ -397,12 +397,13 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
   return local_resources_.total.Has(resource_id);
 }
 
-std::optional<syncer::RaySyncMessage> LocalResourceManager::Snapshot(int64_t version_after, syncer::RayComponentId component_id) const {
+std::optional<syncer::RaySyncMessage> LocalResourceManager::Snapshot(
+    int64_t version_after, syncer::RayComponentId component_id) const {
   if (version_ <= version_after) {
     return std::nullopt;
   }
 
-  const_cast<LocalResourceManager*>(this)->UpdateAvailableObjectStoreMemResource();
+  const_cast<LocalResourceManager *>(this)->UpdateAvailableObjectStoreMemResource();
 
   rpc::ResourcesData resources_data;
   NodeResources resources = ToNodeResources(local_resources_);

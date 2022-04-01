@@ -22,8 +22,8 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
@@ -146,7 +146,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \return true, if exist. otherwise, false.
   bool ResourcesExist(scheduling::ResourceID resource_id) const;
 
-  std::optional<syncer::RaySyncMessage> Snapshot(int64_t version_after, syncer::RayComponentId component_id) const override;
+  std::optional<syncer::RaySyncMessage> Snapshot(
+      int64_t version_after, syncer::RayComponentId component_id) const override;
+
  private:
   /// Notify the subscriber that the local resouces has changed.
   void OnResourceChanged();
