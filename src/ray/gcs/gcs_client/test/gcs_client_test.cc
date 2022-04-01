@@ -100,6 +100,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     client_io_service_->stop();
     client_io_service_thread_->join();
     gcs_client_->Disconnect();
+    gcs_client_.reset();
 
     server_io_service_->stop();
     server_io_service_thread_->join();
