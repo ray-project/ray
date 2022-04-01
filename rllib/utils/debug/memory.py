@@ -1,5 +1,6 @@
 from collections import defaultdict, namedtuple
 import numpy as np
+import os
 import re
 import scipy
 import tracemalloc
@@ -313,13 +314,14 @@ def _find_memory_leaks_in_table(table):
         # Ignore this very module here (we are collecting lots of data
         # so an increase is expected).
         top_stack = str(traceback[-1])
+        drive_separator = "\\\\" if os.name == "nt" else "/"
         if any(
             s in top_stack
             for s in [
                 "tracemalloc",
                 "pycharm",
                 "thirdparty_files/psutil",
-                re.sub("\\.", "/", __name__) + ".py",
+                re.sub("\\.", drive_separator, __name__) + ".py",
             ]
         ):
             continue
