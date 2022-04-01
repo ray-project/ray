@@ -141,16 +141,32 @@ def test_dereference_dags(workflow_start_regular_shared):
     """Ensure that DAGs are dereferenced like ObjectRefs in ray tasks."""
 
     @ray.remote
-    def g(x, y):
+    def g(x, y, z, w):
         assert x == 314
         assert isinstance(y[0], ray.ObjectRef)
         assert ray.get(y) == [2022]
+        assert isinstance(z, ray.ObjectRef)
+        assert ray.get(z) == 271828
+        assert w == 46692
 
     @ray.remote
     def h(x):
         return x
 
-    dag = g.bind(x=h.bind(314), y=[h.bind(2022)])
+    @ray.remote
+    def nested(x):
+        return h.bind(x).execute()
+
+    @ray.remote
+    def nested_continuation(x):
+        return workflow.continuation(h.bind(x))
+
+    dag = g.bind(
+        x=h.bind(314),
+        y=[h.bind(2022)],
+        z=nested.bind(271828),
+        w=nested_continuation.bind(46692),
+    )
 
     # Run with workflow and normal Ray engine.
     workflow.create(dag).run()
