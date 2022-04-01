@@ -1,6 +1,4 @@
 from typing import Any, Union, Generic, Tuple, List, Callable
-import numpy as np
-import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.dataset import BatchType
@@ -8,10 +6,7 @@ from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.plan import AllToAllStage
-from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import CallableClass, ComputeStrategy
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import ShuffleOp
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
 
@@ -22,7 +17,9 @@ class GroupbyOp(ShuffleOp):
         idx: int,
         block: Block,
         output_num_blocks: int,
-        boundaries: List[KeyType], key: KeyFn, aggs: Tuple[AggregateFn]
+        boundaries: List[KeyType],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         """Partition the block and combine rows with the same key."""
         stats = BlockExecStats.builder()
@@ -122,13 +119,13 @@ class GroupedDataset(Generic[T]):
                     num_reducers,
                 )
             shuffle_op = GroupbyOp(
-                    map_args=[boundaries, self._key, aggs],
-                    reduce_args=[self._key, aggs])
+                map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
+            )
             return shuffle_op.execute(
-                    blocks,
-                    num_reducers,
-                    clear_input_blocks,
-                    )
+                blocks,
+                num_reducers,
+                clear_input_blocks,
+            )
 
         plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
         return Dataset(
