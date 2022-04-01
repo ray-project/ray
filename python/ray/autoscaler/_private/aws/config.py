@@ -546,7 +546,11 @@ def _configure_subnet(config):
         node_config = node_type["node_config"]
         contains_user_subnet_ids = "SubnetIds" in node_config
 
-        user_specified_subnets = _get_subnets_or_die(ec2, tuple(node_config.get("SubnetIds"))) if contains_user_subnet_ids else None
+        user_specified_subnets = (
+            _get_subnets_or_die(ec2, tuple(node_config.get("SubnetIds")))
+            if contains_user_subnet_ids
+            else None
+        )
         subnet_ids = _usable_subnet_ids(
             user_specified_subnets,
             all_subnets,
