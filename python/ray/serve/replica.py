@@ -17,7 +17,6 @@ from ray.remote_function import RemoteFunction
 from ray.util import metrics
 from ray._private.async_compat import sync_to_async
 
-from ray.serve.api import Deployment
 from ray.serve.autoscaling_metrics import start_metrics_pusher
 from ray.serve.common import ReplicaTag
 from ray.serve.config import DeploymentConfig
@@ -27,6 +26,7 @@ from ray.serve.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
 )
+from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.logging_utils import access_log_msg, configure_component_logger

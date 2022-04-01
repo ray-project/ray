@@ -21,12 +21,12 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.api import (
-    Application,
+from ray.serve.api import build as build_app
+from ray.serve.api import Application
+from ray.serve.deployment_graph import (
     DeploymentFunctionNode,
     DeploymentNode,
 )
-from ray.serve.api import build as build_app
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
