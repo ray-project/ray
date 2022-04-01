@@ -205,6 +205,7 @@ def run_release_test(
 
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
         if wait_for_nodes:
+            buildkite_group(":stopwatch: Waiting for nodes to come up")
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             wait_timeout = test["run"]["wait_for_nodes"]["timeout"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
