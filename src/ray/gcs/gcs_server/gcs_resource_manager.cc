@@ -183,9 +183,11 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto resources_data = get_gcs_node_resources_();
-  if (resources_data->cluster_full_of_actors_detected()) {
-    UpdateNodeResourceUsage(NodeID::Nil(), *(resources_data.get()));
+  if (get_gcs_node_resources_) {
+    auto resources_data = get_gcs_node_resources_();
+    if (resources_data->cluster_full_of_actors_detected()) {
+      UpdateNodeResourceUsage(NodeID::Nil(), *(resources_data.get()));
+    }
   }
   if (!node_resource_usages_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
