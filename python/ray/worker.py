@@ -2198,6 +2198,8 @@ def remote(*args, **kwargs):
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
+        memory (float): The heap memory request for this task/actor.
+        object_store_memory (int): The object store memory request for this task/actor.
         max_calls (int): Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
