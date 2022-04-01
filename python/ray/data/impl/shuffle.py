@@ -14,12 +14,15 @@ T = TypeVar("T")
 
 
 class ShuffleOp:
-    def __init__(self, *map_args: List[Any]):
-        self._map_args = map_args
+    def __init__(self, map_args: List[Any] = None, reduce_args: List[Any] = None):
+        self._map_args = map_args or []
+        self._reduce_args = reduce_args or []
+        assert isinstance(self._map_args, list)
+        assert isinstance(self._reduce_args, list)
 
     @staticmethod
     def map(
-        idx: int, block: Block, output_num_blocks: int, *args: List[Any]
+        idx: int, block: Block, output_num_blocks: int, *map_args: List[Any]
     ) -> List[Union[BlockMetadata, Block]]:
         raise NotImplementedError
 
@@ -76,10 +79,10 @@ class ShuffleOp:
 
         reduce_bar = ProgressBar("Shuffle Reduce", position=0, total=output_num_blocks)
         shuffle_reduce_out = [
-            shuffle_reduce.options(
-                **reduce_ray_remote_args,
-                num_returns=2,
-            ).remote(*[shuffle_map_out[i][j] for i in range(input_num_blocks)])
+            shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2,).remote(
+                *self._reduce_args,
+                *[shuffle_map_out[i][j] for i in range(input_num_blocks)],
+            )
             for j in range(output_num_blocks)
         ]
         # Eagerly delete the map block references in order to eagerly release
@@ -105,7 +108,7 @@ class ShufflePartitionOp(ShuffleOp):
         random_shuffle: bool = False,
         random_seed: Optional[int] = None,
     ):
-        self._map_args = [block_udf, random_shuffle, random_seed]
+        super().__init__(map_args=[block_udf, random_shuffle, random_seed])
 
     @staticmethod
     def map(
