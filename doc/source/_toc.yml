@@ -69,7 +69,7 @@ parts:
           - file: serve/http-servehandle
           - file: serve/deployment
           - file: serve/ml-models
-          - file: serve/pipeline
+          - file: serve/deployment-graph
           - file: serve/performance
           - file: serve/architecture
           - file: serve/tutorials/index

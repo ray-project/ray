@@ -67,23 +67,25 @@ def main(test_collection_file: Optional[str] = None):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     frequency = settings["frequency"]
-    test_name_filter = settings["test_name_filter"]
+    test_attr_regex_filters = settings["test_attr_regex_filters"]
     ray_wheels = settings["ray_wheels"]
     priority = settings["priority"]
 
     logger.info(
         f"Found the following buildkite pipeline settings:\n\n"
-        f"  frequency =            {settings['frequency']}\n"
-        f"  test_name_filter =     {settings['test_name_filter']}\n"
-        f"  ray_wheels =           {settings['ray_wheels']}\n"
-        f"  ray_test_repo =        {settings['ray_test_repo']}\n"
-        f"  ray_test_branch =      {settings['ray_test_branch']}\n"
-        f"  priority =             {settings['priority']}\n"
-        f"  no_concurrency_limit = {settings['no_concurrency_limit']}\n"
+        f"  frequency =               {settings['frequency']}\n"
+        f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
+        f"  ray_wheels =              {settings['ray_wheels']}\n"
+        f"  ray_test_repo =           {settings['ray_test_repo']}\n"
+        f"  ray_test_branch =         {settings['ray_test_branch']}\n"
+        f"  priority =                {settings['priority']}\n"
+        f"  no_concurrency_limit =    {settings['no_concurrency_limit']}\n"
     )
 
     filtered_tests = filter_tests(
-        test_collection, frequency=frequency, test_name_filter=test_name_filter
+        test_collection,
+        frequency=frequency,
+        test_attr_regex_filters=test_attr_regex_filters,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:

@@ -474,14 +474,6 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
 
-  // Subscribe to resource usage batches from the monitor.
-  const auto &resource_usage_batch_added =
-      [this](const ResourceUsageBatchData &resource_usage_batch) {
-        ResourceUsageBatchReceived(resource_usage_batch);
-      };
-  RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
-      resource_usage_batch_added, /*done*/ nullptr));
-
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
   // node failure. These workers can be identified by comparing the raylet_id
