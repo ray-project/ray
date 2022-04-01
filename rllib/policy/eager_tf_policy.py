@@ -707,8 +707,6 @@ def build_eager_tf_policy(
 
         @override(Policy)
         def set_state(self, state):
-            state = state.copy()  # shallow copy
-            state["global_timestep"] = self.global_timestep.numpy()
             # Set optimizer vars first.
             optimizer_vars = state.get("_optimizer_variables", None)
             if optimizer_vars and self._optimizer.variables():
@@ -723,13 +721,9 @@ def build_eager_tf_policy(
             # Set exploration's state.
             if hasattr(self, "exploration") and "_exploration_state" in state:
                 self.exploration.set_state(state=state["_exploration_state"])
-            # Then the Policy's (NN) weights.
-            super().set_state(state)
-
-        @override(Policy)
-        def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
-            # Make sure, we keep global_timestep as a Tensor.
-            self.global_timestep.assign(global_vars["timestep"])
+            # Weights and global_timestep (tf vars).
+            self.set_weights(state["weights"])
+            self.global_timestep.assign(state["global_timestep"])
 
         @override(Policy)
         def export_checkpoint(self, export_dir):
