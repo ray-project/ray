@@ -170,8 +170,7 @@ class TestRolloutWorker(unittest.TestCase):
                 global_timesteps = (
                     policy.global_timestep
                     if fw == "tf"
-                    else
-                    policy.global_timestep.numpy()
+                    else policy.global_timestep.numpy()
                 )
                 print("global_timesteps={}".format(global_timesteps))
                 expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
