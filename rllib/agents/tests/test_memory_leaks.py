@@ -28,6 +28,9 @@ class TestMemoryLeaks(unittest.TestCase):
         # Otherwise, `check_memory_leaks` will complain.
         config["create_env_on_driver"] = True
         config["env"] = MemoryLeakingEnv
+        config["env_config"] = {
+            "static_samples": True,
+        }
         trainer = ppo.PPOTrainer(config=config)
         results = check_memory_leaks(trainer, to_check={"env"}, repeats=150)
         assert results["env"]
