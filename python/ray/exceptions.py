@@ -564,7 +564,7 @@ class PendingCallsLimitExceeded(RayError):
 
 
 class TaskUnschedulableError(RayError):
-    """Raised when the task cannot be scheduled for some reasons.
+    """Raised when the task cannot be scheduled.
 
     One example is that the node specified through NodeSchedulingStrategy is dead.
     """
@@ -577,7 +577,7 @@ class TaskUnschedulableError(RayError):
 
 
 class ActorUnschedulableError(RayError):
-    """Raised when the actor cannot be scheduled for some reasons.
+    """Raised when the actor cannot be scheduled.
 
     One example is that the node specified through NodeSchedulingStrategy is dead.
     """

@@ -115,7 +115,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
           ReplyCancelled(*work,
                          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
                          "The node specified via NodeSchedulingStrategy doesn't exist "
-                         "(e.g the node dies) or is infeasible");
+                         "any more or is infeasible, and soft=False was specified.");
           // We don't want to trigger the normal infeasible task logic (i.e. waiting),
           // but rather we want to fail the task immediately.
           work_it = work_queue.erase(work_it);
