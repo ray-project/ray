@@ -1,9 +1,6 @@
-"""Runtime env test on Ray Client
+"""Job submission test
 
-This test installs runtime environments on a remote cluster using local
-pip requirements.txt files.  It is intended to be run using Anyscale connect.
-This complements existing per-commit tests in CI, for which we don't have
-access to a physical remote cluster.
+This test runs a basic Tune job on a remote cluster.
 
 Test owner: architkulkarni
 
