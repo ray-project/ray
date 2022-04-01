@@ -29,7 +29,7 @@ from ray.serve.constants import (
 )
 from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import ASGIHTTPSender
-from ray.serve.logging_utils import access_log, configure_component_logger
+from ray.serve.logging_utils import access_log_msg, configure_component_logger
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.utils import parse_import_path, parse_request_item, wrap_to_ray_error
 from ray.serve.version import DeploymentVersion
@@ -449,7 +449,7 @@ class RayServeReplica:
             self.processing_latency_tracker.observe(latency_ms)
 
             logger.info(
-                access_log(
+                access_log_msg(
                     method="HANDLE",
                     route=request.metadata.call_method,
                     status="OK" if success else "ERROR",

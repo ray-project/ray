@@ -25,7 +25,7 @@ from ray.serve.http_util import (
 from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
-from ray.serve.logging_utils import access_log, configure_component_logger
+from ray.serve.logging_utils import access_log_msg, configure_component_logger
 from ray.serve.utils import node_id_to_ip_addr
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -308,7 +308,7 @@ class HTTPProxy:
         status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
         logger.info(
-            access_log(
+            access_log_msg(
                 method=scope["method"],
                 route=route_prefix,
                 status=str(status_code),

@@ -86,13 +86,8 @@ class ServeController:
         self.controller_name = controller_name
         self.checkpoint_path = checkpoint_path
         kv_store_namespace = f"{self.controller_name}-{self.controller_namespace}"
-        self.kv_store = make_kv_store(
-            checkpoint_path,
-            namespace=kv_store_namespace,
-        )
-        self.snapshot_store = RayInternalKVStore(
-            namespace=kv_store_namespace,
-        )
+        self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
+        self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))

@@ -223,6 +223,13 @@ class ActorReplicaWrapper:
         if self._placement_group:
             return self._placement_group
 
+        logger.debug(
+            "Creating placement group '{}' for deployment '{}'".format(
+                placement_group_name, self.deployment_name
+            )
+            + f" component=serve deployment={self.deployment_name}"
+        )
+
         self._placement_group = ray.util.placement_group(
             [actor_resources],
             lifetime="detached" if self._detached else None,
@@ -267,6 +274,12 @@ class ActorReplicaWrapper:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources
             )
+
+        logger.debug(
+            f"Starting replica {self.replica_tag} for deployment "
+            f"{self.deployment_name} component=serve deployment="
+            f"{self.deployment_name} replica={self.replica_tag}"
+        )
 
         actor_def = deployment_info.actor_def
         init_args = (
@@ -337,6 +350,11 @@ class ActorReplicaWrapper:
         Recover states in DeploymentReplica instance by fetching running actor
         status
         """
+        logger.debug(
+            f"Recovering replica {self.replica_tag} for deployment "
+            f"{self.deployment_name} component=serve deployment="
+            f"{self.deployment_name} replica={self.replica_tag}"
+        )
         self._actor_handle = self.actor_handle
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.get_placement_group(self._placement_group_name)
@@ -1438,7 +1456,7 @@ class DeploymentState:
                     f"component=serve deployment={self._name}"
                 )
                 if _SCALING_LOG_ENABLED:
-                    print_verbose_scaling_log(logger)
+                    print_verbose_scaling_log()
 
             if len(pending_initialization) > 0:
                 logger.warning(

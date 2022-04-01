@@ -8,7 +8,7 @@ from ray.serve.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
 COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component} {component_id} %(filename)s:%(lineno)d - %(message)s"  # noqa:E501
 
 
-def access_log(*, method: str, route: str, status: str, latency_ms: float):
+def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
     return f"{method.upper()} {route} {status.upper()} {latency_ms:.1f}ms"
 
