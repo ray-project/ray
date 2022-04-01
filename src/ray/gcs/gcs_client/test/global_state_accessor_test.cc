@@ -48,7 +48,6 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
 
     config.grpc_server_port = 6379;
-    config.grpc_pubsub_enabled = true;
 
     config.node_ip_address = "127.0.0.1";
     config.grpc_server_name = "MockedGcsServer";
