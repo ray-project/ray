@@ -73,9 +73,9 @@ def create_replica_wrapper(
             detached: bool,
         ):
             configure_component_logger(
-                component=deployment_name,
+                component_type="deployment",
+                component_name=deployment_name,
                 component_id=replica_tag,
-                log_file_name=f"deployment_{deployment_name}_replica_tag.log",
             )
 
             if import_path is not None:

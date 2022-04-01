@@ -5,7 +5,8 @@ from typing import Optional
 import ray
 from ray.serve.constants import DEBUG_LOG_ENV_VAR, SERVE_LOGGER_NAME
 
-COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component} {component_id} %(filename)s:%(lineno)d - %(message)s"  # noqa:E501
+COMPONENT_LOG_FMT = "%(levelname)s %(asctime)s {component_name} {component_id} %(filename)s:%(lineno)d - %(message)s"  # noqa:E501
+LOG_FILE_FMT = "{component_name}_{component_id}.log"
 
 
 def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
@@ -15,11 +16,12 @@ def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
 
 def configure_component_logger(
     *,
-    component: str,
+    component_name: str,
     component_id: str,
+    component_type: Optional[str] = None,
     log_level: Optional[int] = logging.INFO,
     log_to_stream: bool = True,
-    log_file_name: Optional[str] = None,
+    log_to_file: bool = True,
 ):
     """Returns a logger to be used by a Serve component.
 
@@ -35,16 +37,23 @@ def configure_component_logger(
         logger.setLevel(logging.DEBUG)
 
     formatter = logging.Formatter(
-        COMPONENT_LOG_FMT.format(component=component, component_id=component_id)
+        COMPONENT_LOG_FMT.format(
+            component_name=component_name, component_id=component_id
+        )
     )
     if log_to_stream:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
 
-    if log_file_name is not None:
+    if log_to_file:
         logs_dir = os.path.join(ray.worker._global_node.get_logs_dir_path(), "serve")
         os.makedirs(logs_dir, exist_ok=True)
+        if component_type is not None:
+            component_name = f"{component_type}_{component_name}"
+        log_file_name = LOG_FILE_FMT.format(
+            component_name=component_name, component_id=component_id
+        )
         file_handler = logging.FileHandler(os.path.join(logs_dir, log_file_name))
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
