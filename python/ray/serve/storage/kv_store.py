@@ -12,9 +12,10 @@ except ImportError:
 from ray import ray_constants
 import ray.experimental.internal_kv as ray_kv
 
+from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.storage.kv_store_base import KVStoreBase
 
-default_logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def get_storage_key(namespace: str, storage_key: str) -> str:
@@ -28,13 +29,12 @@ class RayInternalKVStore(KVStoreBase):
     Supports string keys and bytes values, caller must handle serialization.
     """
 
-    def __init__(self, namespace: str = None, logger: logging.Logger = default_logger):
+    def __init__(self, namespace: str = None):
         assert ray_kv._internal_kv_initialized()
         if namespace is not None and not isinstance(namespace, str):
             raise TypeError("namespace must a string, got: {}.".format(type(namespace)))
 
         self.namespace = namespace or ""
-        self._logger = logger
 
     def get_storage_key(self, key: str) -> str:
         return "{ns}-{key}".format(ns=self.namespace, key=key)
@@ -100,7 +100,6 @@ class RayLocalKVStore(KVStoreBase):
         self,
         namepsace: str,
         db_path: str,
-        logger: logging.Logger = default_logger,
     ):
         if len(db_path) == 0:
             raise ValueError("LocalKVStore's path shouldn't be empty.")
@@ -118,7 +117,6 @@ class RayLocalKVStore(KVStoreBase):
             "(key TEXT UNIQUE, value BLOB)"
         )
         self._conn.commit()
-        self._logger = logger
 
     def get_storage_key(self, key: str) -> str:
         return "{ns}-{key}".format(ns=self._namespace, key=key)
@@ -204,9 +202,7 @@ class RayS3KVStore(KVStoreBase):
         aws_access_key_id=None,
         aws_secret_access_key=None,
         aws_session_token=None,
-        logger: logging.Logger = default_logger,
     ):
-        self._logger = logger
         self._namespace = namespace
         self._bucket = bucket
         self._prefix = prefix
@@ -244,7 +240,7 @@ class RayS3KVStore(KVStoreBase):
             )
         except ClientError as e:
             message = e.response["Error"]["Message"]
-            self._logger.error(
+            logger.error(
                 f"Encountered ClientError while calling put() "
                 f"in RayExternalKVStore: {message}"
             )
@@ -269,11 +265,11 @@ class RayS3KVStore(KVStoreBase):
             return response["Body"].read()
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchKey":
-                self._logger.warning(f"No such key in s3 for key = {key}")
+                logger.warning(f"No such key in s3 for key = {key}")
                 return None
             else:
                 message = e.response["Error"]["Message"]
-                self._logger.error(
+                logger.error(
                     f"Encountered ClientError while calling get() "
                     f"in RayExternalKVStore: {message}"
                 )
@@ -293,7 +289,7 @@ class RayS3KVStore(KVStoreBase):
             self._s3.delete_object(Bucket=self._bucket, Key=self.get_storage_key(key))
         except ClientError as e:
             message = e.response["Error"]["Message"]
-            self._logger.error(
+            logger.error(
                 f"Encountered ClientError while calling delete() "
                 f"in RayExternalKVStore: {message}"
             )

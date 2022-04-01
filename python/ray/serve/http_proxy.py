@@ -23,19 +23,18 @@ from ray.serve.http_util import (
     Response,
 )
 from ray.serve.common import EndpointInfo, EndpointTag
+from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
-from ray.serve.logging_utils import access_log, get_component_logger
+from ray.serve.logging_utils import access_log, configure_component_logger
 from ray.serve.utils import node_id_to_ip_addr
 
-default_logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 MAX_REPLICA_FAILURE_RETRIES = 10
 DISCONNECT_ERROR_CODE = "disconnection"
 
 
-async def _send_request_to_handle(
-    handle, scope, receive, send, logger: logging.Logger
-) -> str:
+async def _send_request_to_handle(handle, scope, receive, send) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
     # NOTE(edoakes): it's important that we defer building the starlette
@@ -111,8 +110,7 @@ async def _send_request_to_handle(
 class LongestPrefixRouter:
     """Router that performs longest prefix matches on incoming routes."""
 
-    def __init__(self, get_handle: Callable, logger: logging.Logger = default_logger):
-        self._logger = logger
+    def __init__(self, get_handle: Callable):
         # Function to get a handle given a name. Used to mock for testing.
         self._get_handle = get_handle
         # Routes sorted in order of decreasing length.
@@ -126,7 +124,7 @@ class LongestPrefixRouter:
         return endpoint in self.handles
 
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        self._logger.debug(f"Got updated endpoints: {endpoints}.")
+        logger.debug(f"Got updated endpoints: {endpoints}.")
 
         existing_handles = set(self.handles.keys())
         routes = []
@@ -196,10 +194,7 @@ class HTTPProxy:
         self,
         controller_name: str,
         controller_namespace: str,
-        logger: logging.Logger = default_logger,
     ):
-        self._logger = logger
-
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.api._set_internal_replica_context(
@@ -217,14 +212,13 @@ class HTTPProxy:
                 _internal_pickled_http_request=True,
             )
 
-        self.prefix_router = LongestPrefixRouter(get_handle, logger=logger)
+        self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=controller_namespace),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
             call_in_event_loop=asyncio.get_event_loop(),
-            logger=self._logger,
         )
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
@@ -311,11 +305,9 @@ class HTTPProxy:
             scope["root_path"] = root_path + route_prefix
 
         start_time = time.time()
-        status_code = await _send_request_to_handle(
-            handle, scope, receive, send, logger=self._logger
-        )
+        status_code = await _send_request_to_handle(handle, scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
-        self._logger.info(
+        logger.info(
             access_log(
                 method=scope["method"],
                 route=route_prefix,
@@ -344,7 +336,7 @@ class HTTPProxyActor:
         node_id: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
-        logger = get_component_logger(
+        configure_component_logger(
             component="http_proxy", component_id=node_id_to_ip_addr(node_id)
         )
 
@@ -357,7 +349,7 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name, controller_namespace, logger=logger)
+        self.app = HTTPProxy(controller_name, controller_namespace)
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:

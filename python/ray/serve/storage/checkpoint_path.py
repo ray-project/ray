@@ -2,15 +2,15 @@ import logging
 from urllib.parse import parse_qsl, urlparse
 
 from ray._private.utils import import_attr
-from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
+from ray.serve.constants import DEFAULT_CHECKPOINT_PATH, SERVE_LOGGER_NAME
 from ray.serve.storage.kv_store import RayInternalKVStore, RayLocalKVStore, RayS3KVStore
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore
 
-default_logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def make_kv_store(checkpoint_path, namespace, logger: logging.Logger = default_logger):
+def make_kv_store(checkpoint_path, namespace):
     """Create KVStore instance based on checkpoint_path configuration"""
 
     if checkpoint_path == DEFAULT_CHECKPOINT_PATH:
@@ -32,7 +32,7 @@ def make_kv_store(checkpoint_path, namespace, logger: logging.Logger = default_l
                 "Using RayLocalKVStore for controller "
                 f"checkpoint and recovery: path={db_path}"
             )
-            return RayLocalKVStore(namespace, db_path, logger=logger)
+            return RayLocalKVStore(namespace, db_path)
 
         if parsed_url.scheme == "gs":
             bucket = parsed_url.netloc
@@ -48,7 +48,6 @@ def make_kv_store(checkpoint_path, namespace, logger: logging.Logger = default_l
                 namespace,
                 bucket=bucket,
                 prefix=prefix,
-                logger=logger,
             )
 
         if parsed_url.scheme == "s3":
@@ -64,7 +63,6 @@ def make_kv_store(checkpoint_path, namespace, logger: logging.Logger = default_l
                 namespace,
                 bucket=bucket,
                 prefix=prefix,
-                logger=logger,
             )
 
         if parsed_url.scheme == "custom":

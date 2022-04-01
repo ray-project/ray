@@ -2,6 +2,7 @@ import asyncio
 from collections import defaultdict
 from copy import copy
 import json
+import logging
 import time
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
@@ -20,14 +21,20 @@ from ray.serve.common import (
     RunningReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
+from ray.serve.constants import (
+    CONTROL_LOOP_PERIOD_S,
+    SERVE_ROOT_URL_ENV_KEY,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.logging_utils import get_component_logger
+from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -70,7 +77,7 @@ class ServeController:
         detached: bool = False,
         _override_controller_namespace: Optional[str] = None,
     ):
-        self.logger = get_component_logger(
+        configure_component_logger(
             component="controller", component_id=str(os.getpid())
         )
 
@@ -80,10 +87,11 @@ class ServeController:
         self.checkpoint_path = checkpoint_path
         kv_store_namespace = f"{self.controller_name}-{self.controller_namespace}"
         self.kv_store = make_kv_store(
-            checkpoint_path, namespace=kv_store_namespace, logger=self.logger
+            checkpoint_path,
+            namespace=kv_store_namespace,
         )
         self.snapshot_store = RayInternalKVStore(
-            namespace=kv_store_namespace, logger=self.logger
+            namespace=kv_store_namespace,
         )
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
@@ -93,14 +101,13 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        self.long_poll_host = LongPollHost(logger=self.logger)
+        self.long_poll_host = LongPollHost()
 
         self.http_state = HTTPState(
             controller_name,
             detached,
             http_config,
             _override_controller_namespace=_override_controller_namespace,
-            logger=self.logger,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         # Fetch all running actors in current cluster as source of current
@@ -113,7 +120,6 @@ class ServeController:
             self.long_poll_host,
             all_current_actor_names,
             _override_controller_namespace=_override_controller_namespace,
-            logger=self.logger,
         )
 
         # TODO(simon): move autoscaling related stuff into a manager.
@@ -213,23 +219,23 @@ class ServeController:
             try:
                 self.autoscale()
             except Exception:
-                self.logger.exception("Exception in autoscaling.")
+                logger.exception("Exception in autoscaling.")
 
             async with self.write_lock:
                 try:
                     self.http_state.update()
                 except Exception:
-                    self.logger.exception("Exception updating HTTP state.")
+                    logger.exception("Exception updating HTTP state.")
 
                 try:
                     self.deployment_state_manager.update()
                 except Exception:
-                    self.logger.exception("Exception updating deployment state.")
+                    logger.exception("Exception updating deployment state.")
 
             try:
                 self._put_serve_snapshot()
             except Exception:
-                self.logger.exception("Exception putting serve snapshot.")
+                logger.exception("Exception putting serve snapshot.")
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:
