@@ -19,7 +19,7 @@ def configure_component_logger(
     component_name: str,
     component_id: str,
     component_type: Optional[str] = None,
-    log_level: Optional[int] = logging.INFO,
+    log_level: int = logging.INFO,
     log_to_stream: bool = True,
     log_to_file: bool = True,
 ):
