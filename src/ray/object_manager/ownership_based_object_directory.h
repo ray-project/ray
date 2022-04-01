@@ -58,10 +58,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   void HandleNodeRemoved(const NodeID &node_id) override;
 
-  ray::Status LookupLocations(const ObjectID &object_id,
-                              const rpc::Address &owner_address,
-                              const OnLocationsFound &callback) override;
-
   ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
                                        const ObjectID &object_id,
                                        const rpc::Address &owner_address,
