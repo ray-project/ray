@@ -47,6 +47,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
 )
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.replay_buffers import MultiAgentPrioritizedReplayBuffer
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
@@ -222,32 +223,27 @@ class DQNTrainer(SimpleQTrainer):
 
         def update_prio(item):
             samples, info_dict = item
-            if config.get("prioritized_replay"):
-                prio_dict = {}
-                for policy_id, info in info_dict.items():
-                    # TODO(sven): This is currently structured differently for
-                    #  torch/tf. Clean up these results/info dicts across
-                    #  policies (note: fixing this in torch_policy.py will
-                    #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info[LEARNER_STATS_KEY].get("td_error")
+            prio_dict = {}
+            for policy_id, info in info_dict.items():
+                # TODO(sven): This is currently structured differently for
+                #  torch/tf. Clean up these results/info dicts across
+                #  policies (note: fixing this in torch_policy.py will
+                #  break e.g. DDPPO!).
+                td_error = info.get("td_error", info[LEARNER_STATS_KEY].get("td_error"))
+                samples.policy_batches[policy_id].set_get_interceptor(None)
+                batch_indices = samples.policy_batches[policy_id].get("batch_indexes")
+                # In case the buffer stores sequences, TD-error could
+                # already be calculated per sequence chunk.
+                if len(batch_indices) != len(td_error):
+                    T = local_replay_buffer.replay_sequence_length
+                    assert (
+                        len(batch_indices) > len(td_error)
+                        and len(batch_indices) % T == 0
                     )
-                    samples.policy_batches[policy_id].set_get_interceptor(None)
-                    batch_indices = samples.policy_batches[policy_id].get(
-                        "batch_indexes"
-                    )
-                    # In case the buffer stores sequences, TD-error could
-                    # already be calculated per sequence chunk.
-                    if len(batch_indices) != len(td_error):
-                        T = local_replay_buffer.replay_sequence_length
-                        assert (
-                            len(batch_indices) > len(td_error)
-                            and len(batch_indices) % T == 0
-                        )
-                        batch_indices = batch_indices.reshape([-1, T])[:, 0]
-                        assert len(batch_indices) == len(td_error)
-                    prio_dict[policy_id] = (batch_indices, td_error)
-                local_replay_buffer.update_priorities(prio_dict)
+                    batch_indices = batch_indices.reshape([-1, T])[:, 0]
+                    assert len(batch_indices) == len(td_error)
+                prio_dict[policy_id] = (batch_indices, td_error)
+            local_replay_buffer.update_priorities(prio_dict)
             return info_dict
 
         # (2) Read and train on experiences from the replay buffer. Every batch
@@ -267,11 +263,22 @@ class DQNTrainer(SimpleQTrainer):
                 _fake_gpus=config["_fake_gpus"],
             )
 
+        if (
+            config.get("prioritized_replay") is True
+            or config["replay_buffer_config"].get("prioritized_replay") is True
+            or type(local_replay_buffer) is MultiAgentPrioritizedReplayBuffer
+        ):
+            update_prio_fn = update_prio
+        else:
+
+            def update_prio_fn(x):
+                return x
+
         replay_op = (
             Replay(local_buffer=local_replay_buffer)
             .for_each(lambda x: post_fn(x, workers, config))
             .for_each(train_step_op)
-            .for_each(update_prio)
+            .for_each(update_prio_fn)
             .for_each(
                 UpdateTargetNetwork(workers, config["target_network_update_freq"])
             )
@@ -350,7 +357,11 @@ class DQNTrainer(SimpleQTrainer):
                 train_results = multi_gpu_train_one_step(self, train_batch)
 
             # Update priorities
-            if self.config.get("prioritized_replay"):
+            if (
+                self.config.get("prioritized_replay")
+                or self.config["replay_buffer_config"].get("prioritized_replay")
+                or type(self.local_replay_buffer is MultiAgentPrioritizedReplayBuffer)
+            ):
                 prio_dict = {}
                 for policy_id, info in train_results.items():
                     # TODO(sven): This is currently structured differently for
