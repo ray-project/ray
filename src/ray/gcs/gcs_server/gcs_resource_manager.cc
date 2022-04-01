@@ -133,6 +133,10 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::SendReplyCallback send_reply_callback) {
   for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
     const auto &node_id = node_resources_entry.first;
+    // The GCS itself does not run any tasks so it has nothing to report.
+    if (node_id.IsNil()) {
+      continue;
+    }
     const auto &node_resources = node_resources_entry.second.GetLocalView();
     rpc::AvailableResources resource;
     resource.set_node_id(node_id.Binary());
@@ -179,8 +183,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request,
     rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    auto resources_data = get_gcs_node_resources_();
+  auto resources_data = get_gcs_node_resources_();
+  if (resources_data->cluster_full_of_actors_detected()) {
     UpdateNodeResourceUsage(NodeID::Nil(), *(resources_data.get()));
   }
   if (!node_resource_usages_.empty()) {

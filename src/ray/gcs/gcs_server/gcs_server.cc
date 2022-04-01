@@ -282,7 +282,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           by_shape_entry->set_num_infeasible_requests_queued(shape_entry.second.first);
           by_shape_entry->set_num_ready_requests_queued(shape_entry.second.second);
         }
-        if (!infeasible_actors.empty() || !actors_to_schedule.empty()) {
+        if (!pending_count_by_shape.empty()) {
           resources_data->set_cluster_full_of_actors_detected(true);
         }
         return resources_data;

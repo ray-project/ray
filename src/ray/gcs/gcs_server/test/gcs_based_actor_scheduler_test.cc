@@ -258,34 +258,39 @@ TEST_F(GcsBasedActorSchedulerTest, TestBalancedSchedule) {
 
 TEST_F(GcsBasedActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
   // Add a node with 64 memory units and 8 CPU.
-  std::unordered_map<std::string, double> node_resources_1 = {{kMemory_ResourceLabel, 64},
-                                                              {kCPU_ResourceLabel, 8}};
+  std::unordered_map<std::string, double> node_resources_1 = {{kMemory_ResourceLabel, 32},
+                                                              {kCPU_ResourceLabel, 4}};
   auto node1 = AddNewNode(node_resources_1);
-  auto node_id_1 = NodeID::FromBinary(node1->node_id());
   // Add a node with 32 memory units and 4 CPU.
   std::unordered_map<std::string, double> node_resources_2 = {{kMemory_ResourceLabel, 32},
                                                               {kCPU_ResourceLabel, 4}};
   auto node2 = AddNewNode(node_resources_2);
-  auto node_id_2 = NodeID::FromBinary(node2->node_id());
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  // In the hybrid_policy, nodes are sorted in increasing order of scheduling::NodeID. So
+  // we have to figure out which node is the first one in the sorted order.
+  auto first_node = node1;
+  if (scheduling::NodeID(node2->node_id()) < scheduling::NodeID(node1->node_id())) {
+    first_node = node2;
+  }
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
   std::unordered_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
 
-  // Schedule the actor, and the lease request should be sent to node1.
+  // Schedule the actor, and the lease request should be sent to the first node.
   gcs_actor_scheduler_->Schedule(actor);
-  ASSERT_EQ(node_id_1, actor->GetNodeID());
+  ASSERT_EQ(NodeID::FromBinary(first_node->node_id()), actor->GetNodeID());
   ASSERT_EQ(1, raylet_client_->num_workers_requested);
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
   // Mock a rejected reply, then the actor will be rescheduled.
-  ASSERT_TRUE(raylet_client_->GrantWorkerLease(node1->node_manager_address(),
-                                               node1->node_manager_port(),
+  ASSERT_TRUE(raylet_client_->GrantWorkerLease(first_node->node_manager_address(),
+                                               first_node->node_manager_port(),
                                                WorkerID::FromRandom(),
-                                               node_id_1,
+                                               NodeID::FromBinary(first_node->node_id()),
                                                NodeID::Nil(),
                                                Status::OK(),
                                                /*rejected=*/true));
@@ -293,8 +298,9 @@ TEST_F(GcsBasedActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
   ASSERT_EQ(1, raylet_client_->callbacks.size());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  // node1's resources have been preempted. The actor is rescheduled to node2.
-  ASSERT_EQ(node_id_2, actor->GetNodeID());
+  // The first node's resources have been preempted. The actor is rescheduled to the
+  // second one.
+  ASSERT_NE(NodeID::FromBinary(first_node->node_id()), actor->GetNodeID());
 }
 
 TEST_F(GcsBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
