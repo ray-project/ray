@@ -294,7 +294,7 @@ def run_release_test(
             pipeline_exception = e
 
     if pipeline_exception:
-        buildkite_group(":rotating_light: Handling errors", open=True)
+        buildkite_group(":rotating_light: Handling errors")
         exit_code, error_type, runtime = handle_exception(pipeline_exception)
 
         result.return_code = exit_code.value
