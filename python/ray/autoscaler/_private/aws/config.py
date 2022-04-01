@@ -448,7 +448,7 @@ def _usable_subnet_ids(
         )
 
     def _get_pruned_subnets(current_subnets: List[Any]) -> Set[str]:
-        current_subnet_ids = {s.subnet_id for s in subnets}
+        current_subnet_ids = {s.subnet_id for s in current_subnets}
         user_specified_subnet_ids = {s.subnet_id for s in user_specified_subnets}
         return user_specified_subnet_ids - current_subnet_ids
 
@@ -546,10 +546,9 @@ def _configure_subnet(config):
         node_config = node_type["node_config"]
         contains_user_subnet_ids = "SubnetIds" in node_config
 
+        user_specified_subnets = _get_subnets_or_die(ec2, tuple(node_config.get("SubnetIds"))) if contains_user_subnet_ids else None
         subnet_ids = _usable_subnet_ids(
-            _get_subnets_or_die(ec2, tuple(node_config.get("SubnetIds")))
-            if contains_user_subnet_ids
-            else None,
+            user_specified_subnets,
             all_subnets,
             azs=config["provider"].get("availability_zone"),
             vpc_id_of_sg=vpc_id_of_sg,
