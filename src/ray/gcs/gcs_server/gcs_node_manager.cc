@@ -227,8 +227,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
       listener(removed_node);
     }
   }
-  RAY_LOG(INFO) << "Removing node, node id = " << node_id
-                << ", node name = " << removed_node->node_name();
+  // RAY_LOG(INFO) << "Removing node, node id = " << node_id
+  //               << ", node name = " << removed_node->node_name();
   return removed_node;
 }
 
