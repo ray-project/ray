@@ -112,7 +112,9 @@ def format_vars(resolved_vars: Dict) -> str:
     for v in ["run", "env", "resources_per_trial"]:
         vars.pop(v, None)
 
-    return ",".join(f"{k[-1]}={_clean_value(v)}" for k, v in sorted(vars.items()))
+    return ",".join(
+        f"{_clean_value(k[-1])}={_clean_value(v)}" for k, v in sorted(vars.items())
+    )
 
 
 def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
