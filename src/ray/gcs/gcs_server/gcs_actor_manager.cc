@@ -376,8 +376,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
     reply->unsafe_arena_set_allocated_actor_table_data(
         iter->second->GetMutableActorTableData());
     RAY_LOG(INFO) << "WANGTAO " << iter->second->GetState();
-    reply->unsafe_arena_set_allocated_task_spec(
-        iter->second->GetMutableTaskSpec());
+    reply->unsafe_arena_set_allocated_task_spec(iter->second->GetMutableTaskSpec());
     RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                    << ", actor id = " << actor_id;
   }
