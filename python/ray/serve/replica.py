@@ -321,6 +321,21 @@ class RayServeReplica:
                 controller_handle=controller_handle,
             )
 
+        # NOTE(edoakes): we used to recommend that users use the "ray" logger
+        # and tagged the logs with metadata as below. We now recommend using
+        # the "ray.serve" 'component logger' (as of Ray 1.13). This is left to
+        # maintain backwards compatibility with users who were using the
+        # existing logger. We can consider removing it in Ray 2.0.
+        ray_logger = logging.getLogger("ray")
+        for handler in ray_logger.handlers:
+            handler.setFormatter(
+                logging.Formatter(
+                    handler.formatter._fmt
+                    + f" component=serve deployment={self.deployment_name} "
+                    f"replica={self.replica_tag}"
+                )
+            )
+
     async def check_health(self):
         await self.user_health_check()
 
