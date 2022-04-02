@@ -101,9 +101,9 @@ def format_vars(resolved_vars: Dict) -> str:
     separated string of the form ``last_key=value``, so in this example
     ``path=value``.
 
-    Note that this means that empty strings are possible return values. This
-    is ok, as this will be not a common case and still result in a valid
-    path.
+    Note that the sanitizing implies that empty strings are possible return
+    values. This is expected and acceptable, as it is not a common case and
+    the resulting directory names will still be valid.
 
     Args:
         resolved_vars: Dictionary mapping from config path tuples to a value.
