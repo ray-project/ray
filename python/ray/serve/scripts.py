@@ -23,10 +23,12 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.api import (
     Application,
-    DeploymentFunctionNode,
-    DeploymentNode,
     get_deployment_statuses,
     serve_application_status_to_schema,
+)
+from ray.serve.deployment_graph import (
+    DeploymentFunctionNode,
+    DeploymentNode,
 )
 from ray.serve.api import build as build_app
 
