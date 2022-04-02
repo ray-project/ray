@@ -35,25 +35,25 @@ class Resources(
     """Ray resources required to schedule a trial.
 
     Parameters:
-        cpu (float): Number of CPUs to allocate to the trial.
-        gpu (float): Number of GPUs to allocate to the trial.
-        memory (float): Memory to reserve for the trial.
-        object_store_memory (float): Object store memory to reserve.
-        extra_cpu (float): Extra CPUs to reserve in case the trial needs to
+        cpu: Number of CPUs to allocate to the trial.
+        gpu: Number of GPUs to allocate to the trial.
+        memory: Memory to reserve for the trial.
+        object_store_memory: Object store memory to reserve.
+        extra_cpu: Extra CPUs to reserve in case the trial needs to
             launch additional Ray actors that use CPUs.
-        extra_gpu (float): Extra GPUs to reserve in case the trial needs to
+        extra_gpu: Extra GPUs to reserve in case the trial needs to
             launch additional Ray actors that use GPUs.
-        extra_memory (float): Memory to reserve for the trial launching
+        extra_memory: Memory to reserve for the trial launching
             additional Ray actors that use memory.
-        extra_object_store_memory (float): Object store memory to reserve for
+        extra_object_store_memory: Object store memory to reserve for
             the trial launching additional Ray actors that use object store
             memory.
-        custom_resources (dict): Mapping of resource to quantity to allocate
+        custom_resources: Mapping of resource to quantity to allocate
             to the trial.
-        extra_custom_resources (dict): Extra custom resources to reserve in
+        extra_custom_resources: Extra custom resources to reserve in
             case the trial needs to launch additional Ray actors that use
             any of these custom resources.
-        has_placement_group (bool): Bool indicating if the trial also
+        has_placement_group: Bool indicating if the trial also
             has an associated placement group.
 
     """
@@ -62,17 +62,17 @@ class Resources(
 
     def __new__(
         cls,
-        cpu,
-        gpu,
-        memory=0,
-        object_store_memory=0,
-        extra_cpu=0,
-        extra_gpu=0,
-        extra_memory=0,
-        extra_object_store_memory=0,
-        custom_resources=None,
-        extra_custom_resources=None,
-        has_placement_group=False,
+        cpu: float,
+        gpu: float,
+        memory: float = 0,
+        object_store_memory: float = 0.0,
+        extra_cpu: float = 0.0,
+        extra_gpu: float = 0.0,
+        extra_memory: float = 0.0,
+        extra_object_store_memory: float = 0.0,
+        custom_resources: Optional[dict] = None,
+        extra_custom_resources: Optional[dict] = None,
+        has_placement_group: bool = False,
     ):
         custom_resources = custom_resources or {}
         extra_custom_resources = extra_custom_resources or {}

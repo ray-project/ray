@@ -1,5 +1,9 @@
-from typing import Optional
+import os
+from typing import Optional, Union
 
+from ray.cloudpickle import cloudpickle
+from ray.exceptions import RayTaskError
+from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.tune import ExperimentAnalysis
 from ray.tune.error import TuneError
@@ -16,6 +20,7 @@ class ResultGrid:
     The constructor is a private API.
 
     Usage pattern:
+
     .. code-block:: python
 
         result_grid = tuner.fit()
@@ -55,16 +60,21 @@ class ResultGrid:
         return self._trial_to_result(self._experiment_analysis.trials[i])
 
     @staticmethod
-    def _populate_exception(trial: Trial) -> Optional[TuneError]:
-        if trial.error_file:
+    def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
+        if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
+            with open(trial.pickled_error_file, "rb") as f:
+                e = cloudpickle.load(f)
+                return e
+        elif trial.error_file and os.path.exists(trial.error_file):
             with open(trial.error_file, "r") as f:
                 return TuneError(f.read())
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        # TODO(xwjiang): Use Kai's new checkpoint!
         result = Result(
-            checkpoint=trial.checkpoint,
+            checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
+            if trial.checkpoint.value
+            else None,
             metrics=trial.last_result,
             error=self._populate_exception(trial),
         )

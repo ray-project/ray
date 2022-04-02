@@ -32,7 +32,7 @@ class BackendConfig:
 
     @property
     def backend_cls(self):
-        raise NotImplementedError
+        return Backend
 
 
 @DeveloperAPI
@@ -56,20 +56,6 @@ class Backend(metaclass=Singleton):
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: BackendConfig):
         """Logic for shutting down the backend."""
         pass
-
-    def handle_failure(
-        self,
-        worker_group: WorkerGroup,
-        failed_worker_indexes: List[int],
-        backend_config: BackendConfig,
-    ):
-        """Logic for handling failures.
-
-        By default, restart all workers.
-        """
-        worker_group.shutdown()
-        worker_group.start()
-        self.on_start(worker_group, backend_config)
 
     @staticmethod
     def encode_data(data_dict: Dict) -> EncodedData:
@@ -184,6 +170,10 @@ class BackendExecutor:
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
+            logger.warning(
+                "Failure occurred during startup. Restarting all workers and "
+                "attempting to startup again."
+            )
             self._increment_failures()
             self._restart()
 
@@ -339,8 +329,15 @@ class BackendExecutor:
         if isinstance(dataset_or_dict, dict):
             # Return a smaller dict for each shard.
             dataset_shards = [{} for _ in range(len(self.worker_group))]
+            # TODO(amog): Update Backend to accept a generic function with logic on
+            #  how to split dataset, instead of having to support _NO-SHARD in key.
             for key, dataset in dataset_or_dict.items():
-                split_datasets = split_dataset(dataset)
+                if "_NO-SHARD" in key:
+                    # Do not shard this dataset.
+                    split_datasets = [dataset] * len(self.worker_group)
+                    key = key.replace("_NO-SHARD", "")
+                else:
+                    split_datasets = split_dataset(dataset)
                 assert len(split_datasets) == len(self.worker_group)
                 for i in range(len(split_datasets)):
                     dataset_shards[i][key] = split_datasets[i]
@@ -476,7 +473,7 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`train.report()` and `train.checkpoint()` "
+                    "`train.report()` and `train.save_checkpoint()` "
                     "are called the same number of times on all "
                     "workers."
                 )
@@ -553,18 +550,16 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success, failed_worker_indexes = check_for_failure(remote_values)
+        success = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)
         else:
             self._increment_failures()
-            try:
-                self._backend.handle_failure(
-                    self.worker_group, failed_worker_indexes, self._backend_config
-                )
-            except RayActorError as exc:
-                logger.exception(str(exc))
-                self._restart()
+            logger.warning(
+                "Failure identified during training. Restarting all workers and "
+                "continuing training from latest checkpoint."
+            )
+            self._restart()
             raise TrainingWorkerError
 
     def shutdown(self):

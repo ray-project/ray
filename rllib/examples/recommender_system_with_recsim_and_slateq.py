@@ -30,9 +30,7 @@ parser.add_argument(
     type=str,
     default="SlateQ",
     choices=["SlateQ", "DQN"],
-    help=(
-        "Select agent policy. Choose from: DQN and SlateQ. " "Default value: SlateQ."
-    ),
+    help=("Select agent policy. Choose from: DQN and SlateQ. Default value: SlateQ."),
 )
 parser.add_argument(
     "--framework",

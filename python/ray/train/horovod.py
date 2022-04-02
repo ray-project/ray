@@ -142,7 +142,14 @@ class HorovodBackend(Backend):
         ray.get(setup_futures)
 
         coordinator_envs = self.coordinator.establish_rendezvous()
-        node_workers = [HorovodWorkerWrapper(w) for w in worker_group.workers]
+
+        # Get one worker from each host/node.
+        node_worker_indexes = [node_ids.index(node_id) for node_id in set(node_ids)]
+        node_workers = [
+            HorovodWorkerWrapper(worker_group.workers[worker_index])
+            for worker_index in node_worker_indexes
+        ]
+        assert len(node_workers) == len(self.coordinator.hostnames)
 
         nics = detect_nics(
             backend_config,

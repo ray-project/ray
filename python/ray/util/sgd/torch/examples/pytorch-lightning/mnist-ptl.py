@@ -123,7 +123,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     parser.add_argument(
         "--num-workers",
@@ -136,7 +136,7 @@ if __name__ == "__main__":
         "--use-gpu", action="store_true", default=False, help="Enables GPU training"
     )
     parser.add_argument(
-        "--num-epochs", type=int, default=5, help="How many epochs to train " "for."
+        "--num-epochs", type=int, default=5, help="How many epochs to train for."
     )
     parser.add_argument(
         "--smoke-test",

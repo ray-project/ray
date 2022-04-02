@@ -703,7 +703,7 @@ class _CliLogger:
 
                 indent = " " * msg_len
                 self.error(
-                    "{}Invalid answer: {}. " "Expected {} or {}",
+                    "{}Invalid answer: {}. Expected {} or {}",
                     indent,
                     cf.bold(ans.strip()),
                     self.render_list(yes_answers, "/"),
@@ -792,7 +792,7 @@ CLICK_LOGGING_OPTIONS = [
         required=False,
         type=click.Choice(["auto", "false", "true"], case_sensitive=False),
         default="auto",
-        help=("Use color logging. " "Auto enables color logging if stdout is a TTY."),
+        help=("Use color logging. Auto enables color logging if stdout is a TTY."),
     ),
     click.option("-v", "--verbose", default=None, count=True),
 ]

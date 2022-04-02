@@ -5,7 +5,6 @@ parts:
     chapters:
       - file: ray-overview/index
       - file: ray-overview/installation
-      - file: ray-overview/learn-more
       - file: ray-overview/ray-libraries
 
   - caption: Ray ML
@@ -14,10 +13,11 @@ parts:
         title: Ray Data
         sections:
           - file: data/getting-started
-          - file: data/user-guide
           - file: data/key-concepts
+          - file: data/user-guide
           - file: data/examples/big_data_ingestion
           - file: data/package-ref
+          - file: data/integrations
 
       - file: train/train
         title: Ray Train
@@ -69,7 +69,7 @@ parts:
           - file: serve/http-servehandle
           - file: serve/deployment
           - file: serve/ml-models
-          - file: serve/pipeline
+          - file: serve/deployment-graph
           - file: serve/performance
           - file: serve/architecture
           - file: serve/tutorials/index
@@ -111,8 +111,10 @@ parts:
     chapters:
       - file: ray-core/walkthrough
         title: Getting Started
-      - file: ray-core/using-ray
-        title: "User Guide"
+      - file: ray-core/key-concepts
+        title: "Key Concepts"
+      - file: ray-core/user-guide
+        title: "User Guides"
       - file: ray-core/examples/overview
         title: "Examples"
         sections:
@@ -146,7 +148,6 @@ parts:
           - file: ray-core/examples/testing-tips
       - file: ray-core/configure
       - file: ray-observability/index
-      - file: ray-design-patterns/index
       - file: ray-contribute/whitepaper
 
 # TODO: Add examples section

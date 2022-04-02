@@ -40,7 +40,7 @@ def test_from_parallel_it(ray_start_regular_shared):
     para_it = parallel_it.from_range(4).for_each(lambda x: [x])
     ds = ml_data.from_parallel_iter(para_it, batch_size=2)
     assert repr(ds) == (
-        "MLDataset[from_range[4, shards=2]" ".for_each().batch(2).to_pandas()]"
+        "MLDataset[from_range[4, shards=2].for_each().batch(2).to_pandas()]"
     )
     collected = list(ds.gather_sync())
     assert len(collected) == 2

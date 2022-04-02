@@ -579,7 +579,7 @@ class CloudwatchHelper:
         try:
             response = self.ec2_client.describe_instances(InstanceIds=[self.node_id])
             reservations = response["Reservations"]
-            message = "More than 1 response received from " "describing current node"
+            message = "More than 1 response received from describing current node"
             assert len(reservations) == 1, message
             instances = reservations[0]["Instances"]
             assert len(reservations) == 1, message
@@ -607,7 +607,7 @@ class CloudwatchHelper:
         the Unified CloudWatch Agent installed.
         """
         logger.info(
-            "Checking Unified Cloudwatch Agent " "status on node {}".format(node_id)
+            "Checking Unified Cloudwatch Agent status on node {}".format(node_id)
         )
         parameters_status_cwa = {
             "action": ["status"],
@@ -651,7 +651,7 @@ class CloudwatchHelper:
         try:
             response = self.ec2_client.describe_instances(InstanceIds=[self.node_id])
             reservations = response["Reservations"]
-            message = "More than 1 response received from " "describing current node"
+            message = "More than 1 response received from describing current node"
             assert len(reservations) == 1, message
             instances = reservations[0]["Instances"]
             assert len(instances) == 1, message

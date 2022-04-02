@@ -60,7 +60,7 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_task_level_gc(ray_start_cluster, option):
+def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option):
     """Tests that task-level working_dir is GC'd when the worker exits."""
 
     cluster = ray_start_cluster

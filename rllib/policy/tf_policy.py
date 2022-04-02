@@ -55,13 +55,15 @@ class TFPolicy(Policy):
     Input tensors are typically shaped like [BATCH_SIZE, ...].
 
     Examples:
-        >>> policy = TFPolicySubclass(
-            sess, obs_input, sampled_action, loss, loss_inputs)
-
-        >>> print(policy.compute_actions([1, 0, 2]))
+        >>> from ray.rllib.policy import TFPolicy
+        >>> class TFPolicySubclass(TFPolicy): # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        >>> sess, obs_input, sampled_action, loss, loss_inputs = ... # doctest: +SKIP
+        >>> policy = TFPolicySubclass( # doctest: +SKIP
+        ...     sess, obs_input, sampled_action, loss, loss_inputs) # doctest: +SKIP
+        >>> print(policy.compute_actions([1, 0, 2])) # doctest: +SKIP
         (array([0, 1, 1]), [], {})
-
-        >>> print(policy.postprocess_trajectory(SampleBatch({...})))
+        >>> print(policy.postprocess_trajectory(SampleBatch({...}))) # doctest: +SKIP
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
 
@@ -390,7 +392,7 @@ class TFPolicy(Policy):
 
         if self._log_likelihood is None:
             raise ValueError(
-                "Cannot compute log-prob/likelihood w/o a " "self._log_likelihood op!"
+                "Cannot compute log-prob/likelihood w/o a self._log_likelihood op!"
             )
 
         # Exploration hook before each forward pass.

@@ -5,14 +5,16 @@ import sys
 import os
 import yaml
 import requests
+import numpy as np
 
 import ray
 from ray import serve
-from ray.serve.application import Application
+from ray.serve.api import Application
+from ray.serve.api import build as build_app
 from ray._private.test_utils import wait_for_condition
 
 
-class TestAddDeployment:
+class TestApplicationConstruction:
     @serve.deployment
     def f(*args):
         return "got f"
@@ -22,26 +24,27 @@ class TestAddDeployment:
         def __call__(self, *args):
             return "got C"
 
-    def test_add_deployment_valid(self):
-        app = Application()
-        app.add_deployment(self.f)
-        app.add_deployment(self.C)
+    def test_valid_deployments(self):
+        app = Application([self.f, self.C])
 
-        assert len(app) == 2
-        assert "f" in app
-        assert "C" in app
+        assert len(app.deployments) == 2
+        app_deployment_names = {d.name for d in app.deployments.values()}
+        assert "f" in app_deployment_names
+        assert "C" in app_deployment_names
 
-    def test_add_deployment_repeat_name(self):
+    def test_repeated_deployment_names(self):
         with pytest.raises(ValueError):
-            app = Application()
-            app.add_deployment(self.f)
-            app.add_deployment(self.C.options(name="f"))
+            Application([self.f, self.C.options(name="f")])
 
         with pytest.raises(ValueError):
             Application([self.C, self.f.options(name="C")])
 
+    def test_non_deployments(self):
+        with pytest.raises(TypeError):
+            Application([self.f, 5, "hello"])
 
-class TestDeployGroup:
+
+class TestServeRun:
     @serve.deployment
     def f():
         return "f reached"
@@ -70,7 +73,7 @@ class TestDeployGroup:
         the client to wait until the deployments finish deploying.
         """
 
-        Application(deployments).deploy(blocking=blocking)
+        serve.run(Application(deployments), _blocking=blocking)
 
         def check_all_deployed():
             try:
@@ -89,7 +92,7 @@ class TestDeployGroup:
             # If non-blocking, this should pass eventually.
             wait_for_condition(check_all_deployed)
 
-    def test_basic_deploy_group(self, serve_instance):
+    def test_basic_run(self, serve_instance):
         """
         Atomically deploys a group of deployments, including both functions and
         classes. Checks whether they deploy correctly.
@@ -100,7 +103,7 @@ class TestDeployGroup:
 
         self.deploy_and_check_responses(deployments, responses)
 
-    def test_non_blocking_deploy_group(self, serve_instance):
+    def test_non_blocking_run(self, serve_instance):
         """Checks Application's deploy() behavior when blocking=False."""
 
         deployments = [self.f, self.g, self.C, self.D]
@@ -143,7 +146,7 @@ class TestDeployGroup:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        Application(deployments).deploy(blocking=True)
+        serve.run(Application(deployments), _blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -271,6 +274,35 @@ class DecoratedClass:
         return "got decorated class"
 
 
+class TestServeBuild:
+    @serve.deployment
+    class A:
+        pass
+
+    def test_build_non_json_serializable_args(self, serve_instance):
+        with pytest.raises(
+            TypeError, match="must be JSON-serializable to build.*init_args"
+        ):
+            build_app(self.A.bind(np.zeros(100))).to_dict()
+
+    def test_build_non_json_serializable_kwargs(self, serve_instance):
+        with pytest.raises(
+            TypeError, match="must be JSON-serializable to build.*init_kwargs"
+        ):
+            build_app(self.A.bind(kwarg=np.zeros(100))).to_dict()
+
+    def test_build_non_importable(self, serve_instance):
+        def gen_deployment():
+            @serve.deployment
+            def f():
+                pass
+
+            return f
+
+        with pytest.raises(RuntimeError, match="must be importable"):
+            build_app(gen_deployment().bind()).to_dict()
+
+
 def compare_specified_options(deployments1: Dict, deployments2: Dict):
     """
     Helper method that takes 2 deployment dictionaries in the REST API
@@ -308,7 +340,7 @@ class TestDictTranslation:
 
         compare_specified_options(config_dict, app_dict)
 
-        app.deploy()
+        serve.run(app.from_dict(app_dict))
 
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
@@ -334,7 +366,7 @@ class TestYAMLTranslation:
         compare_specified_options(app1.to_dict(), app2.to_dict())
 
         # Check that deployment works
-        app1.deploy()
+        serve.run(app1)
         assert (
             requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
         )
@@ -352,17 +384,35 @@ class TestYAMLTranslation:
                 Application.from_yaml(tmp).to_dict(), app1.to_dict()
             )
 
+    def test_convert_to_import_path(self, serve_instance):
+        f = decorated_func.options(name="f")
+        C = DecoratedClass.options(name="C")
+        app = Application([f, C])
+
+        reconstructed_app = Application.from_yaml(app.to_yaml())
+
+        serve.run(reconstructed_app)
+        assert requests.get("http://localhost:8000/f").text == "got decorated func"
+        assert requests.get("http://localhost:8000/C").text == "got decorated class"
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_get_set_item(serve_instance):
+def test_immutable_deployment_list(serve_instance):
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
     )
 
     with open(config_file_name, "r") as f:
         app = Application.from_yaml(f)
-    app["shallow"].deploy()
-    app["one"].deploy()
+
+    assert len(app.deployments.values()) == 2
+
+    for name in app.deployments.keys():
+        with pytest.raises(RuntimeError):
+            app.deployments[name] = app.deployments[name].options(name="sneaky")
+
+    for deployment in app.deployments.values():
+        deployment.deploy()
 
     assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
     assert requests.get("http://localhost:8000/one").text == "2"

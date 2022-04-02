@@ -222,13 +222,14 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     or `batch_wait_timeout_s` has elapsed, whichever occurs first.
 
     Example:
+    >>> from ray import serve
+    >>> @serve.batch(max_batch_size=50, batch_wait_timeout_s=0.5) # doctest: +SKIP
+    ... async def handle_batch(batch: List[str]): # doctest: +SKIP
+    ...     return [s.lower() for s in batch] # doctest: +SKIP
 
-    >>> @serve.batch(max_batch_size=50, batch_wait_timeout_s=0.5)
-        async def handle_batch(batch: List[str]):
-            return [s.lower() for s in batch]
-
-    >>> async def handle_single(s: str):
-            return await handle_batch(s) # Returns s.lower().
+    >>> async def handle_single(s: str): # doctest: +SKIP
+    ...     # Returns s.lower().
+    ...     return await handle_batch(s) # doctest: +SKIP
 
     Arguments:
         max_batch_size (int): the maximum batch size that will be executed in
@@ -241,7 +242,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     if _func is not None:
         if not callable(_func):
             raise TypeError(
-                "@serve.batch can only be used to " "decorate functions or methods."
+                "@serve.batch can only be used to decorate functions or methods."
             )
 
         if not iscoroutinefunction(_func):
