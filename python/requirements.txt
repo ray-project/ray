@@ -8,7 +8,7 @@
 aiohttp>=3.7
 aioredis < 2
 aiosignal
-click >= 7.0
+click >= 7.0, <= 8.0.4
 cloudpickle
 filelock
 frozenlist

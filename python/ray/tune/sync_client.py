@@ -79,7 +79,10 @@ def get_cloud_sync_client(remote_path: str) -> "CommandBasedClient":
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX)
             )
-        sync_up_template = "aws s3 sync {source} {target} --only-show-errors {options}"
+        sync_up_template = (
+            "aws s3 sync {source} {target} "
+            "--exact-timestamps --only-show-errors {options}"
+        )
         sync_down_template = sync_up_template
         delete_template = "aws s3 rm {target} --recursive --only-show-errors {options}"
         exclude_template = "--exclude '{pattern}'"
