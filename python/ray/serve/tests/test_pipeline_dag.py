@@ -9,8 +9,9 @@ import requests
 import ray
 from ray import serve
 from ray.experimental.dag.input_node import InputNode
-from ray.serve.api import Application, DeploymentNode, RayServeDAGHandle
+from ray.serve.api import Application
 from ray.serve.api import build as build_app
+from ray.serve.deployment_graph import DeploymentNode, RayServeDAGHandle
 from ray.serve.pipeline.api import build as pipeline_build
 from ray.serve.drivers import DAGDriver
 import starlette.requests
