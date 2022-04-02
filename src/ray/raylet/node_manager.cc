@@ -2564,6 +2564,56 @@ void NodeManager::RecordMetrics() {
   object_directory_->RecordMetrics(duration_ms);
 }
 
+void NodeManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) {
+  rpc::ResourcesData data;
+  data.ParseFromString(message->sync_message());
+  NodeID node_id = NodeID::FromBinary(data.node_id());
+
+  UpdateResourceUsage(node_id, data);
+}
+
+std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
+    int64_t after_version, syncer::RayComponentId component_id) const {
+  if (component_id == syncer::RayComponentId::SCHEDULER) {
+    static uint64_t version = 0;
+    syncer::RaySyncMessage msg;
+    rpc::ResourcesData resource_data;
+    cluster_task_manager_->FillResourceUsage(resource_data);
+    resource_data.set_node_id(self_node_id_.Binary());
+    // resource_data.set_node_manager_address(initial_config_.node_manager_address);
+
+    msg.set_version(++version);
+    msg.set_node_id(self_node_id_.Binary());
+    msg.set_component_id(syncer::RayComponentId::SCHEDULER);
+    std::string serialized_msg;
+    RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
+    msg.set_sync_message(std::move(serialized_msg));
+    return std::make_optional(std::move(msg));
+  } else if (component_id == syncer::RayComponentId::RESOURCE_MANAGER) {
+    auto &local = cluster_resource_scheduler_->GetLocalResourceManager();
+
+    if (local.Version() <= after_version) {
+      return std::nullopt;
+    }
+
+    syncer::RaySyncMessage msg;
+    rpc::ResourcesData resource_data;
+    local.FillResourceUsage(resource_data);
+    resource_data.set_node_id(self_node_id_.Binary());
+    // resource_data.set_node_manager_address(initial_config_.node_manager_address);
+
+    msg.set_node_id(self_node_id_.Binary());
+    msg.set_version(local.Version());
+    msg.set_component_id(syncer::RayComponentId::RESOURCE_MANAGER);
+    std::string serialized_msg;
+    RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
+    msg.set_sync_message(std::move(serialized_msg));
+    return std::make_optional(std::move(msg));
+  } else {
+    return std::nullopt;
+  }
+}
+
 void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   bool suppress_warning = false;
 

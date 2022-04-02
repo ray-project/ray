@@ -380,6 +380,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
 }
 
 void LocalResourceManager::OnResourceChanged() {
+  ++version_;
   if (resource_change_subscriber_ == nullptr) {
     return;
   }
@@ -395,52 +396,6 @@ void LocalResourceManager::ResetLastReportResourceUsage(
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
   return local_resources_.total.Has(resource_id);
-}
-
-std::optional<syncer::RaySyncMessage> LocalResourceManager::Snapshot(
-    int64_t version_after, syncer::RayComponentId component_id) const {
-  if (version_ <= version_after) {
-    return std::nullopt;
-  }
-
-  const_cast<LocalResourceManager *>(this)->UpdateAvailableObjectStoreMemResource();
-
-  rpc::ResourcesData resources_data;
-  NodeResources resources = ToNodeResources(local_resources_);
-
-  for (auto entry : resources.total.ToMap()) {
-    auto resource_id = entry.first;
-    auto label = ResourceID(resource_id).Binary();
-    auto total = entry.second;
-    auto available = resources.available.Get(resource_id);
-
-    // Note: available may be negative, but only report positive to GCS.
-    if (available > 0) {
-      resources_data.set_resources_available_changed(true);
-      (*resources_data.mutable_resources_available())[label] = available.Double();
-    }
-    (*resources_data.mutable_resources_total())[label] = total.Double();
-  }
-
-  if (get_pull_manager_at_capacity_ != nullptr) {
-    resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-    resources_data.set_resources_available_changed(true);
-  }
-
-  resources_data.set_resources_available_changed(true);
-  resources_data.set_node_id(local_node_id_.Binary());
-
-  // Generate RaySyncMessage
-  ray::rpc::syncer::RaySyncMessage msg;
-  msg.set_component_id(ray::rpc::syncer::RayComponentId::RESOURCE_MANAGER);
-  msg.set_version(version_);
-  std::string serialized_msg;
-  RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
-  msg.set_sync_message(std::move(serialized_msg));
-  msg.set_node_id(local_node_id_.Binary());
-  msg.set_version(version_);
-  return std::make_optional(std::move(msg));
 }
 
 }  // namespace ray

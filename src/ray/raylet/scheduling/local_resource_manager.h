@@ -22,7 +22,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -38,7 +37,7 @@ namespace ray {
 /// it also supports creating a new resource or delete an existing resource.
 /// Whenever the resouce changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
-class LocalResourceManager : public syncer::ReporterInterface {
+class LocalResourceManager {
  public:
   LocalResourceManager(
       scheduling::NodeID local_node_id,
@@ -108,6 +107,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  int64_t Version() const { return version_; }
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resources_available and resources_total.
@@ -145,9 +146,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   ///
   /// \return true, if exist. otherwise, false.
   bool ResourcesExist(scheduling::ResourceID resource_id) const;
-
-  std::optional<syncer::RaySyncMessage> Snapshot(
-      int64_t version_after, syncer::RayComponentId component_id) const override;
 
  private:
   /// Notify the subscriber that the local resouces has changed.
