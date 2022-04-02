@@ -183,6 +183,8 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
+rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
+
 std::shared_ptr<const GcsActorWorkerAssignment> GcsActor::GetActorWorkerAssignment()
     const {
   return assignment_ptr_;
@@ -373,8 +375,9 @@ void GcsActorManager::HandleGetNamedActorInfo(
   } else {
     reply->unsafe_arena_set_allocated_actor_table_data(
         iter->second->GetMutableActorTableData());
+    RAY_LOG(INFO) << "WANGTAO " << iter->second->GetState();
     reply->unsafe_arena_set_allocated_task_spec(
-        &iter->second->GetCreationTaskSpecification().GetMutableMessage());
+        iter->second->GetMutableTaskSpec());
     RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                    << ", actor id = " << actor_id;
   }
