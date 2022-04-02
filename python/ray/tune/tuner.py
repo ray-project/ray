@@ -156,8 +156,7 @@ class Tuner:
         to resume.
 
         Raises:
-            TuneError: If errors occur executing the experiment that originate from
-                Tune.
+            RayTaskError when the exception happens in trainable else TuneError.
         """
 
         if not self._is_ray_client:
