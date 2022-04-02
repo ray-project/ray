@@ -337,6 +337,35 @@ class SelectExperiences:
         return samples
 
 
+def standardize_fields(samples: SampleBatchType, fields: List[str]) -> SampleBatchType:
+    """Standardize fields of the given SampleBatch"""
+    _check_sample_batch_type(samples)
+    wrapped = False
+
+    if isinstance(samples, SampleBatch):
+        samples = samples.as_multi_agent()
+        wrapped = True
+
+    for policy_id in samples.policy_batches:
+        batch = samples.policy_batches[policy_id]
+        for field in fields:
+            if field not in batch:
+                raise KeyError(
+                    f"`{field}` not found in SampleBatch for policy "
+                    f"`{policy_id}`! Maybe this policy fails to add "
+                    f"{field} in its `postprocess_trajectory` method? Or "
+                    "this policy is not meant to learn at all and you "
+                    "forgot to add it to the list under `config."
+                    "multiagent.policies_to_train`."
+                )
+            batch[field] = standardized(batch[field])
+
+    if wrapped:
+        samples = samples.policy_batches[DEFAULT_POLICY_ID]
+
+    return samples
+
+
 class StandardizeFields:
     """Callable used to standardize fields of batches.
 
@@ -358,28 +387,4 @@ class StandardizeFields:
         self.fields = fields
 
     def __call__(self, samples: SampleBatchType) -> SampleBatchType:
-        _check_sample_batch_type(samples)
-        wrapped = False
-
-        if isinstance(samples, SampleBatch):
-            samples = samples.as_multi_agent()
-            wrapped = True
-
-        for policy_id in samples.policy_batches:
-            batch = samples.policy_batches[policy_id]
-            for field in self.fields:
-                if field not in batch:
-                    raise KeyError(
-                        f"`{field}` not found in SampleBatch for policy "
-                        f"`{policy_id}`! Maybe this policy fails to add "
-                        f"{field} in its `postprocess_trajectory` method? Or "
-                        "this policy is not meant to learn at all and you "
-                        "forgot to add it to the list under `config."
-                        "multiagent.policies_to_train`."
-                    )
-                batch[field] = standardized(batch[field])
-
-        if wrapped:
-            samples = samples.policy_batches[DEFAULT_POLICY_ID]
-
-        return samples
+        return standardize_fields(samples, self.fields)

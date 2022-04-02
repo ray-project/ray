@@ -12,6 +12,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 import logging
 from typing import List, Optional, Type, Union
 
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
@@ -21,17 +22,31 @@ from ray.rllib.execution.rollout_ops import (
     ParallelRollouts,
     ConcatBatches,
     StandardizeFields,
+    standardize_fields,
     SelectExperiences,
 )
-from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
+from ray.rllib.execution.train_ops import (
+    TrainOneStep,
+    MultiGPUTrainOneStep,
+    train_one_step,
+    multi_gpu_train_one_step,
+)
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 from ray.util.iter import LocalIterator
+from ray.rllib.execution.rollout_ops import (
+    synchronous_parallel_sample,
+)
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -462,3 +477,54 @@ class PPOTrainer(Trainer):
         return StandardMetricsReporting(train_op, workers, config).for_each(
             lambda result: warn_about_bad_reward_scales(config, result)
         )
+
+    @ExperimentalAPI
+    def training_iteration(self) -> ResultDict:
+        # Collect SampleBatches from sample workers
+        rollouts = synchronous_parallel_sample(self.workers)
+
+        # Concatenate the SampleBatches from each worker into one large SampleBatch
+        rollouts = SampleBatch.concat_samples(rollouts)
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += rollouts.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += rollouts.env_steps()
+        # Standardize advantages
+        rollouts = standardize_fields(rollouts, ["advantages"])
+        # Train
+        if self.config["simple_optimizer"]:
+            train_results = train_one_step(self, rollouts)
+        else:
+            train_results = multi_gpu_train_one_step(self, rollouts)
+
+        # For each policy: update KL scale and warn about possible issues
+        for i, (policy_id, policy_info) in enumerate(train_results.items()):
+            # Update KL loss with dynamic scaling
+            # for each (possibly multiagent) policy we are training
+            kl_divergence = policy_info[LEARNER_STATS_KEY].get("kl")
+            self.get_policy(policy_id).update_kl(kl_divergence)
+
+            # Warn about excessively high value function loss
+            scaled_vf_loss = (
+                self.config["vf_loss_coeff"] * policy_info[LEARNER_STATS_KEY]["vf_loss"]
+            )
+            policy_loss = policy_info[LEARNER_STATS_KEY]["policy_loss"]
+            if (
+                self.config.get("model", {}).get("vf_share_layers")
+                and scaled_vf_loss > 100
+            ):
+                logger.warning(
+                    "The magnitude of your value function loss for policy: {} is "
+                    "extremely large ({}) compared to the policy loss ({}). This "
+                    "can prevent the policy from learning. Consider scaling down "
+                    "the VF loss by reducing vf_loss_coeff, or disabling "
+                    "vf_share_layers.".format(policy_id, scaled_vf_loss, policy_loss)
+                )
+            # Warn about bad clipping configs
+            mean_reward = rollouts["rewards"][rollouts["agent_index"] == i].mean()
+            if mean_reward > self.config["vf_clip_param"]:
+                logger.warning(
+                    f"The mean reward returned from the environment is {mean_reward}"
+                    f" but the vf_clip_param is set to {self.config['vf_clip_param']}."
+                    f" Consider increasing it for policy: {policy_id} to improve"
+                    " value function convergence."
+                )
+        return train_results
