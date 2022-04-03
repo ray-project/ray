@@ -132,6 +132,11 @@ def url_from_resource(namespace: str, path: str) -> str:
         + path
     )
 
+def _worker_group_index(raycluster: Dict[str, Any], group_name: str) -> int:
+    """Extract worker group index from RayCluster."""
+    group_names = [spec["groupName"] for spec in raycluster["spec"]["workerGroupSpecs"]]
+    return group_names.index(group_name)
+
 
 class KuberayNodeProvider(NodeProvider):  # type: ignore
     def __init__(
@@ -198,23 +203,6 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         assert result.status_code == 200
         return result.json()
 
-    def _get_worker_group(
-        self, raycluster: Dict[str, Any], group_name: str
-    ) -> Tuple[int, Dict[str, Any]]:
-        """Extract group index and group definition from RayCluster."""
-        group_index = None
-        group_spec = None
-        worker_group_specs = raycluster["spec"]["workerGroupSpecs"]
-        for index, spec in enumerate(worker_group_specs):
-            if spec["groupName"] == group_name:
-                group_index = index
-                group_spec = spec
-                break
-        assert (
-            group_index is not None and group_spec is not None
-        ), f"Could not find the worker group with name {group_name}."
-        return group_index, group_spec
-
     def create_node(
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
     ) -> Dict[str, Dict[str, str]]:
@@ -223,7 +211,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             url = "rayclusters/{}".format(self.cluster_name)
             raycluster = self._get(url)
             group_name = tags["ray-user-node-type"]
-            group_index, _ = self._get_worker_group(raycluster, group_name)
+            group_index = _worker_group_index(raycluster, group_name)
             tag_filters = {TAG_RAY_USER_NODE_TYPE: group_name}
             current_replica_count = len(self.non_terminated_nodes(tag_filters))
             path = f"/spec/workerGroupSpecs/{group_index}/replicas"
@@ -288,8 +276,9 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
             url = "rayclusters/{}".format(self.cluster_name)
             raycluster = self._get(url)
+
             for group_name, nodes in groups.items():
-                group_index, _ = self._get_worker_group(raycluster, group_name)
+                group_index = _worker_group_index(raycluster, group_name)
                 prefix = f"/spec/workerGroupSpecs/{group_index}"
                 payload = [
                     {
