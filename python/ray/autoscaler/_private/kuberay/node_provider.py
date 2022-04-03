@@ -2,7 +2,6 @@ import json
 import logging
 import requests
 import threading
-import time
 from typing import Any, Dict, List, Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
