@@ -275,6 +275,7 @@ def debug(address):
 @click.option(
     "--node-name",
     required=False,
+    hidden=True,
     type=str,
     help="the user-provided identifier or name for this node",
 )
