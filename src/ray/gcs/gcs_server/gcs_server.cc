@@ -250,7 +250,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-      gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
+      main_service_,
+      gcs_table_storage_,
+      cluster_resource_scheduler_->GetClusterResourceManager());
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -425,14 +427,24 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
     ray_syncer_node_id_ = NodeID::FromRandom();
     ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
                                                       ray_syncer_node_id_.Binary());
-    syncer_->Register(
-        syncing::RayComponentId::RESOURCE_MANAGER, nullptr, gcs_resource_manager_.get());
-    syncer_->Register(
-        syncing::RayComponentId::SCHEDULER, nullptr, gcs_resource_manager_.get());
+    ray_syncer_->Register(
+        syncer::RayComponentId::RESOURCE_MANAGER, nullptr, gcs_resource_manager_.get());
+    ray_syncer_->Register(
+        syncer::RayComponentId::SCHEDULER, nullptr, gcs_resource_manager_.get());
     ray_syncer_thread_ = std::make_unique<std::thread>([this]() {
       boost::asio::io_service::work work(ray_syncer_io_context_);
       ray_syncer_io_context_.run();
     });
+
+    for (const auto &pair : gcs_init_data.Nodes()) {
+      rpc::Address address;
+      address.set_raylet_id(pair.second.node_id());
+      address.set_ip_address(pair.second.node_manager_address());
+      address.set_port(pair.second.node_manager_port());
+
+      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+      ray_syncer_->Connect(raylet_client->GetChannel());
+    }
   } else {
     /*
       The current synchronization flow is:

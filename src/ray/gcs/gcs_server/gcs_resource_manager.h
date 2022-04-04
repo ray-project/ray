@@ -46,12 +46,13 @@ namespace gcs {
 /// actor and placement group scheduling. It obtains the available resources of nodes
 /// through heartbeat reporting. Non-thread safe.
 class GcsResourceManager : public rpc::NodeResourceInfoHandler,
-                           syncer::ReceiverInterface {
+                           public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
   ///
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsResourceManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+  explicit GcsResourceManager(instrumented_io_context &io_context,
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                               ClusterResourceManager &cluster_resource_manager);
 
   virtual ~GcsResourceManager() {}
@@ -138,6 +139,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
  private:
+  /// io context
+  instrumented_io_context &io_context_;
+
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 

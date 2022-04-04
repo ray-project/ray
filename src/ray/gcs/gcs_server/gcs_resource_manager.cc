@@ -21,25 +21,29 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
+    instrumented_io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     ClusterResourceManager &cluster_resource_manager)
-    : gcs_table_storage_(gcs_table_storage),
+    : io_context_(io_context),
+      gcs_table_storage_(gcs_table_storage),
       cluster_resource_manager_(cluster_resource_manager) {}
 
 void GcsResourceManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) {
   // Make sure thread safety.
-  main_io_service_.post([this, message]() {
-    rpc::ResourcesData resources;
-    resources.ParseFromString(message->sync_message());
-    resources.set_node_id(message->node_id());
-    auto node_id = NodeID::FromBinary(message->node_id());
-    if (message->component_id() == syncing::RayComponentId::RESOURCE_MANAGER) {
-      cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-          scheduling::NodeID(message->node_id()), resources);
-    } else if (message->component_id() == syncing::RayComponentId::SCHEDULER) {
-      UpdateNodeResourceUsage(node_id, resources);
-    }
-  });
+  io_context_.post(
+      [this, message]() {
+        rpc::ResourcesData resources;
+        resources.ParseFromString(message->sync_message());
+        resources.set_node_id(message->node_id());
+        auto node_id = NodeID::FromBinary(message->node_id());
+        if (message->component_id() == syncer::RayComponentId::RESOURCE_MANAGER) {
+          cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
+              scheduling::NodeID(message->node_id()), resources);
+        } else if (message->component_id() == syncer::RayComponentId::SCHEDULER) {
+          UpdateNodeResourceUsage(node_id, resources);
+        }
+      },
+      "GcsResourceManager::Update");
 }
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
