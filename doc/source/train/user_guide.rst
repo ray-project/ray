@@ -1313,20 +1313,3 @@ Backwards Compatibility with Ray SGD
 ------------------------------------
 
 If you are currently using :ref:`RaySGD <sgd-index>`, you can migrate to Ray Train by following: :ref:`sgd-migration`.
-
-FAQ
----
-
-How can I use Matplotlib with Ray Train?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you try to create a Matplotlib plot in the training function, you may encounter an error:
-
-.. code-block::
-
-    UserWarning: Starting a Matplotlib GUI outside of the main thread will likely fail.
-
-To handle this, consider the following approaches:
-
-1. If there is no dependency on any code in your training function, simply move the Matplotlib logic out and execute it before or after ``trainer.run``.
-2. If you are plotting metrics, you can pass the metrics via ``train.report()`` and create a :ref:`custom callback <train-custom-callbacks>` to plot the results.
