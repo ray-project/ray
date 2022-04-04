@@ -42,6 +42,7 @@ class SubscriberState;
 
 /// State for an entity / topic in a pub/sub channel.
 struct EntityState {
+  /// Subscribers for the entity.
   absl::flat_hash_map<SubscriberID, SubscriberState*> subscribers;
 };
 
@@ -89,10 +90,9 @@ class SubscriptionIndex {
 
  private:
   // Collection of subscribers that subscribe to all entities of the channel.
-  absl::flat_hash_map<SubscriberID, SubscriberState*> subscribers_to_all_;
-  // Mapping from subscribed entity id -> subscribers.
-  absl::flat_hash_map<std::string, absl::flat_hash_map<SubscriberID, SubscriberState*>>
-      key_id_to_subscribers_;
+  EntityState subscribers_to_all_;
+  // Mapping from subscribed entity id -> entity state.
+  absl::flat_hash_map<std::string, EntityState> entities_;
   // Mapping from subscriber IDs -> subscribed key ids.
   // Reverse index of key_id_to_subscribers_.
   absl::flat_hash_map<SubscriberID, absl::flat_hash_set<std::string>>

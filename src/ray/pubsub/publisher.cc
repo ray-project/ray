@@ -38,12 +38,12 @@ bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
 bool SubscriptionIndex::AddEntry(const std::string &key_id,
                                  SubscriberState *subscriber) {
   if (key_id.empty()) {
-    return subscribers_to_all_.emplace(subscriber->id(), subscriber).second;
+    return subscribers_to_all_.subscribers.emplace(subscriber->id(), subscriber).second;
   }
 
   auto &subscribing_key_ids = subscribers_to_key_id_[subscriber->id()];
   bool key_added = subscribing_key_ids.emplace(key_id).second;
-  auto &subscriber_map = key_id_to_subscribers_[key_id];
+  auto &subscriber_map = entities_[key_id].subscribers;
   auto subscriber_added = subscriber_map.emplace(subscriber->id(), subscriber).second;
 
   RAY_CHECK(key_added == subscriber_added);
@@ -53,14 +53,14 @@ bool SubscriptionIndex::AddEntry(const std::string &key_id,
 std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
     const std::string &key_id) const {
   std::vector<SubscriberID> subscribers;
-  if (!subscribers_to_all_.empty()) {
-    for (const auto &[sub_id, sub] : subscribers_to_all_) {
+  if (!subscribers_to_all_.subscribers.empty()) {
+    for (const auto &[sub_id, sub] : subscribers_to_all_.subscribers) {
       subscribers.push_back(sub_id);
     }
   }
-  auto it = key_id_to_subscribers_.find(key_id);
-  if (it != key_id_to_subscribers_.end()) {
-    auto &subs = it->second;
+  auto it = entities_.find(key_id);
+  if (it != entities_.end()) {
+    auto &subs = it->second.subscribers;
     for (const auto &[sub_id, sub] : subs) {
       subscribers.push_back(sub_id);
     }
@@ -70,7 +70,7 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
 
 bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
   // Erase subscriber of all keys.
-  if (subscribers_to_all_.erase(subscriber_id) > 0) {
+  if (subscribers_to_all_.subscribers.erase(subscriber_id) > 0) {
     return true;
   }
 
@@ -83,14 +83,14 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
   const auto &subscribing_keys = subscribing_key_it->second;
   for (const auto &key_id : subscribing_keys) {
     // Erase the subscriber from the object map.
-    auto subscribers_it = key_id_to_subscribers_.find(key_id);
-    if (subscribers_it == key_id_to_subscribers_.end()) {
+    auto entity_it = entities_.find(key_id);
+    if (entity_it == entities_.end()) {
       continue;
     }
-    auto &subscribers = subscribers_it->second;
+    auto &subscribers = entity_it->second.subscribers;
     subscribers.erase(subscriber_id);
     if (subscribers.size() == 0) {
-      key_id_to_subscribers_.erase(subscribers_it);
+      entities_.erase(entity_it);
     }
   }
   subscribers_to_key_id_.erase(subscribing_key_it);
@@ -101,7 +101,7 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
                                    const SubscriberID &subscriber_id) {
   // Erase the subscriber of all keys.
   if (key_id.empty()) {
-    return subscribers_to_all_.erase(subscriber_id) > 0;
+    return subscribers_to_all_.subscribers.erase(subscriber_id) > 0;
   }
 
   // Erase keys from the subscriber of individual keys.
@@ -112,9 +112,9 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
   auto &objects = subscribers_to_message_it->second;
   auto object_it = objects.find(key_id);
   if (object_it == objects.end()) {
-    auto it = key_id_to_subscribers_.find(key_id);
-    if (it != key_id_to_subscribers_.end()) {
-      RAY_CHECK(it->second.count(subscriber_id) == 0);
+    auto it = entities_.find(key_id);
+    if (it != entities_.end()) {
+      RAY_CHECK(!it->second.subscribers.contains(subscriber_id));
     }
     return false;
   }
@@ -124,33 +124,33 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
   }
 
   // Erase subscribers from keys (reverse index).
-  auto key_id_to_subscriber_it = key_id_to_subscribers_.find(key_id);
+  auto entity_it = entities_.find(key_id);
   // If code reaches this line, that means the object id was in the index.
-  RAY_CHECK(key_id_to_subscriber_it != key_id_to_subscribers_.end());
-  auto &subscribers = key_id_to_subscriber_it->second;
+  RAY_CHECK(entity_it != entities_.end());
+  auto &subscribers = entity_it->second.subscribers;
   auto subscriber_it = subscribers.find(subscriber_id);
   // If code reaches this line, that means the subscriber id was in the index.
   RAY_CHECK(subscriber_it != subscribers.end());
   subscribers.erase(subscriber_it);
   if (subscribers.size() == 0) {
-    key_id_to_subscribers_.erase(key_id_to_subscriber_it);
+    entities_.erase(entity_it);
   }
   return true;
 }
 
 bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
-  return key_id_to_subscribers_.contains(key_id);
+  return entities_.contains(key_id);
 }
 
 bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
-  if (subscribers_to_all_.contains(subscriber_id)) {
+  if (subscribers_to_all_.subscribers.contains(subscriber_id)) {
     return true;
   }
   return subscribers_to_key_id_.contains(subscriber_id);
 }
 
 bool SubscriptionIndex::CheckNoLeaks() const {
-  return key_id_to_subscribers_.size() == 0 && subscribers_to_key_id_.size() == 0;
+  return entities_.size() == 0 && subscribers_to_key_id_.size() == 0;
 }
 
 void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
