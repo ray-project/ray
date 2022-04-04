@@ -249,11 +249,19 @@ class KubernetesOperatorTest(unittest.TestCase):
                 pod_spec["containers"][0]["image"] = IMAGE
                 pod_spec["containers"][0]["imagePullPolicy"] = PULL_POLICY
 
-            # Use a custom Redis port for one of the clusters.
-            example_cluster_config["spec"]["headStartRayCommands"][1] += " --port 6400"
+            # Use a custom port for one of the clusters.
+            new_head_start_cmd = example_cluster_config["spec"]["headStartRayCommands"][
+                1
+            ].replace("6379", "6380")
+            new_worker_start_cmd = example_cluster_config["spec"][
+                "workerStartRayCommands"
+            ][1].replace("6379", "6380")
+            example_cluster_config["spec"]["headStartRayCommands"][
+                1
+            ] = new_head_start_cmd
             example_cluster_config["spec"]["workerStartRayCommands"][
                 1
-            ] = " ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6400"
+            ] = new_worker_start_cmd
 
             # Dump to temporary files
             yaml.dump(example_cluster_config, example_cluster_file)

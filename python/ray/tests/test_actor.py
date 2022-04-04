@@ -4,6 +4,7 @@ import numpy as np
 import os
 from ray import cloudpickle as pickle
 from ray import ray_constants
+from ray.actor import ActorClassInheritanceException
 
 try:
     import pytest_timeout
@@ -686,7 +687,8 @@ def test_actor_inheritance(ray_start_regular_shared):
 
     # Test that you can't inherit from an actor class.
     with pytest.raises(
-        TypeError, match="Inheriting from actor classes is not " "currently supported."
+        ActorClassInheritanceException,
+        match="Inheriting from actor classes is not currently supported.",
     ):
 
         class Derived(ActorBase):
@@ -1137,7 +1139,7 @@ def test_actor_autocomplete(ray_start_regular_shared):
 
     class_calls = [fn for fn in dir(Foo) if not fn.startswith("_")]
 
-    assert set(class_calls) == {"method_one", "options", "remote"}
+    assert set(class_calls) == {"method_one", "options", "remote", "bind"}
 
     f = Foo.remote()
 
@@ -1150,6 +1152,23 @@ def test_actor_autocomplete(ray_start_regular_shared):
     method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
 
     assert set(method_options) == {"options", "remote"}
+
+
+def test_actor_mro(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def __init__(self, x):
+            self.x = x
+
+        @classmethod
+        def factory_f(cls, x):
+            return cls(x)
+
+        def get_x(self):
+            return self.x
+
+    obj = Foo.factory_f(1)
+    assert obj.get_x() == 1
 
 
 if __name__ == "__main__":

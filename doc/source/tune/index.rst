@@ -1,3 +1,5 @@
+.. include:: /_includes/tune/announcement.rst
+
 .. _tune-main:
 
 Tune: Scalable Hyperparameter Tuning
@@ -248,3 +250,5 @@ Here is an example bibtex:
         journal={arXiv preprint arXiv:1807.05118},
         year={2018}
     }
+
+.. include:: /_includes/tune/announcement_bottom.rst

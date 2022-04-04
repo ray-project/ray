@@ -228,9 +228,9 @@ def test_module_lacks_client_builder():
             ray.client("othermodule://")
         except AssertionError as e:
             exception = e
-        assert exception is not None, (
-            "Module without ClientBuilder did not " "raise AssertionError"
-        )
+        assert (
+            exception is not None
+        ), "Module without ClientBuilder did not raise AssertionError"
         assert "does not have ClientBuilder" in str(exception)
 
 

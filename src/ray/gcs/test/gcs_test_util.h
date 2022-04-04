@@ -30,8 +30,12 @@ namespace ray {
 
 struct Mocker {
   static TaskSpecification GenActorCreationTask(
-      const JobID &job_id, int max_restarts, bool detached, const std::string &name,
-      const std::string &ray_namespace, const rpc::Address &owner_address,
+      const JobID &job_id,
+      int max_restarts,
+      bool detached,
+      const std::string &name,
+      const std::string &ray_namespace,
+      const rpc::Address &owner_address,
       std::unordered_map<std::string, double> required_resources =
           std::unordered_map<std::string, double>(),
       std::unordered_map<std::string, double> required_placement_resources =
@@ -41,21 +45,41 @@ struct Mocker {
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     FunctionDescriptor function_descriptor;
     function_descriptor = FunctionDescriptorBuilder::BuildPython("", "", "", "");
-    builder.SetCommonTaskSpec(task_id, name + ":" + function_descriptor->CallString(),
-                              Language::PYTHON, function_descriptor, job_id,
-                              TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1,
-                              required_resources, required_placement_resources, "", 0);
+    builder.SetCommonTaskSpec(task_id,
+                              name + ":" + function_descriptor->CallString(),
+                              Language::PYTHON,
+                              function_descriptor,
+                              job_id,
+                              TaskID::Nil(),
+                              0,
+                              TaskID::Nil(),
+                              owner_address,
+                              1,
+                              required_resources,
+                              required_placement_resources,
+                              "",
+                              0);
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
-    builder.SetActorCreationTaskSpec(actor_id, {}, scheduling_strategy, max_restarts,
-                                     /*max_task_retries=*/0, {}, 1, detached, name,
+    builder.SetActorCreationTaskSpec(actor_id,
+                                     {},
+                                     scheduling_strategy,
+                                     max_restarts,
+                                     /*max_task_retries=*/0,
+                                     {},
+                                     1,
+                                     detached,
+                                     name,
                                      ray_namespace);
     return builder.Build();
   }
 
   static rpc::CreateActorRequest GenCreateActorRequest(
-      const JobID &job_id, int max_restarts = 0, bool detached = false,
-      const std::string &name = "", const std::string &ray_namespace = "") {
+      const JobID &job_id,
+      int max_restarts = 0,
+      bool detached = false,
+      const std::string &name = "",
+      const std::string &ray_namespace = "") {
     rpc::Address owner_address;
     owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
@@ -69,8 +93,11 @@ struct Mocker {
   }
 
   static rpc::RegisterActorRequest GenRegisterActorRequest(
-      const JobID &job_id, int max_restarts = 0, bool detached = false,
-      const std::string &name = "", const std::string &ray_namespace = "") {
+      const JobID &job_id,
+      int max_restarts = 0,
+      bool detached = false,
+      const std::string &name = "",
+      const std::string &ray_namespace = "") {
     rpc::Address owner_address;
     owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
@@ -85,7 +112,8 @@ struct Mocker {
 
   static std::vector<std::shared_ptr<const BundleSpecification>> GenBundleSpecifications(
       const PlacementGroupID &placement_group_id,
-      absl::flat_hash_map<std::string, double> &unit_resource, int bundles_size = 1) {
+      absl::flat_hash_map<std::string, double> &unit_resource,
+      int bundles_size = 1) {
     std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
     for (int i = 0; i < bundles_size; i++) {
       rpc::Bundle bundle;
@@ -104,7 +132,8 @@ struct Mocker {
 
   // TODO(@clay4444): Remove this once we did the batch rpc request refactor.
   static BundleSpecification GenBundleCreation(
-      const PlacementGroupID &placement_group_id, const int bundle_index,
+      const PlacementGroupID &placement_group_id,
+      const int bundle_index,
       absl::flat_hash_map<std::string, double> &unit_resource) {
     rpc::Bundle bundle;
     auto mutable_bundle_id = bundle.mutable_bundle_id();
@@ -120,12 +149,19 @@ struct Mocker {
   static PlacementGroupSpecification GenPlacementGroupCreation(
       const std::string &name,
       std::vector<std::unordered_map<std::string, double>> &bundles,
-      rpc::PlacementStrategy strategy, const JobID &job_id, const ActorID &actor_id) {
+      rpc::PlacementStrategy strategy,
+      const JobID &job_id,
+      const ActorID &actor_id) {
     PlacementGroupSpecBuilder builder;
 
-    auto placement_group_id = PlacementGroupID::FromRandom();
-    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy,
-                                  /* is_detached */ false, job_id, actor_id,
+    auto placement_group_id = PlacementGroupID::Of(job_id);
+    builder.SetPlacementGroupSpec(placement_group_id,
+                                  name,
+                                  bundles,
+                                  strategy,
+                                  /* is_detached */ false,
+                                  job_id,
+                                  actor_id,
                                   /* is_creator_detached */ false);
     return builder.Build();
   }
@@ -133,7 +169,9 @@ struct Mocker {
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
       const std::string name = "",
       rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD,
-      int bundles_count = 2, double cpu_num = 1.0, const JobID job_id = JobID::FromInt(1),
+      int bundles_count = 2,
+      double cpu_num = 1.0,
+      const JobID job_id = JobID::FromInt(1),
       const ActorID &actor_id = ActorID::Nil()) {
     rpc::CreatePlacementGroupRequest request;
     std::vector<std::unordered_map<std::string, double>> bundles;
@@ -198,7 +236,8 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
-      const JobID &job_id, const std::string &ray_namespace,
+      const JobID &job_id,
+      const std::string &ray_namespace,
       uint32_t num_java_worker_per_process) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);

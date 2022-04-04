@@ -74,6 +74,8 @@ def sample_boundaries(
     return ret[1:]
 
 
+# Note: currently the map_groups() API relies on this implementation
+# to partition the same key into the same block.
 def sort_impl(
     blocks: BlockList, key: SortKeyT, descending: bool = False
 ) -> Tuple[BlockList, dict]:

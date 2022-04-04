@@ -125,7 +125,7 @@ def _put_helper(
     # nested object refs.
     if isinstance(obj, ray.ObjectRef):
         raise NotImplementedError(
-            "Workflow does not support checkpointing " "nested object references yet."
+            "Workflow does not support checkpointing nested object references yet."
         )
     paths = obj_id_to_paths(workflow_id, identifier)
     promise = dump_to_storage(paths, obj, workflow_id, storage, update_existing=False)

@@ -290,7 +290,7 @@ def _configure_iam_role(config):
         role = _get_role(role_name, config)
         if role is None:
             cli_logger.verbose(
-                "Creating new IAM role {} for " "use as the default instance role.",
+                "Creating new IAM role {} for use as the default instance role.",
                 cf.bold(role_name),
             )
             iam = _resource("iam", config)

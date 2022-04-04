@@ -38,7 +38,7 @@ Single workflow management APIs
         print("Workflow doesn't exist.")
 
     # Resume a workflow.
-    print(workflow.resume(workflow_id="workflow_id")))
+    print(workflow.resume(workflow_id="workflow_id"))
     # return is an ObjectRef which is the result of this workflow
 
     # Cancel a workflow.

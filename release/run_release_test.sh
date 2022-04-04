@@ -12,15 +12,15 @@ reason() {
   # Keep in sync with e2e.py ExitCode enum
   if [ "$1" -eq 0 ]; then
     REASON="success"
-  elif [ "$1" -ge 1 ] && [ "$1" -le 10 ]; then
+  elif [ "$1" -ge 1 ] && [ "$1" -lt 10 ]; then
     REASON="runtime error"
-  elif [ "$1" -gt 10 ] && [ "$1" -le 20 ]; then
+  elif [ "$1" -ge 10 ] && [ "$1" -lt 20 ]; then
     REASON="infra error"
-  elif [ "$1" -gt 30 ] && [ "$1" -le 40 ]; then
+  elif [ "$1" -ge 30 ] && [ "$1" -lt 40 ]; then
     REASON="infra timeout"
   elif [ "$1" -eq 42 ]; then
     REASON="command timeout"
-  elif [ "$1" -gt 40 ] && [ "$1" -le 50 ]; then
+  elif [ "$1" -ge 40 ] && [ "$1" -lt 50 ]; then
     REASON="command error"
   fi
   echo "${REASON}"
@@ -50,7 +50,7 @@ if [ -z "${NO_INSTALL}" ]; then
 fi
 
 RETRY_NUM=0
-MAX_RETRIES=${MAX_RETRIES-3}
+MAX_RETRIES=${MAX_RETRIES-1}
 
 if [ "${BUILDKITE_RETRY_COUNT-0}" -ge 1 ]; then
   echo "This is a manually triggered retry from the Buildkite web UI, so we set the number of infra retries to 1."
@@ -108,7 +108,7 @@ if [ -z "${NO_ARTIFACTS}" ]; then
 fi
 
 echo "----------------------------------------"
-echo "release test finished with final exit code ${EXIT_CODE} after ${RETRY_NUM}/${MAX_RETRIES} tries"
+echo "Release test finished with final exit code ${EXIT_CODE} after ${RETRY_NUM}/${MAX_RETRIES} tries"
 echo "Run results:"
 
 COUNTER=1
@@ -125,7 +125,7 @@ echo "Final release test exit code is ${EXIT_CODE} (${REASON})"
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "RELEASE MANAGER: This test seems to have passed."
-elif [ "$EXIT_CODE" -gt 30 ] && [ "$EXIT_CODE" -le 40 ]; then
+elif [ "$EXIT_CODE" -ge 30 ] && [ "$EXIT_CODE" -lt 40 ]; then
   echo "RELEASE MANAGER: This is likely an infra error that can be solved by RESTARTING this test."
 else
   echo "RELEASE MANAGER: This could be an error in the test. Please REVIEW THE LOGS and ping the test owner."

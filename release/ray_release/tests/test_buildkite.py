@@ -1,4 +1,5 @@
 import os
+import sys
 import unittest
 from typing import Dict
 from unittest.mock import patch
@@ -16,16 +17,18 @@ from ray_release.buildkite.settings import (
     Frequency,
     update_settings_from_buildkite,
     Priority,
+    get_test_attr_regex_filters,
 )
 from ray_release.buildkite.step import get_step
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
+from ray_release.tests.test_glue import MockReturn
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
 
 
-class MockBuildkite:
+class MockBuildkiteAgent:
     def __init__(self, return_dict: Dict):
         self.return_dict = return_dict
 
@@ -33,10 +36,18 @@ class MockBuildkite:
         return self.return_dict.get(key, None)
 
 
+class MockBuildkitePythonAPI(MockReturn):
+    def builds(self):
+        return self
+
+    def artifacts(self):
+        return self
+
+
 class BuildkiteSettingsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.buildkite = {}
-        self.buildkite_mock = MockBuildkite(self.buildkite)
+        self.buildkite_mock = MockBuildkiteAgent(self.buildkite)
 
     def testSplitRayRepoStr(self):
         url, branch = split_ray_repo_str("https://github.com/ray-project/ray.git")
@@ -65,6 +76,25 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertEqual(url, "https://github.com/user/ray.git")
         self.assertEqual(branch, DEFAULT_BRANCH)
 
+    def testGetTestAttrRegexFilters(self):
+        test_attr_regex_filters = get_test_attr_regex_filters("")
+        self.assertDictEqual(test_attr_regex_filters, {})
+
+        test_attr_regex_filters = get_test_attr_regex_filters("name:xxx")
+        self.assertDictEqual(test_attr_regex_filters, {"name": "xxx"})
+
+        test_attr_regex_filters = get_test_attr_regex_filters("name:xxx\n")
+        self.assertDictEqual(test_attr_regex_filters, {"name": "xxx"})
+
+        test_attr_regex_filters = get_test_attr_regex_filters("name:xxx\n\nteam:yyy")
+        self.assertDictEqual(test_attr_regex_filters, {"name": "xxx", "team": "yyy"})
+
+        test_attr_regex_filters = get_test_attr_regex_filters("name:xxx\n \nteam:yyy\n")
+        self.assertDictEqual(test_attr_regex_filters, {"name": "xxx", "team": "yyy"})
+
+        with self.assertRaises(ReleaseTestConfigError):
+            get_test_attr_regex_filters("xxx")
+
     def testSettingsOverrideEnv(self):
         settings = get_default_settings()
 
@@ -74,18 +104,47 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
         self.assertDictEqual(settings, updated_settings)
 
+        environ = os.environ.copy()
+
         # Invalid frequency
+        os.environ.clear()
+        os.environ.update(environ)
         os.environ["RELEASE_FREQUENCY"] = "invalid"
         updated_settings = settings.copy()
         with self.assertRaises(ReleaseTestConfigError):
             update_settings_from_environment(updated_settings)
 
         # Invalid priority
+        os.environ.clear()
+        os.environ.update(environ)
         os.environ["RELEASE_PRIORITY"] = "invalid"
         updated_settings = settings.copy()
         with self.assertRaises(ReleaseTestConfigError):
             update_settings_from_environment(updated_settings)
 
+        # Invalid test attr regex filters
+        os.environ.clear()
+        os.environ.update(environ)
+        os.environ["TEST_ATTR_REGEX_FILTERS"] = "xxxx"
+        updated_settings = settings.copy()
+        with self.assertRaises(ReleaseTestConfigError):
+            update_settings_from_environment(updated_settings)
+
+        os.environ.clear()
+        os.environ.update(environ)
+        os.environ["TEST_ATTR_REGEX_FILTERS"] = "name:xxx\nteam:yyy\n"
+        updated_settings = settings.copy()
+        update_settings_from_environment(updated_settings)
+        self.assertDictEqual(
+            updated_settings["test_attr_regex_filters"],
+            {
+                "name": "xxx",
+                "team": "yyy",
+            },
+        )
+
+        os.environ.clear()
+        os.environ.update(environ)
         os.environ["RELEASE_FREQUENCY"] = "nightly"
         os.environ["RAY_TEST_REPO"] = "https://github.com/user/ray.git"
         os.environ["RAY_TEST_BRANCH"] = "sub/branch"
@@ -99,7 +158,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             updated_settings,
             {
                 "frequency": Frequency.NIGHTLY,
-                "test_name_filter": "name_filter",
+                "test_attr_regex_filters": {"name": "name_filter"},
                 "ray_wheels": "custom-wheels",
                 "ray_test_repo": "https://github.com/user/ray.git",
                 "ray_test_branch": "sub/branch",
@@ -122,18 +181,47 @@ class BuildkiteSettingsTest(unittest.TestCase):
 
             self.assertDictEqual(settings, updated_settings)
 
+            buildkite = self.buildkite.copy()
+
             # Invalid frequency
+            self.buildkite.clear()
+            self.buildkite.update(buildkite)
             self.buildkite["release-frequency"] = "invalid"
             updated_settings = settings.copy()
             with self.assertRaises(ReleaseTestConfigError):
                 update_settings_from_buildkite(updated_settings)
 
             # Invalid priority
+            self.buildkite.clear()
+            self.buildkite.update(buildkite)
             self.buildkite["release-priority"] = "invalid"
             updated_settings = settings.copy()
             with self.assertRaises(ReleaseTestConfigError):
                 update_settings_from_buildkite(updated_settings)
 
+            # Invalid test attr regex filters
+            self.buildkite.clear()
+            self.buildkite.update(buildkite)
+            self.buildkite["release-test-attr-regex-filters"] = "xxxx"
+            updated_settings = settings.copy()
+            with self.assertRaises(ReleaseTestConfigError):
+                update_settings_from_buildkite(updated_settings)
+
+            self.buildkite.clear()
+            self.buildkite.update(buildkite)
+            self.buildkite["release-test-attr-regex-filters"] = "name:xxx\ngroup:yyy"
+            updated_settings = settings.copy()
+            update_settings_from_buildkite(updated_settings)
+            self.assertDictEqual(
+                updated_settings["test_attr_regex_filters"],
+                {
+                    "name": "xxx",
+                    "group": "yyy",
+                },
+            )
+
+            self.buildkite.clear()
+            self.buildkite.update(buildkite)
             self.buildkite["release-frequency"] = "nightly"
             self.buildkite["release-ray-test-repo-branch"] = "user:sub/branch"
             self.buildkite["release-ray-wheels"] = "custom-wheels"
@@ -146,7 +234,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 updated_settings,
                 {
                     "frequency": Frequency.NIGHTLY,
-                    "test_name_filter": "name_filter",
+                    "test_attr_regex_filters": {"name": "name_filter"},
                     "ray_wheels": "custom-wheels",
                     "ray_test_repo": "https://github.com/user/ray.git",
                     "ray_test_branch": "sub/branch",
@@ -166,6 +254,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "name": "test_1",
                     "frequency": "nightly",
                     "smoke_test": {"frequency": "nightly"},
+                    "team": "team_1",
                 }
             ),
             Test(
@@ -173,18 +262,20 @@ class BuildkiteSettingsTest(unittest.TestCase):
                     "name": "test_2",
                     "frequency": "weekly",
                     "smoke_test": {"frequency": "nightly"},
+                    "team": "team_2",
                 }
             ),
-            Test({"name": "other_1", "frequency": "weekly"}),
+            Test({"name": "other_1", "frequency": "weekly", "team": "team_2"}),
             Test(
                 {
                     "name": "other_2",
                     "frequency": "nightly",
                     "smoke_test": {"frequency": "multi"},
+                    "team": "team_2",
                 }
             ),
-            Test({"name": "other_3", "frequency": "disabled"}),
-            Test({"name": "test_3", "frequency": "nightly"}),
+            Test({"name": "other_3", "frequency": "disabled", "team": "team_2"}),
+            Test({"name": "test_3", "frequency": "nightly", "team": "team_2"}),
         ]
 
         filtered = self._filter_names_smoke(tests, frequency=Frequency.ANY)
@@ -214,7 +305,9 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertSequenceEqual(filtered, [("test_2", False), ("other_1", False)])
 
         filtered = self._filter_names_smoke(
-            tests, frequency=Frequency.NIGHTLY, test_name_filter="other"
+            tests,
+            frequency=Frequency.NIGHTLY,
+            test_attr_regex_filters={"name": "other"},
         )
         self.assertSequenceEqual(
             filtered,
@@ -224,11 +317,18 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
 
         filtered = self._filter_names_smoke(
-            tests, frequency=Frequency.NIGHTLY, test_name_filter="test"
+            tests, frequency=Frequency.NIGHTLY, test_attr_regex_filters={"name": "test"}
         )
         self.assertSequenceEqual(
             filtered, [("test_1", False), ("test_2", True), ("test_3", False)]
         )
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.NIGHTLY,
+            test_attr_regex_filters={"name": "test", "team": "team_1"},
+        )
+        self.assertSequenceEqual(filtered, [("test_1", False)])
 
     def testGroupTests(self):
         tests = [
@@ -328,12 +428,20 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 self.assertEqual(group_name, group)
                 self.assertEqual(limit, CONCURRENY_GROUPS[group_name])
 
-        test_concurrency(12800, 8, "large-gpu")
-        test_concurrency(12800, 7, "small-gpu")
+        test_concurrency(12800, 9, "large-gpu")
+        test_concurrency(12800, 8, "small-gpu")
         test_concurrency(12800, 1, "small-gpu")
         test_concurrency(12800, 0, "large")
-        test_concurrency(512, 0, "large")
-        test_concurrency(511, 0, "medium")
-        test_concurrency(128, 0, "medium")
-        test_concurrency(127, 0, "small")
-        test_concurrency(1, 0, "small")
+        test_concurrency(513, 0, "large")
+        test_concurrency(512, 0, "medium")
+        test_concurrency(129, 0, "medium")
+        test_concurrency(128, 0, "small")
+        test_concurrency(1, 0, "tiny")
+        test_concurrency(32, 0, "tiny")
+        test_concurrency(33, 0, "small")
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))

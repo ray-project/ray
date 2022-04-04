@@ -15,7 +15,6 @@ from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
-import redis
 import yaml
 
 try:  # py3
@@ -90,7 +89,7 @@ POLL_INTERVAL = 5
 Port_forward = Union[Tuple[int, int], List[Tuple[int, int]]]
 
 
-def _redis() -> redis.StrictRedis:
+def _redis():
     global redis_client
     if redis_client is None:
         redis_client = services.create_redis_client(
@@ -315,7 +314,7 @@ def _bootstrap_config(
 
             if log_once("_printed_cached_config_warning"):
                 cli_logger.verbose_warning(
-                    "Loaded cached provider configuration " "from " + cf.bold("{}"),
+                    "Loaded cached provider configuration from " + cf.bold("{}"),
                     cache_key,
                 )
                 if cli_logger.verbosity == 0:
@@ -647,7 +646,7 @@ def get_or_create_head_node(
 
     if not head_node:
         cli_logger.confirm(
-            yes, "No head node found. " "Launching a new cluster.", _abort=True
+            yes, "No head node found. Launching a new cluster.", _abort=True
         )
 
     if head_node:
@@ -662,12 +661,12 @@ def get_or_create_head_node(
             )
         elif no_restart:
             cli_logger.print(
-                "Cluster Ray runtime will not be restarted due " "to `{}`.",
+                "Cluster Ray runtime will not be restarted due to `{}`.",
                 cf.bold("--no-restart"),
             )
             cli_logger.confirm(
                 yes,
-                "Updating cluster configuration and " "running setup commands.",
+                "Updating cluster configuration and running setup commands.",
                 _abort=True,
             )
         else:
@@ -721,7 +720,7 @@ def get_or_create_head_node(
                 while True:
                     if time.time() - start > 50:
                         cli_logger.abort(
-                            "Head node fetch timed out. " "Failed to create head node."
+                            "Head node fetch timed out. Failed to create head node."
                         )
                     nodes = provider.non_terminated_nodes(head_node_tags)
                     if len(nodes) == 1:
@@ -881,7 +880,7 @@ def _should_create_new_head(
     # Warn user
     if new_head_required:
         with cli_logger.group(
-            "Currently running head node is out-of-date with cluster " "configuration"
+            "Currently running head node is out-of-date with cluster configuration"
         ):
 
             if hashes_mismatch:

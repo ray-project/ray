@@ -29,26 +29,30 @@ ClusterTaskManager::ClusterTaskManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
-    std::shared_ptr<LocalTaskManager> local_task_manager,
+    std::shared_ptr<ILocalTaskManager> local_task_manager,
     std::function<int64_t(void)> get_time_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
       local_task_manager_(std::move(local_task_manager)),
-      scheduler_resource_reporter_(tasks_to_schedule_, infeasible_tasks_,
-                                   *local_task_manager_),
+      scheduler_resource_reporter_(
+          tasks_to_schedule_, infeasible_tasks_, *local_task_manager_),
       internal_stats_(*this, *local_task_manager_),
       get_time_ms_(get_time_ms) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
-    const RayTask &task, bool grant_or_reject, bool is_selected_based_on_locality,
-    rpc::RequestWorkerLeaseReply *reply, rpc::SendReplyCallback send_reply_callback) {
+    const RayTask &task,
+    bool grant_or_reject,
+    bool is_selected_based_on_locality,
+    rpc::RequestWorkerLeaseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   auto work = std::make_shared<internal::Work>(
-      task, grant_or_reject, is_selected_based_on_locality, reply,
-      [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
+      task, grant_or_reject, is_selected_based_on_locality, reply, [send_reply_callback] {
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
@@ -78,9 +82,11 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
       auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-          task.GetTaskSpecification(), work->PrioritizeLocalNode(),
+          task.GetTaskSpecification(),
+          work->PrioritizeLocalNode(),
           /*exclude_local_node*/ false,
-          /*requires_object_store_memory*/ false, &is_infeasible);
+          /*requires_object_store_memory*/ false,
+          &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -130,9 +136,11 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
                    << task.GetTaskSpecification().TaskId();
     bool is_infeasible;
     cluster_resource_scheduler_->GetBestSchedulableNode(
-        task.GetTaskSpecification(), work->PrioritizeLocalNode(),
+        task.GetTaskSpecification(),
+        work->PrioritizeLocalNode(),
         /*exclude_local_node*/ false,
-        /*requires_object_store_memory*/ false, &is_infeasible);
+        /*requires_object_store_memory*/ false,
+        &is_infeasible);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
@@ -203,8 +211,8 @@ bool ClusterTaskManager::CancelTask(
     }
   }
 
-  return local_task_manager_->CancelTask(task_id, failure_type,
-                                         scheduling_failure_message);
+  return local_task_manager_->CancelTask(
+      task_id, failure_type, scheduling_failure_message);
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
@@ -218,7 +226,9 @@ void ClusterTaskManager::FillResourceUsage(
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
-    RayTask *exemplar, bool *any_pending, int *num_pending_actor_creation,
+    RayTask *exemplar,
+    bool *any_pending,
+    int *num_pending_actor_creation,
     int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but

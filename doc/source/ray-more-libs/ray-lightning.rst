@@ -68,16 +68,17 @@ Multi-node Distributed Training
 
 Using the same examples above, you can run distributed training on a multi-node cluster with just 2 simple steps.
 1) `Use Ray's cluster launcher <https://docs.ray.io/en/master/cluster/cloud.html>`__ to start a Ray cluster- ``ray up my_cluster_config.yaml``.
-2) `Execute your Python script on the Ray cluster <https://docs.ray.io/en/master/cluster/commands.html#running-ray-scripts-on-the-cluster-ray-submit>`__\ - ``ray submit my_cluster_config.yaml train.py``. This will ``rsync`` your training script to the head node, and execute it on the Ray cluster.
+2) `Execute your Python script on the Ray cluster <https://docs.ray.io/en/master/cluster/commands.html#running-ray-scripts-on-the-cluster-ray-submit>`__\ - ``ray submit my_cluster_config.yaml train.py``. This will ``rsync`` your training script to the head node, and execute it on the Ray cluster. (Note: The training script can also be executed using :ref:`Ray Job Submission <jobs-overview>`,
+which is in beta starting with Ray 1.12.  Try it out!)
 
 You no longer have to set environment variables or configurations and run your training script on every single node.
 
-Multi-node Training from your Laptop
-------------------------------------
+Multi-node Interactive Training from your Laptop
+------------------------------------------------
 
 Ray provides capabilities to run multi-node and GPU training all from your laptop through `Ray Client <ray-client>`__
 
-You can follow the instructions `here <ray-client>`__ to setup the cluster.
+You can follow the instructions `here <ray-client>`__ to set up the cluster.
 Then, add this line to the beginning of your script to connect to the cluster:
 
 .. code-block:: python
@@ -130,7 +131,7 @@ With sharded training, leverage the scalability of data parallel training while 
    trainer = pl.Trainer(..., plugins=[plugin])
    trainer.fit(ptl_model)
 
-See the `Pytorch Lightning docs <https://pytorch-lightning.readthedocs.io/en/stable/advanced/multi_gpu.html#sharded-training>`__ for more information on sharded training.
+See the `Pytorch Lightning docs <https://pytorch-lightning.readthedocs.io/en/stable/advanced/model_parallel.html#sharded-training>`__ for more information on sharded training.
 
 .. _ray-lightning-tuning:
 

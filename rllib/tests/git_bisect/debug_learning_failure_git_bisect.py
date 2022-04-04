@@ -61,7 +61,7 @@ parser.add_argument(
     "--stop-iters",
     type=int,
     default=None,
-    help="Number of iterations to train. Skip if this criterium is not " "important.",
+    help="Number of iterations to train. Skip if this criterium is not important.",
 )
 parser.add_argument(
     "--stop-timesteps",
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     if not args.skip_install_ray:
         subprocess.run("sudo apt-get update".split(" "))
         subprocess.run(
-            "sudo apt-get install -y build-essential curl unzip " "psmisc".split(" ")
+            "sudo apt-get install -y build-essential curl unzip psmisc".split(" ")
         )
         subprocess.run("pip install cython==0.29.26 pytest".split(" "))
         # Assume we are in the ray (git clone) directory.

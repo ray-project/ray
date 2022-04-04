@@ -104,7 +104,9 @@ class DefaultStdErrLogger final {
 
 class SpdLogMessage final {
  public:
-  explicit SpdLogMessage(const char *file, int line, int loglevel,
+  explicit SpdLogMessage(const char *file,
+                         int line,
+                         int loglevel,
                          std::shared_ptr<std::ostringstream> expose_osstream)
       : loglevel_(loglevel), expose_osstream_(expose_osstream) {
     stream() << ConstBasename(file) << ":" << line << ": ";
@@ -123,8 +125,8 @@ class SpdLogMessage final {
       *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
     }
     // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
-    logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
-                str_.str());
+    logger->log(
+        static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}", str_.str());
     logger->flush();
   }
 
@@ -167,7 +169,8 @@ static int GetMappedSeverity(RayLogLevel severity) {
 
 std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
-void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
+void RayLog::StartRayLog(const std::string &app_name,
+                         RayLogLevel severity_threshold,
                          const std::string &log_dir) {
   const char *var_value = std::getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
@@ -244,7 +247,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
     }
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
-        log_rotation_max_size_, log_rotation_file_num_);
+        log_rotation_max_size_,
+        log_rotation_file_num_);
     sinks.push_back(file_sink);
   } else {
     // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
@@ -265,8 +269,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   sinks.push_back(err_sink);
 
   // Set the combined logger.
-  auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(), sinks.begin(),
-                                                 sinks.end());
+  auto logger = std::make_shared<spdlog::logger>(
+      RayLog::GetLoggerName(), sinks.begin(), sinks.end());
   logger->set_level(level);
   logger->set_pattern(log_format_pattern_);
   spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
@@ -361,7 +365,8 @@ std::string RayLog::GetLoggerName() { return logger_name_; }
 
 void RayLog::AddFatalLogCallbacks(
     const std::vector<FatalLogCallback> &expose_log_callbacks) {
-  fatal_log_callbacks_.insert(fatal_log_callbacks_.end(), expose_log_callbacks.begin(),
+  fatal_log_callbacks_.insert(fatal_log_callbacks_.end(),
+                              expose_log_callbacks.begin(),
                               expose_log_callbacks.end());
 }
 
