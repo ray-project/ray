@@ -17,21 +17,22 @@ from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import _get_shared_metrics
+#from ray.rllib.execution.common import _get_shared_metrics
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
     ConcatBatches,
     StandardizeFields,
     SelectExperiences,
+    synchronous_parallel_sample,
 )
 from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
@@ -65,35 +66,40 @@ class MyTrainer(Trainer):
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
 
-        def add_ppo_metrics(batch):
-            print(
-                "PPO policy learning on samples from",
-                batch.policy_batches.keys(),
-                "env steps",
-                batch.env_steps(),
-                "agent steps",
-                batch.env_steps(),
-            )
-            metrics = _get_shared_metrics()
-            metrics.counters["agent_steps_trained_PPO"] += batch.env_steps()
-            return batch
+        #def add_ppo_metrics(batch):
+        #    print(
+        #        "PPO policy learning on samples from",
+        #        batch.policy_batches.keys(),
+        #        "env steps",
+        #        batch.env_steps(),
+        #        "agent steps",
+        #        batch.env_steps(),
+        #    )
+        #    metrics = _get_shared_metrics()
+        #    metrics.counters["agent_steps_trained_PPO"] += batch.env_steps()
+        #    return batch
 
-        def add_dqn_metrics(batch):
-            print(
-                "DQN policy learning on samples from",
-                batch.policy_batches.keys(),
-                "env steps",
-                batch.env_steps(),
-                "agent steps",
-                batch.env_steps(),
-            )
-            metrics = _get_shared_metrics()
-            metrics.counters["agent_steps_trained_DQN"] += batch.env_steps()
-            return batch
+        #def add_dqn_metrics(batch):
+        #    print(
+        #        "DQN policy learning on samples from",
+        #        batch.policy_batches.keys(),
+        #        "env steps",
+        #        batch.env_steps(),
+        #        "agent steps",
+        #        batch.env_steps(),
+        #    )
+        #    metrics = _get_shared_metrics()
+        #    metrics.counters["agent_steps_trained_DQN"] += batch.env_steps()
+        #    return batch
 
         # Generate common experiences.
-        rollouts = ParallelRollouts(workers, mode="bulk_sync")
-        r1, r2 = rollouts.duplicate(n=2)
+        batches = synchronous_parallel_sample(self.workers)
+
+        # Add batch to replay buffer.
+        self.local_replay_buffer.add_batch()
+
+
+        #r1, r2 = rollouts.duplicate(n=2)
 
         # DQN sub-flow.
         dqn_store_op = r1.for_each(SelectExperiences(["dqn_policy"])).for_each(
