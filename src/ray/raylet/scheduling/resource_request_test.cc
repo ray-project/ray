@@ -49,8 +49,10 @@ TEST_F(ResourceRequestTest, TestBasic) {
   ASSERT_FALSE(resource_request.IsEmpty());
 
   // Test ResourceIds and ToMap
-  ASSERT_EQ(resource_request.ResourceIds(),
-            absl::flat_hash_set<ResourceID>({cpu_id, custom_id1}));
+  auto resource_ids_it = resource_request.ResourceIds();
+  auto resource_ids =
+      absl::flat_hash_set<ResourceID>(resource_ids_it.begin(), resource_ids_it.end());
+  ASSERT_EQ(resource_ids, absl::flat_hash_set<ResourceID>({cpu_id, custom_id1}));
   ASSERT_EQ(resource_request.ToMap(), resource_map);
 
   // Test Set
@@ -178,14 +180,19 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   task_resource_instances.Set(custom_id1, FixedPointVectorFromDouble({1}));
   ASSERT_TRUE(task_resource_instances.Has(custom_id1));
   ASSERT_EQ(task_resource_instances.Get(custom_id1), FixedPointVectorFromDouble({1}));
+  task_resource_instances.Set(custom_id1, FixedPointVectorFromDouble({2}));
+  ASSERT_TRUE(task_resource_instances.Has(custom_id1));
+  ASSERT_EQ(task_resource_instances.Get(custom_id1), FixedPointVectorFromDouble({2}));
 
   // Test Clear
   task_resource_instances.Remove(custom_id1);
   ASSERT_FALSE(task_resource_instances.Has(custom_id1));
 
   // Test ResourceIds
-  ASSERT_EQ(task_resource_instances.ResourceIds(),
-            absl::flat_hash_set<ResourceID>({cpu_id, gpu_id}));
+  auto resource_ids_it = task_resource_instances.ResourceIds();
+  auto resource_ids =
+      absl::flat_hash_set<ResourceID>(resource_ids_it.begin(), resource_ids_it.end());
+  ASSERT_EQ(resource_ids, absl::flat_hash_set<ResourceID>({cpu_id, gpu_id}));
 
   // Test Size and IsEmpty
   ASSERT_EQ(task_resource_instances.Size(), 2);

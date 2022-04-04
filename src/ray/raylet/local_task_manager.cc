@@ -946,8 +946,8 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
   }
 
   if (worker->GetAllocatedInstances() != nullptr) {
-    auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
-    if (cpu_instances.size() > 0) {
+    if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
+      auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
       std::vector<double> overflow_cpu_instances =
           cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
               ResourceID::CPU(), cpu_instances);
@@ -968,8 +968,8 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
     return false;
   }
   if (worker->GetAllocatedInstances() != nullptr) {
-    auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
-    if (cpu_instances.size() > 0) {
+    if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
+      auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
       // Important: we allow going negative here, since otherwise you can use infinite
       // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
       // negative, at most one task can "borrow" this worker's resources.

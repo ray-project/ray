@@ -194,7 +194,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // The runner to run function periodically.
   std::unique_ptr<PeriodicalRunner> periodical_runner_;
   std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
-  std::function<void(bool)> resubscribe_func_;
+  std::function<void()> resubscribe_func_;
   std::pair<std::string, int> current_gcs_server_address_;
   int64_t last_reconnect_timestamp_ms_;
   std::pair<std::string, int> last_reconnect_address_;

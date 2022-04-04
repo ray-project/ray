@@ -187,6 +187,8 @@ class PullManager {
     // The pull will timeout at this time if there are still no locations for
     // the object.
     double expiration_time_seconds = 0;
+    int64_t activate_time_ms = 0;
+    int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
     uint8_t num_retries;
     bool object_size_set = false;
     size_t object_size = 0;
@@ -388,7 +390,10 @@ class PullManager {
   std::mt19937_64 gen_;
   int64_t max_timeout_ = 0;
   ObjectID max_timeout_object_id_;
+  int64_t num_tries_total_ = 0;
   int64_t num_retries_total_ = 0;
+  int64_t num_succeeded_pins_total_ = 0;
+  int64_t num_failed_pins_total_ = 0;
 
   friend class PullManagerTest;
   friend class PullManagerTestWithCapacity;

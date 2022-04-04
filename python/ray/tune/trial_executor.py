@@ -1,9 +1,11 @@
 # coding: utf-8
 from abc import abstractmethod
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 import warnings
 
+from ray.exceptions import RayTaskError
+from ray.tune import TuneError
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, _TuneCheckpoint
 
@@ -92,7 +94,10 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
     @abstractmethod
     def stop_trial(
-        self, trial: Trial, error: bool = False, error_msg: Optional[str] = None
+        self,
+        trial: Trial,
+        error: bool = False,
+        exc: Optional[Union[TuneError, RayTaskError]] = None,
     ) -> None:
         """Stops the trial.
 
@@ -102,7 +107,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
         Args:
             error: Whether to mark this trial as terminated in error.
-            error_msg: Optional error message.
+            exc: Optional exception.
 
         """
         pass

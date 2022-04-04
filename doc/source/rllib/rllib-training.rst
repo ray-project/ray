@@ -74,8 +74,11 @@ Configuration
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
-Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__. See the
-`algorithms documentation <rllib-algorithms.html>`__ for more information.
+Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of
+`common hyperparameters <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__
+(soon to be replaced by `TrainerConfig objects <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer_config.py>`__).
+
+See the `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
 In an example below, we train A2C by specifying 8 workers through the config flag.
 
@@ -145,6 +148,13 @@ Here are some rules of thumb for scaling training with RLlib.
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~
+
+.. tip::
+    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.agents.trainer_config.TrainerConfig`
+    objects, which have the advantage of being type safe, allowing users to set different config settings within
+    meaningful sub-categories (e.g. ``my_config.training(lr=0.0003)``), and offer the ability to
+    construct a Trainer instance from these config objects (via their ``build()`` method).
+    So far, this is only supported for the :py:class:`~ray.rllib.agents.ppo.ppo.PPOTrainer`.
 
 The following is a list of the common algorithm hyperparameters:
 

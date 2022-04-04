@@ -427,12 +427,14 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   const auto url = urls[0];
   int num_times_fired = 0;
   EXPECT_CALL(worker_pool, PushRestoreWorker(_));
+  int64_t object_size = 100;
   // Subsequent calls should be deduped, so that only one callback should be fired.
   for (int i = 0; i < 10; i++) {
-    manager.AsyncRestoreSpilledObject(object_id, url, [&](const Status &status) {
-      ASSERT_TRUE(status.ok());
-      num_times_fired++;
-    });
+    manager.AsyncRestoreSpilledObject(
+        object_id, object_size, url, [&](const Status &status) {
+          ASSERT_TRUE(status.ok());
+          num_times_fired++;
+        });
   }
   ASSERT_EQ(num_times_fired, 0);
 
