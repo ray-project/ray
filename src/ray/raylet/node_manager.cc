@@ -544,17 +544,17 @@ ray::Status NodeManager::RegisterGcs() {
   }
 
   if (RayConfig::instance().use_ray_syncer()) {
-    syncer_->Register(
+    ray_syncer_.Register(
         syncer::RayComponentId::RESOURCE_MANAGER,
         this,
         this,
         false,
         RayConfig::instance().raylet_report_resources_period_milliseconds());
-    syncer_->Register(syncer::RayComponentId::SCHEDULER,
-                      this,
-                      nullptr,
-                      true,
-                      RayConfig::instance().raylet_report_loads_period_milliseconds());
+    ray_syncer_.Register(syncer::RayComponentId::SCHEDULER,
+                         this,
+                         nullptr,
+                         true,
+                         RayConfig::instance().raylet_report_loads_period_milliseconds());
   }
   return ray::Status::OK();
 }
