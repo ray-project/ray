@@ -16,21 +16,27 @@ from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import (
     ParallelRollouts,
     ConcatBatches,
     StandardizeFields,
     SelectExperiences,
+    synchronous_parallel_sample,
 )
-from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
+from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, \
+    multi_gpu_train_one_step, TrainOneStep, train_one_step
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_SAMPLED, \
+    WORKER_UPDATE_TIMER
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.sgd import standardized
+from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -95,6 +101,7 @@ class PPOConfig(TrainerConfig):
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
+        self._disable_execution_plan_api = True
 
     @override(TrainerConfig)
     def training(
@@ -232,6 +239,7 @@ class _deprecated_default_config(dict):
 DEFAULT_CONFIG = _deprecated_default_config()
 
 
+@Deprecated(new="PPOTrainer.training_iteration()", error=False)
 class UpdateKL:
     """Callback to update the KL based on optimization info.
 
@@ -265,7 +273,7 @@ class UpdateKL:
 
 def warn_about_bad_reward_scales(config, result):
     if result["policy_reward_mean"]:
-        return result  # Punt on handling multiagent case.
+        return result  # Punt on handling multi-agent case.
 
     # Warn about excessively high VF loss.
     learner_info = result["info"][LEARNER_INFO]
@@ -410,6 +418,86 @@ class PPOTrainer(Trainer):
         else:
             return PPOTFPolicy
 
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        # Collects SampleBatches in parallel and synchronously
+        # from the Trainer's RolloutWorkers until we hit the
+        # configured `train_batch_size`.
+        sample_batches = []
+        num_env_steps = 0
+        num_agent_steps = 0
+        while (not self._by_agent_steps and num_env_steps < self.config[
+            "train_batch_size"]) or (
+            self._by_agent_steps and num_agent_steps < self.config["train_batch_size"]
+        ):
+            new_sample_batches = synchronous_parallel_sample(self.workers)
+            sample_batches.extend(new_sample_batches)
+            num_env_steps += sum(len(s) for s in new_sample_batches)
+            num_agent_steps += sum(s.agent_steps() for s in new_sample_batches)
+        self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
+
+        # Combine all batches at once and treat as multi-agent from here on.
+        train_batch = SampleBatch.concat_samples(sample_batches)
+        train_batch = train_batch.as_multi_agent()
+
+        # Standardize `advantages` values in train_batch.
+        for policy_id, batch in train_batch.policy_batches.items():
+            if Postprocessing.ADVANTAGES not in batch:
+                raise KeyError(
+                    f"`{Postprocessing.ADVANTAGES}` not found in SampleBatch for "
+                    f"policy `{policy_id}`! Maybe this policy fails to add "
+                    f"`{Postprocessing.ADVANTAGES}` in its `postprocess_trajectory` "
+                    f"method? Or this policy is not meant to learn at all and you "
+                    "forgot to remove it from the list under `config."
+                    "multiagent.policies_to_train`."
+                )
+            batch[Postprocessing.ADVANTAGES] = standardized(
+                batch[Postprocessing.ADVANTAGES])
+
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU).
+        if self.config.get("simple_optimizer") is True:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+        }
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
+
+        # Update KL after each round of training.
+        def update(policy, policy_id):
+            assert LEARNER_STATS_KEY not in train_results, (
+                "{} should be nested under policy id key".format(LEARNER_STATS_KEY),
+                train_results,
+            )
+            if policy_id in train_results:
+                kl = train_results[policy_id][LEARNER_STATS_KEY].get("kl")
+                assert kl is not None, (train_results, policy_id)
+                # Make the actual `Policy.update_kl()` call.
+                policy.update_kl(kl)
+            else:
+                logger.warning("No data for {}, not updating kl".format(policy_id))
+
+        # Update KL on all trainable policies within the local (trainer)
+        # Worker.
+        self.workers.local_worker().foreach_policy_to_train(update)
+
+        # Update global vars on .
+        self.workers.local_worker().set_global_vars(global_vars)
+
+        # Warn about bad reward scales and return training metrics.
+        #warn_about_bad_reward_scales(self.config, train_results)
+
+        return train_results
+
     @staticmethod
     @override(Trainer)
     def execution_plan(
@@ -433,7 +521,7 @@ class PPOTrainer(Trainer):
             )
         )
         # Standardize advantages.
-        rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
+        rollouts = rollouts.for_each(StandardizeFields([Postprocessing.ADVANTAGES]))
 
         # Perform one training step on the combined + standardized batch.
         if config["simple_optimizer"]:

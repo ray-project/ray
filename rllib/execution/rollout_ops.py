@@ -374,7 +374,7 @@ class StandardizeFields:
                         f"`{policy_id}`! Maybe this policy fails to add "
                         f"{field} in its `postprocess_trajectory` method? Or "
                         "this policy is not meant to learn at all and you "
-                        "forgot to add it to the list under `config."
+                        "forgot to remove it from the list under `config."
                         "multiagent.policies_to_train`."
                     )
                 batch[field] = standardized(batch[field])

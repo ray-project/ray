@@ -1447,10 +1447,7 @@ class Trainer(Trainable):
             new_sample_batches = synchronous_parallel_sample(self.workers)
             sample_batches.extend(new_sample_batches)
             num_env_steps += sum(len(s) for s in new_sample_batches)
-            num_agent_steps += sum(
-                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-                for s in new_sample_batches
-            )
+            num_agent_steps += sum(s.agent_steps() for s in new_sample_batches)
         self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
         self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
 
@@ -1468,9 +1465,12 @@ class Trainer(Trainable):
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+        }
         if self.workers.remote_workers():
             with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights()
+                self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
 
