@@ -200,8 +200,12 @@ void GcsServer::Stop() {
     // won't handle heartbeat calls anymore, some nodes will be marked as dead during this
     // time, causing many nodes die after GCS's failure.
     gcs_heartbeat_manager_->Stop();
-
-    ray_syncer_->Stop();
+    if (RayConfig::instance().use_ray_syncer()) {
+      ray_syncer_io_context_.stop();
+      ray_syncer_thread_->join();
+    } else {
+      gcs_ray_syncer_->Stop();
+    }
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
@@ -366,7 +370,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
                                                    *gcs_resource_manager_,
                                                    *cluster_resource_scheduler_,
                                                    raylet_client_pool_,
-                                                   *ray_syncer_);
+                                                   *gcs_ray_syncer_);
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_,
@@ -417,15 +421,25 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
-  /*
-    The current synchronization flow is:
-        raylet -> syncer::poller --> syncer::update -> gcs_resource_manager
-        gcs_placement_scheduler --/
-  */
-  ray_syncer_ = std::make_unique<gcs_syncer::RaySyncer>(
-      main_service_, raylet_client_pool_, *gcs_resource_manager_);
-  ray_syncer_->Initialize(gcs_init_data);
-  ray_syncer_->Start();
+  if (RayConfig::instance().use_ray_syncer()) {
+    ray_syncer_node_id_ = NodeID::FromRandom();
+    ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
+                                                      ray_syncer_node_id_.Binary());
+    ray_syncer_thread_ = std::make_unique<std::thread>([this]() {
+      boost::asio::io_service::work work(ray_syncer_io_context_);
+      ray_syncer_io_context_.run();
+    });
+  } else {
+    /*
+      The current synchronization flow is:
+      raylet -> syncer::poller --> syncer::update -> gcs_resource_manager
+      gcs_placement_scheduler --/
+    */
+    gcs_ray_syncer_ = std::make_unique<gcs_syncer::RaySyncer>(
+        main_service_, raylet_client_pool_, *gcs_resource_manager_);
+    gcs_ray_syncer_->Initialize(gcs_init_data);
+    gcs_ray_syncer_->Start();
+  }
 }
 
 void GcsServer::InitStatsHandler() {
@@ -515,7 +529,10 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
-    ray_syncer_->AddNode(*node);
+    if (RayConfig::instance().use_ray_syncer()) {
+    } else {
+      gcs_ray_syncer_->AddNode(*node);
+    }
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -527,7 +544,10 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
-        ray_syncer_->RemoveNode(*node);
+        if (RayConfig::instance().use_ray_syncer()) {
+        } else {
+          gcs_ray_syncer_->RemoveNode(*node);
+        }
       });
 
   // Install worker event listener.
@@ -595,7 +615,7 @@ std::string GcsServer::GetDebugState() const {
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n";
 
-  stream << ray_syncer_->DebugString();
+  stream << gcs_ray_syncer_->DebugString();
   return stream.str();
 }
 

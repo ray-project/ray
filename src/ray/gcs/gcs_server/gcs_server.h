@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
@@ -207,8 +208,15 @@ class GcsServer {
   /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
-  // Synchronization service for ray.
-  std::unique_ptr<gcs_syncer::RaySyncer> ray_syncer_;
+  /// Synchronization service for ray.
+  std::unique_ptr<gcs_syncer::RaySyncer> gcs_ray_syncer_;
+
+  /// Ray Syncer realted fields.
+  std::unique_ptr<syncer::RaySyncer> ray_syncer_;
+  std::unique_ptr<std::thread> ray_syncer_thread_;
+  instrumented_io_context ray_syncer_io_context_;
+  NodeID ray_syncer_node_id_;
+
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.

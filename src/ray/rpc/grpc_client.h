@@ -60,9 +60,9 @@ class GrpcClient {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    std::shared_ptr<grpc::Channel> channel = BuildChannel(argument, address, port);
+    channel_ = BuildChannel(argument, address, port);
 
-    stub_ = GrpcService::NewStub(channel);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   GrpcClient(const std::string &address,
@@ -79,9 +79,9 @@ class GrpcClient {
     argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
-    std::shared_ptr<grpc::Channel> channel = BuildChannel(argument, address, port);
+    channel_ = BuildChannel(argument, address, port);
 
-    stub_ = GrpcService::NewStub(channel);
+    stub_ = GrpcService::NewStub(channel_);
   }
 
   /// Create a new `ClientCall` and send request.
@@ -115,12 +115,16 @@ class GrpcClient {
     RAY_CHECK(call != nullptr);
   }
 
+  std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
+
  private:
   ClientCallManager &client_call_manager_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
   /// Whether to use TLS.
   bool use_tls_;
+  /// The channel of the stub.
+  std::shared_ptr<grpc::Channel> channel_;
 
   std::shared_ptr<grpc::Channel> BuildChannel(const grpc::ChannelArguments &argument,
                                               const std::string &address,
