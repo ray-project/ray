@@ -2,14 +2,12 @@ import argparse
 
 import ray
 from ray.ml.config import RunConfig
-from ray.ml.train.integrations.rllib.rl_trainer import RLTrainer
+from ray.ml.train.integrations.rl.rl_trainer import RLTrainer
 from ray.ml.result import Result
 from ray.rllib.agents.marwil import BCTrainer
 
 
-def train_rllib_bc_offline(
-    path: str, num_workers: int, use_gpu: bool = False
-) -> Result:
+def train_rl_bc_offline(path: str, num_workers: int, use_gpu: bool = False) -> Result:
     dataset = ray.data.read_json(
         path, parallelism=num_workers, ray_remote_args={"num_cpus": 1}
     )
@@ -36,7 +34,7 @@ def train_rllib_bc_offline(
     return result
 
 
-def train_rllib_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
+def train_rl_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
     trainer = RLTrainer(
         run_config=RunConfig(stop={"training_iteration": 5}),
         scaling_config={
@@ -81,8 +79,8 @@ if __name__ == "__main__":
 
     ray.init(address=args.address)
     if args.offline:
-        train_rllib_bc_offline(
+        train_rl_bc_offline(
             path=args.path, num_workers=args.num_workers, use_gpu=args.use_gpu
         )
     else:
-        train_rllib_ppo_online(num_workers=args.num_workers, use_gpu=args.use_gpu)
+        train_rl_ppo_online(num_workers=args.num_workers, use_gpu=args.use_gpu)

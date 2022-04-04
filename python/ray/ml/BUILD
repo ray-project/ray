@@ -19,6 +19,14 @@ py_test (
     deps = [":ml_lib"]
 )
 
+py_test (
+    name = "rl_example_online",
+    size = "medium",
+    srcs = ["examples/rl_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
 py_test(
     name = "tensorflow_linear_dataset_example",
     size = "medium",
