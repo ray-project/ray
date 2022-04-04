@@ -49,8 +49,10 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         from ray.serve.pipeline.deployment_node import DeploymentNode
         from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
         from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
-        from ray.serve.api import DeploymentNode as UserDeploymentNode
-        from ray.serve.api import DeploymentFunctionNode as UserDeploymentFunctionNode
+        from ray.serve.deployment_graph import DeploymentNode as UserDeploymentNode
+        from ray.serve.deployment_graph import (
+            DeploymentFunctionNode as UserDeploymentFunctionNode,
+        )
 
         self.dispatch_table[FunctionNode] = self._reduce_dag_node
         self.dispatch_table[ClassNode] = self._reduce_dag_node
