@@ -2,13 +2,13 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray
 
-from ray.ml.config import RunConfig
+from ray.ml.config import RunConfig, TuneConfig
 from ray.ml.trainer import Trainer
+
 from ray.tune import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
-from ray.tune.tune_config import TuneConfig
 from ray.util import PublicAPI
 from ray.util.ml_utils.node import force_on_current_node
 

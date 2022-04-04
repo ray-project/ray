@@ -6,7 +6,7 @@ from ray.ml.train.integrations.tensorflow import TensorflowTrainer
 
 from ray.ml.examples.tensorflow.tensorflow_mnist_example import train_func
 from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
+from ray.ml.tuner import Tuner
 
 
 def tune_tensorflow_mnist(

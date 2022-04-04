@@ -3,14 +3,13 @@ import os
 from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray.cloudpickle as pickle
-from ray.ml.config import RunConfig
+from ray.ml.config import RunConfig, TuneConfig
 from ray.ml.trainer import Trainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
-from ray.tune.tune_config import TuneConfig
 
 
 _TRAINABLE_PKL = "trainable.pkl"

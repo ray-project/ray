@@ -218,6 +218,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tuner",
+    size = "medium",
+    srcs = ["tests/test_tuner.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"],
+)
+
+py_test(
     name = "test_xgboost_predictor",
     size = "small",
     srcs = ["tests/test_xgboost_predictor.py"],

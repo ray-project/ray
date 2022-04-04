@@ -9,14 +9,14 @@ from sklearn.utils import shuffle
 from ray import tune
 from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
-from ray.ml.config import RunConfig
+from ray.ml.config import RunConfig, TuneConfig
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.ml.train import Trainer
+from ray.ml.tuner import Tuner
+
 from ray.tune import Callback, TuneError
 from ray.tune.cloud import TrialCheckpoint
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
 
 
 class TestDatasource(Datasource):
