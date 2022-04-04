@@ -114,9 +114,9 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_argument_handling",
+    name = "test_api",
     size = "small",
-    srcs = ["tests/test_argument_handling.py"],
+    srcs = ["tests/test_api.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

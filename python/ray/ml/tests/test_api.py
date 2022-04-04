@@ -107,3 +107,10 @@ class ArgumentHandlingTest(unittest.TestCase):
 
         # Succeed
         DummyTrainer(resume_from_checkpoint=Checkpoint.from_dict({"empty": ""}))
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
