@@ -22,7 +22,7 @@ def test_result_grid():
     assert isinstance(result.metrics, dict)
     assert isinstance(result.config, dict)
     assert result.config == {"a": 1}
-    assert result.metrics == result.config
+    assert result.metrics["config"] == result.config
 
 
 def test_result_grid_no_checkpoint():
