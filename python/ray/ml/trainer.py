@@ -165,7 +165,13 @@ class Trainer(abc.ABC):
         if not isinstance(self.run_config, RunConfig):
             raise TrainerConfigError(
                 f"`run_config` should be an instance of `ray.ml.RunConfig`, "
-                f"found {type(self.run_config)}"
+                f"found {type(self.run_config)} with value `{self.run_config}`."
+            )
+        # Todo: move to ray.ml.ScalingConfig
+        if not isinstance(self.scaling_config, dict):
+            raise TrainerConfigError(
+                f"`scaling_config` should be an instance of `dict`, "
+                f"found {type(self.run_config)} with value `{self.run_config}`."
             )
 
     def setup(self) -> None:
