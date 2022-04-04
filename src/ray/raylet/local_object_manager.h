@@ -159,9 +159,12 @@ class LocalObjectManager {
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
-  /// Asynchronously spill objects when space is needed.
-  /// The callback tries to spill objects as much as num_bytes_to_spill and returns
-  /// true if we could spill the corresponding bytes.
+  /// Asynchronously spill objects when space is needed. The callback tries to
+  /// spill at least num_bytes_to_spill and returns true if we found objects to
+  /// spill.
+  /// If num_bytes_to_spill many objects cannot be found and there are other
+  /// objects already being spilled, this will return false to give the
+  /// currently spilling objects time to finish.
   /// NOTE(sang): If 0 is given, this method spills a single object.
   ///
   /// \param num_bytes_to_spill The total number of bytes to spill.
