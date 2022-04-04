@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray.ml.preprocessor import PreprocessorNotFittedException
 from ray.ml.preprocessors import (
+    BatchMapper,
     StandardScaler,
     MinMaxScaler,
     OrdinalEncoder,
@@ -13,7 +14,6 @@ from ray.ml.preprocessors import (
     SimpleImputer,
     Chain,
 )
-from ray.ml.preprocessors.batch_mapper import BatchMapper
 
 
 def test_standard_scaler():
