@@ -7,8 +7,8 @@ aws:
       Tags:
         - Key: anyscale-user
           Value: '{{env["ANYSCALE_USER"]}}'
-        - Key: anyscale-expiration
-          Value: '{{env["EXPIRATION_1D"]}}'
+        - Key: anyscale-ttl-hours
+          Value: '24'
   BlockDeviceMappings:
     - DeviceName: /dev/sda1
       Ebs:
