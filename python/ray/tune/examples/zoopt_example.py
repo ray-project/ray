@@ -1,6 +1,8 @@
 """This example demonstrates the usage of ZOOptSearch.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the ZOOpt library to be installed.
 """
 import time
 
