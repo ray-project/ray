@@ -258,7 +258,7 @@ def _store_package_in_gcs(
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
     try:
         _internal_kv_put(pkg_uri, data)
-    except RuntimeError as e:
+    except Exception as e:
         raise RuntimeError(
             "Failed to store package in the GCS.\n"
             f"  - GCS URI: {pkg_uri}\n"
