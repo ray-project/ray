@@ -1,6 +1,6 @@
-class TrainerError(ValueError):
+class TrainerError(Exception):
     pass
 
 
-class TrainerConfigError(TrainerError):
+class TrainerConfigError(TrainerError, ValueError):
     pass
