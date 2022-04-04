@@ -48,3 +48,22 @@ class ArgumentHandlingTest(unittest.TestCase):
 
         # Succeed
         DummyTrainer(scaling_config=ray.ml.ScalingConfig())
+
+    def testDatasets(self):
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(datasets="invalid")
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(datasets=False)
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(datasets=True)
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(datasets={"test": "invalid"})
+
+        # Succeed
+        DummyTrainer(datasets=None)
+
+        # Succeed
+        DummyTrainer(datasets={"test": ray.data.from_items([0, 1])})

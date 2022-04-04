@@ -3,6 +3,7 @@ import inspect
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
+import ray.data
 from ray.ml.exceptions import TrainerConfigError
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
@@ -134,6 +135,7 @@ class Trainer(abc.ABC):
 
     def __init__(
         self,
+        *,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -143,7 +145,7 @@ class Trainer(abc.ABC):
 
         self.scaling_config = scaling_config if scaling_config is not None else {}
         self.run_config = run_config if run_config is not None else RunConfig()
-        self.datasets = datasets if datasets else {}
+        self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
 
@@ -162,16 +164,30 @@ class Trainer(abc.ABC):
 
     def _validate_attributes(self):
         """Called on __init()__ to validate trainer attributes."""
+        # Run config
         if not isinstance(self.run_config, RunConfig):
             raise TrainerConfigError(
                 f"`run_config` should be an instance of `ray.ml.RunConfig`, "
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
+        # Scaling config
         # Todo: move to ray.ml.ScalingConfig
         if not isinstance(self.scaling_config, dict):
             raise TrainerConfigError(
                 f"`scaling_config` should be an instance of `dict`, "
                 f"found {type(self.run_config)} with value `{self.run_config}`."
+            )
+        # Datasets
+        if not isinstance(self.datasets, dict):
+            raise TrainerConfigError(
+                f"`datasets` should be a dict mapping from a string to "
+                f"`ray.data.Dataset` objects, "
+                f"found {type(self.run_config)} with value `{self.run_config}`."
+            )
+        elif any(not isinstance(ds, ray.data.Dataset) for ds in self.datasets.values()):
+            raise TrainerConfigError(
+                f"At least one value in the `datasets` dict is not a "
+                f"`ray.data.Dataset`: {self.datasets}"
             )
 
     def setup(self) -> None:
