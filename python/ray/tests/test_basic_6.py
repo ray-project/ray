@@ -1,6 +1,5 @@
 # coding: utf-8
 import logging
-import os
 import pickle
 import sys
 import time
@@ -13,7 +12,6 @@ from ray._private.test_utils import (
     client_test_enabled,
     get_error_message,
     SignalActor,
-    run_string_as_driver,
 )
 
 import ray
