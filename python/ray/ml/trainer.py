@@ -3,6 +3,7 @@ import inspect
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
+from ray.ml.exceptions import TrainerConfigError
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
@@ -140,11 +141,13 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self.scaling_config = scaling_config if scaling_config else {}
-        self.run_config = run_config if run_config else RunConfig()
+        self.scaling_config = scaling_config if scaling_config is not None else {}
+        self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
+
+        self._validate_attributes()
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
@@ -156,6 +159,14 @@ class Trainer(abc.ABC):
         arg_dict = dict(zip(parameters, args))
         trainer._param_dict = {**arg_dict, **kwargs}
         return trainer
+
+    def _validate_attributes(self):
+        """Called on __init()__ to validate trainer attributes."""
+        if not isinstance(self.run_config, RunConfig):
+            raise TrainerConfigError(
+                f"`run_config` should be an instance of `ray.ml.RunConfig`, "
+                f"found {type(self.run_config)}"
+            )
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
