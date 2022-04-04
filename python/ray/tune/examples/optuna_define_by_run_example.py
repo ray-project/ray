@@ -2,7 +2,7 @@
 
 It also checks that it is usable with a separate scheduler.
 
-Requires the Optuna library to be installed.
+Requires the Optuna library to be installed (`pip install optuna`).
 
 For an example of using a Tune search space, see
 :doc:`/tune/examples/optuna_example`.

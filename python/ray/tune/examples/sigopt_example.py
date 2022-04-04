@@ -2,7 +2,7 @@
 
 It also checks that it is usable with a separate scheduler.
 
-Requires the SigOpt library to be installed.
+Requires the SigOpt library to be installed (`pip install sigopt`).
 """
 import sys
 import time

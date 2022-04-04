@@ -1,7 +1,7 @@
 """
 Example using Sigopt's multi-objective functionality.
 
-Requires the SigOpt library to be installed.
+Requires the SigOpt library to be installed (`pip install sigopt`).
 """
 import sys
 import time
