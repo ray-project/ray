@@ -3,7 +3,8 @@ import inspect
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
-import ray.data
+import ray
+
 from ray.ml.exceptions import TrainerConfigError
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
