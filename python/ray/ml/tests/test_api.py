@@ -1,5 +1,6 @@
 import pytest
-import ray.ml
+
+import ray
 from ray.ml import Checkpoint
 from ray.ml.exceptions import TrainerConfigError
 from ray.ml.trainer import Trainer
