@@ -127,7 +127,7 @@ class HuggingFaceTrainer(TorchTrainer):
     Args:
         trainer_init_per_worker: The function that returns an instantiated
             ``transformers.Trainer`` object and takes in the following arguments:
-            train datset, optional evaluation datset, and config as kwargs.
+            train dataset, optional evaluation dataset, and config as kwargs.
         trainer_init_config: Configurations to pass into
             ``trainer_init_per_worker`` as kwargs.
         torch_config: Configuration for setting up the PyTorch backend. If set to
