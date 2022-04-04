@@ -1,7 +1,10 @@
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 
 from ray.data import Dataset
 from ray.ml.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    import pandas
 
 
 class BatchMapper(Preprocessor):

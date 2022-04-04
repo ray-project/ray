@@ -567,12 +567,14 @@ def test_batch_mapper():
     )
     ds = ray.data.from_pandas(in_df)
 
-    def add_and_modify_udf(df: "pandas.DataFrame"):
+    def add_and_modify_udf(df: "pd.DataFrame"):
         df["new_col"] = df["old_column"] + 1
         df["to_be_modified"] *= 2
         return df
 
     batch_mapper = BatchMapper(fn=add_and_modify_udf)
+    if batch_mapper.should_fit():
+        batch_mapper.fit(ds)
     transformed = batch_mapper.transform(ds)
     out_df = transformed.to_pandas()
 

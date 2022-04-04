@@ -37,12 +37,16 @@ class Preprocessor(abc.ABC):
 
         Fitted state attributes will be directly set in the Preprocessor.
 
+        One is expected to call ``should_fit`` before calling ``fit``.
+
         Args:
             dataset: Input dataset.
 
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
         """
+        assert self._is_fittable, "One is expected to call `should_fit` before `fit`."
+
         if self.check_is_fitted():
             raise PreprocessorAlreadyFittedException(
                 "`fit` cannot be called multiple times. "
@@ -60,6 +64,8 @@ class Preprocessor(abc.ABC):
         Returns:
             ray.data.Dataset: The transformed Dataset.
         """
+        assert self._is_fittable, "One is expected to call `should_fit` before `fit`."
+
         self.fit(dataset)
         return self.transform(dataset)
 
@@ -72,7 +78,7 @@ class Preprocessor(abc.ABC):
         Returns:
             ray.data.Dataset: The transformed Dataset.
         """
-        if self._is_fittable and not self.check_is_fitted():
+        if self.should_fit():
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform`."
             )
@@ -87,11 +93,21 @@ class Preprocessor(abc.ABC):
         Returns:
             DataBatchType: The transformed data batch.
         """
-        if self._is_fittable and not self.check_is_fitted():
+        if self.should_fit():
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform_batch`."
             )
         return self._transform_batch(df)
+
+    def should_fit(self):
+        """Returns whether the preprocessor should be fitted.
+
+        A preprocessor should be fitted if it is fittable and
+        is not fitted yet.
+
+        One is expected to call ``should_fit`` before calling ``fit``.
+        """
+        return self._is_fittable and not self.check_is_fitted()
 
     def check_is_fitted(self) -> bool:
         """Returns whether this preprocessor is fitted.
