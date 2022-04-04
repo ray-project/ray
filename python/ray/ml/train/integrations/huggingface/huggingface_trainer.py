@@ -1,21 +1,16 @@
-from typing import Any, Callable, Optional, Dict, Union, Type
+from typing import Any, Callable, Optional, Dict
 
 from transformers.trainer import Trainer
 from torch.utils.data import Dataset
 
 from ray.train.torch import TorchConfig
-from ray.train.utils import construct_train_func
 from ray.ml.trainer import GenDataset
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI
-
-
-def _huggingface_train_loop_per_worker(config: Dict[str, Any]):
-    config
-    return
+from ray.ml.constants import TRAIN_DATASET_KEY, VALIDATION_DATASET_KEY
 
 
 @PublicAPI(stability="alpha")
@@ -51,8 +46,8 @@ class HuggingFaceTrainer(TorchTrainer):
 
             # Hugging Face imports
             from datasets import load_dataset
+            import transformers
             from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-            from transformers import Trainer, TrainingArguments
 
             import ray
             from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
@@ -106,13 +101,13 @@ class HuggingFaceTrainer(TorchTrainer):
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
                 model_config = AutoConfig.from_pretrained(model_checkpoint)
                 model = AutoModelForCausalLM.from_config(model_config)
-                args = TrainingArguments(
+                args = transformers.TrainingArguments(
                     output_dir=f"{model_checkpoint}-wikitext2",
                     evaluation_strategy="epoch",
                     learning_rate=2e-5,
                     weight_decay=0.01,
                 )
-                return Trainer(
+                return transformers.Trainer(
                     model=model,
                     args=args,
                     train_dataset=train_dataset,
@@ -142,6 +137,7 @@ class HuggingFaceTrainer(TorchTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
             the key "train" to denote which dataset is the training
+            dataset and (optionally) key "validation" to denote the validation
             dataset. Can only contain a training dataset
             and up to one extra dataset to be used for validation.
             If a ``preprocessor`` is provided and has not already been fit,
@@ -166,6 +162,11 @@ class HuggingFaceTrainer(TorchTrainer):
 
         self._validate_train_loop_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"
+        )
+
+        assert TRAIN_DATASET_KEY in datasets
+        assert all(
+            key in (TRAIN_DATASET_KEY, VALIDATION_DATASET_KEY) for key in datasets
         )
 
         super().__init__(
