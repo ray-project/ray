@@ -36,6 +36,6 @@
   conditions: ["RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=gpu python/ray/ml/...

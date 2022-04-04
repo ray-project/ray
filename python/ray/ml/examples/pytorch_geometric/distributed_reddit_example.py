@@ -55,7 +55,7 @@ class SAGE(torch.nn.Module):
 
 
 def train_loop_per_worker(train_loop_config):
-    with FileLock(os.path.expanduser("~/.horovod_lock")):
+    with FileLock(os.path.expanduser("~/.reddit_dataset_lock")):
         dataset = Reddit("./data/Reddit")
     print("Loaded dataset")
     batch_size = train_loop_config["batch_size"]
@@ -80,11 +80,11 @@ def train_loop_per_worker(train_loop_config):
 
     # Do validation on rank 0 worker only.
     if train.world_rank() == 0:
-        validation_loader = NeighborSampler(
+        subgraph_loader = NeighborSampler(
             data.edge_index, node_idx=None, sizes=[-1], batch_size=2048, shuffle=False
         )
-        validation_loader = train.torch.prepare_data_loader(
-            validation_loader, add_dist_sampler=False
+        subgraph_loader = train.torch.prepare_data_loader(
+            subgraph_loader, add_dist_sampler=False
         )
 
     model = SAGE(dataset.num_features, 256, dataset.num_classes)
@@ -112,7 +112,7 @@ def train_loop_per_worker(train_loop_config):
         if train.world_rank() == 0:
             model.eval()
             with torch.no_grad():
-                out = model.module.inference(x, validation_loader)
+                out = model.module.inference(x, subgraph_loader)
             res = out.argmax(dim=-1) == data.y
             train_accuracy = int(res[data.train_mask].sum()) / int(
                 data.train_mask.sum()
