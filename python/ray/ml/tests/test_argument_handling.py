@@ -3,6 +3,7 @@ import unittest
 import ray.ml
 from ray.ml.exceptions import TrainerConfigError
 from ray.ml.trainer import Trainer
+from ray.ml.preprocessor import Preprocessor
 
 
 class DummyTrainer(Trainer):
@@ -67,3 +68,22 @@ class ArgumentHandlingTest(unittest.TestCase):
 
         # Succeed
         DummyTrainer(datasets={"test": ray.data.from_items([0, 1])})
+
+    def testPreprocessor(self):
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(preprocessor="invalid")
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(preprocessor=False)
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(preprocessor=True)
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(preprocessor={})
+
+        # Succeed
+        DummyTrainer(preprocessor=None)
+
+        # Succeed
+        DummyTrainer(preprocessor=Preprocessor())

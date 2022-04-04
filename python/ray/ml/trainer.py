@@ -189,6 +189,14 @@ class Trainer(abc.ABC):
                 f"At least one value in the `datasets` dict is not a "
                 f"`ray.data.Dataset`: {self.datasets}"
             )
+        # Preprocessor
+        if self.preprocessor is not None and not isinstance(
+            self.preprocessor, ray.ml.preprocessor.Preprocessor
+        ):
+            raise TrainerConfigError(
+                f"`preprocessor` should be an instance of `ray.ml.Preprocessor`, "
+                f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
+            )
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
