@@ -1,6 +1,7 @@
 import unittest
 
 import ray.ml
+from ray.ml import Checkpoint
 from ray.ml.exceptions import TrainerConfigError
 from ray.ml.trainer import Trainer
 from ray.ml.preprocessor import Preprocessor
@@ -87,3 +88,22 @@ class ArgumentHandlingTest(unittest.TestCase):
 
         # Succeed
         DummyTrainer(preprocessor=Preprocessor())
+
+    def testResumeFromCheckpoint(self):
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(resume_from_checkpoint="invalid")
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(resume_from_checkpoint=False)
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(resume_from_checkpoint=True)
+
+        with self.assertRaises(TrainerConfigError):
+            DummyTrainer(resume_from_checkpoint={})
+
+        # Succeed
+        DummyTrainer(resume_from_checkpoint=None)
+
+        # Succeed
+        DummyTrainer(resume_from_checkpoint=Checkpoint.from_dict({"empty": ""}))

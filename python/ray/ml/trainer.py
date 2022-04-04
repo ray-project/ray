@@ -198,6 +198,15 @@ class Trainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
+        if self.resume_from_checkpoint is not None and not isinstance(
+            self.resume_from_checkpoint, ray.ml.Checkpoint
+        ):
+            raise TrainerConfigError(
+                f"`resume_from_checkpoint` should be an instance of "
+                f"`ray.ml.Checkpoint`, found {type(self.resume_from_checkpoint)} "
+                f"with value `{self.resume_from_checkpoint}`."
+            )
+
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 
