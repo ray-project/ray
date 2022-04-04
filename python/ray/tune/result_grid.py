@@ -75,7 +75,7 @@ class ResultGrid:
             checkpoint=Checkpoint.from_directory(trial.checkpoint.value)
             if trial.checkpoint.value
             else None,
-            metrics=trial.last_result,
+            metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
         )
         return result
