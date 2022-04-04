@@ -193,6 +193,9 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
         workflow_data.step_options,
     )
 
+    persisted_output = WorkflowStaticRef.from_output(workflow.step_id, persisted_output)
+    volatile_output = WorkflowStaticRef.from_output(workflow.step_id, volatile_output)
+
     # Stage 4: post processing outputs
     if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
         if not step_options.allow_inplace:
@@ -530,6 +533,7 @@ def _workflow_step_executor(
         volatile_output = volatile_output.run_async(
             workflow_context.get_current_workflow_id()
         )
+        volatile_output = WorkflowStaticRef.from_output(step_id, volatile_output)
     return persisted_output, volatile_output
 
 
