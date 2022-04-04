@@ -228,6 +228,13 @@ def ray_start_cluster_head(request):
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
 
+@pytest.fixture
+def ray_start_cluster_head_enabled(request):
+    param = getattr(request, "param", {})
+    param["skip_cluster"] = False
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
 
 # We can compose external_redis and ray_start_cluster_head instead of creating
 # this separate fixture, if there is a good way to ensure external_redis runs

@@ -36,11 +36,11 @@ def test_actor_scheduling(shutdown_only):
         ray.get([a.get.remote()])
 
 
-def test_worker_startup_count(ray_start_cluster):
+def test_worker_startup_count(ray_start_cluster_enabled):
     """Test that no extra workers started while no available cpu resources
     in cluster."""
 
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     # Cluster total cpu resources is 4.
     cluster.add_node(
         num_cpus=4,
@@ -79,7 +79,7 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
-    timeout_limit = 15
+    timeout_limit = 60
     start = time.time()
     wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start
