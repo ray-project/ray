@@ -2213,12 +2213,18 @@ Dict[str, List[str]]]): The names of the columns
 
         return TorchIterableDataset(make_generator)
 
+    FeatureTypeSpec = Union[
+        "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
+    ]
+
     def to_tf(
         self,
         *,
-        output_signature: Union["tf.TypeSpec", Tuple["tf.TypeSpec", "tf.TypeSpec"]],
+        output_signature: Union[FeatureTypeSpec, Tuple[FeatureTypeSpec, "tf.TypeSpec"]],
         label_column: Optional[str] = None,
-        feature_columns: Optional[List[str]] = None,
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
+        ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
     ) -> "tf.data.Dataset":
@@ -2227,6 +2233,23 @@ Dict[str, List[str]]]): The names of the columns
         The TF Dataset will be created from the generator returned by the
         ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
         arguments will be passed to that method.
+
+        For the features tensor (N is the ``batch_size`` and n1, ..., nk
+        are the number of features per tensor):
+
+        * If ``feature_columns`` is a ``List[str]``, the features will be
+          a tensor of shape (N, n), with columns corresponding to
+          ``feature_columns``
+
+        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
+          a list of tensors of shape [(N, n1),...,(N, nk)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
+
+        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
+          will be a dict of key-tensor pairs of shape
+          {key1: (N, n1),..., keyN: (N, nk)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -2242,16 +2265,21 @@ Dict[str, List[str]]]): The names of the columns
         Time complexity: O(1)
 
         Args:
-            output_signature (Union[tf.TypeSpec, Tuple[tf.TypeSpec, tf.TypeSpec]]):
-                If ``label_column`` is specified, a 2-element
-                tuple of ``tf.TypeSpec`` objects corresponding to
-                (features, label). Otherwise, a single ``tf.TypeSpec``
-                corresponding to features tensor.
+            output_signature (Union[FeatureTypeSpec, Tuple[FeatureTypeSpec,
+                "tf.TypeSpec"]]): If ``label_column`` is specified, a two-element
+                tuple containing a ``FeatureTypeSpec`` and ``tf.TypeSpec`` object
+                corresponding to (features, label). Otherwise, a single
+                ``FeatureTypeSpec`` corresponding to features tensor. A
+                ``FeatureTypeSpec`` is a ``tf.TypeSpec``, ``List["tf.TypeSpec"]``, or
+                ``Dict[str, "tf.TypeSpec"]``.
             label_column (Optional[str]): The name of the column used as the label
                 (second element of the output tuple). If not specified, output
                 will be just one tensor instead of a tuple.
-            feature_columns (Optional[List[str]]): List of columns in datasets
-                to use. If None, all columns will be used.
+            feature_columns (Optional[Union[List[str], List[List[str]], Dict[str,
+                List[str]]]]): The names of the columns to use as the features. Can be
+                a list of lists or a dict of string-list pairs for multi-tensor output.
+                If None, then use all columns except the label columns as
+                the features.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
@@ -2267,6 +2295,11 @@ Dict[str, List[str]]]): The names of the columns
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
+        # `output_signature` can be a tuple but not a list. See
+        # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
+        if isinstance(output_signature, list):
+            output_signature = tuple(output_signature)
+
         def make_generator():
             for batch in self.iter_batches(
                 prefetch_blocks=prefetch_blocks,
@@ -2274,15 +2307,38 @@ Dict[str, List[str]]]): The names of the columns
                 batch_format="pandas",
             ):
                 if label_column:
-                    target_col = batch.pop(label_column)
-                if feature_columns:
-                    batch = batch[feature_columns]
+                    targets = batch.pop(label_column).values
+
+                features = None
+                if isinstance(feature_columns, list):
+                    if all(isinstance(element, str) for element in feature_columns):
+                        features = batch[feature_columns].values
+                    elif all(isinstance(element, list) for element in feature_columns):
+                        features = tuple(
+                            batch[columns].values for columns in feature_columns
+                        )
+                    else:
+                        raise ValueError(
+                            "Expected `feature_columns` to be a list of strings or a "
+                            "list of lists."
+                        )
+                elif isinstance(feature_columns, dict):
+                    features = {
+                        key: batch[columns].values
+                        for key, columns in feature_columns.items()
+                    }
+                else:
+                    raise ValueError(
+                        "Expected `feature_columns` to be a list or a dictionary, "
+                        f"but got a {type(feature_columns)} instead."
+                    )
+
                 # TODO(Clark): Support batches containing our extension array
                 # TensorArray.
                 if label_column:
-                    yield batch.values, target_col.values
+                    yield features, targets
                 else:
-                    yield batch.values
+                    yield features
 
         dataset = tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature
