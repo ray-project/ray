@@ -16,6 +16,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
@@ -44,7 +45,8 @@ namespace gcs {
 /// It is responsible for handing node resource related rpc requests and it is used for
 /// actor and placement group scheduling. It obtains the available resources of nodes
 /// through heartbeat reporting. Non-thread safe.
-class GcsResourceManager : public rpc::NodeResourceInfoHandler {
+class GcsResourceManager : public rpc::NodeResourceInfoHandler,
+                           syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
   ///
@@ -53,6 +55,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
                               ClusterResourceManager &cluster_resource_manager);
 
   virtual ~GcsResourceManager() {}
+
+  /// Handle the resource update.
+  void Update(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
   /// Handle get resource rpc request.
   void HandleGetResources(const rpc::GetResourcesRequest &request,

@@ -60,6 +60,8 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
+RAY_CONFIG(uint64_t, raylet_report_loads_period_milliseconds, 1000)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.

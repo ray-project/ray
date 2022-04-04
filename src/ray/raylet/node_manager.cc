@@ -543,6 +543,19 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.deadline_timer.print_event_loop_stats");
   }
 
+  if (RayConfig::instance().use_ray_syncer()) {
+    syncer_->Register(
+        syncer::RayComponentId::RESOURCE_MANAGER,
+        this,
+        this,
+        false,
+        RayConfig::instance().raylet_report_resources_period_milliseconds());
+    syncer_->Register(syncer::RayComponentId::SCHEDULER,
+                      this,
+                      nullptr,
+                      true,
+                      RayConfig::instance().raylet_report_loads_period_milliseconds());
+  }
   return ray::Status::OK();
 }
 
@@ -611,7 +624,7 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
 
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   resources_data.set_node_id(self_node_id_.Binary());
-  // resources_data.set_node_manager_address(initial_config_.node_manager_address);
+  resources_data.set_node_manager_address(initial_config_.node_manager_address);
   // Update local cache from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
   cluster_resource_scheduler_->GetLocalResourceManager().ResetLastReportResourceUsage(
@@ -2580,7 +2593,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     rpc::ResourcesData resource_data;
     cluster_task_manager_->FillResourceUsage(resource_data);
     resource_data.set_node_id(self_node_id_.Binary());
-    // resource_data.set_node_manager_address(initial_config_.node_manager_address);
+    resource_data.set_node_manager_address(initial_config_.node_manager_address);
 
     msg.set_version(++version);
     msg.set_node_id(self_node_id_.Binary());
@@ -2600,7 +2613,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     rpc::ResourcesData resource_data;
     local.FillResourceUsage(resource_data);
     resource_data.set_node_id(self_node_id_.Binary());
-    // resource_data.set_node_manager_address(initial_config_.node_manager_address);
+    resource_data.set_node_manager_address(initial_config_.node_manager_address);
 
     msg.set_node_id(self_node_id_.Binary());
     msg.set_version(local.Version());

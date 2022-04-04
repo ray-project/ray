@@ -425,6 +425,10 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
     ray_syncer_node_id_ = NodeID::FromRandom();
     ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
                                                       ray_syncer_node_id_.Binary());
+    syncer_->Register(
+        syncing::RayComponentId::RESOURCE_MANAGER, nullptr, gcs_resource_manager_.get());
+    syncer_->Register(
+        syncing::RayComponentId::SCHEDULER, nullptr, gcs_resource_manager_.get());
     ray_syncer_thread_ = std::make_unique<std::thread>([this]() {
       boost::asio::io_service::work work(ray_syncer_io_context_);
       ray_syncer_io_context_.run();

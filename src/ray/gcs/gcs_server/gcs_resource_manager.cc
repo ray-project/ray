@@ -26,6 +26,22 @@ GcsResourceManager::GcsResourceManager(
     : gcs_table_storage_(gcs_table_storage),
       cluster_resource_manager_(cluster_resource_manager) {}
 
+void GcsResourceManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) {
+  // Make sure thread safety.
+  main_io_service_.post([this, message]() {
+    rpc::ResourcesData resources;
+    resources.ParseFromString(message->sync_message());
+    resources.set_node_id(message->node_id());
+    auto node_id = NodeID::FromBinary(message->node_id());
+    if (message->component_id() == syncing::RayComponentId::RESOURCE_MANAGER) {
+      cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
+          scheduling::NodeID(message->node_id()), resources);
+    } else if (message->component_id() == syncing::RayComponentId::SCHEDULER) {
+      UpdateNodeResourceUsage(node_id, resources);
+    }
+  });
+}
+
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
