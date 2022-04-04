@@ -181,7 +181,8 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace))
+    >>> controller_name, controller_namespace = ... # doctest: +SKIP
+    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace)) # doctest: +SKIP
     """
 
     def __init__(self, controller_name: str, controller_namespace: str):
@@ -195,7 +196,7 @@ class HTTPProxy:
         self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
-            return serve.api._get_global_client().get_handle(
+            return serve.api.internal_get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
@@ -225,7 +226,7 @@ class HTTPProxy:
         self.deployment_request_error_counter = metrics.Counter(
             "serve_num_deployment_http_error_requests",
             description=(
-                "The number of non-200 HTTP responses returned by each " "deployment."
+                "The number of non-200 HTTP responses returned by each deployment."
             ),
             tag_keys=("deployment",),
         )

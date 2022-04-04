@@ -67,7 +67,7 @@ class ComposedModel:
 if __name__ == "__main__":
 
     # Start ray with 8 processes.
-    if ray.is_initialized:
+    if ray.is_initialized():
         ray.shutdown()
     ray.init(num_cpus=8)
     serve.start()

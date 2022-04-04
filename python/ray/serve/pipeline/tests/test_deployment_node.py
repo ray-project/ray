@@ -3,7 +3,7 @@ import pytest
 import ray
 from ray import serve
 from ray.experimental.dag.input_node import InputNode
-from ray.serve.api import Deployment
+from ray.serve.deployment import Deployment
 from ray.serve.config import DeploymentConfig
 from ray.serve.pipeline.deployment_node import (
     DeploymentNode,
@@ -44,14 +44,6 @@ class Actor:
 
     async def get(self):
         return self.i
-
-
-def test_disallow_binding_deployments():
-    with pytest.raises(
-        AttributeError,
-        match="DAG building API should only be used for @ray.remote decorated",
-    ):
-        _ = ServeActor._bind(10)
 
 
 @pytest.mark.asyncio

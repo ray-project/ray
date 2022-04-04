@@ -1,9 +1,14 @@
 Asynchronous Advantage Actor Critic (A3C)
 =========================================
 
-This document walks through `A3C`_, a state-of-the-art reinforcement learning
-algorithm. In this example, we adapt the OpenAI `Universe Starter Agent`_
-implementation of A3C to use Ray.
+.. note::
+    This example explains how to distribute simulations using Ray actors.
+    For an overview of Ray's industry-grade reinforcement learning library,
+    see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
+
+
+This document walks through `A3C`_, a state-of-the-art reinforcement learning algorithm.
+In this example, we adapt the OpenAI `Universe Starter Agent`_ implementation of A3C to use Ray.
 
 View the `code for this example`_.
 
@@ -11,9 +16,6 @@ View the `code for this example`_.
 .. _`Universe Starter Agent`: https://github.com/openai/universe-starter-agent
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/rllib/agents/a3c
 
-.. note::
-
-    For an overview of Ray's reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
 
 To run the application, first install **ray** and then some dependencies:
 
@@ -30,6 +32,9 @@ To run the application, first install **ray** and then some dependencies:
     :align: center
 
 You can run the code with
+
+
+.. TODO: this is the only mention of Pong-ram-v4 in this file. How is this useful?
 
 .. code-block:: bash
 
@@ -116,6 +121,8 @@ Driver Code Walkthrough
 
 The driver manages the coordination among workers and handles updating the
 global model parameters. The main training script looks like the following.
+
+.. TODO: this is untested code. literalinclude and test.
 
 .. code-block:: python
 

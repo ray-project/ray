@@ -182,3 +182,23 @@ def get_step_status_info(status: WorkflowStatus) -> str:
 
 def get_scope():
     return _context.workflow_scope
+
+
+_in_workflow_execution = False
+
+
+@contextmanager
+def workflow_execution() -> None:
+    """Scope for workflow step execution."""
+    global _in_workflow_execution
+    try:
+        _in_workflow_execution = True
+        yield
+    finally:
+        _in_workflow_execution = False
+
+
+def in_workflow_execution() -> bool:
+    """Whether we are in workflow step execution."""
+    global _in_workflow_execution
+    return _in_workflow_execution

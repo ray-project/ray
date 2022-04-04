@@ -16,8 +16,8 @@
 
 #include <deque>
 #include <functional>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 
 namespace ray {
@@ -71,8 +71,9 @@ class Sequencer {
   // Mutex to protect the pending_operations_ field.
   absl::Mutex mutex_;
 
-  std::unordered_map<KEY,
-                     std::deque<std::function<void(SequencerDoneCallback done_callback)>>>
+  absl::flat_hash_map<
+      KEY,
+      std::deque<std::function<void(SequencerDoneCallback done_callback)>>>
       pending_operations_ GUARDED_BY(mutex_);
 };
 

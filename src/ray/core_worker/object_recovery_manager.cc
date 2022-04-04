@@ -92,7 +92,8 @@ void ObjectRecoveryManager::PinOrReconstructObject(
 }
 
 void ObjectRecoveryManager::PinExistingObjectCopy(
-    const ObjectID &object_id, const rpc::Address &raylet_address,
+    const ObjectID &object_id,
+    const rpc::Address &raylet_address,
     const std::vector<rpc::Address> &other_locations) {
   // If a copy still exists, pin the object by sending a
   // PinObjectIDs RPC.
@@ -109,14 +110,16 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
     if (client_it == remote_object_pinning_clients_.end()) {
       RAY_LOG(DEBUG) << "Connecting to raylet " << node_id;
       client_it = remote_object_pinning_clients_
-                      .emplace(node_id, client_factory_(raylet_address.ip_address(),
-                                                        raylet_address.port()))
+                      .emplace(node_id,
+                               client_factory_(raylet_address.ip_address(),
+                                               raylet_address.port()))
                       .first;
     }
     client = client_it->second;
   }
 
-  client->PinObjectIDs(rpc_address_, {object_id},
+  client->PinObjectIDs(rpc_address_,
+                       {object_id},
                        [this, object_id, other_locations, node_id](
                            const Status &status, const rpc::PinObjectIDsReply &reply) {
                          if (status.ok()) {
@@ -146,7 +149,8 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
                                  rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED,
                                  /*pin_object=*/true);
     } else {
-      recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_LOST,
+      recovery_failure_callback_(object_id,
+                                 rpc::ErrorType::OBJECT_LOST,
                                  /*pin_object=*/true);
     }
     return;
@@ -169,7 +173,8 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
         // worker, or if there was a bug in reconstruction that caused us to GC
         // the dependency ref.
         // We do not pin the dependency because we may not be the owner.
-        recovery_failure_callback_(dep, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
+        recovery_failure_callback_(dep,
+                                   rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
                                    /*pin_object=*/false);
       }
     }
@@ -177,7 +182,8 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
     RAY_LOG(INFO) << "Failed to reconstruct object " << object_id
                   << " because lineage has already been deleted";
     recovery_failure_callback_(
-        object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
+        object_id,
+        rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
         /*pin_object=*/true);
   }
 }

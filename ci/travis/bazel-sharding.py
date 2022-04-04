@@ -53,7 +53,7 @@ def get_target_expansion_query(targets, tests_only, exclude_manual):
         query = "{} except {}".format(query, excluded_set)
 
     if exclude_manual:
-        query = '{} except tests(attr("tags", "manual", set({})))'.format(
+        query = '{} except tests(attr("tags", "\\bmanual\\b", set({})))'.format(
             query, included_targets
         )
 

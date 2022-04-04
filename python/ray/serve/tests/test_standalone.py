@@ -20,7 +20,7 @@ from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
 from ray.serve.config import HTTPOptions
-from ray.serve.api import _get_global_client
+from ray.serve.api import internal_get_global_client
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
@@ -443,7 +443,7 @@ def test_fixed_number_proxies(ray_cluster):
     )
 
     # Only the controller and two http proxy should be started.
-    controller_handle = _get_global_client()._controller
+    controller_handle = internal_get_global_client()._controller
     node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
     assert len(node_to_http_actors) == 2
 
@@ -550,12 +550,14 @@ def test_local_store_recovery(ray_shutdown):
     def world(_):
         return "world"
 
-    def check(name):
+    def check(name, raise_error=False):
         try:
             resp = requests.get(f"http://localhost:8000/{name}")
             assert resp.text == name
             return True
-        except Exception:
+        except Exception as e:
+            if raise_error:
+                raise e
             return False
 
     # https://github.com/ray-project/ray/issues/20159
@@ -581,8 +583,8 @@ def test_local_store_recovery(ray_shutdown):
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     hello.deploy()
     world.deploy()
-    assert check("hello")
-    assert check("world")
+    assert check("hello", raise_error=True)
+    assert check("world", raise_error=True)
     crash()
 
     # Simulate a crash

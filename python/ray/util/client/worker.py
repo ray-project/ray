@@ -41,6 +41,7 @@ from ray.util.client.common import (
     GRPC_OPTIONS,
     GRPC_UNRECOVERABLE_ERRORS,
     INT32_MAX,
+    OBJECT_TRANSFER_WARNING_SIZE,
 )
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
@@ -309,6 +310,54 @@ class Worker:
                 continue
         raise ConnectionError("Client is shutting down.")
 
+    def _get_object_iterator(
+        self, req: ray_client_pb2.GetRequest, *args, **kwargs
+    ) -> Any:
+        """
+        Calls the stub for GetObject on the underlying server stub. If a
+        recoverable error occurs while streaming the response, attempts
+        to retry the get starting from the first chunk that hasn't been
+        received.
+        """
+        last_seen_chunk = -1
+        while not self._in_shutdown:
+            # If we disconnect partway through, restart the get request
+            # at the first chunk we haven't seen
+            req.start_chunk_id = last_seen_chunk + 1
+            try:
+                for chunk in self.server.GetObject(req, *args, **kwargs):
+                    if chunk.chunk_id <= last_seen_chunk:
+                        # Ignore repeat chunks
+                        logger.debug(
+                            f"Received a repeated chunk {chunk.chunk_id} "
+                            f"from request {req.req_id}."
+                        )
+                        continue
+                    if last_seen_chunk + 1 != chunk.chunk_id:
+                        raise RuntimeError(
+                            f"Received chunk {chunk.chunk_id} when we expected "
+                            f"{self.last_seen_chunk + 1}"
+                        )
+                    last_seen_chunk = chunk.chunk_id
+                    yield chunk
+                    if last_seen_chunk == chunk.total_chunks - 1:
+                        # We've yielded the last chunk, exit early
+                        return
+                return
+            except grpc.RpcError as e:
+                if self._can_reconnect(e):
+                    time.sleep(0.5)
+                    continue
+                raise
+            except ValueError:
+                # Trying to use the stub on a cancelled channel will raise
+                # ValueError. This should only happen when the data client
+                # is attempting to reset the connection -- sleep and try
+                # again.
+                time.sleep(0.5)
+                continue
+        raise ConnectionError("Client is shutting down.")
+
     def _add_ids_to_metadata(self, metadata: Any):
         """
         Adds a unique req_id and the current thread's identifier to the
@@ -399,18 +448,33 @@ class Worker:
 
     def _get(self, ref: List[ClientObjectRef], timeout: float):
         req = ray_client_pb2.GetRequest(ids=[r.id for r in ref], timeout=timeout)
+        data = bytearray()
         try:
-            resp = self._call_stub("GetObject", req, metadata=self.metadata)
+            resp = self._get_object_iterator(req, metadata=self.metadata)
+            for chunk in resp:
+                if not chunk.valid:
+                    try:
+                        err = cloudpickle.loads(chunk.error)
+                    except (pickle.UnpicklingError, TypeError):
+                        logger.exception("Failed to deserialize {}".format(chunk.error))
+                        raise
+                    raise err
+                if chunk.total_size > OBJECT_TRANSFER_WARNING_SIZE and log_once(
+                    "client_object_transfer_size_warning"
+                ):
+                    size_gb = chunk.total_size / 2 ** 30
+                    warnings.warn(
+                        "Ray Client is attempting to retrieve a "
+                        f"{size_gb:.2f} GiB object over the network, which may "
+                        "be slow. Consider serializing the object to a file "
+                        "and using S3 or rsync instead.",
+                        UserWarning,
+                        stacklevel=5,
+                    )
+                data.extend(chunk.data)
         except grpc.RpcError as e:
             raise decode_exception(e)
-        if not resp.valid:
-            try:
-                err = cloudpickle.loads(resp.error)
-            except (pickle.UnpicklingError, TypeError):
-                logger.exception("Failed to deserialize {}".format(resp.error))
-                raise
-            raise err
-        return loads_from_server(resp.data)
+        return loads_from_server(data)
 
     def put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
@@ -597,7 +661,7 @@ class Worker:
     def terminate_actor(self, actor: ClientActorHandle, no_restart: bool) -> None:
         if not isinstance(actor, ClientActorHandle):
             raise ValueError(
-                "ray.kill() only supported for actors. " "Got: {}.".format(type(actor))
+                "ray.kill() only supported for actors. Got: {}.".format(type(actor))
             )
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
         term_actor.id = actor.actor_ref.id
@@ -760,6 +824,7 @@ class Worker:
                 "resources": md.resources,
                 "accelerator_type": md.accelerator_type,
                 "runtime_env": md.runtime_env,
+                "concurrency_groups": md.concurrency_groups,
                 "scheduling_strategy": md.scheduling_strategy,
             },
         )

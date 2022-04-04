@@ -61,7 +61,7 @@ ray.autoscaler.sdk.request_resources(num_cpus=4)
 
 You can uninstall the KubeRay operator using
 ```shell
-kubectl delete -f "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler.yaml"
+kubectl delete -f "ray/python/ray/autoscaler/kuberay/kuberay-autoscaler-rbac.yaml"
 kubectl delete -k "ray/python/ray/autoscaler/kuberay/config/default"
 ```
 
@@ -69,35 +69,27 @@ Note that all running Ray clusters will automatically be terminated.
 
 ## Developing the KubeRay integration (advanced)
 
+### Developing the KubeRay operator
 If you also want to change the underlying KubeRay operator, please refer to the instructions
 in [the KubeRay development documentation](https://github.com/ray-project/kuberay/blob/master/ray-operator/DEVELOPMENT.md). In that case you should push the modified operator to your docker account or registry and
 follow the instructions in `ray/python/ray/autoscaler/kuberay/init-config.sh`.
 
-The remainder of the instructions will cover how to change the autoscaler code.
+### Developing the Ray autoscaler code
+Code for the Ray autoscaler's KubeRay integration is located in `ray/python/ray/autoscaler/_private/kuberay`.
 
-In order to maximize development iteration speed, we recommend using a Linux machine with Python 3.7 for
-development, since that will simplify building wheels incrementally.
-Make the desired modification to Ray and/or the autoscaler and build the Ray wheels by running
-the following command in the `ray/python` directory:
-
-```shell
-python setup.py bdist_wheel
+Here is one procedure to test development autoscaler code.
+1. Push autoscaler code changes to your fork of Ray.
+2. Use the following Dockerfile to build an image with your changes.
+```dockerfile
+# Use the latest Ray master as base.
+FROM rayproject/ray:nightly
+# Retrieve your development code.
+RUN git clone -b <my-dev-branch> https://github.com/<my-git-handle>/ray
+# Install symlinks to your modified Python code.
+RUN python ray/python/ray/setup-dev.py -y
 ```
+3. Push the image to your docker account or registry.
+4. Update the autoscaler image in `ray-cluster.complete.yaml`
 
-Then in the `ray/docker/kuberay-autoscaler` directory run:
-
-```shell
-cp ../../python/dist/ray-2.0.0.dev0-cp37-cp37m-linux_x86_64.whl ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-docker build --build-arg WHEEL_PATH="ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl" -t rayproject/kuberay-autoscaler -f Dockerfile.dev --no-cache .
-docker push rayproject/kuberay-autoscaler
-```
-
-where you replace `rayproject/kuberay-autoscaler` with the desired image path in your own docker account (normally
-`<username>/kuberay-autoscaler`). Please also make sure to update the image in `ray-cluster.complete.yaml`.
-
-If you don't make any changes to Ray autoscaler but only touch files under `docker/kuberay-autoscaler` or just want to catch up latest ray, you can skip building the wheel and build autoscaler directly.
-
-```
-docker build -t rayproject/kuberay-autoscaler --no-cache .
-docker push rayproject/kuberay-autoscaler
-```
+Refer to the [Ray development documentation](https://docs.ray.io/en/latest/development.html#building-ray-python-only) for
+further details.

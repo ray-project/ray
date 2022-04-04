@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import time
 from typing import Set, List, Tuple, Optional, TYPE_CHECKING, Dict, Any
@@ -14,6 +13,7 @@ from ray.workflow.common import (
     WorkflowMetaData,
     StepType,
     WorkflowNotFoundError,
+    validate_user_metadata,
 )
 from ray.workflow.step_executor import commit_step
 from ray.workflow.storage import get_global_storage
@@ -35,17 +35,7 @@ def run(
     metadata: Optional[Dict] = None,
 ) -> ray.ObjectRef:
     """Run a workflow asynchronously."""
-    if metadata is not None:
-        if not isinstance(metadata, dict):
-            raise ValueError("metadata must be a dict.")
-        for k, v in metadata.items():
-            try:
-                json.dumps(v)
-            except TypeError as e:
-                raise ValueError(
-                    "metadata values must be JSON serializable, "
-                    "however '{}' has a value whose {}.".format(k, e)
-                )
+    validate_user_metadata(metadata)
     metadata = metadata or {}
 
     store = get_global_storage()
