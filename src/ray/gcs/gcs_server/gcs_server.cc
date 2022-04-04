@@ -525,11 +525,19 @@ void GcsServer::InstallEventListeners() {
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
+    auto node_id = NodeID::FromBinary(node->node_id());
     gcs_resource_manager_->OnNodeAdd(*node);
-    gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
+    gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
-    gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
+    gcs_heartbeat_manager_->AddNode(node_id);
     if (RayConfig::instance().use_ray_syncer()) {
+      rpc::Address address;
+      address.set_raylet_id(node->node_id());
+      address.set_ip_address(node->node_manager_address());
+      address.set_port(node->node_manager_port());
+
+      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+      ray_syncer_->Connect(raylet_client->GetChannel());
     } else {
       gcs_ray_syncer_->AddNode(*node);
     }
@@ -545,6 +553,7 @@ void GcsServer::InstallEventListeners() {
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
         if (RayConfig::instance().use_ray_syncer()) {
+          ray_syncer_->Disconnect(node_id.Binary());
         } else {
           gcs_ray_syncer_->RemoveNode(*node);
         }
