@@ -47,7 +47,7 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, framework="tf"):
     }
 
     env_config = {
-        "players_ids": ["agent_1", "agent_2"],
+        "players_ids": ["player_row", "player_col"],
         "max_steps": 20,
         "get_additional_info": True,
     }
