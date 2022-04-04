@@ -7,13 +7,16 @@ import random
 import re
 import time
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 import yaml
 
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.typing import PartialTrainerConfigDict
 from ray.tune import CLIReporter, run_experiments
+
+if TYPE_CHECKING:
+    from ray.rllib.agents.trainer_config import TrainerConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -30,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 def framework_iterator(
-    config: Optional[PartialTrainerConfigDict] = None,
+    config: Optional[Union["TrainerConfig", PartialTrainerConfigDict]] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
     session: bool = False,
     with_eager_tracing: bool = False,
@@ -42,8 +45,8 @@ def framework_iterator(
     as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
-        config: An optional config dict to alter in place depending on the
-            iteration.
+        config: An optional config dict or TrainerConfig object. This will be modified
+            (value for "framework" changed) depending on the iteration.
         frameworks: A list/tuple of the frameworks to be tested.
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
         session: If True and only in the tf-case: Enter a tf.Session()
@@ -99,7 +102,10 @@ def framework_iterator(
             sess.__enter__()
             tf1.set_random_seed(42)
 
-        config["framework"] = fw
+        if isinstance(config, dict):
+            config["framework"] = fw
+        else:
+            config.framework(fw)
 
         eager_ctx = None
         # Enable eager mode for tf2 and tfe.
@@ -114,7 +120,10 @@ def framework_iterator(
         # Additionally loop through eager_tracing=True + False, if necessary.
         if fw in ["tf2", "tfe"] and with_eager_tracing:
             for tracing in [True, False]:
-                config["eager_tracing"] = tracing
+                if isinstance(config, dict):
+                    config["eager_tracing"] = tracing
+                else:
+                    config.framework(eager_tracing=tracing)
                 print(f"framework={fw} (eager-tracing={tracing})")
                 time_started = time.time()
                 yield fw if session is False else (fw, sess)
@@ -122,7 +131,10 @@ def framework_iterator(
                     time_total = time.time() - time_started
                     time_iterations[fw + ("+tracing" if tracing else "")] = time_total
                     print(f".. took {time_total}sec")
-                config["eager_tracing"] = False
+                if isinstance(config, dict):
+                    config["eager_tracing"] = False
+                else:
+                    config.framework(eager_tracing=False)
         # Yield current framework + tf-session (if necessary).
         else:
             print(f"framework={fw}")

@@ -743,6 +743,9 @@ setuptools.setup(
             "serve=ray.serve.scripts:cli",
         ]
     },
+    package_data={
+        "ray": ["includes/*.pxd", "*.pxd"],
+    },
     include_package_data=True,
     zip_safe=False,
     license="Apache 2.0",
