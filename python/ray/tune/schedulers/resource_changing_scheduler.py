@@ -385,7 +385,7 @@ class DistributeResources:
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
-    ) -> Union[None, PlacementGroupFactory]:
+    ) -> Optional[PlacementGroupFactory]:
         """Run resource allocation logic.
 
         Returns a new ``PlacementGroupFactory`` with updated
@@ -589,7 +589,7 @@ def evenly_distribute_cpus_gpus(
     trial: Trial,
     result: Dict[str, Any],
     scheduler: "ResourceChangingScheduler",
-) -> Union[None, PlacementGroupFactory]:
+) -> Optional[PlacementGroupFactory]:
     """This is a basic uniform resource allocating function.
 
     This function is used by default in ``ResourceChangingScheduler``.
@@ -639,7 +639,7 @@ def evenly_distribute_cpus_gpus_distributed(
     trial: Trial,
     result: Dict[str, Any],
     scheduler: "ResourceChangingScheduler",
-) -> Union[None, PlacementGroupFactory]:
+) -> Optional[PlacementGroupFactory]:
     """This is a basic uniform resource allocating function.
 
     The function naively balances free resources (CPUs and GPUs) between
@@ -746,7 +746,7 @@ class ResourceChangingScheduler(TrialScheduler):
                 trial: Trial,
                 result: Dict[str, Any],
                 scheduler: "ResourceChangingScheduler"
-            ) -> Union[None, PlacementGroupFactory, Resource]:
+            ) -> Optional[Union[PlacementGroupFactory, Resource]]:
                 # logic here
                 # usage of PlacementGroupFactory is strongly preferred
                 return PlacementGroupFactory(...)
@@ -770,7 +770,7 @@ class ResourceChangingScheduler(TrialScheduler):
                     Dict[str, Any],
                     "ResourceChangingScheduler",
                 ],
-                Union[None, PlacementGroupFactory, Resources],
+                Optional[Union[PlacementGroupFactory, Resources]],
             ]
         ] = _DistributeResourcesDefault,
     ) -> None:
@@ -787,7 +787,7 @@ class ResourceChangingScheduler(TrialScheduler):
             Union[Resources, PlacementGroupFactory]
         ] = None
         self._trials_to_reallocate: Dict[
-            Trial, Union[None, dict, PlacementGroupFactory]
+            Trial, Optional[Union[dict, PlacementGroupFactory]]
         ] = {}
         self._reallocated_trial_ids: Set[str] = set()
         self._metric = None
@@ -951,7 +951,7 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def reallocate_trial_resources_if_needed(
         self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
-    ) -> Union[None, dict, PlacementGroupFactory]:
+    ) -> Optional[Union[dict, PlacementGroupFactory]]:
         """Calls user defined resources_allocation_function. If the returned
         resources are not none and not the same as currently present, returns
         them. Otherwise, returns None."""
