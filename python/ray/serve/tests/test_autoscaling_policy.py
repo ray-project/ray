@@ -15,7 +15,7 @@ from ray.serve.deployment_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
-from ray.serve.api import Deployment
+from ray.serve.deployment import Deployment
 
 import ray
 from ray import serve
