@@ -24,6 +24,9 @@ PyTorch
 * :doc:`/train/examples/transformers/transformers_example`:
   End-to-end example for HuggingFace Transformers (PyTorch).
 
+* :doc:`/train/examples/pipeline_parallelism_example`:
+  End-to-end example for Model (Pipeline) Parallelism.
+
 TensorFlow
 ~~~~~~~~~~
 

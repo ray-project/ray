@@ -180,7 +180,7 @@ def run_worker(config):
     chunks = 8
     model = Pipe(torch.nn.Sequential(*module_list), chunks=chunks, checkpoint="never")
 
-    # Initialize process group and wrap model in DDP.
+    # Wrap model in DDP.
     from torch.nn.parallel import DistributedDataParallel
 
     model = DistributedDataParallel(model)
