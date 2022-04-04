@@ -56,11 +56,14 @@ parser.add_argument(
 
 # Define new Trainer with custom execution_plan/workflow.
 class MyTrainer(Trainer):
-    @staticmethod
-    def execution_plan(workers: WorkerSet, config: dict, **kwargs):
-        local_replay_buffer = MultiAgentReplayBuffer(
+    @override(Trainer)
+    def setup(self):
+        self.local_replay_buffer = MultiAgentReplayBuffer(
             num_shards=1, learning_starts=1000, capacity=50000, replay_batch_size=64
         )
+
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
 
         def add_ppo_metrics(batch):
             print(
@@ -94,10 +97,10 @@ class MyTrainer(Trainer):
 
         # DQN sub-flow.
         dqn_store_op = r1.for_each(SelectExperiences(["dqn_policy"])).for_each(
-            StoreToReplayBuffer(local_buffer=local_replay_buffer)
+            StoreToReplayBuffer(local_buffer=self.local_replay_buffer)
         )
         dqn_replay_op = (
-            Replay(local_buffer=local_replay_buffer)
+            Replay(local_buffer=self.local_replay_buffer)
             .for_each(add_dqn_metrics)
             .for_each(TrainOneStep(workers, policies=["dqn_policy"]))
             .for_each(
