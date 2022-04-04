@@ -98,7 +98,7 @@ def ppo_surrogate_loss(
         action_kl = prev_action_dist.kl(curr_action_dist)
         mean_kl_loss = reduce_mean_valid(action_kl)
     else:
-        mean_kl_loss = 0.0
+        mean_kl_loss = tf.constant(0.0)
 
     curr_entropy = curr_action_dist.entropy()
     mean_entropy = reduce_mean_valid(curr_entropy)
@@ -369,11 +369,11 @@ def setup_config(
     # It's confusing as some users might (correctly!) set it in their
     # model config and then won't notice that it's silently overwritten
     # here.
-    if config["vf_share_layers"] != DEPRECATED_VALUE:
+    if config.get("vf_share_layers", DEPRECATED_VALUE) != DEPRECATED_VALUE:
         deprecation_warning(
             old="config[vf_share_layers]",
             new="config[model][vf_share_layers]",
-            error=False,
+            error=True,
         )
         config["model"]["vf_share_layers"] = config["vf_share_layers"]
 

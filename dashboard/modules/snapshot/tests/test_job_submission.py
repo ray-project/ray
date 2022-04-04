@@ -41,7 +41,7 @@ def test_successful_job_status(
     address = format_web_url(address)
 
     job_sleep_time_s = 5
-    entrypoint_cmd = (
+    entrypoint = (
         'python -c"'
         "import ray;"
         "ray.init();"
@@ -55,7 +55,7 @@ def test_successful_job_status(
     runtime_env = {"env_vars": {"RAY_TEST_123": "123"}}
     metadata = {"ray_test_456": "456"}
     job_id = client.submit_job(
-        entrypoint=entrypoint_cmd, metadata=metadata, runtime_env=runtime_env
+        entrypoint=entrypoint, metadata=metadata, runtime_env=runtime_env
     )
 
     def wait_for_job_to_succeed():
@@ -76,6 +76,7 @@ def test_successful_job_status(
             "jobSubmission"
         ].items():
             if entry["status"] is not None:
+                assert entry["entrypoint"] == entrypoint
                 assert entry["status"] in {"PENDING", "RUNNING", "SUCCEEDED"}
                 assert entry["message"] is not None
                 # TODO(architkulkarni): Disable automatic camelcase.
@@ -100,7 +101,7 @@ def test_failed_job_status(
     address = format_web_url(address)
 
     job_sleep_time_s = 5
-    entrypoint_cmd = (
+    entrypoint = (
         'python -c"'
         "import ray;"
         "ray.init();"
@@ -115,7 +116,7 @@ def test_failed_job_status(
     runtime_env = {"env_vars": {"RAY_TEST_456": "456"}}
     metadata = {"ray_test_789": "789"}
     job_id = client.submit_job(
-        entrypoint=entrypoint_cmd, metadata=metadata, runtime_env=runtime_env
+        entrypoint=entrypoint, metadata=metadata, runtime_env=runtime_env
     )
 
     def wait_for_job_to_fail():
@@ -137,6 +138,7 @@ def test_failed_job_status(
             "jobSubmission"
         ].items():
             if entry["status"] is not None:
+                assert entry["entrypoint"] == entrypoint
                 assert entry["status"] in {"PENDING", "RUNNING", "FAILED"}
                 assert entry["message"] is not None
                 # TODO(architkulkarni): Disable automatic camelcase.

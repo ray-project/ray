@@ -64,8 +64,8 @@ class ProgressReporter:
         """Returns whether or not progress should be reported.
 
         Args:
-            trials (list[Trial]): Trials to report on.
-            done (bool): Whether this is the last progress report attempt.
+            trials: Trials to report on.
+            done: Whether this is the last progress report attempt.
         """
         raise NotImplementedError
 
@@ -73,8 +73,8 @@ class ProgressReporter:
         """Reports progress across trials.
 
         Args:
-            trials (list[Trial]): Trials to report on.
-            done (bool): Whether this is the last progress report attempt.
+            trials: Trials to report on.
+            done: Whether this is the last progress report attempt.
             sys_info: System info.
         """
         raise NotImplementedError
@@ -95,35 +95,35 @@ class TuneReporterBase(ProgressReporter):
     metrics.
 
     Args:
-        metric_columns (dict[str, str]|list[str]): Names of metrics to
+        metric_columns: Names of metrics to
             include in progress table. If this is a dict, the keys should
             be metric names and the values should be the displayed names.
             If this is a list, the metric name is used directly.
-        parameter_columns (dict[str, str]|list[str]): Names of parameters to
+        parameter_columns: Names of parameters to
             include in progress table. If this is a dict, the keys should
             be parameter names and the values should be the displayed names.
             If this is a list, the parameter name is used directly. If empty,
             defaults to all available parameters.
-        max_progress_rows (int): Maximum number of rows to print
+        max_progress_rows: Maximum number of rows to print
             in the progress table. The progress table describes the
             progress of each trial. Defaults to 20.
-        max_error_rows (int): Maximum number of rows to print in the
+        max_error_rows: Maximum number of rows to print in the
             error table. The error table lists the error file, if any,
             corresponding to each trial. Defaults to 20.
-        max_report_frequency (int): Maximum report frequency in seconds.
+        max_report_frequency: Maximum report frequency in seconds.
             Defaults to 5s.
-        infer_limit (int): Maximum number of metrics to automatically infer
+        infer_limit: Maximum number of metrics to automatically infer
             from tune results.
-        print_intermediate_tables (bool|None): Print intermediate result
+        print_intermediate_tables: Print intermediate result
             tables. If None (default), will be set to True for verbosity
             levels above 3, otherwise False. If True, intermediate tables
             will be printed with experiment progress. If False, tables
             will only be printed at then end of the tuning run for verbosity
             levels greater than 2.
-        metric (str): Metric used to determine best current trial.
-        mode (str): One of [min, max]. Determines whether objective is
+        metric: Metric used to determine best current trial.
+        mode: One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        sort_by_metric (bool): Sort terminated trials by metric in the
+        sort_by_metric: Sort terminated trials by metric in the
             intermediate table. Defaults to False.
     """
 
@@ -225,9 +225,9 @@ class TuneReporterBase(ProgressReporter):
         """Adds a metric to the existing columns.
 
         Args:
-            metric (str): Metric to add. This must be a metric being returned
+            metric: Metric to add. This must be a metric being returned
                 in training step results.
-            representation (str): Representation to use in table. Defaults to
+            representation: Representation to use in table. Defaults to
                 `metric`.
         """
         self._metrics_override = True
@@ -252,9 +252,9 @@ class TuneReporterBase(ProgressReporter):
         """Adds a parameter to the existing columns.
 
         Args:
-            parameter (str): Parameter to add. This must be a parameter
+            parameter: Parameter to add. This must be a parameter
                 specified in the configuration.
-            representation (str): Representation to use in table. Defaults to
+            representation: Representation to use in table. Defaults to
                 `parameter`.
         """
         if parameter in self._parameter_columns:
@@ -288,10 +288,10 @@ class TuneReporterBase(ProgressReporter):
         exists if errors have occurred.
 
         Args:
-            trials (list[Trial]): Trials to report on.
-            done (bool): Whether this is the last progress report attempt.
-            fmt (str): Table format. See `tablefmt` in tabulate API.
-            delim (str): Delimiter between messages.
+            trials: Trials to report on.
+            done: Whether this is the last progress report attempt.
+            fmt: Table format. See `tablefmt` in tabulate API.
+            delim: Delimiter between messages.
         """
         if not self._metrics_override:
             user_metrics = self._infer_user_metrics(trials, self._infer_limit)
@@ -387,36 +387,36 @@ class JupyterNotebookReporter(TuneReporterBase):
     """Jupyter notebook-friendly Reporter that can update display in-place.
 
     Args:
-        overwrite (bool): Flag for overwriting the last reported progress.
-        metric_columns (dict[str, str]|list[str]): Names of metrics to
+        overwrite: Flag for overwriting the last reported progress.
+        metric_columns: Names of metrics to
             include in progress table. If this is a dict, the keys should
             be metric names and the values should be the displayed names.
             If this is a list, the metric name is used directly.
-        parameter_columns (dict[str, str]|list[str]): Names of parameters to
+        parameter_columns: Names of parameters to
             include in progress table. If this is a dict, the keys should
             be parameter names and the values should be the displayed names.
             If this is a list, the parameter name is used directly. If empty,
             defaults to all available parameters.
-        max_progress_rows (int): Maximum number of rows to print
+        max_progress_rows: Maximum number of rows to print
             in the progress table. The progress table describes the
             progress of each trial. Defaults to 20.
-        max_error_rows (int): Maximum number of rows to print in the
+        max_error_rows: Maximum number of rows to print in the
             error table. The error table lists the error file, if any,
             corresponding to each trial. Defaults to 20.
-        max_report_frequency (int): Maximum report frequency in seconds.
+        max_report_frequency: Maximum report frequency in seconds.
             Defaults to 5s.
-        infer_limit (int): Maximum number of metrics to automatically infer
+        infer_limit: Maximum number of metrics to automatically infer
             from tune results.
-        print_intermediate_tables (bool|None): Print intermediate result
+        print_intermediate_tables: Print intermediate result
             tables. If None (default), will be set to True for verbosity
             levels above 3, otherwise False. If True, intermediate tables
             will be printed with experiment progress. If False, tables
             will only be printed at then end of the tuning run for verbosity
             levels greater than 2.
-        metric (str): Metric used to determine best current trial.
-        mode (str): One of [min, max]. Determines whether objective is
+        metric: Metric used to determine best current trial.
+        mode: One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        sort_by_metric (bool): Sort terminated trials by metric in the
+        sort_by_metric: Sort terminated trials by metric in the
             intermediate table. Defaults to False.
     """
 
@@ -494,35 +494,35 @@ class CLIReporter(TuneReporterBase):
     """Command-line reporter
 
     Args:
-        metric_columns (dict[str, str]|list[str]): Names of metrics to
+        metric_columns: Names of metrics to
             include in progress table. If this is a dict, the keys should
             be metric names and the values should be the displayed names.
             If this is a list, the metric name is used directly.
-        parameter_columns (dict[str, str]|list[str]): Names of parameters to
+        parameter_columns: Names of parameters to
             include in progress table. If this is a dict, the keys should
             be parameter names and the values should be the displayed names.
             If this is a list, the parameter name is used directly. If empty,
             defaults to all available parameters.
-        max_progress_rows (int): Maximum number of rows to print
+        max_progress_rows: Maximum number of rows to print
             in the progress table. The progress table describes the
             progress of each trial. Defaults to 20.
-        max_error_rows (int): Maximum number of rows to print in the
+        max_error_rows: Maximum number of rows to print in the
             error table. The error table lists the error file, if any,
             corresponding to each trial. Defaults to 20.
-        max_report_frequency (int): Maximum report frequency in seconds.
+        max_report_frequency: Maximum report frequency in seconds.
             Defaults to 5s.
-        infer_limit (int): Maximum number of metrics to automatically infer
+        infer_limit: Maximum number of metrics to automatically infer
             from tune results.
-        print_intermediate_tables (bool|None): Print intermediate result
+        print_intermediate_tables: Print intermediate result
             tables. If None (default), will be set to True for verbosity
             levels above 3, otherwise False. If True, intermediate tables
             will be printed with experiment progress. If False, tables
             will only be printed at then end of the tuning run for verbosity
             levels greater than 2.
-        metric (str): Metric used to determine best current trial.
-        mode (str): One of [min, max]. Determines whether objective is
+        metric: Metric used to determine best current trial.
+        mode: One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        sort_by_metric (bool): Sort terminated trials by metric in the
+        sort_by_metric: Sort terminated trials by metric in the
             intermediate table. Defaults to False.
     """
 
@@ -581,7 +581,7 @@ def memory_debug_str():
             round(used_gb, 1), round(total_gb, 1), warn
         )
     except ImportError:
-        return "Unknown memory usage. Please run `pip install psutil` " "to resolve)"
+        return "Unknown memory usage. Please run `pip install psutil` to resolve)"
 
 
 def time_passed_str(start_time: float, current_time: float):
@@ -639,28 +639,28 @@ def trial_progress_str(
     and the current values of its metrics.
 
     Args:
-        trials (list[Trial]): List of trials to get progress string for.
-        metric_columns (dict[str, str]|list[str]): Names of metrics to include.
+        trials: List of trials to get progress string for.
+        metric_columns: Names of metrics to include.
             If this is a dict, the keys are metric names and the values are
             the names to use in the message. If this is a list, the metric
             name is used in the message directly.
-        parameter_columns (dict[str, str]|list[str]): Names of parameters to
+        parameter_columns: Names of parameters to
             include. If this is a dict, the keys are parameter names and the
             values are the names to use in the message. If this is a list,
             the parameter name is used in the message directly. If this is
             empty, all parameters are used in the message.
-        total_samples (int): Total number of trials that will be generated.
-        force_table (bool): Force printing a table. If False, a table will
+        total_samples: Total number of trials that will be generated.
+        force_table: Force printing a table. If False, a table will
             be printed only at the end of the training for verbosity levels
             above `Verbosity.V2_TRIAL_NORM`.
-        fmt (str): Output format (see tablefmt in tabulate API).
-        max_rows (int): Maximum number of rows in the trial table. Defaults to
+        fmt: Output format (see tablefmt in tabulate API).
+        max_rows: Maximum number of rows in the trial table. Defaults to
             unlimited.
-        done (bool): True indicates that the tuning run finished.
-        metric (str): Metric used to sort trials.
-        mode (str): One of [min, max]. Determines whether objective is
+        done: True indicates that the tuning run finished.
+        metric: Metric used to sort trials.
+        mode: One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        sort_by_metric (bool): Sort terminated trials by metric in the
+        sort_by_metric: Sort terminated trials by metric in the
             intermediate table. Defaults to False.
     """
     messages = []
@@ -818,9 +818,9 @@ def trial_errors_str(
     """Returns a readable message regarding trial errors.
 
     Args:
-        trials (list[Trial]): List of trials to get progress string for.
-        fmt (str): Output format (see tablefmt in tabulate API).
-        max_rows (int): Maximum number of rows in the error table. Defaults to
+        trials: List of trials to get progress string for.
+        fmt: Output format (see tablefmt in tabulate API).
+        max_rows: Maximum number of rows in the error table. Defaults to
             unlimited.
     """
     messages = []
@@ -874,8 +874,7 @@ def _fair_filter_trials(
     The oldest trials are truncated if necessary.
 
     Args:
-        trials_by_state (dict[str, list[Trial]]: Trials by state.
-        max_trials (int): Maximum number of trials to return.
+        trials_by_state: Maximum number of trials to return.
     Returns:
         Dict mapping state to List of fairly represented trials.
     """
@@ -924,9 +923,9 @@ def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
     name | status | loc | params... | metrics...
 
     Args:
-        trial (Trial): Trial to get information for.
-        parameters (list[str]): Names of trial parameters to include.
-        metrics (list[str]): Names of metrics to include.
+        trial: Trial to get information for.
+        parameters: Names of trial parameters to include.
+        metrics: Names of metrics to include.
     """
     result = trial.last_result
     config = trial.config

@@ -58,16 +58,6 @@ __all__ = [
     "PlacementGroupTableData",
 ]
 
-LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
-
-# Actor pub/sub updates
-RAY_ACTOR_PUBSUB_PATTERN = "ACTOR:*".encode("ascii")
-
-RAY_ERROR_PUBSUB_PATTERN = "ERROR_INFO:*".encode("ascii")
-
-# These prefixes must be kept up-to-date with the TablePrefix enum in
-# gcs.proto.
-TablePrefix_ACTOR_string = "ACTOR"
 
 WORKER = 0
 DRIVER = 1
@@ -78,8 +68,6 @@ _MAX_MESSAGE_LENGTH = 512 * 1024 * 1024
 _GRPC_KEEPALIVE_TIME_MS = 60 * 1000
 # Keepalive should be replied < 60s
 _GRPC_KEEPALIVE_TIMEOUT_MS = 60 * 1000
-# Max retries to get GCS address from Redis server
-_MAX_GET_GCS_SERVER_ADDRESS_RETRIES = 60
 
 # Also relying on these defaults:
 # grpc.keepalive_permit_without_calls=0: No keepalive without inflight calls.
@@ -91,36 +79,6 @@ _GRPC_OPTIONS = [
     ("grpc.keepalive_time_ms", _GRPC_KEEPALIVE_TIME_MS),
     ("grpc.keepalive_timeout_ms", _GRPC_KEEPALIVE_TIMEOUT_MS),
 ]
-
-
-def use_gcs_for_bootstrap():
-    from ray._private.gcs_pubsub import gcs_pubsub_enabled
-    from ray._raylet import Config
-
-    ret = Config.bootstrap_with_gcs()
-    if ret:
-        assert gcs_pubsub_enabled()
-    return ret
-
-
-def get_gcs_address_from_redis(redis) -> str:
-    """Reads GCS address from redis.
-
-    Args:
-        redis: Redis client to fetch GCS address.
-    Returns:
-        GCS address string.
-    """
-    count = 0
-    while count < _MAX_GET_GCS_SERVER_ADDRESS_RETRIES:
-        gcs_address = redis.get("GcsServerAddress")
-        if gcs_address is None:
-            logger.debug("Failed to look up gcs address through redis, retrying.")
-            time.sleep(1)
-            count += 1
-            continue
-        return gcs_address.decode()
-    raise RuntimeError("Failed to look up gcs address through redis")
 
 
 def create_gcs_channel(address: str, aio=False):
@@ -164,27 +122,15 @@ def _auto_reconnect(f):
 
 
 class GcsChannel:
-    def __init__(
-        self, redis_client=None, gcs_address: Optional[str] = None, aio: bool = False
-    ):
-        if redis_client is None and gcs_address is None:
-            raise ValueError("One of `redis_client` or `gcs_address` has to be set")
-        if redis_client is not None and gcs_address is not None:
-            raise ValueError("Only one of `redis_client` or `gcs_address` can be set")
-        self._redis_client = redis_client
+    def __init__(self, gcs_address: Optional[str] = None, aio: bool = False):
         self._gcs_address = gcs_address
         self._aio = aio
 
     def connect(self):
         # GCS server uses a cached port, so it should use the same port after
-        # restarting, whether in Redis or GCS bootstrapping mode. This means
-        # GCS address should stay the same for the lifetime of the Ray cluster.
-        if self._gcs_address is None:
-            assert self._redis_client is not None
-            gcs_address = get_gcs_address_from_redis(self._redis_client)
-        else:
-            gcs_address = self._gcs_address
-        self._channel = create_gcs_channel(gcs_address, self._aio)
+        # restarting. This means GCS address should stay the same for the
+        # lifetime of the Ray cluster.
+        self._channel = create_gcs_channel(self._gcs_address, self._aio)
 
     def channel(self):
         return self._channel
@@ -299,14 +245,11 @@ class GcsClient:
                 f"due to error {reply.status.message}"
             )
 
-    @staticmethod
-    def create_from_redis(redis_cli):
-        return GcsClient(GcsChannel(redis_client=redis_cli))
 
-    @staticmethod
-    def connect_to_gcs_by_redis_address(redis_address, redis_password):
-        from ray._private.services import create_redis_client
+def use_gcs_for_bootstrap():
+    """In the current version of Ray, we always use the GCS to bootstrap.
+    (This was previously controlled by a feature flag.)
 
-        return GcsClient.create_from_redis(
-            create_redis_client(redis_address, redis_password)
-        )
+    This function is included for the purposes of backwards compatibility.
+    """
+    return True

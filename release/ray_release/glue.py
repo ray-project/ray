@@ -4,8 +4,8 @@ from typing import Optional, List
 
 from ray_release.alerts.handle import handle_result
 from ray_release.anyscale_util import get_cluster_name
+from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.full import FullClusterManager
-from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
@@ -17,6 +17,7 @@ from ray_release.config import (
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     RELEASE_PACKAGE_DIR,
+    DEFAULT_AUTOSUSPEND_MINS,
     validate_test,
 )
 from ray_release.exception import (
@@ -49,7 +50,7 @@ type_str_to_command_runner = {
 command_runner_to_cluster_manager = {
     SDKRunner: FullClusterManager,
     ClientRunner: FullClusterManager,
-    JobRunner: MinimalClusterManager,
+    JobRunner: FullClusterManager,
 }
 
 file_manager_str_to_file_manager = {
@@ -61,6 +62,7 @@ file_manager_str_to_file_manager = {
 command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
+    JobFileManager: JobFileManager,
 }
 
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}
@@ -77,6 +79,8 @@ def run_release_test(
     cluster_env_id: Optional[str] = None,
     no_terminate: bool = False,
 ) -> Result:
+    buildkite_group(":spiral_note_pad: Loading test configuration")
+
     validate_test(test)
 
     result.wheels_url = ray_wheels_url
@@ -151,6 +155,7 @@ def run_release_test(
 
         cluster_manager.set_cluster_compute(cluster_compute)
 
+        buildkite_group(":nut_and_bolt: Setting up local environment")
         driver_setup_script = test.get("driver_setup", None)
         if driver_setup_script:
             try:
@@ -160,13 +165,16 @@ def run_release_test(
 
         # Install local dependencies
         command_runner.prepare_local_env(ray_wheels_url)
+        command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
-        # Start session
+        # Start cluster
         if cluster_id:
+            buildkite_group(":rocket: Using existing cluster")
             # Re-use existing cluster ID for development
             cluster_manager.cluster_id = cluster_id
             cluster_manager.cluster_name = get_cluster_name(cluster_id)
         else:
+            buildkite_group(":gear: Building cluster environment")
             build_timeout = test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT)
 
             if cluster_env_id:
@@ -178,21 +186,26 @@ def run_release_test(
                 "session_timeout", DEFAULT_CLUSTER_TIMEOUT
             )
 
-            autosuspend_mins = test["run"].get("autosuspend_mins", None)
+            autosuspend_mins = test["cluster"].get("autosuspend_mins", None)
             if autosuspend_mins:
                 cluster_manager.autosuspend_minutes = autosuspend_mins
+            else:
+                cluster_manager.autosuspend_minutes = min(
+                    DEFAULT_AUTOSUSPEND_MINS, int(command_timeout / 60) + 10
+                )
 
+            buildkite_group(":rocket: Starting up cluster")
             cluster_manager.start_cluster(timeout=cluster_timeout)
 
         result.cluster_url = cluster_manager.get_cluster_url()
 
         # Upload files
+        buildkite_group(":wrench: Preparing remote environment")
         command_runner.prepare_remote_env()
-
-        command_timeout = test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
 
         wait_for_nodes = test["run"].get("wait_for_nodes", None)
         if wait_for_nodes:
+            buildkite_group(":stopwatch: Waiting for nodes to come up")
             num_nodes = test["run"]["wait_for_nodes"]["num_nodes"]
             wait_timeout = test["run"]["wait_for_nodes"]["timeout"]
             command_runner.wait_for_nodes(num_nodes, wait_timeout)
@@ -207,6 +220,7 @@ def run_release_test(
             except CommandTimeout as e:
                 raise PrepareCommandTimeout(e)
 
+        buildkite_group(":runner: Running test script")
         command = test["run"]["script"]
         command_env = {}
 
@@ -227,10 +241,12 @@ def run_release_test(
                 # Only raise error if command is not long running
                 raise TestCommandTimeout(e)
 
+        buildkite_group(":floppy_disk: Fetching results")
         try:
             command_results = command_runner.fetch_results()
         except Exception as e:
-            logger.error(f"Could not fetch results for test command: {e}")
+            logger.error("Could not fetch results for test command")
+            logger.exception(e)
             command_results = {}
 
         # Postprocess result:
@@ -245,6 +261,8 @@ def run_release_test(
         result.status = "finished"
 
     except Exception as e:
+        logger.exception(e)
+        buildkite_open_last()
         pipeline_exception = e
 
     try:
@@ -256,6 +274,7 @@ def run_release_test(
     result.last_logs = last_logs
 
     if not no_terminate:
+        buildkite_group(":earth_africa: Terminating cluster")
         try:
             cluster_manager.terminate_cluster(wait=False)
         except Exception as e:
@@ -267,6 +286,7 @@ def run_release_test(
     os.chdir(old_wd)
 
     if not pipeline_exception:
+        buildkite_group(":mag: Interpreting results")
         # Only handle results if we didn't run into issues earlier
         try:
             handle_result(test, result)
@@ -274,6 +294,7 @@ def run_release_test(
             pipeline_exception = e
 
     if pipeline_exception:
+        buildkite_group(":rotating_light: Handling errors")
         exit_code, error_type, runtime = handle_exception(pipeline_exception)
 
         result.return_code = exit_code.value
@@ -281,6 +302,7 @@ def run_release_test(
         if runtime is not None:
             result.runtime = runtime
 
+    buildkite_group(":memo: Reporting results", open=True)
     reporters = reporters or []
     for reporter in reporters:
         try:

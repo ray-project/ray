@@ -1,7 +1,7 @@
 from typing import TypeVar, Any, Union, Callable, List, Tuple, Optional
 
 import ray
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -22,43 +22,13 @@ U = TypeVar("U")
 CallableClass = type
 
 
+@DeveloperAPI
 class ComputeStrategy:
     def _apply(self, fn: Any, blocks: BlockList, clear_input_blocks: bool) -> BlockList:
         raise NotImplementedError
 
 
-def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
-    output = []
-    stats = BlockExecStats.builder()
-    for new_block in fn(block):
-        accessor = BlockAccessor.for_block(new_block)
-        new_meta = BlockMetadata(
-            num_rows=accessor.num_rows(),
-            size_bytes=accessor.size_bytes(),
-            schema=accessor.schema(),
-            input_files=input_files,
-            exec_stats=stats.build(),
-        )
-        owner = DatasetContext.get_current().block_owner
-        output.append((ray.put(new_block, _owner=owner), new_meta))
-        stats = BlockExecStats.builder()
-    return output
-
-
-def _map_block_nosplit(
-    block: Block, fn: Any, input_files: List[str]
-) -> Tuple[Block, BlockMetadata]:
-    stats = BlockExecStats.builder()
-    builder = DelegatingBlockBuilder()
-    for new_block in fn(block):
-        builder.add_block(new_block)
-    new_block = builder.build()
-    accessor = BlockAccessor.for_block(new_block)
-    return new_block, accessor.get_metadata(
-        input_files=input_files, exec_stats=stats.build()
-    )
-
-
+@DeveloperAPI
 class TaskPoolStrategy(ComputeStrategy):
     def _apply(
         self,
@@ -126,11 +96,13 @@ class TaskPoolStrategy(ComputeStrategy):
 class ActorPoolStrategy(ComputeStrategy):
     """Specify the compute strategy for a Dataset transform.
 
-    ActorPool specifies that an autoscaling pool of actors should be used for a given
-    Dataset transform. This is useful for stateful setup of callable classes.
+    ActorPoolStrategy specifies that an autoscaling pool of actors should be used
+    for a given Dataset transform. This is useful for stateful setup of callable
+    classes.
 
-    To autoscale from ``m`` to ``n`` actors, specify ``compute=ActorPool(m, n)``.
-    For a fixed-sized pool of size ``n``, specify ``compute=ActorPool(n, n)``.
+    To autoscale from ``m`` to ``n`` actors, specify
+    ``compute=ActorPoolStrategy(m, n)``.
+    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(n, n)``.
     """
 
     def __init__(self, min_size: int = 1, max_size: Optional[int] = None):
@@ -249,7 +221,8 @@ class ActorPoolStrategy(ComputeStrategy):
 
 
 def cache_wrapper(
-    fn: Union[CallableClass, Callable[[Any], Any]]
+    fn: Union[CallableClass, Callable[[Any], Any]],
+    compute: Optional[Union[str, ComputeStrategy]],
 ) -> Callable[[Any], Any]:
     """Implements caching of stateful callables.
 
@@ -260,6 +233,13 @@ def cache_wrapper(
         A plain function with per-process initialization cached as needed.
     """
     if isinstance(fn, CallableClass):
+
+        if compute is None:
+            raise ValueError(
+                "``compute`` must be specified when using a callable class. "
+                'For example, use ``compute="actors"`` or '
+                "``compute=ActorPoolStrategy(min, max)``."
+            )
 
         def _fn(item: Any) -> Any:
             if ray.data._cached_fn is None or ray.data._cached_cls != fn:
@@ -281,3 +261,35 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`, ComputeStrategy]")
+
+
+def _map_block_split(block: Block, fn: Any, input_files: List[str]) -> BlockPartition:
+    output = []
+    stats = BlockExecStats.builder()
+    for new_block in fn(block):
+        accessor = BlockAccessor.for_block(new_block)
+        new_meta = BlockMetadata(
+            num_rows=accessor.num_rows(),
+            size_bytes=accessor.size_bytes(),
+            schema=accessor.schema(),
+            input_files=input_files,
+            exec_stats=stats.build(),
+        )
+        owner = DatasetContext.get_current().block_owner
+        output.append((ray.put(new_block, _owner=owner), new_meta))
+        stats = BlockExecStats.builder()
+    return output
+
+
+def _map_block_nosplit(
+    block: Block, fn: Any, input_files: List[str]
+) -> Tuple[Block, BlockMetadata]:
+    stats = BlockExecStats.builder()
+    builder = DelegatingBlockBuilder()
+    for new_block in fn(block):
+        builder.add_block(new_block)
+    new_block = builder.build()
+    accessor = BlockAccessor.for_block(new_block)
+    return new_block, accessor.get_metadata(
+        input_files=input_files, exec_stats=stats.build()
+    )

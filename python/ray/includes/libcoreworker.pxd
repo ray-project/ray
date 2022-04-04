@@ -296,7 +296,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
-        (void() nogil) gc_collect
+        (void(c_bool) nogil) gc_collect
         (c_vector[c_string](
             const c_vector[CObjectReference] &) nogil) spill_objects
         (int64_t(

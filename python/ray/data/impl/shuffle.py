@@ -1,4 +1,3 @@
-import itertools
 import math
 from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union, Callable, Iterable
 
@@ -10,7 +9,6 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
 
@@ -24,7 +22,6 @@ def simple_shuffle(
     random_seed: Optional[int] = None,
     map_ray_remote_args: Optional[Dict[str, Any]] = None,
     reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-    _spread_resource_prefix: Optional[str] = None
 ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
     input_blocks = input_blocks.get_blocks()
     if map_ray_remote_args is None:
@@ -35,19 +32,6 @@ def simple_shuffle(
         reduce_ray_remote_args = reduce_ray_remote_args.copy()
         reduce_ray_remote_args["scheduling_strategy"] = "SPREAD"
     input_num_blocks = len(input_blocks)
-    if _spread_resource_prefix is not None:
-        # Use given spread resource prefix for round-robin resource-based
-        # scheduling.
-        nodes = ray.nodes()
-        map_resource_iter = _get_spread_resources_iter(
-            nodes, _spread_resource_prefix, map_ray_remote_args
-        )
-        reduce_resource_iter = _get_spread_resources_iter(
-            nodes, _spread_resource_prefix, reduce_ray_remote_args
-        )
-    else:
-        # If no spread resource prefix given, yield an empty dictionary.
-        map_resource_iter, reduce_resource_iter = itertools.tee(itertools.repeat({}), 2)
 
     shuffle_map = cached_remote_fn(_shuffle_map)
     shuffle_reduce = cached_remote_fn(_shuffle_reduce)
@@ -58,7 +42,6 @@ def simple_shuffle(
         shuffle_map.options(
             **map_ray_remote_args,
             num_returns=1 + output_num_blocks,
-            resources=next(map_resource_iter)
         ).remote(block, block_udf, i, output_num_blocks, random_shuffle, random_seed)
         for i, block in enumerate(input_blocks)
     ]
@@ -85,7 +68,6 @@ def simple_shuffle(
         shuffle_reduce.options(
             **reduce_ray_remote_args,
             num_returns=2,
-            resources=next(reduce_resource_iter)
         ).remote(*[shuffle_map_out[i][j] for i in range(input_num_blocks)])
         for j in range(output_num_blocks)
     ]

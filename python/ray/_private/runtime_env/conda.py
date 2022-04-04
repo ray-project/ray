@@ -33,6 +33,8 @@ from ray._private.runtime_env.packaging import Protocol, parse_uri
 
 default_logger = logging.getLogger(__name__)
 
+_WIN32 = os.name == "nt"
+
 
 def _resolve_current_ray_path() -> str:
     # When ray is built from source with pip install -e,
@@ -59,15 +61,14 @@ def _resolve_install_from_source_ray_dependencies():
     return _get_ray_setup_spec().install_requires
 
 
-def _resolve_install_from_source_ray_extras() -> Dict[str, List[str]]:
-    return _get_ray_setup_spec().extras
-
-
 def _inject_ray_to_conda_site(
     conda_path, logger: Optional[logging.Logger] = default_logger
 ):
     """Write the current Ray site package directory to a new site"""
-    python_binary = os.path.join(conda_path, "bin/python")
+    if _WIN32:
+        python_binary = os.path.join(conda_path, "python")
+    else:
+        python_binary = os.path.join(conda_path, "bin/python")
     site_packages_path = (
         subprocess.check_output(
             [python_binary, "-c", "import site; print(site.getsitepackages()[0])"]

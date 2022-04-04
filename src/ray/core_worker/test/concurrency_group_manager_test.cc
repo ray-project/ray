@@ -23,10 +23,22 @@ namespace ray {
 namespace core {
 
 TEST(ConcurrencyGroupManagerTest, TestEmptyConcurrencyGroupManager) {
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+// Emulate GCC's __SANITIZE_THREAD__ flag
+#define __SANITIZE_THREAD__
+#endif
+#endif
+
+#ifndef __SANITIZE_THREAD__
+  // boost fiber doesn't have tsan support yet
+  // https://github.com/boostorg/context/issues/124
   static auto empty = std::make_shared<ray::EmptyFunctionDescriptor>();
   ConcurrencyGroupManager<FiberState> manager;
   auto executor = manager.GetExecutor("", empty);
   ASSERT_EQ(manager.GetDefaultExecutor(), executor);
+  manager.Stop();
+#endif
 }
 
 TEST(ConcurrencyGroupManagerTest, TestBasicConcurrencyGroupManager) {
@@ -62,6 +74,8 @@ TEST(ConcurrencyGroupManagerTest, TestBasicConcurrencyGroupManager) {
 
   ASSERT_EQ(manager.GetExecutor("", func_1_in_executing_group)->GetMaxConcurrency(), 4);
   ASSERT_EQ(manager.GetExecutor("", func_2_in_executing_group)->GetMaxConcurrency(), 4);
+
+  manager.Stop();
 }
 
 }  // namespace core

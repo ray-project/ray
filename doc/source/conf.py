@@ -9,6 +9,9 @@ from datetime import datetime
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
 
+# Download docs from ecosystem library repos
+download_and_preprocess_ecosystem_docs()
+
 assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
@@ -38,6 +41,8 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
     "sphinx_external_toc",
+    "sphinx_thebe",
+    "sphinxcontrib.autodoc_pydantic",
 ]
 
 myst_enable_extensions = [
@@ -50,6 +55,13 @@ myst_enable_extensions = [
     "smartquotes",
     "replacements",
 ]
+
+# Thebe configuration for launching notebook cells within the docs.
+thebe_config = {
+    "selector": "div.highlight",
+    "repository_url": "https://github.com/ray-project/ray",
+    "repository_branch": "master",
+}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
@@ -144,6 +156,21 @@ todo_include_todos = False
 # and is slow (it needs to download the linked website).
 linkcheck_anchors = False
 
+# Only check external links, i.e. the ones starting with http:// or https://.
+linkcheck_ignore = [
+    r"^((?!http).)*$",  # exclude links not starting with http
+    "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",  # broken
+    "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
+    # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
+    "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
+    # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
+    "https://scikit-optimize.github.io/stable/modules/",
+    "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+    r"https://huggingface.co/*",  # seems to be flaky
+    r"https://www.meetup.com/*",  # seems to be flaky
+    r"https://www.pettingzoo.ml/*",  # seems to be flaky
+]
+
 # -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
@@ -232,6 +259,23 @@ texinfo_documents = [
 
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
+
+
+# Add a render priority for doctest
+nb_render_priority = {
+    "doctest": (),
+    "html": (
+        "application/vnd.jupyter.widget-view+json",
+        "application/javascript",
+        "text/html",
+        "image/svg+xml",
+        "image/png",
+        "image/jpeg",
+        "text/markdown",
+        "text/latex",
+        "text/plain",
+    ),
+}
 
 
 def setup(app):

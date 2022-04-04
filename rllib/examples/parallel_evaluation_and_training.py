@@ -18,7 +18,7 @@ parser.add_argument(
     type=str,
     default="episodes",
     choices=["episodes", "timesteps"],
-    help="The unit in which to measure the duration (`episodes` or" "`timesteps`).",
+    help="The unit in which to measure the duration (`episodes` or `timesteps`).",
 )
 parser.add_argument(
     "--evaluation-num-workers",
