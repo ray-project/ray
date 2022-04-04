@@ -38,6 +38,13 @@ using SubscriberID = UniqueID;
 
 namespace pub_internal {
 
+class SubscriberState;
+
+/// State for an entity / topic in a pub/sub channel.
+struct EntityState {
+  absl::flat_hash_map<SubscriberID, SubscriberState*> subscribers;
+};
+
 /// Per-channel two-way index for subscribers and the keys they subscribe to.
 /// Also supports subscribers to all keys in the channel.
 class SubscriptionIndex {
@@ -45,13 +52,15 @@ class SubscriptionIndex {
   SubscriptionIndex() = default;
   ~SubscriptionIndex() = default;
 
+  /// Publishes the message to relevant subscribers. 
+  /// Returns true if there are subscribers listening on the key of the message,
+  /// returns false otherwise.
+  bool Publish(const rpc::PubMessage &pub_message);
+
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
   /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  bool AddEntry(const std::string &key_id, const SubscriberID &subscriber_id);
-
-  /// Returns a vector of subscriber ids that are subscribing to the given object ids.
-  std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
+  bool AddEntry(const std::string &key_id, SubscriberState *subscriber_id);
 
   /// Erases the subscriber from this index.
   /// Returns whether the subscriber exists before the call.
@@ -71,16 +80,20 @@ class SubscriptionIndex {
   /// and all-entity subscribers.
   bool HasSubscriber(const SubscriberID &subscriber_id) const;
 
+  /// Returns a vector of subscriber ids that are subscribing to the given object ids.
+  /// Test only.
+  std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
+
   /// Returns true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
  private:
   // Collection of subscribers that subscribe to all entities of the channel.
-  absl::flat_hash_set<SubscriberID> subscribers_to_all_;
+  absl::flat_hash_map<SubscriberID, SubscriberState*> subscribers_to_all_;
   // Mapping from subscribed entity id -> subscribers.
-  absl::flat_hash_map<std::string, absl::flat_hash_set<SubscriberID>>
+  absl::flat_hash_map<std::string, absl::flat_hash_map<SubscriberID, SubscriberState*>>
       key_id_to_subscribers_;
-  // Mapping from subscribers -> subscribed entity ids.
+  // Mapping from subscriber IDs -> subscribed key ids.
   // Reverse index of key_id_to_subscribers_.
   absl::flat_hash_map<SubscriberID, absl::flat_hash_set<std::string>>
       subscribers_to_key_id_;
@@ -143,6 +156,9 @@ class SubscriberState {
   /// Returns true if there are recent activities (requests or replies) between the
   /// subscriber and publisher.
   bool IsActive() const;
+
+  /// Returns the ID of this subscriber.
+  const SubscriberID &id() const { return subscriber_id_; }
 
  private:
   /// Subscriber ID, for logging and debugging.

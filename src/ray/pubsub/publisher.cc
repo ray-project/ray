@@ -20,16 +20,31 @@ namespace pubsub {
 
 namespace pub_internal {
 
+bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
+  const auto subscribers = GetSubscriberIdsByKeyId(pub_message.key_id());
+  if (subscribers.empty()) {
+    return false;
+  }
+  return true;
+
+  // for (const auto &subscriber_id : subscribers) {
+  //   auto it = subscribers_.find(subscriber_id);
+  //   RAY_CHECK(it != subscribers_.end());
+  //   auto &subscriber = it->second;
+  //   subscriber->QueueMessage(pub_message);
+  // }
+}
+
 bool SubscriptionIndex::AddEntry(const std::string &key_id,
-                                 const SubscriberID &subscriber_id) {
+                                 SubscriberState *subscriber) {
   if (key_id.empty()) {
-    return subscribers_to_all_.insert(subscriber_id).second;
+    return subscribers_to_all_.emplace(subscriber->id(), subscriber).second;
   }
 
-  auto &subscribing_key_ids = subscribers_to_key_id_[subscriber_id];
+  auto &subscribing_key_ids = subscribers_to_key_id_[subscriber->id()];
   bool key_added = subscribing_key_ids.emplace(key_id).second;
   auto &subscriber_map = key_id_to_subscribers_[key_id];
-  auto subscriber_added = subscriber_map.emplace(subscriber_id).second;
+  auto subscriber_added = subscriber_map.emplace(subscriber->id(), subscriber).second;
 
   RAY_CHECK(key_added == subscriber_added);
   return key_added;
@@ -39,13 +54,16 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
     const std::string &key_id) const {
   std::vector<SubscriberID> subscribers;
   if (!subscribers_to_all_.empty()) {
-    subscribers.insert(
-        subscribers.end(), subscribers_to_all_.begin(), subscribers_to_all_.end());
+    for (const auto &[sub_id, sub] : subscribers_to_all_) {
+      subscribers.push_back(sub_id);
+    }
   }
   auto it = key_id_to_subscribers_.find(key_id);
   if (it != key_id_to_subscribers_.end()) {
-    auto &ids = it->second;
-    subscribers.insert(subscribers.end(), ids.begin(), ids.end());
+    auto &subs = it->second;
+    for (const auto &[sub_id, sub] : subs) {
+      subscribers.push_back(sub_id);
+    }
   }
   return subscribers;
 }
@@ -235,15 +253,17 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                                      const SubscriberID &subscriber_id,
                                      const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
-  if (!subscribers_.contains(subscriber_id)) {
-    subscribers_.emplace(
+  auto it = subscribers_.find(subscriber_id);
+  if (it == subscribers_.end()) {
+    it = subscribers_.emplace(
         subscriber_id,
         std::make_shared<pub_internal::SubscriberState>(
-            subscriber_id, get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
+            subscriber_id, get_time_ms_, subscriber_timeout_ms_, publish_batch_size_)).first;
   }
+  pub_internal::SubscriberState* subscriber = it->second.get();
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber_id);
+  return subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
 }
 
 void Publisher::Publish(const rpc::PubMessage &pub_message) {
