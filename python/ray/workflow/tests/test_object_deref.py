@@ -54,7 +54,7 @@ def test_objectref_outputs(workflow_start_regular_shared):
         return [ray.put(x) for x in range(5)]
 
     single = nested_ref_workflow.step().run()
-    assert single == 42
+    assert ray.get(ray.get(single)) == 42
 
     multi = return_objectrefs.step().run()
     assert ray.get(multi) == list(range(5))
