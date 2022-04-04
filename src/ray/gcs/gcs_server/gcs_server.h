@@ -21,21 +21,19 @@
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 
 namespace ray {
 namespace gcs {
-
-using ClusterResourceScheduler = gcs::GcsResourceScheduler;
 
 struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
@@ -47,7 +45,6 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = true;
   std::string node_ip_address;
-  bool grpc_pubsub_enabled = false;
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
@@ -211,7 +208,7 @@ class GcsServer {
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
   // Synchronization service for ray.
-  std::unique_ptr<syncer::RaySyncer> ray_syncer_;
+  std::unique_ptr<gcs_syncer::RaySyncer> ray_syncer_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.

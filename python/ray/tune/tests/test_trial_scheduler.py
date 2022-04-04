@@ -303,6 +303,9 @@ class _MockTrialRunner:
     def get_trials(self):
         return self.trials
 
+    def get_live_trials(self):
+        return {t for t in self.trials if t.status != Trial.TERMINATED}
+
     def _pause_trial(self, trial):
         self.trial_executor.save(trial, _TuneCheckpoint.MEMORY, None)
         trial.status = Trial.PAUSED
