@@ -13,6 +13,7 @@ from ray.ml.preprocessors import (
     SimpleImputer,
     Chain,
 )
+from ray.ml.preprocessors.batch_mapper import BatchMapper
 
 
 def test_standard_scaler():
@@ -555,6 +556,35 @@ def test_chain():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+def test_batch_mapper():
+    """Tests batch mapper functionality."""
+    old_column = [1, 2, 3, 4]
+    to_be_modified = [1, -1, 1, -1]
+    in_df = pd.DataFrame.from_dict(
+        {"old_column": old_column, "to_be_modified": to_be_modified}
+    )
+    ds = ray.data.from_pandas(in_df)
+
+    def add_and_modify_udf(df: "pandas.DataFrame"):
+        df["new_col"] = df["old_column"] + 1
+        df["to_be_modified"] *= 2
+        return df
+
+    batch_mapper = BatchMapper(fn=add_and_modify_udf)
+    transformed = batch_mapper.transform(ds)
+    out_df = transformed.to_pandas()
+
+    expected_df = pd.DataFrame.from_dict(
+        {
+            "old_column": old_column,
+            "to_be_modified": [2, -2, 2, -2],
+            "new_col": [2, 3, 4, 5],
+        }
+    )
+
+    assert out_df.equals(expected_df)
 
 
 if __name__ == "__main__":
