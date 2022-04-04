@@ -438,8 +438,11 @@ class CommandBasedClient(SyncClient):
 def _get_recursive_files_and_stats(path: str) -> Dict[str, Tuple[float, int]]:
     """Return dict of files mapping to stats in ``path``.
 
-    This function scans a directory ``path`` and returns a dict mapping
-    each contained file to a tuple of (mtime, filesize).
+    This function scans a directory ``path`` recursively and returns a dict
+    mapping each contained file to a tuple of (mtime, filesize).
+
+    mtime and filesize are returned from ``os.lstat`` and are usually a
+    floating point number (timestamp) and an int (filesize in bytes).
     """
     files_stats = {}
     for root, dirs, files in os.walk(path, topdown=False):
