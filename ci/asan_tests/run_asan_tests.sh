@@ -16,7 +16,7 @@ asan_setup() {
   conda uninstall -y wrapt || true
   pip install wrapt || true
   pip install -r ray-project/requirements.txt
-  pip install -U pytest==5.4.3
+  pip install -U pytest
 
   echo "Installing cython example"
   (cd "${RAY_DIR}"/doc/examples/cython && python setup.py install --user)

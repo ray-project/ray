@@ -13,5 +13,5 @@ eval "${WORKSPACE_DIR}/ci/travis/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==5.4.3 \
+  pytest \
   numpy
