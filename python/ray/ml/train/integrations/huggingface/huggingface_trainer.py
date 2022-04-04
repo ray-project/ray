@@ -1,7 +1,7 @@
 from typing import Any, Callable, Optional, Dict
 
 from transformers.trainer import Trainer
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset as TorchDataset
 
 from ray.train.torch import TorchConfig
 from ray.ml.trainer import GenDataset
@@ -10,7 +10,7 @@ from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI
-from ray.ml.constants import TRAIN_DATASET_KEY, VALIDATION_DATASET_KEY
+from ray.ml.constants import TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY
 
 
 @PublicAPI(stability="alpha")
@@ -94,8 +94,8 @@ class HuggingFaceTrainer(TorchTrainer):
                 num_proc=1,
             )
             ray_train_ds = ray.data.from_arrow(lm_datasets["train"]._data.table)
-            ray_validation_ds = ray.data.from_arrow(
-                lm_datasets["validation"]._data.table
+            ray_evaluation_ds = ray.data.from_arrow(
+                lm_datasets["evaluation"]._data.table
             )
 
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -120,14 +120,17 @@ class HuggingFaceTrainer(TorchTrainer):
             trainer = HuggingFaceTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
                 scaling_config=scaling_config,
-                datasets={"train": ray_train_ds, "validation": ray_validation_ds},
+                datasets={"train": ray_train_ds, "evaluation": ray_evaluation_ds},
             )
             result = trainer.fit()
 
     Args:
         trainer_init_per_worker: The function that returns an instantiated
             ``transformers.Trainer`` object and takes in the following arguments:
-            train dataset, optional evaluation dataset, and config as kwargs.
+            train ``Torch.Dataset``, optional evaluation ``Torch.Dataset``
+            and config as kwargs. The Torch Datasets are automatically
+            created by converting the Ray Datasets internally before
+            they are passed into the function.
         trainer_init_config: Configurations to pass into
             ``trainer_init_per_worker`` as kwargs.
         torch_config: Configuration for setting up the PyTorch backend. If set to
@@ -137,9 +140,9 @@ class HuggingFaceTrainer(TorchTrainer):
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
             the key "train" to denote which dataset is the training
-            dataset and (optionally) key "validation" to denote the validation
+            dataset and (optionally) key "evaluation" to denote the evaluation
             dataset. Can only contain a training dataset
-            and up to one extra dataset to be used for validation.
+            and up to one extra dataset to be used for evaluation.
             If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be
             transformed by the ``preprocessor`` if one is provided.
@@ -150,7 +153,9 @@ class HuggingFaceTrainer(TorchTrainer):
 
     def __init__(
         self,
-        trainer_init_per_worker: Callable[[Dataset, Optional[Dataset], Any], Trainer],
+        trainer_init_per_worker: Callable[
+            [TorchDataset, Optional[TorchDataset], Any], Trainer
+        ],
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
@@ -166,7 +171,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
         assert TRAIN_DATASET_KEY in datasets
         assert all(
-            key in (TRAIN_DATASET_KEY, VALIDATION_DATASET_KEY) for key in datasets
+            key in (TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY) for key in datasets
         )
 
         super().__init__(
