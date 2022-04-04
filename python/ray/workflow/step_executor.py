@@ -193,15 +193,17 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
         workflow_data.step_options,
     )
 
-    persisted_output = WorkflowStaticRef.from_output(workflow.step_id, persisted_output)
-    volatile_output = WorkflowStaticRef.from_output(workflow.step_id, volatile_output)
-
     # Stage 4: post processing outputs
     if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
         if not step_options.allow_inplace:
             # TODO: [Possible flaky bug] Here the RUNNING state may
             # be recorded earlier than SUCCESSFUL. This caused some
             # confusion during development.
+
+            # convert into workflow static ref for step status record.
+            volatile_output = WorkflowStaticRef.from_output(
+                workflow.step_id, volatile_output
+            )
             _record_step_status(
                 workflow.step_id, WorkflowStatus.RUNNING, [volatile_output]
             )
