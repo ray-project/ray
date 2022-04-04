@@ -16,6 +16,87 @@ from ray.util.ml_utils.dict import merge_dicts
 
 @PublicAPI(stability="alpha")
 class RLTrainer(Trainer):
+    """Reinforcement learning trainer.
+
+    This trainer provides an interface to RLLib trainables.
+
+    If datasets and preprocessors are used, they can be utilized for
+    offline training, e.g. using behavior cloning. Otherwise, this trainer
+    will use online training.
+
+    Args:
+        algorithm: Algorithm to train on. Can be a string reference,
+            (e.g. ``"PPO"``) or a RLLIb trainer class.
+        scaling_config: Configuration for distributed training, e.g. number
+            of workers or resources per worker.
+        run_config: Run config passed to ``Tuner()``
+        datasets: If specified, datasets used for offline training. Will be
+            configured as an RLLib ``input`` config item.
+        preprocessor: If specified, preprocessors to be applied to the
+            datasets before loading for input training.
+        resume_from_checkpoint: Optional checkpoint to resume training from.
+        **train_kwargs: Additional kwargs.
+
+    Example:
+        Online training:
+
+        .. code-block:: python
+
+            from ray.ml.config import RunConfig
+            from ray.ml.train.integrations.rl import RLTrainer
+
+            trainer = RLTrainer(
+                run_config=RunConfig(stop={"training_iteration": 5}),
+                scaling_config={
+                    "num_workers": 2,
+                    "use_gpu": False,
+                },
+                algorithm="PPO",
+                param_space={
+                    "env": "CartPole-v0",
+                    "framework": "tf",
+                    "evaluation_num_workers": 1,
+                    "evaluation_interval": 1,
+                    "evaluation_config": {"input": "sampler"},
+                },
+            )
+            result = trainer.fit()
+
+
+    Example:
+        Offline training (assumes data is stored in ``/tmp/data-dir``):
+
+        .. code-block:: python
+
+            import ray
+            from ray.ml.config import RunConfig
+            from ray.ml.train.integrations.rl import RLTrainer
+            from ray.rllib.agents.marwil.bc import BCTrainer
+
+            dataset = ray.data.read_json(
+                "/tmp/data-dir", parallelism=2, ray_remote_args={"num_cpus": 1}
+            )
+
+            trainer = RLTrainer(
+                run_config=RunConfig(stop={"training_iteration": 5}),
+                scaling_config={
+                    "num_workers": 2,
+                    "use_gpu": False,
+                },
+                datasets={"train": dataset},
+                algorithm=BCTrainer,
+                param_space={
+                    "env": "CartPole-v0",
+                    "framework": "tf",
+                    "evaluation_num_workers": 1,
+                    "evaluation_interval": 1,
+                    "evaluation_config": {"input": "sampler"},
+                },
+            )
+            result = trainer.fit()
+
+    """
+
     def __init__(
         self,
         algorithm: Union[str, Type[RLLibTrainer]],
