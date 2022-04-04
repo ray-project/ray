@@ -113,7 +113,9 @@ class NevergradSearch(Searcher):
 
     def __init__(
         self,
-        optimizer: Union[None, Optimizer, Type[Optimizer], ConfiguredOptimizer] = None,
+        optimizer: Optional[
+            Union[Optimizer, Type[Optimizer], ConfiguredOptimizer]
+        ] = None,
         space: Optional[Union[Dict, Parameter]] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,

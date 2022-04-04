@@ -72,7 +72,6 @@ class LocalNode : public ReporterInterface {
 class RemoteNodes : public ReceiverInterface {
  public:
   RemoteNodes() {}
-  bool NeedBroadcast() const override { return true; }
   void Update(std::shared_ptr<const ray::rpc::syncer::RaySyncMessage> msg) override {
     auto version = msg->version();
     int state = *reinterpret_cast<const int *>(msg->sync_message().data());

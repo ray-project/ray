@@ -29,6 +29,7 @@ More details on the expected results can be found in the scenario descriptions.
 
 import argparse
 import csv
+import io
 import tarfile
 from dataclasses import dataclass
 import json
@@ -53,13 +54,19 @@ TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
 
 
 class ExperimentStateCheckpoint:
-    def __init__(self, runner_data: Dict[str, Any], trials: List["TrialStub"]):
+    def __init__(
+        self, dir: str, runner_data: Dict[str, Any], trials: List["TrialStub"]
+    ):
+        self.dir = dir
         self.runner_data = runner_data
         self.trials = trials
 
 
 class ExperimentDirCheckpoint:
-    def __init__(self, trial_to_cps: Dict["TrialStub", "TrialCheckpointData"]):
+    def __init__(
+        self, dir: str, trial_to_cps: Dict["TrialStub", "TrialCheckpointData"]
+    ):
+        self.dir = dir
         self.trial_to_cps = trial_to_cps
 
 
@@ -217,7 +224,7 @@ def start_run(
 
     env = os.environ.copy()
     env["TUNE_RESULT_BUFFER_LENGTH"] = "1"
-    env["TUNE_GLOBAL_CHECKPOINT_S"] = "0.5"
+    env["TUNE_GLOBAL_CHECKPOINT_S"] = "10"
 
     tune_script = os.environ.get("OVERWRITE_TUNE_SCRIPT", TUNE_SCRIPT)
 
@@ -401,22 +408,16 @@ def fetch_remote_directory_content(
     local_dir: str,
 ):
     def _pack(dir: str):
-        _, tmpfile = tempfile.mkstemp()
-        with tarfile.open(tmpfile, "w:gz") as tar:
+        stream = io.BytesIO()
+        with tarfile.open(
+            fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT
+        ) as tar:
             tar.add(dir, arcname="")
 
-        with open(tmpfile, "rb") as f:
-            stream = f.read()
-
-        return stream
+        return stream.getvalue()
 
     def _unpack(stream: str, dir: str):
-        _, tmpfile = tempfile.mkstemp()
-
-        with open(tmpfile, "wb") as f:
-            f.write(stream)
-
-        with tarfile.open(tmpfile) as tar:
+        with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
             tar.extractall(dir)
 
     try:
@@ -517,10 +518,10 @@ def fetch_bucket_contents_to_tmp_dir(bucket: str) -> str:
             # Sometimes single files cannot be processed
             if len(os.listdir(tmpdir)) == 0:
                 raise RuntimeError(
-                    f"Local dir {tmpdir} empty after trying to fetch " f"bucket data."
+                    f"Local dir {tmpdir} empty after trying to fetch bucket data."
                 ) from e
         pattern = re.compile("gs://[^/]+/(.+)")
-        subfolder = re.match(pattern, bucket).group(1)
+        subfolder = re.match(pattern, bucket).group(1).split("/")[-1]
     else:
         raise ValueError(f"Invalid bucket URL: {bucket}")
 
@@ -550,7 +551,7 @@ def load_experiment_checkpoint_from_state_file(
 
     runner_data = runner_state["runner_data"]
 
-    return ExperimentStateCheckpoint(runner_data, trials)
+    return ExperimentStateCheckpoint(experiment_dir, runner_data, trials)
 
 
 def load_experiment_checkpoint_from_dir(
@@ -576,7 +577,7 @@ def load_experiment_checkpoint_from_dir(
 
             trial_to_cps[trial_stub] = trial_checkpoint_data
 
-    return ExperimentDirCheckpoint(trial_to_cps)
+    return ExperimentDirCheckpoint(experiment_dir, trial_to_cps)
 
 
 def load_trial_checkpoint_data(
@@ -756,34 +757,30 @@ def assert_checkpoint_count(
     experiment_dir_cp: ExperimentDirCheckpoint,
     for_driver_trial: int,
     for_worker_trial: int,
+    max_additional: int = 0,
 ):
-    # We relaxed the requirements here and also allow
-    # skipped checkpoints to count. This could be the case if e.g. the trial
-    # already checkpointed but the driver did not process the last result, yet.
-    # We also allow up to one un-collected checkpoint.
-    # Todo: Can we make this stricter?
     for trial, trial_cp in experiment_dir_cp.trial_to_cps.items():
         cps = len(trial_cp.checkpoints)
         num_skipped = trial_cp.num_skipped
         if trial.was_on_driver_node:
             assert (
-                cps == for_driver_trial
-                or cps + num_skipped == for_driver_trial
-                or cps == for_driver_trial + 1
+                cps >= for_driver_trial and cps <= for_driver_trial + max_additional
             ), (
                 f"Trial {trial.trial_id} was on driver, "
                 f"but did not observe the expected amount of checkpoints "
-                f"({cps} != {for_driver_trial})."
+                f"({cps} != {for_driver_trial}, "
+                f"skipped={num_skipped}, max_additional={max_additional}). "
+                f"Directory: {experiment_dir_cp.dir}"
             )
         else:
             assert (
-                cps == for_worker_trial
-                or cps + num_skipped == for_worker_trial
-                or cps == for_worker_trial + 1
+                cps >= for_worker_trial and cps <= for_worker_trial + max_additional
             ), (
                 f"Trial {trial.trial_id} was not on the driver, "
                 f"but did not observe the expected amount of checkpoints "
-                f"({cps} != {for_worker_trial})."
+                f"({cps} != {for_worker_trial}, "
+                f"skipped={num_skipped}, max_additional={max_additional}). "
+                f"Directory: {experiment_dir_cp.dir}"
             )
 
 
@@ -852,7 +849,9 @@ def test_no_sync_down():
 
         # Req: Driver has trial checkpoints from head node trial
         # Req: Driver has no trial checkpoints from remote node trials
-        assert_checkpoint_count(driver_dir_cp, for_driver_trial=2, for_worker_trial=0)
+        assert_checkpoint_count(
+            driver_dir_cp, for_driver_trial=2, for_worker_trial=0, max_additional=1
+        )
 
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
@@ -873,7 +872,7 @@ def test_no_sync_down():
                 )
 
                 assert_checkpoint_count(
-                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2
+                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
                 )
 
         # Delete remote checkpoints before resume
@@ -965,7 +964,9 @@ def test_ssh_sync():
 
         # Req: Driver has trial checkpoints from head node trial
         # Req: Driver has trial checkpoints from remote node trials
-        assert_checkpoint_count(driver_dir_cp, for_driver_trial=2, for_worker_trial=2)
+        assert_checkpoint_count(
+            driver_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=1
+        )
 
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
@@ -986,7 +987,7 @@ def test_ssh_sync():
                 )
 
                 assert_checkpoint_count(
-                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2
+                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
                 )
 
         # Delete remote checkpoints before resume
@@ -1053,7 +1054,7 @@ def test_durable_upload(bucket: str):
     """
     if not bucket:
         raise ValueError(
-            "The `durable_upload` test requires a `--bucket` argument to " "be set."
+            "The `durable_upload` test requires a `--bucket` argument to be set."
         )
 
     experiment_name = "cloud_durable_upload"
@@ -1082,7 +1083,9 @@ def test_durable_upload(bucket: str):
 
         # Req: Driver has trial checkpoints from head node trial
         # Req: Driver has no trial checkpoints from remote node trials
-        assert_checkpoint_count(driver_dir_cp, for_driver_trial=2, for_worker_trial=0)
+        assert_checkpoint_count(
+            driver_dir_cp, for_driver_trial=2, for_worker_trial=0, max_additional=1
+        )
 
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
@@ -1103,7 +1106,7 @@ def test_durable_upload(bucket: str):
                 )
 
                 assert_checkpoint_count(
-                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2
+                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
                 )
 
         bucket_state_cp, bucket_dir_cp = get_bucket_data(bucket, experiment_name)
@@ -1112,7 +1115,9 @@ def test_durable_upload(bucket: str):
         assert_experiment_checkpoint_validity(bucket_state_cp)
 
         # Req: Cloud checkpoint has checkpoints from all trials
-        assert_checkpoint_count(bucket_dir_cp, for_driver_trial=2, for_worker_trial=2)
+        assert_checkpoint_count(
+            bucket_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=2
+        )
 
         # Delete remote checkpoints before resume
         print("Deleting remote checkpoints before resume")
@@ -1139,9 +1144,11 @@ def test_durable_upload(bucket: str):
         assert_experiment_checkpoint_validity(bucket_state_cp)
 
         # Req: Cloud checkpoint has checkpoints from all trials
-        assert_checkpoint_count(bucket_dir_cp, for_driver_trial=2, for_worker_trial=2)
+        assert_checkpoint_count(
+            bucket_dir_cp, for_driver_trial=2, for_worker_trial=2, max_additional=2
+        )
 
-        clear_bucket_contents(bucket)
+        # clear_bucket_contents(bucket)
 
     run_time = int(os.getenv("TUNE_RUN_TIME", "180")) or 180
 
@@ -1195,7 +1202,7 @@ if __name__ == "__main__":
         bucket: str = "",
         cpus_per_trial: int = 2,
         overwrite_tune_script: Optional[str] = None,
-    ):
+    ) -> Dict:
         start_time = time.monotonic()
         print(
             f"Running test variant `{variant}` on "
@@ -1223,50 +1230,67 @@ if __name__ == "__main__":
         time_taken = time.monotonic() - start_time
 
         result = {"time_taken": time_taken, "last_update": time.time()}
-
-        with open(release_test_out, "wt") as f:
-            json.dump(result, f)
+        return result
 
     run_time = 180 if "rllib" in args.trainable else 90
 
-    if not uses_ray_client:
-        print("This test will *not* use Ray client.")
-        _run_test(
-            args.variant, args.trainable, run_time, args.bucket, args.cpus_per_trial
-        )
-    else:
-        print("This test will run using Ray client.")
+    bucket = None
+    if args.bucket:
+        bucket = os.path.join(args.bucket, f"test_{int(time.time())}")
 
-        wait_for_nodes(num_nodes=4, timeout=300.0)
-
-        # This will usually run on the head node
-        @ray.remote
-        def _get_head_ip():
-            return ray.util.get_node_ip_address()
-
-        ip = ray.get(_get_head_ip.remote())
-
-        remote_tune_script = "/tmp/_tune_script.py"
-
-        print(f"Sending tune script to remote node {ip} " f"({remote_tune_script})")
-        send_local_file_to_remote_file(TUNE_SCRIPT, remote_tune_script, ip)
-        print("Starting remote cloud test using Ray client")
-
-        _run_test_remote = ray.remote(resources={f"node:{ip}": 0.01}, num_cpus=0)(
-            _run_test
-        )
-        ray.get(
-            _run_test_remote.remote(
-                args.variant,
-                args.trainable,
-                run_time,
-                args.bucket,
-                args.cpus_per_trial,
-                remote_tune_script,
+    err = None
+    try:
+        if not uses_ray_client:
+            print("This test will *not* use Ray client.")
+            result = _run_test(
+                args.variant, args.trainable, run_time, bucket, args.cpus_per_trial
             )
-        )
+        else:
+            print("This test will run using Ray client.")
 
-        print(f"Fetching remote release test result file: {release_test_out}")
-        fetch_remote_file_to_local_file(release_test_out, ip, release_test_out)
+            wait_for_nodes(num_nodes=4, timeout=300.0)
+
+            # This will usually run on the head node
+            @ray.remote
+            def _get_head_ip():
+                return ray.util.get_node_ip_address()
+
+            ip = ray.get(_get_head_ip.remote())
+
+            remote_tune_script = "/tmp/_tune_script.py"
+
+            print(f"Sending tune script to remote node {ip} ({remote_tune_script})")
+            send_local_file_to_remote_file(TUNE_SCRIPT, remote_tune_script, ip)
+            print("Starting remote cloud test using Ray client")
+
+            _run_test_remote = ray.remote(resources={f"node:{ip}": 0.01}, num_cpus=0)(
+                _run_test
+            )
+            result = ray.get(
+                _run_test_remote.remote(
+                    args.variant,
+                    args.trainable,
+                    run_time,
+                    bucket,
+                    args.cpus_per_trial,
+                    remote_tune_script,
+                )
+            )
+    except Exception as e:
+        err = e
+        result = {}
+
+    if bucket:
+        try:
+            # clear_bucket_contents(bucket)
+            pass
+        except Exception as be:
+            print(f"Error during cleanup of bucket: {be}")
+
+    with open(release_test_out, "wt") as f:
+        json.dump(result, f)
+
+    if err:
+        raise err
 
     print(f"Test for variant {args.variant} SUCCEEDED")
