@@ -209,7 +209,7 @@ def test_status(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file_name])
     status_response = subprocess.check_output(["serve", "status"])
-    statuses = json.loads(status_response)["statuses"]
+    statuses = json.loads(status_response)
 
     expected_deployments = {"shallow", "deep", "one"}
     for status in statuses:
