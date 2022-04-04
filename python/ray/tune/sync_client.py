@@ -447,7 +447,7 @@ def _get_recursive_files_and_stats(path: str) -> Dict[str, Tuple[float, int]]:
         for file in files:
             key = os.path.join(rel_root, file)
             stat = os.lstat(os.path.join(path, key))
-            files_stats[key] = round(stat.st_mtime, 5), stat.st_size
+            files_stats[key] = stat.st_mtime, stat.st_size
 
     return files_stats
 
@@ -468,7 +468,6 @@ def _pack_dir(
         else:
             # Otherwise, only pack differing files
             tar.add(source_dir, arcname="", recursive=False)
-            local_files_stats = _get_recursive_files_and_stats(source_dir)
             for root, dirs, files in os.walk(source_dir, topdown=False):
                 rel_root = os.path.relpath(root, source_dir)
                 # Always add all directories
@@ -478,10 +477,9 @@ def _pack_dir(
                 # Add files where our information differs
                 for file in files:
                     key = os.path.join(rel_root, file)
-                    if (
-                        key not in files_stats
-                        or local_files_stats[key] != files_stats[key]
-                    ):
+                    stat = os.lstat(os.path.join(source_dir, key))
+                    file_stat = stat.st_mtime, stat.st_size
+                    if key not in files_stats or file_stat != files_stats[key]:
                         tar.add(os.path.join(source_dir, key), arcname=key)
 
     return stream.getvalue()
