@@ -92,8 +92,8 @@ def run(
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
-    stop: Union[None, Mapping, Stopper, Callable[[str, Mapping], bool]] = None,
-    time_budget_s: Union[None, int, float, datetime.timedelta] = None,
+    stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None,
+    time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
     config: Optional[Dict[str, Any]] = None,
     resources_per_trial: Union[
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
@@ -740,12 +740,14 @@ def run_experiments(
 ):
     """Runs and blocks until all trials finish.
 
-    Examples:
-        >>> experiment_spec = Experiment("experiment", my_func)
-        >>> run_experiments(experiments=experiment_spec)
-
-        >>> experiment_spec = {"experiment": {"run": my_func}}
-        >>> run_experiments(experiments=experiment_spec)
+    Example:
+        >>> from ray.tune.experiment import Experiment
+        >>> from ray.tune.tune import run_experiments
+        >>> def my_func(config): return {"score": 0}
+        >>> experiment_spec = Experiment("experiment", my_func) # doctest: +SKIP
+        >>> run_experiments(experiments=experiment_spec) # doctest: +SKIP
+        >>> experiment_spec = {"experiment": {"run": my_func}} # doctest: +SKIP
+        >>> run_experiments(experiments=experiment_spec) # doctest: +SKIP
 
     Returns:
         List of Trial objects, holding data for each executed trial.

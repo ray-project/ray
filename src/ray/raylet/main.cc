@@ -34,7 +34,6 @@ DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_string(redis_address, "", "The IP address of redis server.");
-DEFINE_int32(redis_port, -1, "The port of redis server.");
 DEFINE_int32(min_worker_port,
              0,
              "The lowest port that workers' gRPC servers will bind on.");
@@ -92,7 +91,6 @@ int main(int argc, char *argv[]) {
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string redis_address = FLAGS_redis_address;
-  const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
   const std::string worker_port_list = FLAGS_worker_port_list;
@@ -131,20 +129,8 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-  if (RayConfig::instance().bootstrap_with_gcs()) {
-    ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
-    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
-  } else {
-    // Async context is not used by `redis_client_` in `gcs_client`, so we set
-    // `enable_async_conn` as false.
-    ray::gcs::GcsClientOptions client_options(redis_address,
-                                              redis_port,
-                                              redis_password,
-                                              /*enable_sync_conn=*/true,
-                                              /*enable_async_conn=*/false,
-                                              /*enable_subscribe_conn=*/true);
-    gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
-  }
+  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
+  gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;

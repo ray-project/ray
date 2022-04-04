@@ -56,17 +56,18 @@ def synchronous_parallel_sample(
         rollout worker in the given `worker_set`).
 
     Examples:
+        >>> # Define an RLlib trainer.
+        >>> trainer = ... # doctest: +SKIP
         >>> # 2 remote workers (num_workers=2):
-        >>> batches = synchronous_parallel_sample(trainer.workers)
-        >>> print(len(batches))
-        ... 2
-        >>> print(batches[0])
-        ... SampleBatch(16: ['obs', 'actions', 'rewards', 'dones'])
-
+        >>> batches = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> print(len(batches)) # doctest: +SKIP
+        2
+        >>> print(batches[0]) # doctest: +SKIP
+        SampleBatch(16: ['obs', 'actions', 'rewards', 'dones'])
         >>> # 0 remote workers (num_workers=0): Using the local worker.
-        >>> batches = synchronous_parallel_sample(trainer.workers)
-        >>> print(len(batches))
-        ... 1
+        >>> batches = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> print(len(batches)) # doctest: +SKIP
+        1
     """
     # No remote workers in the set -> Use local worker for collecting
     # samples.
@@ -104,14 +105,15 @@ def ParallelRollouts(
         A local iterator over experiences collected in parallel.
 
     Examples:
-        >>> rollouts = ParallelRollouts(workers, mode="async")
-        >>> batch = next(rollouts)
-        >>> print(batch.count)
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> workers = ... # doctest: +SKIP
+        >>> rollouts = ParallelRollouts(workers, mode="async") # doctest: +SKIP
+        >>> batch = next(rollouts) # doctest: +SKIP
+        >>> print(batch.count) # doctest: +SKIP
         50  # config.rollout_fragment_length
-
-        >>> rollouts = ParallelRollouts(workers, mode="bulk_sync")
-        >>> batch = next(rollouts)
-        >>> print(batch.count)
+        >>> rollouts = ParallelRollouts(workers, mode="bulk_sync") # doctest: +SKIP
+        >>> batch = next(rollouts) # doctest: +SKIP
+        >>> print(batch.count) # doctest: +SKIP
         200  # config.rollout_fragment_length * config.num_workers
 
     Updates the STEPS_SAMPLED_COUNTER counter in the local iterator context.
@@ -132,11 +134,9 @@ def ParallelRollouts(
     if not workers.remote_workers():
         # Handle the `num_workers=0` case, in which the local worker
         # has to do sampling as well.
-        def sampler(_):
-            while True:
-                yield workers.local_worker().sample()
-
-        return LocalIterator(sampler, SharedMetrics()).for_each(report_timesteps)
+        return LocalIterator(
+            lambda timeout: workers.local_worker().item_generator, SharedMetrics()
+        ).for_each(report_timesteps)
 
     # Create a parallel iterator over generated experiences.
     rollouts = from_actors(workers.remote_workers())
@@ -167,8 +167,10 @@ def AsyncGradients(workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, in
         A local iterator over policy gradients computed on rollout workers.
 
     Examples:
-        >>> grads_op = AsyncGradients(workers)
-        >>> print(next(grads_op))
+        >>> from ray.rllib.execution.rollout_ops import AsyncGradients
+        >>> workers = ... # doctest: +SKIP
+        >>> grads_op = AsyncGradients(workers) # doctest: +SKIP
+        >>> print(next(grads_op)) # doctest: +SKIP
         {"var_0": ..., ...}, 50  # grads, batch count
 
     Updates the STEPS_SAMPLED_COUNTER counter and LEARNER_INFO field in the
@@ -210,10 +212,11 @@ class ConcatBatches:
     This should be used with the .combine() operator.
 
     Examples:
-        >>> rollouts = ParallelRollouts(...)
-        >>> rollouts = rollouts.combine(ConcatBatches(
-        ...    min_batch_size=10000, count_steps_by="env_steps"))
-        >>> print(next(rollouts).count)
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
+        >>> rollouts = rollouts.combine(ConcatBatches( # doctest: +SKIP
+        ...    min_batch_size=10000, count_steps_by="env_steps")) # doctest: +SKIP
+        >>> print(next(rollouts).count) # doctest: +SKIP
         10000
     """
 
@@ -274,9 +277,12 @@ class SelectExperiences:
     This should be used with the .for_each() operator.
 
     Examples:
-        >>> rollouts = ParallelRollouts(...)
-        >>> rollouts = rollouts.for_each(SelectExperiences(["pol1", "pol2"]))
-        >>> print(next(rollouts).policy_batches.keys())
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> from ray.rllib.execution.rollout_ops import SelectExperiences
+        >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
+        >>> rollouts = rollouts.for_each( # doctest: +SKIP
+        ...     SelectExperiences(["pol1", "pol2"]))
+        >>> print(next(rollouts).policy_batches.keys()) # doctest: +SKIP
         {"pol1", "pol2"}
     """
 
@@ -338,9 +344,13 @@ class StandardizeFields:
     may be mutated by this operator for efficiency.
 
     Examples:
-        >>> rollouts = ParallelRollouts(...)
-        >>> rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
-        >>> print(np.std(next(rollouts)["advantages"]))
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> from ray.rllib.execution.rollout_ops import StandardizeFields
+        >>> import numpy as np
+        >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
+        >>> rollouts = rollouts.for_each( # doctest: +SKIP
+        ...     StandardizeFields(["advantages"]))
+        >>> print(np.std(next(rollouts)["advantages"])) # doctest: +SKIP
         1.0
     """
 

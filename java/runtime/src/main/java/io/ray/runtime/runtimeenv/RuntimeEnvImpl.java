@@ -15,6 +15,10 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     this.envVars = envVars;
   }
 
+  public Map<String, String> getEnvVars() {
+    return envVars;
+  }
+
   @Override
   public String toJsonBytes() {
     // Get serializedRuntimeEnv

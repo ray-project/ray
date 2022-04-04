@@ -5,7 +5,6 @@ import time
 import inspect
 import shutil
 import threading
-import traceback
 import uuid
 from functools import partial
 from numbers import Number
@@ -125,9 +124,11 @@ class StatusReporter:
     """Object passed into your function that you can report status through.
 
     Example:
-        >>> def trainable_function(config, reporter):
-        >>>     assert isinstance(reporter, StatusReporter)
-        >>>     reporter(timesteps_this_iter=1)
+        >>> from ray.tune.function_runner import StatusReporter
+        >>> reporter = StatusReporter(...) # doctest: +SKIP
+        >>> def trainable_function(config, reporter): # doctest: +SKIP
+        >>>     assert isinstance(reporter, StatusReporter) # doctest: +SKIP
+        >>>     reporter(timesteps_this_iter=1) # doctest: +SKIP
     """
 
     def __init__(
@@ -168,8 +169,12 @@ class StatusReporter:
             kwargs: Latest training result status.
 
         Example:
-            >>> reporter(mean_accuracy=1, training_iteration=4)
-            >>> reporter(mean_accuracy=1, training_iteration=4, done=True)
+            >>> from ray.tune.function_runner import StatusReporter
+            >>> reporter = StatusReporter(...) # doctest: +SKIP
+            >>> reporter(mean_accuracy=1, training_iteration=4) # doctest: +SKIP
+            >>> reporter( # doctest: +SKIP
+            ...     mean_accuracy=1, training_iteration=4, done=True
+            ... )
 
         Raises:
             StopIteration: A StopIteration exception is raised if the trial has
@@ -283,10 +288,7 @@ class _RunnerThread(threading.Thread):
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely
                 # case that something went terribly wrong
-                err_tb_str = traceback.format_exc()
-                self._error_queue.put(
-                    err_tb_str, block=True, timeout=ERROR_REPORT_TIMEOUT
-                )
+                self._error_queue.put(e, block=True, timeout=ERROR_REPORT_TIMEOUT)
             except queue.Full:
                 logger.critical(
                     (
@@ -295,7 +297,6 @@ class _RunnerThread(threading.Thread):
                         "was not processed. This should never happen."
                     )
                 )
-            raise e
 
 
 class FunctionRunner(Trainable):
@@ -563,10 +564,8 @@ class FunctionRunner(Trainable):
 
     def _report_thread_runner_error(self, block=False):
         try:
-            err_tb_str = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise TuneError(
-                ("Trial raised an exception. Traceback:\n{}".format(err_tb_str))
-            )
+            e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
+            raise e
         except queue.Empty:
             pass
 

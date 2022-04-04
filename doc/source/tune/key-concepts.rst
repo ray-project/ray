@@ -229,7 +229,7 @@ Here's an overview of all available search algorithms in Tune:
    * - :ref:`OptunaSearch <tune-optuna>`
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
-     - :doc:`/tune/examples/includes/optuna_example`
+     - :doc:`/tune/examples/optuna_example`
    * - :ref:`ZOOptSearch <zoopt>`
      - Zeroth-order Optimization
      - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
@@ -291,7 +291,7 @@ To use a scheduler, just pass in a ``scheduler`` argument to ``tune.run()``:
 Tune includes distributed implementations of early stopping algorithms such as
 `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, `HyperBand <https://arxiv.org/abs/1603.06560>`__,
 and `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__.
-Tune also includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__
+Tune also includes a distributed implementation of `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__
 and `Population Based Bandits (PB2) <https://arxiv.org/abs/2002.02518>`__.
 
 .. tip:: The easiest scheduler to start with is the ``ASHAScheduler`` which will aggressively terminate low-performing trials.

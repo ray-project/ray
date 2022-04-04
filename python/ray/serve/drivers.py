@@ -6,7 +6,7 @@ import starlette
 from fastapi import Depends, FastAPI
 
 from ray._private.utils import import_attr
-from ray.serve.api import RayServeDAGHandle
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.http_util import ASGIHTTPSender
 from ray import serve
 

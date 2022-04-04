@@ -244,3 +244,12 @@ class GcsClient:
                 f"Failed to list prefix {prefix} "
                 f"due to error {reply.status.message}"
             )
+
+
+def use_gcs_for_bootstrap():
+    """In the current version of Ray, we always use the GCS to bootstrap.
+    (This was previously controlled by a feature flag.)
+
+    This function is included for the purposes of backwards compatibility.
+    """
+    return True

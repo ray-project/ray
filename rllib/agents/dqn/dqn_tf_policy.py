@@ -451,10 +451,14 @@ def postprocess_nstep_and_prio(
             batch[SampleBatch.DONES],
             batch[PRIO_WEIGHTS],
         )
-        new_priorities = (
-            np.abs(convert_to_numpy(td_errors))
-            + policy.config["prioritized_replay_eps"]
-        )
+        # Retain compatibility with old-style Replay args
+        epsilon = policy.config.get("replay_buffer_config", {}).get(
+            "prioritized_replay_eps"
+        ) or policy.config.get("prioritized_replay_eps")
+        if epsilon is None:
+            raise ValueError("prioritized_replay_eps not defined in config.")
+
+        new_priorities = np.abs(convert_to_numpy(td_errors)) + epsilon
         batch[PRIO_WEIGHTS] = new_priorities
 
     return batch
