@@ -182,6 +182,8 @@ class HuggingFaceTrainer(TorchTrainer):
 
     def _create_train_func(self, trainer_init_per_worker):
         def train_loop_per_worker(config):
+            # Set to None just to make CI pass & show
+            # the intended usage with trainer_init_per_worker
             train_dataset = None
             eval_dataset = None
             trainer = trainer_init_per_worker(train_dataset, eval_dataset, **config)
