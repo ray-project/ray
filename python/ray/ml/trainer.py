@@ -278,6 +278,11 @@ class Trainer(abc.ABC):
             trainer.preprocess_datasets()
             trainer.training_loop()
 
+        # Change the name of the training function to match the name of the Trainer
+        # class. This will mean the Tune trial name will match the name of Trainer on
+        # stdout messages and the results directory.
+        train_func.__name__ = trainer_cls.__name__
+
         trainable_cls = wrap_function(train_func)
 
         class TrainTrainable(trainable_cls):
