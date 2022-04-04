@@ -93,7 +93,7 @@ def run(
     metric: Optional[str] = None,
     mode: Optional[str] = None,
     stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None,
-    time_budget_s: Union[None, int, float, datetime.timedelta] = None,
+    time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
     config: Optional[Dict[str, Any]] = None,
     resources_per_trial: Union[
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory

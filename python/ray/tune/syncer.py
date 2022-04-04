@@ -165,7 +165,7 @@ class SyncConfig:
     """
 
     upload_dir: Optional[str] = None
-    syncer: Union[None, str] = "auto"
+    syncer: Optional[str] = "auto"
 
     sync_on_checkpoint: bool = True
     sync_period: int = 300
@@ -466,7 +466,7 @@ def get_node_syncer(
 
 
 class SyncerCallback(Callback):
-    def __init__(self, sync_function: Union[None, bool, Callable]):
+    def __init__(self, sync_function: Optional[Union[bool, Callable]]):
         self._sync_function = sync_function
         self._syncers: Dict["Trial", NodeSyncer] = {}
 
