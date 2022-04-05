@@ -383,8 +383,8 @@ class ReporterAgent(
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-    def _record_stats(self, stats, cluster_stats):
-        records_reported = []
+    def _get_records_to_report(self, stats, cluster_stats):
+        records_to_report = []
         ip = stats["ip"]
 
         # -- Instance count of cluster --
@@ -392,7 +392,7 @@ class ReporterAgent(
         if "autoscaler_report" in cluster_stats and self._is_head_node:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
-                records_reported.append(
+                records_to_report.append(
                     Record(
                         gauge=METRICS_GAUGES["cluster_active_nodes"],
                         value=active_node_count,
@@ -409,7 +409,7 @@ class ReporterAgent(
                     failed_nodes_dict[node_type] = 1
 
             for node_type, failed_node_count in failed_nodes_dict.items():
-                records_reported.append(
+                records_to_report.append(
                     Record(
                         gauge=METRICS_GAUGES["cluster_failed_nodes"],
                         value=failed_node_count,
@@ -426,7 +426,7 @@ class ReporterAgent(
                     pending_nodes_dict[node_type] = 1
 
             for node_type, pending_node_count in pending_nodes_dict.items():
-                records_reported.append(
+                records_to_report.append(
                     Record(
                         gauge=METRICS_GAUGES["cluster_pending_nodes"],
                         value=pending_node_count,
@@ -494,7 +494,7 @@ class ReporterAgent(
                 value=gram_available,
                 tags={"ip": ip},
             )
-            records_reported.extend(
+            records_to_report.extend(
                 [
                     gpus_available_record,
                     gpus_utilization_record,
@@ -565,9 +565,9 @@ class ReporterAgent(
                 value=raylet_mem_usage,
                 tags={"ip": ip, "pid": raylet_pid},
             )
-            records_reported.extend([raylet_cpu_record, raylet_mem_record])
+            records_to_report.extend([raylet_cpu_record, raylet_mem_record])
 
-        records_reported.extend(
+        records_to_report.extend(
             [
                 cpu_record,
                 cpu_count_record,
@@ -583,27 +583,39 @@ class ReporterAgent(
                 network_receive_speed_record,
             ]
         )
-        return records_reported
+        return records_to_report
 
     async def _perform_iteration(self, publisher):
         """Get any changes to the log files and push updates to kv."""
         while True:
             try:
-                formatted_status_string = None
+                stats = self._get_all_stats()
+
+                async def publish():
+                    await publisher.publish_resource_usage(
+                        self._key, jsonify_asdict(stats)
+                    )
+
+                publisher_task = asyncio.create_task(publish())
+                # Cluster stats don't need to be recorded on all agents,
+                # so we only report it in the head node.
                 if self._is_head_node:
                     formatted_status_string = internal_kv._internal_kv_get(
                         DEBUG_AUTOSCALING_STATUS
                     )
-                cluster_stats = (
-                    json.loads(formatted_status_string.decode())
-                    if formatted_status_string
-                    else {}
-                )
-
-                stats = self._get_all_stats()
-                records_reported = self._record_stats(stats, cluster_stats)
-                self._metrics_agent.record_reporter_stats(records_reported)
-                await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
+                    cluster_stats = (
+                        json.loads(formatted_status_string.decode())
+                        if formatted_status_string
+                        else {}
+                    )
+                    records_to_report = self._get_records_to_report(
+                        stats, cluster_stats
+                    )
+                    self._metrics_agent.record_reporter_stats(records_to_report)
+                else:
+                    records_to_report = self._get_records_to_report(stats, {})
+                    self._metrics_agent.record_reporter_stats(records_to_report)
+                await publisher_task
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
