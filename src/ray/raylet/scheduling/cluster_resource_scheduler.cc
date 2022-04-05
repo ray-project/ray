@@ -206,9 +206,11 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
 }
 
 bool ClusterResourceScheduler::IsSchedulableOnNode(
-    scheduling::NodeID node_id, const absl::flat_hash_map<std::string, double> &shape) {
+    scheduling::NodeID node_id,
+    const absl::flat_hash_map<std::string, double> &shape,
+    bool requires_object_store_memory) {
   auto resource_request =
-      ResourceMapToResourceRequest(shape, /*requires_object_store_memory=*/false);
+      ResourceMapToResourceRequest(shape, requires_object_store_memory);
   return IsSchedulable(resource_request, node_id);
 }
 
@@ -222,7 +224,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // going through the full hybrid policy since we don't want spillback.
   if (prioritize_local_node && !exclude_local_node &&
       IsSchedulableOnNode(local_node_id_,
-                          task_spec.GetRequiredResources().GetResourceMap())) {
+                          task_spec.GetRequiredResources().GetResourceMap(),
+                          requires_object_store_memory)) {
     *is_infeasible = false;
     return local_node_id_;
   }
@@ -242,7 +245,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // since the local node is chosen for a reason (e.g. spread).
   if (prioritize_local_node && !best_node.IsNil() &&
       !IsSchedulableOnNode(best_node,
-                           task_spec.GetRequiredResources().GetResourceMap())) {
+                           task_spec.GetRequiredResources().GetResourceMap(),
+                           requires_object_store_memory)) {
     *is_infeasible = false;
     return local_node_id_;
   }

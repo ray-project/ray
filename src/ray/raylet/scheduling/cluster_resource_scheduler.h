@@ -116,7 +116,8 @@ class ClusterResourceScheduler {
   /// \param node_name Name of the node.
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
-                           const absl::flat_hash_map<std::string, double> &shape);
+                           const absl::flat_hash_map<std::string, double> &shape,
+                           bool requires_object_store_memory);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
   ClusterResourceManager &GetClusterResourceManager() {
