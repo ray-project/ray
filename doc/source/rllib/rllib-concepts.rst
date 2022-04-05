@@ -152,12 +152,11 @@ We can create a `Trainer <#trainers>`__ and try running this policy on a toy env
 
     import ray
     from ray import tune
-    from ray.rllib.agents.trainer_template import build_trainer
+    from ray.rllib.agents.trainer import Trainer
 
-    # <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
-    MyTrainer = build_trainer(
-        name="MyCustomTrainer",
-        default_policy=MyTFPolicy)
+    class MyTrainer(Trainer):
+        def get_default_policy_class(self, config):
+            return MyTFPolicy
 
     ray.init()
     tune.run(MyTrainer, config={"env": "CartPole-v0", "num_workers": 2})
@@ -209,20 +208,36 @@ You might be wondering how RLlib makes the advantages placeholder automatically 
 
 **Example 1: Proximal Policy Optimization**
 
-In the above section you saw how to compose a simple policy gradient algorithm with RLlib. In this example, we'll dive into how PPO was built with RLlib and how you can modify it. First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__:
+In the above section you saw how to compose a simple policy gradient algorithm with RLlib.
+In this example, we'll dive into how PPO is defined within RLlib and how you can modify it.
+First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__:
 
 .. code-block:: python
 
-    PPOTrainer = build_trainer(
-        name="PPOTrainer",
-        default_config=DEFAULT_CONFIG,
-        default_policy=PPOTFPolicy,
-        validate_config=validate_config,
-        execution_plan=execution_plan)
+    class PPOTrainer(Trainer):
+        @classmethod
+        @override(Trainer)
+        def get_default_config(cls) -> TrainerConfigDict:
+            return DEFAULT_CONFIG
 
-Besides some boilerplate for defining the PPO configuration and some warnings, the most important argument to take note of is the ``execution_plan``.
+        @override(Trainer)
+        def validate_config(self, config: TrainerConfigDict) -> None:
+            ...
 
-The trainer's `execution plan <#execution-plans>`__ defines the distributed training workflow. Depending on the ``simple_optimizer`` trainer config, PPO can switch between a simple synchronous plan, or a multi-GPU plan that implements minibatch SGD (the default):
+        @override(Trainer)
+        def get_default_policy_class(self, config):
+            return PPOTFPolicy
+
+        @staticmethod
+        @override(Trainer)
+        def execution_plan(workers, config, **kwargs):
+            ...
+
+Besides some boilerplate for defining the PPO configuration and some warnings, the most important method to take note of is the ``execution_plan``.
+
+The trainer's `execution plan <#execution-plans>`__ defines the distributed training workflow.
+Depending on the ``simple_optimizer`` trainer config,
+PPO can switch between a simple synchronous plan, or a multi-GPU plan that implements minibatch SGD (the default):
 
 .. code-block:: python
 

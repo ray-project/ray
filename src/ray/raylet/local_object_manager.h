@@ -106,6 +106,7 @@ class LocalObjectManager {
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
   void AsyncRestoreSpilledObject(const ObjectID &object_id,
+                                 int64_t object_size,
                                  const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
 
@@ -146,8 +147,9 @@ class LocalObjectManager {
   /// In that case, the URL is supposed to be obtained by the object directory.
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
-  /// Get the current pinned object store memory usage.
-  int64_t GetPinnedBytes() const { return pinned_objects_size_; }
+  /// Get the current pinned object store memory usage to help node scale down decisions.
+  /// A node can only be safely drained when this function reports zero.
+  int64_t GetPinnedBytes() const;
 
   std::string DebugString() const;
 
@@ -244,7 +246,13 @@ class LocalObjectManager {
 
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.
-  size_t num_bytes_pending_spill_;
+  size_t num_bytes_pending_spill_ = 0;
+
+  /// The total size of the objects that are currently being
+  /// restored from this node, in bytes. Note that this only includes objects
+  /// that are being restored into the local object store. Objects restored on
+  /// behalf of remote nodes will be read directly from disk to the network.
+  size_t num_bytes_pending_restore_ = 0;
 
   /// A list of object id and url pairs that need to be deleted.
   /// We don't instantly delete objects when it goes out of scope from external storages

@@ -1,31 +1,11 @@
-import inspect
-from typing import Any, Callable, Dict, Optional, Type, Union
-
-import starlette.requests
-from fastapi import Depends, FastAPI
+from typing import Dict, Optional, Type, Union
 
 from ray._private.utils import import_attr
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import Predictor, DataBatchType
-from ray.serve.http_util import ASGIHTTPSender
-from ray import serve
+from ray.ml.predictor import Predictor
+from ray.serve.drivers import InputSchemaFn, SimpleSchemaIngress
 import ray
-
-DEFAULT_INPUT_SCHEMA = "ray.serve.http_adapters.array_to_databatch"
-InputSchemaFn = Callable[[Any], DataBatchType]
-
-
-def _load_input_schema(
-    input_schema: Optional[Union[str, InputSchemaFn]]
-) -> InputSchemaFn:
-    if input_schema is None:
-        input_schema = DEFAULT_INPUT_SCHEMA
-
-    if isinstance(input_schema, str):
-        input_schema = import_attr(input_schema)
-
-    assert inspect.isfunction(input_schema), "input schema must be a callable function."
-    return input_schema
+from ray import serve
 
 
 def _load_checkpoint(
@@ -58,40 +38,47 @@ def _load_predictor_cls(
     return predictor_cls
 
 
-class ModelWrapper:
+class ModelWrapper(SimpleSchemaIngress):
+    """Serve any Ray AIR predictor from an AIR checkpoint.
+
+    Args:
+        predictor_cls(str, Type[Predictor]): The class or path for predictor class.
+            The type must be a subclass of :class:`ray.ml.predicotr.Predictor`.
+        checkpoint(Checkpoint, dict): The checkpoint object or a dictionary describe
+            the object.
+
+            - The checkpoint object must be a subclass of
+              :class:`ray.ml.checkpoint.Checkpoint`.
+            - The dictionary should be in the form of
+              ``{"checkpoint_cls": "import.path.MyCheckpoint",
+              "uri": "uri_to_load_from"}``.
+              Serve will then call ``MyCheckpoint.from_uri("uri_to_load_from")`` to
+              instantiate the object.
+
+        input_schema(str, InputSchemaFn, None): The FastAPI input conversion
+            function. By default, Serve will use the
+            :ref:`NdArray <serve-ndarray-schema>` schema and convert to numpy array.
+            You can pass in any FastAPI dependency resolver that returns
+            an array. When you pass in a string, Serve will import it.
+            Please refer to :ref:`Serve HTTP adatpers <serve-http-adapters>`
+            documentation to learn more.
+        batching_params(dict, None, False): override the default parameters to
+            :func:`ray.serve.batch`. Pass ``False`` to disable batching.
+    """
+
     def __init__(
         self,
         predictor_cls: Union[str, Type[Predictor]],
         checkpoint: Union[Checkpoint, Dict],
-        input_schema: Optional[Union[str, InputSchemaFn]] = None,
+        input_schema: Union[
+            str, InputSchemaFn
+        ] = "ray.serve.http_adapters.json_to_ndarray",
         batching_params: Optional[Union[Dict[str, int], bool]] = None,
     ):
-        """Serve any Ray ML predictor from checkpoint.
-
-        Args:
-            predictor_cls(str, Type[Predictor]): The class or path for predictor class.
-              The type must be a subclass of ray.ml `Predictor`.
-            checkpoint(Checkpoint, dict): The checkpoint object or a dictionary describe
-              the object.
-                - The checkpoint object must be a subclass of ray.ml `Checkpoint`.
-                - The dictionary should be in the form of
-                  {"checkpoint_cls": "import.path.MyCheckpoint",
-                   "uri": "uri_to_load_from"}.
-                  Serve will then call `MyCheckpoint.from_uri("uri_to_load_from")` to
-                  instantiate the object.
-            input_schema(str, InputSchemaFn, None): The FastAPI input conversion
-              function. By default, Serve will use the `NdArray` schema and convert to
-              numpy array. You can pass in any FastAPI dependency resolver that returns
-              an array. When you pass in a string, Serve will import it.
-              Please refer to Serve HTTP adatper documentation to learn more.
-            batching_params(dict, None, False): override the default parameters to
-              serve.batch. Pass `False` to disable batching.
-        """
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
 
         self.model = predictor_cls.from_checkpoint(checkpoint)
-        self.app = FastAPI()
 
         # Configure Batching
         if batching_params is False:
@@ -110,21 +97,13 @@ class ModelWrapper:
 
         self.batched_predict = batched_predict
 
-        # Configure Input Schema
-        input_schema = _load_input_schema(input_schema)
-
-        @self.app.get("/")
-        @self.app.post("/")
-        async def handle_request(inp=Depends(input_schema)):
-            return await batched_predict(inp)
-
-    async def __call__(self, request: starlette.requests.Request):
-        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
-        # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = ASGIHTTPSender()
-        await self.app(request.scope, receive=request.receive, send=sender)
-        return sender.build_asgi_response()
+        super().__init__(input_schema)
 
     async def predict(self, inp):
-        """Performing inference directly without HTTP."""
+        """Perform inference directly without HTTP."""
         return await self.batched_predict(inp)
+
+
+@serve.deployment
+class ModelWrapperDeployment(ModelWrapper):
+    """Ray Serve Deployment of the ModelWrapper class."""

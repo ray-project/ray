@@ -27,10 +27,10 @@ def format_args(worker, args, kwargs):
     """
     if not worker.load_code_from_local:
         raise ValueError(
-            "Cross language feature needs " "--load-code-from-local to be set."
+            "Cross language feature needs --load-code-from-local to be set."
         )
     if kwargs:
-        raise TypeError("Cross language remote functions " "does not support kwargs.")
+        raise TypeError("Cross language remote functions does not support kwargs.")
     return args
 
 
@@ -55,6 +55,12 @@ def get_function_descriptor_for_actor_method(
             actor_creation_function_descriptor.class_name,
             method_name,
             signature,
+        )
+    elif language == Language.CPP:
+        return CppFunctionDescriptor(
+            method_name,
+            "PYTHON",
+            actor_creation_function_descriptor.class_name,
         )
     else:
         raise NotImplementedError(
@@ -133,6 +139,32 @@ def java_actor_class(class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
+        max_restarts=0,
+        max_task_retries=0,
+        num_cpus=None,
+        num_gpus=None,
+        memory=None,
+        object_store_memory=None,
+        resources=None,
+        accelerator_type=None,
+        runtime_env=None,
+    )
+
+
+@PublicAPI(stability="beta")
+def cpp_actor_class(create_function_name, class_name):
+    """Define a Cpp actor class.
+
+    Args:
+        create_function_name (str): Create cpp class function name.
+        class_name (str): Cpp class name.
+    """
+    from ray.actor import ActorClass
+
+    print("create func=", create_function_name, "class_name=", class_name)
+    return ActorClass._ray_from_function_descriptor(
+        Language.CPP,
+        CppFunctionDescriptor(create_function_name, "PYTHON", class_name),
         max_restarts=0,
         max_task_retries=0,
         num_cpus=None,

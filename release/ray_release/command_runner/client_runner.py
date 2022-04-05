@@ -8,6 +8,8 @@ import time
 from collections import deque
 from typing import Optional, Dict, Any
 
+import ray
+
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -22,29 +24,7 @@ from ray_release.exception import (
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.logger import logger
 from ray_release.command_runner.command_runner import CommandRunner
-
-
-def install_matching_ray(ray_wheels: Optional[str]):
-    if not ray_wheels:
-        logger.warning(
-            "No Ray wheels found - can't install matching Ray wheels locally!"
-        )
-        return
-    assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
-    if sys.platform == "darwin":
-        platform = "macosx_10_15_intel"
-    elif sys.platform == "win32":
-        platform = "win_amd64"
-    else:
-        platform = "manylinux2014_x86_64"
-    ray_wheels = ray_wheels.replace("manylinux2014_x86_64", platform)
-    logger.info(f"Installing matching Ray wheels locally: {ray_wheels}")
-    subprocess.check_output(
-        "pip uninstall -y ray", shell=True, env=os.environ, text=True
-    )
-    subprocess.check_output(
-        f"pip install -U {ray_wheels}", shell=True, env=os.environ, text=True
-    )
+from ray_release.wheels import install_matching_ray_locally
 
 
 def install_cluster_env_packages(cluster_env: Dict[Any, Any]):
@@ -75,16 +55,14 @@ class ClientRunner(CommandRunner):
 
     def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
         try:
-            install_matching_ray(ray_wheels_url or os.environ.get("RAY_WHEELS", None))
+            install_matching_ray_locally(
+                ray_wheels_url or os.environ.get("RAY_WHEELS", None)
+            )
             install_cluster_env_packages(self.cluster_manager.cluster_env)
         except Exception as e:
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
-        # Local import of Ray to avoid premature import (e.g. when local
-        # Ray is updated in client tests)
-        import ray
-
         ray_address = self.cluster_manager.get_cluster_address()
         try:
             if ray.is_initialized:
@@ -119,6 +97,8 @@ class ClientRunner(CommandRunner):
             ray.shutdown()
         except Exception as e:
             raise ClusterStartupError(f"Exception when waiting for nodes: {e}") from e
+
+        logger.info(f"All {num_nodes} nodes are up.")
 
     def get_last_logs(self) -> Optional[str]:
         return self.last_logs

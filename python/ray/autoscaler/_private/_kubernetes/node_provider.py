@@ -142,7 +142,7 @@ class KubernetesNodeProvider(NodeProvider):
             pod_spec["metadata"]["labels"].update(head_selector)
 
         logger.info(
-            log_prefix + "calling create_namespaced_pod " "(count={}).".format(count)
+            log_prefix + "calling create_namespaced_pod (count={}).".format(count)
         )
         new_nodes = []
         for _ in range(count):

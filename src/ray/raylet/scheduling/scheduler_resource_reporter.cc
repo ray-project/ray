@@ -34,13 +34,13 @@ SchedulerResourceReporter::SchedulerResourceReporter(
     const absl::flat_hash_map<SchedulingClass,
                               std::deque<std::shared_ptr<internal::Work>>>
         &infeasible_tasks,
-    const LocalTaskManager &local_task_manager)
+    const ILocalTaskManager &local_task_manager)
     : max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
       tasks_to_schedule_(tasks_to_schedule),
-      tasks_to_dispatch_(local_task_manager.tasks_to_dispatch_),
+      tasks_to_dispatch_(local_task_manager.GetTaskToDispatch()),
       infeasible_tasks_(infeasible_tasks),
-      backlog_tracker_(local_task_manager.backlog_tracker_) {}
+      backlog_tracker_(local_task_manager.GetBackLogTracker()) {}
 
 int64_t SchedulerResourceReporter::TotalBacklogSize(
     SchedulingClass scheduling_class) const {
@@ -171,7 +171,8 @@ void SchedulerResourceReporter::FillPendingActorInfo(
   }
   // Report actors blocked on resources.
   num_reported = 0;
-  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
+  for (const auto &shapes_it :
+       boost::range::join(tasks_to_dispatch_, tasks_to_schedule_)) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
       const RayTask &task = work_it->task;

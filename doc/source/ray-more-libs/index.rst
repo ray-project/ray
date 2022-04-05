@@ -9,6 +9,7 @@ More Ray ML Libraries
     :maxdepth: 1
     :caption: Other Libraries
 
+    ../ray-air/getting-started
     joblib
     lightgbm-ray
     multiprocessing

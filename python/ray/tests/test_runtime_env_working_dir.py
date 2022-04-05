@@ -28,9 +28,7 @@ from unittest import mock
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = (
-    "https://github.com/shrekris-anyscale/" "test_module/archive/HEAD.zip"
-)
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 TEST_IMPORT_DIR = "test_import_dir"
@@ -87,7 +85,14 @@ def test_inherit_cluster_env_pythonpath(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "option", ["failure", "working_dir", "working_dir_zip", "py_modules"]
+    "option",
+    [
+        "failure",
+        "working_dir",
+        "working_dir_zip",
+        "py_modules",
+        "working_dir_and_py_modules",
+    ],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(
@@ -121,14 +126,27 @@ def test_lazy_reads(
             ray.init(
                 address,
                 runtime_env={
-                    "py_modules": [str(Path(tmp_working_dir) / "test_module")]
+                    "py_modules": [
+                        str(Path(tmp_working_dir) / "test_module"),
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ]
                 },
             )
-        elif option == "py_modules_path":
+        elif option == "working_dir_and_py_modules":
             ray.init(
                 address,
-                runtime_env={"py_modules": [Path(tmp_working_dir) / "test_module"]},
+                runtime_env={
+                    "working_dir": tmp_working_dir,
+                    "py_modules": [
+                        str(Path(tmp_working_dir) / "test_module"),
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ],
+                },
             )
+        else:
+            raise ValueError(f"unexpected pytest parameter {option}")
 
     call_ray_init()
 
@@ -155,6 +173,20 @@ def test_lazy_reads(
     else:
         assert ray.get(test_import.remote()) == 1
 
+    if option in {"py_modules", "working_dir_and_py_modules"}:
+
+        @ray.remote
+        def test_py_modules_whl():
+            import pip_install_test  # noqa: F401
+
+            return True
+
+        assert ray.get(test_py_modules_whl.remote())
+
+    if option in {"py_modules", "working_dir_zip"}:
+        # These options are not tested beyond this point, so return to save time.
+        return
+
     reinit()
 
     @ray.remote
@@ -164,7 +196,7 @@ def test_lazy_reads(
     if option == "failure":
         with pytest.raises(FileNotFoundError):
             ray.get(test_read.remote())
-    elif option == "working_dir":
+    elif option in {"working_dir_and_py_modules", "working_dir"}:
         assert ray.get(test_read.remote()) == "world"
 
     reinit()
@@ -187,7 +219,7 @@ def test_lazy_reads(
             assert ray.get(a.test_import.remote()) == 1
         with pytest.raises(FileNotFoundError):
             assert ray.get(a.test_read.remote()) == "world"
-    elif option == "working_dir":
+    elif option in {"working_dir_and_py_modules", "working_dir"}:
         assert ray.get(a.test_import.remote()) == 1
         assert ray.get(a.test_read.remote()) == "world"
 
