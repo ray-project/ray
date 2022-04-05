@@ -685,13 +685,6 @@ class ReporterAgent(
         while True:
             try:
                 stats = self._get_all_stats()
-
-                async def publish():
-                    await publisher.publish_resource_usage(
-                        self._key, jsonify_asdict(stats)
-                    )
-
-                publisher_task = asyncio.create_task(publish())
                 # Cluster stats don't need to be recorded on all agents,
                 # so we only report it in the head node.
                 if self._is_head_node:
@@ -710,7 +703,7 @@ class ReporterAgent(
                 else:
                     records_to_report = self._get_records_to_report(stats, {})
                     self._metrics_agent.record_reporter_stats(records_to_report)
-                await publisher_task
+                await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
