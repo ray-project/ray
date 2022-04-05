@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Type, Union, Callable
+from typing import Optional, Dict, Type, Union, Callable, Any
 
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
@@ -52,7 +52,7 @@ class RLTrainer(Trainer):
                     "use_gpu": False,
                 },
                 algorithm="PPO",
-                param_space={
+                config={
                     "env": "CartPole-v0",
                     "framework": "tf",
                     "evaluation_num_workers": 1,
@@ -85,7 +85,7 @@ class RLTrainer(Trainer):
                 },
                 datasets={"train": dataset},
                 algorithm=BCTrainer,
-                param_space={
+                config={
                     "env": "CartPole-v0",
                     "framework": "tf",
                     "evaluation_num_workers": 1,
@@ -100,6 +100,7 @@ class RLTrainer(Trainer):
     def __init__(
         self,
         algorithm: Union[str, Type[RLLibTrainer]],
+        config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -109,13 +110,14 @@ class RLTrainer(Trainer):
     ):
         self._algorithm = algorithm
         self._train_kwargs = train_kwargs
+        self._config = config
 
         super().__init__(
             scaling_config, run_config, datasets, preprocessor, resume_from_checkpoint
         )
 
     def _get_rllib_config(self, process_datasets: bool = False) -> Dict:
-        config = self._train_kwargs.get("param_space", {}).copy()
+        config = self._config.copy()
         num_workers = self.scaling_config.get("num_workers")
         if num_workers is not None:
             config["num_workers"] = num_workers

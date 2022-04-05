@@ -41,7 +41,7 @@ def train_rl_bc_offline(path: str, num_workers: int, use_gpu: bool = False) -> R
         },
         datasets={"train": dataset},
         algorithm=BCTrainer,
-        param_space={
+        config={
             "env": "CartPole-v0",
             "framework": "tf",
             "evaluation_num_workers": 1,
@@ -64,7 +64,7 @@ def train_rl_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
             "use_gpu": use_gpu,
         },
         algorithm="PPO",
-        param_space={
+        config={
             "env": "CartPole-v0",
             "framework": "tf",
             "evaluation_num_workers": 1,
