@@ -91,7 +91,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=2,
+        default=1,
         help="Sets number of workers for training.",
     )
     parser.add_argument(
