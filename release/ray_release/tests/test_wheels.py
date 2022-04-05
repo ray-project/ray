@@ -19,7 +19,7 @@ from ray_release.wheels import (
 
 class WheelsFinderTest(unittest.TestCase):
     def setUp(self) -> None:
-        # Test again
+        # Test
         pass
 
     def testGetRayVersion(self):
