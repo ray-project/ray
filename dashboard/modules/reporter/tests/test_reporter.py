@@ -219,21 +219,21 @@ def test_report_stats():
         }
     }
 
-    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    records = ReporterAgent._get_records_to_report(obj, test_stats, cluster_stats)
     assert len(records) == 16
     # Test stats without raylets
     test_stats["raylet"] = {}
-    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    records = ReporterAgent._get_records_to_report(obj, test_stats, cluster_stats)
     assert len(records) == 14
     # Test stats with gpus
     test_stats["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
     ]
-    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    records = ReporterAgent._get_records_to_report(obj, test_stats, cluster_stats)
     assert len(records) == 18
     # Test stats without autoscaler report
     cluster_stats = {}
-    records = ReporterAgent._record_stats(obj, test_stats, cluster_stats)
+    records = ReporterAgent._get_records_to_report(obj, test_stats, cluster_stats)
     assert len(records) == 16
 
 
