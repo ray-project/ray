@@ -20,6 +20,16 @@ py_test (
 )
 
 py_test (
+    name = "rl_example_offline",
+    main = "examples/rl_example.py",
+    size = "medium",
+    srcs = ["examples/rl_example.py"],
+    args = ["--online"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test (
     name = "rl_example_online",
     main = "examples/rl_example.py",
     size = "medium",

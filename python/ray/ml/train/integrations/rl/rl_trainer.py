@@ -26,7 +26,7 @@ class RLTrainer(Trainer):
 
     Args:
         algorithm: Algorithm to train on. Can be a string reference,
-            (e.g. ``"PPO"``) or a RLLIb trainer class.
+            (e.g. ``"PPO"``) or a RLLib trainer class.
         scaling_config: Configuration for distributed training, e.g. number
             of workers or resources per worker.
         run_config: Run config passed to ``Tuner()``

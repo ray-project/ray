@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import ray
 from ray.ml.config import RunConfig
@@ -7,7 +8,27 @@ from ray.ml.result import Result
 from ray.rllib.agents.marwil import BCTrainer
 
 
+def generate_offline_data(path: str):
+    print(f"Generating offline data for training at {path}")
+    trainer = RLTrainer(
+        algorithm="PPO",
+        run_config=RunConfig(stop={"timesteps_total": 5000}),
+        param_space={
+            "env": "CartPole-v0",
+            "output": "dataset",
+            "output_config": {
+                "format": "json",
+                "path": path,
+                "max_num_samples_per_file": 1,
+            },
+            "batch_mode": "complete_episodes",
+        },
+    )
+    trainer.fit()
+
+
 def train_rl_bc_offline(path: str, num_workers: int, use_gpu: bool = False) -> Result:
+    print("Starting offline training")
     dataset = ray.data.read_json(
         path, parallelism=num_workers, ray_remote_args={"num_cpus": 1}
     )
@@ -35,6 +56,7 @@ def train_rl_bc_offline(path: str, num_workers: int, use_gpu: bool = False) -> R
 
 
 def train_rl_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
+    print("Starting online training")
     trainer = RLTrainer(
         run_config=RunConfig(stop={"training_iteration": 5}),
         scaling_config={
@@ -79,6 +101,8 @@ if __name__ == "__main__":
 
     ray.init(address=args.address)
     if args.offline:
+        if not os.path.exists(args.path) or not os.listdir(args.path):
+            generate_offline_data(args.path)
         train_rl_bc_offline(
             path=args.path, num_workers=args.num_workers, use_gpu=args.use_gpu
         )
