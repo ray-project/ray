@@ -16,7 +16,7 @@ import numpy as np
 import ray
 import psutil
 from ray.ml.checkpoint import Checkpoint
-from ray.util.ml_utils.cloud import clear_bucket
+from ray.ml.utils.remote_storage import clear_bucket
 
 from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
 from ray.util.ml_utils.dict import (  # noqa: F401

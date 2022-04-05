@@ -358,7 +358,7 @@ class Checkpoint:
     def to_uri(self, uri: str) -> str:
         """Write checkpoint data to location URI (e.g. cloud storage).
 
-        ARgs:
+        Args:
             uri (str): Target location URI to write data to.
 
         Returns:
