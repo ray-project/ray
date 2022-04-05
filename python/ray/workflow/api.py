@@ -79,7 +79,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
             )
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
-    workflow_event_coordinator.init_event_coordinator_actor()
+    workflow_event_coordinator.get_or_create_event_coordinator_actor()
     serialization.init_manager()
 
 
