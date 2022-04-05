@@ -835,6 +835,8 @@ def init(
             (optional) additional instruments. See more at
             docs.ray.io/tracing.html. It is currently under active development,
             and the API is subject to change.
+        _node_name (str): User-provided node name or identifier. Providing
+            this argument when connecting to an existing cluster will throw an error.
 
     Returns:
         If the provided address includes a protocol, for example by prepending
@@ -1050,6 +1052,11 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, "
                 "_enable_object_reconstruction must not be provided."
+            )
+        if _node_name is not None:
+            raise ValueError(
+                "_node_name is cannot be configured when connecting to"
+                "an existing cluster."
             )
 
         # In this case, we only need to connect the node.

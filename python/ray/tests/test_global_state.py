@@ -158,12 +158,7 @@ def test_global_state_actor_entry(ray_start_regular):
 def test_node_table(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(node_name="head_node", include_dashboard=False)
-    # The _node_name here corresponds to the user's remote device
-    # since the user is bootstrapping from an existing cluster
-    # Is this behaviour that the user expects?
-    head_context = ray.init(
-        address=cluster.address, _node_name="client_node", include_dashboard=False
-    )
+    head_context = ray.init(address=cluster.address, include_dashboard=False)
     cluster.add_node(node_name="worker_node", include_dashboard=False)
     cluster.wait_for_nodes()
 
