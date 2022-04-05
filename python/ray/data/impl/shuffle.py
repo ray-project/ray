@@ -1,6 +1,8 @@
 import math
 from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union, Callable, Iterable
 
+import numpy as np
+
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
@@ -162,9 +164,9 @@ class ShufflePartitionOp(ShuffleOp):
 
         # Randomize the distribution order of the blocks (this prevents empty
         # outputs when input blocks are very small).
-	if random_shuffle:
-	    random = np.random.RandomState(seed_i)
-	    random.shuffle(slices)
+        if random_shuffle:
+            random = np.random.RandomState(seed_i)
+            random.shuffle(slices)
 
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
