@@ -24,7 +24,7 @@ py_test (
     main = "examples/rl_example.py",
     size = "medium",
     srcs = ["examples/rl_example.py"],
-    args = ["--online"],
+    args = ["--offline"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
