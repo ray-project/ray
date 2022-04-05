@@ -156,10 +156,9 @@ def get_or_create_event_coordinator_actor() -> "ActorHandle":
         store = storage.get_global_storage()
         # the actor does not exist
         logger.warning(
-            "Cannot access workflow manager. It could be because "
-            "the workflow manager exited unexpectedly. A new "
-            "workflow manager is being created with storage "
-            f"'{store}'."
+            "Cannot access event coordinator. It could be because "
+            "the event coordinator exited unexpectedly. A new "
+            "event coordinator is being created. "
         )
         event_coordinator = EventCoordinatorActor.options(
             name=common.EVENT_COORDINATOR_NAME,
