@@ -249,12 +249,6 @@ class GroupedDataset(Generic[T]):
             for end in boundaries:
                 group = block_accessor.slice(start, end, False)
                 applied = fn(group)
-                if not isinstance(applied, type(batch)):
-                    raise ValueError(
-                        "Expecting group mapping UDF to return {}, but got {}.".format(
-                            type(batch), type(applied)
-                        )
-                    )
                 builder.add_block(applied)
                 start = end
 
