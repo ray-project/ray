@@ -194,7 +194,7 @@ message ClusterInfoResponse {
 
   message RuntimeContext {
     bytes job_id = 1;
-    bytes node_id = 2;
+    string node_id = 2;
     string namespace = 3;
     string runtime_env = 4;
     bool capture_client_tasks = 5;

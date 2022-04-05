@@ -1,7 +1,6 @@
 import pytest
 
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray._raylet import NodeID
 
 from ray.runtime_context import RuntimeContext
 
@@ -33,8 +32,8 @@ def test_get_runtime_context(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         rtc = ray.get_runtime_context()
         assert isinstance(rtc, RuntimeContext)
-        assert isinstance(rtc.node_id, NodeID)
-        assert len(rtc.node_id.hex()) == 56
+        assert isinstance(rtc.node_id, str)
+        assert len(rtc.node_id) == 56
         assert isinstance(rtc.namespace, str)
 
         # Ensure this doesn't throw

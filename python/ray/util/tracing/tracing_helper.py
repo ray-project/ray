@@ -193,7 +193,7 @@ def _function_hydrate_span_args(func: Callable[..., Any]):
         "ray.function": func,
         "ray.pid": str(os.getpid()),
         "ray.job_id": runtime_context["job_id"].hex(),
-        "ray.node_id": runtime_context["node_id"].hex(),
+        "ray.node_id": runtime_context["node_id"],
     }
 
     # We only get task ID for workers

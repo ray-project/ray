@@ -43,7 +43,7 @@ class ClientWorkerPropertyAPI:
     def current_node_id(self) -> "NodeID":
         from ray import NodeID
 
-        return NodeID(self._fetch_runtime_context().node_id)
+        return NodeID.from_hex(self._fetch_runtime_context().node_id)
 
     @property
     def namespace(self) -> str:

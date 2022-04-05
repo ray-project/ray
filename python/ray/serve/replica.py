@@ -189,7 +189,7 @@ def create_replica_wrapper(
             At this time, the replica can transition from PENDING_ALLOCATION
             to PENDING_INITIALIZATION startup state.
 
-            Return the NodeID of this replica
+            Return the node id of this replica
             """
             return ray.get_runtime_context().node_id
 

@@ -107,7 +107,7 @@ class BlockExecStats:
     def __init__(self):
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
-        self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+        self.node_id = ray.runtime_context.get_runtime_context().node_id
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":

@@ -59,7 +59,7 @@ class RuntimeContext(object):
         """
         node_id = self.worker.current_node_id
         assert not node_id.is_nil()
-        return node_id
+        return node_id.hex()
 
     @property
     def task_id(self):

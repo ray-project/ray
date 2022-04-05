@@ -365,7 +365,7 @@ class JobManager:
 
         It can be used for actor placement.
         """
-        current_node_id = ray.get_runtime_context().node_id.hex()
+        current_node_id = ray.get_runtime_context().node_id
         for node in ray.nodes():
             if node["NodeID"] == current_node_id:
                 # Found the node.
