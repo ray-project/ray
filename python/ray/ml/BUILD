@@ -13,7 +13,7 @@ py_test(
 
 py_test(
     name = "distributed_reddit_example",
-    size = "medium",
+    size = "large",
     main = "examples/pytorch_geometric/distributed_reddit_example.py",
     srcs = ["examples/pytorch_geometric/distributed_reddit_example.py"],
     tags = ["team:ml", "exclusive", "gpu"],
