@@ -104,7 +104,8 @@ def clear_bucket(bucket: str):
     if not fs:
         raise ValueError(
             f"Could not clear bucket contents: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target."
+            f"Bucket `{bucket}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(bucket)}"
         )
 
     try:
@@ -120,7 +121,8 @@ def download_from_bucket(bucket: str, local_path: str):
     if not fs:
         raise ValueError(
             f"Could not download from bucket: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target."
+            f"Bucket `{bucket}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(bucket)}"
         )
 
     pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
@@ -133,7 +135,8 @@ def upload_to_bucket(bucket: str, local_path: str):
     if not fs:
         raise ValueError(
             f"Could not upload to bucket: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target."
+            f"Bucket `{bucket}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(bucket)}"
         )
 
     pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
