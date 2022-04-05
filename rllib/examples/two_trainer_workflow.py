@@ -93,18 +93,39 @@ class MyTrainer(Trainer):
         #    return batch
 
         # Generate common experiences.
-        batches = synchronous_parallel_sample(self.workers)
+        ppo_batches = []
+        while num_env_steps < 200:
+            ma_batches = synchronous_parallel_sample(self.workers)
 
-        # Add batch to replay buffer.
-        self.local_replay_buffer.add_batch()
+            # Add collected batches (only for DQN policy) to replay buffer.
+            for ma_batch in ma_batches:
+                for pid, batch in ma_batch.policy_batches.items():
+                    if pid == "dqn_policy":
+                        self.local_replay_buffer.add_batch(batch)
+                    else:
+                        ppo_batches.append(batch)
 
+                    num_env_steps = 0
+                    num_agent_steps = 0
+                    while (not self._by_agent_steps and num_env_steps < batch_size) or (
+                        self._by_agent_steps and num_agent_steps < batch_size
+                    ):
+                        new_sample_batches = synchronous_parallel_sample(self.workers)
+                        sample_batches.extend(new_sample_batches)
+                        num_env_steps += sum(len(s) for s in new_sample_batches)
+                        num_agent_steps += sum(
+                            len(s) if isinstance(s, SampleBatch) else s.agent_steps()
+                            for s in new_sample_batches
+                        )
+                    self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
+                    self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
 
         #r1, r2 = rollouts.duplicate(n=2)
 
         # DQN sub-flow.
-        dqn_store_op = r1.for_each(SelectExperiences(["dqn_policy"])).for_each(
-            StoreToReplayBuffer(local_buffer=self.local_replay_buffer)
-        )
+        #dqn_store_op = r1.for_each(SelectExperiences(["dqn_policy"])).for_each(
+        #    StoreToReplayBuffer(local_buffer=self.local_replay_buffer)
+        #)
         dqn_replay_op = (
             Replay(local_buffer=self.local_replay_buffer)
             .for_each(add_dqn_metrics)

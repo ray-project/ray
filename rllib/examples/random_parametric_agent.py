@@ -61,9 +61,9 @@ class RandomParametriclPolicy(Policy, ABC):
         pass
 
 
-# Create a new Trainer using the Policy and config defined above and a new
-# execution plan.
 class RandomParametricTrainer(Trainer):
+    """Trainer with Policy and config defined above and overriding `training_iteration`.
+    """
     @classmethod
     def get_default_config(cls):
         return DEFAULT_CONFIG
@@ -76,7 +76,7 @@ class RandomParametricTrainer(Trainer):
         # Perform rollouts (only for collecting metrics later).
         _ = synchronous_parallel_sample(self.workers)
 
-        # Return (emptyr) training metrics.
+        # Return (empty) training metrics.
         return {}
 
 
