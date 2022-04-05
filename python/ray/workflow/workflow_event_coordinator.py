@@ -8,6 +8,11 @@ import ray
 from ray.workflow import common, recovery, storage, workflow_storage, workflow_access
 from ray.util.annotations import PublicAPI
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
+from ray.workflow.workflow_access import (
+    flatten_workflow_output,
+    get_or_create_management_actor,
+    get_management_actor,
+)
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -136,7 +141,7 @@ def init_event_coordinator_actor() -> None:
         namespace=common.EVENT_COORDINATOR_NAMESPACE,
         lifetime="detached",
     ).remote(workflow_manager)
-    actor_handle = ray.get_actor(common.EVENT_COORDINATOR_NAME)
+    actor_handle = ray.get_actor(common.EVENT_COORDINATOR_NAME, namespace=common.EVENT_COORDINATOR_NAMESPACE)
 
 def get_event_coordinator_actor() -> "ActorHandle":
     return ray.get_actor(
