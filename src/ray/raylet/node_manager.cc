@@ -230,10 +230,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           object_manager_config,
           object_directory_.get(),
           [this](const ObjectID &object_id,
+                 int64_t object_size,
                  const std::string &object_url,
                  std::function<void(const ray::Status &)> callback) {
             GetLocalObjectManager().AsyncRestoreSpilledObject(
-                object_id, object_url, callback);
+                object_id, object_size, object_url, callback);
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
