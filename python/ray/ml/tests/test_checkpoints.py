@@ -7,6 +7,7 @@ from typing import Any
 
 import ray
 from ray.ml.checkpoint import Checkpoint
+from ray.ml.utils.remote_storage import clear_bucket
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -230,6 +231,18 @@ class CheckpointsConversionTest(unittest.TestCase):
         self.assertTrue(checkpoint._uri)
 
         self._assert_fs_checkpoint(checkpoint)
+
+    def test_fs_clear_bucket(self):
+        """Test that clear bucket utility works"""
+        checkpoint = self._prepare_fs_checkpoint()
+
+        # Convert into dict checkpoint
+        location = checkpoint.to_uri(self.cloud_uri)
+        clear_bucket(location)
+
+        checkpoint = Checkpoint.from_uri(location)
+        with self.assertRaises(FileNotFoundError):
+            checkpoint.to_directory()
 
 
 class CheckpointsSerdeTest(unittest.TestCase):
