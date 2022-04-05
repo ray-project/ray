@@ -42,8 +42,11 @@ class SubscriberState;
 
 /// State for an entity / topic in a pub/sub channel.
 struct EntityState {
+  // Tracks inflight messages.
   std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages;
+  // Size of each inflight message.
   std::queue<int64_t> message_sizes;
+  // Total size of inflight messages.
   int64_t total_size = 0;
 
   /// Subscribers for the entity.

@@ -26,26 +26,42 @@ bool EntityState::Publish(const rpc::PubMessage &pub_message) {
   if (subscribers.empty()) {
     return false;
   }
-  while (!pending_messages.empty() && pending_messages.front().lock() == nullptr) {
+
+  const int64_t message_size = pub_message.ByteSizeLong();
+
+  while (!pending_messages.empty()) {
+    // NOTE: if atomic ref counting is too expensive, it should be possible
+    // to implement inflight message tracking across subscribers with a
+    // LRU-like data structure.
+    auto front_msg = pending_messages.front().lock();
+    if (front_msg == nullptr) {
+      // The message has no other reference.
+    } else if (total_size + message_size >
+               RayConfig::instance().publisher_entity_buffer_max_bytes()) {
+      RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
+          << "Pub/sub message is dropped to stay under the maximum configured buffer "
+             "size="
+          << absl::StrCat(RayConfig::instance().publisher_entity_buffer_max_bytes(),
+                          "B, ")
+          << absl::StrCat("incoming msg size=",
+                          message_size,
+                          "B, current buffer size=",
+                          total_size,
+                          "B")
+          << ". Dropping the oldest message:\n"
+          << front_msg->DebugString();
+      // Clear the oldest message first, because presumably newer messages are more
+      // useful. Clearing the shared message should be ok, since Publisher is single
+      // threaded. NOTE: using the Clear() method does not release the memory used.
+      *front_msg = rpc::PubMessage();
+    } else {
+      // No message to drop.
+      break;
+    }
+
     pending_messages.pop();
     total_size -= message_sizes.front();
     message_sizes.pop();
-  }
-
-  const auto message_size = pub_message.ByteSizeLong();
-  if (total_size + message_size >
-      RayConfig::instance().publisher_entity_buffer_max_bytes()) {
-    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
-        << "Pub/sub message cannot be buffered, otherwise the maximum configured "
-        << "buffer size "
-        << absl::StrCat(
-               "(", RayConfig::instance().publisher_entity_buffer_max_bytes(), "B)")
-        << " would be exceed "
-        << absl::StrCat(
-               "(msg size=", message_size, "B, current buffer size=", total_size, "B)")
-        << ". Message:\n"
-        << pub_message.DebugString();
-    return false;
   }
 
   const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
@@ -223,7 +239,12 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
   if (!force_noop) {
     for (int i = 0; i < publish_batch_size_ && !mailbox_.empty(); ++i) {
-      *long_polling_connection_->reply->add_pub_messages() = *mailbox_.front();
+      const rpc::PubMessage &msg = *mailbox_.front();
+      // Avoid sending empty message to the subscriber. The message might have been
+      // cleared because the subscribed entity's buffer was full.
+      if (msg.inner_message_case() != rpc::PubMessage::INNER_MESSAGE_NOT_SET) {
+        *long_polling_connection_->reply->add_pub_messages() = msg;
+      }
       mailbox_.pop();
     }
   }

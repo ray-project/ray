@@ -18,6 +18,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 
@@ -82,6 +83,17 @@ class PublisherTest : public ::testing::Test {
         /*subscriber_timeout_ms=*/1000,
         /*publish_batch_size=*/1000));
     return subscribers_.back().get();
+  }
+
+  rpc::PubsubLongPollingReply FlushSubscriber(SubscriberState *subscriber) {
+    rpc::PubsubLongPollingRequest request;
+    rpc::PubsubLongPollingReply reply;
+    rpc::SendReplyCallback send_reply_callback = [](Status status,
+                                                    std::function<void()> success,
+                                                    std::function<void()> failure) {};
+    subscriber->ConnectToSubscriber(request, &reply, send_reply_callback);
+    subscriber->PublishIfPossible();
+    return reply;
   }
 
   instrumented_io_context io_service_;
@@ -1008,6 +1020,97 @@ TEST_F(PublisherTest, TestPublishFailure) {
       rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_id_, oid.Binary());
   publisher_->PublishFailure(rpc::ChannelType::WORKER_OBJECT_EVICTION, oid.Binary());
   ASSERT_EQ(failed_ids[0], oid);
+}
+
+class ScopedEntityBufferMaxBytes {
+ public:
+  ScopedEntityBufferMaxBytes(int64_t max_bytes)
+      : prev_max_bytes_(RayConfig::instance().publisher_entity_buffer_max_bytes()) {
+    RayConfig::instance().publisher_entity_buffer_max_bytes() = max_bytes;
+  }
+
+  ~ScopedEntityBufferMaxBytes() {
+    RayConfig::instance().publisher_entity_buffer_max_bytes() = prev_max_bytes_;
+  }
+
+ private:
+  const int64_t prev_max_bytes_;
+};
+
+TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
+  ScopedEntityBufferMaxBytes max_bytes(10000);
+
+  SubscriptionIndex subscription_index;
+  auto job_id = JobID::FromInt(1234);
+  auto *subscriber = CreateSubscriber();
+  // Subscribe to job_id.
+  subscription_index.AddEntry(job_id.Binary(), subscriber);
+
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id(job_id.Binary());
+  pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'a'));
+
+  // Buffer is available.
+  EXPECT_TRUE(subscription_index.Publish(pub_message));
+
+  // Buffer is still available.
+  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'b'));
+  EXPECT_TRUE(subscription_index.Publish(pub_message));
+
+  // Buffer is full.
+  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'c'));
+  EXPECT_TRUE(subscription_index.Publish(pub_message));
+
+  // Subscriber receives the last two messages. 1st message is dropped.
+  auto reply = FlushSubscriber(subscriber);
+  ASSERT_EQ(reply.pub_messages().size(), 2);
+  EXPECT_EQ(reply.pub_messages(0).error_info_message().error_message(),
+            std::string(4000, 'b'));
+  EXPECT_EQ(reply.pub_messages(1).error_info_message().error_message(),
+            std::string(4000, 'c'));
+
+  // A message larger than the buffer limit can still be published.
+  pub_message.mutable_error_info_message()->set_error_message(std::string(14000, 'd'));
+  EXPECT_TRUE(subscription_index.Publish(pub_message));
+  reply = FlushSubscriber(subscriber);
+  ASSERT_EQ(reply.pub_messages().size(), 1);
+  EXPECT_EQ(reply.pub_messages(0).error_info_message().error_message(),
+            std::string(14000, 'd'));
+}
+
+TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
+  ScopedEntityBufferMaxBytes max_bytes(10000);
+
+  SubscriptionIndex subscription_index;
+  auto *subscriber = CreateSubscriber();
+  // Subscribe to all entities.
+  subscription_index.AddEntry("", subscriber);
+
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id("aaa");
+  pub_message.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'a'));
+
+  // Buffer is available.
+  EXPECT_TRUE(subscription_index.Publish(pub_message));
+
+  // Buffer is still available.
+  pub_message.set_key_id("bbb");
+  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'b'));
+  EXPECT_TRUE(subscription_index.Publish(pub_message));
+
+  // Buffer is full.
+  pub_message.set_key_id("ccc");
+  pub_message.mutable_error_info_message()->set_error_message(std::string(4000, 'c'));
+  EXPECT_TRUE(subscription_index.Publish(pub_message));
+
+  auto reply = FlushSubscriber(subscriber);
+  ASSERT_EQ(reply.pub_messages().size(), 2);
+  EXPECT_EQ(reply.pub_messages(0).error_info_message().error_message(),
+            std::string(4000, 'b'));
+  EXPECT_EQ(reply.pub_messages(1).error_info_message().error_message(),
+            std::string(4000, 'c'));
 }
 
 }  // namespace pubsub
