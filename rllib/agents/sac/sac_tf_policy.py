@@ -2,6 +2,7 @@
 TensorFlow policy class used for SAC.
 """
 
+import copy
 import gym
 from gym.spaces import Box, Discrete
 from functools import partial
@@ -67,9 +68,9 @@ def build_sac_model(
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
     # settings.
-    policy_model_config = MODEL_DEFAULTS.copy()
+    policy_model_config = copy.deepcopy(MODEL_DEFAULTS)
     policy_model_config.update(config["policy_model"])
-    q_model_config = MODEL_DEFAULTS.copy()
+    q_model_config = copy.deepcopy(MODEL_DEFAULTS)
     q_model_config.update(config["Q_model"])
 
     default_model_cls = SACTorchModel if config["framework"] == "torch" else SACTFModel

@@ -324,10 +324,10 @@ def call_ray_stop_only():
 # Used to test both Ray Client and non-Ray Client codepaths.
 # Usage: In your test, call `ray.init(address)`.
 @pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster, request):
+def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"

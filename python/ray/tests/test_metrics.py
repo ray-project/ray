@@ -15,6 +15,8 @@ from ray._private.utils import init_grpc_channel
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
+_WIN32 = os.name == "nt"
+
 
 def test_worker_stats(shutdown_only):
     ray.init(num_cpus=1, include_dashboard=True)
@@ -88,7 +90,10 @@ def test_worker_stats(shutdown_only):
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
-    timeout_seconds = 20
+    if _WIN32:
+        timeout_seconds = 40
+    else:
+        timeout_seconds = 20
     start_time = time.time()
     while True:
         if time.time() - start_time > timeout_seconds:

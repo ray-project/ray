@@ -27,22 +27,18 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  public:
   GlobalStateAccessorTest() {
     if (GetParam()) {
-      RayConfig::instance().bootstrap_with_gcs() = true;
       RayConfig::instance().gcs_storage() = "memory";
-      RayConfig::instance().gcs_grpc_based_pubsub() = true;
     } else {
-      RayConfig::instance().bootstrap_with_gcs() = false;
       RayConfig::instance().gcs_storage() = "redis";
-      RayConfig::instance().gcs_grpc_based_pubsub() = false;
     }
 
-    if (!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!GetParam()) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }
   }
 
   virtual ~GlobalStateAccessorTest() {
-    if (!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!GetParam()) {
       TestSetupUtil::ShutDownRedisServers();
     }
   }
@@ -50,21 +46,18 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
-    if (RayConfig::instance().bootstrap_with_gcs()) {
-      config.grpc_server_port = 6379;
-      config.grpc_pubsub_enabled = true;
-    } else {
-      config.grpc_server_port = 0;
-      config.redis_address = "127.0.0.1";
-      config.enable_sharding_conn = false;
-      config.grpc_pubsub_enabled = false;
-      config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    }
+
+    config.grpc_server_port = 6379;
 
     config.node_ip_address = "127.0.0.1";
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
 
+    if (!GetParam()) {
+      config.redis_address = "127.0.0.1";
+      config.enable_sharding_conn = false;
+      config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    }
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
@@ -77,16 +70,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client and global state.
-    if (RayConfig::instance().bootstrap_with_gcs()) {
-      gcs::GcsClientOptions options("127.0.0.1:6379");
-      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-      global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
-    } else {
-      gcs::GcsClientOptions options(
-          config.redis_address, config.redis_port, config.redis_password);
-      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-      global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
-    }
+    gcs::GcsClientOptions options("127.0.0.1:6379");
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
+    global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
     RAY_CHECK(global_state_->Connect());
@@ -100,7 +86,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     gcs_server_->Stop();
-    if (!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!GetParam()) {
       TestSetupUtil::FlushAllRedisServers();
     }
 
