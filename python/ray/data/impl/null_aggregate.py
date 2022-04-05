@@ -185,7 +185,7 @@ def _null_wrap_accumulate_row(
 
 def _null_wrap_accumulate_block(
     ignore_nulls: bool,
-    accum_block: Callable[[BlockAccessor[T]], AggType],
+    accum_block: Callable[[AggType, BlockAccessor[T]], AggType],
 ) -> Callable[[AggType, BlockAccessor[T]], AggType]:
     """
     Wrap vectorized aggregate function with null handling.
@@ -206,7 +206,8 @@ def _null_wrap_accumulate_block(
     """
 
     def _accum_block_null(a: AggType, block_acc: BlockAccessor[T]) -> AggType:
-        ret = accum_block(block_acc)
+        a_data, _ = _unwrap_acc(a)
+        ret = accum_block(a_data, block_acc)
         if ret is None:
             if ignore_nulls:
                 # This can happen if we're ignoring nulls but the entire block only

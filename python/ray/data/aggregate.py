@@ -51,9 +51,9 @@ class AggregateFn(object):
                 accumulator. Exactly one of accumulate_row and accumulate_block must
                 be provided.
             accumulate_block: This is used to calculate the aggregation for a
-                single block, and is vectorized alternative to accumulate. This will be
-                given a base accumulation and the entire block, allowing for
-                vectorized aggregation of the block. Exactly one of accumulate_row and
+                single block, and is vectorized alternative to accumulate_row. This will
+                be given a base accumulator and the entire block, allowing for
+                vectorized accumulation of the block. Exactly one of accumulate_row and
                 accumulate_block must be provided.
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
@@ -100,7 +100,9 @@ class Count(AggregateFn):
     def __init__(self):
         super().__init__(
             init=lambda k: 0,
-            accumulate_row=lambda a, r: a + 1,
+            accumulate_block=(
+                lambda a, block: a + BlockAccessor.for_block(block).num_rows()
+            ),
             merge=lambda a1, a2: a1 + a2,
             name="count()",
         )
@@ -113,12 +115,21 @@ class Sum(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
+        def merge(a1: AggType, a2: AggType) -> AggType:
+            return a1 + a2
+
+        def accumulate_block(a: AggType, block: Block) -> AggType:
+            ret = BlockAccessor.for_block(block).sum(on, ignore_nulls)
+            if ret is not None:
+                ret = merge(a, ret)
+            return ret
+
         super().__init__(
             init=_null_wrap_init(lambda k: 0),
-            merge=_null_wrap_merge(ignore_nulls, lambda a1, a2: a1 + a2),
+            merge=_null_wrap_merge(ignore_nulls, merge),
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                lambda block: BlockAccessor.for_block(block).sum(on, ignore_nulls),
+                accumulate_block,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"sum({str(on)})"),
@@ -132,12 +143,20 @@ class Min(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
+        merge = min
+
+        def accumulate_block(a: AggType, block: Block) -> AggType:
+            ret = BlockAccessor.for_block(block).min(on, ignore_nulls)
+            if ret is not None:
+                ret = merge(a, ret)
+            return ret
+
         super().__init__(
             init=_null_wrap_init(lambda k: float("inf")),
-            merge=_null_wrap_merge(ignore_nulls, min),
+            merge=_null_wrap_merge(ignore_nulls, merge),
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                lambda block: BlockAccessor.for_block(block).min(on, ignore_nulls),
+                accumulate_block,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"min({str(on)})"),
@@ -151,12 +170,20 @@ class Max(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
+        merge = max
+
+        def accumulate_block(a: AggType, block: Block) -> AggType:
+            ret = BlockAccessor.for_block(block).max(on, ignore_nulls)
+            if ret is not None:
+                ret = merge(a, ret)
+            return ret
+
         super().__init__(
             init=_null_wrap_init(lambda k: float("-inf")),
-            merge=_null_wrap_merge(ignore_nulls, max),
+            merge=_null_wrap_merge(ignore_nulls, merge),
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                lambda block: BlockAccessor.for_block(block).max(on, ignore_nulls),
+                accumulate_block,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"max({str(on)})"),
@@ -170,19 +197,20 @@ class Mean(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
-        def vectorized_mean(block: Block[T]) -> AggType:
+        def merge(a1: AggType, a2: AggType) -> AggType:
+            return [a1[0] + a2[0], a1[1] + a2[1]]
+
+        def vectorized_mean(a: AggType, block: Block[T]) -> AggType:
             block_acc = BlockAccessor.for_block(block)
             sum_ = block_acc.sum(on, ignore_nulls)
             if sum_ is None:
                 return None
             count = block_acc.count(on, ignore_nulls)
-            return [sum_, count]
+            return merge(a, [sum_, count])
 
         super().__init__(
             init=_null_wrap_init(lambda k: [0, 0]),
-            merge=_null_wrap_merge(
-                ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
-            ),
+            merge=_null_wrap_merge(ignore_nulls, merge),
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
                 vectorized_mean,
@@ -213,18 +241,6 @@ class Std(_AggregateOnKeyBase):
     ):
         self._set_key_fn(on)
 
-        def vectorized_agg(block: Block[T]) -> AggType:
-            block_acc = BlockAccessor.for_block(block)
-            count = block_acc.count(on, ignore_nulls)
-            if count == 0:
-                return None
-            sum_ = block_acc.sum(on, ignore_nulls)
-            if sum_ is None:
-                return None
-            mean = sum_ / count
-            M2 = block_acc.sum_of_squared_diffs_from_mean(on, ignore_nulls, mean)
-            return [M2, mean, count]
-
         def merge(a: List[float], b: List[float]):
             # Merges two accumulations into one.
             # See
@@ -242,6 +258,18 @@ class Std(_AggregateOnKeyBase):
             M2 = M2_a + M2_b + (delta ** 2) * count_a * count_b / count
             return [M2, mean, count]
 
+        def vectorized_std(a: AggType, block: Block[T]) -> AggType:
+            block_acc = BlockAccessor.for_block(block)
+            count = block_acc.count(on, ignore_nulls)
+            if count == 0:
+                return None
+            sum_ = block_acc.sum(on, ignore_nulls)
+            if sum_ is None:
+                return None
+            mean = sum_ / count
+            M2 = block_acc.sum_of_squared_diffs_from_mean(on, ignore_nulls, mean)
+            return merge(a, [M2, mean, count])
+
         def finalize(a: List[float]):
             # Compute the final standard deviation from the accumulated
             # sum of squared differences from current mean and the count.
@@ -255,7 +283,7 @@ class Std(_AggregateOnKeyBase):
             merge=_null_wrap_merge(ignore_nulls, merge),
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                vectorized_agg,
+                vectorized_std,
             ),
             finalize=_null_wrap_finalize(finalize),
             name=(f"std({str(on)})"),
