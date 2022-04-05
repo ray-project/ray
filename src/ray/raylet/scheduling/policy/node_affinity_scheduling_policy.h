@@ -21,11 +21,16 @@
 
 namespace ray {
 namespace raylet_scheduling_policy {
+
+// Select the node based on the user specified node affinity.
+// If soft is false, only the specified node might be selected.
+// If soft is true and the specified node doesn't exist or is infeasible,
+// hybrid policy will be used to select another node.
 class NodeAffinitySchedulingPolicy : public ISchedulingPolicy {
  public:
   NodeAffinitySchedulingPolicy(scheduling::NodeID local_node_id,
-                       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                       std::function<bool(scheduling::NodeID)> is_node_alive)
+                               const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
+                               std::function<bool(scheduling::NodeID)> is_node_alive)
       : local_node_id_(local_node_id),
         nodes_(nodes),
         is_node_alive_(is_node_alive),

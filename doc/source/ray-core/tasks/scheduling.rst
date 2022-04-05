@@ -66,21 +66,21 @@ especially in a multi-tenant cluster: for example, an application won't know wha
         [spread_function.remote() for i in range(100)]
 
         @ray.remote
-        def node_function():
-            return 3
+        def node_affinity_function():
+            return ray.get_runtime_context().node_id.hex()
 
         # Only run the task on the local node.
-        node_function.options(
+        node_affinity_function.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 node_id = ray.get_runtime_context().node_id.hex(),
                 soft = False,
             )
         ).remote()
 
-        # Run the task on the remote node if possible.
-        node_function.options(
+        # Run the two node_affinity_function tasks on the same node if possible.
+        node_affinity_function.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id = remote_node_id,
+                node_id = ray.get(node_affinity_function.remote()),
                 soft = True,
             )
         ).remote()

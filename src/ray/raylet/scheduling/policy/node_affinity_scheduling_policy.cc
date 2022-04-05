@@ -17,21 +17,14 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(const ResourceRequest &resource_request,
-                                                  SchedulingOptions options) {
+scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(
+    const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type == SchedulingType::NODE_AFFINITY);
 
-  for (const auto &[node_id, node] : nodes_) {
-    if (node_id.Binary() != options.node_id) {
-      continue;
-    }
-    if (!is_node_alive_(node_id)) {
-      break;
-    }
-    if (!node.GetLocalView().IsFeasible(resource_request)) {
-      break;
-    }
-    return node_id;
+  scheduling::NodeID target_node_id = scheduling::NodeID(options.node_id);
+  if (nodes_.contains(target_node_id) && is_node_alive_(target_node_id) &&
+      nodes_.at(target_node_id).GetLocalView().IsFeasible(resource_request)) {
+    return target_node_id;
   }
 
   if (!options.soft) {
