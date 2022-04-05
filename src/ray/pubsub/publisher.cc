@@ -22,21 +22,21 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool EntityState::Publish(const rpc::PubMessage &pub_message) {
-  if (subscribers.empty()) {
+bool PublishToEntity(const rpc::PubMessage &pub_message, EntityState *entity) {
+  if (entity->subscribers.empty()) {
     return false;
   }
 
   const int64_t message_size = pub_message.ByteSizeLong();
 
-  while (!pending_messages.empty()) {
+  while (!entity->pending_messages.empty()) {
     // NOTE: if atomic ref counting is too expensive, it should be possible
     // to implement inflight message tracking across subscribers with a
     // LRU-like data structure.
-    auto front_msg = pending_messages.front().lock();
+    auto front_msg = entity->pending_messages.front().lock();
     if (front_msg == nullptr) {
       // The message has no other reference.
-    } else if (total_size + message_size >
+    } else if (entity->total_size + message_size >
                RayConfig::instance().publisher_entity_buffer_max_bytes()) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
           << "Pub/sub message is dropped to stay under the maximum configured buffer "
@@ -46,7 +46,7 @@ bool EntityState::Publish(const rpc::PubMessage &pub_message) {
           << absl::StrCat("incoming msg size=",
                           message_size,
                           "B, current buffer size=",
-                          total_size,
+                          entity->total_size,
                           "B")
           << ". Dropping the oldest message:\n"
           << front_msg->DebugString();
@@ -59,28 +59,28 @@ bool EntityState::Publish(const rpc::PubMessage &pub_message) {
       break;
     }
 
-    pending_messages.pop();
-    total_size -= message_sizes.front();
-    message_sizes.pop();
+    entity->pending_messages.pop();
+    entity->total_size -= entity->message_sizes.front();
+    entity->message_sizes.pop();
   }
 
   const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
-  pending_messages.push(msg);
-  total_size += message_size;
-  message_sizes.push(message_size);
+  entity->pending_messages.push(msg);
+  entity->total_size += message_size;
+  entity->message_sizes.push(message_size);
 
-  for (auto &[id, subscriber] : subscribers) {
+  for (auto &[id, subscriber] : entity->subscribers) {
     subscriber->QueueMessage(msg);
   }
   return true;
 }
 
 bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
-  const bool publish_to_all = subscribers_to_all_.Publish(pub_message);
+  const bool publish_to_all = PublishToEntity(pub_message, &subscribers_to_all_);
   bool publish_to_entity = false;
   auto it = entities_.find(pub_message.key_id());
   if (it != entities_.end()) {
-    publish_to_entity = it->second.Publish(pub_message);
+    publish_to_entity = PublishToEntity(pub_message, &it->second);
   }
   return publish_to_all || publish_to_entity;
 }
