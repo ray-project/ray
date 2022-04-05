@@ -5,7 +5,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 class RandomAgent(Trainer):
     """Trainer that produces random actions and never learns."""
@@ -41,6 +41,8 @@ class RandomAgent(Trainer):
             "timesteps_this_iter": steps,
         }
 # __sphinx_doc_end__
+# FIXME: We switched our code formatter from YAPF to Black. Check if we can enable code
+# formatting on this module and update the comment below. See issue #21318.
 # don't enable yapf after, it's buggy here
 
 

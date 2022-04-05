@@ -286,9 +286,7 @@ class ModelArguments:
         )
     )
     model_type: str = field(
-        metadata=dict(
-            help="Model type selected " "in the list: " + ", ".join(MODEL_TYPES)
-        )
+        metadata=dict(help="Model type selected in the list: " + ", ".join(MODEL_TYPES))
     )
     config_name: Optional[str] = field(
         default=None,
@@ -299,7 +297,7 @@ class ModelArguments:
     tokenizer_name: Optional[str] = field(
         default=None,
         metadata=dict(
-            help="Pretrained tokenizer name or path " "if not the same as model_name"
+            help="Pretrained tokenizer name or path if not the same as model_name"
         ),
     )
     cache_dir: Optional[str] = field(

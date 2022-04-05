@@ -29,15 +29,19 @@ class TrialScheduler:
     def supports_buffered_results(self):
         return self._supports_buffered_results
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str]) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], **spec
+    ) -> bool:
         """Pass search properties to scheduler.
 
         This method acts as an alternative to instantiating schedulers
         that react to metrics with their own `metric` and `mode` parameters.
 
         Args:
-            metric (str): Metric to optimize
-            mode (str): One of ["min", "max"]. Direction to optimize.
+            metric: Metric to optimize
+            mode: One of ["min", "max"]. Direction to optimize.
+            **spec: Any kwargs for forward compatiblity.
+                Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         if self._metric and metric:
             return False

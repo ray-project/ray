@@ -1,4 +1,5 @@
 from typing import List, Any
+import threading
 
 import ray
 from ray.ray_constants import env_integer
@@ -13,8 +14,12 @@ except ImportError:
     tqdm = None
     needs_warning = True
 
-# Whether progress bars are enabled in this process.
-_enabled: bool = not bool(env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0))
+# Whether progress bars are enabled in this thread.
+_enabled = not bool(env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0))
+
+# Used a signal to cancel execution.
+_canceled_threads = set()
+_canceled_threads_lock = threading.Lock()
 
 
 @PublicAPI
@@ -39,7 +44,7 @@ class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
     def __init__(self, name: str, total: int, position: int = 0):
-        if not _enabled:
+        if not _enabled or threading.current_thread() is not threading.main_thread():
             self._bar = None
         elif tqdm:
             self._bar = tqdm.tqdm(total=total, position=position)
@@ -47,25 +52,34 @@ class ProgressBar:
         else:
             global needs_warning
             if needs_warning:
-                print(
-                    "[dataset]: Run `pip install tqdm` to enable " "progress reporting."
-                )
+                print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
                 needs_warning = False
             self._bar = None
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
+        t = threading.current_thread()
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=False)
+            done, remaining = ray.wait(remaining, fetch_local=False, timeout=0.1)
             self.update(len(done))
+
+            with _canceled_threads_lock:
+                if t in _canceled_threads:
+                    break
 
     def fetch_until_complete(self, refs: List[ObjectRef]) -> List[Any]:
         ref_to_result = {}
         remaining = refs
+        t = threading.current_thread()
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=True)
+            done, remaining = ray.wait(remaining, fetch_local=True, timeout=0.1)
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
             self.update(len(done))
+
+            with _canceled_threads_lock:
+                if t in _canceled_threads:
+                    break
+
         return [ref_to_result[ref] for ref in refs]
 
     def set_description(self, name: str) -> None:
@@ -83,3 +97,9 @@ class ProgressBar:
 
     def __del__(self):
         self.close()
+
+    def __getstate__(self):
+        return {}
+
+    def __setstate__(self, state):
+        self._bar = None  # Progress bar is disabled on remote nodes.

@@ -3,11 +3,8 @@ import asyncio
 import logging
 import logging.handlers
 import os
-import platform
 import sys
-import socket
 import json
-import traceback
 
 try:
     from grpc import aio as aiogrpc
@@ -21,12 +18,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
-from ray._private.gcs_utils import (
-    GcsClient,
-    get_gcs_address_from_redis,
-    use_gcs_for_bootstrap,
-)
+from ray._private.gcs_utils import GcsClient
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
@@ -48,11 +40,9 @@ class DashboardAgent(object):
     def __init__(
         self,
         node_ip_address,
-        redis_address,
         dashboard_agent_port,
         gcs_address,
         minimal,
-        redis_password=None,
         temp_dir=None,
         session_dir=None,
         runtime_env_dir=None,
@@ -69,14 +59,8 @@ class DashboardAgent(object):
         self.ip = node_ip_address
         self.minimal = minimal
 
-        if use_gcs_for_bootstrap():
-            assert gcs_address is not None
-            self.gcs_address = gcs_address
-        else:
-            self.redis_address = dashboard_utils.address_tuple(redis_address)
-            self.redis_password = redis_password
-            self.aioredis_client = None
-            self.gcs_address = None
+        assert gcs_address is not None
+        self.gcs_address = gcs_address
 
         self.temp_dir = temp_dir
         self.session_dir = session_dir
@@ -97,16 +81,32 @@ class DashboardAgent(object):
             self.ppid = int(os.environ["RAY_RAYLET_PID"])
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
-        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
-        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
-        )
-        logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
+
+        # Setup raylet channel
         options = (("grpc.enable_http_proxy", 0),)
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
         )
+
+        # Setup grpc server
+        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
+        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
+        try:
+            self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+                self.server, f"{grpc_ip}:{self.dashboard_agent_port}"
+            )
+        except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
+            logger.exception(
+                "Failed to add port to grpc server. Agent will stay alive but "
+                "disable the grpc service."
+            )
+            self.server = None
+            self.grpc_port = None
+        else:
+            logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
 
         # If the agent is started as non-minimal version, http server should
         # be configured to communicate with the dashboard in a head node.
@@ -159,32 +159,11 @@ class DashboardAgent(object):
         if sys.platform not in ["win32", "cygwin"]:
             check_parent_task = create_task(_check_parent())
 
-        if not use_gcs_for_bootstrap():
-            # Create an aioredis client for all modules.
-            try:
-                self.aioredis_client = await dashboard_utils.get_aioredis_client(
-                    self.redis_address,
-                    self.redis_password,
-                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES,
-                )
-            except (socket.gaierror, ConnectionRefusedError):
-                logger.error(
-                    "Dashboard agent exiting: " "Failed to connect to redis at %s",
-                    self.redis_address,
-                )
-                sys.exit(-1)
-
         # Start a grpc asyncio server.
-        await self.server.start()
+        if self.server:
+            await self.server.start()
 
-        if not use_gcs_for_bootstrap():
-            gcs_address = await self.aioredis_client.get(
-                dashboard_consts.GCS_SERVER_ADDRESS
-            )
-            self.gcs_client = GcsClient(address=gcs_address.decode())
-        else:
-            self.gcs_client = GcsClient(address=self.gcs_address)
+        self.gcs_client = GcsClient(address=self.gcs_address)
         modules = self._load_modules()
 
         # Setup http server if necessary.
@@ -194,9 +173,18 @@ class DashboardAgent(object):
             # Http server is not started in the minimal version because
             # it requires additional dependencies that are not
             # included in the minimal ray package.
-            self.http_server = await self._configure_http_server(modules)
+            try:
+                self.http_server = await self._configure_http_server(modules)
+            except Exception:
+                # TODO(SongGuyang): Catch the exception here because there is
+                # port conflict issue which brought from static port. We should
+                # remove this after we find better port resolution.
+                logger.exception(
+                    "Failed to start http server. Agent will stay alive but "
+                    "disable the http service."
+                )
 
-        # Write the dashboard agent port to redis.
+        # Write the dashboard agent port to kv.
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
@@ -239,10 +227,7 @@ if __name__ == "__main__":
         help="the IP address of this node.",
     )
     parser.add_argument(
-        "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
-    )
-    parser.add_argument(
-        "--redis-address", required=True, type=str, help="The address to use for Redis."
+        "--gcs-address", required=True, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
         "--metrics-export-port",
@@ -282,13 +267,6 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="The socket path of the raylet process",
-    )
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="The password to use for Redis",
     )
     parser.add_argument(
         "--logging-level",
@@ -384,11 +362,9 @@ if __name__ == "__main__":
 
         agent = DashboardAgent(
             args.node_ip_address,
-            args.redis_address,
             args.dashboard_agent_port,
             args.gcs_address,
             args.minimal,
-            redis_password=args.redis_password,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             runtime_env_dir=args.runtime_env_dir,
@@ -405,55 +381,6 @@ if __name__ == "__main__":
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
-    except Exception as e:
-        # All these env vars should be available because
-        # they are provided by the parent raylet.
-        restart_count = os.environ["RESTART_COUNT"]
-        max_restart_count = os.environ["MAX_RESTART_COUNT"]
-        raylet_pid = os.environ["RAY_RAYLET_PID"]
-        node_ip = args.node_ip_address
-        if restart_count >= max_restart_count:
-            # Agent is failed to be started many times.
-            # Push an error to all drivers, so that users can know the
-            # impact of the issue.
-            redis_client = None
-            gcs_publisher = None
-            if gcs_pubsub_enabled():
-                if use_gcs_for_bootstrap():
-                    gcs_publisher = GcsPublisher(args.gcs_address)
-                else:
-                    redis_client = ray._private.services.create_redis_client(
-                        args.redis_address, password=args.redis_password
-                    )
-                    gcs_publisher = GcsPublisher(
-                        address=get_gcs_address_from_redis(redis_client)
-                    )
-            else:
-                redis_client = ray._private.services.create_redis_client(
-                    args.redis_address, password=args.redis_password
-                )
-
-            traceback_str = ray._private.utils.format_error_message(
-                traceback.format_exc()
-            )
-            message = (
-                f"(ip={node_ip}) "
-                f"The agent on node {platform.uname()[1]} failed to "
-                f"be restarted {max_restart_count} "
-                "times. There are 3 possible problems if you see this error."
-                "\n  1. The dashboard might not display correct "
-                "information on this node."
-                "\n  2. Metrics on this node won't be reported."
-                "\n  3. runtime_env APIs won't work."
-                "\nCheck out the `dashboard_agent.log` to see the "
-                "detailed failure messages."
-            )
-            ray._private.utils.publish_error_to_driver(
-                ray_constants.DASHBOARD_AGENT_DIED_ERROR,
-                message,
-                redis_client=redis_client,
-                gcs_publisher=gcs_publisher,
-            )
-            logger.error(message)
-        logger.exception(e)
+    except Exception:
+        logger.exception("Agent is working abnormally. It will exit immediately.")
         exit(1)

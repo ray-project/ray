@@ -1,5 +1,6 @@
 import dis
 import hashlib
+import os
 import importlib
 import inspect
 import json
@@ -177,13 +178,8 @@ class FunctionActorManager:
                     break
         # Notify all subscribers that there is a new function exported. Note
         # that the notification doesn't include any actual data.
-        if self._worker.gcs_pubsub_enabled:
-            # TODO(mwtian) implement per-job notification here.
-            self._worker.gcs_publisher.publish_function_key(key)
-        else:
-            self._worker.redis_client.lpush(
-                make_exports_prefix(self._worker.current_job_id), "a"
-            )
+        # TODO(mwtian) implement per-job notification here.
+        self._worker.gcs_publisher.publish_function_key(key)
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
@@ -403,12 +399,14 @@ class FunctionActorManager:
                     break
             if time.time() - start_time > timeout:
                 warning_message = (
-                    "This worker was asked to execute a "
-                    "function that it does not have "
-                    "registered. You may have to restart "
-                    "Ray."
+                    "This worker was asked to execute a function "
+                    f"that has not been registered ({function_descriptor}, "
+                    f"node={self._worker.node_ip_address}, "
+                    f"worker_id={self._worker.worker_id.hex()}, "
+                    f"pid={os.getpid()}). You may have to restart Ray."
                 )
                 if not warning_sent:
+                    logger.error(warning_message)
                     ray._private.utils.push_error_to_driver(
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
@@ -416,6 +414,9 @@ class FunctionActorManager:
                         job_id=job_id,
                     )
                 warning_sent = True
+            # Try importing in case the worker did not get notified, or the
+            # importer thread did not run.
+            self._worker.import_thread._do_importing()
             time.sleep(0.001)
 
     def _publish_actor_class_to_key(self, key, actor_class_info):

@@ -25,7 +25,6 @@ from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env, ASYNC_RESET_RETURN
 from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, MonitorEnv
 from ray.rllib.models.preprocessors import Preprocessor
@@ -37,6 +36,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter import Filter
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import clip_action, unsquash_action, unbatch
 from ray.rllib.utils.typing import (
@@ -52,14 +52,12 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from gym.envs.classic_control.rendering import SimpleImageViewer
     from ray.rllib.agents.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
-    from ray.rllib.utils import try_import_tf
 
-    _, tf, _ = try_import_tf()
-    from gym.envs.classic_control.rendering import SimpleImageViewer
-
+tf1, tf, _ = try_import_tf()
 logger = logging.getLogger(__name__)
 
 PolicyEvalData = namedtuple(
@@ -453,6 +451,14 @@ class AsyncSampler(threading.Thread, SamplerInput):
             raise e
 
     def _run(self):
+        # We are in a thread: Switch on eager execution mode, iff framework==tf2|tfe.
+        if (
+            tf1
+            and self.worker.policy_config.get("framework", "tf") in ["tf2", "tfe"]
+            and not tf1.executing_eagerly()
+        ):
+            tf1.enable_eager_execution()
+
         if self.blackhole_outputs:
             queue_putter = lambda x: None
             extra_batches_putter = lambda x: None
@@ -609,21 +615,14 @@ def _env_runner(
         horizon = float("inf")
         logger.debug("No episode horizon specified, assuming inf.")
 
-    # Pool of batch builders, which can be shared across episodes to pack
-    # trajectory data.
-    batch_builder_pool: List[MultiAgentSampleBatchBuilder] = []
-
-    def get_batch_builder():
-        if batch_builder_pool:
-            return batch_builder_pool.pop()
-        else:
-            return None
-
     def new_episode(env_id):
         episode = Episode(
             worker.policy_map,
             worker.policy_mapping_fn,
-            get_batch_builder,
+            # SimpleListCollector will find or create a
+            # simple_list_collector._PolicyCollector as batch_builder
+            # for this episode later. Here we simply provide a None factory.
+            lambda: None,  # batch_builder_factory
             extra_batch_callback,
             env_id=env_id,
             worker=worker,

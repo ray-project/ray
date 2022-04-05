@@ -14,7 +14,6 @@ from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import cluster_not_supported
-import ray._private.gcs_pubsub as gcs_pubsub
 from ray._private.test_utils import (
     init_error_pubsub,
     get_error_message,
@@ -425,43 +424,12 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         test_process_failure(use_actors)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular",
-    [{"_system_config": {"gcs_rpc_server_reconnect_timeout_s": 100}}],
-    indirect=True,
-)
-@pytest.mark.skipif(
-    gcs_pubsub.gcs_pubsub_enabled(),
-    reason="Logs are streamed via GCS pubsub when it is enabled, so logs "
-    "cannot be delivered after GCS is killed.",
-)
-def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
-    # Get gcs server pid to send a signal.
-    all_processes = ray.worker._global_node.all_processes
-    gcs_server_process = all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
-
-    # TODO(mwtian): make sure logs are delivered after GCS is restarted.
-    if sys.platform == "win32":
-        sig = 9
-    else:
-        sig = signal.SIGBUS
-    os.kill(gcs_server_pid, sig)
-    # wait for 30 seconds, for the 1st batch of logs.
-    batches = get_log_batch(log_pubsub, 1, timeout=30)
-    assert gcs_server_process.poll() is not None
-    if sys.platform != "win32":
-        # Windows signal handler does not run when process is terminated
-        assert len(batches) == 1
-        assert batches[0]["pid"] == "gcs_server", batches
-
-
 def test_list_named_actors_timeout(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         # defer for 3s
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "ActorInfoGcsService.grpc_server.ListNamedActors" "=3000000:3000000",
+            "ActorInfoGcsService.grpc_server.ListNamedActors=3000000:3000000",
         )
         ray.init(_system_config={"gcs_server_request_timeout_seconds": 1})
 

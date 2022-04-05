@@ -1,6 +1,7 @@
 import logging
 from typing import Type
 
+from ray.rllib.agents.bandit.bandit_tf_policy import BanditTFPolicy
 from ray.rllib.agents.bandit.bandit_torch_policy import BanditTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.policy.policy import Policy
@@ -9,12 +10,12 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # No remote workers by default.
     "num_workers": 0,
-    "framework": "torch",  # Only PyTorch supported so far.
+    "framework": "torch",
 
     # Do online learning one step at a time.
     "rollout_fragment_length": 1,
@@ -26,7 +27,7 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 100,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class BanditLinTSTrainer(Trainer):
@@ -46,7 +47,12 @@ class BanditLinTSTrainer(Trainer):
 
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
-        return BanditTorchPolicy
+        if config["framework"] == "torch":
+            return BanditTorchPolicy
+        elif config["framework"] == "tf2":
+            return BanditTFPolicy
+        else:
+            raise NotImplementedError()
 
 
 class BanditLinUCBTrainer(Trainer):
@@ -63,4 +69,9 @@ class BanditLinUCBTrainer(Trainer):
 
     @override(Trainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
-        return BanditTorchPolicy
+        if config["framework"] == "torch":
+            return BanditTorchPolicy
+        elif config["framework"] == "tf2":
+            return BanditTFPolicy
+        else:
+            raise NotImplementedError()

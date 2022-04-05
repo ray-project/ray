@@ -11,11 +11,19 @@ def requests_version(request):
 
 requests_version.options(
     name="25",
-    ray_actor_options={"runtime_env": {"pip": ["ray[serve]", "requests==2.25.1"]}},
+    ray_actor_options={
+        "runtime_env": {
+            "pip": {"packages": ["ray[serve]", "requests==2.25.1"], "pip_check": False}
+        }
+    },
 ).deploy()
 requests_version.options(
     name="26",
-    ray_actor_options={"runtime_env": {"pip": ["ray[serve]", "requests==2.26.0"]}},
+    ray_actor_options={
+        "runtime_env": {
+            "pip": {"packages": ["ray[serve]", "requests==2.26.0"], "pip_check": False}
+        }
+    },
 ).deploy()
 
 assert requests.get("http://127.0.0.1:8000/25").text == "2.25.1"

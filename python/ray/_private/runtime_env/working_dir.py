@@ -2,9 +2,9 @@ import logging
 import os
 from typing import Any, Dict, Optional
 from pathlib import Path
+import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
-from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
@@ -24,8 +24,9 @@ default_logger = logging.getLogger(__name__)
 
 def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
-    scratch_dir: str,
+    scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
+    upload_fn=None,
 ) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
 
@@ -70,17 +71,36 @@ def upload_working_dir_if_needed(
         upload_package_to_gcs(pkg_uri, package_path.read_bytes())
         runtime_env["working_dir"] = pkg_uri
         return runtime_env
+    if upload_fn is None:
+        upload_package_if_needed(
+            working_dir_uri,
+            scratch_dir,
+            working_dir,
+            include_parent_dir=False,
+            excludes=excludes,
+            logger=logger,
+        )
+    else:
+        upload_fn(working_dir, excludes=excludes)
 
-    upload_package_if_needed(
-        working_dir_uri,
-        scratch_dir,
-        working_dir,
-        include_parent_dir=False,
-        excludes=excludes,
-        logger=logger,
-    )
     runtime_env["working_dir"] = working_dir_uri
     return runtime_env
+
+
+def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
+    """Insert the path as the first entry in PYTHONPATH in the runtime env.
+
+    This is compatible with users providing their own PYTHONPATH in env_vars,
+    and is also compatible with the existing PYTHONPATH in the cluster.
+
+    The import priority is as follows:
+    this python_path arg > env_vars PYTHONPATH > existing cluster env PYTHONPATH.
+    """
+    if "PYTHONPATH" in context.env_vars:
+        python_path += os.pathsep + context.env_vars["PYTHONPATH"]
+    if "PYTHONPATH" in os.environ:
+        python_path += os.pathsep + os.environ["PYTHONPATH"]
+    context.env_vars["PYTHONPATH"] = python_path
 
 
 class WorkingDirManager:
@@ -103,21 +123,31 @@ class WorkingDirManager:
 
         return local_dir_size
 
-    def get_uri(self, runtime_env: RuntimeEnv) -> Optional[str]:
+    def get_uri(self, runtime_env: "RuntimeEnv") -> Optional[str]:  # noqa: F821
         working_dir_uri = runtime_env.working_dir()
         if working_dir_uri != "":
             return working_dir_uri
         return None
 
-    def create(
+    async def create(
         self,
         uri: str,
         runtime_env: dict,
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
-        local_dir = download_and_unpack_package(uri, self._resources_dir, logger=logger)
-        return get_directory_size_bytes(local_dir)
+        # Currently create method is still a sync process, to avoid blocking
+        # the loop, need to run this function in another thread.
+        # TODO(Catch-Bull): Refactor method create into an async process, and
+        # make this method running in current loop.
+        def _create():
+            local_dir = download_and_unpack_package(
+                uri, self._resources_dir, logger=logger
+            )
+            return get_directory_size_bytes(local_dir)
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _create)
 
     def modify_context(
         self, uri: Optional[str], runtime_env_dict: Dict, context: RuntimeEnvContext
@@ -134,10 +164,4 @@ class WorkingDirManager:
             )
 
         context.command_prefix += [f"cd {local_dir}"]
-
-        # Insert the working_dir as the first entry in PYTHONPATH. This is
-        # compatible with users providing their own PYTHONPATH in env_vars.
-        python_path = str(local_dir)
-        if "PYTHONPATH" in context.env_vars:
-            python_path += os.pathsep + context.env_vars["PYTHONPATH"]
-        context.env_vars["PYTHONPATH"] = python_path
+        set_pythonpath_in_context(python_path=str(local_dir), context=context)

@@ -11,7 +11,6 @@ import copy
 import numpy as np
 import logging
 import collections
-from numbers import Real
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -21,6 +20,14 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
+from ray.autoscaler._private.util import (
+    is_placement_group_resource,
+    NodeType,
+    NodeTypeConfigDict,
+    ResourceDict,
+    NodeID,
+    NodeIP,
+)
 from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE,
     NODE_KIND_UNMANAGED,
@@ -36,21 +43,6 @@ logger = logging.getLogger(__name__)
 
 # The minimum number of nodes to launch concurrently.
 UPSCALING_INITIAL_NUM_NODES = 5
-
-# e.g., cpu_4_ondemand.
-NodeType = str
-
-# e.g., {"resources": ..., "max_workers": ...}.
-NodeTypeConfigDict = str
-
-# e.g., {"GPU": 1}.
-ResourceDict = Dict[str, Real]
-
-# e.g., "node-1".
-NodeID = str
-
-# e.g., "127.0.0.1".
-NodeIP = str
 
 
 class ResourceDemandScheduler:
@@ -822,18 +814,16 @@ def get_nodes_for(
 
         # Give up, no feasible node.
         if not utilization_scores:
-            # TODO (Alex): We will hit this case every time a placement group
-            # starts up because placement groups are scheduled via custom
-            # resources. This will behave properly with the current utilization
-            # score heuristic, but it's a little dangerous and misleading.
-            logger.warning(
-                f"The autoscaler could not find a node type to satisfy the "
-                f"request: {resources}. If this request is related to "
-                f"placement groups the resource request will resolve itself, "
-                f"otherwise please specify a node type with the necessary "
-                f"resource "
-                f"https://docs.ray.io/en/master/cluster/autoscaling.html#multiple-node-type-autoscaling."  # noqa: E501
-            )
+            if not any(
+                is_placement_group_resource(resource)
+                for resources_dict in resources
+                for resource in resources_dict
+            ):
+                logger.warning(
+                    f"The autoscaler could not find a node type to satisfy the "
+                    f"request: {resources}. Please specify a node type with the "
+                    f"necessary resources."
+                )
             break
 
         utilization_scores = sorted(utilization_scores, reverse=True)

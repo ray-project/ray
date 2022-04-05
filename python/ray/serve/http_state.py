@@ -1,6 +1,6 @@
 import asyncio
 import random
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -28,13 +28,17 @@ class HTTPState:
         controller_name: str,
         detached: bool,
         config: HTTPOptions,
+        _override_controller_namespace: Optional[str] = None,
         # Used by unit testing
         _start_proxies_on_init: bool = True,
     ):
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(detached)
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached, _override_controller_namespace=_override_controller_namespace
+        )
         self._detached = detached
         self._config = config
+        self._override_controller_namespace = _override_controller_namespace
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
 
         # Will populate self.proxy_actors with existing actors.
@@ -108,6 +112,7 @@ class HTTPState:
                 proxy = HTTPProxyActor.options(
                     num_cpus=self._config.num_cpus,
                     name=name,
+                    namespace=self._controller_namespace,
                     lifetime="detached" if self._detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,

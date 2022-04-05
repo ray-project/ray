@@ -11,11 +11,16 @@ import ray
 import time
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import get_directory_size_bytes
-from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.working_dir import (
+    WorkingDirManager,
+    set_pythonpath_in_context,
+)
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     upload_package_if_needed,
 )
+from unittest import mock
+
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -23,15 +28,26 @@ from ray._private.runtime_env.packaging import (
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-HTTPS_PACKAGE_URI = (
-    "https://github.com/shrekris-anyscale/" "test_module/archive/HEAD.zip"
-)
+HTTPS_PACKAGE_URI = "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
+TEST_IMPORT_DIR = "test_import_dir"
+
+
+# Set scope to "module" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="module")
+def insert_test_dir_in_pythonpath():
+    with mock.patch.dict(
+        os.environ,
+        {"PYTHONPATH": TEST_IMPORT_DIR + os.pathsep + os.environ.get("PYTHONPATH", "")},
+    ):
+        yield
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_create_delete_size_equal(tmpdir, ray_start_regular):
+@pytest.mark.asyncio
+async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
 
     # Create an arbitrary nonempty directory to upload.
@@ -50,20 +66,44 @@ def test_create_delete_size_equal(tmpdir, ray_start_regular):
 
     manager = WorkingDirManager(tmpdir)
 
-    created_size_bytes = manager.create(uri, {}, RuntimeEnvContext())
+    created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)
     assert created_size_bytes == deleted_size_bytes
 
 
+def test_inherit_cluster_env_pythonpath(monkeypatch):
+    monkeypatch.setenv(
+        "PYTHONPATH", "last" + os.pathsep + os.environ.get("PYTHONPATH", "")
+    )
+    context = RuntimeEnvContext(env_vars={"PYTHONPATH": "middle"})
+
+    set_pythonpath_in_context("first", context)
+
+    assert context.env_vars["PYTHONPATH"].startswith(
+        os.pathsep.join(["first", "middle", "last"])
+    )
+
+
 @pytest.mark.parametrize(
-    "option", ["failure", "working_dir", "working_dir_zip", "py_modules"]
+    "option",
+    [
+        "failure",
+        "working_dir",
+        "working_dir_zip",
+        "py_modules",
+        "working_dir_and_py_modules",
+    ],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
+def test_lazy_reads(
+    insert_test_dir_in_pythonpath, start_cluster, tmp_working_dir, option: str
+):
     """Tests the case where we lazily read files or import inside a task/actor.
 
     This tests both that this fails *without* the working_dir and that it
-    passes with it.
+    passes with it.  Also tests that the existing PYTHONPATH is preserved,
+    so packages preinstalled on the cluster are still importable when using
+    py_modules or working_dir.
     """
     cluster, address = start_cluster
 
@@ -86,14 +126,27 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             ray.init(
                 address,
                 runtime_env={
-                    "py_modules": [str(Path(tmp_working_dir) / "test_module")]
+                    "py_modules": [
+                        str(Path(tmp_working_dir) / "test_module"),
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ]
                 },
             )
-        elif option == "py_modules_path":
+        elif option == "working_dir_and_py_modules":
             ray.init(
                 address,
-                runtime_env={"py_modules": [Path(tmp_working_dir) / "test_module"]},
+                runtime_env={
+                    "working_dir": tmp_working_dir,
+                    "py_modules": [
+                        str(Path(tmp_working_dir) / "test_module"),
+                        Path(os.path.dirname(__file__))
+                        / "pip_install_test-0.5-py3-none-any.whl",
+                    ],
+                },
             )
+        else:
+            raise ValueError(f"unexpected pytest parameter {option}")
 
     call_ray_init()
 
@@ -111,6 +164,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     def test_import():
         import test_module
 
+        assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
         return test_module.one()
 
     if option == "failure":
@@ -118,6 +172,20 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             ray.get(test_import.remote())
     else:
         assert ray.get(test_import.remote()) == 1
+
+    if option in {"py_modules", "working_dir_and_py_modules"}:
+
+        @ray.remote
+        def test_py_modules_whl():
+            import pip_install_test  # noqa: F401
+
+            return True
+
+        assert ray.get(test_py_modules_whl.remote())
+
+    if option in {"py_modules", "working_dir_zip"}:
+        # These options are not tested beyond this point, so return to save time.
+        return
 
     reinit()
 
@@ -128,7 +196,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     if option == "failure":
         with pytest.raises(FileNotFoundError):
             ray.get(test_read.remote())
-    elif option == "working_dir":
+    elif option in {"working_dir_and_py_modules", "working_dir"}:
         assert ray.get(test_read.remote()) == "world"
 
     reinit()
@@ -138,9 +206,11 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
         def test_import(self):
             import test_module
 
+            assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
             return test_module.one()
 
         def test_read(self):
+            assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
             return open("hello").read()
 
     a = Actor.remote()
@@ -149,7 +219,7 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             assert ray.get(a.test_import.remote()) == 1
         with pytest.raises(FileNotFoundError):
             assert ray.get(a.test_read.remote()) == "world"
-    elif option == "working_dir":
+    elif option in {"working_dir_and_py_modules", "working_dir"}:
         assert ray.get(a.test_import.remote()) == 1
         assert ray.get(a.test_read.remote()) == "world"
 

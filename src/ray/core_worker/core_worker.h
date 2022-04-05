@@ -213,7 +213,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
   /// \param[out] serialized_object_status The serialized object status protobuf.
-  void GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
+  void GetOwnershipInfo(const ObjectID &object_id,
+                        rpc::Address *owner_address,
                         std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
@@ -245,7 +246,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
+  Status Put(const RayObject &object,
+             const std::vector<ObjectID> &contained_object_ids,
              ObjectID *object_id);
 
   /// Put an object with specified ID into object store.
@@ -255,14 +257,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_id Object ID specified by the user.
   /// \param[in] pin_object Whether or not to tell the raylet to pin this object.
   /// \return Status.
-  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
-             const ObjectID &object_id, bool pin_object = false);
+  Status Put(const RayObject &object,
+             const std::vector<ObjectID> &contained_object_ids,
+             const ObjectID &object_id,
+             bool pin_object = false);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `SealOwned()` to
-  /// finalize the object. The `CreateOwned()` and `SealOwned()` combination is
-  /// an alternative interface to `Put()` that allows frontends to avoid an extra
-  /// copy when possible.
+  /// finalize the object. The `CreateOwnedAndIncrementLocalRef()` and
+  /// `SealOwned()` combination is an alternative interface to `Put()` that
+  /// allows frontends to avoid an extra copy when possible.
+  ///
+  /// Note that this call also initializes the local reference count for the
+  /// object to 1 so that the ref is considered in scope. The caller must
+  /// ensure that they decrement the ref count once the returned ObjectRef has
+  /// gone out of scope.
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
@@ -275,12 +284,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \return Status.
-  Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                     const std::vector<ObjectID> &contained_object_ids,
-                     ObjectID *object_id, std::shared_ptr<Buffer> *data,
-                     bool created_by_worker,
-                     const std::unique_ptr<rpc::Address> &owner_address = nullptr,
-                     bool inline_small_object = true);
+  Status CreateOwnedAndIncrementLocalRef(
+      const std::shared_ptr<Buffer> &metadata,
+      const size_t data_size,
+      const std::vector<ObjectID> &contained_object_ids,
+      ObjectID *object_id,
+      std::shared_ptr<Buffer> *data,
+      bool created_by_worker,
+      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+      bool inline_small_object = true);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -294,19 +306,27 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] owner_address The address of the object's owner.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
-  Status CreateExisting(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                        const ObjectID &object_id, const rpc::Address &owner_address,
-                        std::shared_ptr<Buffer> *data, bool created_by_worker);
+  Status CreateExisting(const std::shared_ptr<Buffer> &metadata,
+                        const size_t data_size,
+                        const ObjectID &object_id,
+                        const rpc::Address &owner_address,
+                        std::shared_ptr<Buffer> *data,
+                        bool created_by_worker);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateOwned()` call and then writing into the returned buffer.
+  ///
+  /// If the object seal fails, then the initial local reference that was added
+  /// in CreateOwnedAndIncrementLocalRef will be deleted and the object will be
+  /// released by the ref counter.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
   /// \param[in] The address of object's owner. If not provided,
   /// defaults to this worker.
   /// \return Status.
-  Status SealOwned(const ObjectID &object_id, bool pin_object,
+  Status SealOwned(const ObjectID &object_id,
+                   bool pin_object,
                    const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Finalize placing an object into the object store. This should be called after
@@ -317,7 +337,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] owner_address Address of the owner of the object who will be contacted by
   /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
-  Status SealExisting(const ObjectID &object_id, bool pin_object,
+  Status SealExisting(const ObjectID &object_id,
+                      bool pin_object,
                       const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
@@ -327,7 +348,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
+  Status Get(const std::vector<ObjectID> &ids,
+             const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
@@ -350,7 +372,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] has_object Whether or not the object is present.
   /// \param[out] is_in_plasma Whether or not the object is in Plasma.
   /// \return Status.
-  Status Contains(const ObjectID &object_id, bool *has_object,
+  Status Contains(const ObjectID &object_id,
+                  bool *has_object,
                   bool *is_in_plasma = nullptr);
 
   /// Wait for a list of objects to appear in the object store.
@@ -364,8 +387,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
-              const int64_t timeout_ms, std::vector<bool> *results, bool fetch_local);
+  Status Wait(const std::vector<ObjectID> &object_ids,
+              const int num_objects,
+              const int64_t timeout_ms,
+              std::vector<bool> *results,
+              bool fetch_local);
 
   /// Delete a list of objects from the plasma object store.
   ///
@@ -382,7 +408,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of object locations.
   /// \return Status.
-  Status GetLocationFromOwner(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+  Status GetLocationFromOwner(const std::vector<ObjectID> &object_ids,
+                              int64_t timeout_ms,
                               std::vector<std::shared_ptr<ObjectLocation>> *results);
 
   /// Trigger garbage collection on each worker in the cluster.
@@ -412,8 +439,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] The error message.
   /// \param[in] The timestamp of the error.
   /// \return Status.
-  Status PushError(const JobID &job_id, const std::string &type,
-                   const std::string &error_message, double timestamp);
+  Status PushError(const JobID &job_id,
+                   const std::string &type,
+                   const std::string &error_message,
+                   double timestamp);
 
   /// Submit a normal task.
   ///
@@ -427,8 +456,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// should capture parent's placement group implicilty.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
-      const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
-      const TaskOptions &task_options, int max_retries, bool retry_exceptions,
+      const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args,
+      const TaskOptions &task_options,
+      int max_retries,
+      bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint);
 
@@ -446,7 +478,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status CreateActor(const RayFunction &function,
                      const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
-                     const std::string &extension_data, ActorID *actor_id);
+                     const std::string &extension_data,
+                     ActorID *actor_id);
 
   /// Create a placement group.
   ///
@@ -487,8 +520,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] task_options Options for this task.
   /// \return ObjectRefs returned by this task.
   std::optional<std::vector<rpc::ObjectReference>> SubmitActorTask(
-      const ActorID &actor_id, const RayFunction &function,
-      const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options);
+      const ActorID &actor_id,
+      const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args,
+      const TaskOptions &task_options);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
@@ -537,7 +572,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// serialized actor handle in the language frontend is stored inside an
   /// object, then this must be recorded in the worker's ReferenceCounter.
   /// \return Status::Invalid if we don't have the specified handle.
-  Status SerializeActorHandle(const ActorID &actor_id, std::string *output,
+  Status SerializeActorHandle(const ActorID &actor_id,
+                              std::string *output,
                               ObjectID *actor_handle_id) const;
 
   ///
@@ -574,7 +610,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the current object is inlined, the task_output_inlined_bytes will be updated.
   /// \param[out] return_object RayObject containing buffers to write results into.
   /// \return Status.
-  Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
+  Status AllocateReturnObject(const ObjectID &object_id,
+                              const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
                               int64_t *task_output_inlined_bytes,
@@ -630,14 +667,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListNamedActors(
       bool all_namespaces);
 
-  ///
+  /// Get the expected return ids of the next task.
+  std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
+                                            const ActorID &callee_actor_id);
+
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
   /// post work to the appropriate event loop.
   ///
 
   /// Implements gRPC server handler.
-  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+  void HandlePushTask(const rpc::PushTaskRequest &request,
+                      rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -678,7 +719,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
+  void HandleKillActor(const rpc::KillActorRequest &request,
+                       rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
@@ -702,7 +744,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on this worker.
-  void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
+  void HandleLocalGC(const rpc::LocalGCRequest &request,
+                     rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
 
   // Spill objects to external storage.
@@ -727,7 +770,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Make the this worker exit.
   // This request fails if the core worker owns any object.
-  void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
+  void HandleExit(const rpc::ExitRequest &request,
+                  rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
   // Set local worker as the owner of object.
@@ -754,14 +798,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] success_callback The callback to use the result object.
   /// \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
-  void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+  void GetAsync(const ObjectID &object_id,
+                SetResultCallback success_callback,
                 void *python_future);
 
   // Get serialized job configuration.
   const rpc::JobConfig &GetJobConfig() const;
-
-  // Get gcs_client
-  std::shared_ptr<gcs::GcsClient> GetGcsClient() const;
 
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
@@ -785,19 +827,26 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
 
-  std::string OverrideTaskOrActorRuntimeEnv(
-      const std::string &serialized_runtime_env,
-      std::vector<std::string> *runtime_env_uris /* output */);
+  std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
+      const std::string &serialized_runtime_env_info);
 
   void BuildCommonTaskSpec(
-      TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-      const std::string &name, const TaskID &current_task_id, uint64_t task_index,
-      const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
-      const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
+      TaskSpecBuilder &builder,
+      const JobID &job_id,
+      const TaskID &task_id,
+      const std::string &name,
+      const TaskID &current_task_id,
+      uint64_t task_index,
+      const TaskID &caller_id,
+      const rpc::Address &address,
+      const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args,
+      uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const std::string &debugger_breakpoint, int64_t depth,
-      const std::string &serialized_runtime_env,
+      const std::string &debugger_breakpoint,
+      int64_t depth,
+      const std::string &serialized_runtime_env_info,
       const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 
@@ -822,7 +871,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void InternalHeartbeat();
 
   /// Helper method to fill in object status reply given an object.
-  void PopulateObjectStatus(const ObjectID &object_id, std::shared_ptr<RayObject> obj,
+  void PopulateObjectStatus(const ObjectID &object_id,
+                            std::shared_ptr<RayObject> obj,
                             rpc::GetObjectStatusReply *reply);
 
   ///
@@ -869,7 +919,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      bool *is_application_level_error);
 
   /// Put an object in the local plasma store.
-  Status PutInLocalPlasmaStore(const RayObject &object, const ObjectID &object_id,
+  Status PutInLocalPlasmaStore(const RayObject &object,
+                               const ObjectID &object_id,
                                bool pin_object);
 
   /// Execute a local mode task (runs normal ExecuteTask)
@@ -942,7 +993,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Process the subscribe message received from the subscriber.
   void ProcessSubscribeMessage(const rpc::SubMessage &sub_message,
-                               rpc::ChannelType channel_type, const std::string &key_id,
+                               rpc::ChannelType channel_type,
+                               const std::string &key_id,
                                const NodeID &subscriber_id);
 
   /// A single endpoint to process different types of pubsub commands.
@@ -979,7 +1031,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Request the spillage of an object that we own from the primary that hosts
   /// the primary copy to spill.
-  void SpillOwnedObject(const ObjectID &object_id, const std::shared_ptr<RayObject> &obj,
+  void SpillOwnedObject(const ObjectID &object_id,
+                        const std::shared_ptr<RayObject> &obj,
                         std::function<void()> callback);
 
   const CoreWorkerOptions options_;
@@ -1165,8 +1218,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       async_plasma_callbacks_ GUARDED_BY(plasma_mutex_);
 
   // Fallback for when GetAsync cannot directly get the requested object.
-  void PlasmaCallback(SetResultCallback success, std::shared_ptr<RayObject> ray_object,
-                      ObjectID object_id, void *py_future);
+  void PlasmaCallback(SetResultCallback success,
+                      std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id,
+                      void *py_future);
 
   /// we are shutting down and not running further tasks.
   /// when exiting_ is set to true HandlePushTask becomes no-op.

@@ -1,10 +1,11 @@
-from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
+from typing import Dict, List, Tuple, Iterator, Any, TypeVar, Optional, TYPE_CHECKING
 
 import collections
 import numpy as np
 
 from ray.data.block import BlockAccessor, BlockMetadata, KeyFn
-from ray.data.impl.table_block import TableBlockAccessor, TableRow, TableBlockBuilder
+from ray.data.row import TableRow
+from ray.data.impl.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.impl.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
 
@@ -28,8 +29,9 @@ def lazy_import_pandas():
 
 
 class PandasRow(TableRow):
-    def as_pydict(self) -> dict:
-        return {k: v[0] for k, v in self._row.to_dict("list").items()}
+    """
+    Row of a tabular Dataset backed by a Pandas DataFrame block.
+    """
 
     def __getitem__(self, key: str) -> Any:
         col = self._row[key]
@@ -43,6 +45,10 @@ class PandasRow(TableRow):
         except AttributeError:
             # Fallback to the original form.
             return item
+
+    def __iter__(self) -> Iterator:
+        for k in self._row.columns:
+            yield k
 
     def __len__(self):
         return self._row.shape[1]
@@ -136,11 +142,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         s = acc.to_pandas()
         for col_name in s.columns:
             col = s[col_name]
+            column_names = list(r.columns)
             # Ensure the column names are unique after zip.
-            if col_name in r.column_names:
+            if col_name in column_names:
                 i = 1
                 new_name = col_name
-                while new_name in r.column_names:
+                while new_name in column_names:
                     new_name = "{}_{}".format(col_name, i)
                     i += 1
                 col_name = new_name

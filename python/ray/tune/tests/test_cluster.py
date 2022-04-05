@@ -7,7 +7,7 @@ import shutil
 import sys
 from unittest.mock import MagicMock, patch
 
-from typing import Callable, Union
+from typing import Callable, Union, Optional
 
 import ray
 from ray import tune
@@ -29,12 +29,6 @@ from ray.tune.utils.mock import (
     mock_storage_client,
     MOCK_REMOTE_DIR,
 )
-
-# Wait up to five seconds for placement groups when starting a trial
-os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-# Block for results even when placement groups are pending
-os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "9999"
 
 
 def _check_trial_running(trial):
@@ -65,7 +59,9 @@ def _start_new_cluster():
 
 
 class _PerTrialSyncerCallback(SyncerCallback):
-    def __init__(self, get_sync_fn: Callable[["Trial"], Union[None, bool, Callable]]):
+    def __init__(
+        self, get_sync_fn: Callable[["Trial"], Optional[Union[bool, Callable]]]
+    ):
         self._get_sync_fn = get_sync_fn
         super(_PerTrialSyncerCallback, self).__init__(None)
 
@@ -203,17 +199,10 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     assert trial.last_result.get("training_iteration") == 1
 
     # Process result: discover failure, recover, _train (from scratch)
-    runner.step()
+    while trial.status != Trial.TERMINATED:
+        runner.step()
 
-    runner.step()  # Process result, invoke _train
-    assert trial.last_result.get("training_iteration") == 1
-    runner.step()  # Process result, invoke _save
-    assert trial.last_result.get("training_iteration") == 2
-    # process save, invoke _train
-    runner.step()
-    # process result
-    runner.step()
-    assert trial.status == Trial.TERMINATED
+    assert trial.last_result.get("training_iteration") > 1
 
     with pytest.raises(TuneError):
         runner.step()
@@ -262,7 +251,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     # assert t.last_result is None, "Trial result not restored correctly."
 
     # Process result (x2), process save, process result (x2), process save
-    for _ in range(6):
+    while not runner.is_finished():
         runner.step()
 
     assert t.status == Trial.TERMINATED, runner.debug_string()
@@ -271,19 +260,13 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     t2 = Trial(trainable_id, **kwargs)
     runner.add_trial(t2)
     # Start trial, process result (x2), process save
-    for _ in range(4):
+    while not t2.has_checkpoint():
         runner.step()
-    assert t2.has_checkpoint()
     node3 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node2)
     cluster.wait_for_nodes()
-    runner.step()  # Process result 3 + start and fail 4 result
-    runner.step()  # Dispatch restore
-    runner.step()  # Process restore
-    runner.step()  # Process result 5
-    if t2.status != Trial.TERMINATED:
-        runner.step()  # Process result 6, dispatch save
-        runner.step()  # Process save
+    while not runner.is_finished():
+        runner.step()
     assert t2.status == Trial.TERMINATED, runner.debug_string()
 
     # Test recovery of trial that won't be checkpointed
@@ -301,8 +284,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     cluster.add_node(num_cpus=1)
     cluster.remove_node(node3)
     cluster.wait_for_nodes()
-    runner.step()  # Error handling step
-    if t3.status != Trial.ERROR:
+    while not runner.is_finished():
         runner.step()
     assert t3.status == Trial.ERROR, runner.debug_string()
 
@@ -406,20 +388,15 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster, trainab
         runner.add_trial(t1)
 
         # Start trial, process result (x2), process save
-        for _ in range(4):
+        while not t1.has_checkpoint():
             runner.step()
-        assert t1.has_checkpoint()
 
         cluster.add_node(num_cpus=1)
         cluster.remove_node(node)
         cluster.wait_for_nodes()
         shutil.rmtree(os.path.dirname(t1.checkpoint.value))
-        runner.step()  # Collect result 3, kick off + fail result 4
-        runner.step()  # Dispatch restore
-        runner.step()  # Process restore + step 4
-        for _ in range(3):
-            if t1.status != Trial.TERMINATED:
-                runner.step()
+        while not runner.is_finished():
+            runner.step()
     assert t1.status == Trial.TERMINATED, runner.debug_string()
 
 

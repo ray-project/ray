@@ -21,7 +21,6 @@ def test_shuffle_hang():
         ray.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_shuffle_no_streaming():
     try:
         shuffle.run(no_streaming=True)

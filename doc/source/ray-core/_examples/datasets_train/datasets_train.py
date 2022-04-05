@@ -121,9 +121,7 @@ def make_and_upload_dataset(dir_path):
 
 def read_dataset(path: str) -> ray.data.Dataset:
     print(f"reading data from {path}")
-    return ray.data.read_parquet(path, _spread_resource_prefix="node:").random_shuffle(
-        _spread_resource_prefix="node:"
-    )
+    return ray.data.read_parquet(path).random_shuffle()
 
 
 class DataPreprocessor:
@@ -596,9 +594,7 @@ if __name__ == "__main__":
     DROPOUT_PROB = 0.2
 
     # Random global shuffle
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window(
-        _spread_resource_prefix="node:"
-    )
+    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window()
     del train_dataset
 
     datasets = {"train_dataset": train_dataset_pipeline, "test_dataset": test_dataset}
@@ -614,7 +610,7 @@ if __name__ == "__main__":
         "num_features": num_features,
     }
 
-    # Create 2 callbacks: one for Tensorboard Logging and one for MLflow
+    # Create 2 callbacks: one for TensorBoard Logging and one for MLflow
     # logging. Pass these into Trainer, and all results that are
     # reported by ``train.report()`` will be logged to these 2 places.
     # TODO: TBXLoggerCallback should create nonexistent logdir

@@ -4,13 +4,13 @@ logger = logging.getLogger(__name__)
 
 TuneReportCallback = None
 TuneReportCheckpointCallback = None
-get_tune_ddp_resources = None
+get_tune_resources = None
 
 try:
     from ray_lightning.tune import (
         TuneReportCallback,
         TuneReportCheckpointCallback,
-        get_tune_ddp_resources,
+        get_tune_resources,
     )
 except ImportError:
     logger.info(
@@ -22,5 +22,5 @@ except ImportError:
 __all__ = [
     "TuneReportCallback",
     "TuneReportCheckpointCallback",
-    "get_tune_ddp_resources",
+    "get_tune_resources",
 ]

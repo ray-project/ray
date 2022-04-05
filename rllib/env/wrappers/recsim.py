@@ -1,7 +1,7 @@
 """Tools and utils to create RLlib-ready recommender system envs using RecSim.
 
 For examples on how to generate a RecSim env class (usable in RLlib):
-See ray.rllib.examples.env.recsim_recommender_system_envs.py
+See ray.rllib.examples.env.recommender_system_envs_with_recsim.py
 
 For more information on google's RecSim itself:
 https://github.com/google-research/recsim
@@ -84,15 +84,12 @@ class RecSimObservationBanditWrapper(gym.ObservationWrapper):
         self.observation_space = Dict(
             OrderedDict(
                 [
-                    ("user", obs_space["user"]),
                     (
                         "item",
                         gym.spaces.Box(
-                            low=-np.ones((num_items, embedding_dim)),
-                            high=np.ones((num_items, embedding_dim)),
+                            low=-1.0, high=1.0, shape=(num_items, embedding_dim)
                         ),
                     ),
-                    ("response", obs_space["response"]),
                 ]
             )
         )
@@ -100,9 +97,7 @@ class RecSimObservationBanditWrapper(gym.ObservationWrapper):
 
     def observation(self, obs):
         new_obs = OrderedDict()
-        new_obs["user"] = obs["user"]
         new_obs["item"] = np.vstack(list(obs["doc"].values()))
-        new_obs["response"] = obs["response"]
         new_obs = convert_element_to_space_type(new_obs, self._sampled_obs)
         return new_obs
 

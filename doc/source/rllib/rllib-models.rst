@@ -1,7 +1,9 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib/announcement.rst
 
-RLlib Models, Preprocessors, and Action Distributions
-=====================================================
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+Models, Preprocessors, and Action Distributions
+===============================================
 
 The following diagram provides a conceptual overview of data flow between different components in RLlib.
 We start with an ``Environment``, which - given an action - produces an observation.
@@ -345,7 +347,7 @@ to get a better idea on how to write your own models of this type. These are the
 as wrappers when ``use_attention=True``.
 
 You can run `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ to run these nets within some of our algorithms.
-`There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/tests/test_attention_net_learning.py>`__, which confirms their learning capabilities in PPO and IMPALA.
+`There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/models/tests/test_attention_nets.py>`__, which confirms their learning capabilities in PPO and IMPALA.
 
 Batch Normalization
 ```````````````````
@@ -711,3 +713,5 @@ To do this, you need both a custom model that implements the autoregressive patt
 .. note::
 
    Not all algorithms support autoregressive action distributions; see the `algorithm overview table <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
+
+.. include:: /_includes/rllib/announcement_bottom.rst

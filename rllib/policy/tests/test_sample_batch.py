@@ -136,7 +136,7 @@ class TestSampleBatch(unittest.TestCase):
         )
         check(
             next(s1.rows()),
-            {"a": [1, 1], "b": {"c": [4, 4]}, SampleBatch.SEQ_LENS: [1]},
+            {"a": [1, 1], "b": {"c": [4, 4]}, SampleBatch.SEQ_LENS: 1},
         )
 
     def test_compression(self):

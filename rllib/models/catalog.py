@@ -48,7 +48,7 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
     # Experimental flag.
@@ -188,7 +188,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 @PublicAPI
@@ -1005,7 +1005,7 @@ class ModelCatalog:
 
         if config.get("use_attention") and config.get("use_lstm"):
             raise ValueError(
-                "Only one of `use_lstm` or `use_attention` may " "be set to True!"
+                "Only one of `use_lstm` or `use_attention` may be set to True!"
             )
 
         # For complex action spaces, only allow prev action inputs to
@@ -1029,9 +1029,7 @@ class ModelCatalog:
         if framework == "jax":
             if config.get("use_attention"):
                 raise ValueError(
-                    "`use_attention` not available for " "framework=jax so far!"
+                    "`use_attention` not available for framework=jax so far!"
                 )
             elif config.get("use_lstm"):
-                raise ValueError(
-                    "`use_lstm` not available for " "framework=jax so far!"
-                )
+                raise ValueError("`use_lstm` not available for framework=jax so far!")

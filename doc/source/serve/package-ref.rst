@@ -14,7 +14,7 @@ Core APIs
 Deployment API
 --------------
 
-.. autoclass:: ray.serve.api.Deployment
+.. autoclass:: ray.serve.deployment.Deployment
     :members: deploy, delete, options, get_handle
 
 .. _`servehandle-api`:
@@ -27,10 +27,3 @@ ServeHandle API
 Batching Requests
 -----------------
 .. autofunction:: ray.serve.batch(max_batch_size=10, batch_wait_timeout_s=0.0)
-
-Serve Pipeline API
-------------------
-
-.. autoclass:: ray.serve.pipeline.PipelineStep
-
-.. autoclass:: ray.serve.pipeline.ExecutionMode

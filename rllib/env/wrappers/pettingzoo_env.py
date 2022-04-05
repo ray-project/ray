@@ -24,6 +24,7 @@ class PettingZooEnv(MultiAgentEnv):
 
     Examples:
         >>> from pettingzoo.butterfly import prison_v3
+        >>> from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
         >>> env = PettingZooEnv(prison_v3.env())
         >>> obs = env.reset()
         >>> print(obs)
@@ -70,6 +71,8 @@ class PettingZooEnv(MultiAgentEnv):
         super().__init__()
         self.env = env
         env.reset()
+        self._skip_env_checking = True  # TODO avnishn - remove this after making
+        # petting zoo env compatible with check_env
 
         # Get first observation space, assuming all agents have equal space
         self.observation_space = self.env.observation_space(self.env.agents[0])
@@ -94,6 +97,7 @@ class PettingZooEnv(MultiAgentEnv):
             "SuperSuit's pad_action_space wrapper can help (usage: "
             "`supersuit.aec_wrappers.pad_action_space(env)`"
         )
+        self._agent_ids = set(self.env.agents)
 
     def reset(self):
         self.env.reset()

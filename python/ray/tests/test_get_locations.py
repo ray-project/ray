@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-import platform
 import time
 
 import ray
@@ -49,9 +48,8 @@ def test_get_locations_inlined(ray_start_regular):
         assert location["object_size"] > 0
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_spilled_locations(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_spilled_locations(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
     ray.init(cluster.address)
     cluster.wait_for_nodes()
@@ -76,9 +74,8 @@ def test_spilled_locations(ray_start_cluster):
         assert location["object_size"] > 0
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_get_locations_multi_nodes(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_get_locations_multi_nodes(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
     # head node
     cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
     ray.init(cluster.address)

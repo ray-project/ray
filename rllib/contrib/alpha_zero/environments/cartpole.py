@@ -5,7 +5,7 @@ import numpy as np
 from gym.spaces import Discrete, Dict, Box
 
 
-class CartPole:
+class CartPole(gym.Env):
     """
     Wrapper for gym CartPole environment where the reward
     is accumulated to the end

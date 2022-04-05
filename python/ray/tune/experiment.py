@@ -1,11 +1,13 @@
-from functools import partial
-from typing import Dict, Sequence, Any
 import copy
+from functools import partial
+import grpc
 import inspect
 import logging
 import os
-
+from pathlib import Path
 from pickle import PicklingError
+import traceback
+from typing import Any, Dict, Optional, Sequence, Union, Callable, Type, List
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
@@ -48,6 +50,24 @@ def _validate_log_to_file(log_to_file):
     return stdout_file, stderr_file
 
 
+def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
+    return os.path.abspath(os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR))
+
+
+def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
+    # If the name has been set explicitly, we don't want to create
+    # dated directories. The same is true for string run identifiers.
+    if (
+        int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1
+        or explicit_name
+        or isinstance(run, str)
+    ):
+        dir_name = combined_name
+    else:
+        dir_name = "{}_{}".format(combined_name, date_str())
+    return dir_name
+
+
 @DeveloperAPI
 class Experiment:
     """Tracks experiment specifications.
@@ -73,10 +93,16 @@ class Experiment:
             local_dir="~/ray_results",
             checkpoint_freq=10,
             max_failures=2)
+
+    Args:
+        TODO(xwjiang): Add the whole list.
+        _experiment_checkpoint_dir: Internal use only. If present, use this
+            as the root directory for experiment checkpoint. If not present,
+            the directory path will be deduced from trainable name instead.
     """
 
     # Keys that will be present in `public_spec` dict.
-    PUBLIC_KEYS = {"stop", "num_samples"}
+    PUBLIC_KEYS = {"stop", "num_samples", "time_budget_s"}
 
     def __init__(
         self,
@@ -88,6 +114,7 @@ class Experiment:
         resources_per_trial=None,
         num_samples=1,
         local_dir=None,
+        _experiment_checkpoint_dir: Optional[str] = None,
         sync_config=None,
         trial_name_creator=None,
         trial_dirname_creator=None,
@@ -100,6 +127,18 @@ class Experiment:
         max_failures=0,
         restore=None,
     ):
+
+        local_dir = _get_local_dir_with_expand_user(local_dir)
+        # `_experiment_checkpoint_dir` is for internal use only for better
+        # support of Tuner API.
+        # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
+        self._experiment_checkpoint_dir = _experiment_checkpoint_dir
+        if _experiment_checkpoint_dir:
+            experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
+            local_dir_path = Path(local_dir)
+            assert local_dir_path in experiment_checkpoint_dir_path.parents
+            # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
+            self.dir_name = os.path.relpath(_experiment_checkpoint_dir, local_dir)
 
         config = config or {}
         sync_config = sync_config or SyncConfig()
@@ -121,19 +160,27 @@ class Experiment:
                     "checkpointable function. You can specify checkpoints "
                     "within your trainable function."
                 )
-        self._run_identifier = Experiment.register_if_needed(run)
+        try:
+            self._run_identifier = Experiment.register_if_needed(run)
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
+                raise TuneError(
+                    f"The Trainable/training function is too large for grpc resource "
+                    f"limit. Check that its definition is not implicitly capturing a "
+                    f"large array or other object in scope. "
+                    f"Tip: use tune.with_parameters() to put large objects "
+                    f"in the Ray object store. \n"
+                    f"Original exception: {traceback.format_exc()}"
+                )
+            else:
+                raise e
+
         self.name = name or self._run_identifier
 
-        # If the name has been set explicitly, we don't want to create
-        # dated directories. The same is true for string run identifiers.
-        if (
-            int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1
-            or name
-            or isinstance(run, str)
-        ):
-            self.dir_name = self.name
-        else:
-            self.dir_name = "{}_{}".format(self.name, date_str())
+        if not _experiment_checkpoint_dir:
+            self.dir_name = _get_dir_name(run, name, self.name)
+
+        assert self.dir_name
 
         if sync_config.upload_dir:
             self.remote_checkpoint_dir = os.path.join(
@@ -188,12 +235,11 @@ class Experiment:
         spec = {
             "run": self._run_identifier,
             "stop": stopping_criteria,
+            "time_budget_s": time_budget_s,
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "local_dir": os.path.abspath(
-                os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)
-            ),
+            "local_dir": local_dir,
             "sync_config": sync_config,
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
@@ -212,12 +258,12 @@ class Experiment:
         self.spec = spec
 
     @classmethod
-    def from_json(cls, name, spec):
+    def from_json(cls, name: str, spec: dict):
         """Generates an Experiment object from JSON.
 
         Args:
-            name (str): Name of Experiment.
-            spec (dict): JSON configuration of experiment.
+            name: Name of Experiment.
+            spec: JSON configuration of experiment.
         """
         if "run" not in spec:
             raise TuneError("No trainable specified!")
@@ -242,25 +288,21 @@ class Experiment:
         return exp
 
     @classmethod
-    def register_if_needed(cls, run_object):
-        """Registers Trainable or Function at runtime.
+    def get_trainable_name(cls, run_object: Union[str, Callable, Type]):
+        """Get Trainable name.
 
-        Assumes already registered if run_object is a string.
-        Also, does not inspect interface of given run_object.
-
-        Arguments:
-            run_object (str|function|class): Trainable to run. If string,
+        Args:
+            run_object: Trainable to run. If string,
                 assumes it is an ID and does not modify it. Otherwise,
                 returns a string corresponding to the run_object name.
 
         Returns:
             A string representing the trainable identifier.
-        """
 
-        if isinstance(run_object, str):
-            return run_object
-        elif isinstance(run_object, Domain):
-            logger.warning("Not registering trainable. Resolving as variant.")
+        Raises:
+            TuneError: if ``run_object`` passed in is invalid.
+        """
+        if isinstance(run_object, str) or isinstance(run_object, Domain):
             return run_object
         elif isinstance(run_object, type) or callable(run_object):
             name = "DEFAULT"
@@ -282,20 +324,71 @@ class Experiment:
                 name = run_object.func.__name__
             else:
                 logger.warning("No name detected on trainable. Using {}.".format(name))
-            try:
-                register_trainable(name, run_object)
-            except (TypeError, PicklingError) as e:
-                extra_msg = (
-                    "Other options: "
-                    "\n-Try reproducing the issue by calling "
-                    "`pickle.dumps(trainable)`. "
-                    "\n-If the error is typing-related, try removing "
-                    "the type annotations and try again."
-                )
-                raise type(e)(str(e) + " " + extra_msg) from None
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")
+
+    @classmethod
+    def register_if_needed(cls, run_object: Union[str, Callable, Type]):
+        """Registers Trainable or Function at runtime.
+
+        Assumes already registered if run_object is a string.
+        Also, does not inspect interface of given run_object.
+
+        Args:
+            run_object: Trainable to run. If string,
+                assumes it is an ID and does not modify it. Otherwise,
+                returns a string corresponding to the run_object name.
+
+        Returns:
+            A string representing the trainable identifier.
+        """
+        if isinstance(run_object, str):
+            return run_object
+        elif isinstance(run_object, Domain):
+            logger.warning("Not registering trainable. Resolving as variant.")
+            return run_object
+        name = cls.get_trainable_name(run_object)
+        try:
+            register_trainable(name, run_object)
+        except (TypeError, PicklingError) as e:
+            extra_msg = (
+                "Other options: "
+                "\n-Try reproducing the issue by calling "
+                "`pickle.dumps(trainable)`. "
+                "\n-If the error is typing-related, try removing "
+                "the type annotations and try again."
+            )
+            raise type(e)(str(e) + " " + extra_msg) from None
+        return name
+
+    @classmethod
+    def get_experiment_checkpoint_dir(
+        cls,
+        run_obj: Union[str, Callable, Type],
+        local_dir: Optional[str] = None,
+        name: Optional[str] = None,
+    ):
+        """Get experiment checkpoint dir without setting up an experiment.
+
+        This is only used internally for better support of Tuner API.
+
+        Args:
+            run_obj: Trainable to run.
+            local_dir: The local_dir path.
+            name: The name of the experiment specified by user.
+
+        Returns:
+            Checkpoint directory for experiment.
+        """
+        assert run_obj
+        local_dir = _get_local_dir_with_expand_user(local_dir)
+        run_identifier = cls.get_trainable_name(run_obj)
+        combined_name = name or run_identifier
+
+        dir_name = _get_dir_name(run_obj, name, combined_name)
+
+        return os.path.join(local_dir, dir_name)
 
     @property
     def stopper(self):
@@ -307,8 +400,11 @@ class Experiment:
 
     @property
     def checkpoint_dir(self):
-        if self.local_dir:
-            return os.path.join(self.local_dir, self.dir_name)
+        # Provided when initializing Experiment, if so, return directly.
+        if self._experiment_checkpoint_dir:
+            return self._experiment_checkpoint_dir
+        assert self.local_dir
+        return os.path.join(self.local_dir, self.dir_name)
 
     @property
     def run_identifier(self):
@@ -325,7 +421,7 @@ class Experiment:
         return {k: v for k, v in self.spec.items() if k in self.PUBLIC_KEYS}
 
 
-def convert_to_experiment_list(experiments):
+def convert_to_experiment_list(experiments: Union[Experiment, List[Experiment], Dict]):
     """Produces a list of Experiment objects.
 
     Converts input from dict, single experiment, or list of
@@ -333,7 +429,7 @@ def convert_to_experiment_list(experiments):
     will return an empty list.
 
     Arguments:
-        experiments (Experiment | list | dict): Experiments to run.
+        experiments: Experiments to run.
 
     Returns:
         List of experiments.

@@ -40,14 +40,17 @@ uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
 /// A helper function to generate the unique bytes by hash.
 __suppress_ubsan__("undefined") std::string
-    GenerateUniqueBytes(const JobID &job_id, const TaskID &parent_task_id,
-                        size_t parent_task_counter, size_t extra_bytes, size_t length) {
+    GenerateUniqueBytes(const JobID &job_id,
+                        const TaskID &parent_task_id,
+                        size_t parent_task_counter,
+                        size_t extra_bytes,
+                        size_t length) {
   RAY_CHECK(length <= DIGEST_SIZE);
   SHA256_CTX ctx;
   sha256_init(&ctx);
   sha256_update(&ctx, reinterpret_cast<const BYTE *>(job_id.Data()), job_id.Size());
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()),
-                parent_task_id.Size());
+  sha256_update(
+      &ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()), parent_task_id.Size());
   sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
   if (extra_bytes > 0) {
     sha256_update(&ctx, (const BYTE *)&extra_bytes, sizeof(extra_bytes));
@@ -124,14 +127,17 @@ __suppress_ubsan__("undefined") uint64_t
   return h;
 }
 
-ActorID ActorID::Of(const JobID &job_id, const TaskID &parent_task_id,
+ActorID ActorID::Of(const JobID &job_id,
+                    const TaskID &parent_task_id,
                     const size_t parent_task_counter) {
   // NOTE(swang): Include the current time in the hash for the actor ID so that
   // we avoid duplicating a previous actor ID, which is not allowed by the GCS.
   // See https://github.com/ray-project/ray/issues/10481.
-  auto data =
-      GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter,
-                          absl::GetCurrentTimeNanos(), ActorID::kUniqueBytesLength);
+  auto data = GenerateUniqueBytes(job_id,
+                                  parent_task_id,
+                                  parent_task_counter,
+                                  absl::GetCurrentTimeNanos(),
+                                  ActorID::kUniqueBytesLength);
   std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == kLength);
   return ActorID::FromBinary(data);
@@ -175,19 +181,22 @@ TaskID TaskID::ForActorCreationTask(const ActorID &actor_id) {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForActorTask(const JobID &job_id, const TaskID &parent_task_id,
-                            size_t parent_task_counter, const ActorID &actor_id) {
-  std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter, 0,
-                                         TaskID::kUniqueBytesLength);
+TaskID TaskID::ForActorTask(const JobID &job_id,
+                            const TaskID &parent_task_id,
+                            size_t parent_task_counter,
+                            const ActorID &actor_id) {
+  std::string data = GenerateUniqueBytes(
+      job_id, parent_task_id, parent_task_counter, 0, TaskID::kUniqueBytesLength);
   std::copy_n(actor_id.Data(), ActorID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == TaskID::kLength);
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForNormalTask(const JobID &job_id, const TaskID &parent_task_id,
+TaskID TaskID::ForNormalTask(const JobID &job_id,
+                             const TaskID &parent_task_id,
                              size_t parent_task_counter) {
-  std::string data = GenerateUniqueBytes(job_id, parent_task_id, parent_task_counter, 0,
-                                         TaskID::kUniqueBytesLength);
+  std::string data = GenerateUniqueBytes(
+      job_id, parent_task_id, parent_task_counter, 0, TaskID::kUniqueBytesLength);
   const auto dummy_actor_id = ActorID::NilFromJob(job_id);
   std::copy_n(dummy_actor_id.Data(), ActorID::kLength, std::back_inserter(data));
   RAY_CHECK(data.size() == TaskID::kLength);
@@ -210,6 +219,14 @@ TaskID TaskID::ForExecutionAttempt(const TaskID &task_id, uint64_t attempt_numbe
 ActorID TaskID::ActorId() const {
   return ActorID::FromBinary(std::string(
       reinterpret_cast<const char *>(id_ + kUniqueBytesLength), ActorID::Size()));
+}
+
+bool TaskID::IsForActorCreationTask() const {
+  static std::string nil_data(kUniqueBytesLength, 0);
+  FillNil(&nil_data);
+  bool unique_bytes_nil = std::memcmp(id_, nil_data.data(), kUniqueBytesLength) == 0;
+  bool actor_id_nil = ActorId().IsNil();
+  return unique_bytes_nil && !actor_id_nil;
 }
 
 JobID TaskID::JobId() const { return ActorId().JobId(); }
@@ -286,6 +303,22 @@ uint32_t JobID::ToInt() {
   uint32_t value;
   std::memcpy(&value, &id_, JobID::Size());
   return value;
+}
+
+PlacementGroupID PlacementGroupID::Of(const JobID &job_id) {
+  // No need to set transport type for a random object id.
+  // No need to assign put_index/return_index bytes.
+  std::string data(PlacementGroupID::kUniqueBytesLength, 0);
+  FillRandom(&data);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
+  RAY_CHECK(data.size() == kLength);
+  return PlacementGroupID::FromBinary(data);
+}
+
+JobID PlacementGroupID::JobId() const {
+  RAY_CHECK(!IsNil());
+  return JobID::FromBinary(std::string(
+      reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
 #define ID_OSTREAM_OPERATOR(id_type)                              \

@@ -19,6 +19,7 @@ import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,6 +74,7 @@ public interface RayRuntime {
    * @param objectRef The reference of the object to get.
    * @param timeoutMs The maximum amount of time in millseconds to wait before returning.
    * @return The Java object.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   <T> T get(ObjectRef<T> objectRef, long timeoutMs);
 
@@ -82,6 +84,7 @@ public interface RayRuntime {
    * @param objectRefs The list of object references.
    * @param timeoutMs The maximum amount of time in millseconds to wait before returning.
    * @return A list of Java objects.
+   * @throws RayTimeoutException If it's timeout to get the object.
    */
   <T> List<T> get(List<ObjectRef<T>> objectRefs, long timeoutMs);
 
@@ -280,4 +283,7 @@ public interface RayRuntime {
   ConcurrencyGroup createConcurrencyGroup(String name, int maxConcurrency, List<RayFunc> funcs);
 
   List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda);
+
+  /** Create runtime env instance at runtime. */
+  RuntimeEnv createRuntimeEnv(Map<String, String> envVars);
 }

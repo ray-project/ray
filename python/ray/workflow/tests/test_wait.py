@@ -236,6 +236,45 @@ def test_wait_failure_recovery_2(workflow_start_regular_shared):
     assert ready == [2, 1]
 
 
+@pytest.mark.parametrize(
+    "workflow_start_regular_shared",
+    [
+        {
+            "num_cpus": 2
+            # We need more CPUs, otherwise task execution could be blocked.
+        }
+    ],
+    indirect=True,
+)
+def test_wait_recovery_step_id(workflow_start_regular_shared):
+    # This test ensures workflow reuse the original directory and
+    # step id for "workflow.wait" during recovery.
+
+    @workflow.step
+    def identity(x: int):
+        # block the step by a global mark
+        assert utils.check_global_mark()
+        return x
+
+    w = workflow.wait([identity.step(42)], num_returns=1, timeout=None)
+    utils.unset_global_mark()
+    with pytest.raises(RaySystemError):
+        _ = w.run(workflow_id="test_wait_recovery_step_id")
+    utils.set_global_mark()
+    ready, unready = ray.get(workflow.resume("test_wait_recovery_step_id"))
+    assert ready == [42]
+
+    from ray.workflow import storage, workflow_storage
+
+    global_storage = storage.get_global_storage()
+    wf_storage = workflow_storage.WorkflowStorage(
+        "test_wait_recovery_step_id", global_storage
+    )
+    index = wf_storage.gen_step_id("workflow.wait")
+    # no new step id
+    assert index <= 1
+
+
 if __name__ == "__main__":
     import sys
 

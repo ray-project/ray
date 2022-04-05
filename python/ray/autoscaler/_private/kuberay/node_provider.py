@@ -90,6 +90,49 @@ def make_node_tags(labels: Dict[str, str], status_tag: str) -> Dict[str, str]:
     return tags
 
 
+def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
+    """
+    Loads secrets needed to access K8s resources.
+
+    Returns:
+        headers (dict): Headers with K8s access token
+        verify (str): Path to certificate
+    """
+    with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as secret:
+        token = secret.read()
+
+    headers = {
+        "Authorization": "Bearer " + token,
+    }
+    verify = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+    return headers, verify
+
+
+def url_from_resource(namespace: str, path: str) -> str:
+    """Convert resource path to REST URL for Kubernetes API server.
+
+    Args:
+        namespace: The K8s namespace of the resource
+        path: The part of the resource path that starts with the resource type.
+            Supported resource types are "pods" and "rayclusters".
+    """
+    if path.startswith("pods"):
+        api_group = "/api/v1"
+    elif path.startswith("rayclusters"):
+        api_group = "/apis/ray.io/v1alpha1"
+    else:
+        raise NotImplementedError("Tried to access unknown entity at {}".format(path))
+    return (
+        "https://kubernetes.default:443"
+        + api_group
+        + "/namespaces/"
+        + namespace
+        + "/"
+        + path
+    )
+
+
 class KuberayNodeProvider(NodeProvider):  # type: ignore
     def __init__(
         self,
@@ -102,13 +145,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         self.cluster_name = cluster_name
         self._lock = threading.RLock()
 
-        with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as secret:
-            token = secret.read()
-
-        self.headers = {
-            "Authorization": "Bearer " + token,
-        }
-        self.verify = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        self.headers, self.verify = load_k8s_secrets()
 
         # Disallow multiple node providers, unless explicitly allowed for testing.
         global provider_exists
@@ -144,14 +181,16 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
-        result = requests.get(self._url(path), headers=self.headers, verify=self.verify)
+        url = url_from_resource(namespace=self.namespace, path=path)
+        result = requests.get(url, headers=self.headers, verify=self.verify)
         assert result.status_code == 200
         return result.json()
 
     def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
+        url = url_from_resource(namespace=self.namespace, path=path)
         result = requests.patch(
-            self._url(path),
+            url,
             json.dumps(payload),
             headers={**self.headers, "Content-type": "application/json-patch+json"},
             verify=self.verify,
@@ -171,7 +210,9 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 group_index = index
                 group_spec = spec
                 break
-        assert group_index is not None and group_spec is not None
+        assert (
+            group_index is not None and group_spec is not None
+        ), f"Could not find the worker group with name {group_name}."
         return group_index, group_spec
 
     def _wait_for_pods(self, group_name: str, replicas: int) -> None:
@@ -189,6 +230,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
                 )
             )
             if len(pods["items"]) == replicas:
+                logger.info(f"Adjusted to {replicas} replicas.")
                 break
             else:
                 logger.info(

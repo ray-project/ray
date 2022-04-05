@@ -13,7 +13,7 @@ def set_search_properties_backwards_compatible(
 ) -> bool:
     """Wraps around set_search_properties() so that it is backward compatible.
 
-    Also outputs a warning to encourage customm searchers to be updated.
+    Also outputs a warning to encourage custom searchers to be updated.
     """
     try:
         return set_search_properties_func(metric, mode, config, **spec)

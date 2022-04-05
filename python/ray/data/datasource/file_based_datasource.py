@@ -23,6 +23,7 @@ from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
+from ray.data.datasource.file_meta_provider import FileMetadataProvider
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -67,6 +68,9 @@ class BlockWritePathProvider:
                 dataset.
             file_format: File format string for the block that can be used as
                 the file extension in the write path returned.
+
+        Returns:
+            The dataset block write path.
         """
         raise NotImplementedError
 
@@ -114,6 +118,123 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
 
 
 @DeveloperAPI
+class BaseFileMetadataProvider(FileMetadataProvider):
+    """Abstract callable that provides metadata for FileBasedDatasource
+     implementations that reuse the base `prepare_read` method.
+
+    Also supports file and file size discovery in input directory paths.
+
+     Current subclasses:
+         DefaultFileMetadataProvider
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        rows_per_file: Optional[int],
+        file_sizes: List[Optional[int]],
+    ) -> BlockMetadata:
+        """Resolves and returns block metadata for the given file paths.
+
+        Args:
+            paths: The file paths to aggregate block metadata across. These
+                paths will always be a subset of those previously returned from
+                `expand_paths()`.
+            schema: The user-provided or inferred schema for the given file
+                paths, if any.
+            rows_per_file: The fixed number of rows per input file, or None.
+            file_sizes: Optional file size per input file previously returned
+                from `expand_paths()`, where `file_sizes[i]` holds the size of
+                the file at `paths[i]`.
+
+        Returns:
+            BlockMetadata aggregated across the given file paths.
+        """
+        raise NotImplementedError
+
+    def expand_paths(
+        self,
+        paths: List[str],
+        filesystem: Optional["pyarrow.fs.FileSystem"],
+    ) -> Tuple[List[str], List[Optional[int]]]:
+        """Expands all paths into concrete file paths by walking directories.
+
+         Also returns a sidecar of file sizes.
+
+        The input paths will be normalized for compatibility with the input
+        filesystem prior to invocation.
+
+         Args:
+             paths: A list of file and/or directory paths compatible with the
+                 given filesystem.
+             filesystem: The filesystem implementation that should be used for
+                 expanding all paths and reading their files.
+
+         Returns:
+             A tuple whose first item contains the list of file paths discovered,
+             and whose second item contains the size of each file. `None` may be
+             returned if a file size is either unknown or will be fetched later
+             by `_get_block_metadata()`, but the length of both lists must be
+             equal.
+        """
+        raise NotImplementedError
+
+
+class DefaultFileMetadataProvider(BaseFileMetadataProvider):
+    """Default metadata provider for FileBasedDatasource implementations that
+    reuse the base `prepare_read` method.
+
+    Calculates block size in bytes as the sum of its constituent file sizes,
+    and assumes a fixed number of rows per file.
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        rows_per_file: Optional[int],
+        file_sizes: List[Optional[int]],
+    ) -> BlockMetadata:
+        if rows_per_file is None:
+            num_rows = None
+        else:
+            num_rows = len(paths) * rows_per_file
+        return BlockMetadata(
+            num_rows=num_rows,
+            size_bytes=None if None in file_sizes else sum(file_sizes),
+            schema=schema,
+            input_files=paths,
+            exec_stats=None,
+        )  # Exec stats filled in later.
+
+    def expand_paths(
+        self,
+        paths: List[str],
+        filesystem: "pyarrow.fs.FileSystem",
+    ) -> Tuple[List[str], List[Optional[int]]]:
+        from pyarrow.fs import FileType
+
+        expanded_paths = []
+        file_infos = []
+        for path in paths:
+            file_info = filesystem.get_file_info(path)
+            if file_info.type == FileType.Directory:
+                paths, file_infos_ = _expand_directory(path, filesystem)
+                expanded_paths.extend(paths)
+                file_infos.extend(file_infos_)
+            elif file_info.type == FileType.File:
+                expanded_paths.append(path)
+                file_infos.append(file_info)
+            else:
+                raise FileNotFoundError(path)
+        file_sizes = [file_info.size for file_info in file_infos]
+        return expanded_paths, file_sizes
+
+
+@DeveloperAPI
 class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """File-based datasource, for reading and writing files.
 
@@ -132,6 +253,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
+        meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
     ) -> List[ReadTask]:
@@ -140,8 +263,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         import numpy as np
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        paths, file_infos = _expand_paths(paths, filesystem)
-        file_sizes = [file_info.size for file_info in file_infos]
+        paths, file_sizes = meta_provider.expand_paths(paths, filesystem)
 
         read_stream = self._read_stream
 
@@ -162,6 +284,34 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )
             for read_path in read_paths:
+                compression = open_stream_args.pop("compression", None)
+                if compression is None:
+                    import pyarrow as pa
+
+                    try:
+                        # If no compression manually given, try to detect
+                        # compression codec from path.
+                        compression = pa.Codec.detect(read_path).name
+                    except (ValueError, TypeError):
+                        # Arrow's compression inference on the file path
+                        # doesn't work for Snappy, so we double-check ourselves.
+                        import pathlib
+
+                        suffix = pathlib.Path(read_path).suffix
+                        if suffix and suffix[1:] == "snappy":
+                            compression = "snappy"
+                        else:
+                            compression = None
+                if compression == "snappy":
+                    # Pass Snappy compression as a reader arg, so datasource subclasses
+                    # can manually handle streaming decompression in
+                    # self._read_stream().
+                    reader_args["compression"] = compression
+                    reader_args["filesystem"] = fs
+                elif compression is not None:
+                    # Non-Snappy compression, pass as open_input_stream() arg so Arrow
+                    # can take care of streaming decompression for us.
+                    open_stream_args["compression"] = compression
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         output_buffer.add_block(data)
@@ -178,17 +328,12 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             if len(read_paths) <= 0:
                 continue
 
-            if self._rows_per_file() is None:
-                num_rows = None
-            else:
-                num_rows = len(read_paths) * self._rows_per_file()
-            meta = BlockMetadata(
-                num_rows=num_rows,
-                size_bytes=sum(file_sizes),
-                schema=schema,
-                input_files=read_paths,
-                exec_stats=None,
-            )  # Exec stats filled in later.
+            meta = meta_provider(
+                read_paths,
+                schema,
+                rows_per_file=self._rows_per_file(),
+                file_sizes=file_sizes,
+            )
             read_task = ReadTask(
                 lambda read_paths=read_paths: read_files(read_paths, filesystem), meta
             )
@@ -385,39 +530,6 @@ def _resolve_paths_and_filesystem(
     return resolved_paths, filesystem
 
 
-def _expand_paths(paths: Union[str, List[str]], filesystem: "pyarrow.fs.FileSystem"):
-    """
-    Expands all provided paths into concrete file paths by walking directories.
-    Also returns a sidecar of file infos.
-
-    This should be used on the output of _resolve_paths_and_filesystem.
-
-    Args:
-        paths: A single file/directory path or a list of file/directory paths.
-            A list of paths can contain both files and directories. These paths
-            should be properly resolved, e.g. the paths returned from
-            _resolve_paths_and_filesystem.
-        filesystem: The filesystem implementation that should be used for
-            reading these files.
-    """
-    from pyarrow.fs import FileType
-
-    expanded_paths = []
-    file_infos = []
-    for path in paths:
-        file_info = filesystem.get_file_info(path)
-        if file_info.type == FileType.Directory:
-            paths, file_infos_ = _expand_directory(path, filesystem)
-            expanded_paths.extend(paths)
-            file_infos.extend(file_infos_)
-        elif file_info.type == FileType.File:
-            expanded_paths.append(path)
-            file_infos.append(file_info)
-        else:
-            raise FileNotFoundError(path)
-    return expanded_paths, file_infos
-
-
 def _expand_directory(
     path: str,
     filesystem: "pyarrow.fs.FileSystem",
@@ -510,13 +622,14 @@ class _S3FileSystemWrapper:
         return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()
 
 
-def _wrap_s3_filesystem_workaround(kwargs: dict) -> dict:
+def _wrap_arrow_serialization_workaround(kwargs: dict) -> dict:
     if "filesystem" in kwargs:
         kwargs["filesystem"] = _wrap_s3_serialization_workaround(kwargs["filesystem"])
+
     return kwargs
 
 
-def _unwrap_s3_filesystem_workaround(kwargs: dict) -> dict:
+def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
     if isinstance(kwargs.get("filesystem"), _S3FileSystemWrapper):
         kwargs["filesystem"] = kwargs["filesystem"].unwrap()
     return kwargs

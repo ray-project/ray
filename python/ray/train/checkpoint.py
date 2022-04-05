@@ -24,6 +24,15 @@ MIN = "min"
 logger = logging.getLogger(__name__)
 
 
+def load_checkpoint_from_path(checkpoint_to_load: Union[str, Path]) -> Dict:
+    """Utility function to load a checkpoint Dict from a path."""
+    checkpoint_path = Path(checkpoint_to_load).expanduser()
+    if not checkpoint_path.exists():
+        raise ValueError(f"Checkpoint path {checkpoint_path} does not exist.")
+    with checkpoint_path.open("rb") as f:
+        return cloudpickle.load(f)
+
+
 @PublicAPI(stability="beta")
 @dataclass
 class CheckpointStrategy:
@@ -109,7 +118,7 @@ class CheckpointManager:
             checkpoint may not be saved to disk.
     """
 
-    def on_init(self):
+    def on_init(self, **kwargs):
         """Checkpoint code executed during BackendExecutor init."""
         self.latest_checkpoint = None
 
@@ -169,13 +178,7 @@ class CheckpointManager:
             return checkpoint_to_load
         else:
             # Load checkpoint from path.
-            checkpoint_path = Path(checkpoint_to_load).expanduser()
-            if not checkpoint_path.exists():
-                raise ValueError(
-                    f"Checkpoint path {checkpoint_path} " f"does not exist."
-                )
-            with checkpoint_path.open("rb") as f:
-                return cloudpickle.load(f)
+            return load_checkpoint_from_path(checkpoint_to_load)
 
     def write_checkpoint(self, checkpoint: Dict):
         """Writes checkpoint to disk."""
@@ -305,14 +308,6 @@ class CheckpointManager:
 
 
 class TuneCheckpointManager(CheckpointManager):
-    def create_logdir(self, log_dir: Optional[Union[str, Path]]):
-        # Don't create logdir when using with Tune.
-        pass
-
-    def create_run_dir(self):
-        # Don't create run_dir when using with Tune.
-        pass
-
     def _load_checkpoint(
         self, checkpoint_to_load: Optional[Union[Dict, str, Path]]
     ) -> Optional[Dict]:
@@ -324,10 +319,13 @@ class TuneCheckpointManager(CheckpointManager):
             self._latest_checkpoint_id = loaded_checkpoint[TUNE_CHECKPOINT_ID]
         return loaded_checkpoint
 
-    def write_checkpoint(self, checkpoint: Dict):
+    def add_tune_checkpoint_id(self, checkpoint: Dict):
         # Store the checkpoint_id in the file so that the Tune trial can be
         # resumed after failure or cancellation.
         checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
+
+    def write_checkpoint(self, checkpoint: Dict):
+        self.add_tune_checkpoint_id(checkpoint)
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             path = Path(checkpoint_dir)

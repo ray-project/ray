@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import ray
 from ray import tune
+from ray.ml.tests.utils import mock_s3_sync
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,
@@ -59,7 +60,6 @@ from ray.tune.sync_client import CommandBasedClient
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils import flatten_dict, get_pinned_object, pin_in_object_store
-from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
@@ -150,6 +150,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             "time_since_restore",
             "experiment_id",
             "date",
+            "warmup_time",
         }
 
         self.assertEqual(len(class_output), len(results))
@@ -780,7 +781,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 return [0, 1, True, {}]
 
         class FailureInjectionCallback(Callback):
-            def on_trial_start(self, trials, **info):
+            def on_step_end(self, **info):
                 raise RuntimeError
 
         with self.assertRaises(Exception):
@@ -870,7 +871,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             trial.last_result.get("trial_resources"), trial.placement_group_factory
         )
 
-    @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
     def testLotsOfStops(self):
         class TestTrainable(Trainable):
             def step(self):
@@ -980,14 +980,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertTrue(all(complete_results1))
 
     def _testDurableTrainable(self, trainable, function=False, cleanup=True):
-        sync_client = mock_storage_client()
-        mock_get_client = "ray.tune.trainable.get_cloud_sync_client"
-        with patch(mock_get_client) as mock_get_cloud_sync_client:
-            mock_get_cloud_sync_client.return_value = sync_client
+        tempdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tempdir)
+        mocked_subprocess = mock_s3_sync(tempdir)
+        remote_checkpoint_dir = "s3://unit-test/bucket"
+
+        with patch("subprocess.check_call", mocked_subprocess):
             log_creator = partial(
                 noop_logger_creator, logdir="~/tmp/ray_results/exp/trial"
             )
-            remote_checkpoint_dir = os.path.join(MOCK_REMOTE_DIR, "exp/trial")
             test_trainable = trainable(
                 logger_creator=log_creator, remote_checkpoint_dir=remote_checkpoint_dir
             )
@@ -1017,9 +1018,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
             result = test_trainable.train()
             self.assertEqual(result["metric"], 2)
-
-        if cleanup:
-            self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
 
     def testDurableTrainableClass(self):
         class TestTrain(Trainable):

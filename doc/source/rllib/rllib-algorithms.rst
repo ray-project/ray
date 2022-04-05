@@ -1,7 +1,9 @@
-.. include:: we_are_hiring.rst
+.. include:: /_includes/rllib/announcement.rst
 
-RLlib Algorithms
-================
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+Algorithms
+==========
 
 .. tip::
 
@@ -10,31 +12,31 @@ RLlib Algorithms
 Available Algorithms - Overview
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=================== ========== ======================= ================== =========== ============================================================= ===============
-Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
-=================== ========== ======================= ================== =========== ============================================================= ===============
-`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
-`ARS`_              tf + torch **Yes**                 **Yes**            No                                                                        No
-`BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       torch
-`CQL`_              tf + torch No                      **Yes**            No                                                                        tf + torch
-`ES`_               tf + torch **Yes**                 **Yes**            No                                                                        No
-`DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**                                                                   torch
-`APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**                                                                   torch
-`Dreamer`_          torch      No                      **Yes**            No          `+RNN`_                                                       torch
-`DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**                                                                   tf + torch
-`APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**                                                                   torch
-`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`MAML`_             tf + torch No                      **Yes**            No                                                                        torch
-`MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       torch
-`MBMPO`_            torch      No                      **Yes**            No                                                                        torch
-`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
-`R2D2`_             tf + torch **Yes** `+parametric`_  No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
-`SAC`_              tf + torch **Yes**                 **Yes**            **Yes**                                                                   torch
-`SlateQ`_           torch      **Yes**                 No                 No                                                                        torch
-`LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**                                                                   No
-`AlphaZero`_        torch      **Yes** `+parametric`_  No                 No                                                                        No
-=================== ========== ======================= ================== =========== ============================================================= ===============
+=========================== ========== ============================= ================== =========== ============================================================= ===============
+Algorithm                   Frameworks Discrete Actions              Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
+=========================== ========== ============================= ================== =========== ============================================================= ===============
+`A2C, A3C`_                 tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
+`ARS`_                      tf + torch **Yes**                       **Yes**            No                                                                        No
+`Bandits`_ (`TS`_ & `UCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
+`BC`_                       tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
+`CQL`_                      tf + torch No                            **Yes**            No                                                                        tf + torch
+`ES`_                       tf + torch **Yes**                       **Yes**            No                                                                        No
+`DDPG`_, `TD3`_             tf + torch No                            **Yes**            **Yes**                                                                   torch
+`APEX-DDPG`_                tf + torch No                            **Yes**            **Yes**                                                                   torch
+`Dreamer`_                  torch      No                            **Yes**            No          `+RNN`_                                                       torch
+`DQN`_, `Rainbow`_          tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
+`APEX-DQN`_                 tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
+`IMPALA`_                   tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`MAML`_                     tf + torch No                            **Yes**            No                                                                        torch
+`MARWIL`_                   tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
+`MBMPO`_                    torch      No                            **Yes**            No                                                                        torch
+`PG`_                       tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`PPO`_, `APPO`_             tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`R2D2`_                     tf + torch **Yes** `+parametric`_        No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
+`SAC`_                      tf + torch **Yes**                       **Yes**            **Yes**                                                                   torch
+`SlateQ`_                   tf + torch **Yes** (multi-discr. slates) No                 No                                                                        torch
+`AlphaZero`_                torch      **Yes** `+parametric`_        No                 No                                                                        No
+=========================== ========== ============================= ================== =========== ============================================================= ===============
 
 Multi-Agent only Methods
 
@@ -68,6 +70,8 @@ Algorithm                     Frameworks Discrete Actions        Continuous Acti
 .. _`+RNN`: rllib-models.html#rnns
 .. _`TD3`: rllib-algorithms.html#ddpg
 .. _`+Attention`: rllib-models.html#attention
+.. _`TS`: rllib-models.html#lints
+.. _`UCB`: rllib-models.html#linucb
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -520,7 +524,7 @@ Dreamer
 
 Dreamer is an image-only model-based RL method that learns by imagining trajectories in the future and is evaluated on the DeepMind Control Suite `environments <https://github.com/ray-project/ray/blob/master/rllib/examples/env/dm_control_suite.py>`__. RLlib's Dreamer is adapted from the `official Google research repo <https://github.com/google-research/dreamer>`__.
 
-To visualize learning, RLLib Dreamer's imagined trajectories are logged as gifs in Tensorboard. Examples of such can be seen `here <https://github.com/ray-project/rl-experiments>`__.
+To visualize learning, RLLib Dreamer's imagined trajectories are logged as gifs in TensorBoard. Examples of such can be seen `here <https://github.com/ray-project/rl-experiments>`__.
 
 Tuned examples: `Deepmind Control Environments <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamer/dreamer-deepmind-control.yaml>`__
 
@@ -671,12 +675,14 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :end-before: __sphinx_doc_end__
 
 
+.. _bandits:
+
 Contextual Bandits
 ~~~~~~~~~~~~~~~~~~
 
 The Multi-armed bandit (MAB) problem provides a simplified RL setting that
-involves learning to act under one situation only, i.e. the state is fixed.
-Contextual bandit is extension of the MAB problem, where at each
+involves learning to act under one situation only, i.e. the context (observation/state) and arms (actions/items-to-select) are both fixed.
+Contextual bandit is an extension of the MAB problem, where at each
 round the agent has access not only to a set of bandit arms/actions but also
 to a context (state) associated with this iteration. The context changes
 with each iteration, but, is not affected by the action that the agent takes.
@@ -686,7 +692,8 @@ arms are related to each other. The agent does this by balancing the
 trade-off between exploration and exploitation.
 
 Contextual bandit algorithms typically consist of an action-value model (Q
-model) and an exploration strategy (e-greedy, UCB, Thompson Sampling etc.)
+model) and an exploration strategy (epsilon-greedy, UCB, Thompson Sampling etc.)
+
 RLlib supports the following online contextual bandit algorithms,
 named after the exploration strategies that they employ:
 
@@ -705,7 +712,8 @@ uncertainty of action values.
 
 Tuned examples:
 `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
-`ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/tune_LinUCB_train_recommendation.py>`__.
+`UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recsim_env.py>`__.
+`ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recommendation.py>`__.
 
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
@@ -714,6 +722,7 @@ Tuned examples:
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
 
 .. _lints:
 
@@ -731,7 +740,7 @@ the posterior distributions, and plays the arm that produces the highest reward.
 
 Tuned examples:
 `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
-`WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/tune_LinTS_train_wheel_env.py>`__.
+`WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ts_train_wheel_env.py>`__.
 
 **LinTS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -739,15 +748,6 @@ Tuned examples:
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
-
-
-.. |tensorflow| image:: images/tensorflow.png
-    :class: inline-figure
-    :width: 24
-
-.. |pytorch| image:: images/pytorch.png
-    :class: inline-figure
-    :width: 24
 
 
 .. _alphazero:
@@ -898,7 +898,7 @@ often: The "forward" model will eventually get better at predicting these next l
 RE3 (Random Encoders for Efficient Exploration)
 -----------------------------------------------
 
-|Tensorflow|
+|tensorflow|
 `[paper] <https://arxiv.org/pdf/2102.09430.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/utils/exploration/random_encoder.py>`__
 
@@ -952,3 +952,14 @@ using the state entropy as "intrinsic rewards".
 
 This exploration objective can be used with both model-free and model-based RL algorithms. 
 RE3 uses a randomly initialized encoder to get the state’s latent representation, thus taking away the complexity of training the representation learning method. The encoder weights are fixed during the entire duration of the training process. 
+
+
+.. |tensorflow| image:: images/tensorflow.png
+    :class: inline-figure
+    :width: 24
+
+.. |pytorch| image:: images/pytorch.png
+    :class: inline-figure
+    :width: 24
+
+.. include:: /_includes/rllib/announcement_bottom.rst

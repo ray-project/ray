@@ -47,7 +47,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.iter import LocalIterator
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 APEX_DEFAULT_CONFIG = merge_dicts(
     # See also the options in dqn.py, which are also supported.
@@ -66,7 +66,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "buffer_size": 2000000,
         # TODO(jungong) : add proper replay_buffer_config after
         #     DistributedReplayBuffer type is supported.
-        "replay_buffer_config": None,
+        "no_local_replay_buffer": True,
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
         # This is preferred b/c the learner process should have quick
@@ -92,7 +92,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
     },
 )
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 # Update worker weights as they finish generating experiences.
@@ -157,9 +157,9 @@ class ApexTrainer(DQNTrainer):
             config["learning_starts"],
             config["buffer_size"],
             config["train_batch_size"],
-            config["prioritized_replay_alpha"],
-            config["prioritized_replay_beta"],
-            config["prioritized_replay_eps"],
+            config["replay_buffer_config"]["prioritized_replay_alpha"],
+            config["replay_buffer_config"]["prioritized_replay_beta"],
+            config["replay_buffer_config"]["prioritized_replay_eps"],
             config["multiagent"]["replay_mode"],
             config.get("replay_sequence_length", 1),
         ]

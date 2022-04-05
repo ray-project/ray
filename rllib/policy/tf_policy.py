@@ -19,6 +19,7 @@ from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -54,13 +55,15 @@ class TFPolicy(Policy):
     Input tensors are typically shaped like [BATCH_SIZE, ...].
 
     Examples:
-        >>> policy = TFPolicySubclass(
-            sess, obs_input, sampled_action, loss, loss_inputs)
-
-        >>> print(policy.compute_actions([1, 0, 2]))
+        >>> from ray.rllib.policy import TFPolicy
+        >>> class TFPolicySubclass(TFPolicy): # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        >>> sess, obs_input, sampled_action, loss, loss_inputs = ... # doctest: +SKIP
+        >>> policy = TFPolicySubclass( # doctest: +SKIP
+        ...     sess, obs_input, sampled_action, loss, loss_inputs) # doctest: +SKIP
+        >>> print(policy.compute_actions([1, 0, 2])) # doctest: +SKIP
         (array([0, 1, 1]), [], {})
-
-        >>> print(policy.postprocess_trajectory(SampleBatch({...})))
+        >>> print(policy.postprocess_trajectory(SampleBatch({...}))) # doctest: +SKIP
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
 
@@ -389,7 +392,7 @@ class TFPolicy(Policy):
 
         if self._log_likelihood is None:
             raise ValueError(
-                "Cannot compute log-prob/likelihood w/o a " "self._log_likelihood op!"
+                "Cannot compute log-prob/likelihood w/o a self._log_likelihood op!"
             )
 
         # Exploration hook before each forward pass.
@@ -445,7 +448,12 @@ class TFPolicy(Policy):
 
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         stats = builder.get(fetches)
-        stats.update({"custom_metrics": learn_stats})
+        stats.update(
+            {
+                "custom_metrics": learn_stats,
+                NUM_AGENT_STEPS_TRAINED: postprocessed_batch.count,
+            }
+        )
         return stats
 
     @override(Policy)

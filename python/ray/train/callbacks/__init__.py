@@ -5,11 +5,13 @@ from ray.train.callbacks.logging import (
     TBXLoggerCallback,
 )
 from ray.train.callbacks.print import PrintCallback
+from ray.train.callbacks.profile import TorchTensorboardProfilerCallback
 
 __all__ = [
     "TrainingCallback",
     "JsonLoggerCallback",
     "MLflowLoggerCallback",
     "TBXLoggerCallback",
+    "TorchTensorboardProfilerCallback",
     "PrintCallback",
 ]

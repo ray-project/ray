@@ -55,7 +55,7 @@ def set_kill_interval(request):
 
 
 @pytest.mark.skip(
-    reason="Skip until https://github.com/ray-project/ray/issues/20706 " "is fixed."
+    reason="Skip until https://github.com/ray-project/ray/issues/20706 is fixed."
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
@@ -133,7 +133,7 @@ def test_chaos_defer(monkeypatch, ray_start_cluster):
         # defer for 3s
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "NodeManagerService.grpc_client.PrepareBundleResources" "=2000000:2000000",
+            "NodeManagerService.grpc_client.PrepareBundleResources=2000000:2000000",
         )
         m.setenv("RAY_event_stats", "true")
         cluster = ray_start_cluster

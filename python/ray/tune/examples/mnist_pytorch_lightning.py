@@ -1,5 +1,5 @@
 # flake8: noqa
-# yapf: disable
+# fmt: off
 
 # __import_lightning_begin__
 import math
@@ -121,7 +121,7 @@ class LightningMNISTClassifier(pl.LightningModule):
 
 def train_mnist(config):
     model = LightningMNISTClassifier(config)
-    trainer = pl.Trainer(max_epochs=10, show_progress_bar=False)
+    trainer = pl.Trainer(max_epochs=10, enable_progress_bar=False)
 
     trainer.fit(model)
 # __lightning_end__
@@ -148,7 +148,7 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0, data_dir="~/data"):
         gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
-        progress_bar_refresh_rate=0,
+        enable_progress_bar=False,
         callbacks=[
             TuneReportCallback(
                 {
@@ -174,7 +174,7 @@ def train_mnist_tune_checkpoint(config,
         "gpus": math.ceil(num_gpus),
         "logger": TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
-        "progress_bar_refresh_rate": 0,
+        "enable_progress_bar": False,
         "callbacks": [
             TuneReportCheckpointCallback(
                 metrics={

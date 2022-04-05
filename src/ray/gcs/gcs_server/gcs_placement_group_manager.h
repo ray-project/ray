@@ -22,8 +22,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -244,7 +244,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param placement_group The placement_group whose creation task is infeasible.
   /// \param is_feasible whether the scheduler can be retry or not currently.
   void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
-                                      ExponentialBackOff backoff, bool is_feasible);
+                                      ExponentialBackOff backoff,
+                                      bool is_feasible);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.
