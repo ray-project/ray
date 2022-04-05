@@ -14,6 +14,8 @@
 
 #include "ray/pubsub/publisher.h"
 
+#include "ray/common/ray_config.h"
+
 namespace ray {
 
 namespace pubsub {
@@ -24,7 +26,33 @@ bool EntityState::Publish(const rpc::PubMessage &pub_message) {
   if (subscribers.empty()) {
     return false;
   }
+  while (!pending_messages.empty() && pending_messages.front().lock() == nullptr) {
+    pending_messages.pop();
+    total_size -= message_sizes.front();
+    message_sizes.pop();
+  }
+
+  const auto message_size = pub_message.ByteSizeLong();
+  if (total_size + message_size >
+      RayConfig::instance().publisher_entity_buffer_max_bytes()) {
+    RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
+        << "Pub/sub message cannot be buffered, otherwise the maximum configured "
+        << "buffer size "
+        << absl::StrCat(
+               "(", RayConfig::instance().publisher_entity_buffer_max_bytes(), "B)")
+        << " would be exceed "
+        << absl::StrCat(
+               "(msg size=", message_size, "B, current buffer size=", total_size, "B)")
+        << ". Message:\n"
+        << pub_message.DebugString();
+    return false;
+  }
+
   const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
+  pending_messages.push(msg);
+  total_size += message_size;
+  message_sizes.push(message_size);
+
   for (auto &[id, subscriber] : subscribers) {
     subscriber->QueueMessage(msg);
   }
@@ -177,7 +205,7 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
 
 void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
                                    bool try_publish) {
-  mailbox_.push_back(pub_message);
+  mailbox_.push(pub_message);
   if (try_publish) {
     PublishIfPossible();
   }
@@ -196,7 +224,7 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
   if (!force_noop) {
     for (int i = 0; i < publish_batch_size_ && !mailbox_.empty(); ++i) {
       *long_polling_connection_->reply->add_pub_messages() = *mailbox_.front();
-      mailbox_.pop_front();
+      mailbox_.pop();
     }
   }
   long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);

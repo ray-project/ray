@@ -42,6 +42,10 @@ class SubscriberState;
 
 /// State for an entity / topic in a pub/sub channel.
 struct EntityState {
+  std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages;
+  std::queue<int64_t> message_sizes;
+  int64_t total_size = 0;
+
   /// Subscribers for the entity.
   absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers;
 
@@ -171,7 +175,7 @@ class SubscriberState {
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
-  std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
+  std::queue<std::shared_ptr<rpc::PubMessage>> mailbox_;
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
