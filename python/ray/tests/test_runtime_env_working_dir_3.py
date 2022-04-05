@@ -135,7 +135,7 @@ class TestGC:
         print(f'kv check 2 passed with source "{source}" and option "{option}".')
 
         assert not check_local_files_gced(cluster)
-        print("check_local_files_gced() check passed")
+        print("check_local_files_gced() check passed.")
 
         ray.shutdown()
         print("Ray has been shut down.")
@@ -238,6 +238,7 @@ class TestGC:
                     ]
                 },
             )
+        print(f'Initialized Ray with option "{option}".')
 
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
@@ -247,6 +248,7 @@ class TestGC:
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
+        print(f'kv check 1 passed with source "{source}" and option "{option}".')
 
         @ray.remote
         class A:
@@ -258,30 +260,49 @@ class TestGC:
                 test_module.one()
 
         a = A.options(name="test", lifetime="detached").remote()
+        print('Created detached actor with name "test".')
+
         ray.get(a.test_import.remote())
+        print('Got response from "test" actor.')
 
         if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
+        print(f'kv check 2 passed with source "{source}" and option "{option}".')
+
         assert not check_local_files_gced(cluster)
+        print("check_local_files_gced() check passed.")
 
         ray.shutdown()
+        print("Ray has been shut down.")
 
         ray.init(address, namespace="test")
+        print(f'Reconnected to Ray at address "{address}" and namespace "test".')
 
         if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
+        print(f'kv check 3 passed with source "{source}" and option "{option}".')
+
         assert not check_local_files_gced(cluster)
+        print("check_local_files_gced() check passed.")
 
         a = ray.get_actor("test")
+        print('Got "test" actor.')
+
         ray.get(a.test_import.remote())
+        print('Got response from "test" actor.')
 
         ray.kill(a)
+        print('Issued ray.kill() request to "test" actor.')
+
         wait_for_condition(check_internal_kv_gced)
+        print("check_internal_kv_gced passed wait_for_condition block.")
+
         wait_for_condition(lambda: check_local_files_gced(cluster))
+        print("check_local_files_gced passed wait_for_condition block.")
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     def test_hit_cache_size_limit(self, start_cluster, URI_cache_10_MB):
