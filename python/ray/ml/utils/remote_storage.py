@@ -1,6 +1,8 @@
 import re
 from typing import Optional, Tuple
 
+from ray.util import log_once
+
 try:
     import fsspec
 except ImportError:
@@ -23,32 +25,36 @@ ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 def _warn_if_pyarrow_not_installed() -> bool:
     if pyarrow is None:
-        logger.warning(
-            "Uploading, downloading, and deleting from cloud storage "
-            "requires pyarrow to be installed. Install with: "
-            "`pip install pyarrow`"
-        )
+        if log_once("air_pyarrow_not_available"):
+            logger.warning(
+                "Uploading, downloading, and deleting from cloud storage "
+                "requires pyarrow to be installed. Install with: "
+                "`pip install pyarrow`. Subsequent calls to cloud operations "
+                "will be ignored."
+            )
+        return True
     return False
 
 
-def is_cloud_target(target: str) -> bool:
-    if bool(get_fs_and_path(target)[0]):
+def is_cloud_target(uri: str) -> bool:
+    """Check if target URI is a cloud target"""
+    if bool(get_fs_and_path(uri)[0]):
         return True
     # Keep manual check for prefixes for backwards compatibility with the
     # TrialCheckpoint class. Remove once fully deprecated.
-    if any(target.startswith(p) for p in ALLOWED_REMOTE_PREFIXES):
+    if any(uri.startswith(p) for p in ALLOWED_REMOTE_PREFIXES):
         return True
     return False
 
 
 def get_fs_and_path(
-    target: str,
+    uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
     if not pyarrow:
         return None, None
 
     try:
-        fs, path = pyarrow.fs.FileSystem.from_uri(target)
+        fs, path = pyarrow.fs.FileSystem.from_uri(uri)
         return fs, path
     except pyarrow.lib.ArrowInvalid:
         # Raised when URI not recognized
@@ -57,7 +63,7 @@ def get_fs_and_path(
             return None, None
 
     # Else, try to resolve protocol via fsspec
-    protocol_match = re.match(URI_PROTOCOL_REGEX, target)
+    protocol_match = re.match(URI_PROTOCOL_REGEX, uri)
     if not protocol_match:
         return None, None
 

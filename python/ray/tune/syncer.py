@@ -12,6 +12,7 @@ from shlex import quote
 
 import ray
 import yaml
+from ray.ml.utils.remote_storage import get_fs_and_path
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.checkpoint_manager import _TuneCheckpoint
@@ -46,6 +47,22 @@ _syncers = {}
 def wait_for_sync():
     for syncer in _syncers.values():
         syncer.wait()
+
+
+def validate_upload_dir(sync_config: "SyncConfig"):
+    if sync_config.upload_dir:
+        fs, _ = get_fs_and_path(sync_config.upload_dir)
+        if not fs:
+            raise ValueError(
+                f"Could not identify external storage filesystem for "
+                f"upload dir `{sync_config.upload_dir}`. "
+                f"Please make sure that PyArrow is installed: "
+                f"`pip install pyarrow`. Also, make sure your filesystem is "
+                f"supported by `pyarrow.fs.FileSystem`. You can install "
+                f"additional filesystems if they have an fsspec-compatible "
+                f"implementation (e.g. `pip install adlfs` for Azure storage). "
+                f"See e.g. https://github.com/fsspec for more resources."
+            )
 
 
 def set_sync_periods(sync_config: "SyncConfig"):
