@@ -7,32 +7,33 @@ from typing import Any
 
 import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.remote_storage import register_remote_storage
-from ray.ml.utils.test_utils import LocalTestStorage
 
 
 class CheckpointsConversionTest(unittest.TestCase):
     def setUp(self):
         self.tmpdir = os.path.realpath(tempfile.mkdtemp())
+        self.tmpdir_pa = os.path.realpath(tempfile.mkdtemp())
 
         self.checkpoint_dict_data = {"metric": 5, "step": 4}
         self.checkpoint_dir_data = {"metric": 2, "step": 6}
 
-        self.local_test_storage = LocalTestStorage()
-        register_remote_storage("test://", self.local_test_storage)
-
-        self.cloud_uri = "test://cloud/bucket"
+        # fsspec URI
+        self.cloud_uri = "memory://cloud/bucket"
+        # pyarrow URI
+        self.cloud_uri_pa = f"file://{self.tmpdir_pa}/subdir"
 
         self.checkpoint_dir = os.path.join(self.tmpdir, "existing_checkpoint")
         os.mkdir(self.checkpoint_dir, 0o755)
         with open(os.path.join(self.checkpoint_dir, "test_data.pkl"), "wb") as fp:
             pickle.dump(self.checkpoint_dir_data, fp)
 
+        self.old_dir = os.getcwd()
         os.chdir(self.tmpdir)
 
     def tearDown(self):
+        os.chdir(self.old_dir)
         shutil.rmtree(self.tmpdir)
-        shutil.rmtree(self.local_test_storage.tempdir)
+        shutil.rmtree(self.tmpdir_pa)
 
     def _prepare_dict_checkpoint(self) -> Checkpoint:
         # Create checkpoint from dict
@@ -115,7 +116,22 @@ class CheckpointsConversionTest(unittest.TestCase):
         # Convert into dict checkpoint
         location = checkpoint.to_uri(self.cloud_uri)
         self.assertIsInstance(location, str)
-        self.assertIn("test://", location)
+        self.assertIn("memory://", location)
+
+        # Create from dict
+        checkpoint = Checkpoint.from_uri(location)
+        self.assertTrue(checkpoint._uri)
+
+        self._assert_dict_checkpoint(checkpoint)
+
+    def test_dict_checkpoint_uri_pa(self):
+        """Test conversion from dict to cloud checkpoint and back."""
+        checkpoint = self._prepare_dict_checkpoint()
+
+        # Convert into dict checkpoint
+        location = checkpoint.to_uri(self.cloud_uri_pa)
+        self.assertIsInstance(location, str)
+        self.assertIn(self.tmpdir_pa, location)
 
         # Create from dict
         checkpoint = Checkpoint.from_uri(location)
@@ -207,7 +223,7 @@ class CheckpointsConversionTest(unittest.TestCase):
         # Convert into dict checkpoint
         location = checkpoint.to_uri(self.cloud_uri)
         self.assertIsInstance(location, str)
-        self.assertIn("test://", location)
+        self.assertIn("memory://", location)
 
         # Create from dict
         checkpoint = Checkpoint.from_uri(location)
