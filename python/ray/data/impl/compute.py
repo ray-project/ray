@@ -234,9 +234,12 @@ def cache_wrapper(
     """
     if isinstance(fn, CallableClass):
 
-        if compute is None:
+        if compute is None or (
+            compute != "actors" and not isinstance(compute, ActorPoolStrategy)
+        ):
             raise ValueError(
-                "``compute`` must be specified when using a callable class. "
+                "``compute`` must be specified when using a callable class, and must "
+                "specify the actor compute strategy. "
                 'For example, use ``compute="actors"`` or '
                 "``compute=ActorPoolStrategy(min, max)``."
             )
