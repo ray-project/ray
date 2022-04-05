@@ -1,7 +1,6 @@
 import math
 from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union, Callable, Iterable
 
-import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
