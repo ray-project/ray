@@ -71,9 +71,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Parallelism ===
     "num_workers": 0,
-
-    # Use new training_iteration method.
-    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
