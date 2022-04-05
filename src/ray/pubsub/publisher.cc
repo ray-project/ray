@@ -20,19 +20,24 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
-  const auto subscribers = GetSubscriberIdsByKeyId(pub_message.key_id());
+bool EntityState::Publish(const rpc::PubMessage &pub_message) {
   if (subscribers.empty()) {
     return false;
   }
+  for (auto &[id, subscriber] : subscribers) {
+    subscriber->QueueMessage(pub_message);
+  }
   return true;
+}
 
-  // for (const auto &subscriber_id : subscribers) {
-  //   auto it = subscribers_.find(subscriber_id);
-  //   RAY_CHECK(it != subscribers_.end());
-  //   auto &subscriber = it->second;
-  //   subscriber->QueueMessage(pub_message);
-  // }
+bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
+  const bool publish_to_all = subscribers_to_all_.Publish(pub_message);
+  bool publish_to_entity = false;
+  auto it = entities_.find(pub_message.key_id());
+  if (it != entities_.end()) {
+    publish_to_entity = it->second.Publish(pub_message);
+  }
+  return publish_to_all || publish_to_entity;
 }
 
 bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *subscriber) {
@@ -272,24 +277,11 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
 void Publisher::Publish(const rpc::PubMessage &pub_message) {
   const auto channel_type = pub_message.channel_type();
   absl::MutexLock lock(&mutex_);
-  auto subscription_index_it = subscription_index_map_.find(channel_type);
-  RAY_CHECK(subscription_index_it != subscription_index_map_.end());
+  auto &subscription_index = subscription_index_map_.at(channel_type);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
-  const auto subscribers =
-      subscription_index_it->second.GetSubscriberIdsByKeyId(pub_message.key_id());
-  if (subscribers.empty()) {
-    return;
-  }
-
+  subscription_index.Publish(pub_message);
   cum_pub_message_cnt_[channel_type]++;
-
-  for (const auto &subscriber_id : subscribers) {
-    auto it = subscribers_.find(subscriber_id);
-    RAY_CHECK(it != subscribers_.end());
-    auto &subscriber = it->second;
-    subscriber->QueueMessage(pub_message);
-  }
 }
 
 void Publisher::PublishFailure(const rpc::ChannelType channel_type,

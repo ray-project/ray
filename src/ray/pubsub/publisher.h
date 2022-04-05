@@ -44,6 +44,10 @@ class SubscriberState;
 struct EntityState {
   /// Subscribers for the entity.
   absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers;
+
+  /// Publishes the message to subscribers.
+  /// Returns true if there are subscribers, returns false otherwise.
+  bool Publish(const rpc::PubMessage &pub_message);
 };
 
 /// Per-channel two-way index for subscribers and the keys they subscribe to.
@@ -54,7 +58,7 @@ class SubscriptionIndex {
   ~SubscriptionIndex() = default;
 
   /// Publishes the message to relevant subscribers.
-  /// Returns true if there are subscribers listening on the key of the message,
+  /// Returns true if there are subscribers listening on the entity key of the message,
   /// returns false otherwise.
   bool Publish(const rpc::PubMessage &pub_message);
 
