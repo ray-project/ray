@@ -155,7 +155,7 @@ def test_global_state_actor_entry(ray_start_regular):
     )
 
 
-def test_node_info_table(ray_start_cluster):
+def test_node_table(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(node_name="head_node", include_dashboard=False)
     # The _node_name here corresponds to the user's remote device
@@ -172,7 +172,10 @@ def test_node_info_table(ray_start_cluster):
     assert len(node_table) == 2
     for node_data in node_table:
         node = gcs_utils.GcsNodeInfo.FromString(node_data)
-        if ray._private.utils.binary_to_hex(node.node_id) == head_context["node_id"]:
+        if (
+            ray._private.utils.binary_to_hex(node.node_id)
+            == head_context.address_info["node_id"]
+        ):
             assert node.node_name == "head_node"
         else:
             assert node.node_name == "worker_node"
@@ -182,9 +185,7 @@ def test_node_info_table(ray_start_cluster):
     cluster.shutdown()
 
     # Test ray.init with _node_name directly
-    new_head_context = ray.init(
-        address=cluster.address, _node_name="new_head_node", include_dashboard=False
-    )
+    new_head_context = ray.init(_node_name="new_head_node", include_dashboard=False)
 
     global_state_accessor = make_global_state_accessor(new_head_context)
     node_data = global_state_accessor.get_node_table()[0]
