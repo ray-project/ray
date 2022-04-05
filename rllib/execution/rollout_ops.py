@@ -32,6 +32,48 @@ logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
+def synchronous_parallel_sample_until(
+    worker_set: WorkerSet,
+    max_agent_steps: Optional[int] = None,
+    max_env_steps: Optional[int] = None,
+    max_episodes: Optional[int] = None,
+    remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
+) -> SampleBatch:
+    """Calls synchronous_parallel_samples until either max_agent_steps
+    or max_env_steps or max_episodes are collected, whichever is reached first.
+    Returns a single, concatenated SampleBatch"""
+    # TODO: Check complete episodes mode
+    assert not (max_agent_steps is None and max_env_steps is None)
+    max_env_steps = float("inf") if max_env_steps is None else max_env_steps
+    max_agent_steps = float("inf") if max_agent_steps is None else max_agent_steps
+    max_episodes = float("inf") if max_episodes is None else max_episodes
+    agent_steps = 0
+    env_steps = 0
+    episodes = 0
+    last_episode_idx = None
+    sample_batches = []
+    while (
+        env_steps < max_env_steps
+        and agent_steps < max_agent_steps
+        and episodes < max_episodes
+    ):
+        batch = synchronous_parallel_sample(worker_set, remote_fn)
+        env_steps += sum([b.env_steps() for b in batch])
+        agent_steps += sum([b.agent_steps() for b in batch])
+        episodes += sum([sum(b[SampleBatch.DONES]) for b in batch])
+        sample_batches.append(*batch)
+    full_batch = SampleBatch.concat_samples(sample_batches)
+    # Discard collected incomplete episodes in episode mode
+    if episodes >= max_episodes:
+        last_complete_ep_idx = len(full_batch) - full_batch[
+            SampleBatch.DONES
+        ].reverse().index(1)
+        full_batch = full_batch.slice(0, last_complete_ep_idx)
+
+    return full_batch
+
+
+@ExperimentalAPI
 def synchronous_parallel_sample(
     worker_set: WorkerSet,
     remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
