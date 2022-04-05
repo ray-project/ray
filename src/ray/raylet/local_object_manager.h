@@ -106,6 +106,7 @@ class LocalObjectManager {
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
   void AsyncRestoreSpilledObject(const ObjectID &object_id,
+                                 int64_t object_size,
                                  const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
 
@@ -153,15 +154,18 @@ class LocalObjectManager {
   std::string DebugString() const;
 
  private:
-  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
-  /// Asynchronously spill objects when space is needed.
-  /// The callback tries to spill objects as much as num_bytes_to_spill and returns
-  /// true if we could spill the corresponding bytes.
+  /// Asynchronously spill objects when space is needed. The callback tries to
+  /// spill at least num_bytes_to_spill and returns true if we found objects to
+  /// spill.
+  /// If num_bytes_to_spill many objects cannot be found and there are other
+  /// objects already being spilled, this will return false to give the
+  /// currently spilling objects time to finish.
   /// NOTE(sang): If 0 is given, this method spills a single object.
   ///
   /// \param num_bytes_to_spill The total number of bytes to spill.
@@ -245,7 +249,13 @@ class LocalObjectManager {
 
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.
-  size_t num_bytes_pending_spill_;
+  size_t num_bytes_pending_spill_ = 0;
+
+  /// The total size of the objects that are currently being
+  /// restored from this node, in bytes. Note that this only includes objects
+  /// that are being restored into the local object store. Objects restored on
+  /// behalf of remote nodes will be read directly from disk to the network.
+  size_t num_bytes_pending_restore_ = 0;
 
   /// A list of object id and url pairs that need to be deleted.
   /// We don't instantly delete objects when it goes out of scope from external storages
@@ -329,7 +339,9 @@ class LocalObjectManager {
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
 
+  friend class LocalObjectManagerTestWithMinSpillingSize;
   friend class LocalObjectManagerTest;
+  friend class LocalObjectManagerFusedTest;
 };
 
 };  // namespace raylet

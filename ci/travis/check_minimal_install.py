@@ -14,7 +14,6 @@ DEFAULT_BLACKLIST = [
     "aiohttp_cors",
     "colorful",
     "py-spy",
-    # "requests",
     "gpustat",
     "opencensus",
     "prometheus_client",

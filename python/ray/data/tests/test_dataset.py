@@ -132,9 +132,11 @@ def test_callable_classes(shutdown_only):
     with pytest.raises(ValueError):
         ds.map(StatefulFn).take()
 
+    # Need to specify actor compute strategy.
+    with pytest.raises(ValueError):
+        ds.map(StatefulFn, compute="tasks").take()
+
     # map
-    task_reuse = ds.map(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map(StatefulFn, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
@@ -148,14 +150,10 @@ def test_callable_classes(shutdown_only):
             return [r]
 
     # flat map
-    task_reuse = ds.flat_map(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.flat_map(StatefulFn, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     # map batches
-    task_reuse = ds.map_batches(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
@@ -169,8 +167,6 @@ def test_callable_classes(shutdown_only):
             return r > 0
 
     # filter
-    task_reuse = ds.filter(StatefulFn, compute="tasks").take()
-    assert len(task_reuse) == 9, task_reuse
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
     assert len(actor_reuse) == 9, actor_reuse
 
@@ -207,6 +203,23 @@ def test_zip(ray_start_regular_shared):
     assert ds.take() == [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
     with pytest.raises(ValueError):
         ds.zip(ray.data.range(3))
+
+
+def test_zip_pandas(ray_start_regular_shared):
+    ds1 = ray.data.from_pandas(pd.DataFrame({"col1": [1, 2], "col2": [4, 5]}))
+    ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
+    ds = ds1.zip(ds2)
+    assert ds.count() == 2
+    assert "{col1: int64, col2: int64, col3: object, col4: object}" in str(ds)
+    result = [r.as_pydict() for r in ds.take()]
+    assert result[0] == {"col1": 1, "col2": 4, "col3": "a", "col4": "d"}
+
+    ds3 = ray.data.from_pandas(pd.DataFrame({"col2": ["a", "b"], "col4": ["d", "e"]}))
+    ds = ds1.zip(ds3)
+    assert ds.count() == 2
+    assert "{col1: int64, col2: int64, col2_1: object, col4: object}" in str(ds)
+    result = [r.as_pydict() for r in ds.take()]
+    assert result[0] == {"col1": 1, "col2": 4, "col2_1": "a", "col4": "d"}
 
 
 def test_zip_arrow(ray_start_regular_shared):
@@ -3300,6 +3313,13 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
             paths=path1,
             ray_remote_args={"retry_exceptions": False},
         ).take()
+
+
+def test_datasource(ray_start_regular):
+    source = ray.data.datasource.RandomIntRowDatasource()
+    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RangeDatasource()
+    assert ray.data.read_datasource(source, n=10).take() == list(range(10))
 
 
 if __name__ == "__main__":

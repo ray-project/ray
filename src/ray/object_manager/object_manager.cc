@@ -417,7 +417,8 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   PushObjectInternal(object_id,
                      node_id,
                      std::make_shared<ChunkObjectReader>(std::move(object_reader),
-                                                         config_.object_chunk_size));
+                                                         config_.object_chunk_size),
+                     /*from_disk=*/false);
 }
 
 void ObjectManager::PushFromFilesystem(const ObjectID &object_id,
@@ -446,7 +447,10 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id,
              object_id,
              node_id,
              chunk_object_reader = std::move(chunk_object_reader)]() {
-              PushObjectInternal(object_id, node_id, std::move(chunk_object_reader));
+              PushObjectInternal(object_id,
+                                 node_id,
+                                 std::move(chunk_object_reader),
+                                 /*from_disk=*/true);
             },
             "ObjectManager.PushLocalSpilledObjectInternal");
       },
@@ -455,7 +459,8 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id,
 
 void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                                        const NodeID &node_id,
-                                       std::shared_ptr<ChunkObjectReader> chunk_reader) {
+                                       std::shared_ptr<ChunkObjectReader> chunk_reader,
+                                       bool from_disk) {
   auto rpc_client = GetRpcClient(node_id);
   if (!rpc_client) {
     // Push is best effort, so do nothing here.
@@ -490,7 +495,8 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                         },
                         "ObjectManager.Push");
                   },
-                  chunk_reader);
+                  chunk_reader,
+                  from_disk);
             },
             "ObjectManager.Push");
       });
@@ -502,7 +508,8 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
                                     uint64_t chunk_index,
                                     std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                                     std::function<void(const Status &)> on_complete,
-                                    std::shared_ptr<ChunkObjectReader> chunk_reader) {
+                                    std::shared_ptr<ChunkObjectReader> chunk_reader,
+                                    bool from_disk) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
@@ -524,6 +531,11 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
     return;
   }
   push_request.set_data(std::move(optional_chunk.value()));
+  if (from_disk) {
+    num_bytes_pushed_from_disk_ += push_request.data().length();
+  } else {
+    num_bytes_pushed_from_plasma_ += push_request.data().length();
+  }
 
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback =
@@ -578,6 +590,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                        uint64_t metadata_size,
                                        uint64_t chunk_index,
                                        const std::string &data) {
+  num_bytes_received_total_ += data.size();
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
@@ -727,6 +740,13 @@ void ObjectManager::RecordMetrics() {
       plasma::plasma_store_runner->GetFallbackAllocated());
   stats::ObjectStoreLocalObjects().Record(local_objects_.size());
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
+
+  ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_plasma_,
+                                                "PushedFromLocalPlasma");
+  ray::stats::STATS_object_manager_bytes.Record(num_bytes_pushed_from_disk_,
+                                                "PushedFromLocalDisk");
+  ray::stats::STATS_object_manager_bytes.Record(num_bytes_received_total_, "Received");
+
   ray::stats::STATS_object_manager_received_chunks.Record(num_chunks_received_total_,
                                                           "Total");
   ray::stats::STATS_object_manager_received_chunks.Record(

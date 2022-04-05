@@ -175,6 +175,8 @@ extern jfieldID java_task_creation_options_group;
 extern jfieldID java_task_creation_options_bundle_index;
 /// concurrencyGroupName field of CallOptions class
 extern jfieldID java_call_options_concurrency_group_name;
+/// serializedRuntimeEnvInfo field of CallOptions class
+extern jfieldID java_call_options_serialized_runtime_env_info;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
@@ -549,7 +551,7 @@ inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
   if (!buffer) {
     return nullptr;
   }
-  
+
   auto buffer_size = buffer->Size();
   jbyteArray java_byte_array = env->NewByteArray(buffer_size);
   if (buffer_size > 0) {

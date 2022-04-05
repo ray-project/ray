@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import json
 
 from ray import cloudpickle
 from collections import deque
@@ -45,6 +46,19 @@ def get_qualname(f):
 def ensure_ray_initialized():
     if not ray.is_initialized():
         ray.init()
+
+
+def validate_user_metadata(metadata):
+    if metadata is not None:
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict.")
+        try:
+            json.dumps(metadata)
+        except TypeError as e:
+            raise ValueError(
+                "metadata must be JSON serializable, instead, "
+                "we got 'TypeError: {}'".format(e)
+            )
 
 
 @dataclass
@@ -106,6 +120,15 @@ class WorkflowStaticRef:
     # This tag indicates we should resolve the workflow like an ObjectRef, when
     # included in the arguments of another workflow.
     _resolve_like_object_ref_in_args: bool = False
+
+    @classmethod
+    def from_output(cls, step_id: str, output: Any):
+        """Create static ref from given output."""
+        if not isinstance(output, cls):
+            if not isinstance(output, ray.ObjectRef):
+                output = ray.put(output)
+            output = cls(step_id=step_id, ref=output)
+        return output
 
     def __hash__(self):
         return hash(self.step_id + self.ref.hex())
@@ -298,12 +321,9 @@ class WorkflowExecutionResult:
     """Dataclass for holding workflow execution result."""
 
     # Part of result to persist in a storage and pass to the next step.
-    persisted_output: "ObjectRef"
+    persisted_output: "WorkflowStaticRef"
     # Part of result to return to the user but does not require persistence.
-    volatile_output: "ObjectRef"
-
-    def __reduce__(self):
-        return WorkflowExecutionResult, (self.persisted_output, self.volatile_output)
+    volatile_output: "WorkflowStaticRef"
 
 
 @dataclass
@@ -345,7 +365,10 @@ class Workflow(Generic[T]):
     def __init__(
         self, workflow_data: WorkflowData, prepare_inputs: Optional[Callable] = None
     ):
-        if workflow_data.step_options.ray_options.get("num_returns", 1) > 1:
+        num_returns = workflow_data.step_options.ray_options.get("num_returns", 1)
+        if num_returns is None:  # ray could use `None` as default value
+            num_returns = 1
+        if num_returns > 1:
             raise ValueError("Workflow steps can only have one return.")
         self._data: WorkflowData = workflow_data
         self._prepare_inputs: Callable = prepare_inputs
@@ -464,23 +487,23 @@ class Workflow(Generic[T]):
         If the workflow with the given id already exists, it will be resumed.
 
         Examples:
-            >>> @workflow.step
-            ... def book_flight(origin: str, dest: str) -> Flight:
-            ...    return Flight(...)
+            >>> from ray import workflow
+            >>> Flight, Reservation, Trip = ... # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+            ...    return Flight(...) # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
+            ...    return Reservation(...) # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
+            ...    return Trip(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def book_hotel(location: str) -> Reservation:
-            ...    return Reservation(...)
-
-            >>> @workflow.step
-            ... def finalize_trip(bookings: List[Any]) -> Trip:
-            ...    return Trip(...)
-
-            >>> flight1 = book_flight.step("OAK", "SAN")
-            >>> flight2 = book_flight.step("SAN", "OAK")
-            >>> hotel = book_hotel.step("SAN")
-            >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> result = trip.run()
+            >>> flight1 = book_flight.step("OAK", "SAN") # doctest: +SKIP
+            >>> flight2 = book_flight.step("SAN", "OAK") # doctest: +SKIP
+            >>> hotel = book_hotel.step("SAN") # doctest: +SKIP
+            >>> trip = finalize_trip.step([flight1, flight2, hotel]) # doctest: +SKIP
+            >>> result = trip.run() # doctest: +SKIP
 
         Args:
             workflow_id: A unique identifier that can be used to resume the
@@ -504,23 +527,25 @@ class Workflow(Generic[T]):
         If the workflow with the given id already exists, it will be resumed.
 
         Examples:
-            >>> @workflow.step
-            ... def book_flight(origin: str, dest: str) -> Flight:
-            ...    return Flight(...)
+            >>> from ray import workflow
+            >>> Flight, Reservation, Trip = ... # doctest: +SKIP
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
+            ...    return Flight(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def book_hotel(location: str) -> Reservation:
-            ...    return Reservation(...)
+            >>> @workflow.step # doctest: +SKIP
+            ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
+            ...    return Reservation(...) # doctest: +SKIP
 
-            >>> @workflow.step
-            ... def finalize_trip(bookings: List[Any]) -> Trip:
-            ...    return Trip(...)
+            >>> @workflow.step # doctest: +SKIP
+            ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
+            ...    return Trip(...) # doctest: +SKIP
 
-            >>> flight1 = book_flight.step("OAK", "SAN")
-            >>> flight2 = book_flight.step("SAN", "OAK")
-            >>> hotel = book_hotel.step("SAN")
-            >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> result = ray.get(trip.run_async())
+            >>> flight1 = book_flight.step("OAK", "SAN") # doctest: +SKIP
+            >>> flight2 = book_flight.step("SAN", "OAK") # doctest: +SKIP
+            >>> hotel = book_hotel.step("SAN") # doctest: +SKIP
+            >>> trip = finalize_trip.step([flight1, flight2, hotel]) # doctest: +SKIP
+            >>> result = ray.get(trip.run_async()) # doctest: +SKIP
 
         Args:
             workflow_id: A unique identifier that can be used to resume the

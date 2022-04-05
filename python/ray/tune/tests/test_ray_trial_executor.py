@@ -10,11 +10,15 @@ from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.callback import Callback
-from ray.tune.ray_trial_executor import RayTrialExecutor, ExecutorEventType
+from ray.tune.ray_trial_executor import (
+    ExecutorEvent,
+    ExecutorEventType,
+    RayTrialExecutor,
+)
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -101,26 +105,27 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def _simulate_getting_result(self, trial):
         while True:
-            future_result = self.trial_executor.get_next_executor_event(
+            event = self.trial_executor.get_next_executor_event(
                 live_trials={trial}, next_trial_exists=False
             )
-            if future_result.type == ExecutorEventType.TRAINING_RESULT:
+            if event.type == ExecutorEventType.TRAINING_RESULT:
                 break
-        if isinstance(future_result.result, list):
-            for r in future_result.result:
+        training_result = event.result[ExecutorEvent.KEY_FUTURE_RESULT]
+        if isinstance(training_result, list):
+            for r in training_result:
                 trial.update_last_result(r)
         else:
-            trial.update_last_result(future_result.result)
+            trial.update_last_result(training_result)
 
     def _simulate_saving(self, trial):
-        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        checkpoint = self.trial_executor.save(trial, _TuneCheckpoint.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
         self.assertEqual(trial.checkpoint.value, None)
-        future_result = self.trial_executor.get_next_executor_event(
+        event = self.trial_executor.get_next_executor_event(
             live_trials={trial}, next_trial_exists=False
         )
-        assert future_result.type == ExecutorEventType.SAVING_RESULT
-        self.process_trial_save(trial, future_result.result)
+        assert event.type == ExecutorEventType.SAVING_RESULT
+        self.process_trial_save(trial, event.result[ExecutorEvent.KEY_FUTURE_RESULT])
         self.assertEqual(checkpoint, trial.checkpoint)
 
     def testStartStop(self):
@@ -182,7 +187,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.assertEqual(trial.checkpoint.storage, Checkpoint.MEMORY)
+        self.assertEqual(trial.checkpoint.storage, _TuneCheckpoint.MEMORY)
 
         # Resume
         self._simulate_starting_trial(trial)

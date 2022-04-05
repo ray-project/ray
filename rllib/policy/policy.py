@@ -479,8 +479,8 @@ class Policy(metaclass=ABCMeta):
             Dictionary of extra metadata from `compute_gradients()`.
 
         Examples:
-            >>> sample_batch = ev.sample()
-            >>> ev.learn_on_batch(sample_batch)
+            >>> policy, sample_batch = ... # doctest: +SKIP
+            >>> policy.learn_on_batch(sample_batch) # doctest: +SKIP
         """
         # The default implementation is simply a fused `compute_gradients` plus
         # `apply_gradients` call.

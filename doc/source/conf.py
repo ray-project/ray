@@ -9,6 +9,9 @@ from datetime import datetime
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
 
+# Download docs from ecosystem library repos
+download_and_preprocess_ecosystem_docs()
+
 assert (
     "ray" not in sys.modules
 ), "If ray is already imported, we will not render documentation correctly!"
@@ -39,6 +42,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx_external_toc",
     "sphinx_thebe",
+    "sphinxcontrib.autodoc_pydantic",
 ]
 
 myst_enable_extensions = [
@@ -162,6 +166,9 @@ linkcheck_ignore = [
     # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
     "https://scikit-optimize.github.io/stable/modules/",
     "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
+    r"https://huggingface.co/*",  # seems to be flaky
+    r"https://www.meetup.com/*",  # seems to be flaky
+    r"https://www.pettingzoo.ml/*",  # seems to be flaky
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -252,6 +259,23 @@ texinfo_documents = [
 
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
+
+
+# Add a render priority for doctest
+nb_render_priority = {
+    "doctest": (),
+    "html": (
+        "application/vnd.jupyter.widget-view+json",
+        "application/javascript",
+        "text/html",
+        "image/svg+xml",
+        "image/png",
+        "image/jpeg",
+        "text/markdown",
+        "text/latex",
+        "text/plain",
+    ),
+}
 
 
 def setup(app):

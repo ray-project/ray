@@ -278,6 +278,11 @@ class Trainer(abc.ABC):
             trainer.preprocess_datasets()
             trainer.training_loop()
 
+        # Change the name of the training function to match the name of the Trainer
+        # class. This will mean the Tune trial name will match the name of Trainer on
+        # stdout messages and the results directory.
+        train_func.__name__ = trainer_cls.__name__
+
         trainable_cls = wrap_function(train_func)
 
         class TrainTrainable(trainable_cls):
@@ -287,7 +292,11 @@ class Trainer(abc.ABC):
                 super().__init__(*args, **kwargs)
 
                 # Create a new config by merging the dicts.
+                # run_config is not a tunable hyperparameter so it does not need to be
+                # merged.
+                run_config = base_config.pop("run_config", None)
                 self._merged_config = merge_dicts(base_config, self.config)
+                self._merged_config["run_config"] = run_config
 
             def _trainable_func(self, config, reporter, checkpoint_dir):
                 # We ignore the config passed by Tune and instead use the merged

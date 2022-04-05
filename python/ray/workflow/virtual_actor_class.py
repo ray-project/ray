@@ -17,6 +17,7 @@ from ray.workflow.common import (
     WorkflowRef,
     StepType,
     WorkflowStepRuntimeOptions,
+    validate_user_metadata,
 )
 from ray.workflow import serialization_context
 from ray.workflow.storage import Storage, get_global_storage
@@ -268,22 +269,19 @@ class _VirtualActorMethodHelper:
         metadata=None,
         **ray_options,
     ) -> "_VirtualActorMethodHelper":
-        if metadata is not None:
-            if not isinstance(metadata, dict):
-                raise ValueError("metadata must be a dict.")
-            for k, v in metadata.items():
-                try:
-                    json.dumps(v)
-                except TypeError as e:
-                    raise ValueError(
-                        "metadata values must be JSON serializable, "
-                        "however '{}' has a value whose {}.".format(k, e)
-                    )
+        validate_user_metadata(metadata)
         options = WorkflowStepRuntimeOptions.make(
             step_type=self._options.step_type,
-            catch_exceptions=catch_exceptions,
-            max_retries=max_retries,
-            ray_options=ray_options,
+            catch_exceptions=catch_exceptions
+            if catch_exceptions is not None
+            else self._options.catch_exceptions,
+            max_retries=max_retries
+            if max_retries is not None
+            else self._options.max_retries,
+            ray_options={
+                **self._options.ray_options,
+                **(ray_options if ray_options is not None else {}),
+            },
         )
         _self = _VirtualActorMethodHelper(
             self._original_class,
@@ -291,9 +289,11 @@ class _VirtualActorMethodHelper:
             self._method_name,
             runtime_options=options,
         )
-
-        _self._name = name
-        _self._user_metadata = metadata
+        _self._name = name if name is not None else self._name
+        _self._user_metadata = {
+            **self._user_metadata,
+            **(metadata if metadata is not None else {}),
+        }
         return _self
 
     def __call__(self, *args, **kwargs):
@@ -557,7 +557,7 @@ class VirtualActor:
         ):
             wf = method_helper.step(*args, **kwargs)
             if method_helper.readonly:
-                return execute_workflow(wf).volatile_output
+                return execute_workflow(wf).volatile_output.ref
             else:
                 return wf.run_async(self._actor_id)
 

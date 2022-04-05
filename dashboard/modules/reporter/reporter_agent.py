@@ -98,6 +98,30 @@ METRICS_GAUGES = {
     "node_gram_available": Gauge(
         "node_gram_available", "Total GPU RAM available on a ray node", "bytes", ["ip"]
     ),
+    "node_disk_io_read": Gauge(
+        "node_disk_io_read", "Total read from disk", "bytes", ["ip"]
+    ),
+    "node_disk_io_write": Gauge(
+        "node_disk_io_write", "Total written to disk", "bytes", ["ip"]
+    ),
+    "node_disk_io_read_count": Gauge(
+        "node_disk_io_read_count", "Total read ops from disk", "io", ["ip"]
+    ),
+    "node_disk_io_write_count": Gauge(
+        "node_disk_io_write_count", "Total write ops to disk", "io", ["ip"]
+    ),
+    "node_disk_io_read_speed": Gauge(
+        "node_disk_io_read_speed", "Disk read speed", "bytes/sec", ["ip"]
+    ),
+    "node_disk_io_write_speed": Gauge(
+        "node_disk_io_write_speed", "Disk write speed", "bytes/sec", ["ip"]
+    ),
+    "node_disk_read_iops": Gauge(
+        "node_disk_read_iops", "Disk read iops", "iops", ["ip"]
+    ),
+    "node_disk_write_iops": Gauge(
+        "node_disk_write_iops", "Disk write iops", "iops", ["ip"]
+    ),
     "node_disk_usage": Gauge(
         "node_disk_usage", "Total disk usage (bytes) on a ray node", "bytes", ["ip"]
     ),
@@ -165,6 +189,9 @@ class ReporterAgent(
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
+        self._disk_io_stats_hist = [
+            (0, (0.0, 0.0, 0, 0))
+        ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_agent = MetricsAgent(
             "127.0.0.1" if self._ip == "127.0.0.1" else "",
             dashboard_agent.metrics_export_port,
@@ -275,12 +302,25 @@ class ReporterAgent(
             return {
                 "/": psutil._common.sdiskusage(total=1, used=0, free=1, percent=0.0)
             }
-        root = os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep
+        if sys.platform == "win32":
+            root = psutil.disk_partitions()[0].mountpoint
+        else:
+            root = os.sep
         tmp = ray._private.utils.get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),
         }
+
+    @staticmethod
+    def _get_disk_io_stats():
+        stats = psutil.disk_io_counters()
+        return (
+            stats.read_bytes,
+            stats.write_bytes,
+            stats.read_count,
+            stats.write_count,
+        )
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()
@@ -348,19 +388,25 @@ class ReporterAgent(
         per_cpu_load = tuple((round(x / self._cpu_counts[0], 2) for x in load))
         return load, per_cpu_load
 
+    @staticmethod
+    def _compute_speed_from_hist(hist):
+        while len(hist) > 7:
+            hist.pop(0)
+        then, prev_stats = hist[0]
+        now, now_stats = hist[-1]
+        time_delta = now - then
+        return tuple((y - x) / time_delta for x, y in zip(prev_stats, now_stats))
+
     def _get_all_stats(self):
         now = dashboard_utils.to_posix_time(datetime.datetime.utcnow())
         network_stats = self._get_network_stats()
-
         self._network_stats_hist.append((now, network_stats))
-        self._network_stats_hist = self._network_stats_hist[-7:]
-        then, prev_network_stats = self._network_stats_hist[0]
-        prev_send, prev_recv = prev_network_stats
-        now_send, now_recv = network_stats
-        network_speed_stats = (
-            (now_send - prev_send) / (now - then),
-            (now_recv - prev_recv) / (now - then),
-        )
+        network_speed_stats = self._compute_speed_from_hist(self._network_stats_hist)
+
+        disk_stats = self._get_disk_io_stats()
+        self._disk_io_stats_hist.append((now, disk_stats))
+        disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
+
         return {
             "now": now,
             "hostname": self._hostname,
@@ -373,6 +419,8 @@ class ReporterAgent(
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
             "disk": self._get_disk_usage(),
+            "disk_io": disk_stats,
+            "disk_io_speed": disk_speed_stats,
             "gpus": self._get_gpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
@@ -465,7 +513,9 @@ class ReporterAgent(
         if gpus_available:
             gpus_utilization, gram_used, gram_total = 0, 0, 0
             for gpu in gpus:
-                gpus_utilization += gpu["utilization_gpu"]
+                # Consume GPU may not report its utilization.
+                if gpu["utilization_gpu"] is not None:
+                    gpus_utilization += gpu["utilization_gpu"]
                 gram_used += gpu["memory_used"]
                 gram_total += gpu["memory_total"]
 
@@ -499,6 +549,48 @@ class ReporterAgent(
             )
 
         # -- Disk per node --
+        disk_io_stats = stats["disk_io"]
+        disk_read_record = Record(
+            gauge=METRICS_GAUGES["node_disk_io_read"],
+            value=disk_io_stats[0],
+            tags={"ip": ip},
+        )
+        disk_write_record = Record(
+            gauge=METRICS_GAUGES["node_disk_io_write"],
+            value=disk_io_stats[1],
+            tags={"ip": ip},
+        )
+        disk_read_count_record = Record(
+            gauge=METRICS_GAUGES["node_disk_io_read_count"],
+            value=disk_io_stats[2],
+            tags={"ip": ip},
+        )
+        disk_write_count_record = Record(
+            gauge=METRICS_GAUGES["node_disk_io_write_count"],
+            value=disk_io_stats[3],
+            tags={"ip": ip},
+        )
+        disk_io_speed_stats = stats["disk_io_speed"]
+        disk_read_speed_record = Record(
+            gauge=METRICS_GAUGES["node_disk_io_read_speed"],
+            value=disk_io_speed_stats[0],
+            tags={"ip": ip},
+        )
+        disk_write_speed_record = Record(
+            gauge=METRICS_GAUGES["node_disk_io_write_speed"],
+            value=disk_io_speed_stats[1],
+            tags={"ip": ip},
+        )
+        disk_read_iops_record = Record(
+            gauge=METRICS_GAUGES["node_disk_read_iops"],
+            value=disk_io_speed_stats[2],
+            tags={"ip": ip},
+        )
+        disk_write_iops_record = Record(
+            gauge=METRICS_GAUGES["node_disk_write_iops"],
+            value=disk_io_speed_stats[3],
+            tags={"ip": ip},
+        )
         used, free = 0, 0
         for entry in stats["disk"].values():
             used += entry.used
@@ -569,6 +661,14 @@ class ReporterAgent(
                 mem_used_record,
                 mem_available_record,
                 mem_total_record,
+                disk_read_record,
+                disk_write_record,
+                disk_read_count_record,
+                disk_write_count_record,
+                disk_read_speed_record,
+                disk_write_speed_record,
+                disk_read_iops_record,
+                disk_write_iops_record,
                 disk_usage_record,
                 disk_free_record,
                 disk_utilization_percentage_record,
