@@ -185,7 +185,10 @@ class Trainer(abc.ABC):
                 f"`ray.data.Dataset` objects, "
                 f"found {type(self.datasets)} with value `{self.datasets}`."
             )
-        elif any(not isinstance(ds, ray.data.Dataset) for ds in self.datasets.values()):
+        elif any(
+            not isinstance(ds, ray.data.Dataset) and not callable(ds)
+            for ds in self.datasets.values()
+        ):
             raise TrainerConfigError(
                 f"At least one value in the `datasets` dict is not a "
                 f"`ray.data.Dataset`: {self.datasets}"
