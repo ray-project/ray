@@ -96,6 +96,15 @@ def train_loop_per_worker(train_loop_config):
     for epoch in range(num_epochs):
         model.train()
 
+        # ``batch_size`` is the number of samples in the current batch.
+        # ``n_id`` are the ids of all the nodes used in the computation. This is
+        # needed to pull in the necessary features just for the current batch that is
+        # being trained on.
+        # ``adjs`` is a list of 3 element tuple consisting of ``(edge_index, e_id,
+        # size)`` for each sample in the batch, where ``edge_index``represent the
+        # edges of the sampled subgraph, ``e_id`` are the ids of the edges in the
+        # sample, and ``size`` holds the shape of the subgraph.
+        # See ``torch_geometric.loader.neighbor_sampler.NeighborSampler`` for more info.
         for batch_size, n_id, adjs in train_loader:
             optimizer.zero_grad()
             out = model(x[n_id], adjs)
