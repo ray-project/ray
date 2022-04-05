@@ -75,6 +75,15 @@ class PublisherTest : public ::testing::Test {
            subscribers.end();
   }
 
+  SubscriberState *CreateSubscriber() {
+    subscribers_.push_back(std::make_unique<SubscriberState>(
+        NodeID::FromRandom(),
+        /*get_time_ms=*/[]() { return 1.0; },
+        /*subscriber_timeout_ms=*/1000,
+        /*publish_batch_size=*/1000));
+    return subscribers_.back().get();
+  }
+
   instrumented_io_context io_service_;
   std::shared_ptr<PeriodicalRunner> periodic_runner_;
   std::shared_ptr<Publisher> publisher_;
@@ -83,25 +92,22 @@ class PublisherTest : public ::testing::Test {
   double current_time_;
   const SubscriberID subscriber_id_ = SubscriberID::FromRandom();
   rpc::PubsubLongPollingRequest request_;
+  std::vector<std::unique_ptr<SubscriberState>> subscribers_;
 };
 
 TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
-  auto node_id = NodeID::FromRandom();
   auto oid = ObjectID::FromRandom();
-  auto &subscribers = subscribers_map_[oid];
-  subscribers.emplace(node_id);
+  auto *subscriber = CreateSubscriber();
 
   ///
   /// Test single node id & object id
   ///
   /// oid1 -> [nid1]
   SubscriptionIndex subscription_index;
-  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), subscriber);
   const auto &subscribers_from_index =
       subscription_index.GetSubscriberIdsByKeyId(oid.Binary());
-  for (const auto &node_id : subscribers) {
-    ASSERT_TRUE(HasSubscriber(subscribers_from_index, node_id));
-  }
+  ASSERT_TRUE(HasSubscriber(subscribers_from_index, subscriber->id()));
 }
 
 TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
@@ -115,14 +121,15 @@ TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
   subscribers_map_.emplace(oid, empty_set);
 
   for (int i = 0; i < 5; i++) {
-    auto node_id = NodeID::FromRandom();
-    subscribers_map_.at(oid).emplace(node_id);
-    subscription_index.AddEntry(oid.Binary(), node_id);
+    auto *subscriber = CreateSubscriber();
+    auto subscriber_id = subscriber->id();
+    subscribers_map_.at(oid).emplace(subscriber_id);
+    subscription_index.AddEntry(oid.Binary(), subscriber);
   }
   const auto &subscribers_from_index =
       subscription_index.GetSubscriberIdsByKeyId(oid.Binary());
-  for (const auto &node_id : subscribers_map_.at(oid)) {
-    ASSERT_TRUE(HasSubscriber(subscribers_from_index, node_id));
+  for (const auto &subscriber_id : subscribers_map_.at(oid)) {
+    ASSERT_TRUE(HasSubscriber(subscribers_from_index, subscriber_id));
   }
 
   ///
@@ -133,21 +140,22 @@ TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
   const auto oid2 = ObjectID::FromRandom();
   subscribers_map_.emplace(oid2, empty_set);
   for (int i = 0; i < 5; i++) {
-    auto node_id = NodeID::FromRandom();
-    subscribers_map_.at(oid2).emplace(node_id);
-    subscription_index.AddEntry(oid2.Binary(), node_id);
+    auto *subscriber = CreateSubscriber();
+    auto subscriber_id = subscriber->id();
+    subscribers_map_.at(oid2).emplace(subscriber_id);
+    subscription_index.AddEntry(oid2.Binary(), subscriber);
   }
   const auto &subscribers_from_index2 =
       subscription_index.GetSubscriberIdsByKeyId(oid2.Binary());
-  for (const auto &node_id : subscribers_map_.at(oid2)) {
-    ASSERT_TRUE(HasSubscriber(subscribers_from_index2, node_id));
+  for (const auto &subscriber_id : subscribers_map_.at(oid2)) {
+    ASSERT_TRUE(HasSubscriber(subscribers_from_index2, subscriber_id));
   }
 
   // Make sure oid1 entries are not corrupted.
   const auto &subscribers_from_index3 =
       subscription_index.GetSubscriberIdsByKeyId(oid.Binary());
-  for (const auto &node_id : subscribers_map_.at(oid)) {
-    ASSERT_TRUE(HasSubscriber(subscribers_from_index3, node_id));
+  for (const auto &subscriber_id : subscribers_map_.at(oid)) {
+    ASSERT_TRUE(HasSubscriber(subscribers_from_index3, subscriber_id));
   }
 }
 
@@ -166,9 +174,10 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
 
   // Add entries.
   for (int i = 0; i < total_entries; i++) {
-    auto node_id = NodeID::FromRandom();
-    subscribers_map_.at(oid).emplace(node_id);
-    subscription_index.AddEntry(oid.Binary(), node_id);
+    auto *subscriber = CreateSubscriber();
+    auto subscriber_id = subscriber->id();
+    subscribers_map_.at(oid).emplace(subscriber_id);
+    subscription_index.AddEntry(oid.Binary(), subscriber);
   }
 
   // Verify that the first 3 entries are deleted properly.
@@ -179,23 +188,23 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
       break;
     }
     auto current = it++;
-    auto node_id = *current;
+    auto subscriber_id = *current;
     oid_subscribers.erase(current);
-    ASSERT_EQ(subscription_index.EraseEntry(oid.Binary(), node_id), 1);
+    ASSERT_EQ(subscription_index.EraseEntry(oid.Binary(), subscriber_id), 1);
     i++;
   }
   const auto &subscribers_from_index =
       subscription_index.GetSubscriberIdsByKeyId(oid.Binary());
-  for (const auto &node_id : subscribers_map_.at(oid)) {
-    ASSERT_TRUE(HasSubscriber(subscribers_from_index, node_id));
+  for (const auto &subscriber_id : subscribers_map_.at(oid)) {
+    ASSERT_TRUE(HasSubscriber(subscribers_from_index, subscriber_id));
   }
 
   // Delete all entries and make sure the oid is removed from the index.
   for (auto it = oid_subscribers.begin(); it != oid_subscribers.end();) {
     auto current = it++;
-    auto node_id = *current;
+    auto subscriber_id = *current;
     oid_subscribers.erase(current);
-    subscription_index.EraseEntry(oid.Binary(), node_id);
+    subscription_index.EraseEntry(oid.Binary(), subscriber_id);
   }
   ASSERT_FALSE(subscription_index.HasKeyId(oid.Binary()));
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
@@ -213,15 +222,16 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseMultiSubscribers) {
   subscribers_map_.emplace(oid2, empty_set);
 
   // Add entries.
-  auto node_id = NodeID::FromRandom();
-  auto node_id_2 = NodeID::FromRandom();
-  subscribers_map_.at(oid).emplace(node_id);
-  subscribers_map_.at(oid2).emplace(node_id);
-  subscription_index.AddEntry(oid.Binary(), node_id);
-  subscription_index.AddEntry(oid2.Binary(), node_id);
-  subscription_index.AddEntry(oid.Binary(), node_id_2);
-  ASSERT_TRUE(subscription_index.EraseEntry(oid.Binary(), node_id));
-  ASSERT_FALSE(subscription_index.EraseEntry(oid.Binary(), node_id));
+  auto *subscriber_1 = CreateSubscriber();
+  auto subscriber_id = subscriber_1->id();
+  auto *subscriber_2 = CreateSubscriber();
+  subscribers_map_.at(oid).emplace(subscriber_id);
+  subscribers_map_.at(oid2).emplace(subscriber_id);
+  subscription_index.AddEntry(oid.Binary(), subscriber_1);
+  subscription_index.AddEntry(oid2.Binary(), subscriber_1);
+  subscription_index.AddEntry(oid.Binary(), subscriber_2);
+  ASSERT_TRUE(subscription_index.EraseEntry(oid.Binary(), subscriber_id));
+  ASSERT_FALSE(subscription_index.EraseEntry(oid.Binary(), subscriber_id));
 }
 
 TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
@@ -231,23 +241,24 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   SubscriptionIndex subscription_index;
   auto oid = ObjectID::FromRandom();
   auto &subscribers = subscribers_map_[oid];
-  std::vector<NodeID> node_ids;
+  std::vector<SubscriberID> subscriber_ids;
 
   // Add entries.
   for (int i = 0; i < 6; i++) {
-    auto node_id = NodeID::FromRandom();
-    node_ids.push_back(node_id);
-    subscribers.emplace(node_id);
-    subscription_index.AddEntry(oid.Binary(), node_id);
+    auto *subscriber = CreateSubscriber();
+    auto subscriber_id = subscriber->id();
+    subscriber_ids.push_back(subscriber_id);
+    subscribers.emplace(subscriber_id);
+    subscription_index.AddEntry(oid.Binary(), subscriber);
   }
-  subscription_index.EraseSubscriber(node_ids[0]);
-  ASSERT_FALSE(subscription_index.HasSubscriber(node_ids[0]));
+  subscription_index.EraseSubscriber(subscriber_ids[0]);
+  ASSERT_FALSE(subscription_index.HasSubscriber(subscriber_ids[0]));
   const auto &subscribers_from_index =
       subscription_index.GetSubscriberIdsByKeyId(oid.Binary());
-  ASSERT_FALSE(HasSubscriber(subscribers_from_index, node_ids[0]));
+  ASSERT_FALSE(HasSubscriber(subscribers_from_index, subscriber_ids[0]));
 
   for (int i = 1; i < 6; i++) {
-    subscription_index.EraseSubscriber(node_ids[i]);
+    subscription_index.EraseSubscriber(subscriber_ids[i]);
   }
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 }
@@ -256,34 +267,35 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
   ///
   /// Test the subscription index is idempotent.
   ///
-  auto node_id = NodeID::FromRandom();
+  auto *subscriber = CreateSubscriber();
+  auto subscriber_id = subscriber->id();
   auto oid = ObjectID::FromRandom();
   SubscriptionIndex subscription_index;
 
   // Add the same entry many times.
   for (int i = 0; i < 5; i++) {
-    subscription_index.AddEntry(oid.Binary(), node_id);
+    subscription_index.AddEntry(oid.Binary(), subscriber);
   }
   ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
-  ASSERT_TRUE(subscription_index.HasSubscriber(node_id));
+  ASSERT_TRUE(subscription_index.HasSubscriber(subscriber_id));
 
   // Erase it and make sure it is erased.
   for (int i = 0; i < 5; i++) {
-    subscription_index.EraseEntry(oid.Binary(), node_id);
+    subscription_index.EraseEntry(oid.Binary(), subscriber_id);
   }
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 
   // Random mix.
-  subscription_index.AddEntry(oid.Binary(), node_id);
-  subscription_index.AddEntry(oid.Binary(), node_id);
-  subscription_index.EraseEntry(oid.Binary(), node_id);
-  subscription_index.EraseEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), subscriber);
+  subscription_index.AddEntry(oid.Binary(), subscriber);
+  subscription_index.EraseEntry(oid.Binary(), subscriber_id);
+  subscription_index.EraseEntry(oid.Binary(), subscriber_id);
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 
-  subscription_index.AddEntry(oid.Binary(), node_id);
-  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), subscriber);
+  subscription_index.AddEntry(oid.Binary(), subscriber);
   ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
-  ASSERT_TRUE(subscription_index.HasSubscriber(node_id));
+  ASSERT_TRUE(subscription_index.HasSubscriber(subscriber_id));
 }
 
 TEST_F(PublisherTest, TestSubscriber) {

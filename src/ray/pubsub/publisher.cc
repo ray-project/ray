@@ -35,8 +35,7 @@ bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
   // }
 }
 
-bool SubscriptionIndex::AddEntry(const std::string &key_id,
-                                 SubscriberState *subscriber) {
+bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *subscriber) {
   if (key_id.empty()) {
     return subscribers_to_all_.subscribers.emplace(subscriber->id(), subscriber).second;
   }
@@ -237,7 +236,7 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
     it = subscribers_
              .emplace(
                  subscriber_id,
-                 std::make_shared<pub_internal::SubscriberState>(subscriber_id,
+                 std::make_unique<pub_internal::SubscriberState>(subscriber_id,
                                                                  get_time_ms_,
                                                                  subscriber_timeout_ms_,
                                                                  publish_batch_size_))
@@ -255,12 +254,16 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
-    it = subscribers_.emplace(
-        subscriber_id,
-        std::make_shared<pub_internal::SubscriberState>(
-            subscriber_id, get_time_ms_, subscriber_timeout_ms_, publish_batch_size_)).first;
+    it = subscribers_
+             .emplace(
+                 subscriber_id,
+                 std::make_unique<pub_internal::SubscriberState>(subscriber_id,
+                                                                 get_time_ms_,
+                                                                 subscriber_timeout_ms_,
+                                                                 publish_batch_size_))
+             .first;
   }
-  pub_internal::SubscriberState* subscriber = it->second.get();
+  pub_internal::SubscriberState *subscriber = it->second.get();
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
   return subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);

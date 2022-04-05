@@ -43,7 +43,7 @@ class SubscriberState;
 /// State for an entity / topic in a pub/sub channel.
 struct EntityState {
   /// Subscribers for the entity.
-  absl::flat_hash_map<SubscriberID, SubscriberState*> subscribers;
+  absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers;
 };
 
 /// Per-channel two-way index for subscribers and the keys they subscribe to.
@@ -53,7 +53,7 @@ class SubscriptionIndex {
   SubscriptionIndex() = default;
   ~SubscriptionIndex() = default;
 
-  /// Publishes the message to relevant subscribers. 
+  /// Publishes the message to relevant subscribers.
   /// Returns true if there are subscribers listening on the key of the message,
   /// returns false otherwise.
   bool Publish(const rpc::PubMessage &pub_message);
@@ -387,7 +387,7 @@ class Publisher : public PublisherInterface {
   mutable absl::Mutex mutex_;
 
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<SubscriberID, std::shared_ptr<pub_internal::SubscriberState>>
+  absl::flat_hash_map<SubscriberID, std::unique_ptr<pub_internal::SubscriberState>>
       subscribers_ GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
