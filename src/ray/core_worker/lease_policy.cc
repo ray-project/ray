@@ -27,7 +27,7 @@ std::pair<rpc::Address, bool> LocalityAwareLeasePolicy::GetBestNodeForTask(
   }
 
   if (spec.GetMessage().scheduling_strategy().scheduling_strategy_case() ==
-      rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeSchedulingStrategy) {
+      rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeAffinitySchedulingStrategy) {
     return std::make_pair(fallback_rpc_address_, false);
   }
 

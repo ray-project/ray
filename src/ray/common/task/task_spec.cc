@@ -120,9 +120,10 @@ void TaskSpecification::ComputeResources() {
         resource_set,
         function_descriptor,
         depth,
-        IsNodeSchedulingStrategy() ? std::make_pair(GetNodeSchedulingStrategyNodeId(),
-                                                    GetNodeSchedulingStrategySoft())
-                                   : std::make_pair(NodeID::Nil(), false));
+        IsNodeAffinitySchedulingStrategy()
+            ? std::make_pair(GetNodeAffinitySchedulingStrategyNodeId(),
+                             GetNodeAffinitySchedulingStrategySoft())
+            : std::make_pair(NodeID::Nil(), false));
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
@@ -249,19 +250,20 @@ const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const 
   return message_->scheduling_strategy();
 }
 
-bool TaskSpecification::IsNodeSchedulingStrategy() const {
+bool TaskSpecification::IsNodeAffinitySchedulingStrategy() const {
   return GetSchedulingStrategy().scheduling_strategy_case() ==
-         rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeSchedulingStrategy;
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeAffinitySchedulingStrategy;
 }
 
-NodeID TaskSpecification::GetNodeSchedulingStrategyNodeId() const {
-  RAY_CHECK(IsNodeSchedulingStrategy());
-  return NodeID::FromBinary(GetSchedulingStrategy().node_scheduling_strategy().node_id());
+NodeID TaskSpecification::GetNodeAffinitySchedulingStrategyNodeId() const {
+  RAY_CHECK(IsNodeAffinitySchedulingStrategy());
+  return NodeID::FromBinary(
+      GetSchedulingStrategy().node_affinity_scheduling_strategy().node_id());
 }
 
-bool TaskSpecification::GetNodeSchedulingStrategySoft() const {
-  RAY_CHECK(IsNodeSchedulingStrategy());
-  return GetSchedulingStrategy().node_scheduling_strategy().soft();
+bool TaskSpecification::GetNodeAffinitySchedulingStrategySoft() const {
+  RAY_CHECK(IsNodeAffinitySchedulingStrategy());
+  return GetSchedulingStrategy().node_affinity_scheduling_strategy().soft();
 }
 
 std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {

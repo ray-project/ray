@@ -21,22 +21,22 @@
 
 namespace ray {
 namespace raylet_scheduling_policy {
-class NodeSchedulingPolicy : public ISchedulingPolicy {
+class NodeAffinitySchedulingPolicy : public ISchedulingPolicy {
  public:
-  NodeSchedulingPolicy(scheduling::NodeID local_node_id,
+  NodeAffinitySchedulingPolicy(scheduling::NodeID local_node_id,
                        const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                       std::function<bool(scheduling::NodeID)> is_node_available)
+                       std::function<bool(scheduling::NodeID)> is_node_alive)
       : local_node_id_(local_node_id),
         nodes_(nodes),
-        is_node_available_(is_node_available),
-        hybrid_policy_(local_node_id_, nodes_, is_node_available_) {}
+        is_node_alive_(is_node_alive),
+        hybrid_policy_(local_node_id_, nodes_, is_node_alive_) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
 
   const scheduling::NodeID local_node_id_;
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;
-  std::function<bool(scheduling::NodeID)> is_node_available_;
+  std::function<bool(scheduling::NodeID)> is_node_alive_;
   HybridSchedulingPolicy hybrid_policy_;
 };
 }  // namespace raylet_scheduling_policy

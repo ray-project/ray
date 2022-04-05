@@ -41,7 +41,7 @@ class PlacementGroupSchedulingStrategy:
 
 
 @PublicAPI(stability="beta")
-class NodeSchedulingStrategy:
+class NodeAffinitySchedulingStrategy:
     """Static scheduling strategy used to run a task or actor
        on a particular node.
 
@@ -68,5 +68,5 @@ SchedulingStrategyT = Union[
     None,
     str,  # Literal["DEFAULT", "SPREAD"]
     PlacementGroupSchedulingStrategy,
-    NodeSchedulingStrategy,
+    NodeAffinitySchedulingStrategy,
 ]

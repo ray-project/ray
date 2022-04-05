@@ -133,13 +133,15 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                                          /*avoid_local_node*/ force_spillback,
                                          /*require_node_available*/ force_spillback));
   } else if (scheduling_strategy.scheduling_strategy_case() ==
-             rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeSchedulingStrategy) {
+             rpc::SchedulingStrategy::SchedulingStrategyCase::
+                 kNodeAffinitySchedulingStrategy) {
     best_node_id = scheduling_policy_->Schedule(
         resource_request,
-        SchedulingOptions::Node(force_spillback,
-                                force_spillback,
-                                scheduling_strategy.node_scheduling_strategy().node_id(),
-                                scheduling_strategy.node_scheduling_strategy().soft()));
+        SchedulingOptions::NodeAffinity(
+            force_spillback,
+            force_spillback,
+            scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
+            scheduling_strategy.node_affinity_scheduling_strategy().soft()));
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.

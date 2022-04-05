@@ -49,7 +49,7 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
-message NodeSchedulingStrategy {
+message NodeAffinitySchedulingStrategy {
   bytes node_id = 1;
   bool soft = 2;
 }
@@ -75,7 +75,7 @@ message SchedulingStrategy {
     PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
     // Best effort spread scheduling strategy.
     SpreadSchedulingStrategy spread_scheduling_strategy = 3;
-    NodeSchedulingStrategy node_scheduling_strategy = 4;
+    NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
   }
 }
 

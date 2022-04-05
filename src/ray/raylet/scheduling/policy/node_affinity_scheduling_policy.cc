@@ -12,20 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/policy/node_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/node_affinity_scheduling_policy.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID NodeSchedulingPolicy::Schedule(const ResourceRequest &resource_request,
+scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(const ResourceRequest &resource_request,
                                                   SchedulingOptions options) {
-  RAY_CHECK(options.scheduling_type == SchedulingType::NODE);
+  RAY_CHECK(options.scheduling_type == SchedulingType::NODE_AFFINITY);
 
   for (const auto &[node_id, node] : nodes_) {
     if (node_id.Binary() != options.node_id) {
       continue;
     }
-    if (!is_node_available_(node_id)) {
+    if (!is_node_alive_(node_id)) {
       break;
     }
     if (!node.GetLocalView().IsFeasible(resource_request)) {

@@ -76,9 +76,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
                                             : ActorID::Nil(),
             task_spec.GetRuntimeEnvHash(),
-            task_spec.IsNodeSchedulingStrategy()
-                ? std::make_pair(task_spec.GetNodeSchedulingStrategyNodeId(),
-                                 task_spec.GetNodeSchedulingStrategySoft())
+            task_spec.IsNodeAffinitySchedulingStrategy()
+                ? std::make_pair(task_spec.GetNodeAffinitySchedulingStrategyNodeId(),
+                                 task_spec.GetNodeAffinitySchedulingStrategySoft())
                 : std::make_pair(NodeID::Nil(), false));
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
@@ -607,9 +607,9 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
       task_spec.GetRuntimeEnvHash(),
-      task_spec.IsNodeSchedulingStrategy()
-          ? std::make_pair(task_spec.GetNodeSchedulingStrategyNodeId(),
-                           task_spec.GetNodeSchedulingStrategySoft())
+      task_spec.IsNodeAffinitySchedulingStrategy()
+          ? std::make_pair(task_spec.GetNodeAffinitySchedulingStrategyNodeId(),
+                           task_spec.GetNodeAffinitySchedulingStrategySoft())
           : std::make_pair(NodeID::Nil(), false));
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {

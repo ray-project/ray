@@ -11,7 +11,7 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
-    NodeSchedulingStrategy,
+    NodeAffinitySchedulingStrategy,
 )
 from ray._private.test_utils import wait_for_condition, make_global_state_accessor
 
@@ -255,7 +255,7 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
-def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
+def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
     ray.init(address=cluster.address)
@@ -277,19 +277,23 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         assert worker_node_id == ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeSchedulingStrategy(worker_node_id, soft=False)
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    worker_node_id, soft=False
+                )
             ).remote()
         )
         assert head_node_id == ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=False)
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    head_node_id, soft=False
+                )
             ).remote()
         )
 
         # Doesn't fail when the node doesn't exist since soft is true.
         ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeSchedulingStrategy(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
                     ray.NodeID.from_random().hex(), soft=True
                 )
             ).remote()
@@ -298,7 +302,9 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
         # Doesn't fail when the node is infeasible since soft is true.
         assert worker_node_id == ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=True),
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    head_node_id, soft=True
+                ),
                 resources={"worker": 1},
             ).remote()
         )
@@ -307,7 +313,7 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
         with pytest.raises(ray.exceptions.TaskUnschedulableError):
             ray.get(
                 get_node_id.options(
-                    scheduling_strategy=NodeSchedulingStrategy(
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(
                         ray.NodeID.from_random().hex(), soft=False
                     )
                 ).remote()
@@ -317,7 +323,7 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
         with pytest.raises(ray.exceptions.TaskUnschedulableError):
             ray.get(
                 get_node_id.options(
-                    scheduling_strategy=NodeSchedulingStrategy(
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(
                         head_node_id, soft=False
                     ),
                     resources={"not_exist": 1},
@@ -334,7 +340,7 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         @ray.remote(
             max_retries=-1,
-            scheduling_strategy=NodeSchedulingStrategy(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
                 crashed_worker_node_id, soft=True
             ),
         )
@@ -360,12 +366,14 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
                 return ray.get_runtime_context().node_id.hex()
 
         actor = Actor.options(
-            scheduling_strategy=NodeSchedulingStrategy(worker_node_id, soft=False)
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                worker_node_id, soft=False
+            )
         ).remote()
         assert worker_node_id == ray.get(actor.get_node_id.remote())
 
         actor = Actor.options(
-            scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=False)
+            scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False)
         ).remote()
         assert head_node_id == ray.get(actor.get_node_id.remote())
 
@@ -373,7 +381,9 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
         worker_actor = Actor.options(resources={"worker": 1}).remote()
         assert worker_node_id == ray.get(worker_actor.get_node_id.remote())
         actor = Actor.options(
-            scheduling_strategy=NodeSchedulingStrategy(worker_node_id, soft=True),
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                worker_node_id, soft=True
+            ),
             resources={"worker": 1},
         ).remote()
         del worker_actor
@@ -381,7 +391,7 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         # Doesn't fail when the node doesn't exist since soft is true.
         actor = Actor.options(
-            scheduling_strategy=NodeSchedulingStrategy(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.NodeID.from_random().hex(), soft=True
             )
         ).remote()
@@ -389,7 +399,7 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         # Doesn't fail when the node is infeasible since soft is true.
         actor = Actor.options(
-            scheduling_strategy=NodeSchedulingStrategy(head_node_id, soft=True),
+            scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
             resources={"worker": 1},
         ).remote()
         assert worker_node_id == ray.get(actor.get_node_id.remote())
@@ -397,7 +407,7 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
         # Fail when the node doesn't exist.
         with pytest.raises(ray.exceptions.ActorUnschedulableError):
             actor = Actor.options(
-                scheduling_strategy=NodeSchedulingStrategy(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
                     ray.NodeID.from_random().hex(), soft=False
                 )
             ).remote()
@@ -406,7 +416,9 @@ def test_node_scheduling_strategy(ray_start_cluster, connect_to_client):
         # Fail when the node is infeasible.
         with pytest.raises(ray.exceptions.ActorUnschedulableError):
             actor = Actor.options(
-                scheduling_strategy=NodeSchedulingStrategy(worker_node_id, soft=False),
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    worker_node_id, soft=False
+                ),
                 resources={"not_exist": 1},
             ).remote()
             ray.get(actor.get_node_id.remote())

@@ -108,14 +108,15 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
                        << task.GetTaskSpecification().TaskId() << " is infeasible?"
                        << is_infeasible;
 
-        if (task.GetTaskSpecification().IsNodeSchedulingStrategy() &&
-            !task.GetTaskSpecification().GetNodeSchedulingStrategySoft()) {
+        if (task.GetTaskSpecification().IsNodeAffinitySchedulingStrategy() &&
+            !task.GetTaskSpecification().GetNodeAffinitySchedulingStrategySoft()) {
           // This can only happen if the target node doesn't exist or is infeasible.
           // The task will never be schedulable in either case so we should fail it.
-          ReplyCancelled(*work,
-                         rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
-                         "The node specified via NodeSchedulingStrategy doesn't exist "
-                         "any more or is infeasible, and soft=False was specified.");
+          ReplyCancelled(
+              *work,
+              rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+              "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
+              "any more or is infeasible, and soft=False was specified.");
           // We don't want to trigger the normal infeasible task logic (i.e. waiting),
           // but rather we want to fail the task immediately.
           work_it = work_queue.erase(work_it);

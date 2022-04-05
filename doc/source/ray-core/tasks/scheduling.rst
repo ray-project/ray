@@ -23,14 +23,14 @@ Scheduling Strategy
 -------------------
 Tasks support a ``scheduling_strategy`` option to specify the strategy used to decide the best node among available nodes.
 Currently the supported strategies are ``"DEFAULT"``, ``"SPREAD"`` and
-``ray.util.scheduling_strategies.NodeSchedulingStrategy(node_id, soft: bool)``.
+``ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(node_id, soft: bool)``.
 
 "DEFAULT" is the default strategy used by Ray. With the current implementation, Ray will try to pack tasks on nodes
 until the resource utilization is beyond a certain threshold and spread tasks afterwards.
 
 "SPREAD" strategy will try to spread the tasks among available nodes.
 
-NodeSchedulingStrategy is a low-level strategy that allows a task to be scheduled onto a particular node specified by its hexadecimal node id.
+NodeAffinitySchedulingStrategy is a low-level strategy that allows a task to be scheduled onto a particular node specified by its hexadecimal node id.
 The ``soft`` flag specifies whether the task is allowed to run somewhere else if the specified node doesn't exist (e.g. if the node dies)
 or is infeasible because it does not have the resources required to run the task. In these cases, if ``soft`` is True, the task will be scheduled onto a different feasible node.
 Otherwise, the task will fail with ``TaskUnschedulableError``.
@@ -71,7 +71,7 @@ especially in a multi-tenant cluster: for example, an application won't know wha
 
         # Only run the task on the local node.
         node_function.options(
-            scheduling_strategy=NodeSchedulingStrategy(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
                 node_id = ray.get_runtime_context().node_id.hex(),
                 soft = False,
             )
@@ -79,7 +79,7 @@ especially in a multi-tenant cluster: for example, an application won't know wha
 
         # Run the task on the remote node if possible.
         node_function.options(
-            scheduling_strategy=NodeSchedulingStrategy(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
                 node_id = remote_node_id,
                 soft = True,
             )

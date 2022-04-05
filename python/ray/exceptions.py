@@ -566,7 +566,7 @@ class PendingCallsLimitExceeded(RayError):
 class TaskUnschedulableError(RayError):
     """Raised when the task cannot be scheduled.
 
-    One example is that the node specified through NodeSchedulingStrategy is dead.
+    One example is that the node specified through NodeAffinitySchedulingStrategy is dead.
     """
 
     def __init__(self, error_message: str):
@@ -579,7 +579,7 @@ class TaskUnschedulableError(RayError):
 class ActorUnschedulableError(RayError):
     """Raised when the actor cannot be scheduled.
 
-    One example is that the node specified through NodeSchedulingStrategy is dead.
+    One example is that the node specified through NodeAffinitySchedulingStrategy is dead.
     """
 
     def __init__(self, error_message: str):
