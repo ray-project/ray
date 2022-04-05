@@ -244,7 +244,7 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
         "ray.function": f"{class_}.{method}",
         "ray.pid": str(os.getpid()),
         "ray.job_id": runtime_context["job_id"].hex(),
-        "ray.node_id": runtime_context["node_id"].hex(),
+        "ray.node_id": runtime_context["node_id"],
     }
 
     # We only get actor ID for workers
