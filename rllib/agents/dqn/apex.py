@@ -151,6 +151,18 @@ class ApexTrainer(DQNTrainer):
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
+
+        # Shortcut: If execution_plan, thread and buffer will be created in there.
+        if self.config["_disable_execution_plan_api"] is False:
+            return
+
+        # Tag those workers (top 1/3rd indices) that we should collect episodes from
+        # for metrics due to `PerWorkerEpsilonGreedy` exploration strategy.
+        if self.workers.remote_workers():
+            self._remote_workers_for_metrics = \
+                self.workers.remote_workers()[
+                -len(self.workers.remote_workers()) // 3:]
+
         num_replay_buffer_shards = self.config["optimizer"]["num_replay_buffer_shards"]
 
         replay_actor_args = [
@@ -158,9 +170,9 @@ class ApexTrainer(DQNTrainer):
             self.config["learning_starts"],
             self.config["buffer_size"],
             self.config["train_batch_size"],
-            self.config["prioritized_replay_alpha"],
-            self.config["prioritized_replay_beta"],
-            self.config["prioritized_replay_eps"],
+            self.config["replay_buffer_config"]["prioritized_replay_alpha"],
+            self.config["replay_buffer_config"]["prioritized_replay_beta"],
+            self.config["replay_buffer_config"]["prioritized_replay_eps"],
             self.config["multiagent"]["replay_mode"],
             self.config.get("replay_sequence_length", 1),
         ]
