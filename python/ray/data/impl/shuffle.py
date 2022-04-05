@@ -65,7 +65,7 @@ class ShuffleOp:
         shuffle_map = cached_remote_fn(self.map)
         shuffle_reduce = cached_remote_fn(self.reduce)
 
-        map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
+        map_bar = ProgressBar("Shuffle Map", total=input_num_blocks)
 
         shuffle_map_out = [
             shuffle_map.options(
