@@ -82,9 +82,8 @@ def _get_most_frequent_values(
 ) -> Dict[str, Union[str, Number]]:
     columns = list(columns)
 
-    def get_pd_value_counts(df: pd.DataFrame) -> pd.DataFrame:
-        df = [Counter(df[col].value_counts().to_dict()) for col in columns]
-        return df
+    def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
+        return [Counter(df[col].value_counts().to_dict()) for col in columns]
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = [Counter() for _ in columns]
