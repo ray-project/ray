@@ -713,6 +713,7 @@ def init(
     _metrics_export_port: Optional[int] = None,
     _system_config: Optional[Dict[str, str]] = None,
     _tracing_startup_hook: Optional[Callable] = None,
+    _node_name: str = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1014,6 +1015,7 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook,
+            node_name=_node_name,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit

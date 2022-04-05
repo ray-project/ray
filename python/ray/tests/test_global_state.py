@@ -16,8 +16,9 @@ from ray._private.test_utils import (
     make_global_state_accessor,
 )
 
-
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
+
+
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.",
@@ -152,6 +153,43 @@ def test_global_state_actor_entry(ray_start_regular):
     assert ray.state.actors(actor_id=b_actor_id)["State"] == convert_actor_state(
         gcs_utils.ActorTableData.ALIVE
     )
+
+
+def test_node_info_table(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(node_name="head_node", include_dashboard=False)
+    # The _node_name here corresponds to the user's remote device
+    # since the user is bootstrapping from an existing cluster
+    # Is this behaviour that the user expects?
+    head_context = ray.init(
+        address=cluster.address, _node_name="client_node", include_dashboard=False
+    )
+    cluster.add_node(node_name="worker_node", include_dashboard=False)
+    cluster.wait_for_nodes()
+
+    global_state_accessor = make_global_state_accessor(head_context)
+    node_table = global_state_accessor.get_node_table()
+    assert len(node_table) == 2
+    for node_data in node_table:
+        node = gcs_utils.GcsNodeInfo.FromString(node_data)
+        if ray._private.utils.binary_to_hex(node.node_id) == head_context["node_id"]:
+            assert node.node_name == "head_node"
+        else:
+            assert node.node_name == "worker_node"
+
+    global_state_accessor.disconnect()
+    ray.shutdown()
+    cluster.shutdown()
+
+    # Test ray.init with _node_name directly
+    new_head_context = ray.init(
+        address=cluster.address, _node_name="new_head_node", include_dashboard=False
+    )
+
+    global_state_accessor = make_global_state_accessor(new_head_context)
+    node_data = global_state_accessor.get_node_table()[0]
+    node = gcs_utils.GcsNodeInfo.FromString(node_data)
+    assert node.node_name == "new_head_node"
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
