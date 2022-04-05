@@ -226,15 +226,22 @@ class DataParallelTrainer(Trainer):
                 f"integer. Received {self.scaling_config['num_workers']}"
             )
 
-        num_params = len(inspect.signature(self.train_loop_per_worker).parameters)
-        if num_params > 1:
-            raise ValueError(
-                f"train_loop_per_worker should take in 0 or 1 arguments, "
-                f"but it accepts {num_params} arguments instead."
-            )
+        self._validate_train_loop_per_worker(
+            self.train_loop_per_worker, "train_loop_per_worker"
+        )
 
         backend_config = backend_config if backend_config else BackendConfig()
         self.backend_config = backend_config
+
+    def _validate_train_loop_per_worker(
+        self, train_loop_per_worker: Callable, fn_name: str
+    ) -> None:
+        num_params = len(inspect.signature(train_loop_per_worker).parameters)
+        if num_params > 1:
+            raise ValueError(
+                f"{fn_name} should take in 0 or 1 arguments, "
+                f"but it accepts {num_params} arguments instead."
+            )
 
     def training_loop(self) -> None:
         scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
