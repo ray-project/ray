@@ -35,7 +35,7 @@ def fast_repartition(blocks, num_blocks):
     reduce_task = cached_remote_fn(ShufflePartitionOp.reduce).options(num_returns=2)
     reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
     reduce_out = [
-        reduce_task.remote(*s.get_internal_block_refs())
+        reduce_task.remote(False, None, *s.get_internal_block_refs())
         for s in splits
         if s.num_blocks() > 0
     ]
