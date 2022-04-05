@@ -1683,6 +1683,42 @@ def test_to_tf_feature_columns_dict(ray_start_regular_shared):
     assert np.array_equal(batches[1]["B"], np.array([[9]]))
 
 
+def test_to_tf_feature_columns_dict_with_label(ray_start_regular_shared):
+    import tensorflow as tf
+
+    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "Y": [7, 8, 9]})
+    ds = ray.data.from_pandas([df])
+
+    feature_columns = {"A": ["X1", "X2"]}
+    output_signature = (
+        {
+            "A": tf.TensorSpec(shape=(None, len(feature_columns["A"]))),
+        },
+        tf.TensorSpec(shape=(None)),
+    )
+    batch_size = 2
+    dataset = ds.to_tf(
+        feature_columns=feature_columns,
+        label_column="Y",
+        output_signature=output_signature,
+        batch_size=2,
+    )
+
+    batches = list(dataset.as_numpy_iterator())
+    assert len(batches) == math.ceil(len(df) / batch_size)
+    # Each batch should be a two-tuple corresponding to (features, labels).
+    assert all(len(batch) == 2 for batch in batches)
+    assert all(features.keys() == feature_columns.keys() for features, _ in batches)
+
+    features0, labels0 = batches[0]
+    assert np.array_equal(features0["A"], np.array([[1, 4], [2, 5]]))
+    assert np.array_equal(labels0, np.array([7, 8]))
+
+    features1, labels1 = batches[1]
+    assert np.array_equal(features1["A"], np.array([[3, 6]]))
+    assert np.array_equal(labels1, np.array([9]))
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_to_torch(ray_start_regular_shared, pipelined):
     import torch
