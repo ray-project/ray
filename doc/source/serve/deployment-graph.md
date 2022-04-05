@@ -22,15 +22,20 @@ Note: This feature is in Alpha, so APIs are subject to change.
 
 ## Motivation
 
-Machine learning serving systems are getting longer and wider. They often consist of many models to make a single prediction. This is common in use cases like image / video content classification and tagging, fraud detection pipeline with multiple policies, multi-stage ranking and recommendation, etc.
+Machine learning serving systems are getting longer and wider. They often consist of many models to make a single prediction. 
+This is common in use cases like image/video content classification and tagging, fraud detection pipeline with multiple policies, 
+multi-stage ranking and recommendation, etc.
 
-Meanwhile, the size of a model is also growing beyond the memory limit of a single machine due to the exponentially growing number of parameters. GPT-3 and sparse feature embeddings in large recommendation models are two prime examples. 
+Meanwhile, the size of a model is also growing beyond the memory limit of a single machine due to the exponentially growing number of parameters. 
+The GPT-3 and sparse feature embeddings in large recommendation models are two prime examples. 
 
-Ray has unique strengths suited to distributed inference pipelines: flexible scheduling, efficient communication, and shared memory. Ray Serve leverages these strengths to build inference graphs, enabling users to develop complex ML applications locally and then deploy them to production with dynamic scaling and lightweight updates (e.g., for model weights).
+Ray has unique strengths suited to distributed inference pipelines: flexible scheduling, efficient communication, and shared memory. 
+Ray Serve leverages these strengths to build inference graphs, enabling users to develop complex ML applications locally and 
+then deploy them to production with dynamic scaling and lightweight updates (e.g., for model weights).
 
 ## Features
-- Provide the ability to build, test, and deploy a complex inference graph of deployments both locally and on remote cluster. The authoring experience is fully Python-programmable and support dynamic control flow and custom business logic, all without writing YAML.
-- In production, the deployments making up the graph can be reconfigured and scaled dynamically. This should enable DevOps/MLOps teams to operate deployment graphs without modifying the underlying code.
+- Provide the ability to build, test, and deploy a complex inference graph of deployments both locally and on remote cluster. The authoring experience is fully Python-programmable, supports dynamic control flow, and custom business logic, all without writing YAML.
+- In production, the deployments making up the graph can be reconfigured and scaled dynamically. This should enable DevOps/MLOps teams to operate on deployment graphs without modifying the underlying code.
 
 
 __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md)__
@@ -39,7 +44,7 @@ __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ra
 
 ## Concepts
 
-- **Deployment**: Scalable, upgradeable group of actors managed by Ray Serve. __[See docs for detail](https://docs.ray.io/en/master/serve/core-apis.html#core-api-deployments)__
+- **Deployment**: Scalable, upgradeable group of functions or actors managed by Ray Serve. __[See docs for detail](https://docs.ray.io/en/master/serve/core-apis.html#core-api-deployments)__
 
 - **DeploymentNode**: Smallest unit in a graph, created by calling `.bind()` on a serve decorated class or function, backed by a Deployment.
 
@@ -51,25 +56,25 @@ __[Full Ray Enhancement Proposal, REP-001: Serve Pipeline](https://github.com/ra
 
 ## Full End to End Example Walkthrough
 
-Let's put the concepts together and incrementally build a runnable DAG example highlighting the following features:
+Let's put the above concepts together and incrementally build a runnable dynamic acyclic graph (DAG) example highlighting the following features:
 
 ```{tip}
-At the end of this document we have the full and end to end executable implementation.
+At the end of this document, we will have an end to end executable implementation of a deployment graph.
 ```
 
 - Building a graph:
     - A deployment node is created from `@serve.deployment` decorated function or class. 
     - You can construct different deployment nodes from same class or function.
-    - Deployment nodes can be used as input args in .bind() of other nodes in the DAG. 
+    - Deployment nodes can be used as input arguments in `.bind()` invocation of other nodes in the DAG. 
     - Multiple nodes in the deployment graph naturally forms a DAG structure.
 - Accessing input:
     - Same input or output can be used in multiple nodes in the DAG.
     - Deployment nodes can access partial user input.
-- Dynamic control flow:
+- Dynamically controlling the flow:
     - A deployment node can call into other nodes in the deployment graph.
-    - You can use the dynamic calling to perform control flow operation that's hard to expressive in traditional DAG.
+    - You can use the dynamic calling to perform control flow operation that's hard to express in traditional DAG.
 - Running a DAG:
-    - Nodes in the graph, such as functions or class methods, can be either sync or async.
+    - Nodes in the graph, such as functions or class methods, can be either synchronous or asynchronous.
 
 +++
 
@@ -79,25 +84,27 @@ At the end of this document we have the full and end to end executable implement
 
 ### Step 1: User InputNode and preprocessor 
 
-Let's start with the first layer of DAG: Building user input to two preprocessor functions, where each function receives parts of the input data. For simplicity, we use the same existing `@serve.deployment` decorator on an async function body.
+Let's start with the first layer of DAG: Providing user input to two preprocessor functions, where each function receives parts of the input data. 
+For simplicity, we use the same existing `@serve.deployment` decorator on an async function body.
 
 +++
 
 ```python
 import asyncio
 from ray import serve
-# We will later move Ray DAG related components 
-# out of experimental in later stable release
+
+# In later stable releases, we'll move Ray DAG related components 
+# out of experimental module into serve module.
 from ray.experimental.dag.input_node import InputNode
 
 @serve.deployment
-async def preprocessor(input_data: str):
+async def preprocessor(input_data: str) -> int:
     """Simple feature processing that converts str to int"""
     await asyncio.sleep(0.1) # Manual delay for blocking computation
     return int(input_data)
 
 @serve.deployment
-async def avg_preprocessor(input_data):
+async def avg_preprocessor(input_data: float) -> float:
     """Simple feature processing that returns average of input list as float."""
     await asyncio.sleep(0.15) # Manual delay for blocking computation
     return sum(input_data) / len(input_data)
@@ -115,62 +122,73 @@ There are two new APIs used in the DAG building stage: `InputNode()` and `bind()
 
 ### **```InputNode()```** : User input of the graph
 
-```InputNode``` is a special node in the graph that represents the user input for the graph at runtime. There can only be one for each graph, takes no arguments, and should always be created in a context manager.
+```InputNode``` is a special node in the graph that represents the user input for the graph at runtime. There can only be one for each graph, 
+takes no arguments, and should always be created in a context manager.
 
-It's possible to access partial inputs by index or key if every node in the graph doesn't require the full input. Example: the input consists of `[Tensor_0, Tensor_1]` but a single model might only need to receive `Tensor_1` at rather than the full list.
+It's possible to access partial inputs by index or key if every node in the graph does not require the full input. For example, an 
+input may consist of Tensor list `[Tensor_0, Tensor_1]`, but a single model might only need to receive `Tensor_1` rather than the full list.
 
 
 ### **`bind(*args, **kwargs)`** : The graph building API
 
-Once called on supported Ray-decorated function or class (`@serve.deployment` is fully supported, `@ray.remote` will be soon), generates a `DeploymentNode` of type `DAGNode` that acts as the building block of graph building.
+When called on supported Ray-decorated function or class (`@serve.deployment` is fully supported, `@ray.remote` will be soon), the call 
+generates a `DeploymentNode` of type `DAGNode` that acts as the building block of the desired graph.
 
 
-In the example above, we can see we're using a context manager to build and bind user input:
+In the example above, we used a context manager to build and bind user input:
 ```python
 with InputNode() as dag_input:
 ```
 
-Which can be used and accessed by index or key in downstream calls of .bind(), such as:
+The `dag_input` can be used and accessed by index or key in downstream calls of `.bind()`, such as:
 ```python
 preprocessed_1 = preprocessor.bind(dag_input[0])
 ```
 
-This means we're creating a DeploymentNode called `preprocessed_1` in graph building by calling `.bind()` on a serve decorated function, where it executes the decorated deployment function `preprocessor` that takes the user input at index 0 at runtime.
+In the above code, we created a `DeploymentNode` called `preprocessed_1` in our graph building by calling `.bind()` on a serve decorated function, where it 
+executes the decorated deployment function `preprocessor` that takes the user input at index 0 at runtime.
 
 #### bind() on function
 
-```bind()``` on function produces a DeploymentNode that can be executed with user input.
+```bind()``` on function produces a `DeploymentNode` that can be executed with user input.
 
 ```{tip}
-Each deployment node used in graph is individually scalable and configurable by default. This means in real production workload where we can expect difference in compute resource and latency, we can fine tune the nodes to optimal `num_replicas` and `num_cpus` to avoid a single node being the bottleneck of your deployment graph's latency or throughput.
+Each deployment node used in a graph is individually scalable and configurable by default. So in real production workload where we can expect 
+difference in compute resource and latency, we can fine tune the nodes to optimal `num_replicas` and `num_cpus` to avoid a single node being 
+the bottleneck of your deployment graph's latency or throughput.
 ```
 
 #### bind() on class constructor 
 
-**`Class.bind(*args, **kwargs)`** constructs and returns a DeploymentNode that acts as the instantiated instance of Class, where `*args` and `**kwargs` are used as init args. In our implementation, we have
+**`Class.bind(*args, **kwargs)`** constructs and returns a `DeploymentNode` that acts as the instantiated instance of Class, where `*args` and 
+`**kwargs` are used as init args. In our implementation, we have
 
 ```python
 m1 = Model.bind(1)
 m2 = Model.bind(2)
 ```
 
-This means we're creating two more `DeploymentNode` of an instance of `Model` that is constructed with init arg of `1` and `2`, and refereced with variable name `m1`, `m2` respectively.
+In the above code, we've created two more `DeploymentNode` nodes of an instance of the `Model` that is constructed with init arg of `1` and `2`, 
+and referenced with variable name `m1`, `m2` respectively.
 
 #### bind() on class method
 
-Once a class is bound with its init args, its class methods can be directly accessed, called or bound with other args. It has the same semantics as `bind()` on a function, except it acts on an instantiated `DeploymentNode` class instead.
+After a class is bound with its init args, its class methods can be directly accessed, called or bound with other args. It has the same semantics 
+as `bind()` on a function, except it acts on an instantiated `DeploymentNode` class instead.
 
 +++
 
 ### Step 2: Model and combiner class instantiation
 
-After we got the preprocessed inputs, we're ready to combine them to construct request object we want to sent to two models instantiated with different initial weights. This means we need:
+After we have preprocessed inputs, we're ready to combine them to construct a request object we want to send to two models instantiated with 
+different initial weights. To that end, we need the following steps:
 
 (1) Two `Model` instances in the graph instantiated with different initial weights
 <br>
-(2) A `Combiner` that refereces `Model` nodes for its runtime implementation by passing them as init args in `.bind()`
+(2) A `Combiner` that references `Model` nodes for its runtime implementation by passing them as init args in `.bind()`
 <br>
-(3) The ability of `Combiner` to receive and merge preprocessed inputs for the same user input, even they might be produced async and received out of order.
+(3) The ability of the `Combiner` to receive and merge preprocessed inputs for the same user input, even though they might have been produced 
+asynchronously and received out of order.
 
 +++
 
@@ -218,12 +236,15 @@ with InputNode() as dag_input:
 
 +++
 
-We are adding a few more pieces to our dag builder: `bind()` on class and class method, as well as passing the output of `Model.bind()` as init args into another class `Combiner.bind()`
+Let us add a few more pieces to our DAG builder: `bind()` on class and class method, as well as pass the output of `Model.bind()` as init 
+args into another class `Combiner.bind()`.
 
 
 ### DeploymentNode as arguments in other node's bind()
 
-DeploymentNode can also be passed into other `DeploymentNode` in dag binding. In the full example below, ```Combiner``` calls into two instantiations of ```Model``` class, which can be bound and passed into ```Combiner```'s constructor as if we're passing in two regular python class instances.
+A `DeploymentNode` can also be passed into other `DeploymentNodes` in DAG binding. In the full example below, ```Combiner``` calls into two 
+instantiations of ```Model``` class, which can be bound and passed into ```Combiner```'s constructor as if we're passing in two regular 
+python class instances.
 
 ```python
 m1 = Model.bind(1)
@@ -231,7 +252,9 @@ m2 = Model.bind(2)
 combiner = Combiner.bind(m1, m2)
 ```
 
-Similarly, we can also pass and bind upstream `DeploymentNode` results that will be resolved upon runtime to downstream DeploymentNodes, in our example, a function `run()` that access class method of ```Combiner``` class takes two preprocessing `DeploymentNode`s' output as well as part of user input that will be resolved when upstream `DeploymentNode` are executed.
+Similarly, we can also pass and bind the upstream `DeploymentNode` results that will be resolved upon runtime to downstream 
+`DeploymentNodes`. In our example, a function `run()` that accesses class method of ```Combiner``` class takes two preprocessing 
+`DeploymentNodes` output as well as part of user input that will be resolved when upstream `DeploymentNode` are executed.
 
 ```python
 preprocessed_1 = preprocessor.bind(dag_input[0])
@@ -241,16 +264,20 @@ dag = combiner.run.bind(preprocessed_1, preprocessed_2, dag_input[2])
 ```
 
 ```{tip}
-At runtime, calls of deployment node like ` self.m1.forward.remote()` will be automatically replaced with a `.remote()` call to the deployment handle to `self.m1`.
+At runtime, calls of deployment node like `self.m1.forward.remote()` will be automatically replaced with a `.remote()` call to the deployment 
+handle to `self.m1`.
 ```
 
 +++
 
 ### Step 3: Dynamic aggregation based on user input
 
-Now we have the backbone of our DAG setup: splitting and preprocessing user inputs, aggregate into new request data and send to multiple models downstream. Let's add a bit more dynamic flavor in it to demostrate deployment graph is fully python programmable by introducing control flow based on user input.
+Now we have the backbone of our DAG setup: splitting and preprocessing user inputs, aggregating them into a new request data and sending to multiple 
+models downstream. Let's add a bit more dynamic flavor in it to demonstrate that a deployment graph is fully python programmable by introducing 
+control flow based on user input.
 
-It's as simple as adding a plain `if / else` on `combiner.run()`, and from our previous binding, we get `operation` field at runtime from user provided input data.
+It's as simple as adding a plain `if / else` on `combiner.run()`, and from our previous binding, we get `operation` field at runtime from 
+user provided input data.
 
 ```python
 dag = combiner.run.bind(preprocessed_1, preprocessed_2, dag_input[2])
@@ -284,17 +311,20 @@ class Combiner:
 +++
 
 ```{tip}
-Support control flow in plain python code can be very useful to build dynamic dispatcher, such as routing user request to a smaller subset of running models based on request attribute, where each model can be sharded and scaled independently.
+Support control flow in plain python code can be very useful to build dynamic dispatcher, such as routing user request to a smaller subset 
+of running models based on request attribute, where each model can be sharded and scaled independently.
 ```
 
 +++
 
 ### Step 4: Driver deployment to handle http ingress
 
-Now we've built the entire serve DAG with the topology, args binding and user input. It's time to add the last piece for serve -- a Driver deployment to expose and configure http. We can configure it to start with two replicas in case the ingress of deployment becomes bottleneck of the DAG.
+Now we've built the entire serve DAG with the topology, argument binding, and user input. Next, we add the last piece for serve: a Driver deployment 
+to expose and configure http. We can configure it to start with two replicas in case the ingress of deployment becomes bottleneck of the DAG.
 
 ```{note}
-We expect each DAG has a driver class implementation as root, similar to the example below. This is where HTTP ingress are configured and implemented. We provide a default `DAGDriver` to handle simple HTTP parsing, but in this example we put up a custom implementation. 
+We require that each DAG has a driver class implementation as root, similar to the example below. This is where HTTP ingress is configured 
+and implemented. We implement the default `DAGDriver` to handle simple HTTP parsing, but in this example, we put up a custom implementation. 
 ```
 
 +++
@@ -347,19 +377,18 @@ with InputNode() as dag_input:
 dag_handle = serve.run(serve_dag)
 ```
 
-```serve.run()``` returns the passed-in node's deployment's handle. You can use
-this handle to issue requests to the deployment:
+```serve.run()``` returns the passed-in node's deployment's handle. You can use this handle to issue requests to the deployment:
 
 ```python
 ray.get(dag_handle.remote(user_input))
 ```
 
 During development, you can also use the Serve CLI to run your deployment
-graph. The CLI was included with Serve when you did ``pip install "ray[serve]"``.
+graph. The CLI is included with Serve when you do ``pip install "ray[serve]"``.
 The command ```serve run [node import path]``` will deploy the node and its
-childrens' deployments. For example, we can remove the ```serve.run()``` calls
+childrens' deployments. For example, you can remove the ```serve.run()``` calls
 inside the Python script and save our example pipeline to a file called
-example.py. Then we can run the driver DeploymentNode using its import path,
+example.py. Then you can run the driver `DeploymentNode` using its import path,
 ```example.serve_dag```:
 
 ```bash
@@ -385,7 +414,7 @@ $ python
 >>> requests.post("http://127.0.0.1:8000/my-dag", json=["1", [0, 2], "max"]).text
 ```
 The CLI's ```serve run``` tool has useful flags to configure which Ray cluster
-to run on, which runtime_env to use, and more. Use ```serve run --help``` to get
+to run on, which `runtime_env` to use, and more. Use ```serve run --help``` to get
 more info on these options.
 
 +++
@@ -552,7 +581,9 @@ Total of `0.45` secs.
 
 ## Conclusion
 
-We've walked through key concepts and a simple representative example that covers many important details we support in deployment graph building. There're still some rough edges in user experience that we're dedicated to polish in the next a few months, so please reach out to us if you have any feedback or suggestions:
+We've walked through key concepts and a simple representative example that covers many important details we support in deployment graph building. 
+There're still some rough edges in the user experience that we're dedicated to polish in the next a few months, so please reach out to us if you 
+have any feedback or suggestions:
 
 - __[Ray Serve forum](https://discuss.ray.io/c/ray-serve/6)__
 - __[Github issues / feature request](https://github.com/ray-project/ray/issues)__ (tag `serve`)
