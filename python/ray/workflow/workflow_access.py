@@ -124,7 +124,7 @@ class LatestWorkflowOutput:
 class WorkflowManagementActor:
     """Keep the ownership and manage the workflow output."""
 
-    def __init__(self, store: "storage.RemoteStorage"):
+    def __init__(self, store: "storage.Storage"):
         self._store = store
         self._workflow_outputs: Dict[str, LatestWorkflowOutput] = {}
         # Cache step output. It is used for step output lookup of
