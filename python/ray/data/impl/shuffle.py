@@ -160,6 +160,12 @@ class ShufflePartitionOp(ShuffleOp):
         for i in range(output_num_blocks):
             slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz, copy=True))
 
+        # Randomize the distribution order of the blocks (this prevents empty
+        # outputs when input blocks are very small).
+	if random_shuffle:
+	    random = np.random.RandomState(seed_i)
+	    random.shuffle(slices)
+
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
