@@ -2332,7 +2332,7 @@ Dict[str, List[str]]]): The names of the columns
                 else:
                     raise ValueError(
                         "Expected `feature_columns` to be a list or a dictionary, "
-                        f"but got a {type(feature_columns)} instead."
+                        f"but got a `{type(feature_columns).__name__}` instead."
                     )
 
                 # TODO(Clark): Support batches containing our extension array
