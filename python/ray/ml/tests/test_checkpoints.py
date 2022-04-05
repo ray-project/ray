@@ -232,6 +232,21 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         self._assert_fs_checkpoint(checkpoint)
 
+    def test_fs_checkpoint_uri_pa(self):
+        """Test conversion from fs to cloud checkpoint and back."""
+        checkpoint = self._prepare_fs_checkpoint()
+
+        # Convert into dict checkpoint
+        location = checkpoint.to_uri(self.cloud_uri_pa)
+        self.assertIsInstance(location, str)
+        self.assertIn(self.tmpdir_pa, location)
+
+        # Create from dict
+        checkpoint = Checkpoint.from_uri(location)
+        self.assertTrue(checkpoint._uri)
+
+        self._assert_fs_checkpoint(checkpoint)
+
     def test_fs_clear_bucket(self):
         """Test that clear bucket utility works"""
         checkpoint = self._prepare_fs_checkpoint()
