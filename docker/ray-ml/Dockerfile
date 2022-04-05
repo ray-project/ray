@@ -8,6 +8,7 @@ COPY requirements_dl.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
 COPY requirements_tune.txt ./requirements_tune.txt
+COPY requirements_train.txt ./
 COPY requirements_upstream.txt ./
 COPY install_atari_roms.sh ./install_atari_roms.sh
 
