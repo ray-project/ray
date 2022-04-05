@@ -132,10 +132,10 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
         subscription_failure_callback_map_(subscription_failure_callback_map),
         subscriber_id_(subscriber_id),
         subscriber_(std::make_unique<pubsub::pub_internal::SubscriberState>(
-        subscriber_id,
-        /*get_time_ms=*/[]() { return 1.0; },
-        /*subscriber_timeout_ms=*/1000,
-        /*publish_batch_size=*/1000)),
+            subscriber_id,
+            /*get_time_ms=*/[]() { return 1.0; },
+            /*subscriber_timeout_ms=*/1000,
+            /*publish_batch_size=*/1000)),
         client_factory_(client_factory) {}
 
   ~MockDistributedSubscriber() = default;

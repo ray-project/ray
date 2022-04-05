@@ -24,8 +24,9 @@ bool EntityState::Publish(const rpc::PubMessage &pub_message) {
   if (subscribers.empty()) {
     return false;
   }
+  const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
   for (auto &[id, subscriber] : subscribers) {
-    subscriber->QueueMessage(pub_message);
+    subscriber->QueueMessage(msg);
   }
   return true;
 }
@@ -174,16 +175,9 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
   PublishIfPossible();
 }
 
-void SubscriberState::QueueMessage(const rpc::PubMessage &pub_message, bool try_publish) {
-  if (mailbox_.empty() || mailbox_.back()->pub_messages_size() >= publish_batch_size_) {
-    mailbox_.push(std::make_unique<rpc::PubsubLongPollingReply>());
-  }
-
-  // Update the long polling reply.
-  auto *next_long_polling_reply = mailbox_.back().get();
-  auto *new_pub_message = next_long_polling_reply->add_pub_messages();
-  new_pub_message->CopyFrom(pub_message);
-
+void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
+                                   bool try_publish) {
+  mailbox_.push_back(pub_message);
   if (try_publish) {
     PublishIfPossible();
   }
@@ -200,9 +194,10 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
   if (!force_noop) {
-    // Reply to the long polling subscriber. Swap the reply here to avoid extra copy.
-    long_polling_connection_->reply->Swap(mailbox_.front().get());
-    mailbox_.pop();
+    for (int i = 0; i < publish_batch_size_ && !mailbox_.empty(); ++i) {
+      *long_polling_connection_->reply->add_pub_messages() = *mailbox_.front();
+      mailbox_.pop_front();
+    }
   }
   long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 

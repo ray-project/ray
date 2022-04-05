@@ -141,7 +141,8 @@ class SubscriberState {
   /// \param pub_message A message to publish.
   /// \param try_publish If true, try publishing the object id if there is a connection.
   ///     Currently only set to false in tests.
-  void QueueMessage(const rpc::PubMessage &pub_message, bool try_publish = true);
+  void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
+                    bool try_publish = true);
 
   /// Publish all queued messages if possible.
   ///
@@ -170,7 +171,7 @@ class SubscriberState {
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
-  std::queue<std::unique_ptr<rpc::PubsubLongPollingReply>> mailbox_;
+  std::deque<std::shared_ptr<rpc::PubMessage>> mailbox_;
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
