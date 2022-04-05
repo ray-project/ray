@@ -126,7 +126,7 @@ class TestGC:
         print(f"Created {len(actors)} actors.")
 
         ray.get([a.test_import.remote() for a in actors])
-        print("Got responses from all actors")
+        print("Got responses from all actors.")
 
         if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
@@ -162,8 +162,12 @@ class TestGC:
             cluster.add_node(
                 num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
             )
+            print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
+
+        print(f"Added all {NUM_NODES} nodes.")
 
         ray.init(address)
+        print(f'Initialized Ray at address "{address}".')
 
         @ray.remote(num_cpus=1)
         class A:
@@ -182,14 +186,26 @@ class TestGC:
                     ]
                 }
             )
+        print(f'Created deployment A with option "{option}".')
 
         num_cpus = int(ray.available_resources()["CPU"])
+        print(f"{num_cpus} cpus available.")
+
         actors = [A.remote() for _ in range(num_cpus)]
+        print(f"Created {len(actors)} actors.")
+
         ray.get([a.check.remote() for a in actors])
+        print("Got responses from all actors.")
+
         for i in range(num_cpus):
             assert not check_local_files_gced(cluster)
+            print(f"check_local_files_gced assertion passed for cpu {i}.")
+
             ray.kill(actors[i])
+            print(f"Issued ray.kill for actor {i}.")
+
         wait_for_condition(lambda: check_local_files_gced(cluster))
+        print("check_local_files_gced passed wait_for_condition block.")
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
