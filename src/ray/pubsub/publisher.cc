@@ -93,7 +93,7 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
     }
     auto &subscribers = entity_it->second.subscribers;
     subscribers.erase(subscriber_id);
-    if (subscribers.size() == 0) {
+    if (subscribers.empty()) {
       entities_.erase(entity_it);
     }
   }
@@ -123,7 +123,7 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
     return false;
   }
   objects.erase(object_it);
-  if (objects.size() == 0) {
+  if (objects.empty()) {
     subscribers_to_key_id_.erase(subscribers_to_message_it);
   }
 
@@ -136,7 +136,7 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
   // If code reaches this line, that means the subscriber id was in the index.
   RAY_CHECK(subscriber_it != subscribers.end());
   subscribers.erase(subscriber_it);
-  if (subscribers.size() == 0) {
+  if (subscribers.empty()) {
     entities_.erase(entity_it);
   }
   return true;
@@ -154,7 +154,7 @@ bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
 }
 
 bool SubscriptionIndex::CheckNoLeaks() const {
-  return entities_.size() == 0 && subscribers_to_key_id_.size() == 0;
+  return entities_.empty() && subscribers_to_key_id_.empty();
 }
 
 void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
