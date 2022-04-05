@@ -325,28 +325,22 @@ void LocalTaskManager::SpillWaitingTasks() {
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
     scheduling::NodeID scheduling_node_id;
-    if (task_dependencies_blocked) {
-      if ((*it)
-              ->task.GetTaskSpecification()
-              .GetMessage()
-              .scheduling_strategy()
-              .scheduling_strategy_case() ==
-          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-        // Prefer honoring spread decision and waiting for task dependencies to be pulled
-        // locally than spilling back and causing uneven spread.
-        scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
-      } else {
-        scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-            (*it)->task.GetTaskSpecification(),
-            /*prioritize_local_node*/ true,
-            /*exclude_local_node*/ true,
-            /*requires_object_store_memory*/ true,
-            &is_infeasible);
-      }
+    if (task_dependencies_blocked &&
+        !task.GetTaskSpecification().IsSpreadSchedulingStrategy()) {
+      scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
+          task.GetTaskSpecification(),
+          /*prioritize_local_node*/ true,
+          /*exclude_local_node*/ true,
+          /*requires_object_store_memory*/ true,
+          &is_infeasible);
     } else {
       // If the pulling is active, we should avoid spillback.
+      // If scheduling strategy is spread, we prefer honoring spread decision
+      // and waiting for task dependencies to be pulled
+      // locally than spilling back and causing uneven spread.
       scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
     }
+
     if (!scheduling_node_id.IsNil() &&
         scheduling_node_id.Binary() != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());

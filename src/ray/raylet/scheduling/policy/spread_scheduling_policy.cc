@@ -50,17 +50,9 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
         continue;
       }
 
-      bool ignore_pull_manager_at_capacity = false;
-      if (node_id == local_node_id_) {
-        // It's okay if the local node's pull manager is at
-        // capacity because we will eventually spill the task
-        // back from the waiting queue if its args cannot be
-        // pulled.
-        ignore_pull_manager_at_capacity = true;
-      }
       if (available_nodes_only &&
           !node.GetLocalView().IsAvailable(resource_request,
-                                           ignore_pull_manager_at_capacity)) {
+                                           /*ignore_pull_manager_at_capacity=*/false)) {
         continue;
       }
 
