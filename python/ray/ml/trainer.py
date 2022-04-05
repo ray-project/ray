@@ -183,7 +183,7 @@ class Trainer(abc.ABC):
             raise TrainerConfigError(
                 f"`datasets` should be a dict mapping from a string to "
                 f"`ray.data.Dataset` objects, "
-                f"found {type(self.run_config)} with value `{self.run_config}`."
+                f"found {type(self.datasets)} with value `{self.datasets}`."
             )
         elif any(not isinstance(ds, ray.data.Dataset) for ds in self.datasets.values()):
             raise TrainerConfigError(
