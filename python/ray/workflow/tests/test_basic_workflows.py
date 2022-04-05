@@ -64,16 +64,16 @@ def test_basic_workflows(workflow_start_regular_shared):
         z = append2.bind(x)
         return workflow.continuation(join.bind(y, z))
 
-    @workflow.step
+    @ray.remote
     def mul(a, b):
         return a * b
 
-    @workflow.step
+    @ray.remote
     def factorial(n):
         if n == 1:
             return 1
         else:
-            return mul.step(n, factorial.step(n - 1))
+            return workflow.continuation(mul.bind(n, factorial.bind(n - 1)))
 
     # This test also shows different "style" of running workflows.
     assert (
@@ -92,7 +92,7 @@ def test_basic_workflows(workflow_start_regular_shared):
     wf = fork_join.bind()
     assert workflow.create(wf).run() == "join([source1][append1], [source1][append2])"
 
-    assert factorial.step(10).run() == 3628800
+    assert workflow.create(factorial.bind(10)).run() == 3628800
 
 
 def test_async_execution(workflow_start_regular_shared):
