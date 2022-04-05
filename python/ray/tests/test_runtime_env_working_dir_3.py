@@ -75,9 +75,13 @@ class TestGC:
             cluster.add_node(
                 num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
             )
+            print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
+
+        print(f"Added all {NUM_NODES} nodes.")
 
         if option == "working_dir":
             ray.init(address, runtime_env={"working_dir": source})
+            print("Initialized ray with working_dir runtime_env.")
         elif option == "py_modules":
             if source != S3_PACKAGE_URI:
                 source = str(Path(source) / "test_module")
@@ -91,6 +95,7 @@ class TestGC:
                     ]
                 },
             )
+            print("Initialized ray with py_modules runtime_env.")
 
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
@@ -103,6 +108,8 @@ class TestGC:
         else:
             assert not check_internal_kv_gced()
 
+        print(f'kv check 1 passed with source "{source}" and option "{option}".')
+
         @ray.remote(num_cpus=1)
         class A:
             def test_import(self):
@@ -113,21 +120,35 @@ class TestGC:
                 test_module.one()
 
         num_cpus = int(ray.available_resources()["CPU"])
+        print(f"{num_cpus} cpus available.")
+
         actors = [A.remote() for _ in range(num_cpus)]
+        print(f"Created {len(actors)} actors.")
+
         ray.get([a.test_import.remote() for a in actors])
+        print("Got responses from all actors")
 
         if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
+        print(f'kv check 2 passed with source "{source}" and option "{option}".')
+
         assert not check_local_files_gced(cluster)
+        print("check_local_files_gced() check passed")
 
         ray.shutdown()
+        print("Ray has been shut down.")
 
         # Need to re-connect to use internal_kv.
         ray.init(address=address)
+        print(f'Reconnected to Ray at address "{address}".')
+
         wait_for_condition(check_internal_kv_gced)
+        print("check_internal_kv_gced passed wait_for_condition block.")
+
         wait_for_condition(lambda: check_local_files_gced(cluster))
+        print("check_local_files_gced passed wait_for_condition block.")
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
