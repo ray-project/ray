@@ -1,8 +1,6 @@
 import re
 from typing import Optional, Tuple
 
-from ray.util import log_once
-
 try:
     import fsspec
 except ImportError:
@@ -23,17 +21,39 @@ HDFS_PREFIX = "hdfs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 
-def _warn_if_pyarrow_not_installed() -> bool:
+def _assert_pyarrow_installed():
     if pyarrow is None:
-        if log_once("air_pyarrow_not_available"):
-            logger.warning(
-                "Uploading, downloading, and deleting from cloud storage "
-                "requires pyarrow to be installed. Install with: "
-                "`pip install pyarrow`. Subsequent calls to cloud operations "
-                "will be ignored."
-            )
-        return True
-    return False
+        raise RuntimeError(
+            "Uploading, downloading, and deleting from cloud storage "
+            "requires pyarrow to be installed. Install with: "
+            "`pip install pyarrow`. Subsequent calls to cloud operations "
+            "will be ignored."
+        )
+
+
+def _split_protocol_path(uri: str) -> Tuple[Optional[str], Optional[str]]:
+    protocol_match = re.match(URI_PROTOCOL_REGEX, uri)
+    if not protocol_match:
+        return None, None
+
+    return protocol_match.group(1), protocol_match.group(2)
+
+
+def fs_hint(uri: str) -> str:
+    """Return a hint how to install required filesystem package"""
+    if pyarrow is None:
+        return "Please make sure PyArrow is installed: `pip install pyarrow`."
+    if fsspec is None:
+        return "Try installing fsspec: `pip install fsspec`."
+
+    from fsspec.registry import known_implementations
+
+    protocol, _path = _split_protocol_path(uri)
+
+    if protocol in known_implementations:
+        return known_implementations[protocol]["err"]
+
+    return "Make sure to install and register your fsspec-compatible filesystem."
 
 
 def is_cloud_target(uri: str) -> bool:
@@ -63,12 +83,8 @@ def get_fs_and_path(
             return None, None
 
     # Else, try to resolve protocol via fsspec
-    protocol_match = re.match(URI_PROTOCOL_REGEX, uri)
-    if not protocol_match:
-        return None, None
+    protocol, path = _split_protocol_path(uri)
 
-    protocol = protocol_match.group(1)
-    path = protocol_match.group(2)
     try:
         fsspec_fs = fsspec.filesystem(protocol)
     except ValueError:
@@ -82,8 +98,7 @@ def get_fs_and_path(
 
 
 def clear_bucket(bucket: str):
-    if _warn_if_pyarrow_not_installed():
-        return
+    _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(bucket)
     if not fs:
@@ -99,8 +114,7 @@ def clear_bucket(bucket: str):
 
 
 def download_from_bucket(bucket: str, local_path: str):
-    if _warn_if_pyarrow_not_installed():
-        return
+    _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(bucket)
     if not fs:
@@ -113,8 +127,7 @@ def download_from_bucket(bucket: str, local_path: str):
 
 
 def upload_to_bucket(bucket: str, local_path: str):
-    if _warn_if_pyarrow_not_installed():
-        return
+    _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(bucket)
     if not fs:

@@ -13,6 +13,7 @@ from ray.ml.utils.remote_storage import (
     upload_to_bucket,
     is_cloud_target,
     download_from_bucket,
+    fs_hint,
 )
 
 
@@ -371,7 +372,8 @@ class Checkpoint:
         if not is_cloud_target(uri):
             raise RuntimeError(
                 f"Cannot upload checkpoint to URI: Provided URI "
-                f"does not belong to a registered storage provider: {uri}"
+                f"does not belong to a registered storage provider: `{uri}`. "
+                f"Hint: {fs_hint(uri)}"
             )
 
         cleanup = False
