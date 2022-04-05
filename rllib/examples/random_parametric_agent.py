@@ -14,10 +14,15 @@ from ray.rllib.utils import override
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import register_env
 
-DEFAULT_CONFIG = with_common_config({})
+DEFAULT_CONFIG = with_common_config(
+    {
+        # Run with new `training_iteration` API.
+        "_disable_execution_plan_api": True,
+    }
+)
 
 
-class RandomParametriclPolicy(Policy, ABC):
+class RandomParametricPolicy(Policy, ABC):
     """
     Just pick a random legal action
     The outputted state of the environment needs to be a dictionary with an
@@ -61,15 +66,23 @@ class RandomParametriclPolicy(Policy, ABC):
         pass
 
 
+# Backward compatibility, just in case users want to use the erroneous old name.
+RandomParametriclPolicy = RandomParametricPolicy
+
+
 class RandomParametricTrainer(Trainer):
     """Trainer with Policy and config defined above and overriding `training_iteration`.
+
+    Overrides the `training_iteration` method, which only runs a (dummy)
+    rollout and performs no learning.
     """
+
     @classmethod
     def get_default_config(cls):
         return DEFAULT_CONFIG
 
     def get_default_policy_class(self, config):
-        return RandomParametriclPolicy
+        return RandomParametricPolicy
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:

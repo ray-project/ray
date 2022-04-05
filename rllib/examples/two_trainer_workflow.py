@@ -69,11 +69,13 @@ class MyTrainer(Trainer):
     def get_default_config(cls) -> TrainerConfigDict:
         # Run this Trainer with new `training_iteration` API and set some PPO-specific
         # parameters.
-        return with_common_config({
-            "_disable_execution_plan_api": True,
-            "num_sgd_iter": 10,
-            "sgd_minibatch_size": 128,
-        })
+        return with_common_config(
+            {
+                "_disable_execution_plan_api": True,
+                "num_sgd_iter": 10,
+                "sgd_minibatch_size": 128,
+            }
+        )
 
     @override(Trainer)
     def setup(self, config):
@@ -117,24 +119,32 @@ class MyTrainer(Trainer):
                 dqn_train_batch.agent_steps(),
             )
         # Update DQN's target net every 500 train steps.
-        if self._counters["agent_steps_trained_DQN"] - self._counters[
-                LAST_TARGET_UPDATE_TS] >= 500:
+        if (
+            self._counters["agent_steps_trained_DQN"]
+            - self._counters[LAST_TARGET_UPDATE_TS]
+            >= 500
+        ):
             self.workers.local_worker().get_policy("dqn_policy").update_target()
             self._counters[NUM_TARGET_UPDATES] += 1
-            self._counters[LAST_TARGET_UPDATE_TS] = self._counters["agent_steps_trained_DQN"]
+            self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
+                "agent_steps_trained_DQN"
+            ]
 
         # PPO sub-flow.
         ppo_train_batch = SampleBatch.concat_samples(ppo_batches)
         self._counters["agent_steps_trained_PPO"] += ppo_train_batch.agent_steps()
         # Standardize advantages.
         ppo_train_batch[Postprocessing.ADVANTAGES] = standardized(
-            ppo_train_batch[Postprocessing.ADVANTAGES])
+            ppo_train_batch[Postprocessing.ADVANTAGES]
+        )
         print(
             "PPO policy learning on samples from",
             "agent steps trained",
             ppo_train_batch.agent_steps(),
         )
-        ppo_train_batch = MultiAgentBatch({"ppo_policy": ppo_train_batch}, ppo_train_batch.count)
+        ppo_train_batch = MultiAgentBatch(
+            {"ppo_policy": ppo_train_batch}, ppo_train_batch.count
+        )
         ppo_train_results = train_one_step(self, ppo_train_batch, ["ppo_policy"])
 
         # Combine results for PPO and DQN into one results dict.

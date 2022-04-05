@@ -2833,7 +2833,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_T"],
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--stop-reward=400.0"]
+    args = ["--as-test", "--stop-reward=450.0"]
 )
 
 py_test(
@@ -2842,7 +2842,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_T"],
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--torch", "--stop-reward=400.0"]
+    args = ["--as-test", "--torch", "--stop-reward=450.0"]
 )
 
 py_test(
@@ -2851,7 +2851,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_T"],
     size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=400.0"]
+    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=450.0"]
 )
 
 py_test(

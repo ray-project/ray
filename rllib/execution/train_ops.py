@@ -52,7 +52,8 @@ def train_one_step(trainer, train_batch, policies_to_train=None) -> Dict:
                 train_batch,
                 {
                     pid: local_worker.get_policy(pid)
-                    for pid in policies_to_train or local_worker.get_policies_to_train(train_batch)
+                    for pid in policies_to_train
+                    or local_worker.get_policies_to_train(train_batch)
                 },
                 local_worker,
                 num_sgd_iter,
