@@ -2,6 +2,7 @@ import re
 from typing import Optional, Tuple
 
 from fsspec import filesystem
+from pyarrow.lib import ArrowInvalid
 from pyarrow.fs import copy_files, FileSystem, FSSpecHandler, PyFileSystem
 
 from ray import logger
@@ -21,7 +22,8 @@ def get_fs_and_path(target: str) -> Tuple[Optional[FileSystem], Optional[str]]:
     try:
         fs, path = FileSystem.from_uri(target)
         return fs, path
-    except Exception:
+    except ArrowInvalid:
+        # Raised when URI not recognized
         pass
 
     protocol_match = re.match(URI_PROTOCOL_REGEX, target)
@@ -32,7 +34,8 @@ def get_fs_and_path(target: str) -> Tuple[Optional[FileSystem], Optional[str]]:
     path = protocol_match.group(2)
     try:
         fsspec_fs = filesystem(protocol)
-    except Exception:
+    except ValueError:
+        # Raised when protocol not known
         return None, None
 
     if not path.startswith("/"):
