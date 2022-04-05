@@ -5,7 +5,6 @@ from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
 import ray
 
-from ray.ml.exceptions import TrainerConfigError
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
@@ -167,20 +166,20 @@ class Trainer(abc.ABC):
         """Called on __init()__ to validate trainer attributes."""
         # Run config
         if not isinstance(self.run_config, RunConfig):
-            raise TrainerConfigError(
+            raise ValueError(
                 f"`run_config` should be an instance of `ray.ml.RunConfig`, "
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
         # Scaling config
         # Todo: move to ray.ml.ScalingConfig
         if not isinstance(self.scaling_config, dict):
-            raise TrainerConfigError(
+            raise ValueError(
                 f"`scaling_config` should be an instance of `dict`, "
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
         # Datasets
         if not isinstance(self.datasets, dict):
-            raise TrainerConfigError(
+            raise ValueError(
                 f"`datasets` should be a dict mapping from a string to "
                 f"`ray.data.Dataset` objects, "
                 f"found {type(self.datasets)} with value `{self.datasets}`."
@@ -189,7 +188,7 @@ class Trainer(abc.ABC):
             not isinstance(ds, ray.data.Dataset) and not callable(ds)
             for ds in self.datasets.values()
         ):
-            raise TrainerConfigError(
+            raise ValueError(
                 f"At least one value in the `datasets` dict is not a "
                 f"`ray.data.Dataset`: {self.datasets}"
             )
@@ -197,7 +196,7 @@ class Trainer(abc.ABC):
         if self.preprocessor is not None and not isinstance(
             self.preprocessor, ray.ml.preprocessor.Preprocessor
         ):
-            raise TrainerConfigError(
+            raise ValueError(
                 f"`preprocessor` should be an instance of `ray.ml.Preprocessor`, "
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
@@ -205,7 +204,7 @@ class Trainer(abc.ABC):
         if self.resume_from_checkpoint is not None and not isinstance(
             self.resume_from_checkpoint, ray.ml.Checkpoint
         ):
-            raise TrainerConfigError(
+            raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
                 f"`ray.ml.Checkpoint`, found {type(self.resume_from_checkpoint)} "
                 f"with value `{self.resume_from_checkpoint}`."

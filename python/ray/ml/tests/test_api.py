@@ -2,7 +2,6 @@ import pytest
 
 import ray
 from ray.ml import Checkpoint
-from ray.ml.exceptions import TrainerConfigError
 from ray.ml.trainer import Trainer
 from ray.ml.preprocessor import Preprocessor
 
@@ -18,16 +17,16 @@ class DummyDataset(ray.data.Dataset):
 
 
 def test_run_config():
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(run_config="invalid")
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(run_config=False)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(run_config=True)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(run_config={})
 
     # Succeed
@@ -38,13 +37,13 @@ def test_run_config():
 
 
 def test_scaling_config():
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(scaling_config="invalid")
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(scaling_config=False)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(scaling_config=True)
 
     # Succeed
@@ -55,16 +54,16 @@ def test_scaling_config():
 
 
 def test_datasets():
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(datasets="invalid")
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(datasets=False)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(datasets=True)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(datasets={"test": "invalid"})
 
     # Succeed
@@ -75,16 +74,16 @@ def test_datasets():
 
 
 def test_preprocessor():
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(preprocessor="invalid")
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(preprocessor=False)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(preprocessor=True)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(preprocessor={})
 
     # Succeed
@@ -95,16 +94,16 @@ def test_preprocessor():
 
 
 def test_resume_from_checkpoint():
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(resume_from_checkpoint="invalid")
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(resume_from_checkpoint=False)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(resume_from_checkpoint=True)
 
-    with pytest.raises(TrainerConfigError):
+    with pytest.raises(ValueError):
         DummyTrainer(resume_from_checkpoint={})
 
     # Succeed
