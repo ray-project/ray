@@ -134,6 +134,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
+  const ClusterResourceManager &GetClusterResourceManager() const;
+
  private:
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
