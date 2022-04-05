@@ -54,6 +54,11 @@ from ray.serve.constants import (
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import (
+    DeploymentRoute,
+    DeploymentRouteList,
+    DeploymentStatusInfoList,
+)
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
@@ -284,7 +289,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             if len(statuses) == 0:
                 break
             else:
@@ -309,7 +314,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             try:
                 status = statuses[name]
             except KeyError:
@@ -342,7 +347,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             if name not in statuses:
                 break
             else:
@@ -436,15 +441,38 @@ class Client:
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
-        return ray.get(self._controller.get_deployment_info.remote(name))
+        deployment_route = DeploymentRoute.FromString(
+            ray.get(self._controller.get_deployment_info.remote(name))
+        )
+        return (
+            DeploymentInfo.from_proto(deployment_route.deployment_info),
+            deployment_route.route if deployment_route.route != "" else None,
+        )
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        return ray.get(self._controller.list_deployments.remote())
+        deployment_route_list = DeploymentRouteList.FromString(
+            ray.get(self._controller.list_deployments.remote())
+        )
+        return {
+            deployment_route.deployment_info.name: (
+                DeploymentInfo.from_proto(deployment_route.deployment_info),
+                deployment_route.route if deployment_route.route != "" else None,
+            )
+            for deployment_route in deployment_route_list.deployment_routes
+        }
 
     @_ensure_connected
     def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        return ray.get(self._controller.get_deployment_statuses.remote())
+        proto = DeploymentStatusInfoList.FromString(
+            ray.get(self._controller.get_deployment_statuses.remote())
+        )
+        return {
+            deployment_status_info.name: DeploymentStatusInfo.from_proto(
+                deployment_status_info
+            )
+            for deployment_status_info in proto.deployment_status_infos
+        }
 
     @_ensure_connected
     def get_handle(
@@ -583,6 +611,9 @@ class Client:
         else:
             raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
+        deployment_config.version = version
+        deployment_config.prev_version = prev_version
+
         if (
             deployment_config.autoscaling_config is not None
             and deployment_config.max_concurrent_queries
@@ -597,9 +628,7 @@ class Client:
         controller_deploy_args = {
             "name": name,
             "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-            "replica_config": replica_config,
-            "version": version,
-            "prev_version": prev_version,
+            "replica_config_proto_bytes": replica_config.to_proto_bytes(),
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().job_id,
         }
