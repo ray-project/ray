@@ -71,7 +71,7 @@ At the end of this document, we'll have an end to end executable implementation 
 - Accessing input:
     - Same input or output can be used in multiple nodes in the DAG.
     - Deployment nodes can access partial user input.
-- Dynamically controlling flow:
+- Dynamic control flow:
     - A deployment node can call into other nodes in the deployment graph.
     - You can use the dynamic calling to perform control flow operation that's hard to express in traditional DAG.
 - Running a DAG:
