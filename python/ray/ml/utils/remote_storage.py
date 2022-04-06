@@ -58,6 +58,9 @@ def fs_hint(uri: str) -> str:
 
 def is_cloud_target(uri: str) -> bool:
     """Check if target URI is a cloud target"""
+    if uri.startswith("file://"):
+        return False
+
     if bool(get_fs_and_path(uri)[0]):
         return True
     # Keep manual check for prefixes for backwards compatibility with the
@@ -67,14 +70,25 @@ def is_cloud_target(uri: str) -> bool:
     return False
 
 
+# Cache fs objects
+_cached_fs = {}
+
+
 def get_fs_and_path(
     uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
     if not pyarrow:
         return None, None
 
+    protocol, path = _split_protocol_path(uri)
+    if protocol in _cached_fs:
+        fs = _cached_fs[protocol]
+        return fs, path
+
     try:
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
+        _cached_fs[protocol] = fs
+
         return fs, path
     except pyarrow.lib.ArrowInvalid:
         # Raised when URI not recognized
@@ -83,8 +97,6 @@ def get_fs_and_path(
             return None, None
 
     # Else, try to resolve protocol via fsspec
-    protocol, path = _split_protocol_path(uri)
-
     try:
         fsspec_fs = fsspec.filesystem(protocol)
     except ValueError:
@@ -94,7 +106,10 @@ def get_fs_and_path(
     if not path.startswith("/"):
         path = f"/{path}"
 
-    return pyarrow.fs.PyFileSystem(pyarrow.fs.FSSpecHandler(fsspec_fs)), path
+    fs = pyarrow.fs.PyFileSystem(pyarrow.fs.FSSpecHandler(fsspec_fs))
+    _cached_fs[protocol] = fs
+
+    return fs, path
 
 
 def clear_bucket(bucket: str):

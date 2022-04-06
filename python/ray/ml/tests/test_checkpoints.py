@@ -7,7 +7,7 @@ from typing import Any
 
 import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.remote_storage import clear_bucket
+from ray.ml.utils.remote_storage import clear_bucket, get_fs_and_path
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -21,7 +21,7 @@ class CheckpointsConversionTest(unittest.TestCase):
         # fsspec URI
         self.cloud_uri = "memory://cloud/bucket"
         # pyarrow URI
-        self.cloud_uri_pa = f"file://{self.tmpdir_pa}/subdir"
+        self.cloud_uri_pa = "mock://cloud/bucket/"
 
         self.checkpoint_dir = os.path.join(self.tmpdir, "existing_checkpoint")
         os.mkdir(self.checkpoint_dir, 0o755)
@@ -129,10 +129,18 @@ class CheckpointsConversionTest(unittest.TestCase):
         """Test conversion from dict to cloud checkpoint and back."""
         checkpoint = self._prepare_dict_checkpoint()
 
+        # Clean up mock bucket
+        fs, _path = get_fs_and_path(self.cloud_uri_pa)
+        try:
+            fs.delete_dir("cloud/bucket")
+        except OSError:
+            pass
+        fs.create_dir("cloud/bucket")
+
         # Convert into dict checkpoint
         location = checkpoint.to_uri(self.cloud_uri_pa)
         self.assertIsInstance(location, str)
-        self.assertIn(self.tmpdir_pa, location)
+        self.assertIn("mock://", location)
 
         # Create from dict
         checkpoint = Checkpoint.from_uri(location)
@@ -236,10 +244,18 @@ class CheckpointsConversionTest(unittest.TestCase):
         """Test conversion from fs to cloud checkpoint and back."""
         checkpoint = self._prepare_fs_checkpoint()
 
+        # Clean up mock bucket
+        fs, _path = get_fs_and_path(self.cloud_uri_pa)
+        try:
+            fs.delete_dir("cloud/bucket")
+        except OSError:
+            pass
+        fs.create_dir("cloud/bucket")
+
         # Convert into dict checkpoint
         location = checkpoint.to_uri(self.cloud_uri_pa)
         self.assertIsInstance(location, str)
-        self.assertIn(self.tmpdir_pa, location)
+        self.assertIn("mock://", location)
 
         # Create from dict
         checkpoint = Checkpoint.from_uri(location)
