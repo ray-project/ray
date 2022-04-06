@@ -31,12 +31,14 @@ def test_objectref_inputs(workflow_start_regular_shared):
         except Exception as e:
             return False, str(e)
 
-    output, s = workflow.create(deref_check.bind(
-        ray.put(42),
-        nested_workflow.step(10),
-        [nested_workflow.step(9)],
-        [{"output": nested_workflow.step(7)}],
-    )).run()
+    output, s = workflow.create(
+        deref_check.bind(
+            ray.put(42),
+            nested_workflow.step(10),
+            [nested_workflow.step(9)],
+            [{"output": nested_workflow.step(7)}],
+        )
+    ).run()
     assert output is True, s
 
 

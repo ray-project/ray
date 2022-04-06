@@ -18,7 +18,9 @@ def flip_coin() -> str:
 
     @ray.remote
     def decide(heads: bool) -> str:
-        return handle_heads.bind() if heads else handle_tails.bind()
+        return workflow.continuation(
+            handle_heads.bind() if heads else handle_tails.bind()
+        )
 
     return workflow.continuation(decide.bind(random.random() > 0.5))
 

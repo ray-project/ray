@@ -3,6 +3,7 @@ import pytest
 from ray.tests.conftest import *  # noqa
 
 import numpy as np
+import ray
 from ray import workflow
 
 
