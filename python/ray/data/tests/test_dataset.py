@@ -132,9 +132,11 @@ def test_callable_classes(shutdown_only):
     with pytest.raises(ValueError):
         ds.map(StatefulFn).take()
 
+    # Need to specify actor compute strategy.
+    with pytest.raises(ValueError):
+        ds.map(StatefulFn, compute="tasks").take()
+
     # map
-    task_reuse = ds.map(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map(StatefulFn, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
@@ -148,14 +150,10 @@ def test_callable_classes(shutdown_only):
             return [r]
 
     # flat map
-    task_reuse = ds.flat_map(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.flat_map(StatefulFn, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     # map batches
-    task_reuse = ds.map_batches(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
@@ -169,8 +167,6 @@ def test_callable_classes(shutdown_only):
             return r > 0
 
     # filter
-    task_reuse = ds.filter(StatefulFn, compute="tasks").take()
-    assert len(task_reuse) == 9, task_reuse
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
     assert len(actor_reuse) == 9, actor_reuse
 
@@ -3121,6 +3117,54 @@ def test_random_shuffle(shutdown_only, pipelined):
     r1 = ds.random_shuffle()
     assert r1.count() == 0
     assert r1.take() == ds.take()
+
+
+def test_random_shuffle_check_random(shutdown_only):
+    # Rows from the same input should not be contiguous in the final output.
+    num_files = 10
+    num_rows = 100
+    items = [i for i in range(num_files) for _ in range(num_rows)]
+    ds = ray.data.from_items(items, parallelism=num_files)
+    out = ds.random_shuffle().take(num_files * num_rows)
+    for i in range(num_files):
+        part = out[i * num_rows : (i + 1) * num_rows]
+        seen = set()
+        num_contiguous = 1
+        prev = -1
+        for x in part:
+            if prev != x:
+                prev = x
+                num_contiguous = 1
+            else:
+                num_contiguous += 1
+                assert num_contiguous < (
+                    num_rows / num_files
+                ), f"{part} contains too many contiguous rows from same input block"
+            seen.add(x)
+        assert (
+            set(range(num_files)) == seen
+        ), f"{part} does not contain elements from all input blocks"
+
+    # Rows from the same input should appear in a different order in the
+    # output.
+    num_files = 10
+    num_rows = 100
+    items = [j for i in range(num_files) for j in range(num_rows)]
+    ds = ray.data.from_items(items, parallelism=num_files)
+    out = ds.random_shuffle().take(num_files * num_rows)
+    for i in range(num_files):
+        part = out[i * num_rows : (i + 1) * num_rows]
+        num_increasing = 0
+        prev = -1
+        for x in part:
+            if x >= prev:
+                num_increasing += 1
+            else:
+                assert num_increasing < (
+                    num_rows / num_files
+                ), f"{part} contains non-shuffled rows from input blocks"
+                num_increasing = 0
+            prev = x
 
 
 def test_random_shuffle_spread(ray_start_cluster):
