@@ -165,7 +165,6 @@ class TorchTrainer(DataParallelTrainer):
 
     def __init__(
         self,
-        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         train_loop_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
