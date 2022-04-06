@@ -4,10 +4,8 @@ import gym
 import ray
 from ray.rllib.agents import ppo
 
-from ray.rllib.examples.documentation.simple_corridor import SimpleCorridorImported
 
-
-class SimpleCorridorOriginal(gym.Env):
+class SimpleCorridor(gym.Env):
     def __init__(self, config):
         self.end_pos = config["corridor_length"]
         self.cur_pos = 0
@@ -30,26 +28,14 @@ class SimpleCorridorOriginal(gym.Env):
 
 
 ray.init()
-config_old = {
-    "env": SimpleCorridorOriginal,
+config = {
+    "env": SimpleCorridor,
     "env_config": {
         "corridor_length": 5,
     },
 }
-config_new = {
-    "env": SimpleCorridorImported,
-    "env_config": {
-        "corridor_length": 5,
-    },
-}
-trainer = ppo.PPOTrainer(config=config_new)  # this works
-trainer = ppo.PPOTrainer(config=config_old)  # this fails
 
-# the difference between the 2 is that one config uses the environment imported from
-# another file. the other one uses the original environment declared inside of the
-# launcher
-
-# you will need to have gym==0.23.1 and remote sampling workers in order to produce
-# the bug.
-
+trainer = ppo.PPOTrainer(config=config)
+for _ in range(3):
+    print(trainer.train())
 # __rllib-custom-gym-env-end__
