@@ -45,9 +45,10 @@ class Tuner:
 
         param_space = {
             "scaling_config": {
-                "num_actors": tune.grid_search([2, 4]),
-                "cpus_per_actor": 2,
-                "gpus_per_actor": 0,
+                "num_workers": tune.grid_search([2, 4]),
+                "resources_per_worker": {
+                    "CPU": tune.grid_search([1, 2]),
+                },
             },
             "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
