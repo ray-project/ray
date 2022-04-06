@@ -46,18 +46,18 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     return py_modules
 
 
-def parse_and_validate_ray_libraries(ray_libraries: List[str]) -> List[str]:
+def parse_and_validate_ray_libraries(ray_libraries: Dict[str, str]) -> List[str]:
     """Parses and validates a 'ray_libraries' option.
 
-    This should be a list of URIs.
+    This should be a dict mapping library name -> URI
     """
-    print(ray_libraries)
+    print("Received in validation: ", ray_libraries)
     if not isinstance(ray_libraries, dict):
         raise TypeError(
             "`ray_libraries` must be a dict from name to uri " f"{type(ray_libraries)}."
         )
 
-    for uri in ray_libraries:
+    for uri in ray_libraries.values():
         validate_uri(uri)
 
     return ray_libraries

@@ -5,9 +5,10 @@ Demonstrates transition from stable_baselines to Ray RLlib.
 
 Run example: python sb2rllib_rllib_example.py
 """
-import gym
+# import gym
 import ray
-import ray.rllib.agents.ppo as ppo
+
+# import ray.rllib.agents.ppo as ppo
 
 ray.init(address="auto", runtime_env={"ray_libraries": ["rllib"]})
 

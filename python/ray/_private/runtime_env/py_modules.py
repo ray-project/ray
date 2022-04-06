@@ -241,6 +241,7 @@ def upload_ray_libraries_if_needed(
 ) -> Dict[str, Any]:
     """Uploads the libraries and replaces them with a dict of name->URI."""
     libraries = runtime_env.get("ray_libraries")
+    print("Received libraries: ", libraries)
     if libraries is None:
         return runtime_env
 
@@ -285,7 +286,7 @@ def upload_ray_libraries_if_needed(
         upload_package_if_needed(library_uri, scratch_dir, full_path, logger=logger)
 
         libraries_uris[relative_path] = library_uri
-
+    print("Rewritten libraries URIs: ", libraries_uris)
     runtime_env["ray_libraries"] = libraries_uris
     return runtime_env
 
