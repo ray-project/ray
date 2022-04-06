@@ -328,8 +328,10 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data,
     auto label = ResourceID(resource_id).Binary();
     auto total = entry.second;
     auto available = resources.available.Get(resource_id);
-    auto last_total = for_ray_syncer ? total : last_report_resources_->total.Get(resource_id);
-    auto last_available = for_ray_syncer ? available : last_report_resources_->available.Get(resource_id);
+    auto last_total =
+        for_ray_syncer ? total : last_report_resources_->total.Get(resource_id);
+    auto last_available =
+        for_ray_syncer ? available : last_report_resources_->available.Get(resource_id);
 
     // Note: available may be negative, but only report positive to GCS.
     if (for_ray_syncer || (available != last_available && available > 0)) {
@@ -343,7 +345,8 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data,
 
   if (get_pull_manager_at_capacity_ != nullptr) {
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    if (for_ray_syncer || (last_report_resources_->object_pulls_queued != resources.object_pulls_queued)) {
+    if (for_ray_syncer ||
+        (last_report_resources_->object_pulls_queued != resources.object_pulls_queued)) {
       resources_data.set_object_pulls_queued(resources.object_pulls_queued);
       resources_data.set_resources_available_changed(true);
     }

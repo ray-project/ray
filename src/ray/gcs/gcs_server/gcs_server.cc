@@ -639,7 +639,7 @@ std::string GcsServer::GetDebugState() const {
          << gcs_placement_group_manager_->DebugString() << "\n\n"
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n";
-  if(gcs_ray_syncer_) {
+  if (gcs_ray_syncer_) {
     stream << gcs_ray_syncer_->DebugString();
   }
   return stream.str();
