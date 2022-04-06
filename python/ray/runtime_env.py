@@ -500,8 +500,8 @@ class RuntimeEnv(dict):
         # set ray_libraries
         ray_libraries_uris = self.ray_libraries_uris()
         if ray_libraries_uris:
-            proto_runtime_env.python_runtime_env.ray_libraries.extend(
-                ray_libraries_uris
+            proto_runtime_env.python_runtime_env.ray_libraries.update(
+                self.ray_libraries
             )
             # set ray_libraries uris
             proto_runtime_env.uris.ray_libraries_uris.extend(ray_libraries_uris)
@@ -542,7 +542,7 @@ class RuntimeEnv(dict):
                 proto_runtime_env.python_runtime_env.py_modules
             )
         if proto_runtime_env.python_runtime_env.ray_libraries:
-            initialize_dict["ray_libraries"] = list(
+            initialize_dict["ray_libraries"] = dict(
                 proto_runtime_env.python_runtime_env.ray_libraries
             )
         if proto_runtime_env.working_dir:
@@ -579,7 +579,7 @@ class RuntimeEnv(dict):
 
     def ray_libraries_uris(self) -> List[str]:
         if "ray_libraries" in self:
-            return list(self["ray_libraries"])
+            return list(self["ray_libraries"].values())
 
     def conda_uri(self) -> Optional[str]:
         if "conda" in self:

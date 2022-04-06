@@ -1489,6 +1489,7 @@ rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
     result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
         child.uris().py_modules_uris());
   }
+  // TODO: Change this to dict instead of list
   if (child.python_runtime_env().ray_libraries().size() > 0 &&
       parent->python_runtime_env().ray_libraries().size() > 0) {
     result_runtime_env.mutable_python_runtime_env()->clear_ray_libraries();

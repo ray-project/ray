@@ -79,8 +79,8 @@ message PythonRuntimeEnv {
   ///   - Example: `http://example.com/my_module.zip`.
   repeated string py_modules = 1;
   /// TODO: comment
-  /// TODO: Change to dict, and update from_proto and build_proto
-  repeated string ray_libraries = 2;
+  /// TODO: Change to dict, and update from_proto and build_proto and the part where it reads into RuntimeEnvUris
+  map<string, string> ray_libraries = 2;
   /// The concrete Runtime Env for Python workers. Use only one of them, or none at all.
   oneof python_runtime_env {
     /// Only set when PipRuntimeEnv is used.
