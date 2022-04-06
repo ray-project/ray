@@ -684,7 +684,6 @@ class ReporterAgent(
         """Get any changes to the log files and push updates to kv."""
         while True:
             try:
-                stats = self._get_all_stats()
                 # Cluster stats don't need to be recorded on all agents,
                 # so we only report it in the head node.
                 if self._is_head_node:
@@ -696,13 +695,14 @@ class ReporterAgent(
                         if formatted_status_string
                         else {}
                     )
-                    records_to_report = self._get_records_to_report(
-                        stats, cluster_stats
-                    )
-                    self._metrics_agent.record_reporter_stats(records_to_report)
                 else:
-                    records_to_report = self._get_records_to_report(stats, {})
-                    self._metrics_agent.record_reporter_stats(records_to_report)
+                    cluster_stats = {}
+
+                stats = self._get_all_stats()
+                records_to_report = self._get_records_to_report(
+                    stats, cluster_stats
+                )
+                self._metrics_agent.record_reporter_stats(records_to_report)
                 await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
             except Exception:
