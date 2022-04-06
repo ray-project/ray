@@ -72,6 +72,7 @@ class GBDTTrainer(Trainer):
 
     def __init__(
         self,
+        *,
         datasets: Dict[str, GenDataset],
         label_column: str,
         params: Dict[str, Any],
@@ -87,8 +88,15 @@ class GBDTTrainer(Trainer):
         self.dmatrix_params = dmatrix_params or {}
         self.train_kwargs = train_kwargs
         super().__init__(
-            scaling_config, run_config, datasets, preprocessor, resume_from_checkpoint
+            scaling_config=scaling_config,
+            run_config=run_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    def _validate_attributes(self):
+        super()._validate_attributes()
         self._validate_config_and_datasets()
 
     def _validate_config_and_datasets(self) -> None:
