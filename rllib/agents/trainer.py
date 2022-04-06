@@ -282,8 +282,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     # of currently healthy workers is reported as the "num_healthy_workers"
     # metric.
     "ignore_worker_failures": False,
-    # Whether upon a worker failure, RLlib will try to recover the lost worker.
-    # A value of True will cause the value of `ignore_worker_failures` to be ignored.
+    # Whether - upon a worker failure - RLlib will try to recreate the lost worker as
+    # an identical copy of the failed one. The new worker will only differ from the
+    # failed one in its `self.recreated_worker=True` property value. It will have
+    # the same `worker_index` as the original one.
+    # If True, the `ignore_worker_failures` setting will be ignored.
     "recreate_failed_workers": False,
     # Log system resource metrics to results. This requires `psutil` to be
     # installed for sys stats, and `gputil` for GPU metrics.
