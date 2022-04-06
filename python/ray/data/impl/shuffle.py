@@ -263,6 +263,7 @@ class PushBasedShuffleOp(ShuffleOp):
         shuffle_reduce = cached_remote_fn(self.reduce)
 
         # Compute all constants used for task scheduling.
+        # TODO(swang): Add per-node affinity scheduling.
         cpu_map = self._get_cluster_cpu_map()
         num_cpus_total = sum(v for v in cpu_map.values())
         task_parallelism = min(num_cpus_total, input_num_blocks)
