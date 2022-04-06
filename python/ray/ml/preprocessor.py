@@ -42,7 +42,7 @@ class Preprocessor(abc.ABC):
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
 
-    def fit_status(self):
+    def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
         elif self._check_is_fitted():
