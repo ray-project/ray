@@ -942,11 +942,11 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
-                info_out = {
+                info_out.update({
                     DEFAULT_POLICY_ID: self.policy_map[
                         DEFAULT_POLICY_ID
                     ].learn_on_batch(samples)
-                }
+                })
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out

@@ -66,10 +66,6 @@ class RandomParametricPolicy(Policy, ABC):
         pass
 
 
-# Backward compatibility, just in case users want to use the erroneous old name.
-RandomParametriclPolicy = RandomParametricPolicy
-
-
 class RandomParametricTrainer(Trainer):
     """Trainer with Policy and config defined above and overriding `training_iteration`.
 
