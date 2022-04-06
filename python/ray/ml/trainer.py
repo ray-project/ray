@@ -3,8 +3,6 @@ import inspect
 import logging
 from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
 
-import ray
-
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
@@ -135,7 +133,6 @@ class Trainer(abc.ABC):
 
     def __init__(
         self,
-        *,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
@@ -143,13 +140,11 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self.scaling_config = scaling_config if scaling_config is not None else {}
-        self.run_config = run_config if run_config is not None else RunConfig()
-        self.datasets = datasets if datasets is not None else {}
+        self.scaling_config = scaling_config if scaling_config else {}
+        self.run_config = run_config if run_config else RunConfig()
+        self.datasets = datasets if datasets else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
-
-        self._validate_attributes()
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
@@ -161,54 +156,6 @@ class Trainer(abc.ABC):
         arg_dict = dict(zip(parameters, args))
         trainer._param_dict = {**arg_dict, **kwargs}
         return trainer
-
-    def _validate_attributes(self):
-        """Called on __init()__ to validate trainer attributes."""
-        # Run config
-        if not isinstance(self.run_config, RunConfig):
-            raise ValueError(
-                f"`run_config` should be an instance of `ray.ml.RunConfig`, "
-                f"found {type(self.run_config)} with value `{self.run_config}`."
-            )
-        # Scaling config
-        # Todo: move to ray.ml.ScalingConfig
-        if not isinstance(self.scaling_config, dict):
-            raise ValueError(
-                f"`scaling_config` should be an instance of `dict`, "
-                f"found {type(self.run_config)} with value `{self.run_config}`."
-            )
-        # Datasets
-        if not isinstance(self.datasets, dict):
-            raise ValueError(
-                f"`datasets` should be a dict mapping from a string to "
-                f"`ray.data.Dataset` objects, "
-                f"found {type(self.datasets)} with value `{self.datasets}`."
-            )
-        elif any(
-            not isinstance(ds, ray.data.Dataset) and not callable(ds)
-            for ds in self.datasets.values()
-        ):
-            raise ValueError(
-                f"At least one value in the `datasets` dict is not a "
-                f"`ray.data.Dataset`: {self.datasets}"
-            )
-        # Preprocessor
-        if self.preprocessor is not None and not isinstance(
-            self.preprocessor, ray.ml.preprocessor.Preprocessor
-        ):
-            raise ValueError(
-                f"`preprocessor` should be an instance of `ray.ml.Preprocessor`, "
-                f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
-            )
-
-        if self.resume_from_checkpoint is not None and not isinstance(
-            self.resume_from_checkpoint, ray.ml.Checkpoint
-        ):
-            raise ValueError(
-                f"`resume_from_checkpoint` should be an instance of "
-                f"`ray.ml.Checkpoint`, found {type(self.resume_from_checkpoint)} "
-                f"with value `{self.resume_from_checkpoint}`."
-            )
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
