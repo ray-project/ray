@@ -25,8 +25,10 @@ def test_objectref_inputs(workflow_start_regular_shared):
             return (
                 u == 42
                 and x == "nested"
-                and y[0] == "nested"
-                and z[0]["output"] == "nested"
+                and isinstance(y[0], ray.ObjectRef)
+                and ray.get(y) == ["nested"]
+                and isinstance(z[0]["output"], ray.ObjectRef)
+                and ray.get(z[0]["output"]) == "nested"
             ), f"{u}, {x}, {y}, {z}"
         except Exception as e:
             return False, str(e)
@@ -34,9 +36,9 @@ def test_objectref_inputs(workflow_start_regular_shared):
     output, s = workflow.create(
         deref_check.bind(
             ray.put(42),
-            nested_workflow.step(10),
-            [nested_workflow.step(9)],
-            [{"output": nested_workflow.step(7)}],
+            nested_workflow.bind(10),
+            [nested_workflow.bind(9)],
+            [{"output": nested_workflow.bind(7)}],
         )
     ).run()
     assert output is True, s
@@ -67,6 +69,7 @@ def test_object_deref(workflow_start_regular_shared):
     def deref_shared(x, y):
         # x and y should share the same variable.
         x.append(2)
+        print([x, y], flush=True)
         return y == [1, 2]
 
     @ray.remote
