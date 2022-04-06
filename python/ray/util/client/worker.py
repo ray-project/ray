@@ -422,8 +422,10 @@ class Worker:
             deadline = time.monotonic() + timeout
 
         max_blocking_operation_time = MAX_BLOCKING_OPERATION_TIME_S
-        if 'RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S' in os.environ:
-            max_blocking_operation_time = float(os.environ['RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S'])
+        if "RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S" in os.environ:
+            max_blocking_operation_time = float(
+                os.environ["RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S"]
+            )
         while True:
             if deadline:
                 op_timeout = min(
