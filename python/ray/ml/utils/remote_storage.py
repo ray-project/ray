@@ -58,7 +58,7 @@ def fs_hint(uri: str) -> str:
 
 def is_cloud_target(uri: str) -> bool:
     """Check if target URI is a cloud target"""
-    if uri.startswith("file://"):
+    if uri.startswith("file://") or not re.match(URI_PROTOCOL_REGEX, uri):
         return False
 
     if bool(get_fs_and_path(uri)[0]):
@@ -102,9 +102,6 @@ def get_fs_and_path(
     except ValueError:
         # Raised when protocol not known
         return None, None
-
-    if not path.startswith("/"):
-        path = f"/{path}"
 
     fs = pyarrow.fs.PyFileSystem(pyarrow.fs.FSSpecHandler(fsspec_fs))
     _cached_fs[protocol] = fs

@@ -19,7 +19,7 @@ class CheckpointsConversionTest(unittest.TestCase):
         self.checkpoint_dir_data = {"metric": 2, "step": 6}
 
         # fsspec URI
-        self.cloud_uri = "memory://cloud/bucket"
+        self.cloud_uri = "memory:///cloud/bucket"
         # pyarrow URI
         self.cloud_uri_pa = "mock://cloud/bucket/"
 
