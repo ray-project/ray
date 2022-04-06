@@ -159,6 +159,8 @@ def update_settings_from_environment(settings: Dict) -> Dict:
         else:
             branch = branch_str
 
+        repo_url = repo_url.replace("git://", "https://")
+
         settings["ray_test_repo"] = repo_url
         settings["ray_test_branch"] = branch
 

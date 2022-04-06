@@ -190,9 +190,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         os.environ.clear()
         os.environ.update(environ)
         os.environ["BUILDKITE_REPO"] = "https://github.com/ray-project/ray.git"
-        os.environ[
-            "BUILDKITE_PULL_REQUEST_REPO"
-        ] = "https://github.com/user/ray-fork.git"
+        os.environ["BUILDKITE_PULL_REQUEST_REPO"] = "git://github.com/user/ray-fork.git"
         os.environ["BUILDKITE_BRANCH"] = "some_branch"
         updated_settings = settings.copy()
         update_settings_from_environment(updated_settings)
