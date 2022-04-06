@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include <cstddef>
 #include <string>
 #include <unordered_map>
@@ -30,26 +32,54 @@
 extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
+
+namespace std {
+template <>
+struct hash<ray::rpc::SchedulingStrategy> {
+  size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
+    size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
+    if (scheduling_strategy.scheduling_strategy_case() ==
+        ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
+      hash ^= std::hash<std::string>()(
+          scheduling_strategy.node_affinity_scheduling_strategy().node_id());
+      hash ^= scheduling_strategy.node_affinity_scheduling_strategy().soft();
+    }
+    return hash;
+  }
+};
+
+template <>
+struct equal_to<ray::rpc::SchedulingStrategy> {
+  bool operator()(const ray::rpc::SchedulingStrategy &lhs,
+                  const ray::rpc::SchedulingStrategy &rhs) const {
+    return google::protobuf::util::MessageDifferencer::Equivalent(lhs, rhs);
+  }
+};
+}  // namespace std
+
 namespace ray {
 typedef int SchedulingClass;
 
 struct SchedulingClassDescriptor {
  public:
-  explicit SchedulingClassDescriptor(
-      ResourceSet rs,
-      FunctionDescriptor fd,
-      int64_t d,
-      std ::pair<NodeID, bool> node_affinity_scheduling_strategy)
-      : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
+  explicit SchedulingClassDescriptor(ResourceSet rs,
+                                     FunctionDescriptor fd,
+                                     int64_t d,
+                                     rpc::SchedulingStrategy scheduling_strategy)
+      : resource_set(std::move(rs)),
+        function_descriptor(std::move(fd)),
+        depth(d),
+        scheduling_strategy(std::move(scheduling_strategy)) {}
   ResourceSet resource_set;
   FunctionDescriptor function_descriptor;
   int64_t depth;
-  std::pair<NodeID, bool> node_affinity_scheduling_strategy;
+  rpc::SchedulingStrategy scheduling_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
            function_descriptor == other.function_descriptor &&
-           node_affinity_scheduling_strategy == other.node_affinity_scheduling_strategy;
+           std::equal_to<rpc::SchedulingStrategy>()(scheduling_strategy,
+                                                    other.scheduling_strategy);
   }
 
   std::string DebugString() const {
@@ -57,8 +87,7 @@ struct SchedulingClassDescriptor {
     buffer << "{"
            << "depth=" << depth << " "
            << "function_descriptor=" << function_descriptor->ToString() << " "
-           << "node_affinity_scheduling_strategy="
-           << debug_string(node_affinity_scheduling_strategy) << " "
+           << "scheduling_strategy=" << scheduling_strategy.DebugString() << " "
            << "resource_set="
            << "{";
     for (const auto &pair : resource_set.GetResourceMap()) {
@@ -77,8 +106,7 @@ struct hash<ray::SchedulingClassDescriptor> {
     size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
     hash ^= sched_cls.function_descriptor->Hash();
     hash ^= sched_cls.depth;
-    hash ^= sched_cls.node_affinity_scheduling_strategy.first.Hash();
-    hash ^= sched_cls.node_affinity_scheduling_strategy.second;
+    hash ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
     return hash;
   }
 };

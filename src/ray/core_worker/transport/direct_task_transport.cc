@@ -70,16 +70,12 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       if (keep_executing) {
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
-        const SchedulingKey scheduling_key(
-            task_spec.GetSchedulingClass(),
-            task_spec.GetDependencyIds(),
-            task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
-                                            : ActorID::Nil(),
-            task_spec.GetRuntimeEnvHash(),
-            task_spec.IsNodeAffinitySchedulingStrategy()
-                ? std::make_pair(task_spec.GetNodeAffinitySchedulingStrategyNodeId(),
-                                 task_spec.GetNodeAffinitySchedulingStrategySoft())
-                : std::make_pair(NodeID::Nil(), false));
+        const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
+                                           task_spec.GetDependencyIds(),
+                                           task_spec.IsActorCreationTask()
+                                               ? task_spec.ActorCreationId()
+                                               : ActorID::Nil(),
+                                           task_spec.GetRuntimeEnvHash());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
         scheduling_key_entry.task_queue.push_back(task_spec);
         scheduling_key_entry.resource_spec = task_spec;
@@ -606,11 +602,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       task_spec.GetSchedulingClass(),
       task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
-      task_spec.GetRuntimeEnvHash(),
-      task_spec.IsNodeAffinitySchedulingStrategy()
-          ? std::make_pair(task_spec.GetNodeAffinitySchedulingStrategyNodeId(),
-                           task_spec.GetNodeAffinitySchedulingStrategySoft())
-          : std::make_pair(NodeID::Nil(), false));
+      task_spec.GetRuntimeEnvHash());
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);

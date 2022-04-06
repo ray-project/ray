@@ -117,13 +117,7 @@ void TaskSpecification::ComputeResources() {
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto sched_cls_desc = SchedulingClassDescriptor(
-        resource_set,
-        function_descriptor,
-        depth,
-        IsNodeAffinitySchedulingStrategy()
-            ? std::make_pair(GetNodeAffinitySchedulingStrategyNodeId(),
-                             GetNodeAffinitySchedulingStrategySoft())
-            : std::make_pair(NodeID::Nil(), false));
+        resource_set, function_descriptor, depth, GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }

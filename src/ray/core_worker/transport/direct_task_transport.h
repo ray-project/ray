@@ -52,11 +52,8 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &i
 // It is also keyed on NodeAffinitySchedulingStrategy (node ID and soft) if it's set,
 // since the task has the specific node where they can run.
 typedef int RuntimeEnvHash;
-using SchedulingKey = std::tuple<SchedulingClass,
-                                 std::vector<ObjectID>,
-                                 ActorID,
-                                 RuntimeEnvHash,
-                                 std::pair<NodeID, bool>>;
+using SchedulingKey =
+    std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
@@ -270,12 +267,8 @@ class CoreWorkerDirectTaskSubmitter {
         int64_t lease_expiration_time = 0,
         google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
-        SchedulingKey scheduling_key = std::make_tuple(0,
-                                                       std::vector<ObjectID>(),
-                                                       ActorID::Nil(),
-                                                       0,
-                                                       std::make_pair(NodeID::Nil(),
-                                                                      false)))
+        SchedulingKey scheduling_key =
+            std::make_tuple(0, std::vector<ObjectID>(), ActorID::Nil(), 0))
         : lease_client(lease_client),
           lease_expiration_time(lease_expiration_time),
           assigned_resources(assigned_resources),
