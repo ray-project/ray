@@ -95,6 +95,7 @@ class Application:
         """
 
         from ray.serve.api import serve_application_to_schema
+
         return serve_application_to_schema(self._deployments.values()).dict()
 
     @classmethod
@@ -113,6 +114,7 @@ class Application:
         """
 
         from ray.serve.api import schema_to_serve_application
+
         return cls(schema_to_serve_application(ServeApplicationSchema.parse_obj(d)))
 
     def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
