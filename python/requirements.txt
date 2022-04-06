@@ -8,7 +8,7 @@
 aiohttp>=3.7
 aioredis < 2
 aiosignal
-click >= 7.0
+click >= 7.0, <= 8.0.4
 cloudpickle
 filelock
 frozenlist
@@ -85,7 +85,6 @@ pytest-lazy-fixture
 pytest-timeout
 pytest-virtualenv
 scikit-learn==0.22.2
-tensorflow==2.5.1
 testfixtures
 werkzeug
 xlrd

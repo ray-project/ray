@@ -1,3 +1,4 @@
+import io
 import shutil
 import tarfile
 import tempfile
@@ -157,12 +158,13 @@ class Checkpoint:
                 )
         elif uri:
             assert not local_path and not data_dict and not obj_ref
-            uri = _get_external_path(uri)
-            if not uri:
+            resolved = _get_external_path(uri)
+            if not resolved:
                 raise RuntimeError(
                     f"Cannot create checkpoint from URI as it is not "
-                    f"supported: {uri}"
+                    f"supported: {resolved}"
                 )
+            uri = resolved
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
@@ -450,26 +452,15 @@ def _temporary_checkpoint_dir() -> str:
 
 def _pack(path: str) -> bytes:
     """Pack directory in ``path`` into an archive, return as bytes string."""
-    _, tmpfile = tempfile.mkstemp()
-    with tarfile.open(tmpfile, "w:gz") as tar:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
         tar.add(path, arcname="")
 
-    with open(tmpfile, "rb") as f:
-        stream = f.read()
-
-    os.remove(tmpfile)
-    return stream
+    return stream.getvalue()
 
 
 def _unpack(stream: bytes, path: str) -> str:
     """Unpack archive in bytes string into directory in ``path``."""
-    _, tmpfile = tempfile.mkstemp()
-
-    with open(tmpfile, "wb") as f:
-        f.write(stream)
-
-    with tarfile.open(tmpfile) as tar:
+    with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
         tar.extractall(path)
-
-    os.remove(tmpfile)
     return path

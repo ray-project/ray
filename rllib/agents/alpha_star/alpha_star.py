@@ -2,9 +2,8 @@
 A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
-from collections import defaultdict
 import gym
-from typing import DefaultDict, Optional, Type
+from typing import Optional, Type
 
 import ray
 from ray.actor import ActorHandle
@@ -41,7 +40,7 @@ from ray.rllib.utils.typing import (
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.timer import _Timer
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 
 # Adds the following updates to the `IMPALATrainer` config in
@@ -57,10 +56,28 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # old (replayed) ones.
         "replay_buffer_replay_ratio": 0.5,
 
+        # Timeout to use for `ray.wait()` when waiting for samplers to have placed
+        # new data into the buffers. If no samples are ready within the timeout,
+        # the buffers used for mixin-sampling will return only older samples.
+        "sample_wait_timeout": 0.0,
+        # Timeout to use for `ray.wait()` when waiting for the policy learner actors
+        # to have performed an update and returned learning stats. If no learner
+        # actors have produced any learning results in the meantime, their
+        # learner-stats in the results will be empty for that iteration.
+        "learn_wait_timeout": 0.0,
+
         # League-building parameters.
         # The LeagueBuilder class to be used for league building logic.
         "league_builder_config": {
             "type": AlphaStarLeagueBuilder,
+            # The number of random policies to add to the league. This must be an
+            # even number (including 0) as these will be evenly distributed
+            # amongst league- and main- exploiters.
+            "num_random_policies": 2,
+            # The number of initially learning league-exploiters to create.
+            "num_learning_league_exploiters": 4,
+            # The number of initially learning main-exploiters to create.
+            "num_learning_main_exploiters": 4,
             # Minimum win-rate (between 0.0 = 0% and 1.0 = 100%) of any policy to
             # be considered for snapshotting (cloning). The cloned copy may then
             # be frozen (no further learning) or keep learning (independent of
@@ -105,7 +122,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
 )
 
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class AlphaStarTrainer(appo.APPOTrainer):
@@ -264,9 +281,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
         self.distributed_learners = distributed_learners
 
-        # Store the win rates for league overview printouts.
-        self.win_rates: DefaultDict[PolicyID, float] = defaultdict(float)
-
     @override(Trainer)
     def step(self) -> ResultDict:
         # Perform a full step (including evaluation).
@@ -287,7 +301,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
             sample_results = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=self.workers.remote_workers() or [self.workers.local_worker()],
-                ray_wait_timeout_s=0.01,
+                ray_wait_timeout_s=self.config["sample_wait_timeout"],
                 max_remote_requests_in_flight_per_actor=2,
                 remote_fn=self._sample_and_send_to_buffer,
             )
@@ -307,7 +321,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
             train_results = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=pol_actors,
-                ray_wait_timeout_s=0.1,
+                ray_wait_timeout_s=self.config["learn_wait_timeout"],
                 max_remote_requests_in_flight_per_actor=2,
                 remote_fn=self._update_policy,
                 remote_args=args,
@@ -339,7 +353,7 @@ class AlphaStarTrainer(appo.APPOTrainer):
 
             global_vars = {
                 "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-                "win_rates": self.win_rates,
+                "league_builder": self.league_builder.__getstate__(),
             }
 
             for worker in self.workers.remote_workers():
@@ -455,3 +469,19 @@ class AlphaStarTrainer(appo.APPOTrainer):
                     policy.update_kl(kl)
 
         return train_results
+
+    @override(appo.APPOTrainer)
+    def __getstate__(self) -> dict:
+        state = super().__getstate__()
+        state.update(
+            {
+                "league_builder": self.league_builder.__getstate__(),
+            }
+        )
+        return state
+
+    @override(appo.APPOTrainer)
+    def __setstate__(self, state: dict) -> None:
+        state_copy = state.copy()
+        self.league_builder.__setstate__(state.pop("league_builder", {}))
+        super().__setstate__(state_copy)

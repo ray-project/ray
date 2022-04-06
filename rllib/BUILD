@@ -2825,27 +2825,27 @@ py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--stop-reward=100.0"]
+    args = ["--as-test", "--stop-reward=450.0"]
 )
 
 py_test(
     name = "examples/two_trainer_workflow_torch",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--torch", "--stop-reward=100.0"]
+    args = ["--as-test", "--torch", "--stop-reward=450.0"]
 )
 
 py_test(
     name = "examples/two_trainer_workflow_mixed_torch_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=100.0"]
+    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=450.0"]
 )
 
 py_test(

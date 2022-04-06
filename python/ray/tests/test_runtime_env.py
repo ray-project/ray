@@ -145,9 +145,6 @@ def test_container_option_serialize(runtime_env_class):
     assert job_config_serialized.count(b"--name=test") == 1
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows."
-)
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     """Test that no extra workers start up during a long env installation."""
@@ -233,7 +230,7 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
     assert len(errors) == 0
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="pip not supported on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows.")
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
     """Test that after a failed job-level env, tasks can still be run."""

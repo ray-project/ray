@@ -10,33 +10,40 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents import with_common_config
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_CONFIG
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import _get_shared_metrics
-from ray.rllib.execution.concurrency_ops import Concurrently
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.rollout_ops import (
-    ParallelRollouts,
-    ConcatBatches,
-    StandardizeFields,
-    SelectExperiences,
-)
-from ray.rllib.execution.replay_ops import StoreToReplayBuffer, Replay
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.train_ops import train_one_step
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_TARGET_UPDATES,
+    LAST_TARGET_UPDATE_TS,
+)
+from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--mixed-torch-tf", action="store_true")
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 parser.add_argument(
     "--as-test",
     action="store_true",
@@ -44,91 +51,105 @@ parser.add_argument(
     "be achieved within --stop-timesteps AND --stop-iters.",
 )
 parser.add_argument(
-    "--stop-iters", type=int, default=20, help="Number of iterations to train."
+    "--stop-iters", type=int, default=400, help="Number of iterations to train."
 )
 parser.add_argument(
     "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
 )
+# 600.0 = 4 (num_agents) x 150.0
 parser.add_argument(
-    "--stop-reward", type=float, default=150.0, help="Reward at which we stop training."
+    "--stop-reward", type=float, default=600.0, help="Reward at which we stop training."
 )
 
 
-def custom_training_workflow(workers: WorkerSet, config: dict):
-    local_replay_buffer = MultiAgentReplayBuffer(
-        num_shards=1, learning_starts=1000, capacity=50000, replay_batch_size=64
-    )
+# Define new Trainer with custom execution_plan/workflow.
+class MyTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        # Run this Trainer with new `training_iteration` API and set some PPO-specific
+        # parameters.
+        return with_common_config(
+            {
+                "_disable_execution_plan_api": True,
+                "num_sgd_iter": 10,
+                "sgd_minibatch_size": 128,
+            }
+        )
 
-    def add_ppo_metrics(batch):
+    @override(Trainer)
+    def setup(self, config):
+        # Call super's `setup` to create rollout workers.
+        super().setup(config)
+        # Create local replay buffer.
+        self.local_replay_buffer = MultiAgentReplayBuffer(
+            num_shards=1, learning_starts=1000, capacity=50000, replay_batch_size=64
+        )
+
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        # Generate common experiences, collect batch for PPO, store every (DQN) batch
+        # into replay buffer.
+        ppo_batches = []
+        num_env_steps = 0
+        # PPO batch size fixed at 200.
+        while num_env_steps < 200:
+            ma_batches = synchronous_parallel_sample(self.workers)
+            # Loop through (parallely collected) ma-batches.
+            for ma_batch in ma_batches:
+                # Update sampled counters.
+                self._counters[NUM_ENV_STEPS_SAMPLED] += ma_batch.count
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += ma_batch.agent_steps()
+                ppo_batch = ma_batch.policy_batches.pop("ppo_policy")
+                # Add collected batches (only for DQN policy) to replay buffer.
+                self.local_replay_buffer.add_batch(ma_batch)
+
+                ppo_batches.append(ppo_batch)
+                num_env_steps += ppo_batch.count
+
+        # DQN sub-flow.
+        dqn_train_results = {}
+        dqn_train_batch = self.local_replay_buffer.replay()
+        if dqn_train_batch is not None:
+            dqn_train_results = train_one_step(self, dqn_train_batch, ["dqn_policy"])
+            self._counters["agent_steps_trained_DQN"] += dqn_train_batch.agent_steps()
+            print(
+                "DQN policy learning on samples from",
+                "agent steps trained",
+                dqn_train_batch.agent_steps(),
+            )
+        # Update DQN's target net every 500 train steps.
+        if (
+            self._counters["agent_steps_trained_DQN"]
+            - self._counters[LAST_TARGET_UPDATE_TS]
+            >= 500
+        ):
+            self.workers.local_worker().get_policy("dqn_policy").update_target()
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
+                "agent_steps_trained_DQN"
+            ]
+
+        # PPO sub-flow.
+        ppo_train_batch = SampleBatch.concat_samples(ppo_batches)
+        self._counters["agent_steps_trained_PPO"] += ppo_train_batch.agent_steps()
+        # Standardize advantages.
+        ppo_train_batch[Postprocessing.ADVANTAGES] = standardized(
+            ppo_train_batch[Postprocessing.ADVANTAGES]
+        )
         print(
             "PPO policy learning on samples from",
-            batch.policy_batches.keys(),
-            "env steps",
-            batch.env_steps(),
-            "agent steps",
-            batch.env_steps(),
+            "agent steps trained",
+            ppo_train_batch.agent_steps(),
         )
-        metrics = _get_shared_metrics()
-        metrics.counters["agent_steps_trained_PPO"] += batch.env_steps()
-        return batch
-
-    def add_dqn_metrics(batch):
-        print(
-            "DQN policy learning on samples from",
-            batch.policy_batches.keys(),
-            "env steps",
-            batch.env_steps(),
-            "agent steps",
-            batch.env_steps(),
+        ppo_train_batch = MultiAgentBatch(
+            {"ppo_policy": ppo_train_batch}, ppo_train_batch.count
         )
-        metrics = _get_shared_metrics()
-        metrics.counters["agent_steps_trained_DQN"] += batch.env_steps()
-        return batch
+        ppo_train_results = train_one_step(self, ppo_train_batch, ["ppo_policy"])
 
-    # Generate common experiences.
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
-    r1, r2 = rollouts.duplicate(n=2)
-
-    # DQN sub-flow.
-    dqn_store_op = r1.for_each(SelectExperiences(["dqn_policy"])).for_each(
-        StoreToReplayBuffer(local_buffer=local_replay_buffer)
-    )
-    dqn_replay_op = (
-        Replay(local_buffer=local_replay_buffer)
-        .for_each(add_dqn_metrics)
-        .for_each(TrainOneStep(workers, policies=["dqn_policy"]))
-        .for_each(
-            UpdateTargetNetwork(
-                workers, target_update_freq=500, policies=["dqn_policy"]
-            )
-        )
-    )
-    dqn_train_op = Concurrently(
-        [dqn_store_op, dqn_replay_op], mode="round_robin", output_indexes=[1]
-    )
-
-    # PPO sub-flow.
-    ppo_train_op = (
-        r2.for_each(SelectExperiences(["ppo_policy"]))
-        .combine(ConcatBatches(min_batch_size=200, count_steps_by="env_steps"))
-        .for_each(add_ppo_metrics)
-        .for_each(StandardizeFields(["advantages"]))
-        .for_each(
-            TrainOneStep(
-                workers,
-                policies=["ppo_policy"],
-                num_sgd_iter=10,
-                sgd_minibatch_size=128,
-            )
-        )
-    )
-
-    # Combined training flow
-    train_op = Concurrently(
-        [ppo_train_op, dqn_train_op], mode="async", output_indexes=[1]
-    )
-
-    return StandardMetricsReporting(train_op, workers, config)
+        # Combine results for PPO and DQN into one results dict.
+        results = dict(ppo_train_results, **dqn_train_results)
+        return results
 
 
 if __name__ == "__main__":
@@ -137,7 +158,7 @@ if __name__ == "__main__":
         args.torch and args.mixed_torch_tf
     ), "Use either --torch or --mixed-torch-tf, not both!"
 
-    ray.init()
+    ray.init(local_mode=args.local_mode)
 
     # Simple environment with 4 independent cartpole entities
     register_env(
@@ -166,12 +187,6 @@ if __name__ == "__main__":
             return "ppo_policy"
         else:
             return "dqn_policy"
-
-    MyTrainer = build_trainer(
-        name="PPO_DQN_MultiAgent",
-        default_policy=None,
-        execution_plan=custom_training_workflow,
-    )
 
     config = {
         "rollout_fragment_length": 50,
