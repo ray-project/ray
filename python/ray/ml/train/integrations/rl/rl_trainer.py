@@ -110,7 +110,7 @@ class RLTrainer(Trainer):
     ):
         self._algorithm = algorithm
         self._train_kwargs = train_kwargs
-        self._config = config
+        self._config = config if config is not None else {}
 
         super().__init__(
             scaling_config, run_config, datasets, preprocessor, resume_from_checkpoint
