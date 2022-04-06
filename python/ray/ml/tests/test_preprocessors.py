@@ -501,10 +501,15 @@ def test_chain():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
+    def udf(df):
+        df["A"] *= 2
+        return df
+
+    batch_mapper = BatchMapper(fn=udf)
     imputer = SimpleImputer(["B"])
     scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
-    chain = Chain(scaler, imputer, encoder)
+    chain = Chain(scaler, imputer, encoder, batch_mapper)
 
     # Fit data.
     chain.fit(ds)
@@ -525,7 +530,7 @@ def test_chain():
     transformed = chain.transform(ds)
     out_df = transformed.to_pandas()
 
-    processed_col_a = [-1.0, -1.0, 1.0, 1.0]
+    processed_col_a = [-2.0, -2.0, 2.0, 2.0]
     processed_col_b = [0.0, 0.0, 0.0, 0.0]
     processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
@@ -544,7 +549,7 @@ def test_chain():
 
     pred_out_df = chain.transform_batch(pred_in_df)
 
-    pred_processed_col_a = [1, 2, None]
+    pred_processed_col_a = [2, 4, None]
     pred_processed_col_b = [-1.0, 0.0, 1.0]
     pred_processed_col_c = [0, 2, None]
     pred_expected_df = pd.DataFrame.from_dict(
@@ -573,8 +578,7 @@ def test_batch_mapper():
         return df
 
     batch_mapper = BatchMapper(fn=add_and_modify_udf)
-    if batch_mapper.should_fit():
-        batch_mapper.fit(ds)
+    batch_mapper.fit(ds)
     transformed = batch_mapper.transform(ds)
     out_df = transformed.to_pandas()
 

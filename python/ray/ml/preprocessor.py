@@ -1,4 +1,5 @@
 import abc
+from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -29,25 +30,50 @@ class Preprocessor(abc.ABC):
     fitting, and uses these attributes to implement its normalization transform.
     """
 
+    class FitStatus(str, Enum):
+        """The fit status of preprocessor."""
+
+        NON_FITTABLE = "NON_FITTABLE"
+        NOT_FITTED = "NOT_FITTED"
+        # Only meaningful for Chain preprocessors
+        PARTIALLY_FITTED = "PARTIAL_FITTED"
+        FITTED = "FITTED"
+
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
+
+    def fit_status(self):
+        if not self._is_fittable:
+            return Preprocessor.FitStatus.NON_FITTABLE
+        elif self._check_is_fitted():
+            return Preprocessor.FitStatus.FITTED
+        else:
+            return Preprocessor.FitStatus.NOT_FITTED
 
     def fit(self, dataset: Dataset) -> "Preprocessor":
         """Fit this Preprocessor to the Dataset.
 
         Fitted state attributes will be directly set in the Preprocessor.
-
-        One is expected to call ``should_fit`` before calling ``fit``.
+        Only meant to be called at most once for
 
         Args:
             dataset: Input dataset.
 
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
-        """
-        assert self._is_fittable, "One is expected to call `should_fit` before `fit`."
 
-        if self.check_is_fitted():
+        Raises:
+            PreprocessorAlreadyFittedException, if already fitted once.
+        """
+        fit_status = self.fit_status()
+        if fit_status == Preprocessor.FitStatus.NON_FITTABLE:
+            # Just return. This makes Chain Preprocessor easier.
+            return self
+
+        if fit_status in (
+            Preprocessor.FitStatus.FITTED,
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+        ):
             raise PreprocessorAlreadyFittedException(
                 "`fit` cannot be called multiple times. "
                 "Create a new Preprocessor to fit a new Dataset."
@@ -63,8 +89,10 @@ class Preprocessor(abc.ABC):
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
+
+        Raises:
+            PreprocessorAlreadyFittedException, if already fitted once.
         """
-        assert self._is_fittable, "One is expected to call `should_fit` before `fit`."
 
         self.fit(dataset)
         return self.transform(dataset)
@@ -77,8 +105,15 @@ class Preprocessor(abc.ABC):
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
+
+        Raises:
+            PreprocessorNotFittedException, if ``fit`` is not called yet.
         """
-        if self.should_fit():
+        fit_status = self.fit_status()
+        if fit_status in (
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+            Preprocessor.FitStatus.NOT_FITTED,
+        ):
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform`."
             )
@@ -93,23 +128,17 @@ class Preprocessor(abc.ABC):
         Returns:
             DataBatchType: The transformed data batch.
         """
-        if self.should_fit():
+        fit_status = self.fit_status()
+        if fit_status in (
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+            Preprocessor.FitStatus.NOT_FITTED,
+        ):
             raise PreprocessorNotFittedException(
                 "`fit` must be called before `transform_batch`."
             )
         return self._transform_batch(df)
 
-    def should_fit(self):
-        """Returns whether the preprocessor should be fitted.
-
-        A preprocessor should be fitted if it is fittable and
-        is not fitted yet.
-
-        One is expected to call ``should_fit`` before calling ``fit``.
-        """
-        return self._is_fittable and not self.check_is_fitted()
-
-    def check_is_fitted(self) -> bool:
+    def _check_is_fitted(self) -> bool:
         """Returns whether this preprocessor is fitted.
 
         We use the convention that attributes with a trailing ``_`` are set after

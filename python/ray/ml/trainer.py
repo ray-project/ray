@@ -192,7 +192,7 @@ class Trainer(abc.ABC):
 
         if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset and self.preprocessor.should_fit():
+            if train_dataset:
                 self.preprocessor.fit(train_dataset)
 
             # Execute dataset transformations serially for now.
