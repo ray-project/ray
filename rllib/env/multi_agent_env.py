@@ -1,6 +1,6 @@
 import gym
 import logging
-from typing import Callable, Dict, List, Tuple, Optional, Union, Set
+from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import (
@@ -363,7 +363,7 @@ class MultiAgentEnv(gym.Env):
 
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
-) -> MultiAgentEnv:
+) -> Type["MultiAgentEnv"]:
     """Convenience wrapper for any single-agent env to be converted into MA.
 
     Allows you to convert a simple (single-agent) `gym.Env` class
