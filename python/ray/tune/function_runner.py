@@ -5,7 +5,6 @@ import time
 import inspect
 import shutil
 import threading
-import traceback
 import uuid
 from functools import partial
 from numbers import Number
@@ -289,10 +288,7 @@ class _RunnerThread(threading.Thread):
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely
                 # case that something went terribly wrong
-                err_tb_str = traceback.format_exc()
-                self._error_queue.put(
-                    err_tb_str, block=True, timeout=ERROR_REPORT_TIMEOUT
-                )
+                self._error_queue.put(e, block=True, timeout=ERROR_REPORT_TIMEOUT)
             except queue.Full:
                 logger.critical(
                     (
@@ -301,7 +297,6 @@ class _RunnerThread(threading.Thread):
                         "was not processed. This should never happen."
                     )
                 )
-            raise e
 
 
 class FunctionRunner(Trainable):
@@ -569,10 +564,8 @@ class FunctionRunner(Trainable):
 
     def _report_thread_runner_error(self, block=False):
         try:
-            err_tb_str = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise TuneError(
-                ("Trial raised an exception. Traceback:\n{}".format(err_tb_str))
-            )
+            e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
+            raise e
         except queue.Empty:
             pass
 

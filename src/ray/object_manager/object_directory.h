@@ -67,15 +67,6 @@ class IObjectDirectory {
   /// \return A vector of information for all connected remote object managers.
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
-  /// Lookup object locations. Callback may be invoked with empty list of client ids.
-  ///
-  /// \param object_id The object's ObjectID.
-  /// \param callback Invoked with (possibly empty) list of node ids and object_id.
-  /// \return Status of whether async call to backend succeeded.
-  virtual ray::Status LookupLocations(const ObjectID &object_id,
-                                      const rpc::Address &owner_address,
-                                      const OnLocationsFound &callback) = 0;
-
   /// Handle the removal of an object manager node. This updates the
   /// locations of all subscribed objects that have the removed node as a
   /// location, and fires the subscribed callbacks for those objects.

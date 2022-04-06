@@ -141,20 +141,48 @@ def test_dereference_dags(workflow_start_regular_shared):
     """Ensure that DAGs are dereferenced like ObjectRefs in ray tasks."""
 
     @ray.remote
-    def g(x, y):
-        assert x == 314
-        assert isinstance(y[0], ray.ObjectRef)
-        assert ray.get(y) == [2022]
+    def g(x0, y0, z0, x1, y1, z1):
+        assert x0 == 314
+        assert isinstance(x1[0], ray.ObjectRef)
+        assert ray.get(x1) == [314]
+
+        assert isinstance(y0, ray.ObjectRef)
+        assert ray.get(y0) == 271828
+        (y10,) = y1
+        assert isinstance(y10, ray.ObjectRef)
+        assert isinstance(ray.get(y10), ray.ObjectRef)
+        assert ray.get(ray.get(y10)) == 271828
+
+        assert z0 == 46692
+        assert isinstance(z1[0], ray.ObjectRef)
+        assert ray.get(z1) == [46692]
+
+        return "ok"
 
     @ray.remote
     def h(x):
         return x
 
-    dag = g.bind(x=h.bind(314), y=[h.bind(2022)])
+    @ray.remote
+    def nested(x):
+        return h.bind(x).execute()
+
+    @ray.remote
+    def nested_continuation(x):
+        return workflow.continuation(h.bind(x))
+
+    dag = g.bind(
+        x0=h.bind(314),
+        y0=nested.bind(271828),
+        z0=nested_continuation.bind(46692),
+        x1=[h.bind(314)],
+        y1=[nested.bind(271828)],
+        z1=[nested_continuation.bind(46692)],
+    )
 
     # Run with workflow and normal Ray engine.
-    workflow.create(dag).run()
-    ray.get(dag.execute())
+    assert workflow.create(dag).run() == "ok"
+    assert ray.get(dag.execute()) == "ok"
 
 
 def test_workflow_continuation(workflow_start_regular_shared):
