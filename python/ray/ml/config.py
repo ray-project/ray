@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
 from ray.util import PublicAPI
 
-from ray.tune.trainable import PlacementGroupFactory
-from ray.tune.callback import Callback
+if TYPE_CHECKING:
+    from ray.tune.trainable import PlacementGroupFactory
+    from ray.tune.callback import Callback
 
 
 ScalingConfig = Dict[str, Any]
@@ -81,8 +82,10 @@ class ScalingConfigDataClass:
             if k not in ["CPU", "GPU"]
         }
 
-    def as_placement_group_factory(self) -> PlacementGroupFactory:
+    def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
+        from ray.tune.trainable import PlacementGroupFactory
+
         trainer_resources = (
             self.trainer_resources if self.trainer_resources else {"CPU": 1}
         )
@@ -144,5 +147,5 @@ class RunConfig:
     # TODO(xwjiang): Add more.
     name: Optional[str] = None
     local_dir: Optional[str] = None
-    callbacks: Optional[List[Callback]] = None
+    callbacks: Optional[List["Callback"]] = None
     failure: Optional[FailureConfig] = None
