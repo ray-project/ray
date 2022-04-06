@@ -144,6 +144,7 @@ MOCK_MODULES = [
     "zoopt",
 ]
 
+
 def mock_modules():
     for mod_name in MOCK_MODULES:
         mock_module = mock.MagicMock()
@@ -162,7 +163,12 @@ EXTERNAL_MARKDOWN_FILES = [
         "README.md",
         "ray-more-libs/lightgbm-ray.md",
     ),
-    ("ray-project/ray_lightning", "main", "README.md", "ray-more-libs/ray-lightning.md")
+    (
+        "ray-project/ray_lightning",
+        "main",
+        "README.md",
+        "ray-more-libs/ray-lightning.md",
+    ),
 ]
 
 

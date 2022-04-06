@@ -41,13 +41,15 @@ if __name__ == "__main__":
         description="Preprocess github markdown file to Ray Docs MyST markdown"
     )
     parser.add_argument(
-        "source_path", type=pathlib.Path, help="Path to github markdown file to "
-                                              "preprocess"
+        "source_path",
+        type=pathlib.Path,
+        help="Path to github markdown file to " "preprocess",
     )
     parser.add_argument(
         "dest_path", type=pathlib.Path, help="Path to save preprocessed markdown file."
     )
     args, _ = parser.parse_known_args()
 
-    preprocess_github_markdown_file(args.source_path.expanduser(),
-                                    args.dest_path.expanduser())
+    preprocess_github_markdown_file(
+        args.source_path.expanduser(), args.dest_path.expanduser()
+    )
