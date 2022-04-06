@@ -312,13 +312,14 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   OnResourceChanged();
 }
 
-void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) {
+void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data,
+                                             bool for_ray_syncer) {
   UpdateAvailableObjectStoreMemResource();
 
   NodeResources resources = ToNodeResources(local_resources_);
 
   // Initialize if last report resources is empty.
-  if (!last_report_resources_) {
+  if (!for_ray_syncer && !last_report_resources_) {
     NodeResources node_resources = ResourceMapToNodeResources({{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
   }
@@ -327,32 +328,32 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     auto label = ResourceID(resource_id).Binary();
     auto total = entry.second;
     auto available = resources.available.Get(resource_id);
-    auto last_total = last_report_resources_->total.Get(resource_id);
-    auto last_available = last_report_resources_->available.Get(resource_id);
+    auto last_total = for_ray_syncer ? total : last_report_resources_->total.Get(resource_id);
+    auto last_available = for_ray_syncer ? available : last_report_resources_->available.Get(resource_id);
 
     // Note: available may be negative, but only report positive to GCS.
-    if (available != last_available && available > 0) {
+    if (for_ray_syncer || (available != last_available && available > 0)) {
       resources_data.set_resources_available_changed(true);
       (*resources_data.mutable_resources_available())[label] = available.Double();
     }
-    if (total != last_total) {
+    if (for_ray_syncer || (total != last_total)) {
       (*resources_data.mutable_resources_total())[label] = total.Double();
     }
   }
 
   if (get_pull_manager_at_capacity_ != nullptr) {
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
+    if (for_ray_syncer || (last_report_resources_->object_pulls_queued != resources.object_pulls_queued)) {
       resources_data.set_object_pulls_queued(resources.object_pulls_queued);
       resources_data.set_resources_available_changed(true);
     }
   }
 
-  if (resources != *last_report_resources_.get()) {
+  if (!for_ray_syncer && resources != *last_report_resources_.get()) {
     last_report_resources_.reset(new NodeResources(resources));
   }
 
-  if (!RayConfig::instance().enable_light_weight_resource_report()) {
+  if (for_ray_syncer || !RayConfig::instance().enable_light_weight_resource_report()) {
     resources_data.set_resources_available_changed(true);
   }
 }

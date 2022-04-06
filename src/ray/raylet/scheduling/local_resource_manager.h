@@ -115,7 +115,8 @@ class LocalResourceManager {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &resources_data);
+  /// \param for_ray_syncer. The resource report is for ray syncer.
+  void FillResourceUsage(rpc::ResourcesData &resources_data, bool for_ray_syncer = false);
 
   /// Populate a UpdateResourcesRequest. This is inteneded to update the
   /// resource totals on a node when a custom resource is created or deleted

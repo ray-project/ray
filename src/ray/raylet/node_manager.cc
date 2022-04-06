@@ -2612,7 +2612,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
 
     syncer::RaySyncMessage msg;
     rpc::ResourcesData resource_data;
-    local.FillResourceUsage(resource_data);
+    local.FillResourceUsage(resource_data, true);
     resource_data.set_node_id(self_node_id_.Binary());
     resource_data.set_node_manager_address(initial_config_.node_manager_address);
 
