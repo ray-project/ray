@@ -161,7 +161,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         void set_placement_group_id(const c_string& placement_group_id)
         void set_placement_group_bundle_index(int64_t placement_group_bundle_index)  # noqa: E501
         void set_placement_group_capture_child_tasks(c_bool placement_group_capture_child_tasks)  # noqa: E501
-    cdef cppclass CNodeAffinitySchedulingStrategy "ray::rpc::NodeAffinitySchedulingStrategy":
+    cdef cppclass CNodeAffinitySchedulingStrategy "ray::rpc::NodeAffinitySchedulingStrategy":  # noqa: E501
         CNodeAffinitySchedulingStrategy()
         void set_node_id(const c_string& node_id)
         void set_soft(c_bool soft)

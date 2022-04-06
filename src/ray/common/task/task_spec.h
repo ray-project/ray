@@ -33,31 +33,12 @@ extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
 
-namespace std {
-template <>
-struct hash<ray::rpc::SchedulingStrategy> {
-  size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
-    size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
-    if (scheduling_strategy.scheduling_strategy_case() ==
-        ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
-      hash ^= std::hash<std::string>()(
-          scheduling_strategy.node_affinity_scheduling_strategy().node_id());
-      hash ^= scheduling_strategy.node_affinity_scheduling_strategy().soft();
-    }
-    return hash;
-  }
-};
-
-template <>
-struct equal_to<ray::rpc::SchedulingStrategy> {
-  bool operator()(const ray::rpc::SchedulingStrategy &lhs,
-                  const ray::rpc::SchedulingStrategy &rhs) const {
-    return google::protobuf::util::MessageDifferencer::Equivalent(lhs, rhs);
-  }
-};
-}  // namespace std
-
 namespace ray {
+inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
+                       const ray::rpc::SchedulingStrategy &rhs) {
+  return google::protobuf::util::MessageDifferencer::Equals(lhs, rhs);
+}
+
 typedef int SchedulingClass;
 
 struct SchedulingClassDescriptor {
@@ -78,8 +59,7 @@ struct SchedulingClassDescriptor {
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
            function_descriptor == other.function_descriptor &&
-           std::equal_to<rpc::SchedulingStrategy>()(scheduling_strategy,
-                                                    other.scheduling_strategy);
+           scheduling_strategy == other.scheduling_strategy;
   }
 
   std::string DebugString() const {
@@ -100,6 +80,28 @@ struct SchedulingClassDescriptor {
 }  // namespace ray
 
 namespace std {
+template <>
+struct hash<ray::rpc::SchedulingStrategy> {
+  size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
+    size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
+    if (scheduling_strategy.scheduling_strategy_case() ==
+        ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
+      hash ^= std::hash<std::string>()(
+          scheduling_strategy.node_affinity_scheduling_strategy().node_id());
+      hash ^= scheduling_strategy.node_affinity_scheduling_strategy().soft();
+    } else if (scheduling_strategy.scheduling_strategy_case() ==
+               ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
+      hash ^= std::hash<std::string>()(
+          scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
+      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
+                  .placement_group_bundle_index();
+      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
+                  .placement_group_capture_child_tasks();
+    }
+    return hash;
+  }
+};
+
 template <>
 struct hash<ray::SchedulingClassDescriptor> {
   size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
