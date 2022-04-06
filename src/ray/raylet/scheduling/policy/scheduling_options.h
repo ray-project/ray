@@ -29,6 +29,10 @@ enum class SchedulingType {
   SPREAD = 1,
   RANDOM = 2,
   NODE_AFFINITY = 3,
+  BUNDLE_PACK = 4,
+  BUNDLE_SPREAD = 5,
+  BUNDLE_STRICT_PACK = 6,
+  BUNDLE_STRICT_SPREAD = 7,
 };
 
 // Options that controls the scheduling behavior.
@@ -69,6 +73,42 @@ struct SchedulingOptions {
     scheduling_options.node_id = node_id;
     scheduling_options.soft = soft;
     return scheduling_options;
+  }
+
+  // construct option for soft pack scheduling policy.
+  static SchedulingOptions BundlePack() {
+    return SchedulingOptions(SchedulingType::BUNDLE_PACK,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false);
+  }
+
+  // construct option for strict spread scheduling policy.
+  static SchedulingOptions BundleSpread() {
+    return SchedulingOptions(SchedulingType::BUNDLE_SPREAD,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false);
+  }
+
+  // construct option for strict pack scheduling policy.
+  static SchedulingOptions BundleStrictPack() {
+    return SchedulingOptions(SchedulingType::BUNDLE_STRICT_PACK,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false);
+  }
+
+  // construct option for strict spread scheduling policy.
+  static SchedulingOptions BundleStrictSpread() {
+    return SchedulingOptions(SchedulingType::BUNDLE_STRICT_SPREAD,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false);
   }
 
   SchedulingType scheduling_type;
