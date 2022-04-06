@@ -2794,7 +2794,7 @@ py_test(
     main = "examples/self_play_league_based_with_open_spiel.py",
     tags = ["team:ml", "examples", "examples_S"],
     size = "medium",
-    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
+    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
     args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 )
 
