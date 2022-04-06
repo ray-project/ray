@@ -22,21 +22,22 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool PublishToEntity(const rpc::PubMessage &pub_message, EntityState *entity) {
-  if (entity->subscribers.empty()) {
+bool EntityState::Publish(const rpc::PubMessage &pub_message) {
+  if (subscribers_.empty()) {
     return false;
   }
 
   const int64_t message_size = pub_message.ByteSizeLong();
 
-  while (!entity->pending_messages.empty()) {
-    // NOTE: if atomic ref counting is too expensive, it should be possible
-    // to implement inflight message tracking across subscribers with a
-    // LRU-like data structure.
-    auto front_msg = entity->pending_messages.front().lock();
+  while (!pending_messages_.empty()) {
+    // NOTE: if atomic ref counting becomes too expensive, it should be possible
+    // to implement inflight message tracking across subscribers with non-atomic
+    // ref-counting or with a LRU-like data structure tracking the range of buffered
+    // messages for each subscriber.
+    auto front_msg = pending_messages_.front().lock();
     if (front_msg == nullptr) {
       // The message has no other reference.
-    } else if (entity->total_size + message_size >
+    } else if (total_size_ + message_size >
                RayConfig::instance().publisher_entity_buffer_max_bytes()) {
       RAY_LOG_EVERY_N_OR_DEBUG(WARNING, 10000)
           << "Pub/sub message is dropped to stay under the maximum configured buffer "
@@ -46,54 +47,67 @@ bool PublishToEntity(const rpc::PubMessage &pub_message, EntityState *entity) {
           << absl::StrCat("incoming msg size=",
                           message_size,
                           "B, current buffer size=",
-                          entity->total_size,
+                          total_size_,
                           "B")
           << ". Dropping the oldest message:\n"
           << front_msg->DebugString();
       // Clear the oldest message first, because presumably newer messages are more
       // useful. Clearing the shared message should be ok, since Publisher is single
-      // threaded. NOTE: using the Clear() method does not release the memory used.
+      // threaded. NOTE: calling Clear() does not release memory from the underlying
+      // protobuf message object.
       *front_msg = rpc::PubMessage();
     } else {
       // No message to drop.
       break;
     }
 
-    entity->pending_messages.pop();
-    entity->total_size -= entity->message_sizes.front();
-    entity->message_sizes.pop();
+    pending_messages_.pop();
+    total_size_ -= message_sizes_.front();
+    message_sizes_.pop();
   }
 
   const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
-  entity->pending_messages.push(msg);
-  entity->total_size += message_size;
-  entity->message_sizes.push(message_size);
+  pending_messages_.push(msg);
+  total_size_ += message_size;
+  message_sizes_.push(message_size);
 
-  for (auto &[id, subscriber] : entity->subscribers) {
+  for (auto &[id, subscriber] : subscribers_) {
     subscriber->QueueMessage(msg);
   }
   return true;
 }
 
+bool EntityState::AddSubscriber(SubscriberState *subscriber) {
+  return subscribers_.emplace(subscriber->id(), subscriber).second;
+}
+
+bool EntityState::RemoveSubscriber(const SubscriberID &id) {
+  return subscribers_.erase(id) > 0;
+}
+
+const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscribers()
+    const {
+  return subscribers_;
+}
+
 bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
-  const bool publish_to_all = PublishToEntity(pub_message, &subscribers_to_all_);
+  const bool publish_to_all = subscribers_to_all_.Publish(pub_message);
   bool publish_to_entity = false;
   auto it = entities_.find(pub_message.key_id());
   if (it != entities_.end()) {
-    publish_to_entity = PublishToEntity(pub_message, &it->second);
+    publish_to_entity = it->second.Publish(pub_message);
   }
   return publish_to_all || publish_to_entity;
 }
 
 bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *subscriber) {
   if (key_id.empty()) {
-    return subscribers_to_all_.subscribers.emplace(subscriber->id(), subscriber).second;
+    return subscribers_to_all_.AddSubscriber(subscriber);
   }
 
   auto &subscribing_key_ids = subscribers_to_key_id_[subscriber->id()];
-  bool key_added = subscribing_key_ids.emplace(key_id).second;
-  auto &subscriber_map = entities_[key_id].subscribers;
-  auto subscriber_added = subscriber_map.emplace(subscriber->id(), subscriber).second;
+  const bool key_added = subscribing_key_ids.emplace(key_id).second;
+  const bool subscriber_added = entities_[key_id].AddSubscriber(subscriber);
 
   RAY_CHECK(key_added == subscriber_added);
   return key_added;
@@ -102,15 +116,14 @@ bool SubscriptionIndex::AddEntry(const std::string &key_id, SubscriberState *sub
 std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
     const std::string &key_id) const {
   std::vector<SubscriberID> subscribers;
-  if (!subscribers_to_all_.subscribers.empty()) {
-    for (const auto &[sub_id, sub] : subscribers_to_all_.subscribers) {
+  if (!subscribers_to_all_.Subscribers().empty()) {
+    for (const auto &[sub_id, sub] : subscribers_to_all_.Subscribers()) {
       subscribers.push_back(sub_id);
     }
   }
   auto it = entities_.find(key_id);
   if (it != entities_.end()) {
-    auto &subs = it->second.subscribers;
-    for (const auto &[sub_id, sub] : subs) {
+    for (const auto &[sub_id, sub] : it->second.Subscribers()) {
       subscribers.push_back(sub_id);
     }
   }
@@ -119,7 +132,7 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
 
 bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
   // Erase subscriber of all keys.
-  if (subscribers_to_all_.subscribers.erase(subscriber_id) > 0) {
+  if (subscribers_to_all_.RemoveSubscriber(subscriber_id)) {
     return true;
   }
 
@@ -136,9 +149,9 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
     if (entity_it == entities_.end()) {
       continue;
     }
-    auto &subscribers = entity_it->second.subscribers;
-    subscribers.erase(subscriber_id);
-    if (subscribers.empty()) {
+    auto &entity = entity_it->second;
+    entity.RemoveSubscriber(subscriber_id);
+    if (entity.Subscribers().empty()) {
       entities_.erase(entity_it);
     }
   }
@@ -150,7 +163,7 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
                                    const SubscriberID &subscriber_id) {
   // Erase the subscriber of all keys.
   if (key_id.empty()) {
-    return subscribers_to_all_.subscribers.erase(subscriber_id) > 0;
+    return subscribers_to_all_.RemoveSubscriber(subscriber_id);
   }
 
   // Erase keys from the subscriber of individual keys.
@@ -163,7 +176,7 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
   if (object_it == objects.end()) {
     auto it = entities_.find(key_id);
     if (it != entities_.end()) {
-      RAY_CHECK(!it->second.subscribers.contains(subscriber_id));
+      RAY_CHECK(!it->second.Subscribers().contains(subscriber_id));
     }
     return false;
   }
@@ -176,12 +189,10 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
   auto entity_it = entities_.find(key_id);
   // If code reaches this line, that means the object id was in the index.
   RAY_CHECK(entity_it != entities_.end());
-  auto &subscribers = entity_it->second.subscribers;
-  auto subscriber_it = subscribers.find(subscriber_id);
+  auto &entity = entity_it->second;
   // If code reaches this line, that means the subscriber id was in the index.
-  RAY_CHECK(subscriber_it != subscribers.end());
-  subscribers.erase(subscriber_it);
-  if (subscribers.empty()) {
+  RAY_CHECK(entity.RemoveSubscriber(subscriber_id));
+  if (entity.Subscribers().empty()) {
     entities_.erase(entity_it);
   }
   return true;
@@ -192,7 +203,7 @@ bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
 }
 
 bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
-  if (subscribers_to_all_.subscribers.contains(subscriber_id)) {
+  if (subscribers_to_all_.Subscribers().contains(subscriber_id)) {
     return true;
   }
   return subscribers_to_key_id_.contains(subscriber_id);

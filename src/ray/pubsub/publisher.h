@@ -41,21 +41,33 @@ namespace pub_internal {
 class SubscriberState;
 
 /// State for an entity / topic in a pub/sub channel.
-struct EntityState {
-  // Tracks inflight messages.
-  std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages;
+class EntityState {
+ public:
+  /// Publishes the message to subscribers of the entity.
+  /// Returns true if there are subscribers, returns false otherwise.
+  bool Publish(const rpc::PubMessage &pub_message);
+
+  /// Manages the set of subscribers of this entity.
+  bool AddSubscriber(SubscriberState *subscriber);
+  bool RemoveSubscriber(const SubscriberID &id);
+
+  /// Gets the current set of subscribers, keyed by subscriber IDs.
+  const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
+
+ private:
+  // Tracks inflight messages. The messages have shared ownership by
+  // individual subscribers, and get deleted after no subscriber has
+  // the message in buffer.
+  std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages_;
   // Size of each inflight message.
-  std::queue<int64_t> message_sizes;
+  std::queue<int64_t> message_sizes_;
   // Total size of inflight messages.
-  int64_t total_size = 0;
+  int64_t total_size_ = 0;
 
-  /// Subscribers for the entity.
-  absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers;
+  // Subscribers of this entity.
+  // The underlying SubscriberState is owned by Publisher.
+  absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
 };
-
-/// Publishes the message to subscribers of the entity.
-/// Returns true if there are subscribers, returns false otherwise.
-bool PublishToEntity(const rpc::PubMessage &pub_message, EntityState *entity);
 
 /// Per-channel two-way index for subscribers and the keys they subscribe to.
 /// Also supports subscribers to all keys in the channel.
@@ -72,7 +84,7 @@ class SubscriptionIndex {
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
   /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  bool AddEntry(const std::string &key_id, SubscriberState *subscriber_state);
+  bool AddEntry(const std::string &key_id, SubscriberState *subscriber);
 
   /// Erases the subscriber from this index.
   /// Returns whether the subscriber exists before the call.
