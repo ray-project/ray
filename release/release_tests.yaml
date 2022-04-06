@@ -1327,7 +1327,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1355,7 +1355,7 @@
     script: python workloads/impala.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1445,7 +1445,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1561,7 +1561,7 @@
     script: python workloads/pbt.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
