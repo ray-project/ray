@@ -686,14 +686,18 @@ class ReporterAgent(
             try:
                 # Cluster stats don't need to be recorded on all agents,
                 # so we only report it in the head node.
-                formatted_status_string = internal_kv._internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS
-                )
-                cluster_stats = (
-                    json.loads(formatted_status_string.decode())
-                    if formatted_status_string
-                    else {}
-                )
+                if self._is_head_node:
+                    formatted_status_string = internal_kv._internal_kv_get(
+                        DEBUG_AUTOSCALING_STATUS
+                    )
+                    cluster_stats = (
+                        json.loads(formatted_status_string.decode())
+                        if formatted_status_string
+                        else {}
+                    )
+                else:
+                    cluster_stats = {}
+
                 stats = self._get_all_stats()
                 records_to_report = self._get_records_to_report(
                     stats, cluster_stats
