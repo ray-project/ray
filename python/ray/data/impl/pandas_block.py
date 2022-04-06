@@ -175,29 +175,6 @@ class PandasBlockAccessor(TableBlockAccessor):
     def _sample(self, n_samples: int, key: "SortKeyT") -> "pandas.DataFrame":
         return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
 
-    def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
-        if on is not None and not isinstance(on, str):
-            raise ValueError(
-                "on must be a string or None when aggregating on Pandas blocks, but "
-                f"got: {type(on)}."
-            )
-
-        col = self._table[on]
-        return col.count()
-
-    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
-        if on is not None and not isinstance(on, str):
-            raise ValueError(
-                "on must be a string or None when aggregating on Pandas blocks, but "
-                f"got: {type(on)}."
-            )
-
-        col = self._table[on]
-        if col.isnull().all():
-            # Short-circuit on an all-null column, returning None.
-            return None
-        return col.sum(skipna=ignore_nulls)
-
     def _apply_agg(
         self, agg_fn: Callable[["pandas.Series", bool], U], on: KeyFn
     ) -> Optional[U]:
@@ -219,6 +196,22 @@ class PandasBlockAccessor(TableBlockAccessor):
             if np.issubdtype(col.dtype, np.object_) and col.isnull().all():
                 return None
             raise e from None
+
+    def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        return self._apply_agg(lambda col: col.count(), on)
+
+    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        if on is not None and not isinstance(on, str):
+            raise ValueError(
+                "on must be a string or None when aggregating on Pandas blocks, but "
+                f"got: {type(on)}."
+            )
+
+        col = self._table[on]
+        if col.isnull().all():
+            # Short-circuit on an all-null column, returning None.
+            return None
+        return col.sum(skipna=ignore_nulls)
 
     def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.min(skipna=ignore_nulls), on)
