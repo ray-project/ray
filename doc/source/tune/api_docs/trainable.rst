@@ -310,7 +310,6 @@ It is up to the user to correctly update the hyperparameters of your trainable.
                 if "momentum" in new_config:
                     param_group["momentum"] = new_config["momentum"]
 
-            self.model = ConvNet()
             self.config = new_config
             return True
 
