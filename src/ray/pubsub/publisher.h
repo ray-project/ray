@@ -72,7 +72,7 @@ class SubscriptionIndex {
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
   /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  bool AddEntry(const std::string &key_id, SubscriberState *subscriber_id);
+  bool AddEntry(const std::string &key_id, SubscriberState *subscriber_state);
 
   /// Erases the subscriber from this index.
   /// Returns whether the subscriber exists before the call.
