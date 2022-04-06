@@ -1,6 +1,6 @@
 name: Ray feature request
 description: Suggest an idea for Ray project
-title: "[<Ray component: Core|RLlib|Serve|Tune|Java etc...>] "
+title: "[<Ray component: Core|RLlib|etc...>] "
 labels: [enhancement]
 body:
   - type: markdown

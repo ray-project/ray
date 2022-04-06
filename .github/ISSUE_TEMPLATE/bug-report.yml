@@ -1,5 +1,5 @@
 name: Bug report
-title: "[<Ray component: Core|RLlib|Serve|Tune|Java etc...>] "
+title: "[<Ray component: Core|RLlib|etc...>] "
 description: Problems and issues with code of Ray
 labels: [bug, triage]
 body:
