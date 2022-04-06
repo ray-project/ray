@@ -269,13 +269,13 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
 
 
 def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
-    @workflow.step
+    @ray.remote
     def f2():
         return 10
 
     @workflow.step
     def f1():
-        return f2.step()
+        return workflow.continuation(f2.bind())
 
     assert (10, None) == f1.options(catch_exceptions=True).step().run()
 
