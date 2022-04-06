@@ -115,7 +115,8 @@ class Preprocessor(abc.ABC):
             Preprocessor.FitStatus.NOT_FITTED,
         ):
             raise PreprocessorNotFittedException(
-                "`fit` must be called before `transform`."
+                "`fit` must be called before `transform`. "
+                "Or simply use fit_transform() to run both steps"
             )
         return self._transform(dataset)
 
