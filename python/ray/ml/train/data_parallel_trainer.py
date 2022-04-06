@@ -239,9 +239,6 @@ class DataParallelTrainer(Trainer):
             self.train_loop_per_worker, "train_loop_per_worker"
         )
 
-        backend_config = backend_config if backend_config else BackendConfig()
-        self.backend_config = backend_config
-
     def _validate_train_loop_per_worker(
         self, train_loop_per_worker: Callable, fn_name: str
     ) -> None:
