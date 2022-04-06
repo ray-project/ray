@@ -1,8 +1,10 @@
 import math
 from typing import TypeVar, List, Optional, Dict, Any, Tuple, Union, Callable, Iterable
+from collections import defaultdict
 
 import numpy as np
 
+import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
@@ -50,7 +52,7 @@ class ShuffleOp:
         clear_input_blocks: bool,
         *,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
-        reduce_ray_remote_args: Optional[Dict[str, Any]] = None
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
         input_blocks_list = input_blocks.get_blocks()
         input_num_blocks = len(input_blocks_list)
@@ -107,6 +109,307 @@ class ShuffleOp:
 
         stats = {
             "map": shuffle_map_metadata,
+            "reduce": new_metadata,
+        }
+
+        return BlockList(list(new_blocks), list(new_metadata)), stats
+
+
+class PushBasedShuffleOp(ShuffleOp):
+    """
+    Push-based shuffle merges intermediate map outputs on the reducer nodes
+    while other map tasks are executing. The merged outputs are merged again
+    during a final reduce stage. This works as follows:
+
+    N rounds of concurrent map and merge tasks. In each round:
+      M map tasks
+       Each produces N outputs. Each output contains P blocks.
+      N merge tasks
+       Takes 1 output from each of M map tasks.
+       Each produces P outputs.
+    In the final reduce stage:
+      R reduce tasks
+       Takes 1 output from each merge task from every round.
+
+    Notes:
+        N * M = total number of input blocks
+        N * P = R = total number of output blocks
+        M / N = merge factor - the ratio of map : merge tasks is to improve
+            pipelined parallelism. For example, if map takes twice as long to
+            execute as merge, then we should set this to 2.
+    """
+
+    @staticmethod
+    def map(
+        idx: int, block: Block, output_num_blocks: int, *map_args: List[Any]
+    ) -> List[Union[BlockMetadata, Block]]:
+        raise NotImplementedError
+
+    @staticmethod
+    def reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
+        raise NotImplementedError
+
+    @staticmethod
+    def _get_merge_partition_size(
+        merge_idx, output_num_blocks: int, num_merge_tasks_per_round: int
+    ) -> int:
+        """
+        Each intermediate merge task will produce outputs for a partition of P
+        final reduce tasks. This helper function computes P based on the merge
+        task index.
+        """
+        partition_size = output_num_blocks // num_merge_tasks_per_round
+        extra_blocks = output_num_blocks % num_merge_tasks_per_round
+        if merge_idx < extra_blocks:
+            partition_size += 1
+        return partition_size
+
+    @staticmethod
+    def _map_partition(
+        map_fn,
+        idx: int,
+        block: Block,
+        output_num_blocks: int,
+        num_merge_tasks_per_round: int,
+        *map_args: List[Any],
+    ) -> List[Union[BlockMetadata, Block]]:
+        mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
+        meta = mapper_outputs.pop(0)
+
+        parts = []
+        merge_idx = 0
+        while mapper_outputs:
+            partition_size = PushBasedShuffleOp._get_merge_partition_size(
+                merge_idx, output_num_blocks, num_merge_tasks_per_round
+            )
+            parts.append(mapper_outputs[:partition_size])
+            mapper_outputs = mapper_outputs[partition_size:]
+            merge_idx += 1
+        assert len(parts) == num_merge_tasks_per_round, (
+            len(parts),
+            num_merge_tasks_per_round,
+        )
+        return [meta] + parts
+
+    @staticmethod
+    def _merge(
+        reduce_fn,
+        *all_mapper_outputs: List[List[Block]],
+        reduce_args=Optional[List[Any]],
+    ) -> List[Union[BlockMetadata, Block]]:
+        """
+        Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks].
+        """
+        assert (
+            len(set(len(mapper_outputs) for mapper_outputs in all_mapper_outputs)) == 1
+        ), "Received different number of map inputs"
+        stats = BlockExecStats.builder()
+        merged_outputs = []
+        reduce_args = reduce_args or []
+        for mapper_outputs in zip(*all_mapper_outputs):
+            block, meta = reduce_fn(*reduce_args, *mapper_outputs)
+            merged_outputs.append(block)
+        meta = BlockAccessor.for_block(block).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        )
+        return [meta] + merged_outputs
+
+    @staticmethod
+    def _get_cluster_cpu_map():
+        nodes = ray.nodes()
+        # Map from per-node resource name to number of CPUs available on that
+        # node.
+        cpu_map = {}
+        for node in nodes:
+            resources = node["Resources"]
+            num_cpus = int(resources.get("CPU", 0))
+            if num_cpus == 0:
+                continue
+            for resource in resources:
+                if resource.startswith("node:"):
+                    cpu_map[resource] = num_cpus
+        return cpu_map
+
+    def execute(
+        self,
+        input_blocks: BlockList,
+        output_num_blocks: int,
+        clear_input_blocks: bool,
+        *,
+        map_ray_remote_args: Optional[Dict[str, Any]] = None,
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        merge_factor: int = 1,
+    ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
+        input_blocks_list = input_blocks.get_blocks()
+        input_num_blocks = len(input_blocks_list)
+
+        if map_ray_remote_args is None:
+            map_ray_remote_args = {}
+        if reduce_ray_remote_args is None:
+            reduce_ray_remote_args = {}
+        if "scheduling_strategy" not in reduce_ray_remote_args:
+            reduce_ray_remote_args = reduce_ray_remote_args.copy()
+            reduce_ray_remote_args["scheduling_strategy"] = "SPREAD"
+
+        def map_partition(*args, **kwargs):
+            return self._map_partition(self.map, *args, **kwargs)
+
+        def merge(*args, **kwargs):
+            return self._merge(self.reduce, *args, **kwargs)
+
+        shuffle_map = cached_remote_fn(map_partition)
+        shuffle_merge = cached_remote_fn(merge)
+        shuffle_reduce = cached_remote_fn(self.reduce)
+
+        # Constants used for task scheduling.
+        cpu_map = self._get_cluster_cpu_map()
+        num_cpus_total = sum(v for v in cpu_map.values())
+        # N: Number of merge tasks in one map-merge round. Each map_partition
+        # task will send one output to each of these merge tasks.
+        num_merge_tasks_per_round = math.ceil(num_cpus_total / (merge_factor + 1))
+        # M: Number of map tasks in one map-merge round.
+        num_map_tasks_per_round = num_merge_tasks_per_round * merge_factor
+        num_rounds = math.ceil(input_num_blocks / num_map_tasks_per_round)
+
+        # Intermediate results for the map-merge stage.
+        map_results = []
+        # ObjectRef results from the last round of tasks. Used to add
+        # backpressure during pipelining of map and merge tasks.
+        last_map_metadata_results = []
+        last_merge_metadata_results = []
+        mapper_idx = 0
+        # Preemptively clear the blocks list since we will incrementally delete
+        # the last remaining references as we submit the dependent map tasks
+        # during the map-merge stage.
+        if clear_input_blocks:
+            input_blocks.clear()
+
+        # Final outputs from the map-merge stage.
+        # This is a map from merge task index to a nested list of merge results
+        # (ObjectRefs). Each merge task index corresponds to a partition of P
+        # final reduce tasks.
+        all_merge_results = defaultdict(list)
+        shuffle_map_metadata = []
+        shuffle_merge_metadata = []
+        map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
+        merge_bar = ProgressBar(
+            "Shuffle Merge", position=0, total=num_merge_tasks_per_round * num_rounds
+        )
+        # Execute the map-merge stage. This submits tasks in rounds of M map
+        # tasks and N merge tasks each. Task execution between map and merge is
+        # pipelined, so that while executing merge for one round of inputs, we
+        # also execute the map tasks for the following round.
+        while input_blocks_list:
+            round_input_blocks = input_blocks_list[:num_map_tasks_per_round]
+            input_blocks_list = input_blocks_list[num_map_tasks_per_round:]
+            # Wait for previous round of map tasks to finish before submitting
+            # more map tasks.
+            if last_map_metadata_results:
+                shuffle_map_metadata += map_bar.fetch_until_complete(
+                    last_map_metadata_results
+                )
+            map_results = []
+            for block in round_input_blocks:
+                map_results.append(
+                    shuffle_map.options(
+                        **map_ray_remote_args,
+                        num_returns=1 + num_merge_tasks_per_round,
+                    ).remote(
+                        mapper_idx,
+                        block,
+                        output_num_blocks,
+                        num_merge_tasks_per_round,
+                        *self._map_args,
+                    )
+                )
+                mapper_idx += 1
+
+            # The first item returned by each map task is the BlockMetadata.
+            last_map_metadata_results = [
+                map_result.pop(0) for map_result in map_results
+            ]
+
+            # Wait for previous round of merge tasks to finish before
+            # submitting more merge tasks.
+            if last_merge_metadata_results:
+                shuffle_merge_metadata += merge_bar.fetch_until_complete(
+                    last_merge_metadata_results
+                )
+            merge_results = []
+            for merge_idx in range(num_merge_tasks_per_round):
+                num_merge_returns = self._get_merge_partition_size(
+                    merge_idx, output_num_blocks, num_merge_tasks_per_round
+                )
+                merge_results.append(
+                    shuffle_merge.options(num_returns=1 + num_merge_returns,).remote(
+                        *[map_result[merge_idx] for map_result in map_results],
+                        reduce_args=self._reduce_args,
+                    )
+                )
+            # The first item returned by each merge task is the BlockMetadata.
+            last_merge_metadata_results = [
+                merge_result.pop(0) for merge_result in merge_results
+            ]
+            for merge_idx, merge_result in enumerate(merge_results):
+                all_merge_results[merge_idx].append(merge_result)
+            del merge_results
+
+        # Wait for last map and merge tasks to finish.
+        if last_map_metadata_results:
+            shuffle_map_metadata += map_bar.fetch_until_complete(
+                last_map_metadata_results
+            )
+            del last_map_metadata_results
+            map_bar.close()
+        del map_results
+        if last_merge_metadata_results:
+            shuffle_merge_metadata += merge_bar.fetch_until_complete(
+                last_merge_metadata_results
+            )
+            del last_merge_metadata_results
+            merge_bar.close()
+
+        # Execute the final reduce stage.
+        shuffle_reduce_out = []
+        for merge_idx in range(num_merge_tasks_per_round):
+            num_merge_returns = self._get_merge_partition_size(
+                merge_idx, output_num_blocks, num_merge_tasks_per_round
+            )
+            for reduce_idx in range(num_merge_returns):
+                # Submit one partition of reduce tasks, one for each of the P
+                # outputs produced by the corresponding merge task.
+                shuffle_reduce_out.append(
+                    shuffle_reduce.options(
+                        **reduce_ray_remote_args, num_returns=2
+                    ).remote(
+                        *self._reduce_args,
+                        *[
+                            merge_results[reduce_idx]
+                            for merge_results in all_merge_results[merge_idx]
+                        ],
+                    )
+                )
+            # Eagerly delete the merge outputs in order to release the blocks'
+            # memory.
+            del all_merge_results[merge_idx]
+
+        assert len(all_merge_results) == 0, (
+            "Reduce stage did not process outputs from all merge tasks: "
+            f"{list(all_merge_results.keys())}"
+        )
+        assert (
+            len(shuffle_reduce_out) == output_num_blocks
+        ), f"Expected {output_num_blocks} outputs, produced {len(shuffle_reduce_out)}"
+
+        reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
+        new_blocks, new_metadata = zip(*shuffle_reduce_out)
+        reduce_bar.block_until_complete(list(new_blocks))
+        new_metadata = ray.get(list(new_metadata))
+        reduce_bar.close()
+
+        stats = {
+            "map": shuffle_map_metadata,
+            "merge": shuffle_merge_metadata,
             "reduce": new_metadata,
         }
 
