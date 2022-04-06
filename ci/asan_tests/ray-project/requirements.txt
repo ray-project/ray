@@ -18,7 +18,7 @@ scikit-image
 openpyxl
 pandas==0.24.2
 Pillow
-prometheus_client
+prometheus_client >= 0.7.1, <= 0.13.1
 py-spy
 pygments
 pytest==5.4.3
