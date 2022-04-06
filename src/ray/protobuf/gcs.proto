@@ -310,6 +310,9 @@ message WorkerTableData {
   // The exception thrown in creation task. This field is set if this worker died because
   // of exception thrown in actor's creation task. Only applies when is_alive=false.
   RayException creation_task_exception = 18;
+  // The id of the worker.
+  bytes worker_id = 19;
+  // 
 }
 
 // Fields to publish when worker fails.

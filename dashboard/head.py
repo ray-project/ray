@@ -27,6 +27,7 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.state_aggregator import GcsStateAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ class DashboardHead:
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.aiogrpc_gcs_channel = None
+        self.gcs_state_aggregator = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = ray.util.get_node_ip_address()
@@ -179,6 +181,7 @@ class DashboardHead:
         head_cls_list = dashboard_utils.get_all_modules(
             dashboard_utils.DashboardHeadModule
         )
+        logger.info(head_cls_list)
         for cls in head_cls_list:
             logger.info(
                 "Loading %s: %s", dashboard_utils.DashboardHeadModule.__name__, cls
@@ -197,6 +200,7 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
         )
+        self.gcs_state_aggregator = GcsStateAggregator(self.aiogrpc_gcs_channel)
 
         self.gcs_error_subscriber = GcsAioErrorSubscriber(address=gcs_address)
         self.gcs_log_subscriber = GcsAioLogSubscriber(address=gcs_address)

@@ -9,6 +9,8 @@ try:
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
+from grpc import RpcError
+
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -80,6 +82,22 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         # ActorInfoGcsService
         self._gcs_actor_info_stub = None
         DataSource.nodes.signal.append(self._update_stubs)
+
+    async def _get_actors(self) -> dict:
+        try:
+            request = gcs_service_pb2.GetAllActorInfoRequest()
+            reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=30)
+            if reply.status.code == 0:
+                actors = {}
+                for message in reply.actor_table_data:
+                    actor_table_data = actor_table_data_to_dict(message)
+                    actors[actor_table_data["actorId"]] = actor_table_data
+                return actors
+            else:
+                raise RpcError(f"Failed to GetAllActorInfo: {reply.status.message}")
+        except Exception:
+            logger.exception("Error Getting all actor info from GCS.")
+            raise
 
     async def _update_stubs(self, change):
         if change.old:
@@ -229,6 +247,11 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             pass
 
         return rest_response(success=True, message=f"Killed actor with id {actor_id}")
+
+    @routes.get("/api/v0/actors")
+    async def get_actors(self, req) -> aiohttp.web.Response:
+        actors = await self._dashboard_head.gcs_state_aggregator.get_actors()
+        return rest_response(success=True, message="", result=actors)
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
