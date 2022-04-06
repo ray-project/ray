@@ -141,8 +141,26 @@ def update_settings_from_environment(settings: Dict) -> Dict:
         settings["ray_test_repo"] = os.environ["RAY_TEST_REPO"]
         settings["ray_test_branch"] = os.environ.get("RAY_TEST_BRANCH", DEFAULT_BRANCH)
     elif "BUILDKITE_BRANCH" in os.environ:
-        settings["ray_test_repo"] = os.environ["BUILDKITE_REPO"]
-        settings["ray_test_branch"] = os.environ["BUILDKITE_BRANCH"]
+        branch_str = os.environ["BUILDKITE_BRANCH"]
+
+        if "BUILDKITE_PULL_REQUEST_REPO" in os.environ:
+            repo_url = os.environ["BUILDKITE_PULL_REQUEST_REPO"]
+        else:
+            repo_url = os.environ["BUILDKITE_REPO"]
+
+        if ":" in branch_str:
+            # If the branch is user:branch, we split into user, branch
+            owner, branch = branch_str.split(":", maxsplit=1)
+
+            # If this is a PR, the repo_url is already set via env variable.
+            # We only construct our own repo url if this is a branch build.
+            if not os.environ.get("BUILDKITE_PULL_REQUEST_REPO"):
+                repo_url = f"https://github.com/{owner}/ray.git"
+        else:
+            branch = branch_str
+
+        settings["ray_test_repo"] = repo_url
+        settings["ray_test_branch"] = branch
 
     if "RAY_WHEELS" in os.environ:
         settings["ray_wheels"] = os.environ["RAY_WHEELS"]
