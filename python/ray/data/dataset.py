@@ -73,7 +73,7 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.shuffle import ShufflePartitionOp
 from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
@@ -497,10 +497,11 @@ class Dataset(Generic[T]):
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(
+                shuffle_op = ShufflePartitionOp(block_udf, random_shuffle=False)
+                return shuffle_op.execute(
                     blocks,
-                    block_udf,
                     num_blocks,
+                    clear_input_blocks,
                     map_ray_remote_args=remote_args,
                     reduce_ray_remote_args=remote_args,
                 )
@@ -566,16 +567,16 @@ class Dataset(Generic[T]):
                 block_list.clear()
             else:
                 blocks = block_list
-            new_blocks, stage_info = simple_shuffle(
+            random_shuffle_op = ShufflePartitionOp(
+                block_udf, random_shuffle=True, random_seed=seed
+            )
+            return random_shuffle_op.execute(
                 blocks,
-                block_udf,
                 num_blocks,
-                random_shuffle=True,
-                random_seed=seed,
+                clear_input_blocks,
                 map_ray_remote_args=remote_args,
                 reduce_ray_remote_args=remote_args,
             )
-            return new_blocks, stage_info
 
         plan = self._plan.with_stage(
             AllToAllStage(
@@ -1449,7 +1450,7 @@ class Dataset(Generic[T]):
                     _validate_key_fn(self, subkey)
             else:
                 _validate_key_fn(self, key)
-            return sort_impl(blocks, key, descending)
+            return sort_impl(blocks, clear_input_blocks, key, descending)
 
         plan = self._plan.with_stage(AllToAllStage("sort", None, do_sort))
         return Dataset(plan, self._epoch, self._lazy)
