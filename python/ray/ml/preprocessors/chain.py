@@ -26,7 +26,7 @@ class Chain(Preprocessor):
             elif p.fit_status() == Preprocessor.FitStatus.NOT_FITTED:
                 fittable_count += 1
             else:
-                assert p.fit_status() == Preprocessor.FitStatus.NON_FITTABLE
+                assert p.fit_status() == Preprocessor.FitStatus.NOT_FITTABLE
         if fittable_count > 0:
             if fitted_count == fittable_count:
                 return Preprocessor.FitStatus.FITTED
@@ -35,7 +35,7 @@ class Chain(Preprocessor):
             else:
                 return Preprocessor.FitStatus.NOT_FITTED
         else:
-            return Preprocessor.FitStatus.NON_FITTABLE
+            return Preprocessor.FitStatus.NOT_FITTABLE
 
     def __init__(self, *preprocessors: Preprocessor):
         super().__init__()

@@ -1,6 +1,5 @@
 from typing import Callable, TYPE_CHECKING
 
-from ray.data import Dataset
 from ray.ml.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
@@ -22,9 +21,6 @@ class BatchMapper(Preprocessor):
 
     def __init__(self, fn: Callable[["pandas.DataFrame"], "pandas.DataFrame"]):
         self.fn = fn
-
-    def _fit(self, dataset: Dataset) -> Preprocessor:
-        return self
 
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
         return df.transform(self.fn)

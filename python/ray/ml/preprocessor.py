@@ -33,7 +33,7 @@ class Preprocessor(abc.ABC):
     class FitStatus(str, Enum):
         """The fit status of preprocessor."""
 
-        NON_FITTABLE = "NON_FITTABLE"
+        NOT_FITTABLE = "NOT_FITTABLE"
         NOT_FITTED = "NOT_FITTED"
         # Only meaningful for Chain preprocessors
         PARTIALLY_FITTED = "PARTIAL_FITTED"
@@ -44,7 +44,7 @@ class Preprocessor(abc.ABC):
 
     def fit_status(self):
         if not self._is_fittable:
-            return Preprocessor.FitStatus.NON_FITTABLE
+            return Preprocessor.FitStatus.NOT_FITTABLE
         elif self._check_is_fitted():
             return Preprocessor.FitStatus.FITTED
         else:
@@ -54,7 +54,7 @@ class Preprocessor(abc.ABC):
         """Fit this Preprocessor to the Dataset.
 
         Fitted state attributes will be directly set in the Preprocessor.
-        Only meant to be called at most once for
+        Only meant to be called at most once if the preprocessor is fittable
 
         Args:
             dataset: Input dataset.
@@ -66,7 +66,7 @@ class Preprocessor(abc.ABC):
             PreprocessorAlreadyFittedException, if already fitted once.
         """
         fit_status = self.fit_status()
-        if fit_status == Preprocessor.FitStatus.NON_FITTABLE:
+        if fit_status == Preprocessor.FitStatus.NOT_FITTABLE:
             # Just return. This makes Chain Preprocessor easier.
             return self
 
@@ -93,7 +93,6 @@ class Preprocessor(abc.ABC):
         Raises:
             PreprocessorAlreadyFittedException, if already fitted once.
         """
-
         self.fit(dataset)
         return self.transform(dataset)
 
