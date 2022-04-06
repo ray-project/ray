@@ -150,8 +150,8 @@ class TuneReporterBase(ProgressReporter):
 
     def __init__(
         self,
-        metric_columns: Union[None, List[str], Dict[str, str]] = None,
-        parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+        metric_columns: Optional[Union[List[str], Dict[str, str]]] = None,
+        parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         total_samples: Optional[int] = None,
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
@@ -423,8 +423,8 @@ class JupyterNotebookReporter(TuneReporterBase):
     def __init__(
         self,
         overwrite: bool,
-        metric_columns: Union[None, List[str], Dict[str, str]] = None,
-        parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+        metric_columns: Optional[Union[List[str], Dict[str, str]]] = None,
+        parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         total_samples: Optional[int] = None,
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
@@ -528,8 +528,8 @@ class CLIReporter(TuneReporterBase):
 
     def __init__(
         self,
-        metric_columns: Union[None, List[str], Dict[str, str]] = None,
-        parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+        metric_columns: Optional[Union[List[str], Dict[str, str]]] = None,
+        parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
         total_samples: Optional[int] = None,
         max_progress_rows: int = 20,
         max_error_rows: int = 20,
@@ -623,7 +623,7 @@ def _get_trials_by_state(trials: List[Trial]):
 def trial_progress_str(
     trials: List[Trial],
     metric_columns: Union[List[str], Dict[str, str]],
-    parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+    parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
     total_samples: int = 0,
     force_table: bool = False,
     fmt: str = "psql",
@@ -708,7 +708,7 @@ def trial_progress_str(
 def trial_progress_table(
     trials: List[Trial],
     metric_columns: Union[List[str], Dict[str, str]],
-    parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+    parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
     fmt: str = "psql",
     max_rows: Optional[int] = None,
     metric: Optional[str] = None,
@@ -849,7 +849,7 @@ def trial_errors_str(
 def best_trial_str(
     trial: Trial,
     metric: str,
-    parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+    parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
 ):
     """Returns a readable message stating the current best trial."""
     val = trial.last_result[metric]

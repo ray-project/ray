@@ -135,8 +135,8 @@ class SigOptSearch(Searcher):
         experiment_id: Optional[str] = None,
         observation_budget: Optional[int] = None,
         project: Optional[str] = None,
-        metric: Union[None, str, List[str]] = "episode_reward_mean",
-        mode: Union[None, str, List[str]] = "max",
+        metric: Optional[Union[str, List[str]]] = "episode_reward_mean",
+        mode: Optional[Union[str, List[str]]] = "max",
         points_to_evaluate: Optional[List[Dict]] = None,
         **kwargs,
     ):

@@ -40,6 +40,7 @@ class PullManagerTestWithCapacity {
             [this](const ObjectID &object_id) { num_abort_calls_[object_id]++; },
             [this](const ObjectID &object_id) { timed_out_objects_.insert(object_id); },
             [this](const ObjectID &,
+                   int64_t size,
                    const std::string &,
                    std::function<void(const ray::Status &)> callback) {
               num_restore_spilled_object_calls_++;

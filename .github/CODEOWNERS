@@ -81,3 +81,5 @@
 # CI scripts.
 #/.travis.yml @ray-project/ray-core
 #/ci/travis/ @ray-project/ray-core
+
+/.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang

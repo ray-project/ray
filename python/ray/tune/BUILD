@@ -400,6 +400,14 @@ py_test(
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )
 
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_U"],
+)
+
 py_test_module_list(
   files = [
       "tests/test_trial_executor_inheritance.py",

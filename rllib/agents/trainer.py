@@ -28,6 +28,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
@@ -760,7 +761,7 @@ class Trainer(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[Union[PartialTrainerConfigDict, TrainerConfig]] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
         remote_checkpoint_dir: Optional[str] = None,
@@ -783,6 +784,10 @@ class Trainer(Trainable):
         # Trainer's `COMMON_CONFIG` (see above)). Will get merged with
         # COMMON_CONFIG in self.setup().
         config = config or {}
+        # Resolve TrainerConfig into a plain dict.
+        # TODO: In the future, only support TrainerConfig objects here.
+        if isinstance(config, TrainerConfig):
+            config = config.to_dict()
 
         # Convert `env` provided in config into a string:
         # - If `env` is a string: `self._env_id` = `env`.

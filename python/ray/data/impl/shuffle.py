@@ -4,7 +4,6 @@ from collections import defaultdict
 
 import numpy as np
 
-import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
@@ -52,8 +51,9 @@ class ShuffleOp:
         clear_input_blocks: bool,
         *,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
-        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
+        raise NotImplementedError
         input_blocks_list = input_blocks.get_blocks()
         input_num_blocks = len(input_blocks_list)
 
