@@ -70,8 +70,8 @@ struct SchedulingOptions {
     SchedulingOptions scheduling_options =
         Hybrid(avoid_local_node, require_node_available);
     scheduling_options.scheduling_type = SchedulingType::NODE_AFFINITY;
-    scheduling_options.node_id = node_id;
-    scheduling_options.soft = soft;
+    scheduling_options.node_affinity_node_id = node_id;
+    scheduling_options.node_affinity_soft = soft;
     return scheduling_options;
   }
 
@@ -116,8 +116,8 @@ struct SchedulingOptions {
   bool avoid_local_node;
   bool require_node_available;
   bool avoid_gpu_nodes;
-  std::string node_id;
-  bool soft;
+  std::string node_affinity_node_id;
+  bool node_affinity_soft;
 
  private:
   SchedulingOptions(SchedulingType type,

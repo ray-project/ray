@@ -21,13 +21,13 @@ scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type == SchedulingType::NODE_AFFINITY);
 
-  scheduling::NodeID target_node_id = scheduling::NodeID(options.node_id);
+  scheduling::NodeID target_node_id = scheduling::NodeID(options.node_affinity_node_id);
   if (nodes_.contains(target_node_id) && is_node_alive_(target_node_id) &&
       nodes_.at(target_node_id).GetLocalView().IsFeasible(resource_request)) {
     return target_node_id;
   }
 
-  if (!options.soft) {
+  if (!options.node_affinity_soft) {
     return scheduling::NodeID::Nil();
   }
 
