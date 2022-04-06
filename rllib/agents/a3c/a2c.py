@@ -62,7 +62,11 @@ class A2CTrainer(A3CTrainer):
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
-        if self.config["_disable_execution_plan_api"] is True:
+        # Create a microbatch buffer for collecting gradients on microbatches'.
+        # These gradients will later be accumulated and applied at once (once train
+        # batch size has been collected) to the model.
+        if self.config["_disable_execution_plan_api"] is True and \
+                self.config["microbatch_size"]:
             self._microbatches = []
 
     @override(Trainer)
@@ -120,6 +124,7 @@ class A2CTrainer(A3CTrainer):
                     acc_gradients = [a + b for a, b in zip(acc_gradients, grad)]
                 sum_count += count
 
+            # Empty microbatch buffer.
             self._microbatches = []
 
             # Apply gradients.
