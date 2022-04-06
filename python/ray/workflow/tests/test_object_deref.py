@@ -64,14 +64,22 @@ def test_objectref_outputs(workflow_start_regular_shared):
     assert ray.get(multi) == list(range(5))
 
 
-def test_object_deref(workflow_start_regular_shared):
-    @ray.remote
+def test_object_input_dedup(workflow_start_regular_shared):
+    @workflow.step
+    def empty_list():
+        return [1]
+
+    @workflow.step
     def deref_shared(x, y):
         # x and y should share the same variable.
         x.append(2)
-        print([x, y], flush=True)
         return y == [1, 2]
 
+    x = empty_list.step()
+    assert deref_shared.step(x, x).run()
+
+
+def test_object_deref(workflow_start_regular_shared):
     @ray.remote
     def empty_list():
         return [1]
@@ -86,15 +94,11 @@ def test_object_deref(workflow_start_regular_shared):
 
     @ray.remote
     def return_data() -> ray.ObjectRef:
-        obj = ray.put(np.ones(4096))
-        return obj
+        return ray.put(np.ones(4096))
 
     @ray.remote
-    def receive_data(data: np.ndarray):
-        return data
-
-    x = empty_list.bind()
-    assert workflow.create(deref_shared.bind(x, x)).run()
+    def receive_data(data: "ray.ObjectRef[np.ndarray]"):
+        return ray.get(data)
 
     # test we are forbidden from directly passing workflow to Ray.
     x = workflow.create(empty_list.bind())
