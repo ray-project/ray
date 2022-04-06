@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List, Mapping, Callable, Union, TYPE_CHECKING
 
-from ray.tune import Stopper
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trainable import PlacementGroupFactory
     from ray.tune.callback import Callback
-
+    from ray.tune.stopper import Stopper
 
 ScalingConfig = Dict[str, Any]
 
@@ -151,5 +150,5 @@ class RunConfig:
     name: Optional[str] = None
     local_dir: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
-    stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None
+    stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure: Optional[FailureConfig] = None
