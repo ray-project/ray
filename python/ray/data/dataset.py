@@ -73,7 +73,7 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.shuffle import ShufflePartitionOp
 from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
@@ -142,30 +142,36 @@ class Dataset(Generic[T]):
         can be quite slow. Consider using `.map_batches()` for performance.
 
         Examples:
+            >>> import ray
             >>> # Transform python objects.
-            >>> ds.map(lambda x: x * 2)
-
+            >>> ds = ray.data.range(1000) # doctest: +SKIP
+            >>> ds.map(lambda x: x * 2) # doctest: +SKIP
             >>> # Transform Arrow records.
-            >>> ds.map(lambda record: {"v2": record["value"] * 2})
-
+            >>> ds = ray.data.from_items( # doctest: +SKIP
+            ...     [{"value": i} for i in range(1000)])
+            >>> ds.map(lambda record: {"v2": record["value"] * 2}) # doctest: +SKIP
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
+            >>> init_model = ... # doctest: +SKIP
             >>> class CachedModel:
             ...    def __init__(self):
             ...        self.model = init_model()
             ...    def __call__(self, batch):
             ...        return self.model(batch)
-
             >>> # Apply the transform in parallel on GPUs. Since
             >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
             >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
-            >>> ds.map(CachedModel, compute=ActorPoolStrategy(2, 8), num_gpus=1)
+            >>> from ray.data.impl.compute import ActorPoolStrategy
+            >>> ds.map(CachedModel, # doctest: +SKIP
+            ...        compute=ActorPoolStrategy(2, 8),
+            ...        num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The function to apply to each record, or a class type
-                that can be instantiated to create such a callable.
+                that can be instantiated to create such a callable. Callable classes are
+                only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
@@ -206,29 +212,35 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
+            >>> import ray
+            >>> # Transform python objects.
+            >>> ds = ray.data.range(1000) # doctest: +SKIP
             >>> # Transform batches in parallel.
-            >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
-
+            >>> ds.map_batches(lambda batch: [v * 2 for v in batch]) # doctest: +SKIP
             >>> # Define a callable class that persists state across
             >>> # function invocations for efficiency.
+            >>> init_model = ... # doctest: +SKIP
             >>> class CachedModel:
             ...    def __init__(self):
             ...        self.model = init_model()
             ...    def __call__(self, item):
             ...        return self.model(item)
-
             >>> # Apply the transform in parallel on GPUs. Since
             >>> # compute=ActorPoolStrategy(2, 8) the transform will be applied on an
             >>> # autoscaling pool of 2-8 Ray actors, each allocated 1 GPU by Ray.
-            >>> ds.map_batches(
-            ...    CachedModel,
-            ...    batch_size=256, compute=ActorPoolStrategy(2, 8), num_gpus=1)
+            >>> from ray.data.impl.compute import ActorPoolStrategy
+            >>> ds.map_batches( # doctest: +SKIP
+            ...     CachedModel, # doctest: +SKIP
+            ...     batch_size=256, # doctest: +SKIP
+            ...     compute=ActorPoolStrategy(2, 8), # doctest: +SKIP
+            ...     num_gpus=1) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The function to apply to each record batch, or a class type
-                that can be instantiated to create such a callable.
+                that can be instantiated to create such a callable. Callable classes are
+                only supported for the actor compute strategy.
             batch_size: Request a specific batch size, or None to use entire
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
@@ -240,10 +252,11 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        if batch_size is not None and batch_size < 1:
-            raise ValueError("Batch size cannot be negative or 0")
         import pyarrow as pa
         import pandas as pd
+
+        if batch_size is not None and batch_size < 1:
+            raise ValueError("Batch size cannot be negative or 0")
 
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
@@ -319,11 +332,13 @@ class Dataset(Generic[T]):
         This is a convenience wrapper over ``.map_batches()``.
 
         Examples:
-            >>> ds = ray.data.range_arrow(100)
+            >>> import ray
+            >>> ds = ray.data.range_arrow(100) # doctest: +SKIP
             >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column("new_col", lambda df: df["value"] * 2)
+            >>> ds = ds.add_column( # doctest: +SKIP
+            ...     "new_col", lambda df: df["value"] * 2)
             >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.add_column("value", lambda df: 0)
+            >>> ds = ds.add_column("value", lambda df: 0) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -362,13 +377,16 @@ class Dataset(Generic[T]):
         better performance (the batch size can be altered in map_batches).
 
         Examples:
-            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3])
+            >>> import ray
+            >>> ds = ray.data.range(1000) # doctest: +SKIP
+            >>> ds.flat_map(lambda x: [x, x ** 2, x ** 3]) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The function to apply to each record, or a class type
-                that can be instantiated to create such a callable.
+                that can be instantiated to create such a callable. Callable classes are
+                only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
@@ -409,13 +427,16 @@ class Dataset(Generic[T]):
         better performance (you can implement filter by dropping records).
 
         Examples:
-            >>> ds.filter(lambda x: x % 2 == 0)
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.filter(lambda x: x % 2 == 0) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The predicate to apply to each record, or a class type
-                that can be instantiated to create such a callable.
+                that can be instantiated to create such a callable. Callable classes are
+                only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
@@ -446,8 +467,10 @@ class Dataset(Generic[T]):
         returned dataset will have approximately the same number of rows.
 
         Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
             >>> # Set the number of output partitions to write to disk.
-            >>> ds.repartition(10).write_parquet(...)
+            >>> ds.repartition(10).write_parquet(...) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -474,10 +497,11 @@ class Dataset(Generic[T]):
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(
+                shuffle_op = ShufflePartitionOp(block_udf, random_shuffle=False)
+                return shuffle_op.execute(
                     blocks,
-                    block_udf,
                     num_blocks,
+                    clear_input_blocks,
                     map_ray_remote_args=remote_args,
                     reduce_ray_remote_args=remote_args,
                 )
@@ -515,11 +539,12 @@ class Dataset(Generic[T]):
         This is a blocking operation similar to repartition().
 
         Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
             >>> # Shuffle this dataset randomly.
-            >>> ds.random_shuffle()
-
+            >>> ds.random_shuffle() # doctest: +SKIP
             >>> # Shuffle this dataset with a fixed random seed.
-            >>> ds.random_shuffle(seed=12345)
+            >>> ds.random_shuffle(seed=12345) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -542,16 +567,16 @@ class Dataset(Generic[T]):
                 block_list.clear()
             else:
                 blocks = block_list
-            new_blocks, stage_info = simple_shuffle(
+            random_shuffle_op = ShufflePartitionOp(
+                block_udf, random_shuffle=True, random_seed=seed
+            )
+            return random_shuffle_op.execute(
                 blocks,
-                block_udf,
                 num_blocks,
-                random_shuffle=True,
-                random_seed=seed,
+                clear_input_blocks,
                 map_ray_remote_args=remote_args,
                 reduce_ray_remote_args=remote_args,
             )
-            return new_blocks, stage_info
 
         plan = self._plan.with_stage(
             AllToAllStage(
@@ -569,10 +594,13 @@ class Dataset(Generic[T]):
         and actors and used to read the dataset records in parallel.
 
         Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> workers = ... # doctest: +SKIP
             >>> # Split up a dataset to process over `n` worker actors.
-            >>> shards = ds.split(len(workers), locality_hints=workers)
-            >>> for shard, worker in zip(shards, workers):
-            ...     worker.consume.remote(shard)
+            >>> shards = ds.split(len(workers), locality_hints=workers) # doctest: +SKIP
+            >>> for shard, worker in zip(shards, workers): # doctest: +SKIP
+            ...     worker.consume.remote(shard) # doctest: +SKIP
 
         Time complexity: O(1)
 
@@ -598,6 +626,7 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}."
             )
+            # TODO: this is unreachable code.
             if len(set(locality_hints)) != len(locality_hints):
                 raise ValueError(
                     "locality_hints must not contain duplicate actor handles"
@@ -895,12 +924,14 @@ class Dataset(Generic[T]):
         """Split the dataset at the given indices (like np.split).
 
         Examples:
-            >>> d1, d2, d3 = ray.data.range(10).split_at_indices([2, 5])
-            >>> d1.take()
+            >>> import ray
+            >>> ds = ray.data.range(10) # doctest: +SKIP
+            >>> d1, d2, d3 = ds.split_at_indices([2, 5]) # doctest: +SKIP
+            >>> d1.take() # doctest: +SKIP
             [0, 1]
-            >>> d2.take()
+            >>> d2.take() # doctest: +SKIP
             [2, 3, 4]
-            >>> d3.take()
+            >>> d3.take() # doctest: +SKIP
             [5, 6, 7, 8, 9]
 
         Time complexity: O(num splits)
@@ -1003,12 +1034,13 @@ class Dataset(Generic[T]):
         This is a lazy operation.
 
         Examples:
+            >>> import ray
             >>> # Group by a key function and aggregate.
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
             >>> # Group by an Arrow table column and aggregate.
-            >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").count()
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby( # doctest: +SKIP
+            ...     "A").count() # doctest: +SKIP
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1034,10 +1066,11 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
+            >>> import ray
             >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max())
-            >>> ray.data.range_arrow(100).aggregate(
-                Max("value"), Mean("value"))
+            >>> ray.data.range(100).aggregate(Max()) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).aggregate( # doctest: +SKIP
+            ...    Max("value"), Mean("value")) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1064,14 +1097,15 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).sum()
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).sum(lambda x: x[1])
-            >>> ray.data.range_arrow(100).sum("value")
-            >>> ray.data.from_items([
-            ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).sum(["A", "B"])
+            >>> import ray
+            >>> ray.data.range(100).sum() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]).sum(lambda x: x[1]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).sum("value") # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i, "B": i**2} # doctest: +SKIP
+            ...     for i in range(100)]).sum(["A", "B"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the sum.
@@ -1122,14 +1156,15 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).min()
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).min(lambda x: x[1])
-            >>> ray.data.range_arrow(100).min("value")
-            >>> ray.data.from_items([
-            ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).min(["A", "B"])
+            >>> import ray
+            >>> ray.data.range(100).min() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]).min(lambda x: x[1]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).min("value") # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i, "B": i**2} # doctest: +SKIP
+            ...     for i in range(100)]).min(["A", "B"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the min.
@@ -1180,14 +1215,15 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).max()
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).max(lambda x: x[1])
-            >>> ray.data.range_arrow(100).max("value")
-            >>> ray.data.from_items([
-            ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).max(["A", "B"])
+            >>> import ray
+            >>> ray.data.range(100).max() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]).max(lambda x: x[1]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).max("value") # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i, "B": i**2} # doctest: +SKIP
+            ...     for i in range(100)]).max(["A", "B"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the max.
@@ -1238,14 +1274,15 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).mean()
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).mean(lambda x: x[1])
-            >>> ray.data.range_arrow(100).mean("value")
-            >>> ray.data.from_items([
-            ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).mean(["A", "B"])
+            >>> import ray
+            >>> ray.data.range(100).mean() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]).mean(lambda x: x[1]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).mean("value") # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i, "B": i**2} # doctest: +SKIP
+            ...     for i in range(100)]).mean(["A", "B"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the mean.
@@ -1299,14 +1336,15 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).std()
-            >>> ray.data.from_items([
-            ...     (i, i**2)
-            ...     for i in range(100)]).std(lambda x: x[1])
-            >>> ray.data.range_arrow(100).std("value", ddof=0)
-            >>> ray.data.from_items([
-            ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).std(["A", "B"])
+            >>> import ray # doctest: +SKIP
+            >>> ray.data.range(100).std() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]).std(lambda x: x[1]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).std("value", ddof=0) # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i, "B": i**2} # doctest: +SKIP
+            ...     for i in range(100)]).std(["A", "B"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to
@@ -1362,19 +1400,25 @@ class Dataset(Generic[T]):
     def sort(
         self, key: Optional[KeyFn] = None, descending: bool = False
     ) -> "Dataset[T]":
+        # TODO ds.sort(lambda ...) fails with:
+        #  Callable key '<function <lambda> at 0x1b07a4cb0>' requires
+        #  dataset format to be 'simple', was 'arrow'.
+        #  How do I create something "simple" here?
         """Sort the dataset by the specified key column or key function.
 
         This is a blocking operation.
 
         Examples:
+            >>> import ray # doctest: +SKIP
             >>> # Sort using the entire record as the key.
-            >>> ds.sort()
-
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.sort() # doctest: +SKIP
             >>> # Sort by a single column in descending order.
-            >>> ds.sort("field1", descending=True)
-
+            >>> ds = ray.data.from_items( # doctest: +SKIP
+            ...     [{"value": i} for i in range(1000)])
+            >>> ds.sort("value", descending=True) # doctest: +SKIP
             >>> # Sort by a key function.
-            >>> ds.sort(lambda record: record["field1"] % 100)
+            >>> ds.sort(lambda record: record["value"]) # doctest: +SKIP
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1406,7 +1450,7 @@ class Dataset(Generic[T]):
                     _validate_key_fn(self, subkey)
             else:
                 _validate_key_fn(self, key)
-            return sort_impl(blocks, key, descending)
+            return sort_impl(blocks, clear_input_blocks, key, descending)
 
         plan = self._plan.with_stage(AllToAllStage("sort", None, do_sort))
         return Dataset(plan, self._epoch, self._lazy)
@@ -1425,8 +1469,9 @@ class Dataset(Generic[T]):
             other: The dataset to zip with on the right hand side.
 
         Examples:
-            >>> ds = ray.data.range(5)
-            >>> ds.zip(ds).take()
+            >>> import ray
+            >>> ds = ray.data.range(5) # doctest: +SKIP
+            >>> ds.zip(ds).take() # doctest: +SKIP
             [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
 
         Returns:
@@ -1480,7 +1525,9 @@ class Dataset(Generic[T]):
         """Limit the dataset to the first number of records specified.
 
         Examples:
-            >>> ds.limit(100).map(lambda x: x * 2).take()
+            >>> import ray
+            >>> ds = ray.data.range(1000) # doctest: +SKIP
+            >>> ds.limit(100).map(lambda x: x * 2).take() # doctest: +SKIP
 
         Time complexity: O(limit specified)
 
@@ -1656,7 +1703,9 @@ class Dataset(Generic[T]):
         id for the dataset.
 
         Examples:
-            >>> ds.write_parquet("s3://bucket/path")
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.write_parquet("s3://bucket/path") # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1713,7 +1762,9 @@ class Dataset(Generic[T]):
         unique id for the dataset.
 
         Examples:
-            >>> ds.write_json("s3://bucket/path")
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.write_json("s3://bucket/path") # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1771,7 +1822,9 @@ class Dataset(Generic[T]):
         for the dataset.
 
         Examples:
-            >>> ds.write_csv("s3://bucket/path")
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.write_csv("s3://bucket/path") # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1826,7 +1879,9 @@ class Dataset(Generic[T]):
         id for the dataset.
 
         Examples:
-            >>> ds.write_numpy("s3://bucket/path")
+            >>> import ray
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.write_numpy("s3://bucket/path") # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1858,7 +1913,13 @@ class Dataset(Generic[T]):
         """Write the dataset to a custom datasource.
 
         Examples:
-            >>> ds.write_datasource(CustomDatasourceImpl(...))
+            >>> import ray
+            >>> from ray.data.datasource import Datasource
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> class CustomDatasource(Datasource): # doctest: +SKIP
+            ...     # define custom data source
+            ...     pass # doctest: +SKIP
+            >>> ds.write_datasource(CustomDatasource(...)) # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1907,8 +1968,9 @@ class Dataset(Generic[T]):
         If the dataset is not tabular, the raw row is yielded.
 
         Examples:
-            >>> for i in ray.data.range(1000000).iter_rows():
-            ...     print(i)
+            >>> import ray
+            >>> for i in ray.data.range(1000000).iter_rows(): # doctest: +SKIP
+            ...     print(i) # doctest: +SKIP
 
         Time complexity: O(1)
 
@@ -1953,8 +2015,9 @@ class Dataset(Generic[T]):
         """Return a local batched iterator over the dataset.
 
         Examples:
-            >>> for batch in ray.data.range(1000000).iter_batches():
-            ...     print(batch)
+            >>> import ray
+            >>> for batch in ray.data.range(1000000).iter_batches(): # doctest: +SKIP
+            ...     print(batch) # doctest: +SKIP
 
         Time complexity: O(1)
 
@@ -2458,16 +2521,15 @@ Dict[str, List[str]]]): The names of the columns
         the purposes of ``DatasetPipeline.iter_epochs()``.
 
         Examples:
+            >>> import ray
             >>> # Infinite pipeline of numbers [0, 5)
-            >>> ray.data.range(5).repeat().take()
+            >>> ray.data.range(5).repeat().take() # doctest: +SKIP
             [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...]
-
             >>> # Can apply transformations to the pipeline.
-            >>> ray.data.range(5).repeat().map(lambda x: -x).take()
+            >>> ray.data.range(5).repeat().map(lambda x: -x).take() # doctest: +SKIP
             [0, -1, -2, -3, -4, 0, -1, -2, -3, -4, ...]
-
             >>> # Can shuffle each epoch (dataset) in the pipeline.
-            >>> ray.data.range(5).repeat().random_shuffle().take()
+            >>> ray.data.range(5).repeat().random_shuffle().take() # doctest: +SKIP
             [2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...]
 
         Args:
@@ -2562,18 +2624,18 @@ Dict[str, List[str]]]): The names of the columns
             Time ----------------------------------------------------------->
 
         Examples:
+            >>> import ray
             >>> # Create an inference pipeline.
-            >>> ds = ray.data.read_binary_files(dir)
-            >>> pipe = ds.window(blocks_per_window=10).map(infer)
+            >>> ds = ray.data.read_binary_files(dir) # doctest: +SKIP
+            >>> infer = ... # doctest: +SKIP
+            >>> pipe = ds.window(blocks_per_window=10).map(infer) # doctest: +SKIP
             DatasetPipeline(num_windows=40, num_stages=2)
-
             >>> # The higher the stage parallelism, the shorter the pipeline.
-            >>> pipe = ds.window(blocks_per_window=20).map(infer)
+            >>> pipe = ds.window(blocks_per_window=20).map(infer) # doctest: +SKIP
             DatasetPipeline(num_windows=20, num_stages=2)
-
             >>> # Outputs can be incrementally read from the pipeline.
-            >>> for item in pipe.iter_rows():
-            ...    print(item)
+            >>> for item in pipe.iter_rows(): # doctest: +SKIP
+            ...    print(item) # doctest: +SKIP
 
         Args:
             blocks_per_window: The window size (parallelism) in blocks.

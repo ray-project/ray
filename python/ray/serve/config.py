@@ -1,4 +1,5 @@
 import inspect
+import json
 import pickle
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -27,7 +28,9 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
     AutoscalingConfig as AutoscalingConfigProto,
+    ReplicaConfig as ReplicaConfigProto,
 )
+from ray.serve.utils import ServeEncoder
 
 
 class AutoscalingConfig(BaseModel):
@@ -129,6 +132,9 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
+    version: Optional[str] = None
+    prev_version: Optional[str] = None
+
     class Config:
         validate_assignment = True
         extra = "forbid"
@@ -144,7 +150,7 @@ class DeploymentConfig(BaseModel):
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
-    def to_proto_bytes(self):
+    def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
             data["user_config"] = pickle.dumps(data["user_config"])
@@ -152,11 +158,13 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
-        return DeploymentConfigProto(**data).SerializeToString()
+        return DeploymentConfigProto(**data)
+
+    def to_proto_bytes(self):
+        return self.to_proto().SerializeToString()
 
     @classmethod
-    def from_proto_bytes(cls, proto_bytes: bytes):
-        proto = DeploymentConfigProto.FromString(proto_bytes)
+    def from_proto(cls, proto: DeploymentConfigProto):
         data = MessageToDict(
             proto,
             including_default_value_fields=True,
@@ -170,8 +178,18 @@ class DeploymentConfig(BaseModel):
                 data["user_config"] = None
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
-
+        if "prev_version" in data:
+            if data["prev_version"] == "":
+                data["prev_version"] = None
+        if "version" in data:
+            if data["version"] == "":
+                data["version"] = None
         return cls(**data)
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = DeploymentConfigProto.FromString(proto_bytes)
+        return cls.from_proto(proto)
 
 
 class ReplicaConfig:
@@ -258,13 +276,14 @@ class ReplicaConfig:
             raise ValueError("num_gpus in ray_actor_options must be >= 0.")
         self.resource_dict["GPU"] = num_gpus
 
-        if self.ray_actor_options.get("memory", None) is None:
-            self.ray_actor_options["memory"] = 0
+        self.ray_actor_options.setdefault("memory", None)
         memory = self.ray_actor_options["memory"]
-        if not isinstance(memory, (int, float)):
-            raise TypeError("memory in ray_actor_options must be an int or a float.")
-        elif memory < 0:
-            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
+        if memory is not None and not isinstance(memory, (int, float)):
+            raise TypeError(
+                "memory in ray_actor_options must be an int, a float, or None."
+            )
+        elif memory is not None and memory <= 0:
+            raise ValueError("memory in ray_actor_options must be > 0.")
         self.resource_dict["memory"] = memory
 
         if self.ray_actor_options.get("object_store_memory", None) is None:
@@ -284,6 +303,54 @@ class ReplicaConfig:
         if not isinstance(custom_resources, dict):
             raise TypeError("resources in ray_actor_options must be a dictionary.")
         self.resource_dict.update(custom_resources)
+
+    @classmethod
+    def from_proto(
+        cls, proto: ReplicaConfigProto, deployment_language: DeploymentLanguage
+    ):
+        deployment_def = None
+        if proto.serialized_deployment_def != b"":
+            if deployment_language == DeploymentLanguage.PYTHON:
+                deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
+            else:
+                # TODO use messagepack
+                deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
+
+        init_args = pickle.loads(proto.init_args) if proto.init_args != b"" else None
+        init_kwargs = (
+            pickle.loads(proto.init_kwargs) if proto.init_kwargs != b"" else None
+        )
+        ray_actor_options = (
+            json.loads(proto.ray_actor_options)
+            if proto.ray_actor_options != ""
+            else None
+        )
+
+        return ReplicaConfig(deployment_def, init_args, init_kwargs, ray_actor_options)
+
+    @classmethod
+    def from_proto_bytes(
+        cls, proto_bytes: bytes, deployment_language: DeploymentLanguage
+    ):
+        proto = ReplicaConfigProto.FromString(proto_bytes)
+        return cls.from_proto(proto, deployment_language)
+
+    def to_proto(self):
+        data = {
+            "serialized_deployment_def": self.serialized_deployment_def,
+        }
+        if self.init_args:
+            data["init_args"] = pickle.dumps(self.init_args)
+        if self.init_kwargs:
+            data["init_kwargs"] = pickle.dumps(self.init_kwargs)
+        if self.ray_actor_options:
+            data["ray_actor_options"] = json.dumps(
+                self.ray_actor_options, cls=ServeEncoder
+            )
+        return ReplicaConfigProto(**data)
+
+    def to_proto_bytes(self):
+        return self.to_proto().SerializeToString()
 
 
 class DeploymentMode(str, Enum):

@@ -73,7 +73,8 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
-        >>> ray.data.from_items([1, 2, 3, 4, 5])
+        >>> import ray
+        >>> ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
 
     Args:
         items: List of local Python objects.
@@ -117,7 +118,8 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
-        >>> ray.data.range(10000).map(lambda x: x * 2).show()
+        >>> import ray
+        >>> ray.data.range(10000).map(lambda x: x * 2).show() # doctest: +SKIP
 
     Args:
         n: The upper bound of the range of integers.
@@ -137,8 +139,9 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
     Examples:
-        >>> ds = ray.data.range_arrow(1000)
-        >>> ds.map(lambda r: {"v2": r["value"] * 2}).show()
+        >>> import ray
+        >>> ds = ray.data.range_arrow(1000) # doctest: +SKIP
+        >>> ds.map(lambda r: {"v2": r["value"] * 2}).show() # doctest: +SKIP
 
     This is similar to range(), but uses Arrow tables to hold the integers
     in Arrow records. The dataset elements take the form {"value": N}.
@@ -163,8 +166,10 @@ def range_tensor(
     """Create a Tensor dataset from a range of integers [0..n).
 
     Examples:
-        >>> ds = ray.data.range_tensor(1000, shape=(3, 10))
-        >>> ds.map_batches(lambda arr: arr * 2, batch_format="pandas").show()
+        >>> import ray
+        >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
+        >>> ds.map_batches( # doctest: +SKIP
+        ...     lambda arr: arr * 2, batch_format="pandas").show()
 
     This is similar to range_arrow(), but uses the ArrowTensorArray extension
     type. The dataset elements take the form {"value": array(N, shape=shape)}.
@@ -235,6 +240,16 @@ def read_datasource(
                 parallelism,
                 _wrap_arrow_serialization_workaround(read_args),
             )
+        )
+
+    if len(read_tasks) < parallelism and (
+        len(read_tasks) < ray.available_resources().get("CPU", parallelism) // 2
+    ):
+        logger.warning(
+            "The number of blocks in this dataset ({}) limits its parallelism to {} "
+            "concurrent tasks. This is much less than the number of available "
+            "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
+            "dataset blocks.".format(len(read_tasks), len(read_tasks))
         )
 
     context = DatasetContext.get_current()
@@ -313,11 +328,12 @@ def read_parquet(
     """Create an Arrow dataset from parquet files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_parquet("s3://bucket/path")
+        >>> ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -394,14 +410,16 @@ def read_json(
     """Create an Arrow dataset from json files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_json("s3://bucket/path")
+        >>> ray.data.read_json("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_json(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_json(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_json(["s3://bucket/path1", "s3://bucket/path2"])
+        >>> ray.data.read_json( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -445,14 +463,16 @@ def read_csv(
     """Create an Arrow dataset from csv files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_csv("s3://bucket/path")
+        >>> ray.data.read_csv("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_csv(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_csv(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -497,11 +517,12 @@ def read_text(
     """Create a dataset from lines stored in text files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_text("s3://bucket/path")
+        >>> ray.data.read_text("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_text(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_text(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -548,14 +569,16 @@ def read_numpy(
     """Create an Arrow dataset from numpy files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_numpy("s3://bucket/path")
+        >>> ray.data.read_numpy("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_numpy(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_numpy(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_numpy(["s3://bucket/path1", "s3://bucket/path2"])
+        >>> ray.data.read_numpy( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -596,11 +619,13 @@ def read_binary_files(
     """Create a dataset from binary files of arbitrary contents.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_binary_files("s3://bucket/path")
+        >>> ray.data.read_binary_files("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_binary_files(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_binary_files( # doctest: +SKIP
+        ...     ["/path/to/file1", "/path/to/file2"])
 
     Args:
         paths: A single file path or a list of file paths (or directories).

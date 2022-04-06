@@ -71,6 +71,7 @@ class TensorflowTrainer(DataParallelTrainer):
     <train-api-tensorflow-utils>`.
 
     .. code-block:: python
+
         def train_loop_per_worker():
             # Turns off autosharding for a dataset.
             # You should use this if you are doing
@@ -82,54 +83,55 @@ class TensorflowTrainer(DataParallelTrainer):
     "model" kwarg in ``train.save_checkpoint()``.
 
     Example:
-        .. code-block:: python
 
-            import tensorflow as tf
+    .. code-block:: python
 
-            import ray
-            from ray import train
-            from ray.train.tensorflow import prepare_dataset_shard
+        import tensorflow as tf
 
-            from ray.ml.train.integrations.tensorflow import TensorflowTrainer
+        import ray
+        from ray import train
+        from ray.train.tensorflow import prepare_dataset_shard
 
-            input_size = 1
+        from ray.ml.train.integrations.tensorflow import TensorflowTrainer
 
-            def build_model():
-                # toy neural network : 1-layer
-                return tf.keras.Sequential(
-                    [tf.keras.layers.Dense(
-                        1, activation="linear", input_shape=(input_size,))]
-                )
+        input_size = 1
 
-            def train_loop_for_worker(config):
-                dataset_shard = train.get_dataset_shard("train")
-                strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
-                with strategy.scope():
-                    model = build_model()
-                    model.compile(
-                        optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+        def build_model():
+            # toy neural network : 1-layer
+            return tf.keras.Sequential(
+                [tf.keras.layers.Dense(
+                    1, activation="linear", input_shape=(input_size,))]
+            )
 
-                for epoch in range(config["num_epochs"]):
-                    tf_dataset = prepare_dataset_shard(
-                        dataset_shard.to_tf(
-                            label_column="y",
-                            output_signature=(
-                                tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                                tf.TensorSpec(shape=(None), dtype=tf.float32),
-                            ),
-                            batch_size=1,
-                        )
+        def train_loop_for_worker(config):
+            dataset_shard = train.get_dataset_shard("train")
+            strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+            with strategy.scope():
+                model = build_model()
+                model.compile(
+                    optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+            for epoch in range(config["num_epochs"]):
+                tf_dataset = prepare_dataset_shard(
+                    dataset_shard.to_tf(
+                        label_column="y",
+                        output_signature=(
+                            tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                            tf.TensorSpec(shape=(None), dtype=tf.float32),
+                        ),
+                        batch_size=1,
                     )
-                    model.fit(tf_dataset)
-                    train.save_checkpoint(
-                        epoch=epoch, model_weights=model.get_weights())
+                )
+                model.fit(tf_dataset)
+                train.save_checkpoint(
+                    epoch=epoch, model_weights=model.get_weights())
 
-            train_dataset = ray.data.from_items(
-                [{"x": x, "y": x + 1} for x in range(32)])
-            trainer = TensorflowTrainer(scaling_config={"num_workers": 3},
-                datasets={"train": train_dataset},
-                train_loop_config={"num_epochs": 2})
-            result = trainer.fit()
+        train_dataset = ray.data.from_items(
+            [{"x": x, "y": x + 1} for x in range(32)])
+        trainer = TensorflowTrainer(scaling_config={"num_workers": 3},
+            datasets={"train": train_dataset},
+            train_loop_config={"num_epochs": 2})
+        result = trainer.fit()
 
 
     Args:
@@ -154,6 +156,7 @@ class TensorflowTrainer(DataParallelTrainer):
 
     def __init__(
         self,
+        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         train_loop_config: Optional[Dict] = None,
         tensorflow_config: Optional[TensorflowConfig] = None,

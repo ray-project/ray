@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
-def train_one_step(trainer, train_batch) -> Dict:
+def train_one_step(trainer, train_batch, policies_to_train=None) -> Dict:
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
@@ -52,7 +52,8 @@ def train_one_step(trainer, train_batch) -> Dict:
                 train_batch,
                 {
                     pid: local_worker.get_policy(pid)
-                    for pid in local_worker.get_policies_to_train(train_batch)
+                    for pid in policies_to_train
+                    or local_worker.get_policies_to_train(train_batch)
                 },
                 local_worker,
                 num_sgd_iter,
@@ -168,9 +169,12 @@ class TrainOneStep:
     and learner stats will be returned.
 
     Examples:
-        >>> rollouts = ParallelRollouts(...)
-        >>> train_op = rollouts.for_each(TrainOneStep(workers))
-        >>> print(next(train_op))  # This trains the policy on one batch.
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> workers = ... # doctest: +SKIP
+        >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
+        >>> train_op = rollouts.for_each(TrainOneStep(workers)) # doctest: +SKIP
+        >>> # This trains the policy on one batch.
+        >>> print(next(train_op)) # doctest: +SKIP
         SampleBatch(...), {"learner_stats": ...}
 
     Updates the STEPS_TRAINED_COUNTER counter and LEARNER_INFO field in the
@@ -241,9 +245,14 @@ class MultiGPUTrainOneStep:
     and learner stats will be returned.
 
     Examples:
-        >>> rollouts = ParallelRollouts(...)
-        >>> train_op = rollouts.for_each(MultiGPUTrainOneStep(workers, ...))
-        >>> print(next(train_op))  # This trains the policy on one batch.
+        >>> from ray.rllib.execution import ParallelRollouts
+        >>> from ray.rllib.execution.train_ops import MultiGPUTrainOneStep
+        >>> workers = ... # doctest: +SKIP
+        >>> rollouts = ParallelRollouts(...) # doctest: +SKIP
+        >>> train_op = rollouts.for_each( # doctest: +SKIP
+        ...     MultiGPUTrainOneStep(workers, ...))
+        >>> # This trains the policy on one batch.
+        >>> print(next(train_op)) # doctest: +SKIP
         SampleBatch(...), {"learner_stats": ...}
 
     Updates the STEPS_TRAINED_COUNTER counter and LEARNER_INFO field in the
@@ -385,8 +394,10 @@ class ComputeGradients:
     This should be used with the .for_each() operator.
 
     Examples:
-        >>> grads_op = rollouts.for_each(ComputeGradients(workers))
-        >>> print(next(grads_op))
+        >>> from ray.rllib.execution.train_ops import ComputeGradients
+        >>> rollouts, workers = ... # doctest: +SKIP
+        >>> grads_op = rollouts.for_each(ComputeGradients(workers)) # doctest: +SKIP
+        >>> print(next(grads_op)) # doctest: +SKIP
         {"var_0": ..., ...}, 50  # grads, batch count
 
     Updates the LEARNER_INFO info field in the local iterator context.
@@ -413,8 +424,10 @@ class ApplyGradients:
     This should be used with the .for_each() operator.
 
     Examples:
-        >>> apply_op = grads_op.for_each(ApplyGradients(workers))
-        >>> print(next(apply_op))
+        >>> from ray.rllib.execution.train_ops import ApplyGradients
+        >>> grad_op, workers = ... # doctest: +SKIP
+        >>> apply_op = grads_op.for_each(ApplyGradients(workers)) # doctest: +SKIP
+        >>> print(next(apply_op)) # doctest: +SKIP
         None
 
     Updates the STEPS_TRAINED_COUNTER counter in the local iterator context.
@@ -485,9 +498,11 @@ class AverageGradients:
     have been batched with .batch().
 
     Examples:
-        >>> batched_grads = grads_op.batch(32)
-        >>> avg_grads = batched_grads.for_each(AverageGradients())
-        >>> print(next(avg_grads))
+        >>> from ray.rllib.execution.train_ops import AverageGradients
+        >>> grads_op = ... # doctest: +SKIP
+        >>> batched_grads = grads_op.batch(32) # doctest: +SKIP
+        >>> avg_grads = batched_grads.for_each(AverageGradients()) # doctest: +SKIP
+        >>> print(next(avg_grads)) # doctest: +SKIP
         {"var_0": ..., ...}, 1600  # averaged grads, summed batch count
     """
 
@@ -516,10 +531,14 @@ class UpdateTargetNetwork:
     has been taken.
 
     Examples:
-        >>> train_op = ParallelRollouts(...).for_each(TrainOneStep(...))
-        >>> update_op = train_op.for_each(
-        ...     UpdateTargetIfNeeded(workers, target_update_freq=500))
-        >>> print(next(update_op))
+        >>> from ray.rllib.execution.train_ops import UpdateTargetNetwork
+        >>> from ray.rllib.execution import ParallelRollouts, TrainOneStep
+        >>> workers = ... # doctest: +SKIP
+        >>> train_op = ParallelRollouts(...).for_each( # doctest: +SKIP
+        ...     TrainOneStep(...))
+        >>> update_op = train_op.for_each( # doctest: +SKIP
+        ...     UpdateTargetNetwork(workers, target_update_freq=500)) # doctest: +SKIP
+        >>> print(next(update_op)) # doctest: +SKIP
         None
 
     Updates the LAST_TARGET_UPDATE_TS and NUM_TARGET_UPDATES counters in the

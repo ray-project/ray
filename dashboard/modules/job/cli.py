@@ -139,7 +139,7 @@ def submit(
     """Submits a job to be run on the cluster.
 
     Example:
-        >>> ray job submit -- python my_script.py --arg=val
+        ray job submit -- python my_script.py --arg=val
     """
     client = _get_sdk_client(address, create_cluster_if_needed=True)
 
@@ -205,7 +205,7 @@ def status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
 
     Example:
-        >>> ray job status <my_job_id>
+        ray job status <my_job_id>
     """
     client = _get_sdk_client(address)
     _log_job_status(client, job_id)
@@ -236,7 +236,7 @@ def stop(address: Optional[str], no_wait: bool, job_id: str):
     """Attempts to stop a job.
 
     Example:
-        >>> ray job stop <my_job_id>
+        ray job stop <my_job_id>
     """
     client = _get_sdk_client(address)
     cli_logger.print(f"Attempting to stop job {job_id}")
@@ -285,7 +285,7 @@ def logs(address: Optional[str], job_id: str, follow: bool):
     """Gets the logs of a job.
 
     Example:
-        >>> ray job logs <my_job_id>
+        ray job logs <my_job_id>
     """
     client = _get_sdk_client(address)
     sdk_version = client.get_version()
@@ -322,7 +322,7 @@ def list(address: Optional[str]):
     """Lists all running jobs and their information.
 
     Example:
-        >>> ray job list
+        ray job list
     """
     client = _get_sdk_client(address)
     # Set no_format to True because the logs may have unescaped "{" and "}"

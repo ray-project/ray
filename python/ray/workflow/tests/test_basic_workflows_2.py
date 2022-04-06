@@ -47,7 +47,7 @@ def test_step_resources(workflow_start_regular, tmp_path):
     # sent from worker to raylet.
     signal_actor = SignalActor.remote()
 
-    @workflow.step
+    @ray.remote
     def step_run():
         ray.wait([signal_actor.send.remote()])
         with FileLock(lock_path):
@@ -59,7 +59,7 @@ def test_step_resources(workflow_start_regular, tmp_path):
 
     lock = FileLock(lock_path)
     lock.acquire()
-    ret = step_run.options(num_cpus=2).step().run_async()
+    ret = workflow.create(step_run.options(num_cpus=2).bind()).run_async()
     ray.wait([signal_actor.wait.remote()])
     obj = remote_run.remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
@@ -70,11 +70,11 @@ def test_step_resources(workflow_start_regular, tmp_path):
 
 
 def test_get_output_1(workflow_start_regular, tmp_path):
-    @workflow.step
+    @ray.remote
     def simple(v):
         return v
 
-    assert 0 == simple.step(0).run("simple")
+    assert 0 == workflow.create(simple.bind(0)).run("simple")
     assert 0 == ray.get(workflow.get_output("simple"))
 
 
@@ -82,13 +82,13 @@ def test_get_output_2(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
 
-    @workflow.step
+    @ray.remote
     def simple(v):
         with FileLock(lock_path):
             return v
 
     lock.acquire()
-    obj = simple.step(0).run_async("simple")
+    obj = workflow.create(simple.bind(0)).run_async("simple")
     obj2 = workflow.get_output("simple")
     lock.release()
     assert ray.get([obj, obj2]) == [0, 0]
@@ -100,7 +100,7 @@ def test_get_output_3(workflow_start_regular, tmp_path):
     error_flag = tmp_path / "error"
     error_flag.touch()
 
-    @workflow.step
+    @ray.remote
     def incr():
         v = int(cnt_file.read_text())
         cnt_file.write_text(str(v + 1))
@@ -109,7 +109,7 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        incr.options(max_retries=1).step().run("incr")
+        workflow.create(incr.options(max_retries=0).bind()).run("incr")
 
     assert cnt_file.read_text() == "1"
 
@@ -210,15 +210,15 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
 
 
 def test_get_named_step_default(workflow_start_regular, tmp_path):
-    @workflow.step
+    @ray.remote
     def factorial(n, r=1):
         if n == 1:
             return r
-        return factorial.step(n - 1, r * n)
+        return workflow.continuation(factorial.bind(n - 1, r * n))
 
     import math
 
-    assert math.factorial(5) == factorial.step(5).run("factorial")
+    assert math.factorial(5) == workflow.create(factorial.bind(5)).run("factorial")
     for i in range(5):
         step_name = (
             "test_basic_workflows_2.test_get_named_step_default.locals.factorial"
@@ -247,7 +247,7 @@ def test_get_named_step_duplicate(workflow_start_regular):
 
 
 def test_no_init(shutdown_only):
-    @workflow.step
+    @ray.remote
     def f():
         pass
 
@@ -256,7 +256,7 @@ def test_no_init(shutdown_only):
     )
 
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        f.step().run()
+        workflow.create(f.bind()).run()
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
         workflow.list_all()
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):

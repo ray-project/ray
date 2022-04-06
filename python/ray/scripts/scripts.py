@@ -1428,7 +1428,7 @@ def submit(
         os.path.join("~", os.path.basename(script))
 
     Example:
-        >>> ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
+        ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
     """
     cli_logger.doassert(
         not (screen and tmux),

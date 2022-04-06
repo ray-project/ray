@@ -38,8 +38,8 @@ class TrialScheduler:
         that react to metrics with their own `metric` and `mode` parameters.
 
         Args:
-            metric (str): Metric to optimize
-            mode (str): One of ["min", "max"]. Direction to optimize.
+            metric: Metric to optimize
+            mode: One of ["min", "max"]. Direction to optimize.
             **spec: Any kwargs for forward compatiblity.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
         """

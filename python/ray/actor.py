@@ -56,10 +56,19 @@ def method(*args, **kwargs):
         num_returns: The number of object refs that should be returned by
             invocations of this actor method.
     """
-    assert len(args) == 0
-    assert len(kwargs) == 1
-
-    assert "num_returns" in kwargs or "concurrency_group" in kwargs
+    valid_kwargs = ["num_returns", "concurrency_group"]
+    error_string = (
+        "The @ray.method decorator must be applied using at least one of "
+        f"the arguments in the list {valid_kwargs}, for example "
+        "'@ray.method(num_returns=2)'."
+    )
+    assert len(args) == 0 and len(kwargs) > 0, error_string
+    for key in kwargs:
+        key_error_string = (
+            f"Unexpected keyword argument to @ray.method: '{key}'. The "
+            f"supported keyword arguments are {valid_kwargs}"
+        )
+        assert key in valid_kwargs, key_error_string
 
     def annotate_method(method):
         if "num_returns" in kwargs:
@@ -554,6 +563,7 @@ class ActorClass:
         max_task_retries=None,
         name=None,
         namespace=None,
+        get_if_exists=False,
         lifetime=None,
         placement_group="default",
         placement_group_bundle_index=-1,
@@ -607,6 +617,15 @@ class ActorClass:
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
+                # Handle the get-or-create case.
+                if get_if_exists:
+                    if not cls_options.get("name"):
+                        raise ValueError(
+                            "The actor name must be specified to use `get_if_exists`."
+                        )
+                    return self._get_or_create_impl(args, kwargs)
+
+                # Normal create case.
                 return actor_cls._remote(
                     args=args,
                     kwargs=kwargs,
@@ -628,6 +647,23 @@ class ActorClass:
                     kwargs,
                     cls_options,
                 )
+
+            def _get_or_create_impl(self, args, kwargs):
+                name = cls_options["name"]
+                try:
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
+                except ValueError:
+                    # Attempt to create it (may race with other attempts).
+                    try:
+                        return actor_cls._remote(
+                            args=args,
+                            kwargs=kwargs,
+                            **cls_options,
+                        )
+                    except ValueError:
+                        # We lost the creation race, ignore.
+                        pass
+                    return ray.get_actor(name, namespace=cls_options.get("namespace"))
 
         return ActorOptionWrapper()
 

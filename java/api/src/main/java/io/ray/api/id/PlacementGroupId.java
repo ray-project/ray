@@ -8,7 +8,9 @@ import java.util.Random;
 /** Represents the id of a placement group. */
 public class PlacementGroupId extends BaseId implements Serializable {
 
-  public static final int LENGTH = 16;
+  private static final int UNIQUE_BYTES_LENGTH = 14;
+
+  public static final int LENGTH = JobId.LENGTH + UNIQUE_BYTES_LENGTH;
 
   public static final PlacementGroupId NIL = nil();
 
