@@ -82,7 +82,7 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_cartpole_a2c_micrebatch",
+    name = "learning_tests_cartpole_a2c_microbatch",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "large",
