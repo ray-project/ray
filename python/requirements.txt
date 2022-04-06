@@ -18,7 +18,7 @@ jsonschema
 msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
 opencensus
-prometheus_client >= 0.7.1
+prometheus_client >= 0.7.1, < 0.14.0
 protobuf >= 3.8.0
 py-spy >= 0.2.0
 pydantic >= 1.8
