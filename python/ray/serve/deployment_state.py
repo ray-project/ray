@@ -1393,6 +1393,7 @@ class DeploymentState:
 
         Returns if any running replicas transitioned to another state.
         """
+
         running_replicas_changed = False
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
@@ -1508,8 +1509,7 @@ class DeploymentState:
         except Exception:
             self._curr_status_info = DeploymentStatusInfo(
                 status=DeploymentStatus.UNHEALTHY,
-                message="Failed to update deployment:"
-                        f"\n{traceback.format_exception()}",
+                message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
             deleted = False
 
