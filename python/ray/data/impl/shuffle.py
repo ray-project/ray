@@ -261,14 +261,16 @@ class PushBasedShuffleOp(ShuffleOp):
         shuffle_merge = cached_remote_fn(merge)
         shuffle_reduce = cached_remote_fn(self.reduce)
 
-        # Constants used for task scheduling.
+        # Compute all constants used for task scheduling.
         cpu_map = self._get_cluster_cpu_map()
         num_cpus_total = sum(v for v in cpu_map.values())
+        task_parallelism = min(num_cpus_total, input_num_blocks)
         # N: Number of merge tasks in one map-merge round. Each map_partition
         # task will send one output to each of these merge tasks.
-        num_merge_tasks_per_round = math.ceil(num_cpus_total / (merge_factor + 1))
+        num_merge_tasks_per_round = math.ceil(task_parallelism / (merge_factor + 1))
         # M: Number of map tasks in one map-merge round.
         num_map_tasks_per_round = num_merge_tasks_per_round * merge_factor
+        # Total number of rounds of map-merge tasks.
         num_rounds = math.ceil(input_num_blocks / num_map_tasks_per_round)
 
         # Intermediate results for the map-merge stage.
