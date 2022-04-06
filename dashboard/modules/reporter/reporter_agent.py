@@ -699,9 +699,7 @@ class ReporterAgent(
                     cluster_stats = {}
 
                 stats = self._get_all_stats()
-                records_to_report = self._get_records_to_report(
-                    stats, cluster_stats
-                )
+                records_to_report = self._get_records_to_report(stats, cluster_stats)
                 self._metrics_agent.record_reporter_stats(records_to_report)
                 await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
