@@ -7,6 +7,7 @@ import os
 import pickle
 import random
 import time
+import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
@@ -1392,6 +1393,7 @@ class DeploymentState:
 
         Returns if any running replicas transitioned to another state.
         """
+
         running_replicas_changed = False
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
@@ -1504,10 +1506,10 @@ class DeploymentState:
                 self._notify_running_replicas_changed()
 
             deleted = self._check_curr_status()
-        except Exception as e:
+        except Exception:
             self._curr_status_info = DeploymentStatusInfo(
                 status=DeploymentStatus.UNHEALTHY,
-                message=f"Failed to update deployment:\n{e}.",
+                message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
             deleted = False
 
