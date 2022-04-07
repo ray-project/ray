@@ -9,7 +9,7 @@ import numpy as np
 
 import ray
 from ray import serve
-from ray.serve.api import Application
+from ray.serve.application import Application
 from ray.serve.api import build as build_app
 from ray._private.test_utils import wait_for_condition
 

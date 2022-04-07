@@ -1,4 +1,14 @@
-from typing import Any, Callable, Dict, List, TYPE_CHECKING, Type, Union, Optional
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    TYPE_CHECKING,
+    Type,
+    Union,
+    Optional,
+    Tuple,
+)
 
 import distutils
 import logging
@@ -26,6 +36,7 @@ from ray.tune.sync_client import (
     get_cloud_sync_client,
     NOOP,
     SyncClient,
+    RemoteTaskClient,
 )
 from ray.util.annotations import PublicAPI
 
@@ -120,7 +131,7 @@ def validate_sync_config(sync_config: "SyncConfig"):
         )
 
 
-def log_sync_template(options: str = ""):
+def get_rsync_template_if_available(options: str = ""):
     """Template enabling syncs between driver and worker when possible.
     Requires ray cluster to be started with the autoscaler. Also requires
     rsync to be installed.
@@ -213,8 +224,14 @@ class Syncer:
         self.last_sync_down_time = float("-inf")
         self.sync_client = sync_client
 
+    @property
+    def _pass_ip_path_tuples(self) -> False:
+        """Return True if the sync client expects (ip, path) tuples instead
+        of rsync strings (user@ip:/path/)."""
+        return isinstance(self.sync_client, RemoteTaskClient)
+
     def sync_up_if_needed(self, sync_period: int, exclude: Optional[List] = None):
-        """Syncs up if time since last sync up is greather than sync_period.
+        """Syncs up if time since last sync up is greater than sync_period.
 
         Args:
             sync_period: Time period between subsequent syncs.
@@ -226,7 +243,7 @@ class Syncer:
             self.sync_up(exclude)
 
     def sync_down_if_needed(self, sync_period: int, exclude: Optional[List] = None):
-        """Syncs down if time since last sync down is greather than sync_period.
+        """Syncs down if time since last sync down is greater than sync_period.
 
         Args:
             sync_period: Time period between subsequent syncs.
@@ -300,7 +317,7 @@ class Syncer:
         self.sync_client.close()
 
     @property
-    def _remote_path(self):
+    def _remote_path(self) -> Optional[Union[str, Tuple[str, str]]]:
         return self._remote_dir
 
 
@@ -375,7 +392,7 @@ class NodeSyncer(Syncer):
         return super(NodeSyncer, self).sync_down(exclude=exclude)
 
     @property
-    def _remote_path(self):
+    def _remote_path(self) -> Optional[Union[str, Tuple[str, str]]]:
         ssh_user = get_ssh_user()
         global _log_sync_warned
         if not self.has_remote_target():
@@ -385,6 +402,8 @@ class NodeSyncer(Syncer):
                 logger.error("Syncer requires cluster to be setup with `ray up`.")
                 _log_sync_warned = True
             return None
+        if self._pass_ip_path_tuples:
+            return self.worker_ip, self._remote_dir
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
@@ -444,7 +463,7 @@ def get_cloud_syncer(
 def get_node_syncer(
     local_dir: str,
     remote_dir: Optional[str] = None,
-    sync_function: Optional[Union[Callable, str, bool]] = None,
+    sync_function: Optional[Union[Callable, str, bool, Type[Syncer]]] = None,
 ):
     """Returns a NodeSyncer.
 
@@ -454,7 +473,8 @@ def get_node_syncer(
             noop Syncer is returned.
         sync_function: Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
-            syncer to run. If True or not provided, it defaults rsync. If
+            syncer to run. If True or not provided, it defaults rsync
+            (if available) or otherwise remote-task based syncing. If
             False, a noop Syncer is returned.
     """
     if sync_function == "auto":
@@ -462,21 +482,26 @@ def get_node_syncer(
 
     key = (local_dir, remote_dir)
     if key in _syncers:
+        # Get cached syncer
         return _syncers[key]
     elif isclass(sync_function) and issubclass(sync_function, Syncer):
+        # Type[Syncer]
         _syncers[key] = sync_function(local_dir, remote_dir, None)
         return _syncers[key]
     elif not remote_dir or sync_function is False:
+        # Do not sync trials if no remote dir specified or syncer=False
         sync_client = NOOP
     elif sync_function and sync_function is not True:
+        # String or callable (for function syncers)
         sync_client = get_sync_client(sync_function)
     else:
-        sync = log_sync_template()
-        if sync:
-            sync_client = CommandBasedClient(sync, sync)
+        # sync_function=True or sync_function=None --> default
+        rsync_function_str = get_rsync_template_if_available()
+        if rsync_function_str:
+            sync_client = CommandBasedClient(rsync_function_str, rsync_function_str)
             sync_client.set_logdir(local_dir)
         else:
-            sync_client = NOOP
+            sync_client = RemoteTaskClient()
 
     _syncers[key] = NodeSyncer(local_dir, remote_dir, sync_client)
     return _syncers[key]

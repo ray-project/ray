@@ -152,6 +152,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
         # Ignore the value function.
         else:
+            value_fn_out = 0
             vf_loss_clipped = mean_vf_loss = 0.0
 
         total_loss = reduce_mean_valid(
@@ -171,7 +172,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
         model.tower_stats["mean_policy_loss"] = mean_policy_loss
         model.tower_stats["mean_vf_loss"] = mean_vf_loss
         model.tower_stats["vf_explained_var"] = explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS], model.value_function()
+            train_batch[Postprocessing.VALUE_TARGETS], value_fn_out
         )
         model.tower_stats["mean_entropy"] = mean_entropy
         model.tower_stats["mean_kl_loss"] = mean_kl_loss
