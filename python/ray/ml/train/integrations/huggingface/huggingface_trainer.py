@@ -12,7 +12,7 @@ from torch.utils.data import Dataset as TorchDataset, IterableDataset, DataLoade
 from ray import train
 from ray.data.dataset import Dataset
 from ray.train.torch import TorchConfig
-from ray.train.session import SessionMisuseError
+from ray.train.session import get_session
 from ray.ml.trainer import GenDataset
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.config import ScalingConfig, RunConfig
@@ -315,31 +315,26 @@ class HuggingFaceTrainer(TorchTrainer):
             class RayTrainingArguments(base_training_arguments_class):
                 @property
                 def device(self) -> "torch.device":
-                    try:
-                        return train.torch.get_device()
-                    except SessionMisuseError:
+                    if get_session() is None:
                         return super().device
+                    return train.torch.get_device()
 
             base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
 
             class RayTrainer(base_trainer_class):
                 def get_train_dataloader(self):
-                    try:
-                        train.world_rank()  # check if we are in session
-                        return DataLoader(
-                            self.train_dataset,
-                            batch_size=self.args.per_device_train_batch_size,
-                            collate_fn=self.data_collator,
-                            num_workers=self.args.dataloader_num_workers,
-                            pin_memory=self.args.dataloader_pin_memory,
-                        )
-                    except SessionMisuseError:
-                        super().get_train_dataloader()
+                    if get_session() is None:
+                        return super().get_train_dataloader()
+                    return DataLoader(
+                        self.train_dataset,
+                        batch_size=self.args.per_device_train_batch_size,
+                        collate_fn=self.data_collator,
+                        num_workers=self.args.dataloader_num_workers,
+                        pin_memory=self.args.dataloader_pin_memory,
+                    )
 
                 def _wrap_model(self, model, training=True):
-                    try:
-                        train.world_rank()  # check if we are in session
-                    except SessionMisuseError:
+                    if get_session() is None:
                         return super()._wrap_model(model, training=training)
 
                     if not training:
