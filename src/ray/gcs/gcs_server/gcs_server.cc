@@ -372,7 +372,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
                                                    *gcs_resource_manager_,
                                                    *cluster_resource_scheduler_,
                                                    raylet_client_pool_,
-                                                   *gcs_ray_syncer_);
+                                                   gcs_ray_syncer_.get());
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_,
