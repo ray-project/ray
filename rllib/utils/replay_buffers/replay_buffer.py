@@ -1,17 +1,19 @@
 import logging
 import platform
 from typing import Any, Dict, List, Optional
+
 import numpy as np
 import random
 from enum import Enum
-from ray.util.debug import log_once
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
 import psutil  # noqa E402
 
+from ray.util.debug import log_once
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
@@ -60,6 +62,11 @@ class ReplayBuffer:
         self._storage = []
 
         # Caps the number of timesteps stored in this buffer
+        if capacity <= 0:
+            raise ValueError(
+                "Capacity of replay buffer has to be greater than zero "
+                "but was set to {}.".format(capacity)
+            )
         self.capacity = capacity
         # The next index to override in the buffer.
         self._next_idx = 0
@@ -88,6 +95,18 @@ class ReplayBuffer:
     def __len__(self) -> int:
         """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
+
+    @ExperimentalAPI
+    @Deprecated(old="add_batch", new="add", error=False)
+    def add_batch(self, batch: SampleBatchType, **kwargs) -> None:
+        """Deprecated in favor of new ReplayBuffer API."""
+        return self.add(batch, **kwargs)
+
+    @ExperimentalAPI
+    @Deprecated(old="replay", new="sample", error=False)
+    def replay(self, num_items: int = 1, **kwargs) -> Optional[SampleBatchType]:
+        """Deprecated in favor of new ReplayBuffer API."""
+        return self.sample(num_items, **kwargs)
 
     @ExperimentalAPI
     def add(self, batch: SampleBatchType, **kwargs) -> None:
@@ -261,10 +280,13 @@ class ReplayBuffer:
 
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
         """Fetches concatenated samples at given indeces from the storage."""
-        samples = [self._storage[i] for i in idxes]
+        samples = []
+        for i in idxes:
+            self._hit_count[i] += 1
+            samples.append(self._storage[i])
 
         if samples:
-            # Assume all samples are of same type
+            # We assume all samples are of same type
             sample_type = type(samples[0])
             out = sample_type.concat_samples(samples)
         else:

@@ -16,6 +16,7 @@
 
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
+#include "ray/util/container_util.h"
 
 namespace ray {
 
@@ -83,8 +84,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       objects_to_locate->push_back(ref);
       // The first pull request doesn't need to be special case. Instead we can just let
       // the retry timer fire immediately.
-      it = object_pull_requests_
-               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_seconds_()))
+      it = object_pull_requests_.emplace(obj_id, ObjectPullRequest(get_time_seconds_()))
                .first;
     } else {
       if (it->second.object_size_set) {
@@ -172,6 +172,9 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
       active_object_pull_requests_[obj_id].insert(next_request_it->first);
       if (needs_pull) {
         RAY_LOG(DEBUG) << "Activating pull for object " << obj_id;
+        auto &request = map_find_or_die(object_pull_requests_, obj_id);
+        request.activate_time_ms = absl::GetCurrentTimeNanos() / 1e3;
+
         TryPinObject(obj_id);
         objects_to_pull->push_back(obj_id);
         ResetRetryTimer(obj_id);
@@ -395,6 +398,9 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
       RAY_LOG(DEBUG) << "Removing an object pull request of id: " << obj_id;
       it->second.bundle_request_ids.erase(bundle_it->first);
       if (it->second.bundle_request_ids.empty()) {
+        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+            absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
+            "StartToCancel");
         object_pull_requests_.erase(it);
         object_ids_to_cancel_subscription.push_back(obj_id);
       }
@@ -425,7 +431,17 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // NOTE(swang): Since we are overwriting the previous list of clients,
   // we may end up sending a duplicate request to the same client as
   // before.
-  it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
+  it->second.client_locations.clear();
+  for (const auto &client_id : client_ids) {
+    if (client_id != self_node_id_) {
+      // We can't pull from ourselves, so filter these locations out.
+      // NOTE(swang): This means that we may try to pull an object even though
+      // the directory says that we already have the object local in plasma.
+      // This can happen due to a race condition between asynchronous updates
+      // or a bug in the object directory.
+      it->second.client_locations.push_back(client_id);
+    }
+  }
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
   it->second.pending_object_creation = pending_creation;
@@ -508,13 +524,15 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
-    restore_spilled_object_(
-        object_id, direct_restore_url, [object_id](const ray::Status &status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Object restore for " << object_id
-                           << " failed, will retry later: " << status;
-          }
-        });
+    restore_spilled_object_(object_id,
+                            it->second.object_size,
+                            direct_restore_url,
+                            [object_id](const ray::Status &status) {
+                              if (!status.ok()) {
+                                RAY_LOG(ERROR) << "Object restore for " << object_id
+                                               << " failed, will retry later: " << status;
+                              }
+                            });
     return;
   }
 
@@ -550,6 +568,9 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
+      RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_
+                     << " to spilled location at " << spilled_node_id << " of object "
+                     << object_id;
       send_pull_request_(object_id, spilled_node_id);
       return true;
     }
@@ -558,39 +579,15 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   }
 
   RAY_CHECK(!object_is_local_(object_id));
-  // Make sure that there is at least one client which is not the local client.
-  // TODO(rkn): It may actually be possible for this check to fail.
-  if (node_vector.size() == 1 && node_vector[0] == self_node_id_) {
-    RAY_LOG(WARNING) << "The object manager with ID " << self_node_id_
-                     << " is trying to pull object " << object_id
-                     << " but the object table suggests that this object manager "
-                     << "already has the object. The object may have been evicted. It is "
-                     << "most likely due to memory pressure, object pull has been "
-                     << "requested before object location is updated.";
-    return false;
-  }
 
   // Choose a random client to pull the object from.
   // Generate a random index.
   std::uniform_int_distribution<int> distribution(0, node_vector.size() - 1);
   int node_index = distribution(gen_);
   NodeID node_id = node_vector[node_index];
-  // If the object manager somehow ended up choosing itself, choose a different
-  // object manager.
-  if (node_id == self_node_id_) {
-    std::swap(node_vector[node_index], node_vector[node_vector.size() - 1]);
-    node_vector.pop_back();
-    RAY_LOG(WARNING)
-        << "The object manager with ID " << self_node_id_ << " is trying to pull object "
-        << object_id << " but the object table suggests that this object manager "
-        << "already has the object. It is most likely due to memory pressure, object "
-        << "pull has been requested before object location is updated.";
-    node_id = node_vector[node_index % node_vector.size()];
-    RAY_CHECK(node_id != self_node_id_);
-  }
-
-  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
-                 << " of object " << object_id;
+  RAY_CHECK(node_id != self_node_id_);
+  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_
+                 << " to in-memory location at " << node_id << " of object " << object_id;
   send_pull_request_(object_id, node_id);
   return true;
 }
@@ -614,6 +611,7 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
     max_timeout_object_id_ = object_id;
   }
 
+  num_tries_total_++;
   if (request.num_retries > 0) {
     // We've tried this object before.
     num_retries_total_++;
@@ -649,12 +647,25 @@ bool PullManager::TryPinObject(const ObjectID &object_id) {
   if (pinned_objects_.count(object_id) == 0) {
     auto ref = pin_object_(object_id);
     if (ref != nullptr) {
+      num_succeeded_pins_total_++;
       pinned_objects_size_ += ref->GetSize();
       pinned_objects_[object_id] = std::move(ref);
-      return false;
+
+      auto it = object_pull_requests_.find(object_id);
+      RAY_CHECK(it != object_pull_requests_.end());
+      ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+          absl::GetCurrentTimeNanos() / 1e3 - it->second.request_start_time_ms,
+          "StartToPin");
+      if (it->second.activate_time_ms > 0) {
+        ray::stats::STATS_pull_manager_object_request_time_ms.Record(
+            absl::GetCurrentTimeNanos() / 1e3 - it->second.activate_time_ms,
+            "MemoryAvailableToPin");
+      }
+    } else {
+      num_failed_pins_total_++;
     }
   }
-  return true;
+  return pinned_objects_.count(object_id) > 0;
 }
 
 void PullManager::UnpinObject(const ObjectID &object_id) {
@@ -778,12 +789,20 @@ void PullManager::RecordMetrics() const {
                                                           "Wait");
   ray::stats::STATS_pull_manager_requested_bundles.Record(task_argument_bundles_.size(),
                                                           "TaskArgs");
+  ray::stats::STATS_pull_manager_requested_bundles.Record(next_req_id_,
+                                                          "CumulativeTotal");
   ray::stats::STATS_pull_manager_requests.Record(object_pull_requests_.size(), "Queued");
   ray::stats::STATS_pull_manager_requests.Record(active_object_pull_requests_.size(),
                                                  "Active");
   ray::stats::STATS_pull_manager_requests.Record(pinned_objects_.size(), "Pinned");
   ray::stats::STATS_pull_manager_active_bundles.Record(num_active_bundles_);
   ray::stats::STATS_pull_manager_retries_total.Record(num_retries_total_);
+  ray::stats::STATS_pull_manager_retries_total.Record(num_tries_total_);
+
+  ray::stats::STATS_pull_manager_num_object_pins.Record(num_succeeded_pins_total_,
+                                                        "Success");
+  ray::stats::STATS_pull_manager_num_object_pins.Record(num_failed_pins_total_,
+                                                        "Failure");
 }
 
 std::string PullManager::DebugString() const {

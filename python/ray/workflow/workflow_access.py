@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 import ray
 from ray.workflow import common
+from ray.workflow.common import WorkflowStaticRef
 from ray.workflow import recovery
 from ray.workflow import storage
 from ray.workflow import workflow_storage
@@ -50,7 +51,9 @@ def flatten_workflow_output(
     return ray.put(_SelfDereferenceObject(workflow_id, workflow_output))
 
 
-def _resolve_workflow_output(workflow_id: Optional[str], output: ray.ObjectRef) -> Any:
+def _resolve_workflow_output(
+    workflow_id: Optional[str], output: WorkflowStaticRef
+) -> Any:
     """Resolve the output of a workflow.
 
     Args:
@@ -72,9 +75,10 @@ def _resolve_workflow_output(workflow_id: Optional[str], output: ray.ObjectRef) 
                 "Failed to connect to the workflow management actor."
             ) from e
 
+    from ray.workflow.step_executor import _resolve_static_workflow_ref
+
     try:
-        while isinstance(output, ray.ObjectRef):
-            output = ray.get(output)
+        output = _resolve_static_workflow_ref(output)
     except Exception as e:
         if workflow_id is not None:
             # re-raise the exception so we know it is a workflow failure.
@@ -113,7 +117,7 @@ def cancel_job(obj: ray.ObjectRef):
 
 @dataclass
 class LatestWorkflowOutput:
-    output: ray.ObjectRef
+    output: WorkflowStaticRef
     workflow_id: str
     step_id: "StepID"
 
@@ -191,7 +195,7 @@ class WorkflowManagementActor:
         )
         self._workflow_outputs[workflow_id] = latest_output
         logger.info(
-            f"run_or_resume: {workflow_id}, {step_id}," f"{result.persisted_output}"
+            f"run_or_resume: {workflow_id}, {step_id}," f"{result.persisted_output.ref}"
         )
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
@@ -217,7 +221,7 @@ class WorkflowManagementActor:
         workflow_id: str,
         step_id: str,
         status: common.WorkflowStatus,
-        outputs: List[ray.ObjectRef],
+        outputs: List[WorkflowStaticRef],
     ):
         # Note: For virtual actor, we could add more steps even if
         # the workflow finishes.
@@ -306,7 +310,7 @@ class WorkflowManagementActor:
             )
         return self._actor_initialized[actor_id]
 
-    def get_output(self, workflow_id: str, name: Optional[str]) -> "ray.ObjectRef":
+    def get_output(self, workflow_id: str, name: Optional[str]) -> WorkflowStaticRef:
         """Get the output of a running workflow.
 
         Args:
@@ -339,7 +343,7 @@ class WorkflowManagementActor:
             step_id = name
             output = self.get_cached_step_output(workflow_id, step_id)
             if output is not None:
-                return ray.put(_SelfDereferenceObject(None, output))
+                return WorkflowStaticRef.from_output(step_id, output)
 
         @ray.remote
         def load(wf_store, workflow_id, step_id):
@@ -349,14 +353,18 @@ class WorkflowManagementActor:
                 return wf_store.load_step_output(step_id)
             if isinstance(result.output_step_id, str):
                 actor = get_management_actor()
-                return actor.get_output.remote(workflow_id, result.output_step_id)
+                return WorkflowStaticRef.from_output(
+                    result.output_step_id,
+                    actor.get_output.remote(workflow_id, result.output_step_id),
+                )
             raise ValueError(
                 f"Cannot load output from step id {step_id} "
                 f"in workflow {workflow_id}"
             )
 
-        return ray.put(
-            _SelfDereferenceObject(None, load.remote(wf_store, workflow_id, step_id))
+        return WorkflowStaticRef.from_output(
+            step_id,
+            load.remote(wf_store, workflow_id, step_id),
         )
 
     def get_running_workflow(self) -> List[str]:

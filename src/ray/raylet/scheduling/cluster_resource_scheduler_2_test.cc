@@ -12,29 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
-
 #include <memory>
 
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/test/gcs_test_util.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/policy/scheduling_context.h"
+#include "ray/raylet/scheduling/policy/scheduling_options.h"
 
 namespace ray {
 
-using ::testing::_;
+using raylet_scheduling_policy::BundleSchedulingContext;
+using raylet_scheduling_policy::SchedulingType;
 
 class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
-    gcs_resource_scheduler_ = std::make_shared<gcs::GcsResourceScheduler>();
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
   }
 
-  void TearDown() override { gcs_resource_scheduler_.reset(); }
+  void TearDown() override { cluster_resource_scheduler_.reset(); }
 
   void AddNode(const rpc::GcsNodeInfo &node) {
     scheduling::NodeID node_id(node.node_id());
-    auto &cluster_resource_manager = gcs_resource_scheduler_->GetClusterResourceManager();
+    auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
     for (const auto &entry : node.resources_total()) {
       cluster_resource_manager.UpdateResourceCapacity(
           node_id, scheduling::ResourceID(entry.first), entry.second);
@@ -44,7 +45,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
   void AddClusterResources(const NodeID &node_id,
                            const std::string &resource_name,
                            double resource_value) {
-    auto node = Mocker::GenNodeInfo();
+    auto node = std::make_shared<rpc::GcsNodeInfo>();
     node->set_node_id(node_id.Binary());
     (*node->mutable_resources_total())[resource_name] = resource_value;
     AddNode(*node);
@@ -52,7 +53,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
 
   void AddClusterResources(const NodeID &node_id,
                            const std::vector<std::pair<std::string, double>> &resource) {
-    auto node = Mocker::GenNodeInfo();
+    auto node = std::make_shared<rpc::GcsNodeInfo>();
     node->set_node_id(node_id.Binary());
     for (auto r : resource) {
       (*node->mutable_resources_total())[r.first] = r.second;
@@ -64,42 +65,37 @@ class GcsResourceSchedulerTest : public ::testing::Test {
                                       const std::string &resource_name,
                                       double resource_value) {
     const auto &cluster_resource_manager =
-        gcs_resource_scheduler_->GetClusterResourceManager();
+        cluster_resource_scheduler_->GetClusterResourceManager();
     const auto &node_resources =
         cluster_resource_manager.GetNodeResources(scheduling::NodeID(node_id.Binary()));
-    auto resource_id = scheduling::ResourceID(resource_name).ToInt();
-    ASSERT_NE(resource_id, -1);
+    auto resource_id = scheduling::ResourceID(resource_name);
 
-    const ResourceCapacity *resource_capacity = nullptr;
-    if (resource_id >= 0 && resource_id < PredefinedResources_MAX) {
-      resource_capacity = &node_resources.predefined_resources[resource_id];
-    } else {
-      auto iter = node_resources.custom_resources.find(resource_id);
-      if (iter != node_resources.custom_resources.end()) {
-        resource_capacity = &iter->second;
-      }
-    }
-    ASSERT_TRUE(resource_capacity != nullptr);
-    ASSERT_EQ(resource_capacity->available.Double(), resource_value);
+    ASSERT_TRUE(node_resources.available.Has(resource_id));
+    ASSERT_EQ(node_resources.available.Get(resource_id).Double(), resource_value);
   }
 
-  void TestResourceLeaks(const gcs::SchedulingType &scheduling_type) {
+  void TestResourceLeaks(SchedulingOptions scheduling_options) {
     // Add node resources.
-    const auto &node_id = NodeID::FromRandom();
+    auto node_id = NodeID::FromRandom();
     const std::string cpu_resource = "CPU";
     const double node_cpu_num = 6.0;
     AddClusterResources(node_id, cpu_resource, node_cpu_num);
 
     // Scheduling succeeded and node resources are used up.
-    std::vector<ResourceRequest> required_resources_list;
+    std::vector<ResourceRequest> requests;
     absl::flat_hash_map<std::string, double> resource_map;
     for (int bundle_cpu_num = 1; bundle_cpu_num <= 3; ++bundle_cpu_num) {
       resource_map[cpu_resource] = bundle_cpu_num;
-      required_resources_list.emplace_back(ResourceMapToResourceRequest(
+      requests.emplace_back(ResourceMapToResourceRequest(
           resource_map, /*requires_object_store_memory=*/false));
     }
+
+    std::vector<const ResourceRequest *> resource_request_list;
+    for (auto &request : requests) {
+      resource_request_list.emplace_back(&request);
+    }
     const auto &result1 =
-        gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
+        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
     ASSERT_TRUE(result1.status.IsSuccess());
     ASSERT_EQ(result1.selected_nodes.size(), 3);
 
@@ -108,11 +104,16 @@ class GcsResourceSchedulerTest : public ::testing::Test {
 
     // Scheduling failure.
     resource_map[cpu_resource] = 5;
-    required_resources_list.emplace_back(
+    requests.emplace_back(
         ResourceMapToResourceRequest(resource_map,
                                      /*requires_object_store_memory=*/false));
+
+    resource_request_list.clear();
+    for (auto &request : requests) {
+      resource_request_list.emplace_back(&request);
+    }
     const auto &result2 =
-        gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
+        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
     ASSERT_TRUE(result2.status.IsFailed());
     ASSERT_EQ(result2.selected_nodes.size(), 0);
 
@@ -120,11 +121,12 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     CheckClusterAvailableResources(node_id, cpu_resource, node_cpu_num);
   }
 
-  void TestBinPackingByPriority(const gcs::SchedulingType &scheduling_type) {
+  void TestBinPackingByPriority(SchedulingOptions scheduling_options) {
     // Add node resources.
     std::string cpu_resource = "CPU";
     std::string gpu_resource = "GPU";
     std::string mem_resource = "memory";
+    std::string custom_resource = "custom";
 
     std::vector<std::vector<std::pair<std::string, double>>> resources_list;
 
@@ -139,6 +141,10 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 1.0)}));
     resources_list.emplace_back(std::vector(
         {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 2.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(custom_resource, 1.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(custom_resource, 2.0)}));
 
     std::vector<NodeID> node_ids;
     for (auto r : resources_list) {
@@ -147,46 +153,47 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     }
 
     // Scheduling succeeded and node resources are used up.
-    std::vector<ResourceRequest> required_resources_list;
+    std::vector<ResourceRequest> requests;
     for (auto resources : resources_list) {
       absl::flat_hash_map<std::string, double> resource_map;
       for (auto r : resources) {
         resource_map[r.first] = r.second;
       }
-      required_resources_list.emplace_back(ResourceMapToResourceRequest(
+      requests.emplace_back(ResourceMapToResourceRequest(
           resource_map, /*requires_object_store_memory=*/false));
     }
 
-    const auto &result1 =
-        gcs_resource_scheduler_->Schedule(required_resources_list, scheduling_type);
-    ASSERT_TRUE(result1.status.IsSuccess());
-    ASSERT_EQ(result1.selected_nodes.size(), resources_list.size());
+    std::vector<const ResourceRequest *> resource_request_list;
+    for (auto &request : requests) {
+      resource_request_list.emplace_back(&request);
+    }
+    auto result =
+        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
+    ASSERT_TRUE(result.status.IsSuccess());
+    ASSERT_EQ(result.selected_nodes.size(), resources_list.size());
   }
 
-  std::shared_ptr<gcs::GcsResourceScheduler> gcs_resource_scheduler_;
-
- private:
-  instrumented_io_context io_service_;
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 };
 
 TEST_F(GcsResourceSchedulerTest, TestPackBinPackingByPriority) {
-  TestBinPackingByPriority(gcs::SchedulingType::PACK);
+  TestBinPackingByPriority(SchedulingOptions::BundlePack());
 }
 
 TEST_F(GcsResourceSchedulerTest, TestStrictSpreadBinPackingByPriority) {
-  TestBinPackingByPriority(gcs::SchedulingType::STRICT_SPREAD);
+  TestBinPackingByPriority(SchedulingOptions::BundleStrictSpread());
 }
 
 TEST_F(GcsResourceSchedulerTest, TestSpreadBinPackingByPriority) {
-  TestBinPackingByPriority(gcs::SchedulingType::SPREAD);
+  TestBinPackingByPriority(SchedulingOptions::BundleSpread());
 }
 
 TEST_F(GcsResourceSchedulerTest, TestPackScheduleResourceLeaks) {
-  TestResourceLeaks(gcs::SchedulingType::PACK);
+  TestResourceLeaks(SchedulingOptions::BundlePack());
 }
 
 TEST_F(GcsResourceSchedulerTest, TestSpreadScheduleResourceLeaks) {
-  TestResourceLeaks(gcs::SchedulingType::SPREAD);
+  TestResourceLeaks(SchedulingOptions::BundleSpread());
 }
 
 TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
@@ -197,23 +204,33 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   AddClusterResources(node_id, cpu_resource, node_cpu_num);
 
   // Scheduling failure.
-  std::vector<ResourceRequest> required_resources_list;
-  absl::flat_hash_map<std::string, double> resource_map;
-  resource_map[cpu_resource] = 1;
-  required_resources_list.emplace_back(
+  absl::flat_hash_map<std::string, double> resource_map{{cpu_resource, 1}};
+  std::vector<ResourceRequest> requests;
+  requests.emplace_back(
       ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false));
-  const auto &result1 =
-      gcs_resource_scheduler_->Schedule(required_resources_list,
-                                        gcs::SchedulingType::STRICT_SPREAD,
-                                        [](const scheduling::NodeID &) { return false; });
+
+  std::vector<const ResourceRequest *> resource_request_list;
+  for (auto &request : requests) {
+    resource_request_list.emplace_back(&request);
+  }
+
+  auto bundle_locations = std::make_shared<BundleLocations>();
+  BundleID bundle_id{PlacementGroupID::Of(JobID::FromInt(1)), 0};
+  bundle_locations->emplace(bundle_id, std::make_pair(node_id, nullptr));
+  BundleSchedulingContext scheduling_context_1(bundle_locations);
+  auto result1 =
+      cluster_resource_scheduler_->Schedule(resource_request_list,
+                                            SchedulingOptions::BundleStrictSpread(),
+                                            &scheduling_context_1);
   ASSERT_TRUE(result1.status.IsInfeasible());
   ASSERT_EQ(result1.selected_nodes.size(), 0);
 
   // Scheduling succeeded.
-  const auto &result2 =
-      gcs_resource_scheduler_->Schedule(required_resources_list,
-                                        gcs::SchedulingType::STRICT_SPREAD,
-                                        [](const scheduling::NodeID &) { return true; });
+  BundleSchedulingContext scheduling_context_2(nullptr);
+  auto result2 =
+      cluster_resource_scheduler_->Schedule(resource_request_list,
+                                            SchedulingOptions::BundleStrictSpread(),
+                                            &scheduling_context_2);
   ASSERT_TRUE(result2.status.IsSuccess());
   ASSERT_EQ(result2.selected_nodes.size(), 1);
 }
@@ -228,16 +245,19 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
   AddClusterResources(node_tow_id, cpu_resource, node_cpu_num);
 
   // Mock a request that has three required resources.
-  std::vector<ResourceRequest> required_resources_list;
-  absl::flat_hash_map<std::string, double> resource_map;
-  resource_map[cpu_resource] = 1;
+  std::vector<ResourceRequest> requests;
+  absl::flat_hash_map<std::string, double> resource_map{{cpu_resource, 1}};
   for (int node_number = 0; node_number < 3; node_number++) {
-    required_resources_list.emplace_back(ResourceMapToResourceRequest(
+    requests.emplace_back(ResourceMapToResourceRequest(
         resource_map, /*requires_object_store_memory=*/false));
   }
 
-  const auto &result1 = gcs_resource_scheduler_->Schedule(
-      required_resources_list, gcs::SchedulingType::STRICT_SPREAD);
+  std::vector<const ResourceRequest *> resource_request_list;
+  for (auto &request : requests) {
+    resource_request_list.emplace_back(&request);
+  }
+  auto result1 = cluster_resource_scheduler_->Schedule(
+      resource_request_list, SchedulingOptions::BundleStrictSpread());
   ASSERT_TRUE(result1.status.IsInfeasible());
   ASSERT_EQ(result1.selected_nodes.size(), 0);
 
@@ -247,14 +267,18 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
 
   // Mock a request that only has one required resource but bigger than the maximum
   // resource.
-  required_resources_list.clear();
+  requests.clear();
   resource_map.clear();
   resource_map[cpu_resource] = 50;
-  required_resources_list.emplace_back(
+  requests.emplace_back(
       ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false));
 
-  const auto &result2 = gcs_resource_scheduler_->Schedule(
-      required_resources_list, gcs::SchedulingType::STRICT_PACK);
+  resource_request_list.clear();
+  for (auto &request : requests) {
+    resource_request_list.emplace_back(&request);
+  }
+  const auto &result2 = cluster_resource_scheduler_->Schedule(
+      resource_request_list, SchedulingOptions::BundleStrictPack());
   ASSERT_TRUE(result2.status.IsInfeasible());
   ASSERT_EQ(result2.selected_nodes.size(), 0);
 

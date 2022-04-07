@@ -1,4 +1,3 @@
-import copy
 import numpy as np
 import unittest
 
@@ -93,28 +92,35 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether a PPOTrainer can be built with all frameworks."""
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        # For checking lr-schedule correctness.
-        config["callbacks"] = MyCallbacks
 
-        config["num_workers"] = 1
-        config["num_sgd_iter"] = 2
-        # Settings in case we use an LSTM.
-        config["model"]["lstm_cell_size"] = 10
-        config["model"]["max_seq_len"] = 20
-        # Use default-native keras models whenever possible.
-        # config["model"]["_use_default_native_models"] = True
+        # Build a PPOConfig object.
+        config = (
+            ppo.PPOConfig()
+            .training(
+                num_sgd_iter=2,
+                # Setup lr schedule for testing.
+                lr_schedule=[[0, 5e-5], [128, 0.0]],
+                # Set entropy_coeff to a faulty value to proof that it'll get
+                # overridden by the schedule below (which is expected).
+                entropy_coeff=100.0,
+                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
+            )
+            .rollouts(
+                num_rollout_workers=1,
+                # Test with compression.
+                compress_observations=True,
+            )
+            .training(
+                train_batch_size=128,
+                model=dict(
+                    # Settings in case we use an LSTM.
+                    lstm_cell_size=10,
+                    max_seq_len=20,
+                ),
+            )
+            .callbacks(MyCallbacks)
+        )  # For checking lr-schedule correctness.
 
-        # Setup lr- and entropy schedules for testing.
-        config["lr_schedule"] = [[0, config["lr"]], [128, 0.0]]
-        # Set entropy_coeff to a faulty value to proof that it'll get
-        # overridden by the schedule below (which is expected).
-        config["entropy_coeff"] = 100.0
-        config["entropy_coeff_schedule"] = [[0, 0.1], [256, 0.0]]
-
-        config["train_batch_size"] = 128
-        # Test with compression.
-        config["compress_observations"] = True
         num_iterations = 2
 
         for fw in framework_iterator(config, with_eager_tracing=True):
@@ -122,9 +128,13 @@ class TestPPO(unittest.TestCase):
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
-                    config["model"]["use_lstm"] = lstm
-                    config["model"]["lstm_use_prev_action"] = lstm
-                    config["model"]["lstm_use_prev_reward"] = lstm
+                    config.training(
+                        model=dict(
+                            use_lstm=lstm,
+                            lstm_use_prev_action=lstm,
+                            lstm_use_prev_reward=lstm,
+                        )
+                    )
 
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     policy = trainer.get_policy()
@@ -135,7 +145,7 @@ class TestPPO(unittest.TestCase):
                             [entropy_coeff, lr]
                         )
                     check(entropy_coeff, 0.1)
-                    check(lr, config["lr"])
+                    check(lr, config.lr)
 
                     for i in range(num_iterations):
                         results = trainer.train()
@@ -149,9 +159,16 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        config["num_workers"] = 0  # Run locally.
-        config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env_config={"is_slippery": False, "map_name": "4x4"},
+            )
+            .rollouts(
+                # Run locally.
+                num_rollout_workers=0,
+            )
+        )
         obs = np.array(0)
 
         # Test against all frameworks.
@@ -191,13 +208,21 @@ class TestPPO(unittest.TestCase):
 
     def test_ppo_free_log_std(self):
         """Tests the free log std option works."""
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        config["num_workers"] = 0  # Run locally.
-        config["gamma"] = 0.99
-        config["model"]["fcnet_hiddens"] = [10]
-        config["model"]["fcnet_activation"] = "linear"
-        config["model"]["free_log_std"] = True
-        config["model"]["vf_share_layers"] = True
+        config = (
+            ppo.PPOConfig()
+            .rollouts(
+                num_rollout_workers=0,
+            )
+            .training(
+                gamma=0.99,
+                model=dict(
+                    fcnet_hiddens=[10],
+                    fcnet_activation="linear",
+                    free_log_std=True,
+                    vf_share_layers=True,
+                ),
+            )
+        )
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
@@ -236,14 +261,31 @@ class TestPPO(unittest.TestCase):
             assert post_std != 0.0, post_std
             trainer.stop()
 
+    def test_ppo_legacy_config(self):
+        """Tests, whether the old PPO config dict is still functional."""
+        ppo_config = ppo.DEFAULT_CONFIG
+        # Expect warning.
+        print(f"Accessing learning-rate from legacy config dict: {ppo_config['lr']}")
+        # Build Trainer.
+        ppo_trainer = ppo.PPOTrainer(config=ppo_config, env="CartPole-v1")
+        print(ppo_trainer.train())
+
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        config["num_workers"] = 0  # Run locally.
-        config["gamma"] = 0.99
-        config["model"]["fcnet_hiddens"] = [10]
-        config["model"]["fcnet_activation"] = "linear"
-        config["model"]["vf_share_layers"] = True
+        config = (
+            ppo.PPOConfig()
+            .rollouts(
+                num_rollout_workers=0,
+            )
+            .training(
+                gamma=0.99,
+                model=dict(
+                    fcnet_hiddens=[10],
+                    fcnet_activation="linear",
+                    vf_share_layers=True,
+                ),
+            )
+        )
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")

@@ -85,7 +85,7 @@ class TestSAC(unittest.TestCase):
         # If we use default buffer size (1e6), the buffer will take up
         # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
         # available system memory (8.34816 GB).
-        config["buffer_size"] = 40000
+        config["replay_buffer_config"]["capacity"] = 40000
         # Test with saved replay buffer.
         config["store_buffer_in_checkpoints"] = True
         num_iterations = 1
