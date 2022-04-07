@@ -33,12 +33,16 @@
     "react-window": "^1.8.5",
     "typeface-roboto": "0.0.75",
     "typescript": "3.8.3",
-    "use-debounce": "^3.4.3"
+    "use-debounce": "^3.4.3",
+    "yarn": "^1.22.18"
   },
   "devDependencies": {
     "eslint-plugin-import": "2.20.1",
     "eslint-plugin-prefer-arrow": "1.1.7",
     "prettier": "2.3.0"
+  },
+  "resolutions": {
+    "@types/react": "16.9.26"
   },
   "scripts": {
     "start": "react-scripts start",
