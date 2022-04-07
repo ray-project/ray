@@ -4,7 +4,6 @@ import ray
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.memory_leaking_env import MemoryLeakingEnv
-from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.policy.memory_leaking_policy import MemoryLeakingPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.debug.memory import check_memory_leaks
@@ -36,13 +35,6 @@ class TestMemoryLeaks(unittest.TestCase):
         assert results["env"]
         trainer.stop()
 
-        # Test non-leaky env.
-        config["env"] = RandomEnv
-        trainer = ppo.PPOTrainer(config=config)
-        results = check_memory_leaks(trainer, to_check={"env"}, repeats=150)
-        assert not results["env"]
-        trainer.stop()
-
     def test_leaky_policy(self):
         """Tests, whether our diagnostics tools can detect leaks in a policy."""
         config = dqn.DEFAULT_CONFIG.copy()
@@ -56,15 +48,6 @@ class TestMemoryLeaks(unittest.TestCase):
         trainer = dqn.DQNTrainer(config=config)
         results = check_memory_leaks(trainer, to_check={"policy"}, repeats=300)
         assert results["policy"]
-        trainer.stop()
-
-        # Test non-leaky policy.
-        config["multiagent"]["policies"] = {
-            "default_policy": PolicySpec(),
-        }
-        trainer = dqn.DQNTrainer(config=config)
-        results = check_memory_leaks(trainer, to_check={"policy"}, repeats=300)
-        assert not results["policy"]
         trainer.stop()
 
 
