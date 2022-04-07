@@ -91,7 +91,7 @@ def get_cli_args():
         "--use-lstm",
         action="store_true",
         help="Whether to auto-wrap the model with an LSTM. Only valid option for "
-             "--run=[IMPALA|PPO|R2D2]",
+        "--run=[IMPALA|PPO|R2D2]",
     )
     parser.add_argument(
         "--stop-iters", type=int, default=200, help="Number of iterations to train."
@@ -172,7 +172,7 @@ if __name__ == "__main__":
         "framework": args.framework,
         # Set to INFO so we'll see the server's actual address:port.
         "log_level": "INFO",
-        "model":{}
+        "model": {},
     }
 
     # DQN.
@@ -184,7 +184,7 @@ if __name__ == "__main__":
                 "timesteps_per_iteration": 200,
                 "n_step": 3,
                 "rollout_fragment_length": 4,
-                "train_batch_size": 8
+                "train_batch_size": 8,
             }
         )
         config["model"] = {
@@ -195,9 +195,7 @@ if __name__ == "__main__":
             config["model"]["use_lstm"] = args.use_lstm
 
     elif args.run == "IMPALA":
-        config.update({
-            "model": {"use_lstm": args.use_lstm}
-    })
+        config.update({"model": {"use_lstm": args.use_lstm}})
 
     # PPO.
     else:
@@ -206,7 +204,7 @@ if __name__ == "__main__":
             {
                 "rollout_fragment_length": 1000,
                 "train_batch_size": 4000,
-                "model": {"use_lstm": args.use_lstm}
+                "model": {"use_lstm": args.use_lstm},
             }
         )
 
