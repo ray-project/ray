@@ -62,7 +62,7 @@ def synchronous_parallel_sample_until(
         episodes += sum(sum(b[SampleBatch.DONES]) for b in batch)
         sample_batches.append(*batch)
     full_batch = SampleBatch.concat_samples(sample_batches)
-    # Discard collected incomplete episodes in episode mode
+    # Discard collected incomplete episodes in episode mode.
     if episodes >= max_episodes:
         last_complete_ep_idx = len(full_batch) - full_batch[
             SampleBatch.DONES
