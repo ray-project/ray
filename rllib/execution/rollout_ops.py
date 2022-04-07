@@ -18,7 +18,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
 )
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
@@ -31,51 +31,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
-def synchronous_parallel_sample_until(
-    worker_set: WorkerSet,
-    max_agent_steps: Optional[int] = None,
-    max_env_steps: Optional[int] = None,
-    max_episodes: Optional[int] = None,
-    remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
-) -> SampleBatch:
-    """Calls synchronous_parallel_samples until either max_agent_steps
-    or max_env_steps or max_episodes are collected, whichever is reached first.
-    Returns a single, concatenated SampleBatch"""
-    # TODO: Check complete episodes mode
-    assert not (max_agent_steps is None and max_env_steps is None)
-    max_env_steps = float("inf") if max_env_steps is None else max_env_steps
-    max_agent_steps = float("inf") if max_agent_steps is None else max_agent_steps
-    max_episodes = float("inf") if max_episodes is None else max_episodes
-    agent_steps = 0
-    env_steps = 0
-    episodes = 0
-    sample_batches = []
-    while (
-        env_steps < max_env_steps
-        and agent_steps < max_agent_steps
-        and episodes < max_episodes
-    ):
-        batch = synchronous_parallel_sample(worker_set, remote_fn)
-        env_steps += sum(b.env_steps() for b in batch)
-        agent_steps += sum(b.agent_steps() for b in batch)
-        episodes += sum(sum(b[SampleBatch.DONES]) for b in batch)
-        sample_batches.append(*batch)
-    full_batch = SampleBatch.concat_samples(sample_batches)
-    # Discard collected incomplete episodes in episode mode.
-    if episodes >= max_episodes:
-        last_complete_ep_idx = len(full_batch) - full_batch[
-            SampleBatch.DONES
-        ].reverse().index(1)
-        full_batch = full_batch.slice(0, last_complete_ep_idx)
-
-    return full_batch
-
-
-@ExperimentalAPI
+@DeveloperAPI
 def synchronous_parallel_sample(
     worker_set: WorkerSet,
     remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
+    max_agent_steps: Optional[int] = None,
+    max_env_steps: Optional[int] = None,
+    max_episodes: Optional[int] = None,
 ) -> List[SampleBatch]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
@@ -91,6 +53,12 @@ def synchronous_parallel_sample(
         worker_set: The WorkerSet to use for sampling.
         remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
             of `worker.sample.remote()` to generate the requests.
+        max_agent_steps: Optional number of agent steps to be included in the
+            final batch.
+        max_env_steps: Optional number of environment steps to be included in the
+            final batch.
+        max_episodes: Optional number of episodes to be included in the final batch.
+            TODO: Check complete episodes mode
 
     Returns:
         The list of collected sample batch types (one for each parallel
@@ -110,16 +78,48 @@ def synchronous_parallel_sample(
         >>> print(len(batches)) # doctest: +SKIP
         1
     """
-    # No remote workers in the set -> Use local worker for collecting
-    # samples.
-    if not worker_set.remote_workers():
-        return [worker_set.local_worker().sample()]
+    # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.
+    assert not (max_agent_steps is None and max_env_steps is None)
 
-    # Loop over remote workers' `sample()` method in parallel.
-    sample_batches = ray.get([r.sample.remote() for r in worker_set.remote_workers()])
+    max_env_steps = float("inf") if max_env_steps is None else max_env_steps
+    max_agent_steps = float("inf") if max_agent_steps is None else max_agent_steps
+    max_episodes = float("inf") if max_episodes is None else max_episodes
+    agent_steps = 0
+    env_steps = 0
+    episodes = 0
+    all_sample_batches = []
 
-    # Return all collected batches.
-    return sample_batches
+    # Stop collecting batches as soon as one criterium is met.
+    while (
+        env_steps < max_env_steps
+        and agent_steps < max_agent_steps
+        and episodes < max_episodes
+    ):
+        # No remote workers in the set -> Use local worker for collecting
+        # samples.
+        if not worker_set.remote_workers():
+            sample_batches = [worker_set.local_worker().sample()]
+        # Loop over remote workers' `sample()` method in parallel.
+        else:
+            sample_batches = ray.get(
+                [worker.sample.remote() for worker in worker_set.remote_workers()]
+            )
+        # Update our counters.
+        for b in sample_batches:
+            env_steps += b.env_steps()
+            agent_steps += b.agent_steps()
+            episodes += sum(b[SampleBatch.DONES])
+        all_sample_batches.append(*sample_batches)
+
+    full_batch = SampleBatch.concat_samples(all_sample_batches)
+    # Discard collected incomplete episodes in episode mode.
+    if episodes >= max_episodes:
+        last_complete_ep_idx = len(full_batch) - full_batch[
+            SampleBatch.DONES
+        ].reverse().index(1)
+        full_batch = full_batch.slice(0, last_complete_ep_idx)
+
+    return full_batch
 
 
 def ParallelRollouts(
