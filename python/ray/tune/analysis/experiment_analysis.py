@@ -1,18 +1,18 @@
 import json
 import logging
 import os
-import warnings
 import traceback
+import warnings
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.ml.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
-from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf
+from ray.util.debug import log_once
 
 try:
     import pandas as pd
@@ -47,7 +47,7 @@ DEFAULT_FILE_TYPE = "csv"
 
 @PublicAPI(stability="beta")
 class ExperimentAnalysis:
-    """Analyze results from a Tune experiment.
+    """Analyze results from a Ray Tune experiment.
 
     To use this class, the experiment must be executed with the JsonLogger.
 
