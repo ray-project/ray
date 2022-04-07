@@ -41,7 +41,7 @@ def ray_start_1_cpu_1_gpu():
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
 def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
     def train_fn():
-        return train.torch.get_device()
+        return train.torch.get_device().index
 
     trainer = Trainer(
         "torch",
