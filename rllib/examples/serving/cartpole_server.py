@@ -28,8 +28,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.dqn import DQNTrainer
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.tune.logger import pretty_print
@@ -78,7 +77,7 @@ def get_cli_args():
     parser.add_argument(
         "--run",
         default="PPO",
-        choices=["DQN", "PPO"],
+        choices=["APEX", "DQN", "IMPALA", "PPO", "R2D2"],
         help="The RLlib-registered algorithm to use.",
     )
     parser.add_argument("--num-cpus", type=int, default=3)
@@ -87,6 +86,12 @@ def get_cli_args():
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
         help="The DL framework specifier.",
+    )
+    parser.add_argument(
+        "--use-lstm",
+        action="store_true",
+        help="Whether to auto-wrap the model with an LSTM. Only valid option for "
+        "--run=[IMPALA|PPO|R2D2]",
     )
     parser.add_argument(
         "--stop-iters", type=int, default=200, help="Number of iterations to train."
@@ -167,22 +172,30 @@ if __name__ == "__main__":
         "framework": args.framework,
         # Set to INFO so we'll see the server's actual address:port.
         "log_level": "INFO",
+        "model": {},
     }
 
     # DQN.
-    if args.run == "DQN":
+    if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":
         # Example of using DQN (supports off-policy actions).
         config.update(
             {
                 "learning_starts": 100,
                 "timesteps_per_iteration": 200,
                 "n_step": 3,
+                "rollout_fragment_length": 4,
+                "train_batch_size": 8,
             }
         )
         config["model"] = {
             "fcnet_hiddens": [64],
             "fcnet_activation": "linear",
         }
+        if args.run == "R2D2":
+            config["model"]["use_lstm"] = args.use_lstm
+
+    elif args.run == "IMPALA":
+        config.update({"model": {"use_lstm": args.use_lstm}})
 
     # PPO.
     else:
@@ -191,6 +204,7 @@ if __name__ == "__main__":
             {
                 "rollout_fragment_length": 1000,
                 "train_batch_size": 4000,
+                "model": {"use_lstm": args.use_lstm},
             }
         )
 
@@ -203,10 +217,8 @@ if __name__ == "__main__":
 
     # Manual training loop (no Ray tune).
     if args.no_tune:
-        if args.run == "DQN":
-            trainer = DQNTrainer(config=config)
-        else:
-            trainer = PPOTrainer(config=config)
+        trainer_cls = get_trainer_class(args.run)
+        trainer = trainer_cls(config=config)
 
         if checkpoint_path:
             print("Restoring from checkpoint path", checkpoint_path)
