@@ -1,5 +1,6 @@
 from typing import Any, Callable, List, Optional, Dict, Type
 import os
+from unittest.mock import patch
 
 import torch
 import transformers.trainer
@@ -248,8 +249,6 @@ class HuggingFaceTrainer(TorchTrainer):
             os.environ["RANK"] = str(train.world_rank())
             os.environ["WORLD_SIZE"] = str(train.world_size())
             os.environ["LOCAL_RANK"] = str(train.local_rank())
-            os.environ["WANDB_DISABLED"] = "true"
-            os.environ["DISABLE_MLFLOW_INTEGRATION"] = "true"
 
             train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
             eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
@@ -291,9 +290,15 @@ class HuggingFaceTrainer(TorchTrainer):
             else:
                 eval_torch_dataset = None
 
-            trainer: transformers.trainer.Trainer = trainer_init_per_worker(
-                train_torch_dataset, eval_torch_dataset, **config
-            )
+            # ensure no HF logging callbacks are added
+            # aside from doubling functionality with our callbacks,
+            # the Wandb callbacks causes training to freeze
+            with patch(
+                "transformers.trainer.get_reporting_integration_callbacks", lambda x: []
+            ):
+                trainer: transformers.trainer.Trainer = trainer_init_per_worker(
+                    train_torch_dataset, eval_torch_dataset, **config
+                )
 
             if not trainer.args.local_rank == train.local_rank():
                 raise RuntimeError(
@@ -319,43 +324,50 @@ class HuggingFaceTrainer(TorchTrainer):
 
             class RayTrainer(base_trainer_class):
                 def get_train_dataloader(self):
-                    return DataLoader(
-                        self.train_dataset,
-                        batch_size=self.args.per_device_train_batch_size,
-                        collate_fn=self.data_collator,
-                        num_workers=self.args.dataloader_num_workers,
-                        pin_memory=self.args.dataloader_pin_memory,
-                    )
+                    try:
+                        train.world_rank()  # check if we are in session
+                        return DataLoader(
+                            self.train_dataset,
+                            batch_size=self.args.per_device_train_batch_size,
+                            collate_fn=self.data_collator,
+                            num_workers=self.args.dataloader_num_workers,
+                            pin_memory=self.args.dataloader_pin_memory,
+                        )
+                    except SessionMisuseError:
+                        super().get_train_dataloader()
 
                 def _wrap_model(self, model, training=True):
+                    try:
+                        train.world_rank()  # check if we are in session
+                    except SessionMisuseError:
+                        return super()._wrap_model(model, training=training)
+
                     if not training:
                         return model
-                    try:
-                        kwargs = {}
-                        # same logic as in transformers.Trainer
-                        if self.args.ddp_find_unused_parameters is not None:
-                            kwargs[
-                                "find_unused_parameters"
-                            ] = self.args.ddp_find_unused_parameters
-                        elif isinstance(model, transformers.trainer.PreTrainedModel):
-                            # find_unused_parameters breaks checkpointing as per
-                            # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
-                            kwargs[
-                                "find_unused_parameters"
-                            ] = not model.is_gradient_checkpointing
-                        else:
-                            kwargs["find_unused_parameters"] = True
+                    kwargs = {}
+                    # same logic as in transformers.Trainer
+                    if self.args.ddp_find_unused_parameters is not None:
+                        kwargs[
+                            "find_unused_parameters"
+                        ] = self.args.ddp_find_unused_parameters
+                    elif isinstance(model, transformers.trainer.PreTrainedModel):
+                        # find_unused_parameters breaks checkpointing as per
+                        # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
+                        kwargs[
+                            "find_unused_parameters"
+                        ] = not model.is_gradient_checkpointing
+                    else:
+                        kwargs["find_unused_parameters"] = True
 
-                        if self.args.ddp_bucket_cap_mb is not None:
-                            kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
-                        return train.torch.prepare_model(model, ddp_kwargs=kwargs)
-                    except SessionMisuseError:
-                        return super()._wrap_model(model, training)
+                    if self.args.ddp_bucket_cap_mb is not None:
+                        kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
+                    return train.torch.prepare_model(model, ddp_kwargs=kwargs)
 
             trainer.__class__ = RayTrainer
             trainer.args.__class__ = RayTrainingArguments
             trainer.add_callback(_TrainReportCallback)
-            torch.cuda.set_device(train.torch.get_device())
+            if trainer.args.device.type == "cuda":
+                torch.cuda.set_device(trainer.args.device)
             trainer.train()
 
         return train_loop_per_worker
