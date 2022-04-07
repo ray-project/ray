@@ -376,7 +376,7 @@ Next, let's create a simple deployment that logs a custom log message when it's 
    
    SayHello.deploy()
    handle = SayHello.get_handle()
-   handle.remote()
+   ray.get(handle.remote())
 
 Running this code block, we first get some log messages from the controller saying that a new replica of the deployment is being created:
 
@@ -387,6 +387,12 @@ Running this code block, we first get some log messages from the controller sayi
 Then when we query the deployment, we get both a default access log as well as our custom ``"Hello world!"`` message.
 Note that these log lines are tagged with the deployment name followed by a unique identifier for the specific replica.
 These can be parsed by a logging stack such as ELK or Loki to enable searching logs by deployment and replica.
+
+.. code-block:: bash
+
+   curl -X GET http://localhost:8000/
+   (SayHello pid=67352) INFO 2022-04-02 09:20:08,975 SayHello SayHello#LBINMh <ipython-input-4-1e8854e5c9ba>:8 - Hello world!
+   (SayHello pid=67352) INFO 2022-04-02 09:20:08,975 SayHello SayHello#LBINMh replica.py:466 - HANDLE __call__ OK 0.3ms
 
 Querying the deployment over HTTP produces a similar access log message from the HTTP proxy:
 
@@ -412,6 +418,10 @@ To silence the replica-level logs or otherwise configure logging, configure the 
    class Silenced:
        def __init__(self):
            logger.setLevel(logging.ERROR)
+
+
+This will prevent the replica INFO-level logs from being written to STDOUT or to files on disk.
+You can also use your own custom logger, in which case you'll need to configure the behavior to write to STDOUT/STDERR, files on disk, or both.
 
 Tutorial: Ray Serve with Loki
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -443,7 +453,7 @@ Save the following file as ``promtail-local-config.yaml``:
   static_configs:
     - labels:
       job: ray
-      __path__: /tmp/ray/session_latest/logs/*.*
+      __path__: /tmp/ray/session_latest/logs/serve/*.*
 
 The relevant part for Ray is the ``static_configs`` field, where we have indicated the location of our log files with ``__path__``.
 The expression ``*.*`` will match all files, but not directories, which cause an error with Promtail.
@@ -491,7 +501,7 @@ To filter all these Ray logs for the ones relevant to our deployment, use the fo
 
 .. code-block:: shell
 
-  {job="ray"} |= "deployment=Counter"
+  {job="ray"} |= "Counter"
 
 You should see something similar to the following:
 
