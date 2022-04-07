@@ -1435,11 +1435,11 @@ class Trainer(Trainable):
         # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
             train_batch = synchronous_parallel_sample(
-                self.workers, max_agent_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
             )
         else:
             train_batch = synchronous_parallel_sample(
-                self.workers, max_env_steps=self.config["train_batch_size"]
+                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
             )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()

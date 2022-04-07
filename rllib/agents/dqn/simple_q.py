@@ -270,7 +270,9 @@ class SimpleQTrainer(Trainer):
         local_worker = self.workers.local_worker()
 
         # (1) Sample (MultiAgentBatches) from workers
-        new_sample_batches = synchronous_parallel_sample(self.workers, concat=False)
+        new_sample_batches = synchronous_parallel_sample(
+            worker_set=self.workers, concat=False
+        )
 
         for s in new_sample_batches:
             # Update counters
