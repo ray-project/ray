@@ -1,4 +1,5 @@
 import abc
+import warnings
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -7,12 +8,6 @@ if TYPE_CHECKING:
 
 from ray.data import Dataset
 from ray.ml.predictor import DataBatchType
-
-
-class PreprocessorAlreadyFittedException(RuntimeError):
-    """Error raised when the preprocessor cannot be fitted again."""
-
-    pass
 
 
 class PreprocessorNotFittedException(RuntimeError):
@@ -54,16 +49,15 @@ class Preprocessor(abc.ABC):
         """Fit this Preprocessor to the Dataset.
 
         Fitted state attributes will be directly set in the Preprocessor.
-        Only meant to be called at most once if the preprocessor is fittable
+
+        Calling it more than once on a preprocessor will overwrite all
+        previously fitted states.
 
         Args:
             dataset: Input dataset.
 
         Returns:
             Preprocessor: The fitted Preprocessor with state attributes.
-
-        Raises:
-            PreprocessorAlreadyFittedException, if already fitted once.
         """
         fit_status = self.fit_status()
         if fit_status == Preprocessor.FitStatus.NOT_FITTABLE:
@@ -74,9 +68,10 @@ class Preprocessor(abc.ABC):
             Preprocessor.FitStatus.FITTED,
             Preprocessor.FitStatus.PARTIALLY_FITTED,
         ):
-            raise PreprocessorAlreadyFittedException(
-                "`fit` cannot be called multiple times. "
-                "Create a new Preprocessor to fit a new Dataset."
+            warnings.warn(
+                "`fit` is already called on the preprocessor (or some/all of the "
+                "preprocessors in chain case). Calling it again will overwrite "
+                "all previously fitted states."
             )
 
         return self._fit(dataset)
@@ -84,14 +79,14 @@ class Preprocessor(abc.ABC):
     def fit_transform(self, dataset: Dataset) -> Dataset:
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
 
+        Calling it more than once on a preprocessor will overwrite all
+        previously fitted states.
+
         Args:
             dataset: Input Dataset.
 
         Returns:
             ray.data.Dataset: The transformed Dataset.
-
-        Raises:
-            PreprocessorAlreadyFittedException, if already fitted once.
         """
         self.fit(dataset)
         return self.transform(dataset)

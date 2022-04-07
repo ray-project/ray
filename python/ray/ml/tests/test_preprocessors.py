@@ -1,3 +1,6 @@
+import warnings
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -74,6 +77,32 @@ def test_standard_scaler():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+@patch.object(warnings, "warn")
+def test_fit_twice(mocked_warn):
+    """Tests that a warning msg should be printed."""
+    col_a = [-1, 0, 1]
+    col_b = [1, 3, 5]
+    col_c = [1, 1, None]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    ds = ray.data.from_pandas(in_df)
+
+    scaler = MinMaxScaler(["B", "C"])
+
+    # Fit data.
+    scaler.fit(ds)
+    assert scaler.stats_ == {"min(B)": 1, "max(B)": 5, "min(C)": 1, "max(C)": 1}
+
+    ds = ds.map_batches(lambda x: x * 2)
+    # Fit again
+    scaler.fit(ds)
+    msg = (
+        "`fit` is already called on the preprocessor (or some/all of the "
+        "preprocessors in chain case). Calling it again will overwrite "
+        "all previously fitted states."
+    )
+    mocked_warn.assert_called_once_with(msg)
 
 
 def test_min_max_scaler():
