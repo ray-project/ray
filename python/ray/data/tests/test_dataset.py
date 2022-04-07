@@ -2562,7 +2562,7 @@ def test_groupby_map_groups_merging_empty_result(ray_start_regular_shared):
     assert mapped.take_all() == [2, 3]
 
 
-def test_groupby_map_groups_merging_invalid_result():
+def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
     ds = ray.data.from_items([1, 2, 3])
     grouped = ds.groupby(lambda x: x)
 
