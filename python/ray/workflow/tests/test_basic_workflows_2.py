@@ -210,15 +210,15 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
 
 
 def test_get_named_step_default(workflow_start_regular, tmp_path):
-    @workflow.step
+    @ray.remote
     def factorial(n, r=1):
         if n == 1:
             return r
-        return factorial.step(n - 1, r * n)
+        return workflow.continuation(factorial.bind(n - 1, r * n))
 
     import math
 
-    assert math.factorial(5) == factorial.step(5).run("factorial")
+    assert math.factorial(5) == workflow.create(factorial.bind(5)).run("factorial")
     for i in range(5):
         step_name = (
             "test_basic_workflows_2.test_get_named_step_default.locals.factorial"

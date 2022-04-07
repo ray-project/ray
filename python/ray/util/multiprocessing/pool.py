@@ -3,7 +3,6 @@ import logging
 from multiprocessing import TimeoutError
 import os
 import time
-import random
 import collections
 import threading
 import queue
@@ -495,6 +494,7 @@ class Pool:
         self._actor_deletion_ids = []
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []
         self._registry_hashable: Dict[Hashable, ray.ObjectRef] = {}
+        self._current_index = 0
 
         if context and log_once("context_argument_warning"):
             logger.warning(
@@ -571,8 +571,12 @@ class Pool:
         # due to a limitation in cloudpickle.
         return (PoolActor.remote(self._initializer, self._initargs), 0)
 
-    def _random_actor_index(self):
-        return random.randrange(len(self._actor_pool))
+    def _next_actor_index(self):
+        if self._current_index == len(self._actor_pool) - 1:
+            self._current_index = 0
+        else:
+            self._current_index += 1
+        return self._current_index
 
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch(self, actor_index, func, batch):
@@ -628,7 +632,7 @@ class Pool:
 
         self._check_running()
         func = self._convert_to_ray_batched_calls_if_needed(func)
-        object_ref = self._run_batch(self._random_actor_index(), func, [(args, kwargs)])
+        object_ref = self._run_batch(self._next_actor_index(), func, [(args, kwargs)])
         return AsyncResult([object_ref], callback, error_callback, single_result=True)
 
     def _convert_to_ray_batched_calls_if_needed(self, func: Callable) -> Callable:

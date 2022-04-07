@@ -196,7 +196,7 @@ class _Bracket:
             (min_t * self.rf ** (k + s), {}) for k in reversed(range(MAX_RUNGS))
         ]
 
-    def cutoff(self, recorded) -> Union[None, int, float, complex, np.ndarray]:
+    def cutoff(self, recorded) -> Optional[Union[int, float, complex, np.ndarray]]:
         if not recorded:
             return None
         return np.nanpercentile(list(recorded.values()), (1 - 1 / self.rf) * 100)
