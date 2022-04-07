@@ -5,7 +5,7 @@ from typing import Optional, Dict, Tuple
 
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.wheels import DEFAULT_BRANCH
+from ray_release.wheels import DEFAULT_BRANCH, get_buildkite_repo_branch
 
 
 class Frequency(enum.Enum):
@@ -141,8 +141,10 @@ def update_settings_from_environment(settings: Dict) -> Dict:
         settings["ray_test_repo"] = os.environ["RAY_TEST_REPO"]
         settings["ray_test_branch"] = os.environ.get("RAY_TEST_BRANCH", DEFAULT_BRANCH)
     elif "BUILDKITE_BRANCH" in os.environ:
-        settings["ray_test_repo"] = os.environ["BUILDKITE_REPO"]
-        settings["ray_test_branch"] = os.environ["BUILDKITE_BRANCH"]
+        repo_url, branch = get_buildkite_repo_branch()
+
+        settings["ray_test_repo"] = repo_url
+        settings["ray_test_branch"] = branch
 
     if "RAY_WHEELS" in os.environ:
         settings["ray_wheels"] = os.environ["RAY_WHEELS"]

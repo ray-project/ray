@@ -2762,43 +2762,41 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
-# Deactivated for now due to open-spiel's dependency on an outdated
-# tensorflow-probability version.
-# py_test(
-#    name = "examples/self_play_with_open_spiel_connect_4_tf",
-#    main = "examples/self_play_with_open_spiel.py",
-#    tags = ["team:ml", "examples", "examples_S"],
-#    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel.py"],
-#    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-# )
+py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_tf",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:ml", "examples", "examples_S"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
 
-# py_test(
-#    name = "examples/self_play_with_open_spiel_connect_4_torch",
-#    main = "examples/self_play_with_open_spiel.py",
-#    tags = ["team:ml", "examples", "examples_S"],
-#    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel.py"],
-#    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-# )
+py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_torch",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:ml", "examples", "examples_S"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
 
-# py_test(
-#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
-#    main = "examples/self_play_league_based_with_open_spiel.py",
-#    tags = ["team:ml", "examples", "examples_S"],
-#    size = "medium",
-#    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-#    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-# )
+py_test(
+    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
+    main = "examples/self_play_league_based_with_open_spiel.py",
+    tags = ["team:ml", "examples", "examples_S"],
+    size = "medium",
+    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
+    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
 
-# py_test(
-#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
-#    main = "examples/self_play_league_based_with_open_spiel.py",
-#    tags = ["team:ml", "examples", "examples_S"],
-#    size = "medium",
-#    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
-#    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-# )
+py_test(
+    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
+    main = "examples/self_play_league_based_with_open_spiel.py",
+    tags = ["team:ml", "examples", "examples_S"],
+    size = "medium",
+    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
+    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
 
 py_test(
     name = "examples/trajectory_view_api_tf",
