@@ -336,7 +336,7 @@ Logging
 
 
 
-Ray Serve uses Python's standard ``logging`` facility using the ``"ray.serve"`` named logger.
+Ray Serve uses Python's standard ``logging`` facility with the ``"ray.serve"`` named logger.
 By default, logs are emitted from actors both to ``stderr`` and on disk on each node at ``/tmp/ray/session_latest/logs/serve/``.
 This includes both system-level logs from the Serve controller and HTTP proxy as well as access logs and custom user logs produced from within deployment replicas.
 
