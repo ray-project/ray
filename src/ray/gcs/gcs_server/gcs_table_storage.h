@@ -104,9 +104,7 @@ template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
   explicit GcsTableWithJobId(std::shared_ptr<StoreClient> store_client)
-      : GcsTable<Key, Data>(std::move(store_client)) {
-    SyncRebuildIndex();
-  }
+      : GcsTable<Key, Data>(std::move(store_client)) {}
 
   /// Write data to the table asynchronously.
   ///
@@ -146,12 +144,11 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   Status BatchDelete(const std::vector<Key> &keys,
                      const StatusCallback &callback) override;
 
+  /// Rebuild the index during startup.
+  Status AsyncRebuildIndexAndGetAll(const MapCallback<Key, Data> &callback);
+
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
-
- private:
-  /// Rebuild the index during startup.
-  void SyncRebuildIndex();
 
   absl::Mutex mutex_;
   absl::flat_hash_map<JobID, absl::flat_hash_set<Key>> index_ GUARDED_BY(mutex_);

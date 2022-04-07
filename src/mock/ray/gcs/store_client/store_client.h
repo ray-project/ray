@@ -36,6 +36,12 @@ class MockStoreClient : public StoreClient {
                (const MapCallback<std::string, std::string> &callback)),
               (override));
   MOCK_METHOD(Status,
+              AsyncMultiGet,
+              (const std::string &table_name,
+               const std::vector<std::string> &key,
+               (const MapCallback<std::string, std::string> &callback)),
+              (override));
+  MOCK_METHOD(Status,
               AsyncDelete,
               (const std::string &table_name,
                const std::string &key,

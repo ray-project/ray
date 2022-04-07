@@ -148,25 +148,24 @@ Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
             }
           }
         }
-        callback(status);
+        if (callback) {
+          callback(status);
+        }
       });
 }
 
 template <typename Key, typename Data>
-void GcsTableWithJobId<Key, Data>::SyncRebuildIndex() {
-  auto rebuild_promise = std::make_shared<std::promise<void>>();
-  auto future = rebuild_promise->get_future();
-  RAY_CHECK_OK(this->GetAll(
-      [this, rebuild_promise](absl::flat_hash_map<Key, Data> &&result) mutable {
-        absl::MutexLock lock(&mutex_);
-        index_.clear();
-        for (auto &item : result) {
-          auto key = item.first;
-          index_[GetJobIdFromKey(key)].insert(key);
-        }
-        rebuild_promise->set_value();
-      }));
-  future.get();
+Status GcsTableWithJobId<Key, Data>::AsyncRebuildIndexAndGetAll(
+    const MapCallback<Key, Data> &callback) {
+  return this->GetAll([this, callback](absl::flat_hash_map<Key, Data> &&result) mutable {
+    absl::MutexLock lock(&mutex_);
+    index_.clear();
+    for (auto &item : result) {
+      auto key = item.first;
+      index_[GetJobIdFromKey(key)].insert(key);
+    }
+    callback(std::move(result));
+  });
 }
 
 template class GcsTable<JobID, JobTableData>;
