@@ -55,7 +55,7 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
 
     if num_gpus_per_worker == 0.5:
         assert devices == [0, 0]
-    if num_gpus_per_worker == 1:
+    elif num_gpus_per_worker == 1:
         assert devices == [0, 1]
     else:
         raise RuntimeError(
