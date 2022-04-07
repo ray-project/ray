@@ -1327,7 +1327,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1355,7 +1355,7 @@
     script: python workloads/impala.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1445,7 +1445,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1561,7 +1561,7 @@
     script: python workloads/pbt.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1659,6 +1659,64 @@
       timeout: 3600
 
   alert: long_running_tests
+
+########################
+# Jobs tests
+########################
+
+- name: jobs_basic_local_working_dir
+  group: Jobs tests
+  working_dir: jobs_tests
+
+  legacy:
+    test_name: jobs_basic_local_working_dir
+    test_suite: jobs_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_basic.py --working-dir "workloads"
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default  
+
+- name: jobs_basic_remote_working_dir
+  group: Jobs tests
+  working_dir: jobs_tests
+
+  legacy:
+    test_name: jobs_basic_remote_working_dir
+    test_suite: jobs_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_basic.py --working-dir "https://github.com/anyscale/job-services-cuj-examples/archive/refs/heads/main.zip"
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default 
 
 ########################
 # Runtime env tests

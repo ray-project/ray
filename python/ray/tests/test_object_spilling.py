@@ -243,9 +243,9 @@ def test_spill_remote_object(
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
-def test_spill_objects_automatically(object_spilling_config, shutdown_only):
+def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
-    object_spilling_config, _ = object_spilling_config
+    object_spilling_config, _ = fs_only_object_spilling_config
     address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,

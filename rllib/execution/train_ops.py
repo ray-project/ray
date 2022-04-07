@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
-def train_one_step(trainer, train_batch) -> Dict:
+def train_one_step(trainer, train_batch, policies_to_train=None) -> Dict:
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
@@ -52,7 +52,8 @@ def train_one_step(trainer, train_batch) -> Dict:
                 train_batch,
                 {
                     pid: local_worker.get_policy(pid)
-                    for pid in local_worker.get_policies_to_train(train_batch)
+                    for pid in policies_to_train
+                    or local_worker.get_policies_to_train(train_batch)
                 },
                 local_worker,
                 num_sgd_iter,
