@@ -34,12 +34,10 @@ class PartitionStyle(str, Enum):
 
 @DeveloperAPI
 class PathPartitionBase:
-    """Base class for path-based partition formats.
-
-    Two path partition formats are currently supported - HIVE and DIRECTORY.
-
-    Path-based partition formats embed all partition keys and values directly in
+    """Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
+
+    Base class for path-based partition formats.
     """
 
     def __init__(
@@ -65,18 +63,26 @@ class PathPartitionBase:
 
     @property
     def style(self) -> PartitionStyle:
+        """Gets the path partitioning style."""
         return self._style
 
     @property
     def base_dir(self) -> str:
+        """Gets the base directory."""
         return self._base_dir
 
     @property
     def normalized_base_dir(self) -> Optional[str]:
+        """Returns the base directory normalized for compatibility with a filesystem.
+
+        The normalized base directory is undefined by default, then lazily resolved
+        or updated by any operation that takes a filesystem as input.
+        """
         return self._normalized_base_dir
 
     @property
     def field_names(self) -> Optional[List[str]]:
+        """Gets the partition key field names."""
         return self._field_names
 
     def _normalize_base_dir(self, filesystem: "pyarrow.fs.FileSystem"):
@@ -136,7 +142,7 @@ class PathPartitionGenerator(PathPartitionBase):
             base_dir: "/"-delimited base directory that all partition paths will be
                 generated under (exclusive).
             field_names: The partition key field names (i.e. column names for tabular
-                datasets). Required for HIVE partition paths, ignored for DIRECTORY
+                datasets). Required for HIVE partition paths, optional for DIRECTORY
                 partition paths. When non-empty, the order and length of partition key
                 field names must match the order and length of partition values.
         """
@@ -168,6 +174,11 @@ class PathPartitionGenerator(PathPartitionBase):
 
     def _generate_partition_dirs(self, values: List[str]) -> List[str]:
         """Generates a list of partition directory names for the given values."""
+        if self._field_names:
+            assert len(values) == len(self._field_names), (
+                f"Expected {len(self._field_names)} partition value(s) but found "
+                f"{len(values)}: {values}."
+            )
         return self._generator_fn(values)
 
     def __call__(
@@ -178,14 +189,17 @@ class PathPartitionGenerator(PathPartitionBase):
         """Returns the partition directory path for the given partition value strings.
 
         All files for this partition should be written to this directory. If a base
-        directory is set, then the partition directory path will be given relative
-        to this base directory.
+        directory is set, then the partition directory path returned will be rooted in
+        this base directory.
 
         Args:
             partition_values: The partition value strings to include in the partition
                 path. For HIVE partition paths, the order and length of partition
                 values must match the order and length of partition key field names.
             filesystem: Filesystem that will be used for partition path file I/O.
+
+        Returns:
+            Partition directory path for the given partition values.
         """
         self._normalize_base_dir(filesystem)
         partition_dirs = self._generate_partition_dirs(partition_values)
@@ -281,7 +295,7 @@ class PathPartitionParser(PathPartitionBase):
         paths: List[str],
         filesystem: "pyarrow.fs.FileSystem",
     ) -> List[str]:
-        """Removes all paths that don't pass this partition scheme's partition filter.
+        """Returns all paths that pass this partition scheme's partition filter.
 
         If no partition filter is set, then returns all input paths. If a base
         directory is set, then only paths under this base directory will be parsed
@@ -328,7 +342,7 @@ class PathPartitionParser(PathPartitionBase):
         dictionary for unpartitioned files.
         """
         dir_path = self._dir_path_trim_base(path)
-        if not dir_path:
+        if dir_path is None:
             return {}
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
@@ -351,7 +365,7 @@ class PathPartitionParser(PathPartitionBase):
         correct key to each value.
         """
         dir_path = self._dir_path_trim_base(path)
-        if not dir_path:
+        if dir_path is None:
             return {}
         dirs = [d for d in dir_path.split("/") if d]
         assert not dirs or len(dirs) == len(self._field_names), (

@@ -114,7 +114,7 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         file_format: Optional[str] = None,
     ) -> str:
         suffix = f"{dataset_uuid}_{block_index:06}.{file_format}"
-        # Use forward slashes for cross-filesystem compatibility, since PyArrow
+        # Uses POSIX path for cross-filesystem compatibility, since PyArrow
         # FileSystem paths are always forward slash separated, see:
         # https://arrow.apache.org/docs/python/filesystems.html
         return posixpath.join(base_path, suffix)

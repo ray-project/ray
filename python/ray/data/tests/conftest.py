@@ -118,7 +118,7 @@ def test_block_write_path_provider():
             suffix = (
                 f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
             )
-            return f"{base_path}/{suffix}"
+            return posixpath.join(base_path, suffix)
 
     yield TestBlockWritePathProvider()
 
