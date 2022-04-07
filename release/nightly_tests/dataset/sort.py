@@ -126,7 +126,8 @@ if __name__ == '__main__':
 
     end_time = time.time()
 
-    print("Finished in", end_time - start_time)
+    duration = end_time - start_time
+    print("Finished in", duration)
     print("")
 
     print("==== Driver memory summary ====")
@@ -144,7 +145,7 @@ if __name__ == '__main__':
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
         results = {
-                "time": end_time - start_time,
+                "time": duration,
                 "success": "1" if exc is None else "0",
                 "num_partitions": num_partitions,
                 "partition_size": partition_size,
@@ -153,7 +154,12 @@ if __name__ == '__main__':
                             "perf_metric_name": "peak_driver_memory",
                             "perf_metric_value": maxrss,
                             "perf_metric_type": "MEMORY",
-                        }
+                        },
+                        {
+                            "perf_metric_name": "runtime",
+                            "perf_metric_value": duration,
+                            "perf_metric_type": "LATENCY",
+                        },
                     ]
                 }
         json.dump(results, out_file)
