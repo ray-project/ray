@@ -353,7 +353,7 @@ class PPOTrainer(Trainer):
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
-        # each `sgd_num_iter`).
+        # each `num_sgd_iter`).
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
         # to -1 to auto-calculate the actual batch size later).
         if (

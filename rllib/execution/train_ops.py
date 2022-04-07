@@ -75,7 +75,7 @@ def multi_gpu_train_one_step(trainer, train_batch) -> Dict:
     config = trainer.config
     workers = trainer.workers
     local_worker = workers.local_worker()
-    num_sgd_iter = config.get("sgd_num_iter", 1)
+    num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
 
     # Determine the number of devices (GPUs or 1 CPU) we use.
