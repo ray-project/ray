@@ -10,7 +10,7 @@ aws:
 head_node_type:
     name: head_node
     instance_type:  m5.4xlarge
-    resources: {"object_store_memory": 21474836480, "cpu": 0}
+    resources: {"object_store_memory": 21474836480}
 
 worker_node_types:
     - name: worker_node
