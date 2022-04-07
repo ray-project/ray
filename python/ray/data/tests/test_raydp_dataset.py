@@ -47,6 +47,7 @@ def test_raydp_to_spark(spark_on_ray_small):
     rows = [r.value for r in df.take(5)]
     assert values == rows
 
+
 def test_raydp_to_torch_iter(spark_on_ray_small):
     spark = spark_on_ray_small
     spark_df = spark.createDataFrame([(1, 0), (2, 0), (3, 1)], ["feature", "label"])
