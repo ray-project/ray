@@ -7,8 +7,8 @@ Getting Started
 In this tutorial you will learn how to:
 
 - Create and save a Ray ``Dataset``.
-- How to transform a ``Dataset`` and pass it into other Ray Tasks.
-- How to create a Ray ``DatasetPipeline`` and run transformations on it.
+- How to transform a ``Dataset``.
+- How to access the content in a ``Dataset``.
 
 .. _ray_datasets_quick_start:
 
@@ -186,10 +186,10 @@ The following is an end-to-end example of reading, transforming, and saving batc
     # Save the results.
     ds.repartition(1).write_json("s3://bucket/inference-results")
 
-Exchanging datasets
+Accessing datasets
 ===================
 
-Datasets can be passed to Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``.
+Datasets content can be accessed by Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``.
 This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
 
 .. code-block:: python

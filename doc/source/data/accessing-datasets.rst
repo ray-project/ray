@@ -1,10 +1,10 @@
-.. _exchanging_datasets:
+.. _accessing_datasets:
 
 ===================
-Exchanging Datasets
+Accessing Datasets
 ===================
 
-Datasets can be passed to Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``.
+Datasets can be accessed by Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``.
 This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
 
 .. code-block:: python
