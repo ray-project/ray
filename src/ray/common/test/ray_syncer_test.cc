@@ -42,6 +42,8 @@ using ::testing::WithArg;
 namespace ray {
 namespace syncer {
 
+constexpr size_t kTestComponents = 2;
+
 RaySyncMessage MakeMessage(RayComponentId cid, int64_t version, const NodeID &id) {
   auto msg = RaySyncMessage();
   msg.set_version(version);
@@ -96,10 +98,10 @@ class RaySyncerTest : public ::testing::Test {
     thread_->join();
   }
 
-  std::array<int64_t, kComponentArraySize> local_versions_;
-  std::array<std::unique_ptr<MockReporterInterface>, kComponentArraySize> reporters_ = {
+  std::array<int64_t, kTestComponents> local_versions_;
+  std::array<std::unique_ptr<MockReporterInterface>, kTestComponents> reporters_ = {
       nullptr};
-  std::array<std::unique_ptr<MockReceiverInterface>, kComponentArraySize> receivers_ = {
+  std::array<std::unique_ptr<MockReceiverInterface>, kTestComponents> receivers_ = {
       nullptr};
 
   instrumented_io_context io_context_;
@@ -310,8 +312,8 @@ struct SyncerServerTest {
     }
   }
 
-  std::array<std::atomic<int64_t>, kComponentArraySize> _v;
-  const std::array<std::atomic<int64_t>, kComponentArraySize> &GetReceivedVersions(
+  std::array<std::atomic<int64_t>, kTestComponents> _v;
+  const std::array<std::atomic<int64_t>, kTestComponents> &GetReceivedVersions(
       const std::string &node_id) {
     auto iter = received_versions.find(node_id);
     if (iter == received_versions.end()) {
@@ -328,21 +330,21 @@ struct SyncerServerTest {
   std::unique_ptr<std::thread> thread;
   instrumented_io_context io_context;
   std::string server_port;
-  std::array<std::atomic<int64_t>, kComponentArraySize> local_versions;
-  std::array<std::unique_ptr<MockReporterInterface>, kComponentArraySize> reporters = {
+  std::array<std::atomic<int64_t>, kTestComponents> local_versions;
+  std::array<std::unique_ptr<MockReporterInterface>, kTestComponents> reporters = {
       nullptr};
   int64_t snapshot_taken = 0;
 
-  std::unordered_map<std::string, std::array<std::atomic<int64_t>, kComponentArraySize>>
+  std::unordered_map<std::string, std::array<std::atomic<int64_t>, kTestComponents>>
       received_versions;
   std::unordered_map<std::string, std::atomic<int64_t>> message_consumed;
-  std::array<std::unique_ptr<MockReceiverInterface>, kComponentArraySize> receivers = {
+  std::array<std::unique_ptr<MockReceiverInterface>, kTestComponents> receivers = {
       nullptr};
 };
 
 // Useful for debugging
 // std::ostream &operator<<(std::ostream &os, const SyncerServerTest &server) {
-//   auto dump_array = [&os](const std::array<int64_t, kComponentArraySize> &v,
+//   auto dump_array = [&os](const std::array<int64_t, kTestComponents> &v,
 //                           std::string label,
 //                           int indent) mutable -> std::ostream & {
 //     os << std::string('\t', indent);

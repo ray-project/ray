@@ -702,11 +702,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Whether to trigger global GC in the next resource usage report. This will broadcast
   /// a global GC message to all raylets except for this one.
-  bool should_global_gc_ = false;
+  mutable bool should_global_gc_ = false;
 
   /// Whether to trigger local GC in the next resource usage report. This will trigger gc
   /// on all local workers of this raylet.
-  bool should_local_gc_ = false;
+  mutable bool should_local_gc_ = false;
 
   /// When plasma storage usage is high, we'll run gc to reduce it.
   double high_plasma_storage_usage_ = 1.0;
@@ -715,10 +715,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   uint64_t local_gc_run_time_ns_;
 
   /// Throttler for local gc
-  Throttler local_gc_throttler_;
+  mutable Throttler local_gc_throttler_;
 
   /// Throttler for global gc
-  Throttler global_gc_throttler_;
+  mutable Throttler global_gc_throttler_;
 
   /// Seconds to initialize a local gc
   const uint64_t local_gc_interval_ns_;

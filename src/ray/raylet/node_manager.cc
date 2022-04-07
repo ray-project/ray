@@ -2592,6 +2592,32 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     static uint64_t version = 0;
     syncer::RaySyncMessage msg;
     rpc::ResourcesData resource_data;
+
+    // If plasma store is under high pressure, we should try to schedule a global gc.
+    bool plasma_high_pressure =
+        object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
+    if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
+      const_cast<NodeManager*>(this)->TriggerGlobalGC();
+    }
+
+    // Set the global gc bit on the outgoing heartbeat message.
+    bool triggered_by_global_gc = false;
+    if (should_global_gc_) {
+      resource_data.set_should_global_gc(true);
+      triggered_by_global_gc = true;
+      should_global_gc_ = false;
+      global_gc_throttler_.RunNow();
+    }
+
+    // Trigger local GC if needed. This throttles the frequency of local GC calls
+    // to at most once per heartbeat interval.
+    if ((should_local_gc_ ||
+         (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
+        local_gc_throttler_.AbleToRun()) {
+      const_cast<NodeManager*>(this)->DoLocalGC(triggered_by_global_gc);
+      should_local_gc_ = false;
+    }
+
     cluster_task_manager_->FillResourceUsage(resource_data);
     resource_data.set_node_id(self_node_id_.Binary());
     resource_data.set_node_manager_address(initial_config_.node_manager_address);
