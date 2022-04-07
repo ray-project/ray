@@ -3,7 +3,7 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
 import gym
-from typing import DefaultDict, Optional, Type
+from typing import Optional, Type
 import tree
 
 
