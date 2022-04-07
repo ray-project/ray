@@ -3411,6 +3411,54 @@
     type: sdk_command
     file_manager: sdk
 
+- name: dataset_random_shuffle_1tb
+  group: core-multi-test
+  working_dir: nightly_tests/dataset
+  legacy:
+    test_name: dataset_random_shuffle_1tb
+    test_suite: nightly_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
+
+  run:
+    timeout: 7200
+    script: python sort.py --num-partitions=2000 --partition-size=5e8 --shuffle
+
+    wait_for_nodes:
+      num_nodes: 20
+      timeout: 900
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: dataset_sort_1tb
+  group: core-multi-test
+  working_dir: nightly_tests/dataset
+  legacy:
+    test_name: dataset_sort_1tb
+    test_suite: nightly_tests
+
+  frequency: multi
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
+
+  run:
+    timeout: 7200
+    script: python sort.py --num-partitions=2000 --partition-size=5e8
+
+    wait_for_nodes:
+      num_nodes: 20
+      timeout: 900
+
+    type: sdk_command
+    file_manager: sdk
+
 ################
 # Core K8s tests
 ################
