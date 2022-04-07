@@ -167,6 +167,65 @@ class BuildkiteSettingsTest(unittest.TestCase):
             },
         )
 
+        ###
+        # Buildkite PR build settings
+
+        # Default PR
+        os.environ.clear()
+        os.environ.update(environ)
+        os.environ["BUILDKITE_REPO"] = "https://github.com/ray-project/ray.git"
+        os.environ[
+            "BUILDKITE_PULL_REQUEST_REPO"
+        ] = "https://github.com/user/ray-fork.git"
+        os.environ["BUILDKITE_BRANCH"] = "user:some_branch"
+        updated_settings = settings.copy()
+        update_settings_from_environment(updated_settings)
+
+        self.assertEqual(
+            updated_settings["ray_test_repo"], "https://github.com/user/ray-fork.git"
+        )
+        self.assertEqual(updated_settings["ray_test_branch"], "some_branch")
+
+        # PR without prefix
+        os.environ.clear()
+        os.environ.update(environ)
+        os.environ["BUILDKITE_REPO"] = "https://github.com/ray-project/ray.git"
+        os.environ["BUILDKITE_PULL_REQUEST_REPO"] = "git://github.com/user/ray-fork.git"
+        os.environ["BUILDKITE_BRANCH"] = "some_branch"
+        updated_settings = settings.copy()
+        update_settings_from_environment(updated_settings)
+
+        self.assertEqual(
+            updated_settings["ray_test_repo"], "https://github.com/user/ray-fork.git"
+        )
+        self.assertEqual(updated_settings["ray_test_branch"], "some_branch")
+
+        # Branch build but pointing to fork
+        os.environ.clear()
+        os.environ.update(environ)
+        os.environ["BUILDKITE_REPO"] = "https://github.com/ray-project/ray.git"
+        os.environ["BUILDKITE_BRANCH"] = "user:some_branch"
+        updated_settings = settings.copy()
+        update_settings_from_environment(updated_settings)
+
+        self.assertEqual(
+            updated_settings["ray_test_repo"], "https://github.com/user/ray.git"
+        )
+        self.assertEqual(updated_settings["ray_test_branch"], "some_branch")
+
+        # Branch build but pointing to main repo branch
+        os.environ.clear()
+        os.environ.update(environ)
+        os.environ["BUILDKITE_REPO"] = "https://github.com/ray-project/ray.git"
+        os.environ["BUILDKITE_BRANCH"] = "some_branch"
+        updated_settings = settings.copy()
+        update_settings_from_environment(updated_settings)
+
+        self.assertEqual(
+            updated_settings["ray_test_repo"], "https://github.com/ray-project/ray.git"
+        )
+        self.assertEqual(updated_settings["ray_test_branch"], "some_branch")
+
     def testSettingsOverrideBuildkite(self):
         settings = get_default_settings()
 
