@@ -59,7 +59,7 @@ class NodeAffinitySchedulingStrategy:
             or be scheduled somewhere else if soft is True.
     """
 
-    def __init__(self, node_id: str, soft: bool = False):
+    def __init__(self, node_id: str, soft: bool):
         self.node_id = node_id
         self.soft = soft
 
