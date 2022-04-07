@@ -3418,6 +3418,8 @@
     test_name: dataset_random_shuffle_1tb
     test_suite: nightly_tests
 
+  stable: false
+
   frequency: multi
   team: core
   cluster:
@@ -3441,6 +3443,8 @@
   legacy:
     test_name: dataset_sort_1tb
     test_suite: nightly_tests
+
+  stable: false
 
   frequency: multi
   team: core
