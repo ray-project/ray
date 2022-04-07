@@ -17,7 +17,6 @@
 #include <vector>
 
 #include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
@@ -80,11 +79,12 @@ struct SchedulingResult {
   std::vector<scheduling::NodeID> selected_nodes;
 };
 
-/// ISchedulingPolicy picks a node to from the cluster, according to the resource
-/// requirment as well as the scheduling options.
-class ISchedulingPolicy {
+/// IBundleSchedulingPolicy picks a set of nodes from the cluster, according to the
+/// resource requirment list as well as the scheduling options.
+class IBundleSchedulingPolicy {
  public:
-  virtual ~ISchedulingPolicy() = default;
+  virtual ~IBundleSchedulingPolicy() = default;
+
   /// Schedule the specified resources to the cluster nodes.
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
@@ -96,48 +96,22 @@ class ISchedulingPolicy {
   /// a flag to indicate whether this request can be retry or not.
   virtual SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context = nullptr) = 0;
+      SchedulingOptions options) = 0;
 };
 
-class ISingleSchedulingPolicy : public ISchedulingPolicy {
+/// ISchedulingPolicy picks a node to from the cluster, according to the resource
+/// requirment as well as the scheduling options.
+class ISchedulingPolicy {
  public:
+  virtual ~ISchedulingPolicy() = default;
+
   /// \param resource_request: The resource request we're attempting to schedule.
   /// \param options: scheduling options.
   ///
   /// \return NodeID::Nil() if the task is unfeasible, otherwise the node id
   /// to schedule on.
   virtual scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                                      SchedulingOptions options,
-                                      SchedulingContext *context = nullptr) = 0;
-
-  SchedulingResult Schedule(
-      const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context = nullptr) override {
-    size_t success_count = 0;
-    std::vector<scheduling::NodeID> selected_nodes;
-    selected_nodes.reserve(resource_request_list.size());
-    for (auto &resource_request : resource_request_list) {
-      auto node_id = Schedule(*resource_request, options, context);
-      if (!node_id.IsNil()) {
-        ++success_count;
-      }
-      // TODO(Shanly): We should deduct the resource temporarily.
-      selected_nodes.emplace_back(node_id);
-    }
-
-    if (success_count == 0) {
-      return SchedulingResult::Failed();
-    }
-
-    if (success_count < resource_request_list.size()) {
-      return SchedulingResult::PartialSuccess(std::move(selected_nodes));
-    }
-
-    return SchedulingResult::Success(std::move(selected_nodes));
-  }
+                                      SchedulingOptions options) = 0;
 };
-
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

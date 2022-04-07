@@ -77,6 +77,11 @@ void ClusterResourceScheduler::Init(
           *cluster_resource_manager_,
           /*is_node_available_fn*/
           [this](auto node_id) { return this->NodeAlive(node_id); });
+  bundle_scheduling_policy_ =
+      std::make_unique<raylet_scheduling_policy::CompositeBundleSchedulingPolicy>(
+          *cluster_resource_manager_,
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
@@ -108,39 +113,28 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool force_spillback,
     int64_t *total_violations,
     bool *is_infeasible) {
-  auto best_node_id = scheduling::NodeID::Nil();
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
-    auto result =
-        scheduling_policy_->Schedule({&resource_request}, SchedulingOptions::Random());
-    if (result.status.IsSuccess()) {
-      RAY_CHECK(result.selected_nodes.size() == 1);
-      best_node_id = result.selected_nodes.front();
-    }
-    return best_node_id;
+    return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
   }
 
-  SchedulingResult result;
+  auto best_node_id = scheduling::NodeID::Nil();
   if (scheduling_strategy.scheduling_strategy_case() ==
       rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy) {
-    result =
-        scheduling_policy_->Schedule({&resource_request},
+    best_node_id =
+        scheduling_policy_->Schedule(resource_request,
                                      SchedulingOptions::Spread(
                                          /*avoid_local_node*/ force_spillback,
                                          /*require_node_available*/ force_spillback));
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
-    result =
-        scheduling_policy_->Schedule({&resource_request},
+    best_node_id =
+        scheduling_policy_->Schedule(resource_request,
                                      SchedulingOptions::Hybrid(
                                          /*avoid_local_node*/ force_spillback,
                                          /*require_node_available*/ force_spillback));
-  }
-  if (result.status.IsSuccess()) {
-    RAY_CHECK(result.selected_nodes.size() == 1);
-    best_node_id = result.selected_nodes.front();
   }
 
   *is_infeasible = best_node_id.IsNil();
@@ -241,9 +235,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
 SchedulingResult ClusterResourceScheduler::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    SchedulingContext *context /* = nullptr*/) {
-  return scheduling_policy_->Schedule(resource_request_list, options, context);
+    SchedulingOptions options) {
+  return bundle_scheduling_policy_->Schedule(resource_request_list, options);
 }
 
 }  // namespace ray

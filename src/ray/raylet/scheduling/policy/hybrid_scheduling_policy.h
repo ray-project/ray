@@ -45,10 +45,8 @@ namespace raylet_scheduling_policy {
 /// We call this a hybrid policy because below the threshold, the traversal and
 /// truncation properties will lead to packing of nodes. Above the threshold, the policy
 /// will act like a traditional weighted round robin.
-class HybridSchedulingPolicy : public ISingleSchedulingPolicy {
+class HybridSchedulingPolicy : public ISchedulingPolicy {
  public:
-  using ISingleSchedulingPolicy::Schedule;
-
   HybridSchedulingPolicy(scheduling::NodeID local_node_id,
                          const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
                          std::function<bool(scheduling::NodeID)> is_node_available)
@@ -57,8 +55,7 @@ class HybridSchedulingPolicy : public ISingleSchedulingPolicy {
         is_node_available_(is_node_available) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options,
-                              SchedulingContext *context = nullptr) override;
+                              SchedulingOptions options) override;
 
  private:
   /// Identifier of local node.
