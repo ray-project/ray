@@ -148,6 +148,7 @@ MOCK_MODULES = [
 def mock_modules():
     for mod_name in MOCK_MODULES:
         mock_module = mock.MagicMock()
+        mock_module.__spec__ = mock.MagicMock()
         sys.modules[mod_name] = mock_module
 
     sys.modules["tensorflow"].VERSION = "9.9.9"
