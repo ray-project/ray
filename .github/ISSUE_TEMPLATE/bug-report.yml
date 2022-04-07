@@ -1,5 +1,5 @@
 name: Bug report
-title: "[Bug] "
+title: "[<Ray component: Core|RLlib|etc...>] "
 description: Problems and issues with code of Ray
 labels: [bug, triage]
 body:
@@ -8,52 +8,7 @@ body:
       value: |
         Thank you for reporting the problem!
         Please make sure what you are reporting is a bug with reproducible steps. To ask questions
-        or share ideas, pleae post on our [Discussion page](https://discuss.ray.io/) instead.
-
-  - type: checkboxes
-    attributes:
-      label: Search before asking
-      description: >
-        Please make sure to search in the [issues](https://github.com/ray-project/ray/issues) first to see
-        whether the same issue was reported already.
-      options:
-        - label: >
-            I searched the [issues](https://github.com/ray-project/ray/issues) and found no similar
-            issues.
-          required: true
-
-  - type: dropdown
-    attributes:
-      label: Ray Component
-      description: |
-        What component are you using? Ray has many subprojects, please make sure to choose the component that
-        you found the bug.
-      multiple: true
-      options:
-        - "Ray Core"
-        - "Ray Tune"
-        - "Ray Serve"
-        - "Ray Train"
-        - "RLlib"
-        - "Ray Clusters"
-        - "Monitoring & Debugging"
-        - "Dashboard"
-        - "Others"
-    validations:
-      required: true
-      
-  - type: dropdown
-    attributes:
-      label: Issue Severity
-      description: |
-        How severe does this issue affect your experience?
-      multiple: false
-      options:
-        - "Low: It annoys or frustrates me for a moment."
-        - "Medium: It contributes to significant difficulty to complete my task but I work arounds and get it resolved."
-        - "High: It blocks me to complete my task."
-    validations:
-      required: true
+        or share ideas, please post on our [Discussion page](https://discuss.ray.io/) instead.
 
   - type: textarea
     attributes:
@@ -92,24 +47,3 @@ body:
         until the repro instruction is updated.
     validations:
       required: true
-
-  - type: textarea
-    attributes:
-      label: Anything else
-      description: Anything else we need to know?
-      placeholder: >
-        How often does this problem occur? (Once? Every time? Only when certain conditions are met?)
-        Any relevant logs to include? Are there other relevant issues?
-
-  - type: checkboxes
-    attributes:
-      label: Are you willing to submit a PR?
-      description: >
-        This is absolutely not required, but we are happy to guide you in the contribution process
-        especially if you already have a good understanding of how to implement the fix.
-      options:
-        - label: Yes I am willing to submit a PR!
-
-  - type: markdown
-    attributes:
-      value: "Thanks for completing our form!"
