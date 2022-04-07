@@ -687,8 +687,8 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    if rep.when == "call" and rep.failed:
-        dir = os.environ.get("RAY_TEST_FAILURE_LOGS_DIR")
+    if rep.when == "call":  # and rep.failed:
+        dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
 
         if dir is not None:
             import shutil
@@ -696,5 +696,5 @@ def pytest_runtest_makereport(item, call):
 
             if not os.path.exists(dir):
                 os.makedirs(dir)
-            output_file = f"{dir}{rep.nodeid.split('/')[-1]}-{time.time()}"
+            output_file = f"{dir}/{rep.nodeid.split('/')[-1]}-{time.time()}"
             shutil.make_archive(output_file, "zip", "/tmp/ray/session_latest")

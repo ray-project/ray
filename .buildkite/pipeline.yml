@@ -33,6 +33,7 @@
       --test_env=CONDA_DEFAULT_ENV
       --test_env=CI
       --test_env=RAY_CI_POST_WHEEL_TESTS=True
+      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/tmp/artifacts
       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
 
 - label: ":ferris_wheel: Debug Wheels"
@@ -307,6 +308,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
+      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/tmp/artifacts
       -- python/ray/tests/...
 - label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -320,6 +322,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/tmp/artifacts
       python/ray/tests/...
 - label: ":python: (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
