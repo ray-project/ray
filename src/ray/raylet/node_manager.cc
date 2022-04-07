@@ -2597,7 +2597,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     bool plasma_high_pressure =
         object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
     if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
-      const_cast<NodeManager*>(this)->TriggerGlobalGC();
+      const_cast<NodeManager *>(this)->TriggerGlobalGC();
     }
 
     // Set the global gc bit on the outgoing heartbeat message.
@@ -2614,7 +2614,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     if ((should_local_gc_ ||
          (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
         local_gc_throttler_.AbleToRun()) {
-      const_cast<NodeManager*>(this)->DoLocalGC(triggered_by_global_gc);
+      const_cast<NodeManager *>(this)->DoLocalGC(triggered_by_global_gc);
       should_local_gc_ = false;
     }
 
