@@ -338,11 +338,8 @@ bool RaySyncer::Register(RayComponentId component_id,
   // Set job to pull from reporter periodically
   if (reporter != nullptr) {
     RAY_CHECK(pull_from_reporter_interval_ms > 0);
-    timer_.RunFnPeriodically(
-        [this, component_id]() {
-          BroadcastMessage(component_id);
-        },
-        pull_from_reporter_interval_ms);
+    timer_.RunFnPeriodically([this, component_id]() { BroadcastMessage(component_id); },
+                             pull_from_reporter_interval_ms);
   }
 
   RAY_LOG(DEBUG) << "Registered components: "
