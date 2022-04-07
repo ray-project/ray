@@ -4,7 +4,10 @@
 click
 colorama
 colorful
-fairscale
+# Newer versions of fairscale do not support Python 3.6 even though they still have wheels for it.
+# Have to manually pin it: https://github.com/facebookresearch/fairscale/issues/962
+fairscale; python_version >= '3.7'
+fairscale<=0.4.0; python_version < '3.7'
 filelock
 flask
 flatbuffers
