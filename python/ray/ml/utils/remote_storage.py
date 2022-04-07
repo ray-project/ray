@@ -91,7 +91,6 @@ def get_fs_and_path(
     try:
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
         _cached_fs[protocol] = fs
-
         return fs, path
     except pyarrow.lib.ArrowInvalid:
         # Raised when URI not recognized
@@ -155,3 +154,17 @@ def upload_to_uri(local_path: str, uri: str):
         )
 
     pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
+
+
+def _ensure_directory(uri: str):
+    """Create directory at remote URI.
+
+    This utility is needed e.g. for the mock filesystem to work.
+    """
+    # This function is a private API used in testing. If this is required
+    # for other filesystems we can consider calling this before uploading.
+    fs, path = get_fs_and_path(uri)
+    try:
+        fs.create_dir(path)
+    except Exception:
+        pass

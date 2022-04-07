@@ -7,7 +7,7 @@ from typing import Any
 
 import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.remote_storage import delete_at_uri, get_fs_and_path
+from ray.ml.utils.remote_storage import delete_at_uri, _ensure_directory
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -133,12 +133,8 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = self._prepare_dict_checkpoint()
 
         # Clean up mock bucket
-        fs, _path = get_fs_and_path(self.cloud_uri_pa)
-        try:
-            fs.delete_dir("cloud/bucket")
-        except OSError:
-            pass
-        fs.create_dir("cloud/bucket")
+        delete_at_uri(self.cloud_uri_pa)
+        _ensure_directory(self.cloud_uri_pa)
 
         # Convert into dict checkpoint
         location = checkpoint.to_uri(self.cloud_uri_pa)
@@ -248,12 +244,8 @@ class CheckpointsConversionTest(unittest.TestCase):
         checkpoint = self._prepare_fs_checkpoint()
 
         # Clean up mock bucket
-        fs, _path = get_fs_and_path(self.cloud_uri_pa)
-        try:
-            fs.delete_dir("cloud/bucket")
-        except OSError:
-            pass
-        fs.create_dir("cloud/bucket")
+        delete_at_uri(self.cloud_uri_pa)
+        _ensure_directory(self.cloud_uri_pa)
 
         # Convert into dict checkpoint
         location = checkpoint.to_uri(self.cloud_uri_pa)
