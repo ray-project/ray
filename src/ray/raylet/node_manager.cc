@@ -2619,6 +2619,9 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     }
 
     cluster_task_manager_->FillResourceUsage(resource_data);
+    if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+      const_cast<NodeManager *>(this)->FillNormalTaskResourceUsage(resource_data);
+    }
     resource_data.set_node_id(self_node_id_.Binary());
     resource_data.set_node_manager_address(initial_config_.node_manager_address);
 

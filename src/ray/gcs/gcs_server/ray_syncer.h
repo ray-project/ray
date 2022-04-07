@@ -111,6 +111,10 @@ class RaySyncer {
     static_assert(std::is_same_v<T, rpc::NodeResourceChange> ||
                       std::is_same_v<T, rpc::ResourcesData>,
                   "unknown type");
+    std::string json_str;
+    google::protobuf::util::MessageToJsonString(update, &json_str);
+    RAY_LOG(ERROR) << "GcsRaySyncer: Received a message: " << json_str;
+
     if constexpr (std::is_same_v<T, rpc::NodeResourceChange>) {
       resources_buffer_proto_.add_batch()->mutable_change()->Swap(&update);
     } else if constexpr (std::is_same_v<T, rpc::ResourcesData>) {

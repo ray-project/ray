@@ -37,17 +37,19 @@ void GcsResourceManager::Update(std::shared_ptr<const syncer::RaySyncMessage> me
         rpc::ResourcesData resources;
         resources.ParseFromString(message->sync_message());
         resources.set_node_id(message->node_id());
-        // std::string json_str;
-        // google::protobuf::util::MessageToJsonString(resources, &json_str);
-        // RAY_LOG(ERROR) << "Received a message: (" << message->component_id() << ")\t"
-        // << json_str;
+        std::string json_str;
+        google::protobuf::util::MessageToJsonString(resources, &json_str);
+        RAY_LOG(ERROR) << "Received a message: (" << message->component_id() << ")\t" << json_str;
         auto node_id = NodeID::FromBinary(message->node_id());
         if (message->component_id() == syncer::RayComponentId::RESOURCE_MANAGER) {
-          cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-              scheduling::NodeID(message->node_id()), resources);
-        } else if (message->component_id() == syncer::RayComponentId::SCHEDULER) {
-          UpdateNodeResourceUsage(node_id, resources);
+          if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+            UpdateNodeNormalTaskResources(NodeID::FromBinary(message->node_id()), resources);
+          } else {
+            cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
+                scheduling::NodeID(message->node_id()), resources);
+          }
         }
+        UpdateNodeResourceUsage(node_id, resources);
       },
       "GcsResourceManager::Update");
 }
