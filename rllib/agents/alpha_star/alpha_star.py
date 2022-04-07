@@ -3,8 +3,9 @@ A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
 import gym
-from typing import Optional, Type
+from typing import DefaultDict, Optional, Type
 import tree
+
 
 import ray
 from ray.actor import ActorHandle

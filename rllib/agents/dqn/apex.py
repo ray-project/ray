@@ -48,7 +48,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     NUM_TARGET_UPDATES,
     LAST_TARGET_UPDATE_TS,
@@ -151,6 +153,18 @@ class ApexTrainer(DQNTrainer):
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
+
+        # Shortcut: If execution_plan, thread and buffer will be created in there.
+        if self.config["_disable_execution_plan_api"] is False:
+            return
+
+        # Tag those workers (top 1/3rd indices) that we should collect episodes from
+        # for metrics due to `PerWorkerEpsilonGreedy` exploration strategy.
+        if self.workers.remote_workers():
+            self._remote_workers_for_metrics = \
+                self.workers.remote_workers()[
+                -len(self.workers.remote_workers()) // 3:]
+
         num_replay_buffer_shards = self.config["optimizer"]["num_replay_buffer_shards"]
 
         replay_actor_args = [
@@ -158,9 +172,9 @@ class ApexTrainer(DQNTrainer):
             self.config["learning_starts"],
             self.config["buffer_size"],
             self.config["train_batch_size"],
-            self.config["prioritized_replay_alpha"],
-            self.config["prioritized_replay_beta"],
-            self.config["prioritized_replay_eps"],
+            self.config["replay_buffer_config"]["prioritized_replay_alpha"],
+            self.config["replay_buffer_config"]["prioritized_replay_beta"],
+            self.config["replay_buffer_config"]["prioritized_replay_eps"],
             self.config["multiagent"]["replay_mode"],
             self.config.get("replay_sequence_length", 1),
         ]
@@ -278,15 +292,15 @@ class ApexTrainer(DQNTrainer):
         learner_thread.start()
 
         # Update experience priorities post learning.
-        def update_prio_and_stats(item: Tuple[ActorHandle, dict, int]) -> None:
-            actor, prio_dict, count = item
+        def update_prio_and_stats(item: Tuple[ActorHandle, dict, int, int]) -> None:
+            actor, prio_dict, env_count, agent_count = item
             if config.get("prioritized_replay"):
                 actor.update_priorities.remote(prio_dict)
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
-            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
-            metrics.counters[STEPS_TRAINED_COUNTER] += count
+            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = env_count
+            metrics.counters[STEPS_TRAINED_COUNTER] += env_count
             metrics.timers["learner_dequeue"] = learner_thread.queue_timer
             metrics.timers["learner_grad"] = learner_thread.grad_timer
             metrics.timers["learner_overall"] = learner_thread.overall_timer
@@ -569,16 +583,16 @@ class ApexTrainer(DQNTrainer):
         num_samples_trained_this_itr = 0
         for _ in range(self.learner_thread.outqueue.qsize()):
             if self.learner_thread.is_alive():
-                replay_actor, priority_dict, count = self.learner_thread.outqueue.get(
-                    timeout=0.001
-                )
+                replay_actor, priority_dict, env_steps, agent_steps = \
+                    self.learner_thread.outqueue.get(timeout=0.001)
                 if self.config["prioritized_replay"]:
                     replay_actor.update_priorities.remote(priority_dict)
-                num_samples_trained_this_itr += count
-                self.update_target_networks(count)
-                self._counters[STEPS_TRAINED_COUNTER] += count
+                num_samples_trained_this_itr += env_steps
+                self.update_target_networks(env_steps)
+                self._counters[NUM_ENV_STEPS_TRAINED] += env_steps
+                self._counters[NUM_AGENT_STEPS_TRAINED] += agent_steps
                 self.workers.local_worker().set_global_vars(
-                    {"timestep": self._counters[STEPS_TRAINED_COUNTER]}
+                    {"timestep": self._counters[NUM_ENV_STEPS_TRAINED]}
                 )
             else:
                 raise RuntimeError("The learner thread died in while training")

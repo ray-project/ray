@@ -57,7 +57,7 @@ def asynchronous_parallel_requests(
             E.g.: actors=[A, B],
             remote_kwargs=[{...} <- **kwargs for A, {...} <- **kwargs for B].
         return_result_obj_ref_ids: If True, return the object ref IDs of the ready
-        results, otherwise return the actual results.
+            results, otherwise return the actual results.
         num_requests_to_launch: Number of remote requests to launch on each of the
             actors.
 
