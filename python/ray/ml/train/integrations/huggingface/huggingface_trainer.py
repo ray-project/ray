@@ -1,5 +1,6 @@
 from typing import Any, Callable, List, Optional, Dict, Type
 import os
+import inspect
 from unittest.mock import patch
 
 import torch
@@ -218,10 +219,19 @@ class HuggingFaceTrainer(TorchTrainer):
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
-        assert TRAIN_DATASET_KEY in datasets
-        assert all(
+        if TRAIN_DATASET_KEY not in datasets:
+            raise KeyError(
+                f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
+                f"Got {list(self.datasets.keys())}"
+            )
+        if not all(
             key in (TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY) for key in datasets
-        )
+        ):
+            raise KeyError(
+                f"Only '{TRAIN_DATASET_KEY}' and '{EVALUATION_DATASET_KEY}' "
+                "keys can be preset in `datasets`. "
+                f"Got {list(self.datasets.keys())}"
+            )
 
         super().__init__(
             train_loop_per_worker=self._create_train_func(trainer_init_per_worker),
@@ -237,7 +247,12 @@ class HuggingFaceTrainer(TorchTrainer):
     def _validate_train_loop_per_worker(
         self, train_loop_per_worker: Callable, fn_name: str
     ) -> None:
-        pass
+        num_params = len(inspect.signature(train_loop_per_worker).parameters)
+        if num_params != 3:
+            raise ValueError(
+                f"{fn_name} should take in 3 arguments, "
+                f"but it accepts {num_params} arguments instead."
+            )
 
     def _create_train_func(
         self,
