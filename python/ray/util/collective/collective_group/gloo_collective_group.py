@@ -153,8 +153,7 @@ class Rendezvous:
                 keys = []
                 keys += [f"rank_{i}" for i in range(self._context.size)]
                 keys += [f"{i}" for i in range(self._context.size)]
-                # TODO(qwang): delelte keys
-                # self._store.delKeys(keys)
+                self._store.delKeys(keys)
                 group_name = ray.get(q.get_nowait.remote())
                 assert group_name == self._group_name
                 ray.kill(s)
