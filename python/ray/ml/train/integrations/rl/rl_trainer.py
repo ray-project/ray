@@ -113,6 +113,7 @@ class RLTrainer(Trainer):
         self._config = config if config is not None else {}
 
         Trainer.__init__(
+            self,
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
