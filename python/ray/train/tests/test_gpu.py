@@ -44,7 +44,10 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         return train.torch.get_device()
 
     trainer = Trainer(
-        "torch", num_workers=2, resources_per_worker={"GPU": num_gpus_per_worker}
+        "torch",
+        num_workers=2,
+        use_gpu=True,
+        resources_per_worker={"GPU": num_gpus_per_worker},
     )
     trainer.start()
     devices = trainer.run(train_fn)
@@ -56,8 +59,8 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         assert devices == [0, 1]
     else:
         raise RuntimeError(
-            "New parameter for this test has been added without checing the correct "
-            "devices have been returned."
+            "New parameter for this test has been added without checking that the "
+            "correct devices have been returned."
         )
 
 
