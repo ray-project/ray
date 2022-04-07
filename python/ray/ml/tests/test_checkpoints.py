@@ -7,7 +7,7 @@ from typing import Any
 
 import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.remote_storage import clear_bucket, get_fs_and_path
+from ray.ml.utils.remote_storage import delete_at_uri, get_fs_and_path
 
 
 class CheckpointsConversionTest(unittest.TestCase):
@@ -17,6 +17,9 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         self.checkpoint_dict_data = {"metric": 5, "step": 4}
         self.checkpoint_dir_data = {"metric": 2, "step": 6}
+
+        # We test two different in-memory filesystems as "cloud" providers,
+        # one for fsspec and one for pyarrow.fs
 
         # fsspec URI
         self.cloud_uri = "memory:///cloud/bucket"
@@ -263,13 +266,13 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         self._assert_fs_checkpoint(checkpoint)
 
-    def test_fs_clear_bucket(self):
+    def test_fs_delete_at_uri(self):
         """Test that clear bucket utility works"""
         checkpoint = self._prepare_fs_checkpoint()
 
         # Convert into dict checkpoint
         location = checkpoint.to_uri(self.cloud_uri)
-        clear_bucket(location)
+        delete_at_uri(location)
 
         checkpoint = Checkpoint.from_uri(location)
         with self.assertRaises(FileNotFoundError):

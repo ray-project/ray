@@ -1,14 +1,13 @@
 import json
 import os
-import tempfile
-import unittest
-
 import shutil
 import sys
+import tempfile
+import unittest
 from unittest.mock import patch
 
 from ray import tune
-from ray.ml.utils.remote_storage import upload_to_bucket, clear_bucket
+from ray.ml.utils.remote_storage import upload_to_uri, delete_at_uri
 from ray.tune.cloud import TrialCheckpoint
 
 
@@ -24,11 +23,11 @@ class TrialCheckpointApiTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         shutil.rmtree(self.local_dir)
-        clear_bucket(self.cloud_dir)
+        delete_at_uri(self.cloud_dir)
 
     def _save_checkpoint_at(self, target):
-        clear_bucket(target)
-        upload_to_bucket(target, self.local_dir)
+        delete_at_uri(target)
+        upload_to_uri(local_path=self.local_dir, uri=target)
 
     def testConstructTrialCheckpoint(self):
         # All these constructions should work
@@ -203,7 +202,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
     def testUploadDefaultCloud(self):
         other_cloud_dir = "memory:///other"
 
-        clear_bucket(other_cloud_dir)
+        delete_at_uri(other_cloud_dir)
         self._save_checkpoint_at(other_cloud_dir)
 
         # Case: Nothing is passed
@@ -232,7 +231,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
         other_local_dir = "/tmp/other"
         other_cloud_dir = "memory:///other"
 
-        clear_bucket(other_cloud_dir)
+        delete_at_uri(other_cloud_dir)
         self._save_checkpoint_at(other_cloud_dir)
         shutil.copytree(self.local_dir, other_local_dir)
 
@@ -332,7 +331,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
     def testSaveCloudTarget(self):
         other_cloud_dir = "memory:///other"
 
-        clear_bucket(other_cloud_dir)
+        delete_at_uri(other_cloud_dir)
         self._save_checkpoint_at(other_cloud_dir)
 
         # Case: No defaults
@@ -393,15 +392,15 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
         shutil.rmtree(self.fake_cloud_dir)
         shutil.rmtree(self.second_fake_cloud_dir)
 
-    def _clear_bucket(self, bucket: str):
-        cloud_local_dir = bucket.replace(self.cloud_target, self.fake_cloud_dir)
+    def _delete_at_uri(self, uri: str):
+        cloud_local_dir = uri.replace(self.cloud_target, self.fake_cloud_dir)
         cloud_local_dir = cloud_local_dir.replace(
             self.second_cloud_target, self.second_fake_cloud_dir
         )
         shutil.rmtree(cloud_local_dir)
 
-    def _fake_download_from_bucket(self, bucket: str, local_path: str):
-        cloud_local_dir = bucket.replace(self.cloud_target, self.fake_cloud_dir)
+    def _fake_download_from_uri(self, uri: str, local_path: str):
+        cloud_local_dir = uri.replace(self.cloud_target, self.fake_cloud_dir)
         cloud_local_dir = cloud_local_dir.replace(
             self.second_cloud_target, self.second_fake_cloud_dir
         )
@@ -409,8 +408,8 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
         shutil.rmtree(local_path, ignore_errors=True)
         shutil.copytree(cloud_local_dir, local_path)
 
-    def _fake_upload_to_bucket(self, bucket: str, local_path: str):
-        cloud_local_dir = bucket.replace(self.cloud_target, self.fake_cloud_dir)
+    def _fake_upload_to_uri(self, local_path: str, uri: str):
+        cloud_local_dir = uri.replace(self.cloud_target, self.fake_cloud_dir)
         cloud_local_dir = cloud_local_dir.replace(
             self.second_cloud_target, self.second_fake_cloud_dir
         )
@@ -448,12 +447,12 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             with open(os.path.join(cd, "checkpoint.json"), "rt") as f:
                 return json.load(f)
 
-        with patch("ray.tune.cloud.clear_bucket", self._clear_bucket), patch(
-            "ray.tune.cloud.download_from_bucket", self._fake_download_from_bucket
+        with patch("ray.tune.cloud.delete_at_uri", self._delete_at_uri), patch(
+            "ray.tune.cloud.download_from_uri", self._fake_download_from_uri
         ), patch(
-            "ray.ml.checkpoint.download_from_bucket", self._fake_download_from_bucket
+            "ray.ml.checkpoint.download_from_uri", self._fake_download_from_uri
         ), patch(
-            "ray.tune.cloud.upload_to_bucket", self._fake_upload_to_bucket
+            "ray.tune.cloud.upload_to_uri", self._fake_upload_to_uri
         ):
             #######
             # Case: Checkpoint exists on local dir. Copy to other local dir.

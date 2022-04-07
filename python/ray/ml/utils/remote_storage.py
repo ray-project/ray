@@ -15,6 +15,9 @@ except (ImportError, ModuleNotFoundError):
 from ray import logger
 
 URI_PROTOCOL_REGEX = r"^(\w+)://(.+)$"
+
+# We keep these constants for legacy compatibility with Tune's sync client
+# After Tune fully moved to using pyarrow.fs we can remove these.
 S3_PREFIX = "s3://"
 GS_PREFIX = "gs://"
 HDFS_PREFIX = "hdfs://"
@@ -56,8 +59,8 @@ def fs_hint(uri: str) -> str:
     return "Make sure to install and register your fsspec-compatible filesystem."
 
 
-def is_cloud_target(uri: str) -> bool:
-    """Check if target URI is a cloud target"""
+def is_non_local_path_uri(uri: str) -> bool:
+    """Check if target URI points to a non-local location"""
     if uri.startswith("file://") or not re.match(URI_PROTOCOL_REGEX, uri):
         return False
 
@@ -109,46 +112,46 @@ def get_fs_and_path(
     return fs, path
 
 
-def clear_bucket(bucket: str):
+def delete_at_uri(uri: str):
     _assert_pyarrow_installed()
 
-    fs, bucket_path = get_fs_and_path(bucket)
+    fs, bucket_path = get_fs_and_path(uri)
     if not fs:
         raise ValueError(
-            f"Could not clear bucket contents: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target. "
-            f"Hint: {fs_hint(bucket)}"
+            f"Could not clear URI contents: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
         )
 
     try:
         fs.delete_dir(bucket_path)
     except Exception as e:
-        logger.warning(f"Caught exception when clearing bucket `{bucket}`: {e}")
+        logger.warning(f"Caught exception when clearing URI `{uri}`: {e}")
 
 
-def download_from_bucket(bucket: str, local_path: str):
+def download_from_uri(uri: str, local_path: str):
     _assert_pyarrow_installed()
 
-    fs, bucket_path = get_fs_and_path(bucket)
+    fs, bucket_path = get_fs_and_path(uri)
     if not fs:
         raise ValueError(
-            f"Could not download from bucket: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target. "
-            f"Hint: {fs_hint(bucket)}"
+            f"Could not download from URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
         )
 
     pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
 
 
-def upload_to_bucket(bucket: str, local_path: str):
+def upload_to_uri(local_path: str, uri: str):
     _assert_pyarrow_installed()
 
-    fs, bucket_path = get_fs_and_path(bucket)
+    fs, bucket_path = get_fs_and_path(uri)
     if not fs:
         raise ValueError(
-            f"Could not upload to bucket: "
-            f"Bucket `{bucket}` is not a valid or supported cloud target. "
-            f"Hint: {fs_hint(bucket)}"
+            f"Could not upload to URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
         )
 
     pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
