@@ -231,6 +231,30 @@ class PushBasedShuffleOp(ShuffleOp):
                     cpu_map[resource] = num_cpus
         return cpu_map
 
+    @staticmethod
+    def _compute_merge_task_args(num_merge_tasks: int, cpu_map):
+        merge_to_node_map = [{} for _ in range(num_merge_tasks)]
+        #merge_to_node_map = []
+        #merge_tasks_assigned = 0
+        #node_names = list(cpu_map)
+        #leftover_cpu_map = {}
+        #while merge_tasks_assigned < num_merge_tasks_per_round and cpu_map:
+        #    node_name = node_names[merge_tasks_assigned % len(node_names)]
+        #    if cpu_map[node_name] >= merge_factor + 1:
+        #        cpu_map[node_name] -= (merge_factor + 1)
+        #        merge_to_node_map.append(node_name)
+        #        merge_tasks_assigned += 1
+        #    else:
+        #        leftover_cpu_map[node_name] = cpu_map.pop(node_name)
+        #        node_names.remove(node_name)
+        #while merge_tasks_assigned < num_merge_tasks_per_round:
+        #    node_name = max(leftover_cpu_map, key=leftover_cpu_map.get)
+        #    assert leftover_cpu_map[node_name] <= merge_factor
+        #    merge_to_node_map.append(node_name)
+        #    merge_tasks_assigned += 1
+        return merge_to_node_map
+
+
     def execute(
         self,
         input_blocks: BlockList,
@@ -263,17 +287,22 @@ class PushBasedShuffleOp(ShuffleOp):
         shuffle_reduce = cached_remote_fn(self.reduce)
 
         # Compute all constants used for task scheduling.
-        # TODO(swang): Add per-node affinity scheduling.
-        cpu_map = self._get_cluster_cpu_map()
+        cpu_map = PushBasedShuffleOp._get_cluster_cpu_map()
         num_cpus_total = sum(v for v in cpu_map.values())
         task_parallelism = min(num_cpus_total, input_num_blocks)
+        # Total number of merge tasks.
+        num_merge_tasks = math.ceil(input_num_blocks / merge_factor)
+        # Number of map-merge rounds.
+        num_rounds = math.ceil(task_parallelism / (input_num_blocks + num_merge_tasks))
+        # M: Number of map tasks in one map-merge round.
+        num_map_tasks_per_round = math.ceil(input_num_blocks / num_rounds)
         # N: Number of merge tasks in one map-merge round. Each map_partition
         # task will send one output to each of these merge tasks.
-        num_merge_tasks_per_round = math.ceil(task_parallelism / (merge_factor + 1))
-        # M: Number of map tasks in one map-merge round.
-        num_map_tasks_per_round = num_merge_tasks_per_round * merge_factor
-        # Total number of rounds of map-merge tasks.
-        num_rounds = math.ceil(input_num_blocks / num_map_tasks_per_round)
+        num_merge_tasks_per_round = math.ceil(num_merge_tasks / num_rounds)
+        # Scheduling args for assign merge tasks to nodes. We use node-affinity
+        # scheduling here to colocate merge tasks that output to the same
+        # reducer.
+        merge_task_args = self._compute_merge_task_args(num_merge_tasks, cpu_map)
 
         # Intermediate results for the map-merge stage.
         map_results = []
@@ -344,8 +373,11 @@ class PushBasedShuffleOp(ShuffleOp):
                 num_merge_returns = self._get_merge_partition_size(
                     merge_idx, output_num_blocks, num_merge_tasks_per_round
                 )
+                assert merge_idx < len(merge_task_args)
                 merge_results.append(
-                    shuffle_merge.options(num_returns=1 + num_merge_returns,).remote(
+                    shuffle_merge.options(num_returns=1 + num_merge_returns,
+                        **merge_task_args[merge_idx]
+                        ).remote(
                         *[map_result[merge_idx] for map_result in map_results],
                         reduce_args=self._reduce_args,
                     )
@@ -382,9 +414,13 @@ class PushBasedShuffleOp(ShuffleOp):
             for reduce_idx in range(num_merge_returns):
                 # Submit one partition of reduce tasks, one for each of the P
                 # outputs produced by the corresponding merge task.
+                # We also add the merge task arguments so that the reduce task
+                # is colocated with its inputs.
                 shuffle_reduce_out.append(
                     shuffle_reduce.options(
-                        **reduce_ray_remote_args, num_returns=2
+                        **reduce_ray_remote_args,
+                        **merge_task_args[merge_idx],
+                        num_returns=2
                     ).remote(
                         *self._reduce_args,
                         *[
