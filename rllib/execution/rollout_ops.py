@@ -37,7 +37,6 @@ def synchronous_parallel_sample(
     worker_set: WorkerSet,
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
-    max_episodes: Optional[int] = None,
     concat: bool = True,
 ) -> Union[List[SampleBatchType], SampleBatchType]:
     """Runs parallel and synchronous rollouts on all remote workers.
@@ -58,8 +57,6 @@ def synchronous_parallel_sample(
             final batch.
         max_env_steps: Optional number of environment steps to be included in the
             final batch.
-        max_episodes: Optional number of episodes to be included in the final batch.
-            TODO: Check complete episodes mode
         concat: Whether to concat all resulting batches at the end and return the
             concat'd batch.
 
@@ -82,27 +79,19 @@ def synchronous_parallel_sample(
         1
     """
     # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.
-    assert not (max_agent_steps is None and max_env_steps is None)
+    assert not (max_agent_steps is not None and max_env_steps is not None)
 
     agent_steps = 0
     env_steps = 0
-    episodes = 0
     all_sample_batches = []
 
     # Stop collecting batches as soon as one criterium is met.
     while (
-        (
-            (max_env_steps is None and env_steps == 0)
-            or (max_env_steps is not None and env_steps < max_env_steps)
-        )
-        and (
-            (max_agent_steps is None and agent_steps == 0)
-            or (max_agent_steps is not None and agent_steps < max_agent_steps)
-        )
-        and (
-            (max_episodes is None and episodes == 0)
-            or (max_episodes is not None and episodes < max_episodes)
-        )
+        (max_env_steps is None and env_steps == 0)
+        or (max_env_steps is not None and env_steps < max_env_steps)
+    ) and (
+        (max_agent_steps is None and agent_steps == 0)
+        or (max_agent_steps is not None and agent_steps < max_agent_steps)
     ):
         # No remote workers in the set -> Use local worker for collecting
         # samples.
@@ -117,17 +106,16 @@ def synchronous_parallel_sample(
         for b in sample_batches:
             env_steps += b.env_steps()
             agent_steps += b.agent_steps()
-            episodes += sum(b[SampleBatch.DONES])
-        all_sample_batches.append(*sample_batches)
+        all_sample_batches.extend(sample_batches)
 
     if concat is True:
         full_batch = SampleBatch.concat_samples(all_sample_batches)
         # Discard collected incomplete episodes in episode mode.
-        if max_episodes is not None and episodes >= max_episodes:
-            last_complete_ep_idx = len(full_batch) - full_batch[
-                SampleBatch.DONES
-            ].reverse().index(1)
-            full_batch = full_batch.slice(0, last_complete_ep_idx)
+        # if max_episodes is not None and episodes >= max_episodes:
+        #    last_complete_ep_idx = len(full_batch) - full_batch[
+        #        SampleBatch.DONES
+        #    ].reverse().index(1)
+        #    full_batch = full_batch.slice(0, last_complete_ep_idx)
         return full_batch
     else:
         return all_sample_batches
