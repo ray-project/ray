@@ -241,7 +241,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
         for (const auto &iter : resources) {
           resource_names.push_back(iter.first);
         }
-        if(ray_syncer_ != nullptr) {
+        if (ray_syncer_ != nullptr) {
           rpc::NodeResourceChange node_resource_change;
           for (const auto &iter : resources) {
             node_resource_change.add_deleted_resources(iter.first);
@@ -302,7 +302,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
         auto &resources = bundle->GetFormattedResources();
         gcs_resource_manager_.UpdateResources(node_id, resources);
 
-        if(ray_syncer_ != nullptr) {
+        if (ray_syncer_ != nullptr) {
           // Push the message to syncer so that it can be broadcasted to all other nodes
           rpc::NodeResourceChange node_resource_change;
           node_resource_change.set_node_id(node_id.Binary());
