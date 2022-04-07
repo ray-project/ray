@@ -256,6 +256,8 @@ build_dashboard_front_end() {
         nvm use --silent $NODE_VERSION
       fi
       install_npm_project
+      yarn install
+      yarn list
       yarn build
     )
   fi
