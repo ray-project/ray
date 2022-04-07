@@ -340,7 +340,7 @@ Ray Serve uses Python's standard ``logging`` facility using the ``"ray.serve"`` 
 By default, logs are emitted from actors both to ``stderr`` and on disk on each node at ``/tmp/ray/session_latest/logs/serve/``.
 This includes both system-level logs from the Serve controller and HTTP proxy as well as access logs and custom user logs produced from within deployment replicas.
 
-In development, logs are streamed to the driver Ray program that deployed the deployments, so it's most convenient to keep the driver running for debugging.
+In development, logs are streamed to the driver Ray program (the program that calls ``.deploy()`` or ``serve.run``, or the ``serve run`` CLI command) that deployed the deployments, so it's most convenient to keep the driver running for debugging.
 For example, let's run a basic Serve application and view the logs that are emitted.
 You can run this in an interactive shell like IPython to follow along.
 
