@@ -142,6 +142,11 @@ class RaySyncer {
   /// \param message The message to be broadcasted.
   void BroadcastMessage(std::shared_ptr<const RaySyncMessage> message);
 
+  /// Function to force a broadcasting of messages come from a component_id
+  ///
+  /// \param component_id The component which need to send the broadcasting messages
+  void BroadcastMessage(ray::rpc::syncer::RayComponentId component_id);
+
   /// Get the current node id.
   const std::string &GetLocalNodeID() const { return local_node_id_; }
 

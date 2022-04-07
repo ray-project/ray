@@ -340,11 +340,7 @@ bool RaySyncer::Register(RayComponentId component_id,
     RAY_CHECK(pull_from_reporter_interval_ms > 0);
     timer_.RunFnPeriodically(
         [this, component_id]() {
-          auto snapshot = node_state_->GetSnapshot(component_id);
-          if (snapshot) {
-            RAY_CHECK(snapshot->node_id() == GetLocalNodeID());
-            BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*snapshot)));
-          }
+          BroadcastMessage(component_id);
         },
         pull_from_reporter_interval_ms);
   }
@@ -371,6 +367,14 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
     for (auto &connection : sync_connections_) {
       connection.second->PushToSendingQueue(message);
     }
+  }
+}
+
+void RaySyncer::BroadcastMessage(RayComponentId cid) {
+  auto snapshot = node_state_->GetSnapshot(cid);
+  if (snapshot) {
+    RAY_CHECK(snapshot->node_id() == GetLocalNodeID());
+    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*snapshot)));
   }
 }
 
