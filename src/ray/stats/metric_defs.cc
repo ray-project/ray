@@ -66,6 +66,13 @@ DEFINE_stats(grpc_server_req_finished,
              ray::stats::COUNT);
 
 /// Object Manager.
+DEFINE_stats(object_manager_bytes,
+             "Number of bytes pushed or received by type {PushedFromLocalPlasma, "
+             "PushedFromLocalDisk, Received}.",
+             ("Type"),
+             (),
+             ray::stats::GAUGE);
+
 DEFINE_stats(object_manager_received_chunks,
              "Number object chunks received broken per type {Total, FailedTotal, "
              "FailedCancelled, FailedPlasmaFull}.",
@@ -100,6 +107,17 @@ DEFINE_stats(pull_manager_retries_total,
              (),
              (),
              ray::stats::GAUGE);
+DEFINE_stats(
+    pull_manager_num_object_pins,
+    "Number of object pin attempts by the pull manager, can be {Success, Failure}.",
+    ("Type"),
+    (),
+    ray::stats::GAUGE);
+DEFINE_stats(pull_manager_object_request_time_ms,
+             "Time between initial object pull request and local pinning of the object. ",
+             ("Type"),
+             ({1, 10, 100, 1000, 10000}),
+             ray::stats::HISTOGRAM);
 
 /// Push Manager
 DEFINE_stats(push_manager_in_flight_pushes,

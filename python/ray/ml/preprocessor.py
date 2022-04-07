@@ -56,8 +56,9 @@ class Preprocessor(abc.ABC):
 
         Args:
             dataset: Input Dataset.
+
         Returns:
-            Dataset: The transformed Dataset.
+            ray.data.Dataset: The transformed Dataset.
         """
         self.fit(dataset)
         return self.transform(dataset)
@@ -66,9 +67,10 @@ class Preprocessor(abc.ABC):
         """Transform the given dataset.
 
         Args:
-            dataset (Dataset): Input Dataset.
+            dataset: Input Dataset.
+
         Returns:
-            Dataset: The transformed Dataset.
+            ray.data.Dataset: The transformed Dataset.
         """
         if self._is_fittable and not self.check_is_fitted():
             raise PreprocessorNotFittedException(
@@ -81,6 +83,7 @@ class Preprocessor(abc.ABC):
 
         Args:
             df (DataBatchType): Input data batch.
+
         Returns:
             DataBatchType: The transformed data batch.
         """

@@ -6,6 +6,7 @@ This section should help you:
 
 - batch requests to optimize performance
 - serve multiple models by composing deployments
+- serve multiple models by making ensemble deployments
 
 .. contents::
 
@@ -50,8 +51,8 @@ Model Composition
 =================
 
 .. note::
-  Serve recently added an experimental first-class API for model composition (pipelines).
-  Please take a look at the :ref:`Pipeline API <serve-pipeline-api>` and try it out!
+  Serve recently added an experimental API for building deployment graphs of multiple models.
+  Please take a look at the :ref:`Deployment Graph API <serve-deployment-graph>` and try it out!
 
 Ray Serve supports composing individually scalable models into a single model
 out of the box. For instance, you can combine multiple models to perform
@@ -72,6 +73,33 @@ asynchronous by using an ``async def``. You'll see this in the example below.
 That's it. Let's take a look at an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_model_composition.py
+
+.. _serve-model-ensemble:
+
+Model Ensemble
+=================
+
+Ray Serve supports creating different ensemble models
+
+To define an ensemble of different models you need to do three things:
+
+1. Define your underlying sub models (the ones that make up the ensemble) as
+   Ray Serve deployments.
+2. Define your ensemble model, using the handles of the underlying models
+   (see the example below).
+3. Define a deployment representing this ensemble model and query it!
+
+In order to avoid synchronous execution in the ensemble model, you'll need to make
+the function asynchronous by using an ``async def``. In contrast to a composition model,
+within an ensemble model, you want to call **all** sub models in parallel. This will be
+achieved by sending all prediction calls to the sub models via async by using
+``asyncio.wait()``. Each serve deployment used in an ensemble use case is independently
+scalable via changing ``num_replicas``.
+
+That's it. Let's take a look at an example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_model_ensemble.py
+
 
 Integration with Model Registries
 =================================

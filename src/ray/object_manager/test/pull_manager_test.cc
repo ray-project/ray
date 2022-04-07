@@ -40,6 +40,7 @@ class PullManagerTestWithCapacity {
             [this](const ObjectID &object_id) { num_abort_calls_[object_id]++; },
             [this](const ObjectID &object_id) { timed_out_objects_.insert(object_id); },
             [this](const ObjectID &,
+                   int64_t size,
                    const std::string &,
                    std::function<void(const ray::Status &)> callback) {
               num_restore_spilled_object_calls_++;
@@ -92,8 +93,8 @@ class PullManagerTestWithCapacity {
   std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
-  std::unordered_map<ObjectID, int> num_abort_calls_;
-  std::unordered_map<ObjectID, std::string> spilled_url_;
+  absl::flat_hash_map<ObjectID, int> num_abort_calls_;
+  absl::flat_hash_map<ObjectID, std::string> spilled_url_;
   std::unordered_set<ObjectID> timed_out_objects_;
 };
 

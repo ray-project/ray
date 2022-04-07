@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 import numpy as np
 
 from ray.serve.utils import require_packages
-from ray.ml.predictor import DataBatchType
+import starlette.requests
 
 
 _1DArray = List[float]
@@ -40,8 +40,8 @@ class NdArray(BaseModel):
     )
 
 
-def array_to_databatch(payload: NdArray) -> DataBatchType:
-    """Accepts an NdArray from an HTTP body and converts it to a DataBatchType."""
+def json_to_ndarray(payload: NdArray) -> np.ndarray:
+    """Accepts an NdArray JSON from an HTTP body and converts it to a numpy array."""
     arr = np.array(payload.array)
     if payload.shape:
         arr = arr.reshape(*payload.shape)
@@ -50,10 +50,18 @@ def array_to_databatch(payload: NdArray) -> DataBatchType:
     return arr
 
 
+def starlette_request(
+    request: starlette.requests.Request,
+) -> starlette.requests.Request:
+    """Returns the raw request object."""
+    # NOTE(simon): This adapter is used for ease of getting started.
+    return request
+
+
 @require_packages(["PIL"])
-def image_to_databatch(img: bytes = File(...)) -> DataBatchType:
+def image_to_ndarray(img: bytes = File(...)) -> np.ndarray:
     """Accepts a PIL-readable file from an HTTP form and converts
-    it to a DataBatchType.
+    it to a numpy array.
     """
     from PIL import Image
 

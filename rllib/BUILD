@@ -545,6 +545,16 @@ py_test(
     args = ["--yaml-dir=tuned_examples/slateq"]
 )
 
+py_test(
+    name = "learning_tests_interest_evolution_10_candidates_recsim_env_slateq_fake_gpus",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_discrete", "fake_gpus"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/slateq/interest-evolution-10-candidates-recsim-env-slateq.yaml"],
+    args = ["--yaml-dir=tuned_examples/slateq"]
+)
+
 # TD3
 py_test(
     name = "learning_tests_pendulum_td3",
@@ -2821,27 +2831,27 @@ py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--stop-reward=100.0"]
+    args = ["--as-test", "--stop-reward=450.0"]
 )
 
 py_test(
     name = "examples/two_trainer_workflow_torch",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--torch", "--stop-reward=100.0"]
+    args = ["--as-test", "--torch", "--stop-reward=450.0"]
 )
 
 py_test(
     name = "examples/two_trainer_workflow_mixed_torch_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=100.0"]
+    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=450.0"]
 )
 
 py_test(

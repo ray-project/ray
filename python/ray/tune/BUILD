@@ -209,6 +209,14 @@ py_test(
 )
 
 py_test(
+    name = "test_resource_updater",
+    size = "large",
+    srcs = ["tests/test_resource_updater.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
     name = "test_ray_trial_executor",
     size = "large",
     srcs = ["tests/test_ray_trial_executor.py"],
@@ -228,6 +236,14 @@ py_test(
     name = "test_remote",
     size = "medium",
     srcs = ["tests/test_remote.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
+)
+
+py_test(
+    name = "test_result_grid",
+    size = "small",
+    srcs = ["tests/test_result_grid.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_R"],
 )
@@ -374,6 +390,22 @@ py_test(
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_tuner",
+    size = "medium",
+    srcs = ["tests/test_tuner.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_U"],
 )
 
 py_test_module_list(

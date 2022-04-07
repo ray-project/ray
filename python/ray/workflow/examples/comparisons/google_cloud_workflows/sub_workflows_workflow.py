@@ -1,23 +1,24 @@
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def hello(name: str) -> str:
-    return format_name.step(name)
+    return workflow.continuation(format_name.bind(name))
 
 
-@workflow.step
+@ray.remote
 def format_name(name: str) -> str:
-    return "hello, {}".format(name)
+    return f"hello, {name}"
 
 
-@workflow.step
+@ray.remote
 def report(msg: str) -> None:
     print(msg)
 
 
 if __name__ == "__main__":
     workflow.init()
-    r1 = hello.step("Kristof")
-    r2 = report.step(r1)
-    r2.run()
+    r1 = hello.bind("Kristof")
+    r2 = report.bind(r1)
+    workflow.create(r2).run()

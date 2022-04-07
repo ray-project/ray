@@ -2,12 +2,10 @@ interest-evolution-recsim-env-bandit-linucb:
     env: ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv
     run: BanditLinUCB
     stop:
-        episode_reward_mean: 170.0
-        timesteps_total: 1000
+        episode_reward_mean: 180.0
+        timesteps_total: 50000
     config:
         framework: torch
-
-        metrics_num_episodes_for_smoothing: 100
 
         # RLlib/RecSim wrapper specific settings:
         env_config:
@@ -17,7 +15,7 @@ interest-evolution-recsim-env-bandit-linucb:
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).
                 resample_documents: true
-                num_candidates: 10
+                num_candidates: 100
                 # How many documents to recommend (out of `num_candidates`) each
                 # timestep?
                 slate_size: 2
@@ -27,3 +25,5 @@ interest-evolution-recsim-env-bandit-linucb:
                 convert_to_discrete_action_space: true
                 wrap_for_bandits: true
                 seed: 0
+
+        metrics_num_episodes_for_smoothing: 500

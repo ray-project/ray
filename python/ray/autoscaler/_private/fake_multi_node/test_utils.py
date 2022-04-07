@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_DOCKER_IMAGE = "rayproject/ray:nightly-py{major}{minor}-cpu"
 
 
+class ResourcesNotReadyError(RuntimeError):
+    pass
+
+
 class DockerCluster:
     """Docker cluster wrapper.
 
@@ -59,6 +63,10 @@ class DockerCluster:
         return self._cluster_config
 
     @property
+    def cluster_dir(self):
+        return self._tempdir
+
+    @property
     def gcs_port(self):
         return self._cluster_config.get("provider", {}).get(
             "host_gcs_port", FAKE_DOCKER_DEFAULT_GCS_PORT
@@ -70,7 +78,7 @@ class DockerCluster:
             "host_client_port", FAKE_DOCKER_DEFAULT_CLIENT_PORT
         )
 
-    def connect(self, client: bool = True, timeout: int = 120):
+    def connect(self, client: bool = True, timeout: int = 120, **init_kwargs):
         """Connect to the docker-compose Ray cluster.
 
         Assumes the cluster is at RAY_TESTHOST (defaults to
@@ -80,6 +88,7 @@ class DockerCluster:
             client (bool): If True, uses Ray client to connect to the
                 cluster. If False, uses GCS to connect to the cluster.
             timeout (int): Connection timeout in seconds.
+            **init_kwargs: kwargs to pass to ``ray.init()``.
 
         """
         host = os.environ.get("RAY_TESTHOST", "127.0.0.1")
@@ -94,9 +103,9 @@ class DockerCluster:
         timeout_at = time.monotonic() + timeout
         while time.monotonic() < timeout_at:
             try:
-                ray.init(address)
+                ray.init(address, **init_kwargs)
                 self.wait_for_resources({"CPU": 1})
-            except Exception:
+            except ResourcesNotReadyError:
                 time.sleep(1)
                 continue
             else:
@@ -122,7 +131,9 @@ class DockerCluster:
         available = ray.cluster_resources()
         while any(available.get(k, 0.0) < v for k, v in resources.items()):
             if time.monotonic() > timeout:
-                raise RuntimeError(f"Timed out waiting for resources: {resources}")
+                raise ResourcesNotReadyError(
+                    f"Timed out waiting for resources: {resources}"
+                )
             time.sleep(1)
             available = ray.cluster_resources()
 
@@ -208,9 +219,15 @@ class DockerCluster:
         self.update_config()
         self.maybe_pull_image()
 
-    def teardown(self):
-        """Tear down docker compose cluster environment."""
-        shutil.rmtree(self._tempdir)
+    def teardown(self, keep_dir: bool = False):
+        """Tear down docker compose cluster environment.
+
+        Args:
+            keep_dir (bool): If True, cluster directory
+                will not be removed after termination.
+        """
+        if not keep_dir:
+            shutil.rmtree(self._tempdir)
         self._tempdir = None
         self._config_file = None
 

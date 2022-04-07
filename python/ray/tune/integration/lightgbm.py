@@ -18,14 +18,14 @@ class TuneReportCallback(TuneCallback):
     """Create a callback that reports metrics to Ray Tune.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to LightGBM,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to LightGBM. If this is None,
             all metrics will be reported to Tune under their default names as
             obtained from LightGBM.
-        results_postprocessing_fn (Callable): An optional Callable that takes in
+        results_postprocessing_fn: An optional Callable that takes in
             the dict that will be reported to Tune (after it has been flattened)
             and returns a modified dict that will be reported instead.
 
@@ -55,7 +55,7 @@ class TuneReportCallback(TuneCallback):
 
     def __init__(
         self,
-        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
@@ -114,9 +114,9 @@ class _TuneCheckpointCallback(TuneCallback):
     instead.
 
     Args:
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
-        frequency (int): How often to save checkpoints. Per default, a
+        frequency: How often to save checkpoints. Per default, a
             checkpoint is saved every five iterations.
 
     """
@@ -147,18 +147,18 @@ class TuneReportCheckpointCallback(TuneCallback):
     which is needed for checkpoint registration.
 
     Args:
-        metrics (str|list|dict): Metrics to report to Tune. If this is a list,
+        metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to LightGBM,
             and it will reported under the same name to Tune. If this is a
             dict, each key will be the name reported to Tune and the respective
             value will be the metric key reported to LightGBM.
-        filename (str): Filename of the checkpoint within the checkpoint
+        filename: Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint". If this is None,
             all metrics will be reported to Tune under their default names as
             obtained from LightGBM.
-        frequency (int): How often to save checkpoints. Per default, a
+        frequency: How often to save checkpoints. Per default, a
             checkpoint is saved every five iterations.
-        results_postprocessing_fn (Callable): An optional Callable that takes in
+        results_postprocessing_fn: An optional Callable that takes in
             the dict that will be reported to Tune (after it has been flattened)
             and returns a modified dict that will be reported instead.
 
@@ -196,7 +196,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     def __init__(
         self,
-        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         filename: str = "checkpoint",
         frequency: int = 5,
         results_postprocessing_fn: Optional[

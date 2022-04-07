@@ -78,7 +78,7 @@ class PublisherTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::shared_ptr<PeriodicalRunner> periodic_runner_;
   std::shared_ptr<Publisher> publisher_;
-  std::unordered_map<ObjectID, absl::flat_hash_set<NodeID>> subscribers_map_;
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> subscribers_map_;
   const uint64_t subscriber_timeout_ms_ = 30000;
   double current_time_;
   const SubscriberID subscriber_id_ = SubscriberID::FromRandom();

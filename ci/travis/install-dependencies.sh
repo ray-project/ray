@@ -309,13 +309,8 @@ install_dependencies() {
   if [ -n "${PYTHON-}" ] && [ "${MINIMAL_INSTALL-}" != 1 ]; then
     # Remove this entire section once Serve dependencies are fixed.
     if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TRAIN_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
-      # PyTorch is installed first since we are using a "-f" directive to find the wheels.
       # We want to install the CPU version only.
-      local torch_url="https://download.pytorch.org/whl/torch_stable.html"
-      case "${OSTYPE}" in
-        darwin*) pip install torch torchvision;;
-        *) pip install torch==1.9.0+cpu torchvision==0.10.0+cpu -f "${torch_url}";;
-      esac
+      pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
     fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)

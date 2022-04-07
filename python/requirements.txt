@@ -8,7 +8,7 @@
 aiohttp>=3.7
 aioredis < 2
 aiosignal
-click >= 7.0
+click >= 7.0, <= 8.0.4
 cloudpickle
 filelock
 frozenlist
@@ -18,7 +18,7 @@ jsonschema
 msgpack >= 1.0.0, < 2.0.0
 numpy >= 1.16
 opencensus
-prometheus_client >= 0.7.1
+prometheus_client >= 0.7.1, < 0.14.0
 protobuf >= 3.8.0
 py-spy >= 0.2.0
 pydantic >= 1.8
@@ -85,7 +85,6 @@ pytest-lazy-fixture
 pytest-timeout
 pytest-virtualenv
 scikit-learn==0.22.2
-tensorflow==2.5.1
 testfixtures
 werkzeug
 xlrd

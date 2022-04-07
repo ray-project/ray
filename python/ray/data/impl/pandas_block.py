@@ -142,11 +142,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         s = acc.to_pandas()
         for col_name in s.columns:
             col = s[col_name]
+            column_names = list(r.columns)
             # Ensure the column names are unique after zip.
-            if col_name in r.column_names:
+            if col_name in column_names:
                 i = 1
                 new_name = col_name
-                while new_name in r.column_names:
+                while new_name in column_names:
                     new_name = "{}_{}".format(col_name, i)
                     i += 1
                 col_name = new_name

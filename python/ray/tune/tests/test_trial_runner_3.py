@@ -46,7 +46,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner()
 
         def on_step_begin(self, trialrunner):
-            self._update_avail_resources()
+            self._resource_updater.update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             self.pre_step = cnt + 1
 

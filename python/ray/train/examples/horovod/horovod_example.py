@@ -140,9 +140,6 @@ def train_func(config):
     log_interval = config.get("log_interval", 10)
     use_cuda = config.get("use_cuda", False)
 
-    if use_cuda:
-        torch.cuda.set_device(hvd.local_rank())
-
     model, optimizer, train_loader, train_sampler = setup(config)
 
     results = []
