@@ -180,13 +180,6 @@ class HuggingFaceTrainer(TorchTrainer):
             and config as kwargs. The Torch Datasets are automatically
             created by converting the Ray Datasets internally before
             they are passed into the function.
-        trainer_init_config: Configurations to pass into
-            ``trainer_init_per_worker`` as kwargs.
-        torch_config: Configuration for setting up the PyTorch backend. If set to
-            None, use the default configuration. This replaces the ``backend_config``
-            arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
-        scaling_config: Configuration for how to scale data parallel training.
-        run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset and (optionally) key "evaluation" to denote the evaluation
@@ -195,6 +188,13 @@ class HuggingFaceTrainer(TorchTrainer):
             If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be
             transformed by the ``preprocessor`` if one is provided.
+        trainer_init_config: Configurations to pass into
+            ``trainer_init_per_worker`` as kwargs.
+        torch_config: Configuration for setting up the PyTorch backend. If set to
+            None, use the default configuration. This replaces the ``backend_config``
+            arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
+        scaling_config: Configuration for how to scale data parallel training.
+        run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
@@ -206,11 +206,11 @@ class HuggingFaceTrainer(TorchTrainer):
         trainer_init_per_worker: Callable[
             [TorchDataset, Optional[TorchDataset], Any], transformers.trainer.Trainer
         ],
+        datasets: Dict[str, GenDataset],
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
