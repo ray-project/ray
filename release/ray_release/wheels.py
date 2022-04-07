@@ -156,10 +156,10 @@ def get_buildkite_repo_branch() -> Tuple[str, str]:
 
     branch_str = os.environ["BUILDKITE_BRANCH"]
 
-    if "BUILDKITE_PULL_REQUEST_REPO" in os.environ:
-        repo_url = os.environ["BUILDKITE_PULL_REQUEST_REPO"]
-    else:
-        repo_url = os.environ.get("BUILDKITE_REPO", DEFAULT_REPO)
+    # BUILDKITE_PULL_REQUEST_REPO can be empty string, use `or` to catch this
+    repo_url = os.environ.get("BUILDKITE_PULL_REQUEST_REPO", None) or os.environ.get(
+        "BUILDKITE_REPO", DEFAULT_REPO
+    )
 
     if ":" in branch_str:
         # If the branch is user:branch, we split into user, branch
