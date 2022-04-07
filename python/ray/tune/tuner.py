@@ -95,6 +95,9 @@ class Tuner:
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
         # This is internal only arg.
+        # Only for dogfooding purposes. We can slowly promote these args
+        # to RunConfig or TuneConfig as needed.
+        _tuner_kwargs: Optional[Dict] = None,
         _tuner_internal: Optional[TunerInternal] = None,
     ):
         """Configure and construct a tune run."""

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List
 
+from ray.tune import SyncConfig
 from ray.util import PublicAPI
 
 from ray.tune.trainable import PlacementGroupFactory
@@ -146,3 +147,4 @@ class RunConfig:
     local_dir: Optional[str] = None
     callbacks: Optional[List[Callback]] = None
     failure: Optional[FailureConfig] = None
+    sync_config: Optional[SyncConfig] = None
