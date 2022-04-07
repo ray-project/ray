@@ -679,3 +679,22 @@ def set_bad_runtime_env_cache_ttl_seconds(request):
     os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"] = ttl
     yield ttl
     del os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"]
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    # execute all other hooks to obtain the report object
+    outcome = yield
+    rep = outcome.get_result()
+
+    if rep.when == "call" and rep.failed:
+        dir = os.environ.get("RAY_TEST_FAILURE_LOGS_DIR")
+
+        if dir is not None:
+            import shutil
+            import time
+
+            if not os.path.exists(dir):
+                os.makedirs(dir)
+            output_file = f"{dir}{rep.nodeid.split('/')[-1]}-{time.time()}"
+            shutil.make_archive(output_file, "zip", "/tmp/ray/session_latest")
