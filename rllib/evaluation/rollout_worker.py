@@ -913,8 +913,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     summarize(samples)
                 )
             )
+
+        info_out = {}
         if isinstance(samples, MultiAgentBatch):
-            info_out = {}
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():

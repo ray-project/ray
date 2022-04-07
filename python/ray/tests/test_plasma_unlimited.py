@@ -250,7 +250,7 @@ def test_plasma_allocate(shutdown_only):
     __ = ray.put(data)  # noqa
 
     # Check fourth object allocate in memory.
-    check_spilled_mb(address, spilled=180)
+    check_spilled_mb(address, spilled=[90, 180])
 
 
 if __name__ == "__main__":

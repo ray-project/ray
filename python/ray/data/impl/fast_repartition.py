@@ -5,7 +5,7 @@ from ray.data.impl.block_list import BlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.shuffle import _shuffle_reduce
+from ray.data.impl.shuffle import ShufflePartitionOp
 from ray.data.impl.stats import DatasetStats
 
 
@@ -32,10 +32,10 @@ def fast_repartition(blocks, num_blocks):
     # consider combining the split and coalesce tasks as an optimization.
 
     # Coalesce each split into a single block.
-    reduce_task = cached_remote_fn(_shuffle_reduce).options(num_returns=2)
+    reduce_task = cached_remote_fn(ShufflePartitionOp.reduce).options(num_returns=2)
     reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
     reduce_out = [
-        reduce_task.remote(*s.get_internal_block_refs())
+        reduce_task.remote(False, None, *s.get_internal_block_refs())
         for s in splits
         if s.num_blocks() > 0
     ]

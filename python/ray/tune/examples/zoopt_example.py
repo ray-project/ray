@@ -1,13 +1,14 @@
 """This example demonstrates the usage of ZOOptSearch.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the ZOOpt library to be installed (`pip install zoopt`).
 """
 import time
 
 from ray import tune
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from zoopt import ValueType  # noqa: F401
 
 
 def evaluation_fn(step, width, height):
@@ -50,6 +51,7 @@ if __name__ == "__main__":
     num_samples = 10 if args.smoke_test else 1000
 
     # Optional: Pass the parameter space yourself
+    # from zoopt import ValueType
     # space = {
     #     # for continuous dimensions: (continuous, search_range, precision)
     #     "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),

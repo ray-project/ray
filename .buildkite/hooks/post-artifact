@@ -13,9 +13,13 @@ if [ -d "/tmp/artifacts" ]; then
     echo "Artifact directory contents before cleanup:"
     find /tmp/artifacts -print || true
 
-    # Need sudo because artifacts were created by root
-    # within the docker container
-    rm -rf /tmp/artifacts/{,.[!.],..?}* || true
+    if [ "$(ls -A /tmp/artifacts)" ]; then
+      echo "Directory not empty, cleaning up..."
+      # Need to run in docker to avoid permission issues
+      docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/*; rm -rf /artifact-mount/.[!.]*' || true
+    else
+      echo "Directory already empty, no need to clean up."
+    fi
 
     echo "Artifact directory contents after cleanup:"
     find /tmp/artifacts -print || true
