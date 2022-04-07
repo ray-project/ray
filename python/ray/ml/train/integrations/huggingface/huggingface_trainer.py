@@ -1,9 +1,17 @@
-from typing import Any, Callable, Optional, Dict
+from typing import Any, Callable, List, Optional, Dict, Type
+import os
 
-from transformers.trainer import Trainer
-from torch.utils.data import Dataset as TorchDataset
+import torch
+import transformers.trainer
+from transformers.training_args import TrainingArguments
+from transformers.trainer_callback import TrainerCallback
+from torch.utils.data import Dataset as TorchDataset, IterableDataset, DataLoader
 
+
+from ray import train
+from ray.data.dataset import Dataset
 from ray.train.torch import TorchConfig
+from ray.train.session import SessionMisuseError
 from ray.ml.trainer import GenDataset
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.config import ScalingConfig, RunConfig
@@ -11,6 +19,45 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI
 from ray.ml.constants import TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY
+
+
+class _HFIterableDatasetWithLen(IterableDataset):
+    def __init__(self, generator, length: int):
+        self.generator = generator
+        self._len = length
+
+    def __iter__(self):
+        it = self.generator
+        for x in it:
+            yield {**x[0], "labels": x[1]}
+
+    def __len__(self):
+        return self._len
+
+
+class _TrainReportCallback(TrainerCallback):
+    def on_log(self, args, state, control, model=None, logs=None, **kwargs):
+        train.report(**{**logs, "step": state.global_step, "epoch": state.epoch})
+
+
+def _process_dataset_for_hf(
+    dataset: Dataset, feature_columns: Dict[str, List[str]], batch_size: int = 1
+) -> IterableDataset:
+    torch_dataset = dataset.to_torch(
+        batch_size=batch_size,
+        feature_columns=feature_columns,
+        label_column="labels",
+        unsqueeze_label_tensor=False,
+        unsqueeze_feature_tensors=False,
+    )
+    try:
+        count = dataset.count()
+    except ValueError:
+        # pipeline case
+        count = None
+    if count:
+        torch_dataset = _HFIterableDatasetWithLen(torch_dataset, count)
+    return torch_dataset
 
 
 @PublicAPI(stability="alpha")
@@ -153,8 +200,9 @@ class HuggingFaceTrainer(TorchTrainer):
 
     def __init__(
         self,
+        *,
         trainer_init_per_worker: Callable[
-            [TorchDataset, Optional[TorchDataset], Any], Trainer
+            [TorchDataset, Optional[TorchDataset], Any], transformers.trainer.Trainer
         ],
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
@@ -175,23 +223,139 @@ class HuggingFaceTrainer(TorchTrainer):
         )
 
         super().__init__(
-            self._create_train_func(trainer_init_per_worker),
-            trainer_init_config,
-            torch_config,
-            scaling_config,
-            run_config,
-            datasets,
-            preprocessor,
-            resume_from_checkpoint,
+            train_loop_per_worker=self._create_train_func(trainer_init_per_worker),
+            train_loop_config=trainer_init_config,
+            torch_config=torch_config,
+            scaling_config=scaling_config,
+            run_config=run_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    def _create_train_func(self, trainer_init_per_worker):
+    def _validate_train_loop_per_worker(
+        self, train_loop_per_worker: Callable, fn_name: str
+    ) -> None:
+        pass
+
+    def _create_train_func(
+        self,
+        trainer_init_per_worker: Callable[
+            [TorchDataset, Optional[TorchDataset], Any], transformers.trainer.Trainer
+        ],
+    ):
         def train_loop_per_worker(config):
-            # Set to None just to make CI pass & show
-            # the intended usage with trainer_init_per_worker
-            train_dataset = None
-            eval_dataset = None
-            trainer = trainer_init_per_worker(train_dataset, eval_dataset, **config)
+            os.environ["RANK"] = str(train.world_rank())
+            os.environ["WORLD_SIZE"] = str(train.world_size())
+            os.environ["LOCAL_RANK"] = str(train.local_rank())
+            os.environ["WANDB_DISABLED"] = "true"
+            os.environ["DISABLE_MLFLOW_INTEGRATION"] = "true"
+
+            train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
+            eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
+            train_columns = set(train_dataset.schema(fetch_if_missing=True).names)
+            if "labels" not in train_columns:
+                raise ValueError(
+                    "'labels' column must be present in the training dataset!"
+                )
+            train_columns.remove("labels")
+            if eval_dataset:
+                eval_columns = set(eval_dataset.schema(fetch_if_missing=True).names)
+                if "labels" not in eval_columns:
+                    raise ValueError(
+                        "'labels' column must be present in the evaluation dataset!"
+                    )
+                eval_columns.remove("labels")
+
+                if not eval_columns.issuperset(train_columns):
+                    raise ValueError(
+                        "Evaluation dataset must have a superset of the columns in "
+                        "the training dataset. "
+                        f"Missing columns: {list(train_columns - eval_columns)}"
+                    )
+
+            feature_columns = {column: [column] for column in train_columns}
+
+            # we use batch size 1 here, as it will be converted to
+            # desired size inside transformers.Trainer. Possible optimization
+            # in the future
+            batch_size = 1
+            train_torch_dataset = _process_dataset_for_hf(
+                train_dataset, feature_columns, batch_size=batch_size
+            )
+
+            if eval_dataset:
+                eval_torch_dataset = _process_dataset_for_hf(
+                    eval_dataset, feature_columns, batch_size=batch_size
+                )
+            else:
+                eval_torch_dataset = None
+
+            trainer: transformers.trainer.Trainer = trainer_init_per_worker(
+                train_torch_dataset, eval_torch_dataset, **config
+            )
+
+            if not trainer.args.local_rank == train.local_rank():
+                raise RuntimeError(
+                    "local_rank set in TrainingArguments doesn't match "
+                    "Ray Train local_rank "
+                    f"({trainer.args.local_rank} != {train.local_rank()}. "
+                    "Ensure you are not setting local_rank manually."
+                )
+
+            base_training_arguments_class: Type[
+                TrainingArguments
+            ] = trainer.args.__class__
+
+            class RayTrainingArguments(base_training_arguments_class):
+                @property
+                def device(self) -> "torch.device":
+                    try:
+                        return train.torch.get_device()
+                    except SessionMisuseError:
+                        return super().device
+
+            base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
+
+            class RayTrainer(base_trainer_class):
+                def get_train_dataloader(self):
+                    return DataLoader(
+                        self.train_dataset,
+                        batch_size=self.args.per_device_train_batch_size,
+                        collate_fn=self.data_collator,
+                        num_workers=self.args.dataloader_num_workers,
+                        pin_memory=self.args.dataloader_pin_memory,
+                    )
+
+                def _wrap_model(self, model, training=True):
+                    if not training:
+                        return model
+                    try:
+                        kwargs = {}
+                        # same logic as in transformers.Trainer
+                        if self.args.ddp_find_unused_parameters is not None:
+                            kwargs[
+                                "find_unused_parameters"
+                            ] = self.args.ddp_find_unused_parameters
+                        elif isinstance(model, transformers.trainer.PreTrainedModel):
+                            # find_unused_parameters breaks checkpointing as per
+                            # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
+                            kwargs[
+                                "find_unused_parameters"
+                            ] = not model.is_gradient_checkpointing
+                        else:
+                            kwargs["find_unused_parameters"] = True
+
+                        if self.args.ddp_bucket_cap_mb is not None:
+                            kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
+                        return train.torch.prepare_model(model, ddp_kwargs=kwargs)
+                    except SessionMisuseError:
+                        return super()._wrap_model(model, training)
+
+            trainer.__class__ = RayTrainer
+            trainer.args.__class__ = RayTrainingArguments
+            trainer.add_callback(_TrainReportCallback)
+            torch.cuda.set_device(train.torch.get_device())
             trainer.train()
 
         return train_loop_per_worker

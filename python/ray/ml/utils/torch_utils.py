@@ -1,6 +1,7 @@
 from typing import Optional, Union, List, Dict
 
 import pandas as pd
+import numpy as np
 import torch
 
 
@@ -8,6 +9,7 @@ def convert_pandas_to_torch_tensor(
     data_batch: pd.DataFrame,
     columns: Optional[Union[List[str], List[List[str]]]] = None,
     column_dtypes: Optional[Union[torch.dtype, List[torch.dtype]]] = None,
+    unsqueeze: bool = True,
 ) -> Union[torch.Tensor, List[torch.Tensor]]:
     """Converts a Pandas dataframe to a torch Tensor or list of torch Tensors.
 
@@ -46,6 +48,12 @@ def convert_pandas_to_torch_tensor(
 
     columns = columns if columns else []
 
+    def tensorize(vals, dtype):
+        if vals.dtype == np.object:
+            # TODO: clarify if this should be cat or stack
+            return torch.stack([tensorize(x, dtype) for x in vals])
+        return torch.as_tensor(vals, dtype=dtype)
+
     def get_tensor_for_columns(columns, dtype):
         feature_tensors = []
 
@@ -56,11 +64,14 @@ def convert_pandas_to_torch_tensor(
 
         for col in batch.columns:
             col_vals = batch[col].values
-            t = torch.as_tensor(col_vals, dtype=dtype)
-            t = t.view(-1, 1)
+            t = tensorize(col_vals, dtype=dtype)
+            if unsqueeze:
+                t = t.view(-1, 1)
             feature_tensors.append(t)
 
-        return torch.cat(feature_tensors, dim=1)
+        if len(feature_tensors) > 1:
+            return torch.cat(feature_tensors, dim=1)
+        return feature_tensors[0]
 
     if multi_input:
         if type(column_dtypes) not in [list, tuple]:
