@@ -16,6 +16,7 @@ import requests
 
 import ray
 import ray._private.gcs_utils as gcs_utils
+from ray._private.services import new_port
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
