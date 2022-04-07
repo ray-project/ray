@@ -1,6 +1,8 @@
 """This example demonstrates the usage of Dragonfly with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the Dragonfly library to be installed (`pip install dragonfly-opt`).
 """
 from __future__ import absolute_import
 from __future__ import division
