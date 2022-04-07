@@ -117,7 +117,7 @@ struct SchedulingOptions {
   bool require_node_available;
   bool avoid_gpu_nodes;
   std::string node_affinity_node_id;
-  bool node_affinity_soft;
+  bool node_affinity_soft = false;
 
  private:
   SchedulingOptions(SchedulingType type,
