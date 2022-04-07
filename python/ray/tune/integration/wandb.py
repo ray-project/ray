@@ -326,6 +326,8 @@ class WandbLoggerCallback(LoggerCallback):
             os.path.expanduser(self.api_key_path) if self.api_key_path else None
         )
         _set_api_key(self.api_key_file, self.api_key)
+        wandb.require("service")
+        wandb.setup()
 
     def log_trial_start(self, trial: "Trial"):
         config = trial.config.copy()
