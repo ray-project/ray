@@ -40,9 +40,7 @@ from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 from ray.util.iter import LocalIterator
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample_until,
-)
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -430,27 +428,27 @@ class PPOTrainer(Trainer):
 
     @ExperimentalAPI
     def training_iteration(self) -> ResultDict:
-        # Collect SampleBatches from sample workers until we have
-        # a full batch
+        # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
-            rollouts = synchronous_parallel_sample_until(
+            train_batch = synchronous_parallel_sample(
                 self.workers, max_agent_steps=self.config["train_batch_size"]
             )
         else:
-            rollouts = synchronous_parallel_sample_until(
+            train_batch = synchronous_parallel_sample(
                 self.workers, max_env_steps=self.config["train_batch_size"]
             )
 
-        rollouts = rollouts.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += rollouts.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += rollouts.env_steps()
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
         # Standardize advantages
-        rollouts = standardize_fields(rollouts, ["advantages"])
+        train_batch = standardize_fields(train_batch, ["advantages"])
         # Train
         if self.config["simple_optimizer"]:
-            train_results = train_one_step(self, rollouts)
+            train_results = train_one_step(self, train_batch)
         else:
-            train_results = multi_gpu_train_one_step(self, rollouts)
+            train_results = multi_gpu_train_one_step(self, train_batch)
 
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
@@ -487,7 +485,7 @@ class PPOTrainer(Trainer):
                     "vf_share_layers.".format(policy_id, scaled_vf_loss, policy_loss)
                 )
             # Warn about bad clipping configs
-            mean_reward = rollouts.policy_batches[policy_id]["rewards"].mean()
+            mean_reward = train_batch.policy_batches[policy_id]["rewards"].mean()
             if (
                 log_once("ppo_warned_vf_clip")
                 and mean_reward > self.config["vf_clip_param"]

@@ -94,7 +94,7 @@ class MyTrainer(Trainer):
         num_env_steps = 0
         # PPO batch size fixed at 200.
         while num_env_steps < 200:
-            ma_batches = synchronous_parallel_sample(self.workers)
+            ma_batches = synchronous_parallel_sample(self.workers, concat=False)
             # Loop through (parallely collected) ma-batches.
             for ma_batch in ma_batches:
                 # Update sampled counters.

@@ -1432,30 +1432,18 @@ class Trainer(Trainable):
         Returns:
             The results dict from executing the training iteration.
         """
-        # Some shortcuts.
-        batch_size = self.config["train_batch_size"]
-
-        # Collects SampleBatches in parallel and synchronously
-        # from the Trainer's RolloutWorkers until we hit the
-        # configured `train_batch_size`.
-        sample_batches = []
-        num_env_steps = 0
-        num_agent_steps = 0
-        while (not self._by_agent_steps and num_env_steps < batch_size) or (
-            self._by_agent_steps and num_agent_steps < batch_size
-        ):
-            new_sample_batches = synchronous_parallel_sample(self.workers)
-            sample_batches.extend(new_sample_batches)
-            num_env_steps += sum(len(s) for s in new_sample_batches)
-            num_agent_steps += sum(
-                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-                for s in new_sample_batches
+        # Collect SampleBatches from sample workers until we have a full batch.
+        if self._by_agent_steps:
+            train_batch = synchronous_parallel_sample(
+                self.workers, max_agent_steps=self.config["train_batch_size"]
             )
-        self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
-
-        # Combine all batches at once
-        train_batch = SampleBatch.concat_samples(sample_batches)
+        else:
+            train_batch = synchronous_parallel_sample(
+                self.workers, max_env_steps=self.config["train_batch_size"]
+            )
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
         # Use simple optimizer (only for multi-agent or tf-eager; all other
         # cases should use the multi-GPU optimizer, even if only using 1 GPU).
@@ -1466,8 +1454,7 @@ class Trainer(Trainable):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        # Update weights - after learning on the local worker - on all remote
-        # workers.
+        # Update weights - after learning on the local worker - on all remote workers.
         if self.workers.remote_workers():
             with self._timers[WORKER_UPDATE_TIMER]:
                 self.workers.sync_weights()
