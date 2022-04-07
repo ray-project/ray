@@ -140,6 +140,8 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
+        failure: The failure mode configuration.
+        sync_config: Configuration object for syncing. See tune.SyncConfig.
     """
 
     # TODO(xwjiang): Add more.
