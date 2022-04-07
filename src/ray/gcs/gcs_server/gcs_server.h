@@ -45,7 +45,6 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = true;
   std::string node_ip_address;
-  bool grpc_pubsub_enabled = false;
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
@@ -209,7 +208,7 @@ class GcsServer {
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
   // Synchronization service for ray.
-  std::unique_ptr<syncer::RaySyncer> ray_syncer_;
+  std::unique_ptr<gcs_syncer::RaySyncer> ray_syncer_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.

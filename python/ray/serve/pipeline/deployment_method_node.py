@@ -5,7 +5,8 @@ from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServeHandle
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
-from ray.serve.api import Deployment, DeploymentConfig
+from ray.serve.deployment import Deployment
+from ray.serve.config import DeploymentConfig
 
 
 class DeploymentMethodNode(DAGNode):

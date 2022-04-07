@@ -2762,43 +2762,41 @@ py_test(
     args = ["--as-test", "--framework=torch"],
 )
 
-# Deactivated for now due to open-spiel's dependency on an outdated
-# tensorflow-probability version.
-# py_test(
-#    name = "examples/self_play_with_open_spiel_connect_4_tf",
-#    main = "examples/self_play_with_open_spiel.py",
-#    tags = ["team:ml", "examples", "examples_S"],
-#    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel.py"],
-#    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-# )
+py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_tf",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:ml", "examples", "examples_S"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
 
-# py_test(
-#    name = "examples/self_play_with_open_spiel_connect_4_torch",
-#    main = "examples/self_play_with_open_spiel.py",
-#    tags = ["team:ml", "examples", "examples_S"],
-#    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel.py"],
-#    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-# )
+py_test(
+    name = "examples/self_play_with_open_spiel_connect_4_torch",
+    main = "examples/self_play_with_open_spiel.py",
+    tags = ["team:ml", "examples", "examples_S"],
+    size = "medium",
+    srcs = ["examples/self_play_with_open_spiel.py"],
+    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
 
-# py_test(
-#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
-#    main = "examples/self_play_league_based_with_open_spiel.py",
-#    tags = ["team:ml", "examples", "examples_S"],
-#    size = "medium",
-#    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
-#    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-# )
+py_test(
+    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
+    main = "examples/self_play_league_based_with_open_spiel.py",
+    tags = ["team:ml", "examples", "examples_S"],
+    size = "medium",
+    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
+    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
 
-# py_test(
-#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
-#    main = "examples/self_play_league_based_with_open_spiel.py",
-#    tags = ["team:ml", "examples", "examples_S"],
-#    size = "medium",
-#    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
-#    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
-# )
+py_test(
+    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
+    main = "examples/self_play_league_based_with_open_spiel.py",
+    tags = ["team:ml", "examples", "examples_S"],
+    size = "medium",
+    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
+    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+)
 
 py_test(
     name = "examples/trajectory_view_api_tf",
@@ -2831,27 +2829,27 @@ py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--stop-reward=100.0"]
+    args = ["--as-test", "--stop-reward=450.0"]
 )
 
 py_test(
     name = "examples/two_trainer_workflow_torch",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--torch", "--stop-reward=100.0"]
+    args = ["--as-test", "--torch", "--stop-reward=450.0"]
 )
 
 py_test(
     name = "examples/two_trainer_workflow_mixed_torch_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_trainer_workflow.py"],
-    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=100.0"]
+    args = ["--as-test", "--mixed-torch-tf", "--stop-reward=450.0"]
 )
 
 py_test(

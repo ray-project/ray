@@ -126,6 +126,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     std::string cpu_resource = "CPU";
     std::string gpu_resource = "GPU";
     std::string mem_resource = "memory";
+    std::string custom_resource = "custom";
 
     std::vector<std::vector<std::pair<std::string, double>>> resources_list;
 
@@ -140,6 +141,10 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 1.0)}));
     resources_list.emplace_back(std::vector(
         {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 2.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(custom_resource, 1.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(custom_resource, 2.0)}));
 
     std::vector<NodeID> node_ids;
     for (auto r : resources_list) {

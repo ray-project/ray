@@ -27,7 +27,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     GcsResourceManager &gcs_resource_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    syncer::RaySyncer &ray_syncer)
+    gcs_syncer::RaySyncer &ray_syncer)
     : return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),

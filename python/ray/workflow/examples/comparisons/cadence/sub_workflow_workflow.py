@@ -1,17 +1,18 @@
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def compose_greeting(greeting: str, name: str) -> str:
     return greeting + ": " + name
 
 
-@workflow.step
+@ray.remote
 def main_workflow(name: str) -> str:
-    return compose_greeting.step("Hello", name)
+    return workflow.continuation(compose_greeting.bind("Hello", name))
 
 
 if __name__ == "__main__":
     workflow.init()
-    wf = main_workflow.step("Alice")
+    wf = workflow.create(main_workflow.bind("Alice"))
     print(wf.run())

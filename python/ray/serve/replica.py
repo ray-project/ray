@@ -30,7 +30,7 @@ from ray.serve.constants import (
 )
 from ray.serve.version import DeploymentVersion
 from ray.serve.utils import wrap_to_ray_error, parse_import_path
-from ray.serve.api import Deployment
+from ray.serve.deployment import Deployment
 
 logger = _get_logger()
 
