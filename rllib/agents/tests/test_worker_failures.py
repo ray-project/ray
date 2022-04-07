@@ -37,8 +37,10 @@ class FaultInjectEnv(gym.Env):
     def step(self, action):
         # Only fail on the original workers with the specified indices.
         # Once on a recreated worker, don't fail anymore.
-        if self.config.worker_index in self.config["bad_indices"] and \
-                not self.config.recreated_worker:
+        if (
+            self.config.worker_index in self.config["bad_indices"]
+            and not self.config.recreated_worker
+        ):
             raise ValueError(
                 "This is a simulated error from "
                 f"worker-idx={self.config.worker_index}."
@@ -106,16 +108,30 @@ class IgnoresWorkerFailure(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             a = agent_cls(config=config, env="fault_env")
             # Expect this to go well and all faulty workers are recovered.
-            self.assertTrue(not any(
-                ray.get(worker.apply.remote(
-                    lambda w: w.recreated_worker or w.env_context.recreated_worker))
-                for worker in a.workers.remote_workers()))
+            self.assertTrue(
+                not any(
+                    ray.get(
+                        worker.apply.remote(
+                            lambda w: w.recreated_worker
+                            or w.env_context.recreated_worker
+                        )
+                    )
+                    for worker in a.workers.remote_workers()
+                )
+            )
             result = a.train()
             self.assertTrue(result["num_healthy_workers"], 2)
-            self.assertTrue(all(
-                ray.get(worker.apply.remote(
-                    lambda w: w.recreated_worker and w.env_context.recreated_worker))
-                for worker in a.workers.remote_workers()))
+            self.assertTrue(
+                all(
+                    ray.get(
+                        worker.apply.remote(
+                            lambda w: w.recreated_worker
+                            and w.env_context.recreated_worker
+                        )
+                    )
+                    for worker in a.workers.remote_workers()
+                )
+            )
             # This should also work several times.
             result = a.train()
             self.assertTrue(result["num_healthy_workers"], 2)

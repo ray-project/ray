@@ -1109,7 +1109,10 @@ class Trainer(Trainable):
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:
                     # Try to recover w/o the failed worker.
-                    if self.config["ignore_worker_failures"] or self.config["recreate_failed_workers"]:
+                    if (
+                        self.config["ignore_worker_failures"]
+                        or self.config["recreate_failed_workers"]
+                    ):
                         logger.exception("Error in train call, attempting to recover")
                         self.try_recover_from_step_attempt()
                     # Error out.
