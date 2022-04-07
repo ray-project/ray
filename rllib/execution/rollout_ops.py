@@ -50,7 +50,6 @@ def synchronous_parallel_sample_until(
     agent_steps = 0
     env_steps = 0
     episodes = 0
-    last_episode_idx = None
     sample_batches = []
     while (
         env_steps < max_env_steps
@@ -58,9 +57,9 @@ def synchronous_parallel_sample_until(
         and episodes < max_episodes
     ):
         batch = synchronous_parallel_sample(worker_set, remote_fn)
-        env_steps += sum([b.env_steps() for b in batch])
-        agent_steps += sum([b.agent_steps() for b in batch])
-        episodes += sum([sum(b[SampleBatch.DONES]) for b in batch])
+        env_steps += sum(b.env_steps() for b in batch)
+        agent_steps += sum(b.agent_steps() for b in batch)
+        episodes += sum(sum(b[SampleBatch.DONES]) for b in batch)
         sample_batches.append(*batch)
     full_batch = SampleBatch.concat_samples(sample_batches)
     # Discard collected incomplete episodes in episode mode
