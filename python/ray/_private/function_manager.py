@@ -98,7 +98,6 @@ class FunctionActorManager:
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
-        self.cv = threading.Condition(lock=self.lock)
 
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
@@ -179,6 +178,7 @@ class FunctionActorManager:
                     )
                     > 0
                 ):
+                    print(f"dbg exported={self._num_exported} key={key}")
                     break
         # Notify all subscribers that there is a new function exported. Note
         # that the notification doesn't include any actual data.

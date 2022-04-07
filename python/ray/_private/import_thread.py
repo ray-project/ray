@@ -87,6 +87,7 @@ class ImportThread:
                 )
                 if key is not None:
                     self._process_key(key)
+                    print(f"dbg imported={self.num_imported} export_key={export_key}")
                     self.num_imported += 1
                 else:
                     break
