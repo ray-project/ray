@@ -332,29 +332,6 @@ def ray_log(
     logs_dict = json.loads(response.text)
     return api_server_url, logs_dict
 
-
-# def ray_stream_log(
-#
-# ):
-#     import aiohttp
-#     import asyncio
-#     import sys
-#
-#     async def main():
-#         session = aiohttp.ClientSession()
-#
-#         print("connecting", sys.argv[1])
-#         ws = await session.ws_connect(sys.argv[1])
-#
-#         print("connected")
-#         for i in range(1000):
-#             msg = await ws.receive(1)
-#
-#             print(msg.data.decode("utf-8"))
-#             await asyncio.sleep(0.5)
-#     asyncio.run(main())
-
-
 def ray_actor_log(actor_id):
     actor_info = ray_actors(actor_id)[actor_id]
     node_id = actor_info["node_id"]
