@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Callable, Container, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Container, List, Optional, Tuple, TYPE_CHECKING, Union
 
 import ray
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -18,7 +18,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
 )
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
@@ -31,10 +31,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@ExperimentalAPI
 def synchronous_parallel_sample(
+    *,
     worker_set: WorkerSet,
-    remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     max_episodes: Optional[int] = None,
@@ -122,9 +122,8 @@ def synchronous_parallel_sample(
 
     if concat is True:
         full_batch = SampleBatch.concat_samples(all_sample_batches)
-
         # Discard collected incomplete episodes in episode mode.
-        if episodes >= max_episodes:
+        if max_episodes is not None and episodes >= max_episodes:
             last_complete_ep_idx = len(full_batch) - full_batch[
                 SampleBatch.DONES
             ].reverse().index(1)
