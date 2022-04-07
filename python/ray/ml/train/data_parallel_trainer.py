@@ -1,3 +1,4 @@
+import gc
 import inspect
 import logging
 from pathlib import Path
@@ -325,6 +326,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         super(_DataParallelCheckpointManager, self).on_init()
 
     def write_checkpoint(self, checkpoint: Dict):
+        self.latest_checkpoint = None
         self.add_tune_checkpoint_id(checkpoint)
 
         # Add the preprocessor to the checkpoint.
@@ -334,6 +336,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         # If inside a Tune Trainable, then checkpoint with Tune.
         with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
             checkpoint_obj.to_directory(path=checkpoint_dir)
+        gc.collect()
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:

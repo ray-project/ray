@@ -1,6 +1,7 @@
 from typing import Any, Callable, List, Optional, Dict, Type
 import os
 import inspect
+import gc
 from unittest.mock import patch
 
 import torch
@@ -38,8 +39,37 @@ class _HFIterableDatasetWithLen(IterableDataset):
 
 
 class _TrainReportCallback(TrainerCallback):
+    def __init__(self) -> None:
+        self.delayed_report = None
+        super().__init__()
+
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
-        train.report(**{**logs, "step": state.global_step, "epoch": state.epoch})
+        print(f"on log {state.epoch}, should save {control.should_save}")
+        report = {**logs, "step": state.global_step, "epoch": state.epoch}
+        if control.should_save:
+            self.delayed_report = report
+        else:
+            train.report(**report)
+
+    def on_save(self, args, state, control, **kwargs):
+        checkpoint_path = transformers.trainer.get_last_checkpoint(args.output_dir)
+        print(
+            f"on save {state.epoch}, checkpoint_path {checkpoint_path}, delayed_report {bool(self.delayed_report)}"
+        )
+        if checkpoint_path:
+            print("creating checkpoint")
+            ml_checkpoint = Checkpoint.from_directory(str(checkpoint_path))
+            print("saving checkpoint")
+            if train.world_rank() == 0:
+                train.save_checkpoint(**ml_checkpoint.to_dict())
+            else:
+                train.save_checkpoint(**{"DUMMY": 0})
+            print("checkpoint saved")
+        if self.delayed_report:
+            train.report(**self.delayed_report)
+            self.delayed_report = None
+        print("on save done")
+        gc.collect()
 
 
 def _process_dataset_for_hf(
@@ -215,7 +245,7 @@ class HuggingFaceTrainer(TorchTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        self._validate_train_loop_per_worker(
+        self._validate_trainer_init_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
@@ -244,15 +274,20 @@ class HuggingFaceTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    def _validate_train_loop_per_worker(
-        self, train_loop_per_worker: Callable, fn_name: str
+    def _validate_trainer_init_per_worker(
+        self, trainer_init_per_worker: Callable, fn_name: str
     ) -> None:
-        num_params = len(inspect.signature(train_loop_per_worker).parameters)
+        num_params = len(inspect.signature(trainer_init_per_worker).parameters)
         if num_params != 3:
             raise ValueError(
                 f"{fn_name} should take in 3 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
+
+    def _validate_train_loop_per_worker(
+        self, train_loop_per_worker: Callable, fn_name: str
+    ) -> None:
+        pass
 
     def _create_train_func(
         self,
@@ -373,8 +408,18 @@ class HuggingFaceTrainer(TorchTrainer):
                         kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
                     return train.torch.prepare_model(model, ddp_kwargs=kwargs)
 
+                def _save(self, output_dir=None, state_dict=None):
+                    # Workaround for RayTrainingArguments not being
+                    # pickleable
+                    self.args.__class__ = base_training_arguments_class
+                    ret = super()._save(output_dir, state_dict)
+                    self.args.__class__ = RayTrainingArguments
+                    return ret
+
             trainer.__class__ = RayTrainer
             trainer.args.__class__ = RayTrainingArguments
+            trainer.args.no_cuda = not torch.cuda.is_available()
+            trainer.args.save_on_each_node = True
             trainer.add_callback(_TrainReportCallback)
             if trainer.args.device.type == "cuda":
                 torch.cuda.set_device(trainer.args.device)
