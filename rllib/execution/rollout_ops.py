@@ -81,17 +81,14 @@ def synchronous_parallel_sample(
     # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.
     assert not (max_agent_steps is not None and max_env_steps is not None)
 
-    agent_steps = 0
-    env_steps = 0
+    agent_or_env_steps = 0
+    max_agent_or_env_steps = max_agent_steps or max_env_steps or None
     all_sample_batches = []
 
     # Stop collecting batches as soon as one criterium is met.
     while (
-        (max_env_steps is None and env_steps == 0)
-        or (max_env_steps is not None and env_steps < max_env_steps)
-    ) and (
-        (max_agent_steps is None and agent_steps == 0)
-        or (max_agent_steps is not None and agent_steps < max_agent_steps)
+        (max_agent_or_env_steps is None and agent_or_env_steps == 0)
+        or (max_agent_or_env_steps is not None and agent_or_env_steps < max_agent_or_env_steps)
     ):
         # No remote workers in the set -> Use local worker for collecting
         # samples.
@@ -104,8 +101,10 @@ def synchronous_parallel_sample(
             )
         # Update our counters.
         for b in sample_batches:
-            env_steps += b.env_steps()
-            agent_steps += b.agent_steps()
+            if max_agent_steps:
+                agent_or_env_steps += b.agent_steps()
+            elif max_env_steps:
+                agent_or_env_steps += b.env_steps()
         all_sample_batches.extend(sample_batches)
 
     if concat is True:
