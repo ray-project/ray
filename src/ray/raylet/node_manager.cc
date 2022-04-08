@@ -1734,7 +1734,7 @@ void NodeManager::HandleCommitBundleResources(
                  << GetDebugStringForBundles(bundle_specs);
   placement_group_resource_manager_->CommitBundles(bundle_specs);
   if (RayConfig::instance().use_ray_syncer()) {
-    ray_syncer_->BroadcastMessage(syncer::RayComponentId::RESOURCE_MANAGER);
+    ray_syncer_.BroadcastMessage(syncer::RayComponentId::RESOURCE_MANAGER);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -1774,7 +1774,7 @@ void NodeManager::HandleCancelResourceReserve(
   // Return bundle resources.
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
   if (RayConfig::instance().use_ray_syncer()) {
-    ray_syncer_->BroadcastMessage(syncer::RayComponentId::RESOURCE_MANAGER);
+    ray_syncer_.BroadcastMessage(syncer::RayComponentId::RESOURCE_MANAGER);
   }
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);

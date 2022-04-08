@@ -63,7 +63,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         *gcs_resource_manager_,
         *cluster_resource_scheduler_,
         raylet_client_pool_,
-        *ray_syncer_);
+        ray_syncer_.get());
   }
 
   void TearDown() override {
