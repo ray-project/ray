@@ -220,5 +220,5 @@ class RLTrainer(Trainer):
 
                 return rllib_trainer.default_resource_request(rllib_config)
 
-        AIRRLTrainer.__name__ = rllib_trainer.__name__
+        AIRRLTrainer.__name__ = f"AIR{rllib_trainer.__name__}"
         return AIRRLTrainer
