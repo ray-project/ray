@@ -9,12 +9,10 @@ from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.api import (
-    Deployment,
-    DeploymentConfig,
-    RayServeDAGHandle,
-    schema_to_deployment,
-)
+from ray.serve.api import schema_to_deployment
+from ray.serve.deployment import Deployment
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.config import DeploymentConfig
 from ray.serve.utils import get_deployment_import_path
 from ray.serve.schema import DeploymentSchema
 

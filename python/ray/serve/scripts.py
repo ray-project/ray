@@ -23,10 +23,12 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.api import (
     Application,
-    DeploymentFunctionNode,
-    DeploymentNode,
     get_deployment_statuses,
     serve_application_status_to_schema,
+)
+from ray.serve.deployment_graph import (
+    DeploymentFunctionNode,
+    DeploymentNode,
 )
 from ray.serve.api import build as build_app
 
@@ -355,7 +357,7 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(json.dumps(app_status, indent=4))
+        print(json.dumps(app_status["statuses"], indent=4))
 
 
 @cli.command(

@@ -10,6 +10,8 @@ from ray import tune
 from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
 from ray.ml.config import RunConfig
+from ray.ml.examples.pytorch.torch_linear_example import train_func as linear_train_func
+from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.ml.train import Trainer
 from ray.tune import Callback, TuneError
@@ -192,6 +194,47 @@ class TunerTest(unittest.TestCase):
         assert len(results) == 2
         for i in range(2):
             assert results[i].error
+
+    def test_tuner_with_torch_trainer(self):
+        """Test a successful run using torch trainer."""
+        shutil.rmtree(
+            os.path.join(DEFAULT_RESULTS_DIR, "test_tuner_torch"), ignore_errors=True
+        )
+        # The following two should be tunable.
+        config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 10}
+        scaling_config = {"num_workers": 1, "use_gpu": False}
+        trainer = TorchTrainer(
+            train_loop_per_worker=linear_train_func,
+            train_loop_config=config,
+            scaling_config=scaling_config,
+        )
+        # prep_v1 = StandardScaler(["worst radius", "worst area"])
+        # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
+        param_space = {
+            "scaling_config": {
+                "num_workers": tune.grid_search([1, 2]),
+            },
+            # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
+            #  is resolved.
+            # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
+            # "datasets": {
+            #     "train": tune.choice(
+            #         [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
+            #     ),
+            # },
+            "train_loop_config": {
+                "batch_size": tune.grid_search([4, 8]),
+                "epochs": tune.grid_search([5, 10]),
+            },
+        }
+        tuner = Tuner(
+            trainable=trainer,
+            run_config=RunConfig(name="test_tuner"),
+            param_space=param_space,
+            tune_config=TuneConfig(mode="min", metric="loss"),
+        )
+        results = tuner.fit()
+        assert len(results) == 8
 
 
 if __name__ == "__main__":

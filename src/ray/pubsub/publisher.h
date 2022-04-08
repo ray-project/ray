@@ -38,6 +38,37 @@ using SubscriberID = UniqueID;
 
 namespace pub_internal {
 
+class SubscriberState;
+
+/// State for an entity / topic in a pub/sub channel.
+class EntityState {
+ public:
+  /// Publishes the message to subscribers of the entity.
+  /// Returns true if there are subscribers, returns false otherwise.
+  bool Publish(const rpc::PubMessage &pub_message);
+
+  /// Manages the set of subscribers of this entity.
+  bool AddSubscriber(SubscriberState *subscriber);
+  bool RemoveSubscriber(const SubscriberID &id);
+
+  /// Gets the current set of subscribers, keyed by subscriber IDs.
+  const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
+
+ private:
+  // Tracks inflight messages. The messages have shared ownership by
+  // individual subscribers, and get deleted after no subscriber has
+  // the message in buffer.
+  std::queue<std::weak_ptr<rpc::PubMessage>> pending_messages_;
+  // Size of each inflight message.
+  std::queue<int64_t> message_sizes_;
+  // Total size of inflight messages.
+  int64_t total_size_ = 0;
+
+  // Subscribers of this entity.
+  // The underlying SubscriberState is owned by Publisher.
+  absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
+};
+
 /// Per-channel two-way index for subscribers and the keys they subscribe to.
 /// Also supports subscribers to all keys in the channel.
 class SubscriptionIndex {
@@ -45,13 +76,15 @@ class SubscriptionIndex {
   SubscriptionIndex() = default;
   ~SubscriptionIndex() = default;
 
+  /// Publishes the message to relevant subscribers.
+  /// Returns true if there are subscribers listening on the entity key of the message,
+  /// returns false otherwise.
+  bool Publish(const rpc::PubMessage &pub_message);
+
   /// Adds a new subscriber and the key it subscribes to.
   /// When `key_id` is empty, the subscriber subscribes to all keys.
   /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  bool AddEntry(const std::string &key_id, const SubscriberID &subscriber_id);
-
-  /// Returns a vector of subscriber ids that are subscribing to the given object ids.
-  std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
+  bool AddEntry(const std::string &key_id, SubscriberState *subscriber);
 
   /// Erases the subscriber from this index.
   /// Returns whether the subscriber exists before the call.
@@ -71,16 +104,19 @@ class SubscriptionIndex {
   /// and all-entity subscribers.
   bool HasSubscriber(const SubscriberID &subscriber_id) const;
 
+  /// Returns a vector of subscriber ids that are subscribing to the given object ids.
+  /// Test only.
+  std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
+
   /// Returns true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
  private:
   // Collection of subscribers that subscribe to all entities of the channel.
-  absl::flat_hash_set<SubscriberID> subscribers_to_all_;
-  // Mapping from subscribed entity id -> subscribers.
-  absl::flat_hash_map<std::string, absl::flat_hash_set<SubscriberID>>
-      key_id_to_subscribers_;
-  // Mapping from subscribers -> subscribed entity ids.
+  EntityState subscribers_to_all_;
+  // Mapping from subscribed entity id -> entity state.
+  absl::flat_hash_map<std::string, EntityState> entities_;
+  // Mapping from subscriber IDs -> subscribed key ids.
   // Reverse index of key_id_to_subscribers_.
   absl::flat_hash_map<SubscriberID, absl::flat_hash_set<std::string>>
       subscribers_to_key_id_;
@@ -124,7 +160,8 @@ class SubscriberState {
   /// \param pub_message A message to publish.
   /// \param try_publish If true, try publishing the object id if there is a connection.
   ///     Currently only set to false in tests.
-  void QueueMessage(const rpc::PubMessage &pub_message, bool try_publish = true);
+  void QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
+                    bool try_publish = true);
 
   /// Publish all queued messages if possible.
   ///
@@ -144,13 +181,16 @@ class SubscriberState {
   /// subscriber and publisher.
   bool IsActive() const;
 
+  /// Returns the ID of this subscriber.
+  const SubscriberID &id() const { return subscriber_id_; }
+
  private:
   /// Subscriber ID, for logging and debugging.
   const SubscriberID subscriber_id_;
   /// Inflight long polling reply callback, for replying to the subscriber.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
-  std::queue<std::unique_ptr<rpc::PubsubLongPollingReply>> mailbox_;
+  std::queue<std::shared_ptr<rpc::PubMessage>> mailbox_;
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
@@ -344,6 +384,9 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
+  friend class MockPublisher;
+  Publisher() {}
+
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
@@ -358,17 +401,17 @@ class Publisher : public PublisherInterface {
   PeriodicalRunner *periodical_runner_;
 
   /// Callback to get the current time.
-  const std::function<double()> get_time_ms_;
+  std::function<double()> get_time_ms_;
 
   /// The timeout where subscriber is considered as dead.
-  const uint64_t subscriber_timeout_ms_;
+  uint64_t subscriber_timeout_ms_;
 
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
   mutable absl::Mutex mutex_;
 
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<SubscriberID, std::shared_ptr<pub_internal::SubscriberState>>
+  absl::flat_hash_map<SubscriberID, std::unique_ptr<pub_internal::SubscriberState>>
       subscribers_ GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
@@ -376,7 +419,7 @@ class Publisher : public PublisherInterface {
       subscription_index_map_ GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
-  const int publish_batch_size_;
+  int publish_batch_size_;
 
   absl::flat_hash_map<rpc::ChannelType, uint64_t> cum_pub_message_cnt_ GUARDED_BY(mutex_);
 };

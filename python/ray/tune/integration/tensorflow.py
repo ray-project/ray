@@ -141,8 +141,7 @@ def DistributedTrainableCreator(
 
     Args:
         func: A training function that takes in
-            a config dict for hyperparameters and should initialize
-            horovod via horovod.init.
+            a config dict for hyperparameters.
         num_gpus_per_worker: Number of GPUs to request
             from Ray per worker.
         num_cpus_per_worker: Number of CPUs to request
