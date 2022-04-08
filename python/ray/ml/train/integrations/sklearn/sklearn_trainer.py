@@ -93,7 +93,7 @@ class SklearnTrainer(Trainer):
             either binary or multiclass, ``StratifiedKFold`` is used. In all
             other cases, ``KFold`` is used. These splitters are instantiated
             with ``shuffle=False`` so the splits will be the same across calls.
-        scaling_config: Configuration for how to scale data parallel training.
+        scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.
