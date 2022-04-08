@@ -1133,6 +1133,23 @@ class Trainer(Trainable):
                     step_attempt_results=step_attempt_results,
                 )
 
+        # Check `env_task_fn` for possible update of the env's task.
+        if self.config["env_task_fn"] is not None:
+            if not callable(self.config["env_task_fn"]):
+                raise ValueError(
+                    "`env_task_fn` must be None or a callable taking "
+                    "[train_results, env, env_ctx] as args!"
+                )
+
+            def fn(env, env_context, task_fn):
+                new_task = task_fn(result, env, env_context)
+                cur_task = env.get_task()
+                if cur_task != new_task:
+                    env.set_task(new_task)
+
+            fn = functools.partial(fn, task_fn=self.config["env_task_fn"])
+            self.workers.foreach_env_with_context(fn)
+
         return result
 
     def step_attempt(self) -> ResultDict:
@@ -1222,23 +1239,6 @@ class Trainer(Trainable):
                 self.evaluation_metrics, dict
             ), "Trainer.evaluate() needs to return a dict."
             step_results.update(self.evaluation_metrics)
-
-        # Check `env_task_fn` for possible update of the env's task.
-        if self.config["env_task_fn"] is not None:
-            if not callable(self.config["env_task_fn"]):
-                raise ValueError(
-                    "`env_task_fn` must be None or a callable taking "
-                    "[train_results, env, env_ctx] as args!"
-                )
-
-            def fn(env, env_context, task_fn):
-                new_task = task_fn(step_results, env, env_context)
-                cur_task = env.get_task()
-                if cur_task != new_task:
-                    env.set_task(new_task)
-
-            fn = functools.partial(fn, task_fn=self.config["env_task_fn"])
-            self.workers.foreach_env_with_context(fn)
 
         return step_results
 
