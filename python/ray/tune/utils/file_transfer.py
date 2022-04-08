@@ -12,6 +12,72 @@ from ray.exceptions import RayTaskError
 DEFAULT_CHUNK_SIZE = 500 * 1024 * 1024
 
 
+def sync_dir_between_nodes(
+    source_ip: str,
+    source_path: str,
+    target_ip: str,
+    target_path: str,
+    force_all: bool = False,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    _return_all_remotes: bool = False,
+) -> Union[ray.ObjectRef, Tuple[ray.ObjectRef, ray.ActorID, ray.ObjectRef]]:
+    """Synchronize directory on source node to directory on target node.
+
+    Per default, this function will collect information about already existing
+    files in the target directory. Only files that differ in either mtime or
+    filesize will be transferred, unless ``force_all=True``.
+
+    Args:
+        source_ip: IP of source node.
+        source_path: Path to file or directory on source node.
+        target_ip: IP of target node.
+        target_path: Path to file or directory on target node.
+        force_all: If True, all files will be transferred (not just differing files).
+        chunk_size: Chunk size for data transfer.
+
+    Returns:
+        Ray future for scheduled unpacking task.
+
+    """
+    pack_actor_on_source_node = _PackActor.options(
+        num_cpus=0, resources={f"node:{source_ip}": 0.01}
+    )
+    unpack_on_target_node = _unpack_from_actor.options(
+        num_cpus=0, resources={f"node:{target_ip}": 0.01}
+    )
+
+    if force_all:
+        files_stats = None
+    else:
+        files_stats = _remote_get_recursive_files_and_stats.options(
+            num_cpus=0, resources={f"node:{target_ip}": 0.01}
+        ).remote(target_path)
+
+    pack_actor = pack_actor_on_source_node.remote(
+        source_path, files_stats, chunk_size=chunk_size
+    )
+    unpack_future = unpack_on_target_node.remote(pack_actor, target_path)
+
+    if _return_all_remotes:
+        return unpack_future, pack_actor, files_stats
+
+    return unpack_future
+
+
+def delete_on_node(node_ip: str, path: str) -> ray.ObjectRef:
+    """Delete path on node.
+
+    Args:
+        node_ip: IP of node to delete path on.
+        path: Path to delete on remote node.
+
+    Returns:
+        Ray future for scheduled delete task.
+    """
+    delete_task = _delete_path.options(num_cpus=0, resources={f"node:{node_ip}": 0.01})
+    return delete_task.remote(path)
+
+
 def _get_recursive_files_and_stats(path: str) -> Dict[str, Tuple[float, int]]:
     """Return dict of files mapping to stats in ``path``.
 
@@ -168,69 +234,3 @@ def _delete_path(target_path: str) -> bool:
             os.remove(target_path)
         return True
     return False
-
-
-def delete_on_node(node_ip: str, path: str) -> ray.ObjectRef:
-    """Delete path on node.
-
-    Args:
-        node_ip: IP of node to delete path on.
-        path: Path to delete on remote node.
-
-    Returns:
-        Ray future for scheduled delete task.
-    """
-    delete_task = _delete_path.options(num_cpus=0, resources={f"node:{node_ip}": 0.01})
-    return delete_task.remote(path)
-
-
-def sync_dir_between_nodes(
-    source_ip: str,
-    source_path: str,
-    target_ip: str,
-    target_path: str,
-    force_all: bool = False,
-    chunk_size: int = DEFAULT_CHUNK_SIZE,
-    _return_all_remotes: bool = False,
-) -> Union[ray.ObjectRef, Tuple[ray.ObjectRef, ray.ActorID, ray.ObjectRef]]:
-    """Synchronize directory on source node to directory on target node.
-
-    Per default, this function will collect information about already existing
-    files in the target directory. Only files that differ in either mtime or
-    filesize will be transferred, unless ``force_all=True``.
-
-    Args:
-        source_ip: IP of source node.
-        source_path: Path to file or directory on source node.
-        target_ip: IP of target node.
-        target_path: Path to file or directory on target node.
-        force_all: If True, all files will be transferred (not just differing files).
-        chunk_size: Chunk size for data transfer.
-
-    Returns:
-        Ray future for scheduled unpacking task.
-
-    """
-    pack_actor_on_source_node = _PackActor.options(
-        num_cpus=0, resources={f"node:{source_ip}": 0.01}
-    )
-    unpack_on_target_node = _unpack_from_actor.options(
-        num_cpus=0, resources={f"node:{target_ip}": 0.01}
-    )
-
-    if force_all:
-        files_stats = None
-    else:
-        files_stats = _remote_get_recursive_files_and_stats.options(
-            num_cpus=0, resources={f"node:{target_ip}": 0.01}
-        ).remote(target_path)
-
-    pack_actor = pack_actor_on_source_node.remote(
-        source_path, files_stats, chunk_size=chunk_size
-    )
-    unpack_future = unpack_on_target_node.remote(pack_actor, target_path)
-
-    if _return_all_remotes:
-        return unpack_future, pack_actor, files_stats
-
-    return unpack_future
