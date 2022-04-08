@@ -14,8 +14,7 @@ DEFAULT_CONFIG = with_common_config({
     # Experimental: By default, switch off preprocessors for PG.
     "_disable_preprocessor_api": True,
 
-    # PG is the first algo (experimental) to not use the distr. exec API
-    # anymore.
+    # Use new `training_iteration` API (instead of `execution_plan` method).
     "_disable_execution_plan_api": True,
 })
 
