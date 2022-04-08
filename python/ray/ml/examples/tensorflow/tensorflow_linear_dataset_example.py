@@ -1,16 +1,15 @@
 import argparse
 import numpy as np
-import pandas as pd
 
 
 import tensorflow as tf
+from ray.ml.scorer import BatchScorer
 from tensorflow.keras.callbacks import Callback
 
 import ray
 import ray.train as train
 from ray.data import Dataset
 from ray.train.tensorflow import prepare_dataset_shard
-from ray.ml.checkpoint import Checkpoint
 from ray.ml.train.integrations.tensorflow import TensorflowTrainer
 from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
 from ray.ml.result import Result
@@ -90,24 +89,14 @@ def train_tensorflow_linear(num_workers: int = 2, use_gpu: bool = False) -> Resu
 
 
 def predict_linear(result: Result) -> Dataset:
-    items = [{"x": np.random.uniform(0, 1)}] * 10
+    scorer = BatchScorer(
+        TensorflowPredictor, result.checkpoint, model_definition=build_model
+    )
+
+    items = [{"x": np.random.uniform(0, 1)} for _ in range(10)]
     prediction_dataset = ray.data.from_items(items)
 
-    checkpoint_object_ref = result.checkpoint.to_object_ref()
-
-    class TFScorer:
-        def __init__(self):
-            self.predictor = TensorflowPredictor.from_checkpoint(
-                Checkpoint.from_object_ref(checkpoint_object_ref),
-                model_definition=build_model,
-            )
-
-        def __call__(self, batch) -> pd.DataFrame:
-            return self.predictor.predict(batch, dtype=tf.float32)
-
-    predictions = prediction_dataset.map_batches(
-        TFScorer, compute="actors", batch_format="pandas"
-    )
+    predictions = scorer.score(prediction_dataset, dtype=tf.float32)
 
     pandas_predictions = predictions.to_pandas(float("inf"))
 
