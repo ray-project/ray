@@ -266,14 +266,16 @@ class WorkerSet:
             except Exception:
                 logger.exception("Error terminating faulty worker.")
 
-        if len(faulty_indices) == len(self.remote_workers()):
-            raise RuntimeError("Not enough healthy workers remain to continue.")
-
         # Remove all faulty workers from self._remote_workers.
         for worker_index in reversed(faulty_indices):
             del self._remote_workers[worker_index - 1]
         # TODO: Should we also change each healthy worker's num_workers counter and
         #  worker_index property?
+
+        if len(self.remote_workers()) == 0:
+            raise RuntimeError(
+                f"No healthy workers remaining (worker indices {faulty_indices} have "
+                f"died)! Can't continue training.")
 
     def recreate_failed_workers(self):
         faulty_indices = self._worker_health_check()
