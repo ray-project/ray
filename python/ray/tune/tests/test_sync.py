@@ -489,7 +489,7 @@ class TestSyncFunctionality(unittest.TestCase):
         this_node_ip = ray.util.get_node_ip_address()
 
         # Sync everything up
-        client = RemoteTaskClient(store_pack_future=True)
+        client = RemoteTaskClient(_store_remotes=True)
         client.sync_up(source=temp_source, target=(this_node_ip, temp_up_target))
         client.wait()
 
@@ -526,8 +526,8 @@ class TestSyncFunctionality(unittest.TestCase):
         client.sync_up(source=temp_source, target=(this_node_ip, temp_up_target))
 
         # Hi-jack futures
-        files_stats = ray.get(client._last_files_stats)
-        tarball = ray.get(client._pack_future)
+        files_stats = ray.get(client._stored_files_stats)
+        tarball = ray.get(client._stored_pack_actor_ref.get_full_data.remote())
         client.wait()
 
         # Existing file should have new content
@@ -559,8 +559,8 @@ class TestSyncFunctionality(unittest.TestCase):
         client.sync_down(source=(this_node_ip, temp_source), target=temp_down_target)
 
         # Hi-jack futures
-        files_stats = client._last_files_stats
-        tarball = ray.get(client._pack_future)
+        files_stats = ray.get(client._stored_files_stats)
+        tarball = ray.get(client._stored_pack_actor_ref.get_full_data.remote())
         client.wait()
 
         # Existing file should have new content
