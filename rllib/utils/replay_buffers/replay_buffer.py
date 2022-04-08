@@ -280,10 +280,13 @@ class ReplayBuffer:
 
     def _encode_sample(self, idxes: List[int]) -> SampleBatchType:
         """Fetches concatenated samples at given indeces from the storage."""
-        samples = [self._storage[i] for i in idxes]
+        samples = []
+        for i in idxes:
+            self._hit_count[i] += 1
+            samples.append(self._storage[i])
 
         if samples:
-            # Assume all samples are of same type
+            # We assume all samples are of same type
             sample_type = type(samples[0])
             out = sample_type.concat_samples(samples)
         else:

@@ -2,6 +2,8 @@
 
 It also checks that it is usable with a separate scheduler.
 
+Requires the Optuna library to be installed (`pip install optuna`).
+
 For an example of using an Optuna define-by-run function, see
 :doc:`/tune/examples/optuna_define_by_run_example`.
 """

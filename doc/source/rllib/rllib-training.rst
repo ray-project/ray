@@ -146,6 +146,16 @@ Here are some rules of thumb for scaling training with RLlib.
 
 4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization. If your env requires GPUs to function, or if multi-node SGD is needed, then also consider :ref:`DD-PPO <ddppo>`.
 
+
+In case you are using lots of workers (``num_workers >> 10``) and you observe worker failures for whatever reasons, which normally interrupt your RLlib training runs, consider using
+the config settings ``ignore_worker_failures=True`` or ``recreate_failed_workers=True``:
+
+``ignore_worker_failures=True`` allows your Trainer to not crash due to a single worker error, but to continue for as long as there is at least one functional worker remaining.
+``recreate_failed_workers=True`` will have your Trainer attempt to replace/recreate any failed worker(s) with a new one.
+
+Both these settings will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors.
+
+
 Common Parameters
 ~~~~~~~~~~~~~~~~~
 
