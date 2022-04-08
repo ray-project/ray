@@ -2892,17 +2892,25 @@ class Trainer(Trainable):
 
             # If no prioritized replay, old-style replay buffer should
             # not be handed the following parameters:
-            if config.get("prioritized_replay", False) is False:
+            if (
+                config.get("prioritized_replay", False) is False
+                or config["replay_buffer_config"].get("prioritized_replay") is False
+            ):
                 # This triggers non-prioritization in old-style replay buffer
                 config["replay_buffer_config"]["prioritized_replay_alpha"] = 0.0
 
         else:
             if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
                 # Create valid full [module].[class] string for from_config
-                buffer_type = "ray.rllib.utils.replay_buffers." + buffer_type
-                config["replay_buffer_config"]["type"] = buffer_type
+                config["replay_buffer_config"]["type"] = (
+                    "ray.rllib.utils.replay_buffers." + buffer_type
+                )
 
-        return from_config(buffer_type, config["replay_buffer_config"])
+        # Until deprecation, the buffer has to be instantiated without
+        # prioritized_replay, which is only used in old replay buffers
+        _config = copy.deepcopy(config)
+        _config["replay_buffer_config"].pop("prioritized_replay", None)
+        return from_config(buffer_type, _config["replay_buffer_config"])
 
     @DeveloperAPI
     def _kwargs_for_execution_plan(self):

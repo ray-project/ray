@@ -91,6 +91,8 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_config": {
         # Use the new ReplayBuffer API here
         "_enable_replay_buffer_api": True,
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": 1000,
         "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
         "replay_batch_size": 32,
@@ -118,8 +120,6 @@ DEFAULT_CONFIG = with_common_config({
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
     "grad_clip": 40,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
