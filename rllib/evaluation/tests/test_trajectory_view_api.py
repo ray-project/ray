@@ -349,7 +349,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         self.assertEqual(results["agent_timesteps_total"], results["timesteps_total"])
         self.assertEqual(
             results["num_env_steps_trained"] * num_agents,
-            results["num_agent_steps_trained"])
+            results["num_agent_steps_trained"],
+        )
         self.assertGreaterEqual(
             results["agent_timesteps_total"],
             num_iterations * config["train_batch_size"],

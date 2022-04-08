@@ -86,9 +86,9 @@ def synchronous_parallel_sample(
     all_sample_batches = []
 
     # Stop collecting batches as soon as one criterium is met.
-    while (
-        (max_agent_or_env_steps is None and agent_or_env_steps == 0)
-        or (max_agent_or_env_steps is not None and agent_or_env_steps < max_agent_or_env_steps)
+    while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
+        max_agent_or_env_steps is not None
+        and agent_or_env_steps < max_agent_or_env_steps
     ):
         # No remote workers in the set -> Use local worker for collecting
         # samples.
@@ -99,11 +99,11 @@ def synchronous_parallel_sample(
             sample_batches = ray.get(
                 [worker.sample.remote() for worker in worker_set.remote_workers()]
             )
-        # Update our counters.
+        # Update our counters for the stopping criterion of the while loop.
         for b in sample_batches:
             if max_agent_steps:
                 agent_or_env_steps += b.agent_steps()
-            elif max_env_steps:
+            else:
                 agent_or_env_steps += b.env_steps()
         all_sample_batches.extend(sample_batches)
 
