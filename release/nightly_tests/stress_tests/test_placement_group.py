@@ -155,6 +155,18 @@ if __name__ == "__main__":
     result["avg_pg_create_time_ms"] = total_creating_time / total_trial * 1000
     result["avg_pg_remove_time_ms"] = total_removing_time / total_trial * 1000
     result["success"] = 1
+    result["perf_metrics"] = [
+        {
+            "perf_metric_name": "avg_pg_create_time_ms",
+            "perf_metric_value": result["avg_pg_create_time_ms"],
+            "perf_metric_type": "LATENCY",
+        },
+        {
+            "perf_metric_name": "avg_pg_remove_time_ms",
+            "perf_metric_value": result["avg_pg_remove_time_ms"],
+            "perf_metric_type": "LATENCY",
+        },
+    ]
     print(
         "Avg placement group creating time: "
         f"{total_creating_time / total_trial * 1000} ms"

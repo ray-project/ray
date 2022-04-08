@@ -1,3 +1,4 @@
+import io
 import shutil
 import tarfile
 import tempfile
@@ -451,26 +452,15 @@ def _temporary_checkpoint_dir() -> str:
 
 def _pack(path: str) -> bytes:
     """Pack directory in ``path`` into an archive, return as bytes string."""
-    _, tmpfile = tempfile.mkstemp()
-    with tarfile.open(tmpfile, "w:gz") as tar:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
         tar.add(path, arcname="")
 
-    with open(tmpfile, "rb") as f:
-        stream = f.read()
-
-    os.remove(tmpfile)
-    return stream
+    return stream.getvalue()
 
 
 def _unpack(stream: bytes, path: str) -> str:
     """Unpack archive in bytes string into directory in ``path``."""
-    _, tmpfile = tempfile.mkstemp()
-
-    with open(tmpfile, "wb") as f:
-        f.write(stream)
-
-    with tarfile.open(tmpfile) as tar:
+    with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
         tar.extractall(path)
-
-    os.remove(tmpfile)
     return path
