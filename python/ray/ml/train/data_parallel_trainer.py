@@ -183,6 +183,7 @@ class DataParallelTrainer(Trainer):
 
     def __init__(
         self,
+        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
@@ -198,6 +199,11 @@ class DataParallelTrainer(Trainer):
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
 
+        backend_config = (
+            backend_config if backend_config is not None else BackendConfig()
+        )
+        self.backend_config = backend_config
+
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -205,6 +211,9 @@ class DataParallelTrainer(Trainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    def _validate_attributes(self):
+        super()._validate_attributes()
 
         if (
             not self.scaling_config.get("use_gpu", False)
@@ -226,15 +235,19 @@ class DataParallelTrainer(Trainer):
                 f"integer. Received {self.scaling_config['num_workers']}"
             )
 
-        num_params = len(inspect.signature(self.train_loop_per_worker).parameters)
+        self._validate_train_loop_per_worker(
+            self.train_loop_per_worker, "train_loop_per_worker"
+        )
+
+    def _validate_train_loop_per_worker(
+        self, train_loop_per_worker: Callable, fn_name: str
+    ) -> None:
+        num_params = len(inspect.signature(train_loop_per_worker).parameters)
         if num_params > 1:
             raise ValueError(
-                f"train_loop_per_worker should take in 0 or 1 arguments, "
+                f"{fn_name} should take in 0 or 1 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
-
-        backend_config = backend_config if backend_config else BackendConfig()
-        self.backend_config = backend_config
 
     def training_loop(self) -> None:
         scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)

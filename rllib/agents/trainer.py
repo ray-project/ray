@@ -28,6 +28,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
@@ -281,6 +282,12 @@ COMMON_CONFIG: TrainerConfigDict = {
     # of currently healthy workers is reported as the "num_healthy_workers"
     # metric.
     "ignore_worker_failures": False,
+    # Whether - upon a worker failure - RLlib will try to recreate the lost worker as
+    # an identical copy of the failed one. The new worker will only differ from the
+    # failed one in its `self.recreated_worker=True` property value. It will have
+    # the same `worker_index` as the original one.
+    # If True, the `ignore_worker_failures` setting will be ignored.
+    "recreate_failed_workers": False,
     # Log system resource metrics to results. This requires `psutil` to be
     # installed for sys stats, and `gputil` for GPU metrics.
     "log_sys_usage": True,
@@ -760,7 +767,7 @@ class Trainer(Trainable):
     @PublicAPI
     def __init__(
         self,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[Union[PartialTrainerConfigDict, TrainerConfig]] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
         remote_checkpoint_dir: Optional[str] = None,
@@ -783,6 +790,10 @@ class Trainer(Trainable):
         # Trainer's `COMMON_CONFIG` (see above)). Will get merged with
         # COMMON_CONFIG in self.setup().
         config = config or {}
+        # Resolve TrainerConfig into a plain dict.
+        # TODO: In the future, only support TrainerConfig objects here.
+        if isinstance(config, TrainerConfig):
+            config = config.to_dict()
 
         # Convert `env` provided in config into a string:
         # - If `env` is a string: `self._env_id` = `env`.
@@ -1098,15 +1109,20 @@ class Trainer(Trainable):
                 # @ray.remote RolloutWorker failure.
                 except RayError as e:
                     # Try to recover w/o the failed worker.
-                    if self.config["ignore_worker_failures"]:
+                    if (
+                        self.config["ignore_worker_failures"]
+                        or self.config["recreate_failed_workers"]
+                    ):
                         logger.exception("Error in train call, attempting to recover")
                         self.try_recover_from_step_attempt()
                     # Error out.
                     else:
                         logger.warning(
                             "Worker crashed during call to `step_attempt()`. "
-                            "To try to continue training without the failed "
-                            "worker, set `ignore_worker_failures=True`."
+                            "To try to continue training without failed "
+                            "worker(s), set `ignore_worker_failures=True`. "
+                            "To try to recover the failed worker(s), set "
+                            "`recreate_failed_workers=True`."
                         )
                         raise e
                 # Any other exception.
@@ -2596,36 +2612,17 @@ class Trainer(Trainable):
         an error is raised. Otherwise, tries to re-build the execution plan
         with the remaining (healthy) workers.
         """
-
+        # Try to get our "main" WorkerSet (used for training sample collection).
         workers = getattr(self, "workers", None)
         if not isinstance(workers, WorkerSet):
             return
 
-        logger.info("Health checking all workers...")
-        checks = []
-        for ev in workers.remote_workers():
-            _, obj_ref = ev.sample_with_count.remote()
-            checks.append(obj_ref)
+        # Search for failed workers and try to recover (restart) them.
+        if self.config["recreate_failed_workers"] is True:
+            workers.recreate_failed_workers()
+        elif self.config["ignore_worker_failures"] is True:
+            workers.remove_failed_workers()
 
-        healthy_workers = []
-        for i, obj_ref in enumerate(checks):
-            w = workers.remote_workers()[i]
-            try:
-                ray.get(obj_ref)
-                healthy_workers.append(w)
-                logger.info("Worker {} looks healthy".format(i + 1))
-            except RayError:
-                logger.exception("Removing unhealthy worker {}".format(i + 1))
-                try:
-                    w.__ray_terminate__.remote()
-                except Exception:
-                    logger.exception("Error terminating unhealthy worker")
-
-        if len(healthy_workers) < 1:
-            raise RuntimeError("Not enough healthy workers remain to continue.")
-
-        logger.warning("Recreating execution plan after failure.")
-        workers.reset(healthy_workers)
         if not self.config.get("_disable_execution_plan_api") and callable(
             self.execution_plan
         ):
