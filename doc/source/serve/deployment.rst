@@ -375,8 +375,6 @@ Next, let's create a simple deployment that logs a custom log message when it's 
            return "hi"
    
    SayHello.deploy()
-   handle = SayHello.get_handle()
-   ray.get(handle.remote())
 
 Running this code block, we first get some log messages from the controller saying that a new replica of the deployment is being created:
 
@@ -390,7 +388,8 @@ These can be parsed by a logging stack such as ELK or Loki to enable searching l
 
 .. code-block:: bash
 
-   curl -X GET http://localhost:8000/
+   handle = SayHello.get_handle()
+   ray.get(handle.remote())
    (SayHello pid=67352) INFO 2022-04-02 09:20:08,975 SayHello SayHello#LBINMh <ipython-input-4-1e8854e5c9ba>:8 - Hello world!
    (SayHello pid=67352) INFO 2022-04-02 09:20:08,975 SayHello SayHello#LBINMh replica.py:466 - HANDLE __call__ OK 0.3ms
 
