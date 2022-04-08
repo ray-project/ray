@@ -13,7 +13,7 @@ def generate_offline_data(path: str):
     trainer = RLTrainer(
         algorithm="PPO",
         run_config=RunConfig(stop={"timesteps_total": 5000}),
-        param_space={
+        config={
             "env": "CartPole-v0",
             "output": "dataset",
             "output_config": {
