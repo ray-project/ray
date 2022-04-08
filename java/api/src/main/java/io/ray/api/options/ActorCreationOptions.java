@@ -12,7 +12,7 @@ import java.util.Map;
 /** The options for creating actor. */
 public class ActorCreationOptions extends BaseTaskOptions {
   public static final int NO_RESTART = 0;
-  public static final int INFINITE_RESTART = (int) Math.pow(2, 30);
+  public static final int INFINITE_RESTART = -1;
 
   public final String name;
   public ActorLifetime lifetime;
