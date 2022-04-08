@@ -62,23 +62,40 @@ class ProcessDatasetTest(unittest.TestCase):
 
 class ProcessScalingConfigTest(unittest.TestCase):
     def test_list(self):
-        param_space = {"scaling_config": ScalingConfigDataClass(num_workers=[1, 2])}
-        process_scaling_config(param_space)
-        self.assertDictEqual(
-            param_space["scaling_config"],
-            {"num_workers": [1, 2], "placement_strategy": "PACK"},
-        )
-
-    def test_grid_search(self):
         param_space = {
             "scaling_config": ScalingConfigDataClass(
-                num_workers=tune.grid_search([1, 2])
+                num_workers=[1, 2], resources_per_worker={"CPU": [1, 2]}
             )
         }
         process_scaling_config(param_space)
         self.assertDictEqual(
             param_space["scaling_config"],
-            {"num_workers": tune.grid_search([1, 2]), "placement_strategy": "PACK"},
+            {
+                "trainer_resources": None,
+                "num_workers": [1, 2],
+                "use_gpu": False,
+                "placement_strategy": "PACK",
+                "resources_per_worker": {"CPU": [1, 2]},
+            },
+        )
+
+    def test_grid_search(self):
+        param_space = {
+            "scaling_config": ScalingConfigDataClass(
+                num_workers=tune.grid_search([1, 2]),
+                resources_per_worker={"CPU": tune.grid_search([1, 2])},
+            )
+        }
+        process_scaling_config(param_space)
+        self.assertDictEqual(
+            param_space["scaling_config"],
+            {
+                "trainer_resources": None,
+                "num_workers": tune.grid_search([1, 2]),
+                "use_gpu": False,
+                "placement_strategy": "PACK",
+                "resources_per_worker": {"CPU": tune.grid_search([1, 2])},
+            },
         )
 
 
