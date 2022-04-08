@@ -346,8 +346,11 @@ class PathPartitionParser(PathPartitionBase):
             return {}
         dirs = [d for d in dir_path.split("/") if d and (d.count("=") == 1)]
         kv_pairs = [d.split("=") for d in dirs] if dirs else []
-        if self._field_names:
-            assert len(kv_pairs) == len(self._field_names)
+        if self._field_names and kv_pairs:
+            assert len(kv_pairs) == len(self._field_names), (
+                f"Expected {len(self._field_names)} partition value(s) but found "
+                f"{len(kv_pairs)}: {kv_pairs}."
+            )
             for i, field_name in enumerate(self._field_names):
                 assert (
                     kv_pairs[i][0] == field_name

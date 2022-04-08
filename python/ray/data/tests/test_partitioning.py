@@ -164,8 +164,6 @@ def test_path_partition_filter_errors():
         filter_fn=lambda d: d and d["foo"] == 1,
     )
     with pytest.raises(AssertionError):
-        path_partition_parser.filter_paths([""], None)
-    with pytest.raises(AssertionError):
         path_partition_parser.filter_paths(["foo=1/"], None)
     with pytest.raises(AssertionError):
         path_partition_parser.filter_paths(["bar=1/foo=2/"], None)
