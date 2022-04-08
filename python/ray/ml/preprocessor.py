@@ -31,7 +31,7 @@ class Preprocessor(abc.ABC):
         NOT_FITTABLE = "NOT_FITTABLE"
         NOT_FITTED = "NOT_FITTED"
         # Only meaningful for Chain preprocessors
-        PARTIALLY_FITTED = "PARTIAL_FITTED"
+        PARTIALLY_FITTED = "PARTIALLY_FITTED"
         FITTED = "FITTED"
 
     # Preprocessors that do not need to be fitted must override this.
@@ -109,8 +109,8 @@ class Preprocessor(abc.ABC):
             Preprocessor.FitStatus.NOT_FITTED,
         ):
             raise PreprocessorNotFittedException(
-                "`fit` must be called before `transform`. "
-                "Or simply use fit_transform() to run both steps"
+                "`fit` must be called before `transform`, "
+                "or simply use fit_transform() to run both steps"
             )
         return self._transform(dataset)
 
