@@ -62,7 +62,6 @@ from ray.rllib.execution.common import (
     NUM_TARGET_UPDATES,
 )
 
-
 logger = logging.getLogger(__name__)
 
 # fmt: off
@@ -273,7 +272,9 @@ class DQNTrainer(SimpleQTrainer):
         ):
             update_prio_fn = update_prio
         else:
-            def update_prio_fn(x): return x
+
+            def update_prio_fn(x):
+                return x
 
         replay_op = (
             Replay(local_buffer=local_replay_buffer)
@@ -313,7 +314,6 @@ class DQNTrainer(SimpleQTrainer):
         Returns:
             The results dict from executing the training iteration.
         """
-        batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()
 
         train_results = {}

@@ -93,6 +93,7 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer (in time steps).
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
+        "_enable_replay_buffer_api": False,
         "type": "MultiAgentReplayBuffer",
         "capacity": int(1e6),
     },

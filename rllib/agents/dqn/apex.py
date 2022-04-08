@@ -177,7 +177,7 @@ class ApexTrainer(DQNTrainer):
             config["replay_buffer_config"]["prioritized_replay_beta"],
             config["replay_buffer_config"]["prioritized_replay_eps"],
             config["multiagent"]["replay_mode"],
-            config.get("replay_sequence_length", 1),
+            config["replay_sequence_length"].get("replay_sequence_length", 1),
         ]
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).
