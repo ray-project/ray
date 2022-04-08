@@ -1152,7 +1152,7 @@ sh_test(
 sh_test(
     name = "env/tests/test_remote_inference_cartpole_lstm",
     tags = ["team:ml", "env"],
-    size = "medium",
+    size = "large",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole_lstm"],
     data = glob(["examples/serving/*.py"]),
