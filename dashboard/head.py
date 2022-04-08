@@ -181,7 +181,6 @@ class DashboardHead:
         head_cls_list = dashboard_utils.get_all_modules(
             dashboard_utils.DashboardHeadModule
         )
-        logger.info(head_cls_list)
         for cls in head_cls_list:
             logger.info(
                 "Loading %s: %s", dashboard_utils.DashboardHeadModule.__name__, cls

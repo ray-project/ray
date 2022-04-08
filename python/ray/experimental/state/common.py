@@ -1,17 +1,10 @@
 import logging
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 
 from ray.dashboard.modules.job.common import JobInfo
 
 logger = logging.getLogger(__name__)
-
-
-def data_from_schema(schema, data: dict):
-    filtered_data = {}
-    for field in fields(schema):
-        filtered_data[field.name] = data[field.name]
-    return filtered_data
 
 
 @dataclass(init=True)
