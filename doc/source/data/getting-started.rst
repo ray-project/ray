@@ -19,7 +19,8 @@ Dataset Quick Start
 Ray Datasets implements Distributed `Arrow <https://arrow.apache.org/>`__.
 A Dataset consists of a list of Ray object references to *blocks*.
 Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
-or a Python list (for Arrow incompatible objects).
+(when creating from or transforming to tabular or tensor data), a `Pandas DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
+(when creating from or transforming to Pandas data), or a Python list (otherwise).
 Let's start by creating a Dataset.
 
 Creating Datasets
