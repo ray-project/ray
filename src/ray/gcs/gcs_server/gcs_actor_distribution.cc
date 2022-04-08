@@ -14,11 +14,14 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 
+#include "ray/raylet/scheduling/policy/scorer.h"
 #include "ray/util/event.h"
 
 namespace ray {
 
 namespace gcs {
+
+using raylet_scheduling_policy::LeastResourceScorer;
 
 GcsActorWorkerAssignment::GcsActorWorkerAssignment(
     const NodeID &node_id, const ResourceRequest &acquired_resources)
@@ -91,8 +94,12 @@ GcsBasedActorScheduler::AllocateActorWorkerAssignment(
 scheduling::NodeID GcsBasedActorScheduler::AllocateResources(
     const ResourceRequest &required_placement_resources,
     const ResourceRequest &required_resources) {
-  auto scheduling_result = cluster_resource_scheduler_->Schedule(
-      {required_placement_resources}, SchedulingType::SPREAD);
+  // TODO(Shanly): Use BundleSpread scheduling policy for the timebeing, it should be
+  // replaced with Spread policy once the shceduling interfaces are unified inside
+  // `ISchedulingPolicy`.
+  auto scheduling_options = SchedulingOptions::BundleSpread();
+  auto scheduling_result =
+      cluster_resource_scheduler_->Schedule({&required_resources}, scheduling_options);
 
   if (!scheduling_result.status.IsSuccess()) {
     RAY_LOG(INFO)

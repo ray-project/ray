@@ -116,7 +116,7 @@ def test_dataset_stats_sort(ray_start_regular_shared):
     ds = ds.sort()
     stats = ds.stats()
     assert "sort_map" in stats, stats
-    assert "sort_merge" in stats, stats
+    assert "sort_reduce" in stats, stats
 
 
 def test_dataset_stats_from_items(ray_start_regular_shared):

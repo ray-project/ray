@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 
 from ray import tune
 
@@ -46,7 +46,7 @@ class TuneReportCallback(TuneCallback):
 
     """
 
-    def __init__(self, metrics: Union[None, str, List[str], Dict[str, str]] = None):
+    def __init__(self, metrics: Optional[Union[str, List[str], Dict[str, str]]] = None):
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
