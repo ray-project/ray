@@ -241,8 +241,14 @@ class TorchAccelerator(Accelerator):
     def get_device(self) -> torch.device:
         """Gets the correct torch device to use for training."""
         if torch.cuda.is_available():
-            rank = train.local_rank()
-            device = torch.device(f"cuda:{rank}")
+            gpu_ids = ray.get_gpu_ids()
+            if len(gpu_ids) > 0:
+                device_id = gpu_ids[0]
+            else:
+                # If called on the driver or outside of Ray Train, return the
+                # 0th device.
+                device_id = 0
+            device = torch.device(f"cuda:{device_id}")
         else:
             device = torch.device("cpu")
 
