@@ -46,13 +46,12 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
 )
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.replay_buffers import MultiAgentPrioritizedReplayBuffer
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as LegacyMultiAgentReplayBuffer,
 )
-from ray.rllib.utils.replay_buffers import MultiAgentPrioritizedReplayBuffer
 from ray.rllib.utils.deprecation import (
     Deprecated,
-    deprecation_warning,
     DEPRECATED_VALUE,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -108,6 +107,9 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            # The number of contiguous environment steps to replay at once. This may
+            # be set to greater than 1 to support recurrent models.
+            "replay_sequence_length": 1,
         },
         # Set this to True, if you want the contents of your buffer(s) to be
         # stored in any saved checkpoints as well.
@@ -117,9 +119,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # - This is False AND restoring from a checkpoint that does contain
         #   buffer data.
         "store_buffer_in_checkpoints": False,
-        # The number of contiguous environment steps to replay at once. This may
-        # be set to greater than 1 to support recurrent models.
-        "replay_sequence_length": 1,
 
 
         # Callback to run before learning on a multi-agent batch of
@@ -191,17 +190,6 @@ class DQNTrainer(SimpleQTrainer):
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
-
-        capacity = config.get("buffer_size", DEPRECATED_VALUE)
-        if capacity != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['buffer_size']",
-                help="Buffer size specified at new location config["
-                "'replay_buffer_config']["
-                "'capacity'] will be overwritten.",
-                error=False,
-            )
-            config["replay_buffer_config"]["capacity"] = capacity
 
         # Update effective batch size to include n-step
         adjusted_rollout_len = max(config["rollout_fragment_length"], config["n_step"])
@@ -285,9 +273,7 @@ class DQNTrainer(SimpleQTrainer):
         ):
             update_prio_fn = update_prio
         else:
-
-            def update_prio_fn(x):
-                return x
+            def update_prio_fn(x): return x
 
         replay_op = (
             Replay(local_buffer=local_replay_buffer)
@@ -355,7 +341,11 @@ class DQNTrainer(SimpleQTrainer):
 
         for _ in range(sample_and_train_weight):
             # (4) Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.replay(batch_size)
+            train_batch = self.local_replay_buffer.replay()
+
+            # Old-style replay buffers return None if learning has not started
+            if not train_batch:
+                continue
 
             # Postprocess batch before we learn on it
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
