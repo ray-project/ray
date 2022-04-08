@@ -14,8 +14,8 @@ class BatchScorer:
 
     Args:
         predictor_cls: Predictor class reference. When scoring, each scoring worker
-            will create an instance of this class an call ``predict(batch)`` on it.
-        checkpoint: Checkpoint object used by the predictor.
+            will create an instance of this class and call ``predict(batch)`` on it.
+        checkpoint: Checkpoint loaded by the predictor.
         **predictor_kwargs: Keyword arguments passed to the predictor on
             initialization.
 
