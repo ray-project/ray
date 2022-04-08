@@ -1,31 +1,32 @@
+import ray
 from ray import workflow
 
 
-@workflow.step
+@ray.remote
 def handle_heads() -> str:
     return "It was heads"
 
 
-@workflow.step
+@ray.remote
 def handle_tails() -> str:
     print("It was tails, retrying")
-    return flip_coin.step()
+    return workflow.continuation(flip_coin.bind())
 
 
-@workflow.step
+@ray.remote
 def flip_coin() -> str:
     import random
 
-    @workflow.step
+    @ray.remote
     def decide(heads: bool) -> str:
         if heads:
-            return handle_heads.step()
+            return workflow.continuation(handle_heads.bind())
         else:
-            return handle_tails.step()
+            return workflow.continuation(handle_tails.bind())
 
-    return decide.step(random.random() > 0.5)
+    return workflow.continuation(decide.bind(random.random() > 0.5))
 
 
 if __name__ == "__main__":
     workflow.init()
-    print(flip_coin.step().run())
+    print(workflow.create(flip_coin.bind()).run())

@@ -482,7 +482,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const PlacementGroupID &placement_group_id);
 
   /// Create scheduling options.
-  SchedulingOptions CreateSchedulingOptions(rpc::PlacementStrategy strategy);
+  SchedulingOptions CreateSchedulingOptions(const PlacementGroupID &placement_group_id,
+                                            rpc::PlacementStrategy strategy);
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
