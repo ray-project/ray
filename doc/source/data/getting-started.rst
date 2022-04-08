@@ -193,7 +193,7 @@ The following is an end-to-end example of reading, transforming, and saving batc
 Passing and accessing datasets
 ==============================
 
-Datasets data can be passed to Ray tasks or actors and accessed with ``.iter_batches()`` or ``.iter_rows()``.
+Datasets can be passed to Ray tasks or actors and accessed with ``.iter_batches()`` or ``.iter_rows()``.
 This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
 
 .. code-block:: python

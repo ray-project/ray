@@ -4,7 +4,7 @@
 Accessing Datasets
 ===================
 
-Datasets can be accessed by Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``.
+Datasets can be passed to Ray tasks or actors and accessed with ``.iter_batches()`` or ``.iter_rows()``.
 This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
 
 .. code-block:: python
