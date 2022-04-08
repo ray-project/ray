@@ -33,7 +33,7 @@ class SklearnPredictor(Predictor):
         Args:
             checkpoint (Checkpoint): The checkpoint to load the model and
                 preprocessor from. It is expected to be from the result of a
-                ``SklearnPredictor`` run.
+                ``SklearnTrainer`` run.
 
         """
         raise NotImplementedError
