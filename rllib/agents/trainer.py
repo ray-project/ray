@@ -2803,17 +2803,6 @@ class Trainer(Trainable):
             "type" in replay_buffer_config
         ), "Can not instantiate ReplayBuffer from config without 'type' key."
 
-        capacity = config.get("buffer_size", DEPRECATED_VALUE)
-        if capacity != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['buffer_size']",
-                help="Buffer size specified at new location config["
-                "'replay_buffer_config']["
-                "'capacity'] will be overwritten.",
-                error=False,
-            )
-            config["replay_buffer_config"]["capacity"] = capacity
-
         # Check if old replay buffer should be instantiated
         buffer_type = config["replay_buffer_config"]["type"]
         if not config["replay_buffer_config"].get("_enable_replay_buffer_api", False):

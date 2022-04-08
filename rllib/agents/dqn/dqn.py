@@ -36,7 +36,6 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -47,8 +46,15 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
 )
 from ray.util.iter import LocalIterator
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer as LegacyMultiAgentReplayBuffer,
+)
 from ray.rllib.utils.replay_buffers import MultiAgentPrioritizedReplayBuffer
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    deprecation_warning,
+    DEPRECATED_VALUE,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
@@ -186,6 +192,17 @@ class DQNTrainer(SimpleQTrainer):
         # Call super's validation method.
         super().validate_config(config)
 
+        capacity = config.get("buffer_size", DEPRECATED_VALUE)
+        if capacity != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config['buffer_size']",
+                help="Buffer size specified at new location config["
+                "'replay_buffer_config']["
+                "'capacity'] will be overwritten.",
+                error=False,
+            )
+            config["replay_buffer_config"]["capacity"] = capacity
+
         # Update effective batch size to include n-step
         adjusted_rollout_len = max(config["rollout_fragment_length"], config["n_step"])
         config["rollout_fragment_length"] = adjusted_rollout_len
@@ -263,10 +280,8 @@ class DQNTrainer(SimpleQTrainer):
                 _fake_gpus=config["_fake_gpus"],
             )
 
-        if (
-            config.get("prioritized_replay") is True
-            or config["replay_buffer_config"].get("prioritized_replay") is True
-            or type(local_replay_buffer) is MultiAgentPrioritizedReplayBuffer
+        if type(local_replay_buffer) is LegacyMultiAgentReplayBuffer or isinstance(
+            local_replay_buffer, MultiAgentPrioritizedReplayBuffer
         ):
             update_prio_fn = update_prio
         else:
@@ -315,7 +330,6 @@ class DQNTrainer(SimpleQTrainer):
         batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()
 
-        sample_batches = []
         train_results = {}
 
         # We alternate between storing new samples and sampling and training
@@ -324,7 +338,6 @@ class DQNTrainer(SimpleQTrainer):
         for _ in range(store_weight):
             # (1) Sample (MultiAgentBatch) from workers
             new_sample_batches = synchronous_parallel_sample(self.workers)
-            sample_batches.extend(new_sample_batches)
 
             # Update counters
             self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
@@ -336,7 +349,7 @@ class DQNTrainer(SimpleQTrainer):
             )
 
             # (2) Concatenate freshly collected samples
-            concatenated_samples = SampleBatch.concat_samples(sample_batches)
+            concatenated_samples = SampleBatch.concat_samples(new_sample_batches)
             # (3) Store new samples in replay buffer
             self.local_replay_buffer.add_batch(concatenated_samples)
 
@@ -357,10 +370,10 @@ class DQNTrainer(SimpleQTrainer):
                 train_results = multi_gpu_train_one_step(self, train_batch)
 
             # Update priorities
-            if (
-                self.config.get("prioritized_replay")
-                or self.config["replay_buffer_config"].get("prioritized_replay")
-                or type(self.local_replay_buffer is MultiAgentPrioritizedReplayBuffer)
+            if type(
+                self.local_replay_buffer
+            ) is LegacyMultiAgentReplayBuffer or isinstance(
+                self.local_replay_buffer, MultiAgentPrioritizedReplayBuffer
             ):
                 prio_dict = {}
                 for policy_id, info in train_results.items():
