@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
+from ray.tune.syncer import SyncConfig
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -142,6 +143,8 @@ class RunConfig:
             Currently only stateless callbacks are supported for resumed runs.
             (any state of the callback will not be checkpointed by Tune
             and thus will not take effect in resumed runs).
+        failure: The failure mode configuration.
+        sync_config: Configuration object for syncing. See tune.SyncConfig.
     """
 
     # TODO(xwjiang): Add more.
@@ -149,3 +152,4 @@ class RunConfig:
     local_dir: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     failure: Optional[FailureConfig] = None
+    sync_config: Optional[SyncConfig] = None
