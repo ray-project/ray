@@ -50,7 +50,6 @@ def train_rl_bc_offline(path: str, num_workers: int, use_gpu: bool = False) -> R
         },
     )
     result = trainer.fit()
-    print(result.metrics)
 
     return result
 
@@ -73,7 +72,6 @@ def train_rl_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
         },
     )
     result = trainer.fit()
-    print(result.metrics)
 
     return result
 
@@ -103,8 +101,10 @@ if __name__ == "__main__":
     if args.offline:
         if not os.path.exists(args.path) or not os.listdir(args.path):
             generate_offline_data(args.path)
-        train_rl_bc_offline(
+        result = train_rl_bc_offline(
             path=args.path, num_workers=args.num_workers, use_gpu=args.use_gpu
         )
     else:
-        train_rl_ppo_online(num_workers=args.num_workers, use_gpu=args.use_gpu)
+        result = train_rl_ppo_online(num_workers=args.num_workers, use_gpu=args.use_gpu)
+
+    print(result.metrics)

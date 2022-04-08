@@ -1,3 +1,4 @@
+import inspect
 from typing import Optional, Dict, Type, Union, Callable, Any
 
 from ray.ml.checkpoint import Checkpoint
@@ -27,15 +28,17 @@ class RLTrainer(Trainer):
     Args:
         algorithm: Algorithm to train on. Can be a string reference,
             (e.g. ``"PPO"``) or a RLLib trainer class.
-        scaling_config: Configuration for distributed training, e.g. number
-            of workers or resources per worker.
-        run_config: Run config passed to ``Tuner()``
-        datasets: If specified, datasets used for offline training. Will be
+        scaling_config: Configuration for how to scale training.
+        run_config: Configuration for the execution of the training run.
+        datasets: Any Ray Datasets to use for training. Use the key "train"
+            to denote which dataset is the training
+            dataset. If a ``preprocessor`` is provided and has not already been fit,
+            it will be fit on the training dataset. All datasets will be transformed
+            by the ``preprocessor`` if one is provided.
+            If specified, datasets will be used for offline training. Will be
             configured as an RLLib ``input`` config item.
-        preprocessor: If specified, preprocessors to be applied to the
-            datasets before loading for input training.
-        resume_from_checkpoint: Optional checkpoint to resume training from.
-        **train_kwargs: Additional kwargs.
+        preprocessor: A preprocessor to preprocess the provided datasets.
+        resume_from_checkpoint: A checkpoint to resume training from.
 
     Example:
         Online training:
@@ -106,20 +109,35 @@ class RLTrainer(Trainer):
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        **train_kwargs
     ):
         self._algorithm = algorithm
-        self._train_kwargs = train_kwargs
         self._config = config if config is not None else {}
 
-        Trainer.__init__(
-            self,
+        super(RLTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    def _validate_attributes(self):
+        super(RLTrainer, self)._validate_attributes()
+
+        if not isinstance(self._algorithm, str) and not (
+            inspect.isclass(self._algorithm)
+            and issubclass(self._algorithm, RLLibTrainer)
+        ):
+            raise ValueError(
+                f"`algorithm` should be either a string or a RLLib trainer class, "
+                f"found {type(self._algorithm)} with value `{self._algorithm}`."
+            )
+
+        if not isinstance(self._config, dict):
+            raise ValueError(
+                f"`config` should be either a dict, "
+                f"found {type(self._config)} with value `{self._config}`."
+            )
 
     def _get_rllib_config(self, process_datasets: bool = False) -> Dict:
         config = self._config.copy()
@@ -158,7 +176,8 @@ class RLTrainer(Trainer):
         pass
 
     def as_trainable(self) -> Type[Trainable]:
-        base_config = self._param_dict
+        param_dict = self._param_dict
+        base_config = self._config
         trainer_cls = self.__class__
 
         if isinstance(self._algorithm, str):
@@ -176,8 +195,9 @@ class RLTrainer(Trainer):
                 sync_function_tpl: Optional[str] = None,
             ):
                 resolved_config = merge_dicts(base_config, config)
+                param_dict["config"] = resolved_config
 
-                trainer = trainer_cls(**resolved_config)
+                trainer = trainer_cls(**param_dict)
                 rllib_config = trainer._get_rllib_config(process_datasets=True)
 
                 super(AIRRLTrainer, self).__init__(
@@ -193,7 +213,9 @@ class RLTrainer(Trainer):
                 cls, config: PartialTrainerConfigDict
             ) -> Union[Resources, PlacementGroupFactory]:
                 resolved_config = merge_dicts(base_config, config)
-                trainer = trainer_cls(**resolved_config)
+                param_dict["config"] = resolved_config
+
+                trainer = trainer_cls(**param_dict)
                 rllib_config = trainer._get_rllib_config(process_datasets=False)
 
                 return rllib_trainer.default_resource_request(rllib_config)
