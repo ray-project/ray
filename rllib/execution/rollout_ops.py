@@ -81,17 +81,14 @@ def synchronous_parallel_sample(
     # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.
     assert not (max_agent_steps is not None and max_env_steps is not None)
 
-    agent_steps = 0
-    env_steps = 0
+    agent_or_env_steps = 0
+    max_agent_or_env_steps = max_agent_steps or max_env_steps or None
     all_sample_batches = []
 
     # Stop collecting batches as soon as one criterium is met.
-    while (
-        (max_env_steps is None and env_steps == 0)
-        or (max_env_steps is not None and env_steps < max_env_steps)
-    ) and (
-        (max_agent_steps is None and agent_steps == 0)
-        or (max_agent_steps is not None and agent_steps < max_agent_steps)
+    while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
+        max_agent_or_env_steps is not None
+        and agent_or_env_steps < max_agent_or_env_steps
     ):
         # No remote workers in the set -> Use local worker for collecting
         # samples.
@@ -102,10 +99,12 @@ def synchronous_parallel_sample(
             sample_batches = ray.get(
                 [worker.sample.remote() for worker in worker_set.remote_workers()]
             )
-        # Update our counters.
+        # Update our counters for the stopping criterion of the while loop.
         for b in sample_batches:
-            env_steps += b.env_steps()
-            agent_steps += b.agent_steps()
+            if max_agent_steps:
+                agent_or_env_steps += b.agent_steps()
+            else:
+                agent_or_env_steps += b.env_steps()
         all_sample_batches.extend(sample_batches)
 
     if concat is True:
@@ -389,16 +388,8 @@ def standardize_fields(samples: SampleBatchType, fields: List[str]) -> SampleBat
     for policy_id in samples.policy_batches:
         batch = samples.policy_batches[policy_id]
         for field in fields:
-            if field not in batch:
-                raise KeyError(
-                    f"`{field}` not found in SampleBatch for policy "
-                    f"`{policy_id}`! Maybe this policy fails to add "
-                    f"{field} in its `postprocess_trajectory` method? Or "
-                    "this policy is not meant to learn at all and you "
-                    "forgot to add it to the list under `config."
-                    "multiagent.policies_to_train`."
-                )
-            batch[field] = standardized(batch[field])
+            if field in batch:
+                batch[field] = standardized(batch[field])
 
     if wrapped:
         samples = samples.policy_batches[DEFAULT_POLICY_ID]
