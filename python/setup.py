@@ -202,7 +202,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "data": [
             "pandas",
-            "pyarrow >= 6.0.0, < 7.0.0",
+            "pyarrow >= 6.0.1, < 7.0.0",
             "fsspec",
         ],
         "default": [

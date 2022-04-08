@@ -46,7 +46,7 @@ starlette
 aiorwlock
 
 # Requirements for running tests
-pyarrow >= 6.0.0, < 7.0.0
+pyarrow >= 6.0.1, < 7.0.0
 blist; platform_system != "Windows"
 azure-cli-core==2.29.1
 azure-identity==1.7.0

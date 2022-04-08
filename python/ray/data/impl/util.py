@@ -4,7 +4,7 @@ from types import ModuleType
 
 logger = logging.getLogger(__name__)
 
-MIN_PYARROW_VERSION = (4, 0, 1)
+MIN_PYARROW_VERSION = (6, 0, 1)
 _VERSION_VALIDATED = False
 
 
