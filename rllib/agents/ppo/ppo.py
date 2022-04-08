@@ -484,7 +484,8 @@ class PPOTrainer(Trainer):
                     "the VF loss by reducing vf_loss_coeff, or disabling "
                     "vf_share_layers.".format(policy_id, scaled_vf_loss, policy_loss)
                 )
-            # Warn about bad clipping configs
+            # Warn about bad clipping configs.
+            train_batch.policy_batches[policy_id].set_get_interceptor(None)
             mean_reward = train_batch.policy_batches[policy_id]["rewards"].mean()
             if (
                 log_once("ppo_warned_vf_clip")
