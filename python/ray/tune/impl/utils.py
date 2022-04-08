@@ -2,7 +2,7 @@ from ray.data import Dataset
 from ray.ml.config import ScalingConfigDataClass
 from ray.tune.sample import Categorical
 
-_KEY_SCALING_CONFIG = "scaling_config"
+_SCALING_CONFIG_KEY = "scaling_config"
 
 
 def process_dataset_param(config_dict: dict):
@@ -35,7 +35,7 @@ def process_scaling_config(params_space: dict):
     """Convert ``params_space["scaling_config"]`` back to a dict so that
     it can be used to generate search space.
     """
-    scaling_config = params_space.get(_KEY_SCALING_CONFIG, None)
+    scaling_config = params_space.get(_SCALING_CONFIG_KEY, None)
     if not isinstance(scaling_config, ScalingConfigDataClass):
         return
-    params_space[_KEY_SCALING_CONFIG] = scaling_config.__dict__.copy()
+    params_space[_SCALING_CONFIG_KEY] = scaling_config.__dict__.copy()
