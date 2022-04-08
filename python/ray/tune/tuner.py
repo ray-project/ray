@@ -97,6 +97,7 @@ class Tuner:
         # This is internal only arg.
         # Only for dogfooding purposes. We can slowly promote these args
         # to RunConfig or TuneConfig as needed.
+        # TODO(xwjiang): Remove this later.
         _tuner_kwargs: Optional[Dict] = None,
         _tuner_internal: Optional[TunerInternal] = None,
     ):

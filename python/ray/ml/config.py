@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List
 
-from ray.tune import SyncConfig
+from ray.tune.syncer import SyncConfig
 from ray.util import PublicAPI
 
 from ray.tune.trainable import PlacementGroupFactory
