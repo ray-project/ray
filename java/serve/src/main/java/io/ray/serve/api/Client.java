@@ -1,6 +1,6 @@
 package io.ray.serve.api;
 
-import com.google.common.collect.Lists;
+import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.PyActorHandle;
@@ -8,10 +8,13 @@ import io.ray.api.Ray;
 import io.ray.api.function.PyActorMethod;
 import io.ray.serve.DeploymentConfig;
 import io.ray.serve.DeploymentInfo;
+import io.ray.serve.DeploymentStatusInfo;
 import io.ray.serve.RayServeException;
 import io.ray.serve.RayServeHandle;
 import io.ray.serve.ReplicaConfig;
 import io.ray.serve.ServeController;
+import io.ray.serve.generated.DeploymentStatus;
+import io.ray.serve.generated.DeploymentStatusInfoList;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -120,7 +123,6 @@ public class Client {
     }
     // TODO set runtime_env to rayActorOptions is not supported now.
     ReplicaConfig replicaConfig = new ReplicaConfig(deploymentDef, initArgs, rayActorOptions);
-    // TODO ReplicaConfig's PB
 
     if (deploymentConfig.getAutoscalingConfig() != null
         && deploymentConfig.getMaxConcurrentQueries()
@@ -134,16 +136,13 @@ public class Client {
             ((PyActorHandle) controller)
                 .task(
                     PyActorMethod.of("deploy"),
-                    Lists.newArrayList(
-                        name,
-                        deploymentConfig.toProtobuf(),
-                        replicaConfig,
-                        version,
-                        prevVersion,
-                        routePrefix,
-                        Ray.getRuntimeContext().getCurrentJobId()))
+                    name,
+                    deploymentConfig.toProtoBytes(),
+                    replicaConfig.toProtoBytes(),
+                    routePrefix,
+                    Ray.getRuntimeContext().getCurrentJobId())
                 .remote()
-                .get(); // TODO python ray.task max param length is 5
+                .get();
 
     String tag = "component=serve deployment=" + name;
     if (updating) {
@@ -159,13 +158,9 @@ public class Client {
 
     if (blocking) {
       waitForDeploymentHealthy(name, -1);
-    } else {
-      String urlPart = "";
-      if (StringUtils.isNotBlank(url)) {
-        urlPart = LogUtil.format(" at `{}`", url);
-      }
+      String urlPart = url != null ? LogUtil.format(" at `{}`", url) : "";
       LOGGER.info(
-          "Deployment '{}{}' is ready{}. {}",
+          "Deployment '{}{}' is ready {}. {}",
           name,
           StringUtils.isNotBlank(version) ? "':'" + version : "",
           urlPart,
@@ -177,37 +172,32 @@ public class Client {
    * Waits for the named deployment to enter "HEALTHY" status.
    *
    * <p>Raises RayServeException if the deployment enters the "UNHEALTHY" status instead or this
-   * doesn't happen before timeoutS. // TODO
+   * doesn't happen before timeoutS.
    *
    * @param name
    */
-  @SuppressWarnings("unchecked")
   private void waitForDeploymentHealthy(String name, long timeoutS) {
     long start = System.currentTimeMillis();
     while (System.currentTimeMillis() - start < timeoutS * 1000 || timeoutS < 0) {
-      List<String> statuses =
-          (List<String>)
-              ((PyActorHandle) controller)
-                  .task(PyActorMethod.of("get_deployment_statuses"))
-                  .remote()
-                  .get(); // TODO define PB of Dict[str, DeploymentStatusInfo]
-      if (!statuses.contains(name)) {
+      Map<String, DeploymentStatusInfo> statuses = getDeploymentStatuses();
+      DeploymentStatusInfo status = statuses.get(name);
+      if (status == null) {
         throw new RayServeException(
             LogUtil.format(
                 "Waiting for deployment {} to be HEALTHY, but deployment doesn't exist.", name));
       }
 
-      // TODO define DeploymentStatus
-      /*if (status.status == DeploymentStatus.HEALTHY) {
+      if (status.getDeploymentStatus() == DeploymentStatus.HEALTHY) {
         break;
-      } else if (status.status == DeploymentStatus.UNHEALTHY) {
+      } else if (status.getDeploymentStatus() == DeploymentStatus.UNHEALTHY) {
         throw new RayServeException(
-            LogUtil.format("Deployment {} is UNHEALTHY: {status.message}", name));
+            LogUtil.format("Deployment {} is UNHEALTHY: {}", name, status.getMessage()));
       } else {
-        Preconditions.checkState(status.status == DeploymentStatus.UPDATING);
+        Preconditions.checkState(status.getDeploymentStatus() == DeploymentStatus.UPDATING);
       }
 
-      LOGGER.debug("Waiting for {} to be healthy, current status: {status.status}.", name);*/
+      LOGGER.debug(
+          "Waiting for {} to be healthy, current status: {}.", name, status.getDeploymentStatus());
       try {
         Thread.sleep(CLIENT_POLLING_INTERVAL_S * 1000);
       } catch (InterruptedException e) {
@@ -281,7 +271,7 @@ public class Client {
             statuses));
   }
 
-  public String getRootUrl() {
+  public String getRootUrl() { // TODO
     return rootUrl;
   }
 
@@ -341,5 +331,26 @@ public class Client {
     }
     throw new RayServeException(
         LogUtil.format("Deployment {} wasn't deleted after {}s.", name, timeoutS));
+  }
+
+  private Map<String, DeploymentStatusInfo> getDeploymentStatuses() {
+    byte[] deploymentStatusInfoListProtoBytes =
+        (byte[])
+            ((PyActorHandle) controller)
+                .task(PyActorMethod.of("get_deployment_statuses"))
+                .remote()
+                .get();
+    DeploymentStatusInfoList deploymentStatusInfoList =
+        ServeProtoUtil.bytesToProto(
+            deploymentStatusInfoListProtoBytes, bytes -> DeploymentStatusInfoList.parseFrom(bytes));
+
+    Map<String, DeploymentStatusInfo> deploymentStatuses = new HashMap<>();
+    for (io.ray.serve.generated.DeploymentStatusInfo deploymentStatusInfoProto :
+        deploymentStatusInfoList.getDeploymentStatusInfosList()) {
+      deploymentStatuses.put(
+          deploymentStatusInfoProto.getName(),
+          DeploymentStatusInfo.fromProto(deploymentStatusInfoProto));
+    }
+    return deploymentStatuses;
   }
 }

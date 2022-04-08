@@ -52,7 +52,7 @@ public class RayServeHandle {
    * @param parameters The input parameters of the specified method to be invoked in the deployment.
    * @return ray.ObjectRef
    */
-  public ObjectRef<Object> remote(Object[] parameters) {
+  public ObjectRef<Object> remote(Object... parameters) {
     RayServeMetrics.execute(() -> requestCounter.inc(1.0));
     RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
     requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));

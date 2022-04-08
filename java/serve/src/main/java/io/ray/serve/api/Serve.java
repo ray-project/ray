@@ -16,16 +16,14 @@ import io.ray.serve.DeploymentInfo;
 import io.ray.serve.ProxyActor;
 import io.ray.serve.RayServeException;
 import io.ray.serve.ReplicaContext;
-import io.ray.serve.generated.ActorSet;
-import io.ray.serve.poll.LongPollClientFactory;
-import io.ray.serve.poll.LongPollNamespace;
+import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.util.CommonUtil;
 import io.ray.serve.util.LogUtil;
+import io.ray.serve.util.ServeProtoUtil;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -60,7 +58,7 @@ public class Serve {
    * @return
    */
   @SuppressWarnings("unchecked")
-  public static Client start(
+  public static synchronized Client start(
       boolean detached, boolean dedicatedCpu, String checkpointPath, Map<String, String> config) {
 
     // Initialize ray if needed.
@@ -77,6 +75,7 @@ public class Serve {
       checkCheckpointPath(client, checkpointPath);
       return client;
     } catch (RayServeException e) {
+      LOGGER.info("There is no instance running on this Ray cluster. A new one will be started.");
     }
 
     String controllerName = null;
@@ -92,11 +91,12 @@ public class Serve {
     // now.
     PyActorHandle controller =
         Ray.actor(
-                PyActorClass.of("serve.controller", "ServeController"),
+                PyActorClass.of("ray.serve.controller", "ServeController"),
                 controllerName,
-                null,
+                null, // http_config TODO change it nullable or define protobuf.
                 checkpointPath,
-                detached)
+                detached,
+                null)
             .setName(controllerName)
             .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
             .setMaxRestarts(-1)
@@ -105,25 +105,13 @@ public class Serve {
             .remote();
 
     List<String> proxyNames = null;
-    byte[] proxyActorSetBytes =
-        (byte[])
-            controller
-                .task(PyActorMethod.of("get_http_proxies"))
-                .remote()
-                .get(); // TODO define pb of the return value of get_http_proxies
-
-    if (proxyActorSetBytes != null) {
-      // TODO abstract.
-      Function<byte[], Object> deserializer =
-          LongPollClientFactory.DESERIALIZERS.get(LongPollNamespace.REPLICA_HANDLES);
-      if (deserializer == null) {
-        throw new RayServeException(
-            "No deserializer for LongPollNamespace: " + LongPollNamespace.REPLICA_HANDLES);
-      }
-      ActorSet actorSet = (ActorSet) deserializer.apply(proxyActorSetBytes);
-      if (actorSet != null) {
-        proxyNames = actorSet.getNamesList();
-      }
+    byte[] actorNameListProtoBytes =
+        (byte[]) controller.task(PyActorMethod.of("get_http_proxy_names")).remote().get();
+    ActorNameList actorNameList =
+        ServeProtoUtil.bytesToProto(
+            actorNameListProtoBytes, bytes -> ActorNameList.parseFrom(bytes));
+    if (actorNameList != null) {
+      proxyNames = actorNameList.getNamesList();
     }
 
     if (proxyNames != null && proxyNames.size() > 0) {
@@ -131,8 +119,7 @@ public class Serve {
         for (String name : proxyNames) {
           ActorHandle<ProxyActor> proxyActorHandle =
               (ActorHandle<ProxyActor>) Ray.getActor(name).get();
-          Ray.get(
-              proxyActorHandle.task(ProxyActor::ready).remote(), Constants.PROXY_TIMEOUT * 1000);
+          proxyActorHandle.task(ProxyActor::ready).remote().get(Constants.PROXY_TIMEOUT * 1000);
         }
       } catch (RayTimeoutException e) {
         String errMsg = LogUtil.format("Proxies not available after {}s.", Constants.PROXY_TIMEOUT);
@@ -151,7 +138,8 @@ public class Serve {
   }
 
   private static void checkCheckpointPath(Client client, String checkpointPath) {
-    if (StringUtils.equals(checkpointPath, client.getCheckpointPath())) {
+    if (StringUtils.isNotBlank(checkpointPath)
+        && !StringUtils.equals(checkpointPath, client.getCheckpointPath())) {
       LOGGER.warn(
           "The new client checkpoint path '{}' is different from the existing one '{}'. The new checkpoint path is ignored.",
           checkpointPath,
@@ -283,6 +271,10 @@ public class Serve {
         rayActorOptions);
   }
 
+  public static Deployment deployment() {
+    return new Deployment();
+  }
+
   /**
    * Set replica information to global context.
    *
@@ -320,7 +312,7 @@ public class Serve {
     return INTERNAL_REPLICA_CONTEXT;
   }
 
-  public static Client getGlobalClient() {
+  protected static Client getGlobalClient() {
     if (GLOBAL_CLIENT != null) {
       return GLOBAL_CLIENT;
     }
@@ -372,7 +364,7 @@ public class Serve {
       throw new RayServeException(
           LogUtil.format(
               "There is no instance running on this Ray cluster. "
-                  + "Please call `erve.start(detached=True) to start one."));
+                  + "Please call `Serve.start(...) to start one."));
     }
 
     Client client = new Client(controller.get(), controllerName, true);
@@ -393,7 +385,8 @@ public class Serve {
     DeploymentInfo deploymentInfo = getGlobalClient().getDeploymentInfo(name);
     if (deploymentInfo == null) {
       throw new RayServeException(
-          LogUtil.format("Deployment {} was not found. Did you call Deployment.deploy()?", name));
+          LogUtil.format(
+              "Deployment {} was not found. Did you call Deployment.deploy(...)?", name));
     }
 
     return new Deployment(

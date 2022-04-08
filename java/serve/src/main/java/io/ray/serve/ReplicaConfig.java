@@ -1,15 +1,21 @@
 package io.ray.serve;
 
 import com.google.common.base.Preconditions;
+import com.google.gson.Gson;
+import com.google.protobuf.ByteString;
+import io.ray.runtime.serializer.MessagePackSerializer;
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 
 /** Configuration options for a replica. */
 public class ReplicaConfig implements Serializable {
 
   private static final long serialVersionUID = -1442657824045704226L;
+
+  private static Gson gson = new Gson();
 
   private String deploymentDef;
 
@@ -88,6 +94,27 @@ public class ReplicaConfig implements Serializable {
     Preconditions.checkArgument(
         customResources instanceof Map, "resources in rayActorOptions must be a map.");
     resource.putAll((Map) customResources);
+  }
+
+  public byte[] toProtoBytes() {
+    io.ray.serve.generated.ReplicaConfig.Builder builder =
+        io.ray.serve.generated.ReplicaConfig.newBuilder();
+    if (StringUtils.isNotBlank(deploymentDef)) {
+      builder.setSerializedDeploymentDef(
+          ByteString.copyFromUtf8(
+              deploymentDef)); // TODO controller distinguish java and deserialize it.
+    }
+    if (initArgs != null && initArgs.length > 0) {
+      builder.setInitArgs(
+          ByteString.copyFrom(
+              MessagePackSerializer.encode(initArgs)
+                  .getKey())); // TODO controller distinguish java and deserialize it.
+    }
+    if (rayActorOptions != null && !rayActorOptions.isEmpty()) {
+      builder.setRayActorOptions(gson.toJson(rayActorOptions));
+    }
+
+    return builder.build().toByteArray();
   }
 
   public String getDeploymentDef() {

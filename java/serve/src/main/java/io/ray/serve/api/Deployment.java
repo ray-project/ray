@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import io.ray.serve.DeploymentConfig;
 import io.ray.serve.RayServeHandle;
 import java.util.Map;
-import org.apache.commons.lang3.StringUtils;
 
 /**
  * Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
@@ -31,6 +30,8 @@ public class Deployment {
 
   private String url;
 
+  protected Deployment() {}
+
   protected Deployment(
       String deploymentDef,
       String name,
@@ -41,7 +42,7 @@ public class Deployment {
       String routePrefix,
       Map<String, Object> rayActorOptions) {
 
-    if (StringUtils.isNotBlank(routePrefix)) {
+    if (routePrefix != null) {
       Preconditions.checkArgument(routePrefix.startsWith("/"), "route_prefix must start with '/'.");
       Preconditions.checkArgument(
           routePrefix.equals("/") || !routePrefix.endsWith("/"),
@@ -52,7 +53,7 @@ public class Deployment {
     }
 
     Preconditions.checkArgument(
-        StringUtils.isBlank(version) || config.getAutoscalingConfig() == null,
+        version != null || config.getAutoscalingConfig() == null,
         "Currently autoscaling is only supported for versioned deployments. Try @serve.deployment(version=...).");
 
     this.deploymentDef = deploymentDef;
@@ -61,12 +62,9 @@ public class Deployment {
     this.prevVersion = prevVersion;
     this.config = config;
     this.initArgs = initArgs != null ? initArgs : new Object[0];
-    this.routePrefix = routePrefix;
+    this.routePrefix = routePrefix != null ? routePrefix : "/" + name;
     this.rayActorOptions = rayActorOptions;
-
-    if (StringUtils.isNotBlank(routePrefix)) {
-      this.url = Serve.getGlobalClient().getRootUrl() + routePrefix;
-    }
+    this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
   }
 
   /**
@@ -107,31 +105,72 @@ public class Deployment {
     return deploymentDef;
   }
 
+  public Deployment setDeploymentDef(String deploymentDef) {
+    this.deploymentDef = deploymentDef;
+    return this;
+  }
+
   public String getName() {
     return name;
+  }
+
+  public Deployment setName(String name) {
+    this.name = name;
+    return this;
   }
 
   public DeploymentConfig getConfig() {
     return config;
   }
 
+  public void setConfig(DeploymentConfig config) {
+    this.config = config;
+  }
+
   public String getVersion() {
     return version;
+  }
+
+  public void setVersion(String version) {
+    this.version = version;
   }
 
   public String getPrevVersion() {
     return prevVersion;
   }
 
+  public void setPrevVersion(String prevVersion) {
+    this.prevVersion = prevVersion;
+  }
+
   public Object[] getInitArgs() {
     return initArgs;
+  }
+
+  public Deployment setInitArgs(Object[] initArgs) {
+    this.initArgs = initArgs;
+    return this;
   }
 
   public String getRoutePrefix() {
     return routePrefix;
   }
 
+  public Deployment setRoutePrefix(String routePrefix) {
+    this.routePrefix = routePrefix;
+    return this;
+  }
+
   public Map<String, Object> getRayActorOptions() {
     return rayActorOptions;
+  }
+
+  public void setRayActorOptions(Map<String, Object> rayActorOptions) {
+    this.rayActorOptions = rayActorOptions;
+  }
+
+  public Deployment setNumReplicas(int numReplicas) {
+    this.initArgs = initArgs;
+    return this;
   }
 }

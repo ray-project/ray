@@ -119,7 +119,7 @@ public class DeploymentConfig implements Serializable {
     return this;
   }
 
-  public io.ray.serve.generated.DeploymentConfig toProtobuf() {
+  public byte[] toProtoBytes() {
     return io.ray.serve.generated.DeploymentConfig.newBuilder()
         .setNumReplicas(numReplicas)
         .setMaxConcurrentQueries(maxConcurrentQueries)
@@ -127,7 +127,11 @@ public class DeploymentConfig implements Serializable {
         .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
         .setIsCrossLanguage(true)
         .setDeploymentLanguage(DeploymentLanguage.JAVA)
-        .setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()))
-        .build();
+        .setUserConfig(
+            ByteString.copyFrom(
+                MessagePackSerializer.encode(userConfig)
+                    .getKey())) // TODO controller distinguish java and deserialize it.
+        .build()
+        .toByteArray();
   }
 }

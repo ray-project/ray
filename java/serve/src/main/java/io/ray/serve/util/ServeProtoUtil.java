@@ -18,6 +18,9 @@ import org.apache.commons.lang3.StringUtils;
 
 public class ServeProtoUtil {
 
+  public static final String SERVE_PROTO_PARSE_ERROR_MSG =
+      "Failed to parse {} from protobuf bytes.";
+
   public static DeploymentConfig parseDeploymentConfig(byte[] deploymentConfigBytes) {
 
     DeploymentConfig deploymentConfig = new DeploymentConfig();
@@ -178,5 +181,17 @@ public class ServeProtoUtil {
               MessagePackSerializer.encode(deploymentVersion.getUserConfig()).getLeft()));
     }
     return pbDeploymentVersion.build();
+  }
+
+  public static <T> T bytesToProto(byte[] bytes, ProtobufBytesParser<T> protobufBytesParser) {
+    if (bytes == null) {
+      return null;
+    }
+    try {
+      T proto = protobufBytesParser.parse(bytes);
+      return proto;
+    } catch (InvalidProtocolBufferException e) {
+      throw new RayServeException("Failed to parse protobuf bytes.", e);
+    }
   }
 }
