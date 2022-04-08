@@ -27,7 +27,7 @@ from ray.serve.handle import (
     serve_handle_from_json_dict,
 )
 from ray.serve.constants import SERVE_HANDLE_JSON_KEY
-from ray.serve.api import RayServeDAGHandle
+from ray.serve.deployment_graph import RayServeDAGHandle
 
 
 def convert_to_json_safe_obj(obj: Any, *, err_key: str) -> Any:
