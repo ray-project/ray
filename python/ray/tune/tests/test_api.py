@@ -45,8 +45,7 @@ from ray.tune.result import (
     TRIAL_ID,
     EXPERIMENT_TAG,
 )
-from ray.tune.schedulers import TrialScheduler, FIFOScheduler, \
-    AsyncHyperBandScheduler
+from ray.tune.schedulers import TrialScheduler, FIFOScheduler, AsyncHyperBandScheduler
 from ray.tune.stopper import (
     MaximumIterationStopper,
     TrialPlateauStopper,
