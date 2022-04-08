@@ -671,9 +671,9 @@ def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     Returns:
         Dataset holding Arrow records read from the dataframe.
     """
-    import mars
+    import mars.dataframe as md
 
-    return mars.to_ray_dataset(df)
+    return md.to_ray_dataset(df)
 
 
 @PublicAPI

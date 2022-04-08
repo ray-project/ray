@@ -2431,9 +2431,9 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         Returns:
             A MARS dataframe created from this dataset.
         """
-        import mars
+        import mars.dataframe as md
 
-        return mars.read_ray_dataset(self)
+        return md.read_ray_dataset(self)
 
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.

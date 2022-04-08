@@ -15,6 +15,9 @@ backend, Ray remote function based execution backend is working in progress.
    :align: center
 
 
+.. _`Mars`: https://docs.pymars.org
+
+
 Installation
 -------------
 You can simply install Mars via pip:
