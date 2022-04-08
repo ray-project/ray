@@ -78,7 +78,7 @@ class SklearnTrainer(Trainer):
             - a dictionary with metric names as keys and callables a values.
 
         cv: Determines the cross-validation splitting strategy. If specified,
-            cross-validation will be ran on the train dataset, in addition to
+            cross-validation will be run on the train dataset, in addition to
             computing metrics for validation datasets. Same as in
             ``sklearn.model_selection.cross_validation``, with the exception of
             None.
