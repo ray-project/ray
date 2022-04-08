@@ -26,7 +26,7 @@ namespace raylet_scheduling_policy {
 
 /// Base class for scheduling policies that implement different placement group
 /// strategies.
-class BundleSchedulingPolicy : public ISchedulingPolicy {
+class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
  public:
   explicit BundleSchedulingPolicy(
       ClusterResourceManager &cluster_resource_manager,
@@ -72,41 +72,33 @@ class BundleSchedulingPolicy : public ISchedulingPolicy {
 class BundlePackSchedulingPolicy : public BundleSchedulingPolicy {
  public:
   using BundleSchedulingPolicy::BundleSchedulingPolicy;
-
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context) override;
+      SchedulingOptions options) override;
 };
 
 class BundleSpreadSchedulingPolicy : public BundleSchedulingPolicy {
  public:
   using BundleSchedulingPolicy::BundleSchedulingPolicy;
-
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context) override;
+      SchedulingOptions options) override;
 };
 
 class BundleStrictPackSchedulingPolicy : public BundleSchedulingPolicy {
  public:
   using BundleSchedulingPolicy::BundleSchedulingPolicy;
-
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context) override;
+      SchedulingOptions options) override;
 };
 
 class BundleStrictSpreadSchedulingPolicy : public BundleSchedulingPolicy {
  public:
   using BundleSchedulingPolicy::BundleSchedulingPolicy;
-
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context) override;
+      SchedulingOptions options) override;
 
  protected:
   /// Filter out candidate nodes which can be used for scheduling.
