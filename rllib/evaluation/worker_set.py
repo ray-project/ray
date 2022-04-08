@@ -275,7 +275,8 @@ class WorkerSet:
         if len(self.remote_workers()) == 0:
             raise RuntimeError(
                 f"No healthy workers remaining (worker indices {faulty_indices} have "
-                f"died)! Can't continue training.")
+                f"died)! Can't continue training."
+            )
 
     def recreate_failed_workers(self):
         faulty_indices = self._worker_health_check()
