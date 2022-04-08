@@ -300,14 +300,14 @@ class DQNTrainer(SimpleQTrainer):
     def training_iteration(self) -> ResultDict:
         """DQN training iteration function.
 
-        This replicates DQN's execution_plan behaviour, e.g.:
-        - For every time we (1) sample (MultiAgentBatch) from workers...
-            - (2) Concatenate freshly collected samples.
-            - (3) Store new samples in replay buffer.
-            - (4) Sample training batch (MultiAgentBatch) from replay buffer.
-            - (5) Learn on training batch.
-            - (6) Update target network every target_network_update_freq steps.
-        - (7) Return all collected metrics for the iteration.
+        Each training iteration, we:
+        - Sample (MultiAgentBatch) from workers.
+        - Store new samples in replay buffer.
+        - Sample training batch (MultiAgentBatch) from replay buffer.
+        - Learn on training batch.
+        - Update remote workers' new policy weights.
+        - Update target network every target_network_update_freq steps.
+        - Return all collected metrics for the iteration.
 
         Returns:
             The results dict from executing the training iteration.
