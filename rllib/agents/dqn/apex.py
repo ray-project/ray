@@ -221,9 +221,9 @@ class ApexTrainer(DQNTrainer):
             raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
         # Call DQN's validation method.
         super().validate_config(config)
-        if config["_disable_execution_plan_api"]:
-            if not config.get("training_intensity", 1.0) > 0:
-                raise ValueError("training_intensity must be > 0")
+        # if config["_disable_execution_plan_api"]:
+        #     if not config.get("training_intensity", 1.0) > 0:
+        #         raise ValueError("training_intensity must be > 0")
 
     @override(Trainable)
     def training_iteration(self) -> ResultDict:

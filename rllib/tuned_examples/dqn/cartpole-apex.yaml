@@ -6,6 +6,8 @@
 # evaluation_config:
 #     explore: False
 cartpole-apex-dqn-training-itr:
+    sync_config:
+        upload_dir: s3://avnish-apex-tests
     env: CartPole-v0
     run: APEX
     stop:
