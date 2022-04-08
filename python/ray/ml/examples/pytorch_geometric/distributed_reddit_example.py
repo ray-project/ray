@@ -174,7 +174,7 @@ if __name__ == "__main__":
         "-b",
         type=int,
         default=32,
-        help="Global batch size " "to use for training.",
+        help="Global batch size to use for training.",
     )
 
     args, _ = parser.parse_known_args()
