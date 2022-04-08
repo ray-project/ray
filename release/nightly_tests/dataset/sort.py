@@ -1,32 +1,15 @@
 import ray
-import pandas as pd
 import numpy as np
 import time
-import builtins
-from typing import Any, Generic, List, Callable, Union, Tuple, Iterable
 import os
 import psutil
 import resource
 import json
+from typing import List
 
-import numpy as np
-
-import ray
-from ray.types import ObjectRef
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    T,
-    BlockPartition,
-    BlockPartitionMetadata,
-    MaybeBlockPartition,
-)
-from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
-from ray.util.annotations import DeveloperAPI
+from ray.data.block import Block, BlockMetadata
 
 from ray.data.datasource import Datasource, ReadTask
 from ray.internal.internal_api import memory_summary
@@ -86,8 +69,9 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         return read_tasks
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--num-partitions", help="number of partitions", default="50", type=str
@@ -106,14 +90,20 @@ if __name__ == '__main__':
 
     num_partitions = int(args.num_partitions)
     partition_size = int(float(args.partition_size))
-    print(f"Dataset size: {num_partitions} partitions, {partition_size / 1e9}GB partition size, {num_partitions * partition_size / 1e9}GB total")
+    print(
+        f"Dataset size: {num_partitions} partitions, "
+        f"{partition_size / 1e9}GB partition size, "
+        f"{num_partitions * partition_size / 1e9}GB total"
+    )
     start_time = time.time()
     source = RandomIntRowDatasource()
     num_rows_per_partition = partition_size // 8
-    ds = ray.data.read_datasource(source,
-            parallelism=num_partitions,
-            n=num_rows_per_partition * num_partitions,
-            num_columns=1)
+    ds = ray.data.read_datasource(
+        source,
+        parallelism=num_partitions,
+        n=num_rows_per_partition * num_partitions,
+        num_columns=1,
+    )
     exc = None
     try:
         if args.shuffle:
@@ -145,23 +135,23 @@ if __name__ == '__main__':
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
         results = {
-                "time": duration,
-                "success": "1" if exc is None else "0",
-                "num_partitions": num_partitions,
-                "partition_size": partition_size,
-                "perf_metrics": [
-                        {
-                            "perf_metric_name": "peak_driver_memory",
-                            "perf_metric_value": maxrss,
-                            "perf_metric_type": "MEMORY",
-                        },
-                        {
-                            "perf_metric_name": "runtime",
-                            "perf_metric_value": duration,
-                            "perf_metric_type": "LATENCY",
-                        },
-                    ]
-                }
+            "time": duration,
+            "success": "1" if exc is None else "0",
+            "num_partitions": num_partitions,
+            "partition_size": partition_size,
+            "perf_metrics": [
+                {
+                    "perf_metric_name": "peak_driver_memory",
+                    "perf_metric_value": maxrss,
+                    "perf_metric_type": "MEMORY",
+                },
+                {
+                    "perf_metric_name": "runtime",
+                    "perf_metric_value": duration,
+                    "perf_metric_type": "LATENCY",
+                },
+            ],
+        }
         json.dump(results, out_file)
 
     if exc:
