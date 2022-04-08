@@ -676,6 +676,9 @@ class WorkerSet:
         logger.info("Health checking all workers ...")
         checks = []
         for worker in self.remote_workers():
+            # TODO: Maybe find a better way to probe for healthiness. Performing an
+            #  entire `sample()` step may be costly. Then again, we only do this
+            #  upon any worker failure during the `step_attempt()`, not regularly.
             _, obj_ref = worker.sample_with_count.remote()
             checks.append(obj_ref)
 
