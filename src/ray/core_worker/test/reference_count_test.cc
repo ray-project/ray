@@ -125,12 +125,17 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
       pubsub::pub_internal::SubscriptionIndex *directory,
       SubscriptionCallbackMap *subscription_callback_map,
       SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      WorkerID subscriber_id,
+      pubsub::SubscriberID subscriber_id,
       PublisherFactoryFn client_factory)
       : directory_(directory),
         subscription_callback_map_(subscription_callback_map),
         subscription_failure_callback_map_(subscription_failure_callback_map),
         subscriber_id_(subscriber_id),
+        subscriber_(std::make_unique<pubsub::pub_internal::SubscriberState>(
+            subscriber_id,
+            /*get_time_ms=*/[]() { return 1.0; },
+            /*subscriber_timeout_ms=*/1000,
+            /*publish_batch_size=*/1000)),
         client_factory_(client_factory) {}
 
   ~MockDistributedSubscriber() = default;
@@ -157,7 +162,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     // subscriber is subscribed twice. We should just no-op in this case.
     if (!(directory_->HasKeyId(key_id_binary) &&
           directory_->HasSubscriber(subscriber_id_))) {
-      directory_->AddEntry(key_id_binary, subscriber_id_);
+      directory_->AddEntry(key_id_binary, subscriber_.get());
     }
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     const auto id = GenerateID(publisher_id, subscriber_id_);
@@ -215,7 +220,8 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
-  WorkerID subscriber_id_;
+  pubsub::SubscriberID subscriber_id_;
+  std::unique_ptr<pubsub::pub_internal::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
 

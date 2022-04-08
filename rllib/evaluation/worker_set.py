@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.exceptions import RayError
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -90,6 +91,12 @@ class WorkerSet:
         self._env_creator = env_creator
         self._policy_class = policy_class
         self._remote_config = trainer_config
+        self._remote_args = {
+            "num_cpus": self._remote_config["num_cpus_per_worker"],
+            "num_gpus": self._remote_config["num_gpus_per_worker"],
+            "resources": self._remote_config["custom_resources_per_worker"],
+        }
+        self._cls = RolloutWorker.as_remote(**self._remote_args).remote
         self._logdir = logdir
 
         if _setup:
@@ -222,21 +229,16 @@ class WorkerSet:
             num_workers: The number of remote Workers to add to this
                 WorkerSet.
         """
-        remote_args = {
-            "num_cpus": self._remote_config["num_cpus_per_worker"],
-            "num_gpus": self._remote_config["num_gpus_per_worker"],
-            "resources": self._remote_config["custom_resources_per_worker"],
-        }
-        cls = RolloutWorker.as_remote(**remote_args).remote
+        old_num_workers = len(self._remote_workers)
         self._remote_workers.extend(
             [
                 self._make_worker(
-                    cls=cls,
+                    cls=self._cls,
                     env_creator=self._env_creator,
                     validate_env=None,
                     policy_cls=self._policy_class,
-                    worker_index=i + 1,
-                    num_workers=num_workers,
+                    worker_index=old_num_workers + i + 1,
+                    num_workers=old_num_workers + num_workers,
                     config=self._remote_config,
                 )
                 for i in range(num_workers)
@@ -251,6 +253,59 @@ class WorkerSet:
                 (as `ActorHandles`) to use as remote workers.
         """
         self._remote_workers = new_remote_workers
+
+    def remove_failed_workers(self):
+        faulty_indices = self._worker_health_check()
+
+        # Terminate faulty workers.
+        for worker_index in faulty_indices:
+            worker = self.remote_workers()[worker_index - 1]
+            logger.info(f"Trying to terminate faulty worker {worker_index}.")
+            try:
+                worker.__ray_terminate__.remote()
+            except Exception:
+                logger.exception("Error terminating faulty worker.")
+
+        # Remove all faulty workers from self._remote_workers.
+        for worker_index in reversed(faulty_indices):
+            del self._remote_workers[worker_index - 1]
+        # TODO: Should we also change each healthy worker's num_workers counter and
+        #  worker_index property?
+
+        if len(self.remote_workers()) == 0:
+            raise RuntimeError(
+                f"No healthy workers remaining (worker indices {faulty_indices} have "
+                f"died)! Can't continue training."
+            )
+
+    def recreate_failed_workers(self):
+        faulty_indices = self._worker_health_check()
+
+        for worker_index in faulty_indices:
+            worker = self.remote_workers()[worker_index - 1]
+            logger.info(f"Trying to recreate faulty worker {worker_index}")
+            try:
+                worker.__ray_terminate__.remote()
+            except Exception:
+                logger.exception("Error terminating faulty worker.")
+            # Try to recreate the failed worker (start a new one).
+            new_worker = self._make_worker(
+                cls=self._cls,
+                env_creator=self._env_creator,
+                validate_env=None,
+                policy_cls=self._policy_class,
+                worker_index=worker_index,
+                num_workers=len(self._remote_workers),
+                recreated_worker=True,
+                config=self._remote_config,
+            )
+            # Sync new worker from local one.
+            new_worker.set_weights.remote(
+                weights=self.local_worker().get_weights(),
+                global_vars=self.local_worker().get_global_vars(),
+            )
+            # Add new worker to list of remote workers.
+            self._remote_workers[worker_index - 1] = new_worker
 
     def stop(self) -> None:
         """Calls `stop` on all rollout workers (including the local one)."""
@@ -448,6 +503,7 @@ class WorkerSet:
         policy_cls: Type[Policy],
         worker_index: int,
         num_workers: int,
+        recreated_worker: bool = False,
         config: TrainerConfigDict,
         spaces: Optional[
             Dict[PolicyID, Tuple[gym.spaces.Space, gym.spaces.Space]]
@@ -588,6 +644,7 @@ class WorkerSet:
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,
+            recreated_worker=recreated_worker,
             record_env=config["record_env"],
             log_dir=self._logdir,
             log_level=config["log_level"],
@@ -609,6 +666,33 @@ class WorkerSet:
         )
 
         return worker
+
+    def _worker_health_check(self) -> List[int]:
+        """Performs a health-check on each remote worker.
+
+        Returns:
+            List of indices (into `self._remote_workers` list) of faulty workers.
+            Note that index=1 is the 0th item in `self._remote_workers`.
+        """
+        logger.info("Health checking all workers ...")
+        checks = []
+        for worker in self.remote_workers():
+            # TODO: Maybe find a better way to probe for healthiness. Performing an
+            #  entire `sample()` step may be costly. Then again, we only do this
+            #  upon any worker failure during the `step_attempt()`, not regularly.
+            _, obj_ref = worker.sample_with_count.remote()
+            checks.append(obj_ref)
+
+        faulty_worker_indices = []
+        for i, obj_ref in enumerate(checks):
+            try:
+                ray.get(obj_ref)
+                logger.info("Worker {} looks healthy.".format(i + 1))
+            except RayError:
+                logger.exception("Worker {} is faulty.".format(i + 1))
+                faulty_worker_indices.append(i + 1)
+
+        return faulty_worker_indices
 
     @Deprecated(new="WorkerSet.foreach_policy_to_train", error=False)
     def foreach_trainable_policy(self, func):

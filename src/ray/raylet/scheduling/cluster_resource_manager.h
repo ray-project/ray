@@ -31,7 +31,8 @@
 namespace ray {
 namespace raylet {
 class ClusterTaskManagerTest;
-}
+class SchedulingPolicyTest;
+}  // namespace raylet
 
 /// Class manages the resources view of the entire cluster.
 /// This class is not thread safe.
@@ -166,6 +167,8 @@ class ClusterResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, DynamicResourceTest);
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
+
+  friend class raylet::SchedulingPolicyTest;
 };
 
 }  // end namespace ray

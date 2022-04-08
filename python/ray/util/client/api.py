@@ -227,10 +227,19 @@ class ClientAPI:
         # activates the same logic on the server side; so there's no need to
         # pass anything else. It's inside the class definition that becomes an
         # actor. Similar annotations would follow the same way.
-        assert len(args) == 0
-        assert len(kwargs) == 1
-
-        assert "num_returns" in kwargs or "concurrency_group" in kwargs
+        valid_kwargs = ["num_returns", "concurrency_group"]
+        error_string = (
+            "The @ray.method decorator must be applied using at least one of "
+            f"the arguments in the list {valid_kwargs}, for example "
+            "'@ray.method(num_returns=2)'."
+        )
+        assert len(args) == 0 and len(kwargs) > 0, error_string
+        for key in kwargs:
+            key_error_string = (
+                f'Unexpected keyword argument to @ray.method: "{key}". The '
+                f"supported keyword arguments are {valid_kwargs}"
+            )
+            assert key in valid_kwargs, key_error_string
 
         def annotate_method(method):
             if "num_returns" in kwargs:

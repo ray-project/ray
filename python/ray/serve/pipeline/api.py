@@ -5,7 +5,7 @@ from ray.serve.pipeline.generate import (
     extract_deployments_from_serve_dag,
     process_ingress_deployment_in_serve_dag,
 )
-from ray.serve.api import Deployment
+from ray.serve.deployment import Deployment
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
