@@ -189,6 +189,7 @@ def test_logs_experimental(ray_start_with_dashboard):
                     break
             else:
                 raise Exception(f"Can't find {test_log_text} from {urls}")
+            break
         except Exception as ex:
             last_ex = ex
         finally:
