@@ -1932,7 +1932,7 @@ def format_print_logs_index(api_endpoint, node_id, links):
     required=False,
     type=str,
     default=None,
-    help="Retrieves the logs corresponding to this ActorID.",
+    help="Retrieves the logs corresponding to this TaskID.",
 )
 @click.option(
     "--watch",
