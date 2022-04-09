@@ -45,7 +45,6 @@ from ray.internal.internal_api import (
     ray_log_index,
     ray_nodes,
     ray_actors,
-    ray_actor_log,
 )
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.core.generated import gcs_service_pb2
@@ -2002,7 +2001,7 @@ def logs(
                 f",{filename}" if filename is not None else ""
             )
             api_endpoint, logs_dict = ray_log_index(node_id, filters)
-            # to_dedup = ["gcs_logs", "dashboard", "autoscaler", "autoscaler_monitor"] ??
+            # to_dedup = ["gcs_logs", "dashboard", "autoscaler", "autoscaler_monitor"] ?
             if len(logs_dict) == 0:
                 raise Exception("Could not find node.")
             if filename is None:
@@ -2035,7 +2034,8 @@ def logs(
             for i, (node_id, logs) in enumerate(logs_dict.items()):
                 if i >= MAX_NODES:
                     print(
-                        f"\nDisplaying only {MAX_NODES} nodes. Narrow down with --node-id."
+                        f"\nDisplaying only {MAX_NODES} nodes."
+                        "Narrow down with --node-id."
                     )
                     break
                 print(f"\nNode ID: {node_id}")
