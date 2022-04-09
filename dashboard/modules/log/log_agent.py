@@ -99,7 +99,6 @@ def tail(f, lines=1000):
 
     total_lines_wanted = lines
 
-    BLOCK_SIZE = 8192
     f.seek(0, 2)
     block_end_byte = f.tell()
     last_byte_read = block_end_byte
