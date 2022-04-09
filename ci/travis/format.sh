@@ -9,6 +9,20 @@ FLAKE8_VERSION_REQUIRED="3.9.1"
 BLACK_VERSION_REQUIRED="21.12b0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="0.782"
+BANNED_WORDS="RLLib Rllib"
+
+check_banned_words() {
+    echo "Checking for common mis-spellings..."
+    for word in $BANNED_WORDS; do
+        if grep -C2 $word **/*.py **/*.md **.rst **/*.yaml; then
+            echo "******************************"
+            echo "*** Misspelled word found! ***"
+            echo "******************************"
+            echo "Please fix the capitalization/spelling of \"$word\" in the above files."
+            exit 1
+        fi
+    done
+}
 
 check_python_command_exist() {
     VERSION=""
@@ -35,6 +49,7 @@ check_python_command_exist() {
 check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
+check_banned_words
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -310,7 +325,6 @@ format_changed() {
         fi
     fi
 }
-
 
 # This flag formats individual files. --files *must* be the first command line
 # arg to use this option.
