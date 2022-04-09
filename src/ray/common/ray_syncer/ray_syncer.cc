@@ -320,8 +320,14 @@ void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  io_context_.post([this, node_id]() { sync_connections_.erase(node_id); },
-                   "RaySyncerDisconnect");
+  io_context_.post([this, node_id]() {
+    auto iter = sync_connections_.find(node_id);
+    if(iter != sync_connections_.end()) {
+      upward_connections_.erase(iter->second.get());
+      sync_connections_.erase(iter);
+    }
+  },
+    "RaySyncerDisconnect");
 }
 
 bool RaySyncer::Register(RayComponentId component_id,
@@ -381,7 +387,12 @@ grpc::ServerUnaryReactor *RaySyncerService::StartSync(
     StartSyncResponse *response) {
   auto *reactor = context->DefaultReactor();
   // Make sure server only have one client
-  RAY_CHECK(remote_node_id_.empty());
+  if(!remote_node_id_.empty()) {
+    RAY_LOG(WARNING) << "Get a new sync request from "
+                     << NodeID::FromBinary(request->node_id()) << ". "
+                     << "Now disconnect from " << NodeID::FromBinary(remote_node_id_);
+    syncer_.Disconnect(remote_node_id_);
+  }
   remote_node_id_ = request->node_id();
   RAY_LOG(DEBUG) << "Get connect from: " << NodeID::FromBinary(remote_node_id_);
   syncer_.GetIOContext().post(
