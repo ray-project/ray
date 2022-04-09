@@ -39,7 +39,14 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
 
-from ray.internal.internal_api import memory_summary
+from ray.internal.internal_api import (
+    memory_summary,
+    ray_log,
+    ray_log_index,
+    ray_nodes,
+    ray_actors,
+    ray_actor_log,
+)
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -1848,6 +1855,259 @@ def local_dump(
     )
 
 
+def format_print_logs_index(api_endpoint, node_id, links):
+    def print_section(name, key):
+        if len(links[key]) > 0:
+            print(f"\n{name}")
+            print("----------------------------")
+            [
+                print(f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}")
+                for log in links[key]
+            ]
+
+    for lang in ray_constants.LANGUAGE_WORKER_TYPES:
+        print_section(f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs")
+        print_section(
+            f"{lang.capitalize()} Core Worker Logs", f"{lang}_core_worker_logs"
+        )
+    print_section("Worker Errors", "worker_errors")
+    print_section("Worker Stdout", "worker_outs")
+    print_section("Raylet Logs", "raylet_logs")
+    print_section("GCS Logs", "gcs_logs")
+    print_section("Miscellaneous Logs", "misc")
+    print_section("Autoscaler Monitor Logs", "autoscaler_monitor")
+    print_section("Dashboard Logs", "dashboard")
+    print_section("Ray Client Logs", "ray_client")
+
+
+@cli.command()
+@click.argument(
+    "filters",
+    nargs=-1,
+    required=False,
+    default=None,
+)
+@click.option(
+    "--filename",
+    "-f",
+    type=str,
+    required=False,
+    default=None,
+    help="Specify the exact filename of the log file.",
+)
+@click.option(
+    "-ip",
+    "--node-ip",
+    required=False,
+    type=str,
+    default=None,
+    help="Filters the logs by this ip address.",
+)
+@click.option(
+    "--node-id",
+    "-n",
+    required=False,
+    type=str,
+    default=None,
+    help="Filters the logs by this NodeID.",
+)
+@click.option(
+    "--pid",
+    "-pid",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs from the process with this pid.",
+)
+@click.option(
+    "--actor-id",
+    "-a",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs corresponding to this ActorID.",
+)
+@click.option(
+    "--task-id",
+    "-t",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs corresponding to this ActorID.",
+)
+@click.option(
+    "--watch",
+    "-w",
+    required=False,
+    type=bool,
+    is_flag=True,
+    help="Streams the log file as it is updated instead of just tailing.",
+)
+@click.option(
+    "--lines",
+    "-l",
+    required=False,
+    type=int,
+    default=None,
+    help="Number of lines to tail from log. -1 indicates fetching the whole file.",
+)
+def logs(
+    filters,
+    filename: str,
+    node_ip: str,
+    node_id: str,
+    pid: str,
+    actor_id: str,
+    task_id: str,
+    watch: bool,
+    lines: int,
+):
+    """
+    View logs in the ray cluster.
+
+    FILTERS: Filename substrings (filename, component, file extension, id) to filter
+    the logs by.
+
+    Example usage:
+
+    ray logs --actor-id=XYZ              # Display stdout log by actor-id
+
+    ray logs --task-id=XYZ               # Display stdout log by task-id
+
+    ray logs --ip=198.0.0.1 --pid=987    # Display worker stdout by ip & pid
+
+    ray logs -n <node-id> -f raylet.out  # Display log by filename & node-id
+
+    ray logs                             # Display list of logs by category
+
+    ray logs worker .out <worker-id>     # Filter logs by substring
+    """
+
+    try:
+        found_many = False
+
+        if task_id is not None:
+            raise ValueError("task_id is not yet supported")
+
+        match_node = node_ip is not None or node_id is not None
+        match_file = filename is not None or pid is not None
+        match_actor = actor_id is not None
+
+        match_unique = (match_node and match_file) or match_actor
+
+        if not match_unique:
+            # Try to match a single log file.
+            # If we find more than one match, we output the index.
+            filters = ",".join(filters) + (
+                f",{filename}" if filename is not None else ""
+            )
+            api_endpoint, logs_dict = ray_log_index(node_id, filters)
+            # to_dedup = ["gcs_logs", "dashboard", "autoscaler", "autoscaler_monitor"] ??
+            if len(logs_dict) == 0:
+                raise Exception("Could not find node.")
+            if filename is None:
+                for node_id, logs in logs_dict.items():
+                    log = None
+                    for log_list in logs.values():
+                        if len(log_list) > 0:
+                            if log is not None or len(log_list) != 1:
+                                found_many = True
+                                break
+                            log = log_list[0]
+                    if found_many:
+                        break
+                    elif log is None:
+                        raise Exception(
+                            "Could not find any log file. Please ammend your query. "
+                            "Check --help for more."
+                        )
+                    filename = log
+
+        if found_many:
+            print(
+                "Warning: More than one log file matches your query. Please add "
+                "additional file name substrings, flags or specify the full filename "
+                "with -f to narrow down the search results to a single file. "
+                "Check --help for more."
+            )
+
+            MAX_NODES = 10
+            for i, (node_id, logs) in enumerate(logs_dict.items()):
+                if i >= MAX_NODES:
+                    print(
+                        f"\nDisplaying only {MAX_NODES} nodes. Narrow down with --node-id."
+                    )
+                    break
+                print(f"\nNode ID: {node_id}")
+                format_print_logs_index(api_endpoint, node_id, logs)
+        else:
+
+            def default_lines(lines):
+                print(
+                    f"--- Log has been truncated to last {lines} lines."
+                    " Use `--lines` flag to toggle. ---\n"
+                )
+                return lines
+
+            if watch:
+                if lines is None:
+                    lines = default_lines(1000)
+                for bytes in ray_log(
+                    node_ip, pid, node_id, actor_id, task_id, filename, True, lines
+                ):
+                    print(bytes, end="", flush=True)
+
+            elif not watch:
+                if lines is None:
+                    lines = default_lines(100)
+                for bytes in ray_log(
+                    node_ip, pid, node_id, actor_id, task_id, filename, False, lines
+                ):
+                    print(bytes, end="", flush=True)
+
+    except Exception as e:
+        print(e)
+
+
+@cli.command(hidden=True)
+@click.option(
+    "--ip-address",
+    required=False,
+    type=str,
+    default=None,
+    help="The ip address of the log",
+)
+@click.option(
+    "--node-id",
+    required=False,
+    type=str,
+    default=None,
+    help="The unique id of the node.",
+)
+def nodes(ip_address, node_id):
+    nodes = ray_nodes(node_id, ip_address)
+    for node in nodes:
+        id = node.pop("id")
+        print(f"Node ID: {id}")
+        for key, val in node.items():
+            print(f"{key}: {val}")
+        print()
+
+
+@cli.command(hidden=True)
+@click.option(
+    "--actor-id",
+    required=False,
+    type=str,
+    default=None,
+    help="The ip address of the log",
+)
+def actors(actor_id):
+    from pprint import pprint
+
+    pprint(ray_actors(actor_id))
+
+
 @cli.command()
 @click.argument("cluster_config_file", required=False, type=str)
 @click.option(
@@ -2255,6 +2515,9 @@ cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
+cli.add_command(logs)
+cli.add_command(nodes)
+cli.add_command(actors)
 add_command_alias(job_cli_group, name="job", hidden=True)
 
 try:

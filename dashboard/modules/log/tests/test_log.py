@@ -206,4 +206,4 @@ def test_logs_experimental(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", f"{__file__}::test_logs_experimental"]))

@@ -78,7 +78,7 @@ class LogAgentV1Grpc(
                         yield reporter_pb2.StreamLogReply(data=bytes)
                 else:
                     bytes, end = tail(f, lines)
-                    yield reporter_pb2.StreamLogReply(data=bytes)
+                    yield reporter_pb2.StreamLogReply(data=bytes + b"\n")
                 if request.keep_alive:
                     interval = request.interval if request.interval else 0.5
                     f.seek(end)
