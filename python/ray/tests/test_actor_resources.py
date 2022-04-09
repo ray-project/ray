@@ -397,7 +397,6 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
         check_intervals_non_overlapping(locations_to_intervals[locations])
     # Make sure that the actor's GPU was not used.
     assert actor_location not in locations_to_intervals
-
     # Create more actors to fill up all the GPUs.
     more_actors = [Actor1.remote() for _ in range(num_nodes * num_gpus_per_raylet - 1)]
     # Wait for the actors to finish being created.

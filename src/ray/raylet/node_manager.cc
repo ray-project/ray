@@ -2630,6 +2630,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     }
     resource_data.set_node_id(self_node_id_.Binary());
     resource_data.set_node_manager_address(initial_config_.node_manager_address);
+    resource_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
 
     msg.set_version(++version);
     msg.set_node_id(self_node_id_.Binary());

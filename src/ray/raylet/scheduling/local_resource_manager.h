@@ -107,7 +107,10 @@ class LocalResourceManager {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  int64_t Version() const { return version_; }
+  int64_t Version() {
+    UpdateAvailableObjectStoreMemResource();
+    return version_;
+  }
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending resource usage of raylet to gcs. In particular, this should fill in
