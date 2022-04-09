@@ -120,7 +120,7 @@ Transforming Datasets
 
 .. tip::
 
-   The map_batches() is much more performant than map(). Use map_batches() whenever applicable.
+   The map_batches() API is much more performant than map(). Use map_batches() whenever applicable.
 
 Datasets can be transformed in parallel using ``.map()``.
 Transformations are executed *eagerly* and block until the operation is finished.
