@@ -32,6 +32,7 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
 
 absl::flat_hash_map<scheduling::NodeID, const Node *>
 BundleSchedulingPolicy::SelectCandidateNodes(const SchedulingContext *context) const {
+  RAY_UNUSED(context);
   absl::flat_hash_map<scheduling::NodeID, const Node *> result;
   for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
     if (is_node_available_ == nullptr || is_node_available_(entry.first)) {
@@ -137,11 +138,10 @@ std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
 ////////////////////  BundlePackSchedulingPolicy  ///////////////////////////////
 SchedulingResult BundlePackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    SchedulingContext *context) {
+    SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(context);
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -210,11 +210,10 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
 //////////////////////  BundleSpreadSchedulingPolicy  ///////////////////////////
 SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    SchedulingContext *context) {
+    SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(context);
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -272,11 +271,10 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
 /////////////////////  BundleStrictPackSchedulingPolicy  //////////////////////////
 SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    SchedulingContext *context) {
+    SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
-  auto candidate_nodes = SelectCandidateNodes(context);
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -325,12 +323,11 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 /////////////////////  BundleStrictSpreadSchedulingPolicy  //////////////////////////
 SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    SchedulingContext *context) {
+    SchedulingOptions options) {
   RAY_CHECK(!resource_request_list.empty());
 
   // Filter candidate nodes.
-  auto candidate_nodes = SelectCandidateNodes(context);
+  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
