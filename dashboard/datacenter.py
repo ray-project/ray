@@ -215,11 +215,10 @@ class DataOrganizer:
 
     @classmethod
     async def get_all_node_details(cls):
-        ret = [
+        return [
             await DataOrganizer.get_node_info(node_id)
             for node_id in DataSource.nodes.keys()
         ]
-        return ret
 
     @classmethod
     async def get_all_actors(cls):
