@@ -358,20 +358,24 @@ bool RaySyncer::Register(RayComponentId component_id,
 }
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
-  // The message is stale. Just skip this one.
-  if (!node_state_->ConsumeMessage(message)) {
-    return;
-  }
+  io_context_.dispatch(
+      [this, message] {
+        // The message is stale. Just skip this one.
+        if (!node_state_->ConsumeMessage(message)) {
+          return;
+        }
 
-  if (upward_only_[message->component_id()]) {
-    for (auto &connection : upward_connections_) {
-      connection->PushToSendingQueue(message);
-    }
-  } else {
-    for (auto &connection : sync_connections_) {
-      connection.second->PushToSendingQueue(message);
-    }
-  }
+        if (upward_only_[message->component_id()]) {
+          for (auto &connection : upward_connections_) {
+            connection->PushToSendingQueue(message);
+          }
+        } else {
+          for (auto &connection : sync_connections_) {
+            connection.second->PushToSendingQueue(message);
+          }
+        }
+      },
+      "RaySyncer.BroadcastMessage");
 }
 
 void RaySyncer::BroadcastMessage(RayComponentId cid) {
