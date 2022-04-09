@@ -5,6 +5,7 @@ import time
 import traceback
 import html.parser
 import urllib.parse
+import json
 
 from ray.dashboard.tests.conftest import *  # noqa
 import pytest
@@ -149,7 +150,7 @@ def test_log_proxy(ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
-def test_log_experimental(ray_start_with_dashboard):
+def test_logs_experimental(ray_start_with_dashboard):
     @ray.remote
     def write_log(s):
         print(s)
@@ -167,25 +168,19 @@ def test_log_experimental(ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            response = requests.get(webui_url + "/log_index")
+            response = requests.get(webui_url + "/api/experimental/logs/index")
             response.raise_for_status()
-            parser = LogUrlParser()
-            parser.feed(response.text)
-            all_nodes_log_urls = parser.get_urls()
-            assert len(all_nodes_log_urls) == 1
+            logs = json.loads(response.text)
+            assert len(logs) == 1
 
-            response = requests.get(all_nodes_log_urls[0])
-            response.raise_for_status()
-            parser = LogUrlParser()
-            parser.feed(response.text)
-
-            # Search test_log_text from all worker logs.
-            parsed_url = urllib.parse.urlparse(all_nodes_log_urls[0])
-            paths = parser.get_urls()
+            node_id = next(iter(logs))
+            file_names = logs[node_id]["worker_outs"]
             urls = []
-            for p in paths:
-                if "worker" in p:
-                    urls.append(parsed_url._replace(path=p).geturl())
+            for f in file_names:
+                if "worker" in f:
+                    urls.append(
+                        webui_url + f"/api/experimental/logs/file/{node_id}/" + f
+                    )
 
             for u in urls:
                 response = requests.get(u)
@@ -194,23 +189,6 @@ def test_log_experimental(ray_start_with_dashboard):
                     break
             else:
                 raise Exception(f"Can't find {test_log_text} from {urls}")
-
-            # Test range request.
-            response = requests.get(
-                webui_url + "/logs/dashboard.log", headers={"Range": "bytes=44-52"}
-            )
-            response.raise_for_status()
-            assert response.text == "Dashboard"
-
-            # Test logUrl in node info.
-            response = requests.get(webui_url + f"/nodes/{node_id}")
-            response.raise_for_status()
-            node_info = response.json()
-            assert node_info["result"] is True
-            node_info = node_info["data"]["detail"]
-            assert "logUrl" in node_info
-            assert node_info["logUrl"] in all_nodes_log_urls
-            break
         except Exception as ex:
             last_ex = ex
         finally:
@@ -227,4 +205,4 @@ def test_log_experimental(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", f"{__file__}::test_logs_experimental"]))

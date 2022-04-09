@@ -1,3 +1,10 @@
+import psutil
+from ray.util.debug import log_once
+from ray._private.metrics_agent import MetricsAgent, Gauge, Record
+from ray.ray_constants import DEBUG_AUTOSCALING_STATUS
+from ray.core.generated import reporter_pb2_grpc
+from ray.core.generated import reporter_pb2
+import ray._private.memory_monitor as memory_monitor
 import asyncio
 import datetime
 import json
@@ -18,12 +25,6 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private.gcs_pubsub import GcsAioPublisher
 import ray._private.services
 import ray._private.utils
-from ray.core.generated import reporter_pb2
-from ray.core.generated import reporter_pb2_grpc
-from ray.ray_constants import DEBUG_AUTOSCALING_STATUS
-from ray._private.metrics_agent import MetricsAgent, Gauge, Record
-from ray.util.debug import log_once
-import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +200,7 @@ class ReporterAgent(
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
+        self.monitor = memory_monitor.MemoryMonitor()
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid
@@ -426,6 +428,7 @@ class ReporterAgent(
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
+            "top_10_proc_mem_usage": memory_monitor.get_top_n_memory_usage(10),
         }
 
     def _record_stats(self, stats, cluster_stats):
