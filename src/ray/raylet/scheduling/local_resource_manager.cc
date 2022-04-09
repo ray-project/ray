@@ -306,8 +306,9 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   RAY_CHECK_EQ(total_instances.size(), 1u);
   const double used = get_used_object_store_memory_();
   const double total = total_instances[0].Double();
-  auto new_available = std::vector<FixedPoint>{FixedPoint(total >= used ? total - used : 0.0)};
-  if(new_available != local_resources_.available.Get(ResourceID::ObjectStoreMemory())) {
+  auto new_available =
+      std::vector<FixedPoint>{FixedPoint(total >= used ? total - used : 0.0)};
+  if (new_available != local_resources_.available.Get(ResourceID::ObjectStoreMemory())) {
     local_resources_.available.Set(ResourceID::ObjectStoreMemory(),
                                    std::move(new_available));
     OnResourceChanged();
@@ -316,7 +317,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
 
 void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data,
                                              bool for_ray_syncer) {
-  if(!for_ray_syncer) {
+  if (!for_ray_syncer) {
     UpdateAvailableObjectStoreMemResource();
   }
 
