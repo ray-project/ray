@@ -697,4 +697,4 @@ def pytest_runtest_makereport(item, call):
             if not os.path.exists(dir):
                 os.makedirs(dir)
             output_file = f"{dir}/{rep.nodeid.split('/')[-1]}-{time.time()}"
-            shutil.make_archive(output_file, "zip", "/tmp/ray/session_latest")
+            shutil.make_archive(output_file, "zip", "/tmp/ray/session_latest/logs")
