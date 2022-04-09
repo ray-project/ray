@@ -47,7 +47,8 @@ class LogAgentV1Grpc(
 
     async def LogIndex(self, request, context):
         return reporter_pb2.LogIndexReply(
-            log_files=os.listdir(self._dashboard_agent.log_dir))
+            log_files=os.listdir(self._dashboard_agent.log_dir)
+        )
 
     async def StreamLog(self, request, context):
         """
@@ -60,11 +61,13 @@ class LogAgentV1Grpc(
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
         if not os.path.isfile(filepath):
             await context.send_initial_metadata(
-                [[log_consts.LOG_STREAM_STATUS, log_consts.FILE_NOT_FOUND]])
+                [[log_consts.LOG_STREAM_STATUS, log_consts.FILE_NOT_FOUND]]
+            )
         else:
             with open(filepath, "rb") as f:
                 await context.send_initial_metadata(
-                    [[log_consts.LOG_STREAM_STATUS, log_consts.OK]])
+                    [[log_consts.LOG_STREAM_STATUS, log_consts.OK]]
+                )
                 # If requesting the whole file, we stream the file since it may be large.
                 if lines == -1:
                     while True:
@@ -75,7 +78,7 @@ class LogAgentV1Grpc(
                         yield reporter_pb2.StreamLogReply(data=bytes)
                 else:
                     bytes, end = tail(f, lines)
-                    yield reporter_pb2.StreamLogReply(data=bytes)
+                    yield reporter_pb2.StreamLogReply(data=bytes + b"\n")
                 if request.keep_alive:
                     interval = request.interval if request.interval else 0.5
                     f.seek(end)

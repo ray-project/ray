@@ -220,21 +220,27 @@ def free(object_refs, local_only=False):
         worker.core_worker.free_objects(object_refs, local_only)
 
 
+SESSION_DASHBOARD_URL = None
+
+
 def _get_dashboard_url():
-    gcs_addr = services.get_ray_address_from_environment()
-    dashboard_addr = services.get_dashboard_url(gcs_addr)
-    if not dashboard_addr:
-        return f"Cannot find the dashboard of the cluster of address {gcs_addr}."
+    global SESSION_DASHBOARD_URL
 
-    def format_web_url(url):
-        """Format web url."""
-        url = url.replace("localhost", "http://127.0.0.1")
-        if not url.startswith("http://"):
-            return "http://" + url
-        return url
+    if SESSION_DASHBOARD_URL is None:
+        gcs_addr = services.get_ray_address_from_environment()
+        dashboard_addr = services.get_dashboard_url(gcs_addr)
+        if not dashboard_addr:
+            return f"Cannot find the dashboard of the cluster of address {gcs_addr}."
 
-    url = format_web_url(dashboard_addr)
-    return url
+        def format_web_url(url):
+            """Format web url."""
+            url = url.replace("localhost", "http://127.0.0.1")
+            if not url.startswith("http://"):
+                return "http://" + url
+            return url
+
+        SESSION_DASHBOARD_URL = format_web_url(dashboard_addr)
+    return SESSION_DASHBOARD_URL
 
 
 def ray_nodes(node_id: str, node_ip: str, debug=False):
@@ -312,25 +318,68 @@ def ray_actors(actor_id: str):
 
 
 def ray_log(
-    ip_address: str,
+    node_ip: str,
+    pid: str,
     node_id: str,
     actor_id: str,
-    filters: str,
-    limit: int = 100,
+    task_id: str,
+    log_file_name: str,
+    stream: bool = False,
+    limit: int = 1000,
+    interval: float = 0.5,
 ):
     """Return the `limit` number of lines of logs."""
     import requests
+
+    api_server_url = _get_dashboard_url()
+    if task_id is not None:
+        raise ValueError("querying for logs by`task_id` is not yet implemented")
+
+    query_string = ""
+    args = {
+        "node_id": node_id,
+        "node_ip": node_ip,
+        "actor_id": actor_id,
+        "pid": pid,
+        "log_file_name": log_file_name,
+    }
+    for arg in args:
+        if args[arg] is not None:
+            query_string += f"{arg}={args[arg]}&"
+
+    if stream:
+        media_type = "stream"
+    else:
+        media_type = "file"
+    with requests.get(
+        f"{api_server_url}/api/experimental/logs/{media_type}?"
+        f"{query_string}limit={limit}",
+        stream=True,
+    ) as r:
+        if r.status_code != 200:
+            raise Exception(r.text)
+        for bytes in r.iter_content(chunk_size=None):
+            yield bytes.decode("utf-8")
+
+
+def ray_log_index(
+    node_id: str,
+    filters: str,
+):
+    """Return the `limit` number of lines of logs."""
+    import requests
+
     api_server_url = _get_dashboard_url()
     node_id_query = f"node_id={node_id}&" if node_id else ""
-    actor_id_query = f"actor_id={actor_id}&" if actor_id else ""
     response = requests.get(
-        f"{api_server_url}/v1/api/logs/index?{node_id_query}"
-        f"{actor_id_query}filters={filters}"
+        f"{api_server_url}/api/experimental/logs/index?{node_id_query}"
+        f"filters={filters}"
     )
     if response.status_code != 200:
         raise Exception(response.text)
     logs_dict = json.loads(response.text)
     return api_server_url, logs_dict
+
 
 def ray_actor_log(actor_id):
     actor_info = ray_actors(actor_id)[actor_id]

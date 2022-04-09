@@ -112,6 +112,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
+        self._ip_to_node_id = {}
         DataSource.agents.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):
@@ -119,6 +120,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             node_id, _ = change.old
             ip = DataSource.node_id_to_ip[node_id]
             self._stubs.pop(node_id)
+            self._ip_to_node_id.pop(ip)
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
@@ -129,6 +131,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             )
             stub = reporter_pb2_grpc.LogServiceStub(channel)
             self._stubs[node_id] = stub
+            self._ip_to_node_id[ip] = node_id
 
     @staticmethod
     async def get_logs_json_index(grpc_stub, filters):
@@ -171,20 +174,11 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/experimental/logs/index")
     async def handle_log_index(self, req):
         node_id_query = req.query.get("node_id", None)
-        actor_id = req.query.get("actor_id", None)
         filters = req.query.get("filters", "").split(",")
-        if actor_id is not None:
-            actor_data = DataSource.actors.get(actor_id)
-            if actor_data is None:
-                return aiohttp.web.HTTPNotFound(
-                    reason=f"Actor ID {actor_id} not found."
-                )
-            worker_id = actor_data["address"].get("workerId")
-            if worker_id is None:
-                return aiohttp.web.HTTPNotFound(
-                    reason=f"Worker Id for Actor ID {actor_id} not found."
-                )
-            filters.append(worker_id)
+        response = await self.get_log_index(node_id_query, filters)
+        return aiohttp.web.json_response(response)
+
+    async def get_log_index(self, node_id_query, filters):
         response = {}
         while self._stubs == {}:
             await asyncio.sleep(0.5)
@@ -199,24 +193,72 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
                 tasks.append(coro())
         await asyncio.gather(*tasks)
-        return aiohttp.web.json_response(response)
+        return response
 
-    @routes.get("/api/experimental/logs/{media_type}/{node_id}/{log_file_name}")
+    @routes.get("/api/experimental/logs/{media_type}")
     async def handle_log(self, req):
-        node_id = req.match_info.get("node_id", None)
-        log_file_name = req.match_info.get("log_file_name", None)
+        while self._stubs == {}:
+            await asyncio.sleep(0.5)
+        node_id = req.query.get("node_id", None)
+        if node_id is None:
+            ip = req.query.get("node_ip", None)
+            if ip is not None:
+                if ip not in self._ip_to_node_id:
+                    return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
+                node_id = self._ip_to_node_id[ip]
+
+        log_file_name = req.query.get("log_file_name", None)
+
+        if log_file_name is None or node_id is None:
+            actor_id = req.query.get("actor_id", None)
+            if actor_id is not None:
+                actor_data = DataSource.actors.get(actor_id)
+                if actor_data is None:
+                    return aiohttp.web.HTTPNotFound(
+                        reason=f"Actor ID {actor_id} not found."
+                    )
+                worker_id = actor_data["address"].get("workerId")
+                if worker_id is None:
+                    return aiohttp.web.HTTPNotFound(
+                        reason=f"Worker Id for Actor ID {actor_id} not found."
+                    )
+
+                index = await self.get_log_index(node_id, [worker_id])
+                for node in index:
+                    for file in index[node]["worker_outs"]:
+                        if file.split(".")[0].split("-")[1] == worker_id:
+                            log_file_name = file
+                            if node_id is None:
+                                node_id = node
+                            break
+
+        if log_file_name is None:
+            pid = req.query.get("pid", None)
+            if node_id is None:
+                return aiohttp.web.HTTPNotFound(
+                    reason="Node identifiers (node_ip, node_id) not provided."
+                    f" Available: {self._ip_to_node_id}"
+                )
+            if pid is not None:
+                index = await self.get_log_index(node_id, [pid])
+                for file in index[node_id]["worker_outs"]:
+                    if file.split(".")[0].split("-")[3] == pid:
+                        log_file_name = file
+
         media_type = req.match_info.get("media_type", None)
 
         lines = req.query.get("lines", None)
         lines = int(lines) if lines else None
 
-        interval = req.match_info.get("interval", None)
+        interval = req.query.get("interval", None)
         interval = float(interval) if interval else None
 
-        while self._stubs == {}:
-            await asyncio.sleep(0.5)
-        if node_id not in self._stubs:
+        if node_id is None or node_id not in self._stubs:
             return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
+        if log_file_name is None:
+            return aiohttp.web.HTTPNotFound(
+                reason="Could not resolve file identifiers to file name."
+            )
 
         if media_type == "stream":
             keep_alive = True
