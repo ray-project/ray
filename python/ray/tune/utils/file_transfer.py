@@ -6,10 +6,9 @@ import tarfile
 from typing import Optional, Tuple, Dict, Generator, Union
 
 import ray
-from ray.exceptions import RayTaskError
 
 
-DEFAULT_CHUNK_SIZE = 500 * 1024 * 1024
+_DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024
 
 
 def sync_dir_between_nodes(
@@ -18,7 +17,7 @@ def sync_dir_between_nodes(
     target_ip: str,
     target_path: str,
     force_all: bool = False,
-    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_size: int = _DEFAULT_CHUNK_SIZE_BYTES,
     _return_all_remotes: bool = False,
 ) -> Union[ray.ObjectRef, Tuple[ray.ObjectRef, ray.ActorID, ray.ObjectRef]]:
     """Synchronize directory on source node to directory on target node.
@@ -34,6 +33,8 @@ def sync_dir_between_nodes(
         target_path: Path to file or directory on target node.
         force_all: If True, all files will be transferred (not just differing files).
         chunk_size: Chunk size for data transfer.
+        _return_all_remotes: If True, returns a tuple of the unpack future,
+            the pack actor, and the files_stats future.
 
     Returns:
         Ray future for scheduled unpacking task.
@@ -171,7 +172,7 @@ class _PackActor:
         self,
         source_dir: str,
         files_stats: Optional[Dict[str, Tuple[float, int]]] = None,
-        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        chunk_size: int = _DEFAULT_CHUNK_SIZE_BYTES,
     ):
         self.stream = _pack_dir(source_dir=source_dir, files_stats=files_stats)
         self.chunk_size = chunk_size
@@ -199,13 +200,10 @@ class _PackActor:
 def _iter_remote(actor: ray.ActorID) -> Generator[None, bytes, None]:
     """Iterate over actor task and return as generator."""
     while True:
-        try:
-            buffer = ray.get(actor.next.remote())
-            if buffer is None:
-                return
-            yield buffer
-        except RayTaskError:
-            return None
+        buffer = ray.get(actor.next.remote())
+        if buffer is None:
+            return
+        yield buffer
 
 
 def _unpack_dir(stream: io.BytesIO, target_dir: str):
