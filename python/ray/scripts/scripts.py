@@ -1997,9 +1997,10 @@ def logs(
 
         if match_file and not match_node:
             identifier = f"filename: {filename}" if filename else f"pid: {pid}"
-            raise ValueError(f"Unique logfile identifier '{identifier}' needs to be "
-                             "accompanied with a node identifier (--node-id or --node-ip)."
-                             )
+            raise ValueError(
+                f"Unique logfile identifier '{identifier}' needs to be "
+                "accompanied with a node identifier (--node-id or --node-ip)."
+            )
 
         if not match_unique:
             # Try to match a single log file.
