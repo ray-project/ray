@@ -3,10 +3,6 @@ import ray
 test_values = [1, 1.0, "test", b"test", (0, 1), [0, 1], {0: 1}]
 
 
-def test_test_failure_create_artifact(ray_start_regular):
-    assert 0
-
-
 def test_basic_task_api(ray_start_regular):
 
     # Test a simple function.
