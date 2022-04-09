@@ -241,12 +241,12 @@
       python ./scripts/bazel-sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       python/ray/serve/...
       > test_shard.txt
     - cat test_shard.txt
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
+      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       $(cat test_shard.txt)
 
 
