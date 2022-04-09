@@ -89,6 +89,7 @@ steps:
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
       --test_tag_filters=client_tests,small_size_python_tests
+      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       -- python/ray/tests/...
     - *epilogue_commands
 
@@ -106,6 +107,7 @@ steps:
     - *prelude_commands
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       python/ray/tests/...
     - *epilogue_commands
 
@@ -115,5 +117,6 @@ steps:
     - *prelude_commands
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       python/ray/tests/...
     - *epilogue_commands
