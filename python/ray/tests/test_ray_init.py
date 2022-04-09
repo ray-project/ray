@@ -8,12 +8,8 @@ import unittest.mock
 import ray
 import ray._private.services
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver
-from ray.util.client.common import ClientObjectRef
-from ray.util.client.worker import Worker
-import grpc
 
 
 @pytest.fixture
