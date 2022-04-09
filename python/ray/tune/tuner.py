@@ -41,17 +41,33 @@ class Tuner:
 
     .. code-block:: python
 
-        # TODO(xwjiang): Make this runnable. Add imports.
+        from sklearn.datasets import load_breast_cancer
+
+        from ray import tune
+        from ray.data import from_pandas
+        from ray.ml.config import RunConfig
+        from ray.ml.train.integrations.xgboost import XGBoostTrainer
+        from ray.tune.tuner import Tuner
+
+        def get_dataset():
+            data_raw = load_breast_cancer(as_frame=True)
+            dataset_df = data_raw["data"]
+            dataset_df["target"] = data_raw["target"]
+            dataset = from_pandas(dataset_df)
+            return dataset
+
+        trainer = XGBoostTrainer(
+            label_column="target",
+            params={},
+            datasets={"train": get_dataset()},
+        )
 
         param_space = {
             "scaling_config": {
-                "num_actors": tune.grid_search([2, 4]),
-                "cpus_per_actor": 2,
-                "gpus_per_actor": 0,
-            },
-            "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-            "datasets": {
-                "train_dataset": tune.grid_search([ds1, ds2]),
+                "num_workers": tune.grid_search([2, 4]),
+                "resources_per_worker": {
+                    "CPU": tune.grid_search([1, 2]),
+                },
             },
             "params": {
                 "objective": "binary:logistic",
