@@ -19,6 +19,7 @@
 #include <fstream>
 #include <memory>
 
+#include "absl/time/clock.h"
 #include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -583,13 +584,12 @@ ray::Status NodeManager::RegisterGcs() {
             DoLocalGC(triggered_by_global_gc);
             should_local_gc_ = false;
           }
-          static int64_t version = 0;
 
           if (triggered_by_global_gc) {
             rpc::ResourcesData resources_data;
             resources_data.set_should_global_gc(true);
             syncer::RaySyncMessage msg;
-            msg.set_version(++version);
+            msg.set_version(absl::GetCurrentTimeNanos());
             msg.set_node_id(self_node_id_.Binary());
             msg.set_component_id(syncer::RayComponentId::COMMANDS);
             std::string serialized_msg;
@@ -2647,7 +2647,6 @@ void NodeManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) 
 std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     int64_t after_version, syncer::RayComponentId component_id) const {
   if (component_id == syncer::RayComponentId::SCHEDULER) {
-    static uint64_t version = 0;
     syncer::RaySyncMessage msg;
     rpc::ResourcesData resource_data;
 
@@ -2660,7 +2659,7 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     resource_data.set_node_manager_address(initial_config_.node_manager_address);
     resource_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
 
-    msg.set_version(++version);
+    msg.set_version(absl::GetCurrentTimeNanos());
     msg.set_node_id(self_node_id_.Binary());
     msg.set_component_id(syncer::RayComponentId::SCHEDULER);
     std::string serialized_msg;
