@@ -53,7 +53,6 @@ else
     basedir="rllib/examples/serving"  # In bazel.
 fi
 
-
 # Start server with 2 workers (will listen on ports worker_1_port and worker_2_port for client
 # connections).
 # Do not attempt to restore from checkpoint; leads to errors on travis.
