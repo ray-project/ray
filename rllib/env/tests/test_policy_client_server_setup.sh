@@ -60,6 +60,9 @@ fi
 (python $basedir/$server_script --run=$trainer_cls --num-workers=2 --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
 server_pid=$!
 
+echo "localhost:$worker_1_port"
+echo "localhost:$worker_2_port"
+
 echo "Waiting for server to start ..."
 while ! curl localhost:$worker_1_port; do
   sleep 1
