@@ -527,9 +527,9 @@ TEST(SyncerTest, Reconnect) {
       },
       5));
   ASSERT_EQ(1, s3.syncer->upward_connections_.size());
-  ASSERT_EQ(s2.syncer->GetLocalNodeID(), (*s3.syncer->upward_connections_.begin())->GetRemoteNodeID());
+  ASSERT_EQ(s2.syncer->GetLocalNodeID(),
+            (*s3.syncer->upward_connections_.begin())->GetRemoteNodeID());
 }
-
 
 TEST(SyncerTest, Broadcast) {
   // This test covers the broadcast feature of ray syncer.
