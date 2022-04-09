@@ -438,7 +438,7 @@ class WandbIntegrationTest(unittest.TestCase):
         self.assertEqual(wrapped.wandb.kwargs["name"], trial.trial_name)
 
     def testWandbMixinRllib(self):
-        """Test compatibility with RLLib configuration dicts"""
+        """Test compatibility with RLlib configuration dicts"""
         # Local import to avoid tune dependency on rllib
         try:
             from ray.rllib.agents.ppo import PPOTrainer
