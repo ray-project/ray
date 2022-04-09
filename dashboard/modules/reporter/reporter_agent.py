@@ -195,9 +195,11 @@ class ReporterAgent(
         ]  # time, (bytes read, bytes written, read ops, write ops)
         self._metrics_agent = MetricsAgent(
             "127.0.0.1" if self._ip == "127.0.0.1" else "",
-            dashboard_agent.metrics_export_port)
-        self._key = f"{reporter_consts.REPORTER_PREFIX}" \
-                    f"{self._dashboard_agent.node_id}"
+            dashboard_agent.metrics_export_port,
+        )
+        self._key = (
+            f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
+        )
         self.monitor = memory_monitor.MemoryMonitor()
 
     async def GetProfilingStats(self, request, context):

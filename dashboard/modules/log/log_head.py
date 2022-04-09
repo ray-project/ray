@@ -168,7 +168,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         )
         return logs
 
-    @routes.get("/v1/api/logs/index")
+    @routes.get("/api/experimental/logs/index")
     async def handle_log_index(self, req):
         node_id_query = req.query.get("node_id", None)
         actor_id = req.query.get("actor_id", None)
@@ -177,11 +177,13 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             actor_data = DataSource.actors.get(actor_id)
             if actor_data is None:
                 return aiohttp.web.HTTPNotFound(
-                    reason=f"Actor ID {actor_id} not found.")
+                    reason=f"Actor ID {actor_id} not found."
+                )
             worker_id = actor_data["address"].get("workerId")
             if worker_id is None:
                 return aiohttp.web.HTTPNotFound(
-                    reason=f"Worker Id for Actor ID {actor_id} not found.")
+                    reason=f"Worker Id for Actor ID {actor_id} not found."
+                )
             filters.append(worker_id)
         response = {}
         while self._stubs == {}:
@@ -189,15 +191,17 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         tasks = []
         for node_id, grpc_stub in self._stubs.items():
             if node_id_query is None or node_id_query == node_id:
+
                 async def coro():
                     response[node_id] = await self.get_logs_json_index(
                         grpc_stub, filters
                     )
+
                 tasks.append(coro())
         await asyncio.gather(*tasks)
         return aiohttp.web.json_response(response)
 
-    @routes.get("/v1/api/logs/{media_type}/{node_id}/{log_file_name}")
+    @routes.get("/api/experimental/logs/{media_type}/{node_id}/{log_file_name}")
     async def handle_log(self, req):
         node_id = req.match_info.get("node_id", None)
         log_file_name = req.match_info.get("log_file_name", None)
@@ -223,7 +227,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         stream = self._stubs[node_id].StreamLog(
             reporter_pb2.StreamLogRequest(
                 keep_alive=keep_alive,
-                log_file_name=log_file_name, lines=lines,
+                log_file_name=log_file_name,
+                lines=lines,
                 interval=interval,
             )
         )
@@ -231,10 +236,11 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         metadata = await stream.initial_metadata()
         if metadata[log_consts.LOG_STREAM_STATUS] == log_consts.FILE_NOT_FOUND:
             return aiohttp.web.HTTPNotFound(
-                reason=f"File \"{log_file_name}\" not found on node {node_id}")
+                reason=f'File "{log_file_name}" not found on node {node_id}'
+            )
 
         response = aiohttp.web.StreamResponse()
-        response.content_type = 'text/plain'
+        response.content_type = "text/plain"
         await response.prepare(req)
 
         async for log_response in stream:
