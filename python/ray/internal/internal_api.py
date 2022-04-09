@@ -274,7 +274,7 @@ def ray_nodes(node_id: str, node_ip: str, debug=False):
                 "ip": node["ip"],
                 "state": node["raylet"]["state"],
                 "available_resources": resources[node["raylet"]["nodeId"]],
-                "top_10_process_mem_usage": node["top10ProcMemUsage"],
+                # "top_10_process_mem_usage": node["top10ProcMemUsage"],
             }
             if debug:
                 info["logUrl"] = node["logUrl"]
@@ -364,15 +364,24 @@ def ray_log(
 
 def ray_log_index(
     node_id: str,
+    node_ip: str,
     filters: str,
 ):
     """Return the `limit` number of lines of logs."""
     import requests
 
     api_server_url = _get_dashboard_url()
-    node_id_query = f"node_id={node_id}&" if node_id else ""
+    query_string = ""
+    args = {
+        "node_id": node_id,
+        "node_ip": node_ip,
+    }
+    for arg in args:
+        if args[arg] is not None:
+            query_string += f"{arg}={args[arg]}&"
+
     response = requests.get(
-        f"{api_server_url}/api/experimental/logs/index?{node_id_query}"
+        f"{api_server_url}/api/experimental/logs/index?{query_string}"
         f"filters={filters}"
     )
     if response.status_code != 200:

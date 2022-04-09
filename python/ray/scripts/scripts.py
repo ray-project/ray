@@ -1932,7 +1932,7 @@ def format_print_logs_index(api_endpoint, node_id, links):
     required=False,
     type=str,
     default=None,
-    help="Retrieves the logs corresponding to this ActorID.",
+    help="Retrieves the logs corresponding to this TaskID.",
 )
 @click.option(
     "--watch",
@@ -1969,15 +1969,15 @@ def logs(
 
     Example usage:
 
-    ray logs -a <actor-id>               # Display stdout log by actor-id
+    ray logs -a <actor-id>               # Display worker stdout log by actor-id
 
-    ray logs -ip 198.0.0.1 -pid 98712    # Display stdout log by ip & pid
+    ray logs -ip 198.0.0.1 -pid 98712    # Display worker stdout log by ip & pid
 
     ray logs -n <node-id> -f raylet.out  # Display log by filename & node-id
 
     ray logs                             # Display list of logs by category
 
-    ray logs worker .out <worker-id>     # Filter logs by substring
+    ray logs worker .out <worker-id>     # Filter logs by filename substring
 
     ray logs --endpoint=198.0.0.1:8265   # Retrieves logs from a remote cluster
 
@@ -1987,7 +1987,7 @@ def logs(
         found_many = False
 
         if task_id is not None:
-            raise ValueError("task_id is not yet supported")
+            raise ValueError("--task-id is not yet supported")
 
         match_node = node_ip is not None or node_id is not None
         match_file = filename is not None or pid is not None
@@ -1995,13 +1995,19 @@ def logs(
 
         match_unique = (match_node and match_file) or match_actor
 
+        if match_file and not match_node:
+            identifier = f"filename: {filename}" if filename else f"pid: {pid}"
+            raise ValueError(f"Unique logfile identifier '{identifier}' needs to be "
+                             "accompanied with a node identifier (--node-id or --node-ip)."
+                             )
+
         if not match_unique:
             # Try to match a single log file.
             # If we find more than one match, we output the index.
             filters = ",".join(filters) + (
                 f",{filename}" if filename is not None else ""
             )
-            api_endpoint, logs_dict = ray_log_index(node_id, filters)
+            api_endpoint, logs_dict = ray_log_index(node_id, node_ip, filters)
             # to_dedup = ["gcs_logs", "dashboard", "autoscaler", "autoscaler_monitor"] ?
             if len(logs_dict) == 0:
                 raise Exception("Could not find node.")

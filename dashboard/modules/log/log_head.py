@@ -173,9 +173,15 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/experimental/logs/index")
     async def handle_log_index(self, req):
-        node_id_query = req.query.get("node_id", None)
+        node_id = req.query.get("node_id", None)
+        if node_id is None:
+            ip = req.query.get("node_ip", None)
+            if ip is not None:
+                if ip not in self._ip_to_node_id:
+                    return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
+                node_id = self._ip_to_node_id[ip]
         filters = req.query.get("filters", "").split(",")
-        response = await self.get_log_index(node_id_query, filters)
+        response = await self.get_log_index(node_id, filters)
         return aiohttp.web.json_response(response)
 
     async def get_log_index(self, node_id_query, filters):
@@ -244,6 +250,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 for file in index[node_id]["worker_outs"]:
                     if file.split(".")[0].split("-")[3] == pid:
                         log_file_name = file
+                        break
+                return aiohttp.web.HTTPNotFound(
+                    reason=f"Worker with pid {pid} not found on node {node_id}"
+                )
 
         media_type = req.match_info.get("media_type", None)
 
