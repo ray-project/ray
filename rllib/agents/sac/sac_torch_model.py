@@ -15,6 +15,31 @@ from ray.rllib.utils.typing import ModelConfigDict, TensorType
 torch, nn = try_import_torch()
 
 
+def concat_model_out_if_necessary(model_out):
+    """Concat model outs if they come as original tuple observations.
+
+    Model outs may come as original Tuple observations, concat them here
+    if this is the case.
+
+    Args:
+        model_out: model output tensor or observation tuple
+    Returns:
+        Either original model_out tensor
+    """
+
+    if isinstance(model_out, (list, tuple)):
+        model_out = torch.cat(model_out, dim=-1)
+    elif isinstance(model_out, dict):
+        model_out = torch.cat(
+            [
+                torch.unsqueeze(val, 1) if len(val.shape) == 1 else val
+                for val in tree.flatten(model_out.values())
+            ],
+            dim=-1,
+        )
+    return model_out
+
+
 class SACTorchModel(TorchModelV2, nn.Module):
     """Extension of the standard TorchModelV2 for SAC.
 
@@ -271,11 +296,10 @@ class SACTorchModel(TorchModelV2, nn.Module):
         # training).
         input_dict["is_training"] = True
 
-        out, _ = net(input_dict, [], None)
-        return out
+        return net(input_dict, [], None)
 
-    def get_policy_output(self, model_out: TensorType) -> TensorType:
-        """Returns policy outputs, given the output of self.__call__().
+    def get_action_model_outputs(self, model_out: TensorType) -> TensorType:
+        """Returns policy network outputs given the output of policy.model().
 
         For continuous action spaces, these will be the mean/stddev
         distribution inputs for the (SquashedGaussian) action distribution.
@@ -289,21 +313,9 @@ class SACTorchModel(TorchModelV2, nn.Module):
         Returns:
             TensorType: Distribution inputs for sampling actions.
         """
-        # Model outs may come as original Tuple observations, concat them
-        # here if this is the case.
         if isinstance(self.action_model.obs_space, Box):
-            if isinstance(model_out, (list, tuple)):
-                model_out = torch.cat(model_out, dim=-1)
-            elif isinstance(model_out, dict):
-                model_out = torch.cat(
-                    [
-                        torch.unsqueeze(val, 1) if len(val.shape) == 1 else val
-                        for val in tree.flatten(model_out.values())
-                    ],
-                    dim=-1,
-                )
-        out, _ = self.action_model({"obs": model_out}, [], None)
-        return out
+            model_out = concat_model_out_if_necessary(model_out)
+        return self.action_model({"obs": model_out}, [], None)
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""
