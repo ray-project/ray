@@ -106,7 +106,7 @@ _remote_get_recursive_files_and_stats = ray.remote(_get_recursive_files_and_stat
 def _pack_dir(
     source_dir: str, files_stats: Optional[Dict[str, Tuple[float, int]]] = None
 ) -> io.BytesIO:
-    """Pack whole directory contents into a uncompressed tarfile.
+    """Pack whole directory contents into an uncompressed tarfile.
 
     This function accepts a ``files_stats`` argument. If given, only files
     whose stats differ from these stats will be packed.
