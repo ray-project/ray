@@ -114,6 +114,14 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_api",
+    size = "small",
+    srcs = ["tests/test_api.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
@@ -125,6 +133,14 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_horovod_trainer",
+    size = "large",
+    srcs = ["tests/test_horovod_trainer.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

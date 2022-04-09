@@ -155,14 +155,13 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
         scores = torch.stack(
             [self.arms[i](x, sample_theta) for i in range(self.num_outputs)], dim=-1
         )
-        self._cur_value = scores
         if use_ucb:
             ucbs = torch.stack(
                 [self.arms[i].get_ucbs(x) for i in range(self.num_outputs)], dim=-1
             )
-            return scores + ucbs
-        else:
-            return scores
+            scores += ucbs
+        self._cur_value = scores
+        return scores
 
     def partial_fit(self, x, y, arms):
         for i, arm in enumerate(arms):
@@ -241,12 +240,11 @@ class ParametricLinearModel(TorchModelV2, nn.Module):
     def predict(self, x, sample_theta=False, use_ucb=False):
         self._cur_ctx = x
         scores = self.arm(x, sample_theta)
-        self._cur_value = scores
         if use_ucb:
             ucbs = self.arm.get_ucbs(x)
-            return scores + 0.3 * ucbs
-        else:
-            return scores
+            scores += 0.3 * ucbs
+        self._cur_value = scores
+        return scores
 
     def partial_fit(self, x, y, arms):
         x = x["item"]

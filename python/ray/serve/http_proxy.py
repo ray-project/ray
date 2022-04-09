@@ -181,7 +181,8 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace))
+    >>> controller_name, controller_namespace = ... # doctest: +SKIP
+    >>> uvicorn.run(HTTPProxy(controller_name, controller_namespace)) # doctest: +SKIP
     """
 
     def __init__(self, controller_name: str, controller_namespace: str):

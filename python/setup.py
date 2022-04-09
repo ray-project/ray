@@ -213,7 +213,7 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
-            "prometheus_client >= 0.7.1",
+            "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
         "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
@@ -265,7 +265,7 @@ if setup_spec.type == SetupType.RAY:
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
-        "click >= 7.0",
+        "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.28.1, <= 1.43.0",
@@ -742,6 +742,9 @@ setuptools.setup(
             "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]
+    },
+    package_data={
+        "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
     zip_safe=False,

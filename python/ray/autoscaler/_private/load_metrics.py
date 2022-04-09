@@ -178,7 +178,9 @@ class LoadMetrics:
         """Return a list of node resources (static resource sizes).
 
         Example:
-            >>> metrics.get_node_resources()
+            >>> from ray.autoscaler._private.load_metrics import LoadMetrics
+            >>> metrics = LoadMetrics(...) # doctest: +SKIP
+            >>> metrics.get_node_resources() # doctest: +SKIP
             [{"CPU": 1}, {"CPU": 4, "GPU": 8}]  # for two different nodes
         """
         return self.static_resources_by_ip.values()
@@ -187,7 +189,9 @@ class LoadMetrics:
         """Return a dict of node resources for every node ip.
 
         Example:
-            >>> lm.get_static_node_resources_by_ip()
+            >>> from ray.autoscaler._private.load_metrics import LoadMetrics
+            >>> metrics = LoadMetrics(...) # doctest: +SKIP
+            >>> metrics.get_static_node_resources_by_ip()
             {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
         """
         return self.static_resources_by_ip

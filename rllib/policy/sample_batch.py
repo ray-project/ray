@@ -197,32 +197,47 @@ class SampleBatch(dict):
             A new (concatenated) SampleBatch or MultiAgentBatch.
 
         Examples:
-            >>> b1 = SampleBatch({"a": np.array([1, 2]),
+            >>> import numpy as np
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> b1 = SampleBatch({"a": np.array([1, 2]), # doctest: +SKIP
             ...                   "b": np.array([10, 11])})
-            >>> b2 = SampleBatch({"a": np.array([3]),
+            >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
             ...                   "b": np.array([12])})
-            >>> print(SampleBatch.concat_samples([b1, b2]))
+            >>> print(SampleBatch.concat_samples([b1, b2])) # doctest: +SKIP
             {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
         """
         if any(isinstance(s, MultiAgentBatch) for s in samples):
             return MultiAgentBatch.concat_samples(samples)
         concatd_seq_lens = []
         concat_samples = []
-        zero_padded = samples[0].zero_padded
-        max_seq_len = samples[0].max_seq_len
-        time_major = samples[0].time_major
+        # Make sure these settings are consistent amongst all batches.
+        zero_padded = max_seq_len = time_major = None
         for s in samples:
             if s.count > 0:
-                assert s.zero_padded == zero_padded
-                assert s.time_major == time_major
+                if max_seq_len is None:
+                    zero_padded = s.zero_padded
+                    max_seq_len = s.max_seq_len
+                    time_major = s.time_major
+
+                # Make sure these settings are consistent amongst all batches.
+                if s.zero_padded != zero_padded or s.time_major != time_major:
+                    raise ValueError(
+                        "All SampleBatches' `zero_padded` and `time_major` settings "
+                        "must be consistent!"
+                    )
                 if (
                     s.max_seq_len is None or max_seq_len is None
                 ) and s.max_seq_len != max_seq_len:
                     raise ValueError(
-                        "Samples must consistently provide or omit max_seq_len"
+                        "Samples must consistently either provide or omit "
+                        "`max_seq_len`!"
                     )
-                if zero_padded:
-                    assert s.max_seq_len == max_seq_len
+                elif zero_padded and s.max_seq_len != max_seq_len:
+                    raise ValueError(
+                        "For `zero_padded` SampleBatches, the values of `max_seq_len` "
+                        "must be consistent!"
+                    )
+
                 if max_seq_len is not None:
                     max_seq_len = max(max_seq_len, s.max_seq_len)
                 concat_samples.append(s)
@@ -277,9 +292,11 @@ class SampleBatch(dict):
             The new SampleBatch, resulting from concating `other` to `self`.
 
         Examples:
-            >>> b1 = SampleBatch({"a": np.array([1, 2])})
-            >>> b2 = SampleBatch({"a": np.array([3, 4, 5])})
-            >>> print(b1.concat(b2))
+            >>> import numpy as np
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> b1 = SampleBatch({"a": np.array([1, 2])}) # doctest: +SKIP
+            >>> b2 = SampleBatch({"a": np.array([3, 4, 5])}) # doctest: +SKIP
+            >>> print(b1.concat(b2)) # doctest: +SKIP
             {"a": np.array([1, 2, 3, 4, 5])}
         """
         return self.concat_samples([self, other])
@@ -318,13 +335,14 @@ class SampleBatch(dict):
             The column values of the row in this iteration.
 
         Examples:
-            >>> batch = SampleBatch({
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({ # doctest: +SKIP
             ...    "a": [1, 2, 3],
             ...    "b": [4, 5, 6],
             ...    "seq_lens": [1, 2]
             ... })
-            >>> for row in batch.rows():
-                   print(row)
+            >>> for row in batch.rows(): # doctest: +SKIP
+            ...    print(row) # doctest: +SKIP
             {"a": 1, "b": 4, "seq_lens": 1}
             {"a": 2, "b": 5, "seq_lens": 1}
             {"a": 3, "b": 6, "seq_lens": 1}
@@ -352,8 +370,9 @@ class SampleBatch(dict):
             names in `keys`.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
-            >>> print(batch.columns(["a", "b"]))
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]}) # doctest: +SKIP
+            >>> print(batch.columns(["a", "b"])) # doctest: +SKIP
             [[1], [2]]
         """
 
@@ -374,8 +393,9 @@ class SampleBatch(dict):
             ValueError: If self[SampleBatch.SEQ_LENS] is defined.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3, 4]})
-            >>> print(batch.shuffle())
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch({"a": [1, 2, 3, 4]})  # doctest: +SKIP
+            >>> print(batch.shuffle()) # doctest: +SKIP
             {"a": [4, 1, 3, 2]}
         """
 
@@ -409,8 +429,10 @@ class SampleBatch(dict):
             KeyError: If the `eps_id` AND `dones` columns are not present.
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3], "eps_id": [0, 0, 1]})
-            >>> print(batch.split_by_episode())
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
         """
 
@@ -614,14 +636,16 @@ class SampleBatch(dict):
             ValueError: If self[SampleBatch.SEQ_LENS] is None (not defined).
 
         Examples:
-            >>> batch = SampleBatch({"a": [1, 2, 3], "seq_lens": [1, 2]})
-            >>> print(batch.right_zero_pad(max_seq_len=4))
+            >>> from ray.rllib.policy.sample_batch import SampleBatch
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3], "seq_lens": [1, 2]})
+            >>> print(batch.right_zero_pad(max_seq_len=4)) # doctest: +SKIP
             {"a": [1, 0, 0, 0, 2, 3, 0, 0], "seq_lens": [1, 2]}
 
-            >>> batch = SampleBatch({"a": [1, 2, 3],
+            >>> batch = SampleBatch({"a": [1, 2, 3], # doctest: +SKIP
             ...                      "state_in_0": [1.0, 3.0],
             ...                      "seq_lens": [1, 2]})
-            >>> print(batch.right_zero_pad(max_seq_len=5))
+            >>> print(batch.right_zero_pad(max_seq_len=5)) # doctest: +SKIP
             {"a": [1, 0, 0, 0, 0, 2, 3, 0, 0, 0],
              "state_in_0": [1.0, 3.0],  # <- all state-ins remain as-is
              "seq_lens": [1, 2]}

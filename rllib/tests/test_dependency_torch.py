@@ -7,6 +7,13 @@ if __name__ == "__main__":
     # Do not import torch for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
 
+    # Test registering (includes importing) all Trainers.
+    from ray.rllib import _register_all
+
+    # This should surface any dependency on torch, e.g. inside function
+    # signatures/typehints.
+    _register_all()
+
     from ray.rllib.agents.a3c import A2CTrainer
 
     assert "torch" not in sys.modules, "`torch` initially present, when it shouldn't!"

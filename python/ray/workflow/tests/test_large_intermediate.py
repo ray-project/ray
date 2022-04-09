@@ -3,34 +3,31 @@ import pytest
 from ray.tests.conftest import *  # noqa
 
 import numpy as np
+import ray
 from ray import workflow
 
 
-@workflow.step
-def large_input():
-    return np.arange(2 ** 24)
-
-
-@workflow.step
-def identity(x):
-    return x
-
-
-@workflow.step
-def average(x):
-    return np.mean(x)
-
-
-@workflow.step
-def simple_large_intermediate():
-    x = large_input.step()
-    y = identity.step(x)
-    return average.step(y)
-
-
 def test_simple_large_intermediate(workflow_start_regular_shared):
+    @ray.remote
+    def large_input():
+        return np.arange(2 ** 24)
+
+    @ray.remote
+    def identity(x):
+        return x
+
+    @ray.remote
+    def average(x):
+        return np.mean(x)
+
+    @ray.remote
+    def simple_large_intermediate():
+        x = large_input.bind()
+        y = identity.bind(x)
+        return workflow.continuation(average.bind(y))
+
     start = time.time()
-    outputs = simple_large_intermediate.step().run()
+    outputs = workflow.create(simple_large_intermediate.bind()).run()
     print(f"duration = {time.time() - start}")
     assert np.isclose(outputs, 8388607.5)
 

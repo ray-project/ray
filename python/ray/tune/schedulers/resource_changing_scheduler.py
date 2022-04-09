@@ -43,17 +43,17 @@ class DistributeResources:
     generic methods. You can also implement a function instead.
 
     Args:
-        add_bundles (bool): If True, create new bundles from free resources.
+        add_bundles: If True, create new bundles from free resources.
             Otherwise, spread them among base_trial_resource bundles.
-        increase_by (Optional[Dict[str, float]]): A dict with key-value
+        increase_by: A dict with key-value
             pairs representing an atomic unit of resources (name-amount)
             the trial will be increased by. If not set, the trial will
             increase by 1 CPU/GPU.
-        increase_by_times (int): If set to >=1 and ``increase_by`` is set,
+        increase_by_times: If set to >=1 and ``increase_by`` is set,
             the trial will increase by maximum of
             ``increase_by_times * increase_by`` resources. If set to <1,
             no upper limit is set. Ignored if ``increase_by`` is not set.
-        reserve_resources (Optional[Dict[str, float]]): A dict of
+        reserve_resources: A dict of
             resource_name-amount pairs representing the resources
             that will not be allocated to resized trials.
     """
@@ -385,7 +385,7 @@ class DistributeResources:
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
-    ) -> Union[None, PlacementGroupFactory]:
+    ) -> Optional[PlacementGroupFactory]:
         """Run resource allocation logic.
 
         Returns a new ``PlacementGroupFactory`` with updated
@@ -395,11 +395,11 @@ class DistributeResources:
         internally (same with None).
 
         Args:
-            trial_runner (TrialRunner): Trial runner for this Tune run.
+            trial_runner: Trial runner for this Tune run.
                 Can be used to obtain information about other trials.
-            trial (Trial): The trial to allocate new resources to.
-            result (Dict[str, Any]): The latest results of trial.
-            scheduler (ResourceChangingScheduler): The scheduler calling
+            trial: The trial to allocate new resources to.
+            result: The latest results of trial.
+            scheduler: The scheduler calling
                 the function.
         """
         # Get base trial resources as defined in
@@ -479,24 +479,24 @@ class DistributeResourcesToTopJob(DistributeResources):
     internally (same with None).
 
     Args:
-        add_bundles (bool): If True, create new bundles from free resources.
+        add_bundles: If True, create new bundles from free resources.
             Otherwise, spread them among base_trial_resource bundles.
-        increase_by (Optional[Dict[str, float]]): A dict with key-value
+        increase_by: A dict with key-value
             pairs representing an atomic unit of resources (name-amount)
             the trial will be increased by. If not set, the trial will
             increase by 1 CPU/GPU.
-        increase_by_times (int): If set to >=1 and ``increase_by`` is set,
+        increase_by_times: If set to >=1 and ``increase_by`` is set,
             the trial will increase by maximum of
             ``increase_by_times * increase_by`` resources. If set to <1,
             no upper limit is set. Ignored if ``increase_by`` is not set.
-        reserve_resources (Optional[Dict[str, float]]): A dict of
+        reserve_resources: A dict of
             resource_name-amount pairs representing the resources
             that will not be allocated to resized trials.
             is that the attribute should increase monotonically.
-        metric (Optional[str]): The training result objective value attribute. Stopping
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None, will use the metric
             of the scheduler.
-        mode (Optional[str]): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. If None, will use the metric
             of the scheduler.
 
@@ -589,7 +589,7 @@ def evenly_distribute_cpus_gpus(
     trial: Trial,
     result: Dict[str, Any],
     scheduler: "ResourceChangingScheduler",
-) -> Union[None, PlacementGroupFactory]:
+) -> Optional[PlacementGroupFactory]:
     """This is a basic uniform resource allocating function.
 
     This function is used by default in ``ResourceChangingScheduler``.
@@ -613,11 +613,11 @@ def evenly_distribute_cpus_gpus(
     this function.
 
     Args:
-        trial_runner (TrialRunner): Trial runner for this Tune run.
+        trial_runner: Trial runner for this Tune run.
             Can be used to obtain information about other trials.
-        trial (Trial): The trial to allocate new resources to.
-        result (Dict[str, Any]): The latest results of trial.
-        scheduler (ResourceChangingScheduler): The scheduler calling
+        trial: The trial to allocate new resources to.
+        result: The latest results of trial.
+        scheduler: The scheduler calling
             the function.
     """
 
@@ -639,7 +639,7 @@ def evenly_distribute_cpus_gpus_distributed(
     trial: Trial,
     result: Dict[str, Any],
     scheduler: "ResourceChangingScheduler",
-) -> Union[None, PlacementGroupFactory]:
+) -> Optional[PlacementGroupFactory]:
     """This is a basic uniform resource allocating function.
 
     The function naively balances free resources (CPUs and GPUs) between
@@ -663,11 +663,11 @@ def evenly_distribute_cpus_gpus_distributed(
     this function.
 
     Args:
-        trial_runner (TrialRunner): Trial runner for this Tune run.
+        trial_runner: Trial runner for this Tune run.
             Can be used to obtain information about other trials.
-        trial (Trial): The trial to allocate new resources to.
-        result (Dict[str, Any]): The latest results of trial.
-        scheduler (ResourceChangingScheduler): The scheduler calling
+        trial: The trial to allocate new resources to.
+        result: The latest results of trial.
+        scheduler: The scheduler calling
             the function.
     """
 
@@ -714,9 +714,9 @@ class ResourceChangingScheduler(TrialScheduler):
     will be raised in that case.
 
     Args:
-        base_scheduler (TrialScheduler): The scheduler to provide decisions
+        base_scheduler: The scheduler to provide decisions
             about trials. If None, a default FIFOScheduler will be used.
-        resources_allocation_function (Callable): The callable used to change
+        resources_allocation_function: The callable used to change
             live trial resource requiements during tuning. This callable
             will be called on each trial as it finishes one step of training.
             The callable must take four arguments: ``TrialRunner``, current
@@ -746,7 +746,7 @@ class ResourceChangingScheduler(TrialScheduler):
                 trial: Trial,
                 result: Dict[str, Any],
                 scheduler: "ResourceChangingScheduler"
-            ) -> Union[None, PlacementGroupFactory, Resource]:
+            ) -> Optional[Union[PlacementGroupFactory, Resource]]:
                 # logic here
                 # usage of PlacementGroupFactory is strongly preferred
                 return PlacementGroupFactory(...)
@@ -770,7 +770,7 @@ class ResourceChangingScheduler(TrialScheduler):
                     Dict[str, Any],
                     "ResourceChangingScheduler",
                 ],
-                Union[None, PlacementGroupFactory, Resources],
+                Optional[Union[PlacementGroupFactory, Resources]],
             ]
         ] = _DistributeResourcesDefault,
     ) -> None:
@@ -787,7 +787,7 @@ class ResourceChangingScheduler(TrialScheduler):
             Union[Resources, PlacementGroupFactory]
         ] = None
         self._trials_to_reallocate: Dict[
-            Trial, Union[None, dict, PlacementGroupFactory]
+            Trial, Optional[Union[dict, PlacementGroupFactory]]
         ] = {}
         self._reallocated_trial_ids: Set[str] = set()
         self._metric = None
@@ -951,7 +951,7 @@ class ResourceChangingScheduler(TrialScheduler):
 
     def reallocate_trial_resources_if_needed(
         self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
-    ) -> Union[None, dict, PlacementGroupFactory]:
+    ) -> Optional[Union[dict, PlacementGroupFactory]]:
         """Calls user defined resources_allocation_function. If the returned
         resources are not none and not the same as currently present, returns
         them. Otherwise, returns None."""

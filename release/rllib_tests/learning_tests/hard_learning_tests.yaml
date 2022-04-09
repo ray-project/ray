@@ -80,8 +80,6 @@ apex-breakoutnoframeskip-v4:
             epsilon_timesteps: 200000
             final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
-        final_prioritized_replay_beta: 1.0
-        prioritized_replay_beta_annealing_timesteps: 2000000
         num_gpus: 1
         num_workers: 8
         num_envs_per_worker: 8
@@ -327,8 +325,6 @@ dqn-breakoutnoframeskip-v4:
             epsilon_timesteps: 200000
             final_epsilon: 0.01
         prioritized_replay_alpha: 0.5
-        final_prioritized_replay_beta: 1.0
-        prioritized_replay_beta_annealing_timesteps: 2000000
         num_gpus: 0.5
         timesteps_per_iteration: 10000
 
@@ -463,7 +459,10 @@ slateq-interest-evolution-recsim-env:
     stop:
         episode_reward_mean: 162.0
         timesteps_total: 300000
+
     config:
+        # increase num sampling workers for faster sampling.
+        num_workers: 12
         # RLlib/RecSim wrapper specific settings:
         env_config:
             # Env class specified above takes one `config` arg in its c'tor:
@@ -472,7 +471,7 @@ slateq-interest-evolution-recsim-env:
                 # test for now, we'll use pytorch, and investigate why tensorflow is not working.
                 # One indication of the issue is that the loss inputs are not flattened from the
                 # original dictionary spaces.
-                framework: torch
+                framework: tf
                 # Each step, sample `num_candidates` documents using the env-internal
                 # document sampler model (a logic that creates n documents to select
                 # the slate from).

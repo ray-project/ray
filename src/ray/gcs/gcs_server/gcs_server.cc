@@ -53,14 +53,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       is_stopped_(false) {
   // Init GCS table storage.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
-  RAY_LOG(INFO) << "gRPC based pubsub is"
-                << (RayConfig::instance().gcs_grpc_based_pubsub() ? " " : " not ")
-                << "enabled";
   if (storage_type_ == "redis") {
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
   } else if (storage_type_ == "memory") {
-    RAY_CHECK(RayConfig::instance().gcs_grpc_based_pubsub())
-        << " grpc pubsub has to be enabled when using storage other than redis";
     gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
   }
 
@@ -84,29 +79,27 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
-  if (config_.grpc_pubsub_enabled) {
-    // Init grpc based pubsub on GCS.
-    // TODO: Move this into GcsPublisher.
-    inner_publisher = std::make_unique<pubsub::Publisher>(
-        /*channels=*/
-        std::vector<rpc::ChannelType>{
-            rpc::ChannelType::GCS_ACTOR_CHANNEL,
-            rpc::ChannelType::GCS_JOB_CHANNEL,
-            rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-            rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-            rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-            rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-            rpc::ChannelType::RAY_LOG_CHANNEL,
-            rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
-            rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
-        },
-        /*periodical_runner=*/&pubsub_periodical_runner_,
-        /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
-  }
-  gcs_publisher_ =
-      std::make_shared<GcsPublisher>(redis_client_, std::move(inner_publisher));
+  // Init grpc based pubsub on GCS.
+  // TODO: Move this into GcsPublisher.
+  inner_publisher = std::make_unique<pubsub::Publisher>(
+      /*channels=*/
+      std::vector<rpc::ChannelType>{
+          rpc::ChannelType::GCS_ACTOR_CHANNEL,
+          rpc::ChannelType::GCS_JOB_CHANNEL,
+          rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+          rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+          rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+          rpc::ChannelType::RAY_LOG_CHANNEL,
+          rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
+          rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
+      },
+      /*periodical_runner=*/&pubsub_periodical_runner_,
+      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+
+  gcs_publisher_ = std::make_shared<GcsPublisher>(std::move(inner_publisher));
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -173,10 +166,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
-
-  if (!RayConfig::instance().bootstrap_with_gcs()) {
-    StoreGcsServerAddressInRedis();
-  }
 
   // Only after the rpc_server_ is running can the heartbeat manager
   // be run. Otherwise the node failure detector will mistake
@@ -433,7 +422,7 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
         raylet -> syncer::poller --> syncer::update -> gcs_resource_manager
         gcs_placement_scheduler --/
   */
-  ray_syncer_ = std::make_unique<syncer::RaySyncer>(
+  ray_syncer_ = std::make_unique<gcs_syncer::RaySyncer>(
       main_service_, raylet_client_pool_, *gcs_resource_manager_);
   ray_syncer_->Initialize(gcs_init_data);
   ray_syncer_->Start();

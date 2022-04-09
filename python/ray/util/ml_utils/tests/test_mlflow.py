@@ -36,6 +36,22 @@ class MLflowTest(unittest.TestCase):
         )
         assert self.mlflow_util.experiment_id == "0"
 
+    def test_run_started_with_correct_experiment(self):
+        experiment_name = "my_experiment_name"
+        # Make sure run is started under the correct experiment.
+        self.mlflow_util.setup_mlflow(
+            tracking_uri=self.tracking_uri, experiment_name=experiment_name
+        )
+        run = self.mlflow_util.start_run(set_active=True)
+        assert (
+            run.info.experiment_id
+            == self.mlflow_util._mlflow.get_experiment_by_name(
+                experiment_name
+            ).experiment_id
+        )
+
+        self.mlflow_util.end_run()
+
     def test_experiment_name_env_var(self):
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "existing_experiment"
         self.mlflow_util.setup_mlflow(tracking_uri=self.tracking_uri)
@@ -79,10 +95,12 @@ class MLflowTest(unittest.TestCase):
         params2 = {"b": "b"}
         self.mlflow_util.start_run(set_active=True)
         self.mlflow_util.log_params(params_to_log=params2, run_id=run_id)
-        assert self.mlflow_util._mlflow.get_run(run_id=run_id).data.params == {
+        run = self.mlflow_util._mlflow.get_run(run_id=run_id)
+        assert run.data.params == {
             **params,
             **params2,
         }
+
         self.mlflow_util.end_run()
 
     def test_log_metrics(self):

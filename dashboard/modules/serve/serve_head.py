@@ -5,14 +5,6 @@ import logging
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 
-from ray import serve
-from ray.serve.api import (
-    Application,
-    get_deployment_statuses,
-    internal_get_global_client,
-    serve_application_status_to_schema,
-)
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -26,7 +18,10 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        app = Application(list(serve.list_deployments().values()))
+        from ray.serve.api import list_deployments
+        from ray.serve.application import Application
+
+        app = Application(list(list_deployments().values()))
         return Response(
             text=json.dumps(app.to_dict()),
             content_type="application/json",
@@ -35,6 +30,11 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
+        from ray.serve.api import (
+            serve_application_status_to_schema,
+            get_deployment_statuses,
+        )
+
         serve_application_status_schema = serve_application_status_to_schema(
             get_deployment_statuses()
         )
@@ -46,12 +46,18 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.delete("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def delete_serve_application(self, req: Request) -> Response:
+        from ray import serve
+
         serve.shutdown()
         return Response()
 
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
+        from ray import serve
+        from ray.serve.api import internal_get_global_client
+        from ray.serve.application import Application
+
         app = Application.from_dict(await req.json())
         serve.run(app, _blocking=False)
 

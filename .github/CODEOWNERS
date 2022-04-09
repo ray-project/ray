@@ -38,6 +38,9 @@
 /java/*/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
 /java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng
 
+# C++ worker
+/cpp/include/ray @SongGuyang @raulchen @mwtian
+
 # Ray Client
 /src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
 
@@ -57,7 +60,7 @@
 /doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark
 
 # RLlib.
-/rllib/ @sven1977 @gjoliver @avnishn
+/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad
 
 # ML Docker Dependencies
 /python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
@@ -81,3 +84,5 @@
 # CI scripts.
 #/.travis.yml @ray-project/ray-core
 #/ci/travis/ @ray-project/ray-core
+
+/.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang
