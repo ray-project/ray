@@ -591,11 +591,12 @@ ray::Status NodeManager::RegisterGcs() {
             syncer::RaySyncMessage msg;
             msg.set_version(++version);
             msg.set_node_id(self_node_id_.Binary());
-            msg.set_component_id(syncer::RayComponentId::COMMAND);
+            msg.set_component_id(syncer::RayComponentId::COMMANDS);
             std::string serialized_msg;
-            RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
+            RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
             msg.set_sync_message(std::move(serialized_msg));
-            ray_syncer_->BroadcastMessage(std::make_shared<const RaySyncMessage>(std::move(msg));
+            ray_syncer_.BroadcastMessage(
+                std::make_shared<const syncer::RaySyncMessage>(std::move(msg)));
           }
         },
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
@@ -2629,11 +2630,18 @@ void NodeManager::RecordMetrics() {
 }
 
 void NodeManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) {
-  rpc::ResourcesData data;
-  data.ParseFromString(message->sync_message());
-  NodeID node_id = NodeID::FromBinary(data.node_id());
-
-  UpdateResourceUsage(node_id, data);
+  if (message->component_id() == syncer::RayComponentId::RESOURCE_MANAGER) {
+    rpc::ResourcesData data;
+    data.ParseFromString(message->sync_message());
+    NodeID node_id = NodeID::FromBinary(data.node_id());
+    UpdateResourceUsage(node_id, data);
+  } else if (message->component_id() == syncer::RayComponentId::COMMANDS) {
+    rpc::ResourcesData data;
+    data.ParseFromString(message->sync_message());
+    if (data.should_global_gc()) {
+      should_local_gc_ = true;
+    }
+  }
 }
 
 std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
