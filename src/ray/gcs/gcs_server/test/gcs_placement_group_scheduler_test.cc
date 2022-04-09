@@ -48,7 +48,9 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         std::make_unique<ray::pubsub::MockPublisher>());
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
+        io_service_,
+        gcs_table_storage_,
+        cluster_resource_scheduler_->GetClusterResourceManager());
     ray_syncer_ = std::make_shared<ray::gcs_syncer::RaySyncer>(
         io_service_, nullptr, *gcs_resource_manager_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);

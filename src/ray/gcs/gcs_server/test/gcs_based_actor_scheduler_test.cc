@@ -46,7 +46,9 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
-        gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
+        io_service_,
+        gcs_table_storage_,
+        cluster_resource_scheduler_->GetClusterResourceManager());
     gcs_actor_scheduler_ =
         std::make_shared<GcsServerMocker::MockedGcsBasedActorScheduler>(
             io_service_,
