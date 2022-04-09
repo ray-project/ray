@@ -25,7 +25,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     noise drawn from that stream. Otherwise, no action noise will be added.
 
     Args:
-        policy (Policy): Rllib Policy from which to draw actions.
+        policy (Policy): RLlib Policy from which to draw actions.
         env (gym.Env): Environment from which to draw rewards, done, and
             next state.
         timestep_limit (Optional[int]): Steps after which to end the rollout.
