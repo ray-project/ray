@@ -499,6 +499,38 @@ TEST(SyncerTest, Test1To1) {
   ASSERT_LE(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
 }
 
+TEST(SyncerTest, Reconnect) {
+  // This test covers the broadcast feature of ray syncer.
+  auto s1 = SyncerServerTest("19990", false);
+  auto s2 = SyncerServerTest("19991", true);
+  auto s3 = SyncerServerTest("19992", true);
+
+  s1.syncer->Connect(MakeChannel("19992"));
+
+  // Make sure the setup is correct
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s1]() {
+        return s1.syncer->sync_connections_.size() == 1 && s1.snapshot_taken == 1;
+      },
+      5));
+
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s3]() {
+        return s3.syncer->sync_connections_.size() == 1 && s3.snapshot_taken == 2;
+      },
+      5));
+  s2.syncer->Connect(MakeChannel("19992"));
+
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s2]() {
+        return s2.syncer->sync_connections_.size() == 1 && s2.snapshot_taken == 2;
+      },
+      5));
+  ASSERT_EQ(1, s3.syncer->upward_connections_.size());
+  ASSERT_EQ(s2.syncer->GetLocalNodeID(), (*s3.syncer->upward_connections_.begin())->GetRemoteNodeID());
+}
+
+
 TEST(SyncerTest, Broadcast) {
   // This test covers the broadcast feature of ray syncer.
   auto s1 = SyncerServerTest("19990", false);

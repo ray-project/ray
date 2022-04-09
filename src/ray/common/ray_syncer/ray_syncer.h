@@ -195,6 +195,7 @@ class RaySyncer {
   /// Test purpose
   friend struct SyncerServerTest;
   FRIEND_TEST(SyncerTest, Broadcast);
+  FRIEND_TEST(SyncerTest, Reconnect);
   FRIEND_TEST(SyncerTest, Test1To1);
   FRIEND_TEST(SyncerTest, Test1ToN);
   FRIEND_TEST(SyncerTest, TestMToN);
