@@ -556,6 +556,50 @@ ray::Status NodeManager::RegisterGcs() {
                          nullptr,
                          true,
                          RayConfig::instance().raylet_report_loads_period_milliseconds());
+    ray_syncer_.Register(syncer::RayComponentId::COMMANDS, nullptr, this, false, 0);
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          // If plasma store is under high pressure, we should try to schedule a global
+          // gc.
+          bool plasma_high_pressure =
+              object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
+          if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
+            TriggerGlobalGC();
+          }
+
+          // Set the global gc bit on the outgoing heartbeat message.
+          bool triggered_by_global_gc = false;
+          if (should_global_gc_) {
+            triggered_by_global_gc = true;
+            should_global_gc_ = false;
+            global_gc_throttler_.RunNow();
+          }
+
+          // Trigger local GC if needed. This throttles the frequency of local GC calls
+          // to at most once per heartbeat interval.
+          if ((should_local_gc_ || (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ >
+                                    local_gc_interval_ns_)) &&
+              local_gc_throttler_.AbleToRun()) {
+            DoLocalGC(triggered_by_global_gc);
+            should_local_gc_ = false;
+          }
+          static int64_t version = 0;
+
+          if (triggered_by_global_gc) {
+            rpc::ResourcesData resources_data;
+            resources_data.set_should_global_gc(true);
+            syncer::RaySyncMessage msg;
+            msg.set_version(++version);
+            msg.set_node_id(self_node_id_.Binary());
+            msg.set_component_id(syncer::RayComponentId::COMMAND);
+            std::string serialized_msg;
+            RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
+            msg.set_sync_message(std::move(serialized_msg));
+            ray_syncer_->BroadcastMessage(std::make_shared<const RaySyncMessage>(std::move(msg));
+          }
+        },
+        RayConfig::instance().raylet_check_gc_period_milliseconds(),
+        "NodeManager.CheckGC");
   }
   return ray::Status::OK();
 }
@@ -2599,35 +2643,11 @@ std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     syncer::RaySyncMessage msg;
     rpc::ResourcesData resource_data;
 
-    // If plasma store is under high pressure, we should try to schedule a global gc.
-    bool plasma_high_pressure =
-        object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
-    if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
-      const_cast<NodeManager *>(this)->TriggerGlobalGC();
-    }
-
-    // Set the global gc bit on the outgoing heartbeat message.
-    bool triggered_by_global_gc = false;
-    if (should_global_gc_) {
-      resource_data.set_should_global_gc(true);
-      triggered_by_global_gc = true;
-      should_global_gc_ = false;
-      global_gc_throttler_.RunNow();
-    }
-
-    // Trigger local GC if needed. This throttles the frequency of local GC calls
-    // to at most once per heartbeat interval.
-    if ((should_local_gc_ ||
-         (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
-        local_gc_throttler_.AbleToRun()) {
-      const_cast<NodeManager *>(this)->DoLocalGC(triggered_by_global_gc);
-      should_local_gc_ = false;
-    }
-
     cluster_task_manager_->FillResourceUsage(resource_data);
     if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
       const_cast<NodeManager *>(this)->FillNormalTaskResourceUsage(resource_data);
     }
+
     resource_data.set_node_id(self_node_id_.Binary());
     resource_data.set_node_manager_address(initial_config_.node_manager_address);
     resource_data.set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
