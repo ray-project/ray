@@ -1969,17 +1969,18 @@ def logs(
 
     Example usage:
 
-    ray logs --actor-id=XYZ              # Display stdout log by actor-id
+    ray logs -a <actor-id>               # Display stdout log by actor-id
 
-    ray logs --task-id=XYZ               # Display stdout log by task-id
-
-    ray logs --ip=198.0.0.1 --pid=987    # Display worker stdout by ip & pid
+    ray logs -ip 198.0.0.1 -pid 98712    # Display stdout log by ip & pid
 
     ray logs -n <node-id> -f raylet.out  # Display log by filename & node-id
 
     ray logs                             # Display list of logs by category
 
     ray logs worker .out <worker-id>     # Filter logs by substring
+
+    ray logs --endpoint=198.0.0.1:8265   # Retrieves logs from a remote cluster
+
     """
 
     try:
