@@ -18,7 +18,8 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployments(self, req: Request) -> Response:
-        from ray.serve.api import Application, list_deployments
+        from ray.serve.api import list_deployments
+        from ray.serve.application import Application
 
         app = Application(list(list_deployments().values()))
         return Response(
@@ -54,10 +55,8 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray import serve
-        from ray.serve.api import (
-            Application,
-            internal_get_global_client,
-        )
+        from ray.serve.api import internal_get_global_client
+        from ray.serve.application import Application
 
         app = Application.from_dict(await req.json())
         serve.run(app, _blocking=False)

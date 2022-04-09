@@ -60,7 +60,15 @@ install_llvm() {
   case "${osversion}" in
     linux-gnu-ubuntu*)
       printInfo "Downloading LLVM from ${url}"
-      wget -c $url -O llvm.tar.xz
+
+      WGET_OPTIONS=""
+      if [ -n "${BUILDKITE-}" ]; then
+        # Non-verbose output in BUILDKITE
+        WGET_OPTIONS="-nv"
+      fi
+
+      wget ${WGET_OPTIONS} -c $url -O llvm.tar.xz
+
       printInfo "Installing LLVM to ${targetdir}"
       mkdir -p "${targetdir}"
       tar -xf ./llvm.tar.xz -C "${targetdir}" --strip-components=1

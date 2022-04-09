@@ -454,6 +454,9 @@ RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 /// The maximum number of objects to publish for each publish calls.
 RAY_CONFIG(int, publish_batch_size, 5000)
 
+/// Maximum size in bytes of buffered messages per entity, in Ray publisher.
+RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 10 << 20)
+
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)
 
