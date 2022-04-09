@@ -30,7 +30,11 @@ class Preprocessor(abc.ABC):
 
         NOT_FITTABLE = "NOT_FITTABLE"
         NOT_FITTED = "NOT_FITTED"
-        # Only meaningful for Chain preprocessors
+        # Only meaningful for Chain preprocessors.
+        # At least one contained preprocessor in the chain preprocessor
+        # is fitted and at least one that can be fitted is not fitted yet.
+        # This is a state that show up if caller only interacts
+        # with the chain preprocessor through intended Preprocessor APIs.
         PARTIALLY_FITTED = "PARTIALLY_FITTED"
         FITTED = "FITTED"
 
@@ -50,8 +54,8 @@ class Preprocessor(abc.ABC):
 
         Fitted state attributes will be directly set in the Preprocessor.
 
-        Calling it more than once on a preprocessor will overwrite all
-        previously fitted states.
+        Calling it more than once will overwrite all previously fitted state:
+        ``preprocessor.fit(A).fit(B)`` is equivalent to ``preprocessor.fit(B)``.
 
         Args:
             dataset: Input dataset.
@@ -61,7 +65,7 @@ class Preprocessor(abc.ABC):
         """
         fit_status = self.fit_status()
         if fit_status == Preprocessor.FitStatus.NOT_FITTABLE:
-            # Just return. This makes Chain Preprocessor easier.
+            # No-op as there is no state to be fitted.
             return self
 
         if fit_status in (
@@ -69,9 +73,9 @@ class Preprocessor(abc.ABC):
             Preprocessor.FitStatus.PARTIALLY_FITTED,
         ):
             warnings.warn(
-                "`fit` is already called on the preprocessor (or some/all of the "
-                "preprocessors in chain case). Calling it again will overwrite "
-                "all previously fitted states."
+                "`fit` has already been called on the preprocessor (or at least one "
+                "contained preprocessors if this is a chain). "
+                "All previously fitted state will be overwritten!"
             )
 
         return self._fit(dataset)
@@ -79,8 +83,9 @@ class Preprocessor(abc.ABC):
     def fit_transform(self, dataset: Dataset) -> Dataset:
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
 
-        Calling it more than once on a preprocessor will overwrite all
-        previously fitted states.
+        Calling it more than once will overwrite all previously fitted state:
+        ``preprocessor.fit_transform(A).fit_transform(B)``
+        is equivalent to ``preprocessor.fit_transform(B)``.
 
         Args:
             dataset: Input Dataset.

@@ -97,10 +97,12 @@ def test_fit_twice(mocked_warn):
     ds = ds.map_batches(lambda x: x * 2)
     # Fit again
     scaler.fit(ds)
+    # Assert that the fitted state is corresponding to the second ds.
+    assert scaler.stats_ == {"min(B)": 2, "max(B)": 10, "min(C)": 2, "max(C)": 2}
     msg = (
-        "`fit` is already called on the preprocessor (or some/all of the "
-        "preprocessors in chain case). Calling it again will overwrite "
-        "all previously fitted states."
+        "`fit` has already been called on the preprocessor (or at least one "
+        "contained preprocessors if this is a chain). "
+        "All previously fitted state will be overwritten!"
     )
     mocked_warn.assert_called_once_with(msg)
 
