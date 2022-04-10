@@ -195,10 +195,12 @@ if __name__ == "__main__":
             config["model"]["use_lstm"] = args.use_lstm
 
     elif args.run == "IMPALA":
-        config.update({
-            "num_gpus": 0,
-            "model": {"use_lstm": args.use_lstm},
-        })
+        config.update(
+            {
+                "num_gpus": 0,
+                "model": {"use_lstm": args.use_lstm},
+            }
+        )
 
     # PPO.
     else:
