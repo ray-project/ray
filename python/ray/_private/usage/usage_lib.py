@@ -138,12 +138,28 @@ def _usage_stats_report_interval_s():
     return int(os.getenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", 3600))
 
 
-def _usage_stats_enabled():
+def _usage_stats_config_path():
+    return os.path.expanduser("~/.ray/config.json")
+
+
+def usage_stats_enabled():
     """
     NOTE: This is the private API, and it is not a reliable
     way to know if usage stats are enabled from the cluster.
     """
-    return int(os.getenv("RAY_USAGE_STATS_ENABLED", "0")) == 1
+    usage_stats_disabled_via_env_var = (
+        int(os.getenv("RAY_USAGE_STATS_ENABLED", "1")) == 0
+    )
+    usage_stats_disabled_via_config = False
+    try:
+        with open(_usage_stats_config_path()) as f:
+            config = json.load(f)
+            usage_stats_disabled_via_config = not config.get("usage_stats", True)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.debug(f"Failed to load usage stats config {e}")
+    return not (usage_stats_disabled_via_env_var or usage_stats_disabled_via_config)
 
 
 def _usage_stats_prompt_enabled():
@@ -160,7 +176,7 @@ def _generate_cluster_metadata():
         "python_version": python_version,
     }
     # Additional metadata is recorded only when usage stats are enabled.
-    if _usage_stats_enabled():
+    if usage_stats_enabled():
         metadata.update(
             {
                 "schema_version": usage_constant.SCHEMA_VERSION,
@@ -174,15 +190,77 @@ def _generate_cluster_metadata():
     return metadata
 
 
-def print_usage_stats_heads_up_message() -> None:
+def show_usage_stats_prompt() -> None:
     try:
-        if (not _usage_stats_prompt_enabled()) or _usage_stats_enabled():
+        if (not _usage_stats_prompt_enabled()) or (not usage_stats_enabled()):
             return
 
-        print(usage_constant.USAGE_STATS_HEADS_UP_MESSAGE, file=sys.stderr)
+        print(usage_constant.USAGE_STATS_PROMPT_MESSAGE, file=sys.stderr)
+        if not _usage_stats_prompt_shown():
+            time.sleep(10)
+            _set_usage_stats_prompt_shown()
     except Exception:
         # Silently ignore the exception since it doesn't affect the use of ray.
         pass
+
+
+def _usage_stats_prompt_shown() -> bool:
+    try:
+        with open(_usage_stats_config_path()) as f:
+            config = json.load(f)
+            return config.get("usage_stats_prompt_shown", False)
+    except Exception:
+        return False
+
+
+def _set_usage_stats_prompt_shown() -> None:
+    config = {}
+    try:
+        with open(_usage_stats_config_path()) as f:
+            config = json.load(f)
+    except Exception:
+        pass
+
+    config["usage_stats_prompt_shown"] = True
+
+    try:
+        os.makedirs(os.path.dirname(_usage_stats_config_path()), exist_ok=True)
+        with open(_usage_stats_config_path(), "w") as f:
+            json.dump(config, f)
+    except Exception:
+        pass
+
+
+def disable_usage_stats_via_config() -> None:
+    config = {}
+    try:
+        with open(_usage_stats_config_path()) as f:
+            config = json.load(f)
+        if not isinstance(config, dict):
+            logger.debug(
+                f"Invalid ray config file, should be a json dict but got {type(config)}"
+            )
+            config = {}
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.debug(f"Failed to load ray config file {e}")
+
+    config["usage_stats"] = False
+
+    try:
+        os.makedirs(os.path.dirname(_usage_stats_config_path()), exist_ok=True)
+        with open(_usage_stats_config_path(), "w") as f:
+            json.dump(config, f)
+    except Exception:
+        logger.exception(
+            'Failed to disable usage stats by writing {"usage_stats": false} to '
+            f"{_usage_stats_config_path()}"
+        )
+
+
+def disable_usage_stats_via_env_var() -> None:
+    os.environ["RAY_USAGE_STATS_ENABLED"] = "0"
 
 
 def put_cluster_metadata(gcs_client, num_retries) -> None:
@@ -449,9 +527,6 @@ class UsageReportClient:
             data (dict): Data to report
             dir_path (Path): The path to the directory to write usage data.
         """
-        if not _usage_stats_enabled():
-            return
-
         # Atomically update the file.
         dir_path = Path(dir_path)
         destination = dir_path / usage_constant.USAGE_STATS_FILE
@@ -474,9 +549,6 @@ class UsageReportClient:
         Raises:
             requests.HTTPError if requests fails.
         """
-        if not _usage_stats_enabled():
-            return
-
         r = requests.request(
             "POST",
             url,

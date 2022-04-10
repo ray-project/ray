@@ -36,6 +36,7 @@ from ray._private.gcs_pubsub import (
     GcsLogSubscriber,
     GcsFunctionKeySubscriber,
 )
+from ray._private.usage import usage_lib
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -977,6 +978,10 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+
+        # Don't collect usage stats in ray.init().
+        usage_lib.disable_usage_stats_via_env_var()
+
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
