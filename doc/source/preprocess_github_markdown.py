@@ -1,9 +1,11 @@
+from typing import Optional
+
 import re
 import argparse
 import pathlib
 
 
-def preprocess_github_markdown_file(path: str):
+def preprocess_github_markdown_file(source_path: str, dest_path: Optional[str] = None):
     """
     Preprocesses GitHub Markdown files by:
         - Uncommenting all ``<!-- -->`` comments in which opening tag is immediately
@@ -12,8 +14,14 @@ def preprocess_github_markdown_file(path: str):
 
     This is to enable translation between GitHub Markdown and MyST Markdown used
     in docs. For more details, see ``doc/README.md``.
+
+    Args:
+        source_path: The path to the locally saved markdown file to preprocess.
+        dest_path: The destination path to save the preprocessed markdown file.
+            If not provided, save to the same location as source_path.
     """
-    with open(path, "r") as f:
+    dest_path = dest_path if dest_path else source_path
+    with open(source_path, "r") as f:
         text = f.read()
     # $UNCOMMENT
     text = re.sub(r"<!--\s*\$UNCOMMENT(.*?)(-->)", r"\1", text, flags=re.DOTALL)
@@ -24,7 +32,7 @@ def preprocess_github_markdown_file(path: str):
         text,
         flags=re.DOTALL,
     )
-    with open(path, "w") as f:
+    with open(dest_path, "w") as f:
         f.write(text)
 
 
@@ -33,8 +41,15 @@ if __name__ == "__main__":
         description="Preprocess github markdown file to Ray Docs MyST markdown"
     )
     parser.add_argument(
-        "path", type=pathlib.Path, help="Path to github markdown file to preprocess"
+        "source_path",
+        type=pathlib.Path,
+        help="Path to github markdown file to " "preprocess",
+    )
+    parser.add_argument(
+        "dest_path", type=pathlib.Path, help="Path to save preprocessed markdown file."
     )
     args, _ = parser.parse_known_args()
 
-    preprocess_github_markdown_file(args.path.expanduser())
+    preprocess_github_markdown_file(
+        args.source_path.expanduser(), args.dest_path.expanduser()
+    )

@@ -139,7 +139,7 @@ class HEBOSearch(Searcher):
     ):
         assert hebo is not None, (
             "HEBO must be installed! You can install HEBO with"
-            " the command: `pip install 'HEBO>=0.2.0'."
+            " the command: `pip install 'HEBO>=0.2.0'`."
             "This error may also be caused if HEBO"
             " dependencies have bad versions. Try updating HEBO"
             " first."

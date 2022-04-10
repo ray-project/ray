@@ -226,6 +226,20 @@ class BuildkiteSettingsTest(unittest.TestCase):
         )
         self.assertEqual(updated_settings["ray_test_branch"], "some_branch")
 
+        # Empty BUILDKITE_PULL_REQUEST_REPO
+        os.environ.clear()
+        os.environ.update(environ)
+        os.environ["BUILDKITE_REPO"] = "https://github.com/ray-project/ray.git"
+        os.environ["BUILDKITE_BRANCH"] = "some_branch"
+        os.environ["BUILDKITE_PULL_REQUEST_REPO"] = ""
+        updated_settings = settings.copy()
+        update_settings_from_environment(updated_settings)
+
+        self.assertEqual(
+            updated_settings["ray_test_repo"], "https://github.com/ray-project/ray.git"
+        )
+        self.assertEqual(updated_settings["ray_test_branch"], "some_branch")
+
     def testSettingsOverrideBuildkite(self):
         settings = get_default_settings()
 
