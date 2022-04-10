@@ -12,7 +12,7 @@ from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
-from ray.tune.utils.util import is_nan_or_inf
+from ray.tune.utils.util import is_nan_or_inf, is_nan
 
 try:
     import pandas as pd
@@ -447,9 +447,15 @@ class ExperimentAnalysis:
         mode = self._validate_mode(mode)
 
         checkpoint_paths = self.get_trial_checkpoints_paths(trial, metric)
+
         if not checkpoint_paths:
             logger.error(f"No checkpoints have been found for trial {trial}.")
             return None
+
+        # Filter out nan. Sorting nan values leads to undefined behavior.
+        checkpoint_paths = [
+            (path, metric) for path, metric in checkpoint_paths if not is_nan(metric)
+        ]
 
         a = -1 if mode == "max" else 1
         best_path_metrics = sorted(checkpoint_paths, key=lambda x: a * x[1])
