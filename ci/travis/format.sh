@@ -14,7 +14,7 @@ BANNED_WORDS="RLLib Rllib"
 check_banned_words() {
     echo "Checking for common mis-spellings..."
     for word in $BANNED_WORDS; do
-        if grep -C2 $word **/*.py **/*.md **.rst **/*.yaml; then
+        if grep -C2 -R --include="*.py" --include="*.rst" "$word" .; then
             echo "******************************"
             echo "*** Misspelled word found! ***"
             echo "******************************"
