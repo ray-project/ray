@@ -145,6 +145,7 @@ class GcsActorManagerTest : public ::testing::Test {
           if (skip_delay_) {
             fn();
           } else {
+            absl::MutexLock lock(&mutex_);
             delay_ = delay;
             delayed_to_run_ = fn;
           }
@@ -249,6 +250,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   std::function<void(void)> delayed_to_run_;
+  absl::Mutex mutex_;
   boost::posix_time::milliseconds delay_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
@@ -1187,7 +1189,11 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
     ASSERT_EQ(reply.actor_table_data().size(), 1);
   }
   // Now the entry should be removed from "redis"
-  delayed_to_run_();
+  {
+    absl::MutexLock lock(&mutex_);
+    RAY_CHECK(delayed_to_run_ != nullptr);
+    delayed_to_run_();
+  }
   {
     rpc::GetAllActorInfoRequest request;
     auto &reply =

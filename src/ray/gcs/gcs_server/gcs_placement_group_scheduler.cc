@@ -64,10 +64,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     resource_request_list.emplace_back(&bundle->GetRequiredResources());
   }
 
-  auto scheduling_options = CreateSchedulingOptions(strategy);
-  auto schedule_context = CreateSchedulingContext(placement_group->GetPlacementGroupID());
-  auto scheduling_result = cluster_resource_scheduler_.Schedule(
-      resource_request_list, scheduling_options, schedule_context.get());
+  auto scheduling_options =
+      CreateSchedulingOptions(placement_group->GetPlacementGroupID(), strategy);
+  auto scheduling_result =
+      cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;
@@ -436,7 +436,7 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 }
 
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
-    rpc::PlacementStrategy strategy) {
+    const PlacementGroupID &placement_group_id, rpc::PlacementStrategy strategy) {
   switch (strategy) {
   case rpc::PlacementStrategy::PACK:
     return SchedulingOptions::BundlePack();
@@ -445,7 +445,8 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
   case rpc::PlacementStrategy::STRICT_PACK:
     return SchedulingOptions::BundleStrictPack();
   case rpc::PlacementStrategy::STRICT_SPREAD:
-    return SchedulingOptions::BundleStrictSpread();
+    return SchedulingOptions::BundleStrictSpread(
+        CreateSchedulingContext(placement_group_id));
   default:
     RAY_LOG(FATAL) << "Unsupported scheduling type: "
                    << rpc::PlacementStrategy_Name(strategy);
