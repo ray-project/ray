@@ -11,33 +11,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.rllib.utils.spaces.space_utils import flatten_space
 
 tf1, tf, tfv = try_import_tf()
-
-
-def concat_model_out_if_necessary(model_out):
-    """Concat model outs if they come as original tuple observations.
-
-    Model outs may come as original Tuple observations, concat them here
-    if this is the case.
-
-    Args:
-        model_out: model output tensor or observation tuple
-    Returns:
-        Either original model_out tensor
-    """
-
-    if isinstance(model_out, (list, tuple)):
-        model_out = tf.concat(model_out, axis=-1)
-    elif isinstance(model_out, dict):
-        model_out = tf.concat(
-            [
-                tf.expand_dims(val, 1) if len(val.shape) == 1 else val
-                for val in tree.flatten(model_out.values())
-            ],
-            axis=-1,
-        )
-    return model_out
 
 
 class SACTFModel(TFModelV2):
@@ -144,6 +120,10 @@ class SACTFModel(TFModelV2):
             else:
                 target_entropy = -np.prod(action_space.shape)
         self.target_entropy = target_entropy
+
+        self.flattened_action_model_space = flatten_space(
+            self.action_model.action_space
+        )
 
     @override(TFModelV2)
     def forward(
@@ -290,8 +270,14 @@ class SACTFModel(TFModelV2):
 
         return net(input_dict, [], None)
 
-    def get_action_model_outputs(self, model_out: TensorType) -> TensorType:
-        """Returns policy network outputs given the output of policy.model().
+    def get_action_model_outputs(
+        self,
+        model_out: TensorType,
+        state_in: List[TensorType] = None,
+        seq_lens: TensorType = None,
+    ) -> (TensorType, List[TensorType]):
+        """Returns distribution inputs and states given the output of
+        policy.model().
 
         For continuous action spaces, these will be the mean/stddev
         distribution inputs for the (SquashedGaussian) action distribution.
@@ -300,16 +286,41 @@ class SACTFModel(TFModelV2):
 
         Args:
             model_out (TensorType): Feature outputs from the model layers
-                (result of doing `self.__call__(obs)`).
+                (result of doing `model(obs)`).
+            state_in List(TensorType): State input for recurrent cells
+            seq_lens (TensorType): Sequence lengths of input- and state
+                sequences
 
         Returns:
             TensorType: Distribution inputs for sampling actions.
         """
-        # Model outs may come as original Tuple/Dict observations, concat them
-        # here if this is the case.
-        if isinstance(self.action_model.obs_space, Box):
-            model_out = concat_model_out_if_necessary(model_out)
-        return self.action_model({"obs": model_out}, [], None)
+
+        def concat_obs_if_necessary(obs):
+            """Concat model outs if they are original tuple observations."""
+            if isinstance(obs, (list, tuple)):
+                obs = tf.concat(obs, axis=-1)
+            elif isinstance(obs, dict):
+                obs = tf.concat(
+                    [
+                        tf.expand_dims(val, 1) if len(val.shape) == 1 else val
+                        for val in tree.flatten(obs.values())
+                    ],
+                    axis=-1,
+                )
+            return obs
+
+        if state_in is None:
+            state_in = []
+
+        if isinstance(model_out, dict) and "obs" in model_out:
+            # Model outs may come as original Tuple observations
+            if isinstance(self.action_model.obs_space, Box):
+                model_out["obs"] = concat_obs_if_necessary(model_out["obs"])
+            return self.action_model(model_out, state_in, seq_lens)
+        else:
+            if isinstance(self.action_model.obs_space, Box):
+                model_out = concat_obs_if_necessary(model_out)
+            return self.action_model({"obs": model_out}, state_in, seq_lens)
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""
