@@ -179,7 +179,9 @@ def test_logs_experimental(ray_start_with_dashboard):
             for f in file_names:
                 if "worker" in f:
                     urls.append(
-                        webui_url + f"/api/experimental/logs/file/{node_id}/" + f
+                        webui_url
+                        + f"/api/experimental/logs/file?node_id={node_id}&log_file_name="
+                        + f
                     )
 
             for u in urls:
@@ -206,4 +208,4 @@ def test_logs_experimental(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", f"{__file__}::test_logs_experimental"]))
+    sys.exit(pytest.main(["-sv", __file__]))
