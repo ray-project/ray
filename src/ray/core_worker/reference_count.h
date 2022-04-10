@@ -494,6 +494,55 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences();
 
  private:
+  struct NestedInfo {
+    /// Object IDs that we own and that contain this object ID.
+    /// ObjectIDs are added to this field when we discover that this object
+    /// contains other IDs. This can happen in 2 cases:
+    ///  1. We call ray.put() and store the inner ID(s) in the outer object.
+    ///  2. A task that we submitted returned an ID(s).
+    /// ObjectIDs are erased from this field when their Reference is deleted.
+    absl::flat_hash_set<ObjectID> contained_in_owned;
+    /// Object IDs that we borrowed and that contain this object ID.
+    /// ObjectIDs are added to this field when we get the value of an ObjectRef
+    /// (either by deserializing the object or receiving the GetObjectStatus
+    /// reply for inlined objects) and it contains another ObjectRef.
+    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
+    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
+    /// The object IDs contained in this object. These could be objects that we
+    /// own or are borrowing. This field is updated in 2 cases:
+    ///  1. We call ray.put() on this ID and store the contained IDs.
+    ///  2. We call ray.get() on an ID whose contents we do not know and we
+    ///     discover that it contains these IDs.
+    absl::flat_hash_set<ObjectID> contains;
+    /// ObjectRefs nested in this object that are or were in use. These objects
+    /// are not owned by us, and we need to report that we are borrowing them
+    /// to their owner. Nesting is transitive, so this flag is set as long as
+    /// any child object is in scope.
+    bool has_nested_refs_to_report = false;
+  };
+
+  struct BorrowInfo {
+    /// A list of processes that are we gave a reference to that are still
+    /// borrowing the ID. This field is updated in 2 cases:
+    ///  1. If we are a borrower of the ID, then we add a process to this list
+    ///     if we passed that process a copy of the ID via task submission and
+    ///     the process is still using the ID by the time it finishes its task.
+    ///     Borrowers are removed from the list when we recursively merge our
+    ///     list into the owner.
+    ///  2. If we are the owner of the ID, then either the above case, or when
+    ///     we hear from a borrower that it has passed the ID to other
+    ///     borrowers. A borrower is removed from the list when it responds
+    ///     that it is no longer using the reference.
+    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
+    /// When a process that is borrowing an object ID stores the ID inside the
+    /// return value of a task that it executes, the caller of the task is also
+    /// considered a borrower for as long as its reference to the task's return
+    /// ID stays in scope. Thus, the borrower must notify the owner that the
+    /// task's caller is also a borrower. The key is the task's return ID, and
+    /// the value is the task ID and address of the task's caller.
+    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+  };
+
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
     Reference() {}
@@ -600,6 +649,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     size_t local_ref_count = 0;
     /// The ref count for submitted tasks that depend on the ObjectID.
     size_t submitted_task_ref_count = 0;
+
+    // std::unique_ptr<NestedInfo> nested_info;
+
     /// Object IDs that we own and that contain this object ID.
     /// ObjectIDs are added to this field when we discover that this object
     /// contains other IDs. This can happen in 2 cases:
@@ -624,6 +676,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// to their owner. Nesting is transitive, so this flag is set as long as
     /// any child object is in scope.
     bool has_nested_refs_to_report = false;
+
     /// A list of processes that are we gave a reference to that are still
     /// borrowing the ID. This field is updated in 2 cases:
     ///  1. If we are a borrower of the ID, then we add a process to this list

@@ -187,6 +187,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // in the frontend language, incrementing the reference count.
   // TODO(swang): Objects that are not reconstructable should not increment
   // their arguments' lineage ref counts.
+  RAY_LOG(ERROR) << "dbg Reference size=" << sizeof(Reference);
+  RAY_LOG(ERROR) << "dbg NestedInfo size=" << sizeof(NestedInfo);
   auto it = object_id_refs_
                 .emplace(object_id,
                          Reference(owner_address,
@@ -730,8 +732,8 @@ std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
   absl::MutexLock lock(&mutex_);
   std::unordered_set<ObjectID> in_scope_object_ids;
   in_scope_object_ids.reserve(object_id_refs_.size());
-  for (auto it : object_id_refs_) {
-    in_scope_object_ids.insert(it.first);
+  for (const auto &[id, ref] : object_id_refs_) {
+    in_scope_object_ids.insert(id);
   }
   return in_scope_object_ids;
 }
@@ -741,10 +743,10 @@ ReferenceCounter::GetAllReferenceCounts() const {
   absl::MutexLock lock(&mutex_);
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> all_ref_counts;
   all_ref_counts.reserve(object_id_refs_.size());
-  for (auto it : object_id_refs_) {
-    all_ref_counts.emplace(it.first,
-                           std::pair<size_t, size_t>(it.second.local_ref_count,
-                                                     it.second.submitted_task_ref_count));
+  for (const auto &[id, ref] : object_id_refs_) {
+    all_ref_counts.emplace(id,
+                           std::pair<size_t, size_t>(ref.local_ref_count,
+                                                     ref.submitted_task_ref_count));
   }
   return all_ref_counts;
 }
