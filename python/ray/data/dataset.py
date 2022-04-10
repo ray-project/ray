@@ -57,6 +57,7 @@ from ray.data.datasource import (
     ParquetDatasource,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
+    ReadTask,
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -988,26 +989,26 @@ class Dataset(Generic[T]):
 
         start_time = time.perf_counter()
         context = DatasetContext.get_current()
-        calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
-        metadata: List[BlockPartitionMetadata] = []
+        tasks: List[ReadTask] = []
         block_partitions: List[ObjectRef[BlockPartition]] = []
+        block_partitions_meta: List[ObjectRef[BlockPartitionMetadata]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
             bl = ds._plan.execute()
             if isinstance(bl, LazyBlockList):
-                calls.extend(bl._calls)
-                metadata.extend(bl._metadata)
+                tasks.extend(bl._tasks)
                 block_partitions.extend(bl._block_partitions)
+                block_partitions_meta.extend(bl._block_partitions_meta)
             else:
-                calls.extend([None] * bl.initial_num_blocks())
-                metadata.extend(bl._metadata)
+                tasks.extend([ReadTask(lambda: None, meta) for meta in bl._metadata])
                 if context.block_splitting_enabled:
                     block_partitions.extend(
                         [ray.put([(b, m)]) for b, m in bl.get_blocks_with_metadata()]
                     )
                 else:
                     block_partitions.extend(bl.get_blocks())
+                block_partitions_meta.extend([ray.put(meta) for meta in bl._metadata])
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1028,7 +1029,8 @@ class Dataset(Generic[T]):
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             ExecutionPlan(
-                LazyBlockList(calls, metadata, block_partitions), dataset_stats
+                LazyBlockList(tasks, block_partitions, block_partitions_meta),
+                dataset_stats,
             ),
             max_epoch,
             self._lazy,
@@ -2548,6 +2550,7 @@ Dict[str, List[str]]]): The names of the columns
         # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
         if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            self._plan._in_blocks.clear()
             blocks, read_stage = self._plan._rewrite_read_stage()
             outer_stats = DatasetStats(stages={}, parent=None)
         else:
@@ -2666,6 +2669,7 @@ Dict[str, List[str]]]): The names of the columns
         # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
         if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            self._plan._in_blocks.clear()
             blocks, read_stage = self._plan._rewrite_read_stage()
             outer_stats = DatasetStats(stages={}, parent=None)
         else:
@@ -2749,12 +2753,13 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        blocks = self.get_internal_block_refs()
-        bar = ProgressBar("Force reads", len(blocks))
-        bar.block_until_complete(blocks)
+        blocks, metadata = [], []
+        for b, m in self._plan.execute().get_blocks_with_metadata():
+            blocks.append(b)
+            metadata.append(m)
         ds = Dataset(
             ExecutionPlan(
-                BlockList(blocks, self._plan.execute().get_metadata()),
+                BlockList(blocks, metadata),
                 self._plan.stats(),
                 dataset_uuid=self._get_uuid(),
             ),

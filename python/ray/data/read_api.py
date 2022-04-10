@@ -7,11 +7,9 @@ from typing import (
     Union,
     Optional,
     Tuple,
-    Callable,
     TypeVar,
     TYPE_CHECKING,
 )
-import uuid
 
 import numpy as np
 
@@ -30,9 +28,7 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     BlockMetadata,
-    MaybeBlockPartition,
     BlockExecStats,
-    BlockPartitionMetadata,
 )
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset
@@ -60,7 +56,7 @@ from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.plan import ExecutionPlan
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.stats import DatasetStats, get_or_create_stats_actor
+from ray.data.impl.stats import DatasetStats
 from ray.data.impl.util import _lazy_import_pyarrow_dataset
 
 T = TypeVar("T")
@@ -252,62 +248,17 @@ def read_datasource(
             "dataset blocks.".format(len(read_tasks), len(read_tasks))
         )
 
-    context = DatasetContext.get_current()
-    stats_actor = get_or_create_stats_actor()
-    stats_uuid = uuid.uuid4()
-    stats_actor.record_start.remote(stats_uuid)
-
-    def remote_read(i: int, task: ReadTask, stats_actor) -> MaybeBlockPartition:
-        DatasetContext._set_current(context)
-        stats = BlockExecStats.builder()
-
-        # Execute the read task.
-        block = task()
-
-        if context.block_splitting_enabled:
-            metadata = task.get_metadata()
-            metadata.exec_stats = stats.build()
-        else:
-            metadata = BlockAccessor.for_block(block).get_metadata(
-                input_files=task.get_metadata().input_files, exec_stats=stats.build()
-            )
-        stats_actor.record_task.remote(stats_uuid, i, metadata)
-        return block
-
     if ray_remote_args is None:
         ray_remote_args = {}
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = "SPREAD"
-    remote_read = cached_remote_fn(remote_read)
 
-    calls: List[Callable[[], ObjectRef[MaybeBlockPartition]]] = []
-    metadata: List[BlockPartitionMetadata] = []
+    block_list = LazyBlockList(read_tasks, ray_remote_args=ray_remote_args)
+    block_list.compute_first_block()
+    block_list.ensure_metadata_for_first_block()
 
-    for i, task in enumerate(read_tasks):
-        calls.append(
-            lambda i=i, task=task: remote_read.options(**ray_remote_args).remote(
-                i, task, stats_actor
-            )
-        )
-        metadata.append(task.get_metadata())
-
-    block_list = LazyBlockList(calls, metadata)
-    # TODO(ekl) consider refactoring LazyBlockList to take read_tasks explicitly.
-    block_list._read_tasks = read_tasks
-    block_list._read_remote_args = ray_remote_args
-
-    # Get the schema from the first block synchronously.
-    if metadata and metadata[0].schema is None:
-        block_list.ensure_schema_for_first_block()
-
-    stats = DatasetStats(
-        stages={"read": metadata},
-        parent=None,
-        stats_actor=stats_actor,
-        stats_uuid=stats_uuid,
-    )
     return Dataset(
-        ExecutionPlan(block_list, stats),
+        ExecutionPlan(block_list, block_list.stats()),
         0,
         False,
     )

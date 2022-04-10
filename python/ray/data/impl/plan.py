@@ -1,12 +1,13 @@
-from typing import Callable, Tuple, Optional, Union, Iterable, TYPE_CHECKING
+from typing import Callable, Tuple, Optional, Union, Iterable, Iterator, TYPE_CHECKING
 import uuid
 
 if TYPE_CHECKING:
     import pyarrow
 
 import ray
+from ray.types import ObjectRef
 from ray.data.context import DatasetContext
-from ray.data.block import Block
+from ray.data.block import Block, BlockPartition
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
@@ -79,7 +80,14 @@ class ExecutionPlan:
             blocks = self._out_blocks
         else:
             blocks = self._in_blocks
-        metadata = blocks.get_metadata() if blocks else []
+        if blocks:
+            # Don't force fetching in case it's a lazy block list, in which case we
+            # don't want to trigger full execution for a schema read. If we want to
+            # trigger execution to get schema, we'll trigger read tasks progressively
+            # until a viable schema is available, below.
+            metadata = blocks.get_metadata(fetch_if_missing=False)
+        else:
+            metadata = []
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
         for m in metadata:
@@ -87,8 +95,13 @@ class ExecutionPlan:
                 return m.schema
         if not fetch_if_missing:
             return None
-        # Need to synchronously fetch schema.
-        return blocks.ensure_schema_for_first_block()
+        # Synchronously fetch the schema.
+        # For lazy block lists, this launches read tasks and fetches block metadata
+        # until we find valid block schema.
+        for _, m in blocks.iter_blocks_with_metadata():
+            if m.schema is not None and (m.num_rows > 0 or m.num_rows is None):
+                return m.schema
+        return None
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan stages if possible.
@@ -166,9 +179,7 @@ class ExecutionPlan:
 
     def _has_read_stage(self) -> bool:
         """Whether this plan has a read stage for its input."""
-        return isinstance(self._in_blocks, LazyBlockList) and hasattr(
-            self._in_blocks, "_read_tasks"
-        )
+        return isinstance(self._in_blocks, LazyBlockList)
 
     def _is_read_stage(self) -> bool:
         """Whether this plan is a bare read stage."""
@@ -184,19 +195,38 @@ class ExecutionPlan:
         now we can fuse the latter two MapBatches stages into a single OneToOne stage:
         [GetReadTasks -> MapBatches(DoRead -> Fn)].
         """
+        context = DatasetContext.get_current()
         # Generate the "GetReadTasks" stage blocks.
-        remote_args = self._in_blocks._read_remote_args
+        remote_args = self._in_blocks._remote_args
         blocks = []
         metadata = []
-        for i, read_task in enumerate(self._in_blocks._read_tasks):
-            blocks.append(ray.put([read_task]))
-            metadata.append(self._in_blocks._metadata[i])
+        for part, read_task in zip(
+            self._in_blocks._block_partitions, self._in_blocks._tasks
+        ):
+            # Use block partition future if the read task has already been submitted,
+            # otherwise use the read task that the block UDF will execute.
+            blocks.append(ray.put(read_task._read_fn) if part is None else part)
+            metadata.append(read_task.get_metadata())
         block_list = BlockList(blocks, metadata)
 
-        def block_fn(block: Block) -> Iterable[Block]:
-            [read_task] = block
-            for tmp1 in read_task._read_fn():
-                yield tmp1
+        def block_fn(
+            part_or_read_fn: Union[
+                ObjectRef[BlockPartition], Callable[[], Iterator[Block]]
+            ]
+        ) -> Iterator[Block]:
+            if not callable(part_or_read_fn):
+                # Block partition was provided.
+                if context.block_splitting_enabled:
+                    for block_and_meta in part_or_read_fn:
+                        block, _ = block_and_meta
+                        block = ray.get(block)
+                        yield block
+                else:
+                    yield part_or_read_fn
+            else:
+                # Read task was provided.
+                for block in part_or_read_fn():
+                    yield block
 
         return block_list, OneToOneStage("read", block_fn, "tasks", remote_args)
 
