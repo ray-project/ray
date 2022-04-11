@@ -121,7 +121,7 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: Trainer Tests"
+- label: ":brain: RLlib: Trainer Tests (generic)"
   conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -129,7 +129,19 @@
     # Test all tests in the `agents` (soon to be "trainers") dir:
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=trainers_dir,-multi_gpu
+      --test_tag_filters=trainers_dir_generic,-multi_gpu
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+
+- label: ":brain: RLlib: Trainer Tests (specific algos)"
+  conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Test all tests in the `agents` (soon to be "trainers") dir:
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=trainers_dir,-trainers_dir_generic,-multi_gpu
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
@@ -146,7 +158,7 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: Examples {A,B}"
+- label: ":brain: RLlib: Examples {A..B}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT

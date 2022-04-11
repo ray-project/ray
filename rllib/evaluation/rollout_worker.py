@@ -233,6 +233,7 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_config: Optional[PartialTrainerConfigDict] = None,
         worker_index: int = 0,
         num_workers: int = 0,
+        recreated_worker: bool = False,
         record_env: Union[bool, str] = False,
         log_dir: Optional[str] = None,
         log_level: Optional[str] = None,
@@ -327,6 +328,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 through EnvContext so that envs can be configured per worker.
             num_workers: For remote workers, how many workers altogether
                 have been created?
+            recreated_worker: Whether this worker is a recreated one. Workers are
+                recreated by a Trainer (via WorkerSet) in case
+                `recreate_failed_workers=True` and one of the original workers (or an
+                already recreated one) has failed. They don't differ from original
+                workers other than the value of this flag (`self.recreated_worker`).
             record_env: Write out episode stats and videos
                 using gym.wrappers.Monitor to this directory if specified. If
                 True, use the default output dir in ~/ray_results/.... If
@@ -434,6 +440,7 @@ class RolloutWorker(ParallelIteratorWorker):
             vector_index=0,
             num_workers=num_workers,
             remote=remote_worker_envs,
+            recreated_worker=recreated_worker,
         )
         self.env_context = env_context
         self.policy_config: PartialTrainerConfigDict = policy_config
@@ -445,6 +452,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
+        self.recreated_worker: bool = recreated_worker
         model_config: ModelConfigDict = (
             model_config or self.policy_config.get("model") or {}
         )

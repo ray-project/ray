@@ -452,20 +452,20 @@ def test_simple_imputer():
     most_frequent_df = pd.DataFrame.from_dict(
         {"A": most_frequent_col_a, "B": most_frequent_col_b}
     )
-    most_frequent_ds = ray.data.from_pandas(most_frequent_df)
+    most_frequent_ds = ray.data.from_pandas(most_frequent_df).repartition(3)
 
     most_frequent_imputer = SimpleImputer(["A", "B"], strategy="most_frequent")
     most_frequent_imputer.fit(most_frequent_ds)
     assert most_frequent_imputer.stats_ == {
         "most_frequent(A)": 2.0,
-        "most_frequent(B)": "b",
+        "most_frequent(B)": "c",
     }
 
     most_frequent_transformed = most_frequent_imputer.transform(most_frequent_ds)
     most_frequent_out_df = most_frequent_transformed.to_pandas()
 
     most_frequent_processed_col_a = [1.0, 2.0, 2.0, 2.0, 2.0, 2.0]
-    most_frequent_processed_col_b = ["b", "c", "c", "b", "b", "a"]
+    most_frequent_processed_col_b = ["c", "c", "c", "b", "b", "a"]
     most_frequent_expected_df = pd.DataFrame.from_dict(
         {"A": most_frequent_processed_col_a, "B": most_frequent_processed_col_b}
     )
