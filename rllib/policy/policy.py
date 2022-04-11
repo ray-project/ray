@@ -153,7 +153,7 @@ class Policy(metaclass=ABCMeta):
 
         # The action distribution class to use for action sampling, if any.
         # Child classes may set this.
-        self.dist_class: Optional[Type] = None
+        self.dist_class: Optional[Type[ActionDistribution]] = None
 
         # Maximal view requirements dict for `learn_on_batch()` and
         # `compute_actions` calls.
@@ -448,7 +448,7 @@ class Policy(metaclass=ABCMeta):
     @ExperimentalAPI
     @OverrideToImplementCustomLogic
     def loss(
-        self, model: ModelV2, dist_class: ActionDistribution, train_batch: SampleBatch
+        self, model: ModelV2, dist_class: Type[ActionDistribution], train_batch: SampleBatch
     ) -> Union[TensorType, List[TensorType]]:
         """Loss function for this Policy.
 

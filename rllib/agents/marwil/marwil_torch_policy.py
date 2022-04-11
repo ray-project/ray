@@ -1,5 +1,5 @@
 import gym
-from typing import Dict
+from typing import Dict, Type
 
 import ray
 from ray.rllib.agents.a3c.a3c_torch_policy import ValueNetworkMixin
@@ -20,7 +20,7 @@ torch, _ = try_import_torch()
 def marwil_loss(
     policy: Policy,
     model: ModelV2,
-    dist_class: ActionDistribution,
+    dist_class: Type[ActionDistribution],
     train_batch: SampleBatch,
 ) -> TensorType:
     model_out, _ = model(train_batch)

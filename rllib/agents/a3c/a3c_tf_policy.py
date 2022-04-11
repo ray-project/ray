@@ -1,5 +1,5 @@
 """Note: Keep in sync with changes to VTraceTFPolicy."""
-from typing import Optional, Dict
+from typing import Optional, Dict, Type
 import gym
 
 import ray
@@ -85,7 +85,7 @@ class A3CLoss:
 def actor_critic_loss(
     policy: Policy,
     model: ModelV2,
-    dist_class: ActionDistribution,
+    dist_class: Type[ActionDistribution],
     train_batch: SampleBatch,
 ) -> TensorType:
     model_out, _ = model(train_batch)

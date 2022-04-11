@@ -5,7 +5,7 @@ import math
 import numpy as np
 import os
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Type
 
 import ray
 import ray.experimental.tf_utils
@@ -13,6 +13,7 @@ from ray.util.debug import log_once
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
@@ -83,7 +84,7 @@ class TFPolicy(Policy):
         action_input: Optional[TensorType] = None,
         log_likelihood: Optional[TensorType] = None,
         dist_inputs: Optional[TensorType] = None,
-        dist_class: Optional[type] = None,
+        dist_class: Optional[Type[ActionDistribution]] = None,
         state_inputs: Optional[List[TensorType]] = None,
         state_outputs: Optional[List[TensorType]] = None,
         prev_action_input: Optional[TensorType] = None,

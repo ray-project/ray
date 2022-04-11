@@ -847,7 +847,7 @@ class ModelCatalog:
     @staticmethod
     @PublicAPI
     def register_custom_action_dist(
-        action_dist_name: str, action_dist_class: type
+        action_dist_name: str, action_dist_class: Type[ActionDistribution]
     ) -> None:
         """Register a custom action distribution class by name.
 

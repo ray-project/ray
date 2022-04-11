@@ -1,6 +1,6 @@
 import logging
 import gym
-from typing import Optional, Dict
+from typing import Optional, Dict, Type
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import compute_and_clip_gradients
@@ -177,7 +177,7 @@ class MARWILLoss:
 def marwil_loss(
     policy: Policy,
     model: ModelV2,
-    dist_class: ActionDistribution,
+    dist_class: Type[ActionDistribution],
     train_batch: SampleBatch,
 ) -> TensorType:
     model_out, _ = model(train_batch)

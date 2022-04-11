@@ -1,5 +1,5 @@
 import gym
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Type
 
 import ray
 from ray.rllib.evaluation.episode import Episode
@@ -47,7 +47,7 @@ def add_advantages(
 def actor_critic_loss(
     policy: Policy,
     model: ModelV2,
-    dist_class: ActionDistribution,
+    dist_class: Type[ActionDistribution],
     train_batch: SampleBatch,
 ) -> TensorType:
     logits, _ = model(train_batch)
