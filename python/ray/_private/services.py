@@ -541,40 +541,6 @@ def get_node_ip_address(address="8.8.8.8:53"):
     return node_ip_address_from_perspective(address)
 
 
-def create_redis_client(redis_address, password=None):
-    """Create a Redis client.
-
-    Args:
-        The IP address, port, and password of the Redis server.
-
-    Returns:
-        A Redis client.
-    """
-    import redis
-
-    if not hasattr(create_redis_client, "instances"):
-        create_redis_client.instances = {}
-
-    for _ in range(ray_constants.START_REDIS_WAIT_RETRIES):
-        cli = create_redis_client.instances.get(redis_address)
-        if cli is None:
-            redis_ip_address, redis_port = extract_ip_port(
-                canonicalize_bootstrap_address(redis_address)
-            )
-            cli = redis.StrictRedis(
-                host=redis_ip_address, port=int(redis_port), password=password
-            )
-            create_redis_client.instances[redis_address] = cli
-        try:
-            cli.ping()
-            return cli
-        except Exception:
-            create_redis_client.instances.pop(redis_address)
-            time.sleep(2)
-
-    raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
-
-
 def start_ray_process(
     command,
     process_type,
