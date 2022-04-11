@@ -131,6 +131,7 @@ def url_from_resource(namespace: str, path: str) -> str:
         + path
     )
 
+
 def _worker_group_index(raycluster: Dict[str, Any], group_name: str) -> int:
     """Extract worker group index from RayCluster."""
     group_names = [spec["groupName"] for spec in raycluster["spec"]["workerGroupSpecs"]]
@@ -269,7 +270,9 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             )
             for pod in pods["items"]:
                 group_name = pod["metadata"]["labels"]["ray.io/group"]
-                current_replica_counts[group_name] = current_replica_counts.get(group_name, 0) + 1
+                current_replica_counts[group_name] = (
+                    current_replica_counts.get(group_name, 0) + 1
+                )
                 if pod["metadata"]["name"] in node_ids:
                     groups.setdefault(group_name, []).append(pod["metadata"]["name"])
 

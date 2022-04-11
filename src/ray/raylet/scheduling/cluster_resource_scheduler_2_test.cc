@@ -126,6 +126,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     std::string cpu_resource = "CPU";
     std::string gpu_resource = "GPU";
     std::string mem_resource = "memory";
+    std::string custom_resource = "custom";
 
     std::vector<std::vector<std::pair<std::string, double>>> resources_list;
 
@@ -140,6 +141,10 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 1.0)}));
     resources_list.emplace_back(std::vector(
         {std::make_pair(cpu_resource, 1.0), std::make_pair(gpu_resource, 2.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(custom_resource, 1.0)}));
+    resources_list.emplace_back(std::vector(
+        {std::make_pair(cpu_resource, 1.0), std::make_pair(custom_resource, 2.0)}));
 
     std::vector<NodeID> node_ids;
     for (auto r : resources_list) {
@@ -212,20 +217,18 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   auto bundle_locations = std::make_shared<BundleLocations>();
   BundleID bundle_id{PlacementGroupID::Of(JobID::FromInt(1)), 0};
   bundle_locations->emplace(bundle_id, std::make_pair(node_id, nullptr));
-  BundleSchedulingContext scheduling_context_1(bundle_locations);
-  auto result1 =
-      cluster_resource_scheduler_->Schedule(resource_request_list,
-                                            SchedulingOptions::BundleStrictSpread(),
-                                            &scheduling_context_1);
+  auto result1 = cluster_resource_scheduler_->Schedule(
+      resource_request_list,
+      SchedulingOptions::BundleStrictSpread(
+          std::make_unique<BundleSchedulingContext>(bundle_locations)));
   ASSERT_TRUE(result1.status.IsInfeasible());
   ASSERT_EQ(result1.selected_nodes.size(), 0);
 
   // Scheduling succeeded.
-  BundleSchedulingContext scheduling_context_2(nullptr);
-  auto result2 =
-      cluster_resource_scheduler_->Schedule(resource_request_list,
-                                            SchedulingOptions::BundleStrictSpread(),
-                                            &scheduling_context_2);
+  auto result2 = cluster_resource_scheduler_->Schedule(
+      resource_request_list,
+      SchedulingOptions::BundleStrictSpread(
+          std::make_unique<BundleSchedulingContext>(nullptr)));
   ASSERT_TRUE(result2.status.IsSuccess());
   ASSERT_EQ(result2.selected_nodes.size(), 1);
 }

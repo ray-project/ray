@@ -357,7 +357,7 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(json.dumps(app_status, indent=4))
+        print(json.dumps(app_status["statuses"], indent=4))
 
 
 @cli.command(

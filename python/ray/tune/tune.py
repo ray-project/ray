@@ -92,8 +92,8 @@ def run(
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
-    stop: Union[None, Mapping, Stopper, Callable[[str, Mapping], bool]] = None,
-    time_budget_s: Union[None, int, float, datetime.timedelta] = None,
+    stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None,
+    time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
     config: Optional[Dict[str, Any]] = None,
     resources_per_trial: Union[
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
@@ -170,7 +170,7 @@ def run(
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
             model to train. This may refer to the name of a built-on algorithm
-            (e.g. RLLib's DQN or PPO), a user-defined trainable
+            (e.g. RLlib's DQN or PPO), a user-defined trainable
             function or class, or the string identifier of a
             trainable function or class registered in the tune registry.
             If Experiment, then Tune will execute training based on
