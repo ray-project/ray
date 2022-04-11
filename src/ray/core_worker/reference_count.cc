@@ -772,6 +772,9 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
     }
   }
   ReferenceTableToProto(borrowed_refs, proto);
+  for (const auto &ref : *proto) {
+    RAY_LOG(INFO) << "dbg ReferenceTableProto borrowed_refs ref=\n" << ref.DebugString();
+  }
 
   for (const auto &borrowed_id : borrowed_ids) {
     RAY_LOG(DEBUG) << "Remove local reference to borrowed object " << borrowed_id;
@@ -1075,6 +1078,11 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   auto *worker_ref_removed_message = pub_message.mutable_worker_ref_removed_message();
   ReferenceTableToProto(borrowed_refs,
                         worker_ref_removed_message->mutable_borrowed_refs());
+  for (const auto &ref : worker_ref_removed_message->borrowed_refs()) {
+    RAY_LOG(INFO)
+        << "dbg ReferenceTableProto worker_ref_removed_message->borrowed_refs() ref=\n"
+        << ref.DebugString();
+  }
 
   RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message for " << object_id
                  << ", message has " << worker_ref_removed_message->borrowed_refs().size()
@@ -1462,6 +1470,13 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   }
   bool has_local_ref = RefCount() > 0;
   ref->set_has_local_ref(has_local_ref);
+  RAY_LOG(INFO) << "dbg "
+                << absl::StrCat("RefCount()=",
+                                RefCount(),
+                                " local_ref_count=",
+                                local_ref_count,
+                                " ref->has_local_ref()=",
+                                ref->has_local_ref());
   for (const auto &borrower : borrowers) {
     ref->add_borrowers()->CopyFrom(borrower.ToProto());
   }
@@ -1476,6 +1491,8 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   for (const auto &contains_id : contains) {
     ref->add_contains(contains_id.Binary());
   }
+  RAY_LOG(INFO) << "dbg ReferenceCounter::Reference::ToProto()\n"
+                << ref->DebugString();
 }
 
 }  // namespace core
