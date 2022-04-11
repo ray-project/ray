@@ -433,6 +433,8 @@ class ExperimentAnalysis:
     ) -> Optional[Checkpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
+        Any checkpoints with an associated metric value of ``nan`` will be filtered out.
+
         Args:
             trial: The log directory of a trial, or a trial instance.
             metric: key of trial info to return, e.g. "mean_accuracy".
@@ -448,14 +450,14 @@ class ExperimentAnalysis:
 
         checkpoint_paths = self.get_trial_checkpoints_paths(trial, metric)
 
-        if not checkpoint_paths:
-            logger.error(f"No checkpoints have been found for trial {trial}.")
-            return None
-
         # Filter out nan. Sorting nan values leads to undefined behavior.
         checkpoint_paths = [
             (path, metric) for path, metric in checkpoint_paths if not is_nan(metric)
         ]
+
+        if not checkpoint_paths:
+            logger.error(f"No checkpoints have been found for trial {trial}.")
+            return None
 
         a = -1 if mode == "max" else 1
         best_path_metrics = sorted(checkpoint_paths, key=lambda x: a * x[1])
