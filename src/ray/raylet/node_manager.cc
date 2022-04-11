@@ -546,6 +546,7 @@ ray::Status NodeManager::RegisterGcs() {
   }
 
   if (RayConfig::instance().use_ray_syncer()) {
+    // Register resource manager and scheduler
     ray_syncer_.Register(
         syncer::RayComponentId::RESOURCE_MANAGER,
         this,
@@ -557,6 +558,8 @@ ray::Status NodeManager::RegisterGcs() {
                          nullptr,
                          true,
                          RayConfig::instance().raylet_report_loads_period_milliseconds());
+    // Register a commands channel.
+    // It's only used for GC right now.
     ray_syncer_.Register(syncer::RayComponentId::COMMANDS, nullptr, this, false, 0);
     periodical_runner_.RunFnPeriodically(
         [this] {
@@ -2646,6 +2649,11 @@ void NodeManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) 
 
 std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
     int64_t after_version, syncer::RayComponentId component_id) const {
+  // Right now snapshot is put in NodeManager which in long-term, them should
+  // be put into each component directly.
+  // The current blocker of doing this is some fields in NodeManager
+  // is being used.
+  // TODO(iycheng): Move the logic into the components directly.
   if (component_id == syncer::RayComponentId::SCHEDULER) {
     syncer::RaySyncMessage msg;
     rpc::ResourcesData resource_data;
