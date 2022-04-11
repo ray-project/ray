@@ -35,15 +35,16 @@ def test_serialization():
         ray.put(predictor)
 
 
-def test_scoring():
+def test_batch_prediction():
     batch_predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
     )
 
     test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
-    assert batch_predictor.predict(
-        test_dataset
-    ).to_pandas().to_numpy().squeeze().tolist() == [
+    # Todo: Remove sorted after https://github.com/ray-project/ray/issues/23833 fixed
+    assert sorted(
+        batch_predictor.predict(test_dataset).to_pandas().to_numpy().squeeze().tolist()
+    ) == [
         2.0,
         4.0,
         6.0,
