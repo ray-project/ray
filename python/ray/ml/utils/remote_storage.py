@@ -1,4 +1,4 @@
-import re
+import urllib.parse
 from typing import Optional, Tuple
 
 try:
@@ -13,8 +13,6 @@ except (ImportError, ModuleNotFoundError):
     pyarrow = None
 
 from ray import logger
-
-URI_PROTOCOL_REGEX = r"^(\w+)://(.+)$"
 
 # We keep these constants for legacy compatibility with Tune's sync client
 # After Tune fully moved to using pyarrow.fs we can remove these.
@@ -34,14 +32,6 @@ def _assert_pyarrow_installed():
         )
 
 
-def _split_protocol_path(uri: str) -> Tuple[Optional[str], Optional[str]]:
-    protocol_match = re.match(URI_PROTOCOL_REGEX, uri)
-    if not protocol_match:
-        return None, None
-
-    return protocol_match.group(1), protocol_match.group(2)
-
-
 def fs_hint(uri: str) -> str:
     """Return a hint how to install required filesystem package"""
     if pyarrow is None:
@@ -51,7 +41,7 @@ def fs_hint(uri: str) -> str:
 
     from fsspec.registry import known_implementations
 
-    protocol, _path = _split_protocol_path(uri)
+    protocol = urllib.parse.urlparse(uri).scheme
 
     if protocol in known_implementations:
         return known_implementations[protocol]["err"]
@@ -61,7 +51,8 @@ def fs_hint(uri: str) -> str:
 
 def is_non_local_path_uri(uri: str) -> bool:
     """Check if target URI points to a non-local location"""
-    if uri.startswith("file://") or not re.match(URI_PROTOCOL_REGEX, uri):
+    parsed = urllib.parse.urlparse(uri)
+    if parsed.scheme == "file" or not parsed.scheme:
         return False
 
     if bool(get_fs_and_path(uri)[0]):
@@ -83,14 +74,18 @@ def get_fs_and_path(
     if not pyarrow:
         return None, None
 
-    protocol, path = _split_protocol_path(uri)
-    if protocol in _cached_fs:
-        fs = _cached_fs[protocol]
+    parsed = urllib.parse.urlparse(uri)
+    path = parsed.path
+
+    cache_key = (parsed.scheme, parsed.netloc)
+
+    if cache_key in _cached_fs:
+        fs = _cached_fs[cache_key]
         return fs, path
 
     try:
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
-        _cached_fs[protocol] = fs
+        _cached_fs[cache_key] = fs
         return fs, path
     except pyarrow.lib.ArrowInvalid:
         # Raised when URI not recognized
@@ -100,13 +95,13 @@ def get_fs_and_path(
 
     # Else, try to resolve protocol via fsspec
     try:
-        fsspec_fs = fsspec.filesystem(protocol)
+        fsspec_fs = fsspec.filesystem(parsed.scheme)
     except ValueError:
         # Raised when protocol not known
         return None, None
 
     fs = pyarrow.fs.PyFileSystem(pyarrow.fs.FSSpecHandler(fsspec_fs))
-    _cached_fs[protocol] = fs
+    _cached_fs[cache_key] = fs
 
     return fs, path
 
