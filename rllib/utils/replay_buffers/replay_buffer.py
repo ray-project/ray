@@ -191,7 +191,7 @@ def validate_buffer_config(config: dict):
 
         replay_burn_in = config.get("burn_in", DEPRECATED_VALUE)
         if replay_burn_in != DEPRECATED_VALUE:
-            config["replay_buffer_config"]["burn_in"] = replay_burn_in
+            config["replay_buffer_config"]["replay_burn_in"] = replay_burn_in
             deprecation_warning(
                 old="config['burn_in']",
                 help="Burn in specified at new location config["
