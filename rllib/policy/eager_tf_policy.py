@@ -757,7 +757,7 @@ def build_eager_tf_policy(
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampler_fn:
-                    actions, logp, dist_inputs, state_out = action_sampler_fn(
+                    action_sampler_outputs = action_sampler_fn(
                         self,
                         self.model,
                         input_dict[SampleBatch.CUR_OBS],
@@ -765,6 +765,12 @@ def build_eager_tf_policy(
                         timestep=timestep,
                         episodes=episodes,
                     )
+                    if len(action_sampler_outputs) == 4:
+                        actions, logp, dist_inputs, state_out = action_sampler_outputs
+                    else:
+                        dis_inputs = None
+                        state_out = []
+                        actions, logp = action_sampler_outputs
                 else:
                     if action_distribution_fn:
 
