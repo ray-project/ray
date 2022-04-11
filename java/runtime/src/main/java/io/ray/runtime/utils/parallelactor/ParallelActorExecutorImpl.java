@@ -1,5 +1,6 @@
 package io.ray.runtime.utils.parallelactor;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.Ray;
 import io.ray.api.parallelactor.ParallelActorExecutor;
 import io.ray.api.parallelactor.ParallelStrategy;
@@ -19,6 +20,7 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
 
   private FunctionManager functionManager = null;
 
+  /// This should be thread safe.
   private List<Object> instances = new ArrayList<>();
 
   public ParallelActorExecutorImpl(ParallelStrategy strategy, int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor) {
@@ -45,11 +47,7 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
   public Object execute(int instanceIndex, JavaFunctionDescriptor functionDescriptor,  Object[] args) {
     RayFunction func = functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), functionDescriptor);
     try {
-//      int instanceIndex = getNextIndex();
-      if (instances.get(instanceIndex) == null) {
-        // How to handle? when?
-      }
-
+      Preconditions.checkState(instances.contains(instanceIndex));
       return func.getMethod().invoke(instances.get(instanceIndex), args);
     } catch (Throwable a) {
       throw new RuntimeException(a);
