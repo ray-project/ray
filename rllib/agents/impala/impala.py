@@ -56,7 +56,7 @@ DEFAULT_CONFIG = with_common_config({
     "min_time_s_per_reporting": 10,
     "num_workers": 2,
     # Number of GPUs the learner should use.
-    "num_gpus": 0,
+    "num_gpus": 1,
     # For each stack of multi-GPU towers, how many slots should we reserve for
     # parallel data loading? Set this to >1 to load data into GPUs in
     # parallel. This will increase GPU memory usage proportionally with the
