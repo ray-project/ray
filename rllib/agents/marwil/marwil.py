@@ -7,10 +7,16 @@ from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentRepl
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
-    synchronous_parallel_sample
-from ray.rllib.execution.train_ops import multi_gpu_train_one_step, TrainOneStep, \
-    train_one_step
+from ray.rllib.execution.rollout_ops import (
+    ConcatBatches,
+    ParallelRollouts,
+    synchronous_parallel_sample,
+)
+from ray.rllib.execution.train_ops import (
+    multi_gpu_train_one_step,
+    TrainOneStep,
+    train_one_step,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
@@ -18,10 +24,13 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
-    WORKER_UPDATE_TIMER
+    WORKER_UPDATE_TIMER,
 )
-from ray.rllib.utils.typing import PartialTrainerConfigDict, ResultDict, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import (
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+)
 from ray.util.iter import LocalIterator
 
 # fmt: off

@@ -17,7 +17,6 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
-import sys
 import time
 from typing import Callable, Optional, Union
 
