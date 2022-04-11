@@ -494,26 +494,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences();
 
  private:
-  struct ContainingRefs {
-    /// When a process that is borrowing an object ID stores the ID inside the
-    /// return value of a task that it executes, the caller of the task is also
-    /// considered a borrower for as long as its reference to the task's return
-    /// ID stays in scope. Thus, the borrower must notify the owner that the
-    /// task's caller is also a borrower. The key is the task's return ID, and
-    /// the value is the task ID and address of the task's caller.
-    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
-    /// A list of processes that are we gave a reference to that are still
-    /// borrowing the ID. This field is updated in 2 cases:
-    ///  1. If we are a borrower of the ID, then we add a process to this list
-    ///     if we passed that process a copy of the ID via task submission and
-    ///     the process is still using the ID by the time it finishes its task.
-    ///     Borrowers are removed from the list when we recursively merge our
-    ///     list into the owner.
-    ///  2. If we are the owner of the ID, then either the above case, or when
-    ///     we hear from a borrower that it has passed the ID to other
-    ///     borrowers. A borrower is removed from the list when it responds
-    ///     that it is no longer using the reference.
-    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
+  struct ContainingReferences {
     /// Object IDs that we own and that contain this object ID.
     /// ObjectIDs are added to this field when we discover that this object
     /// contains other IDs. This can happen in 2 cases:
@@ -538,6 +519,28 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// to their owner. Nesting is transitive, so this flag is set as long as
     /// any child object is in scope.
     bool has_nested_refs_to_report = false;
+  };
+
+  struct BorrowInfo {
+    /// When a process that is borrowing an object ID stores the ID inside the
+    /// return value of a task that it executes, the caller of the task is also
+    /// considered a borrower for as long as its reference to the task's return
+    /// ID stays in scope. Thus, the borrower must notify the owner that the
+    /// task's caller is also a borrower. The key is the task's return ID, and
+    /// the value is the task ID and address of the task's caller.
+    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    /// A list of processes that are we gave a reference to that are still
+    /// borrowing the ID. This field is updated in 2 cases:
+    ///  1. If we are a borrower of the ID, then we add a process to this list
+    ///     if we passed that process a copy of the ID via task submission and
+    ///     the process is still using the ID by the time it finishes its task.
+    ///     Borrowers are removed from the list when we recursively merge our
+    ///     list into the owner.
+    ///  2. If we are the owner of the ID, then either the above case, or when
+    ///     we hear from a borrower that it has passed the ID to other
+    ///     borrowers. A borrower is removed from the list when it responds
+    ///     that it is no longer using the reference.
+    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
   };
 
   struct Reference {
@@ -584,8 +587,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
       bool is_nested = contained_in_borrowed_ids.size();
-      bool has_borrowers = borrowers.size() > 0;
-      bool was_stored_in_objects = stored_in_objects.size() > 0;
+      bool has_borrowers = borrow().borrowers.size() > 0;
+      bool was_stored_in_objects = borrow().stored_in_objects.size() > 0;
 
       bool has_lineage_references = false;
       if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
@@ -607,6 +610,36 @@ class ReferenceCounter : public ReferenceCounterInterface,
       } else {
         return OutOfScope(lineage_pinning_enabled);
       }
+    }
+
+    const BorrowInfo &borrow() const {
+      if (borrow_info == nullptr) {
+        static auto *default_info = new BorrowInfo();
+        return *default_info;
+      }
+      return *borrow_info;
+    }
+
+    BorrowInfo *mutable_borrow() {
+      if (borrow_info == nullptr) {
+        borrow_info = std::make_unique<BorrowInfo>();
+      }
+      return borrow_info.get();
+    }
+
+    const ContainingReferences &containing_refs() const {
+      if (containing_references == nullptr) {
+        static auto *default_refs = new ContainingReferences();
+        return *default_refs;
+      }
+      return *containing_references;
+    }
+
+    ContainingReferences *mutable_containing_refs() {
+      if (containing_references == nullptr) {
+        containing_references = std::make_unique<ContainingReferences>();
+      }
+      return containing_references.get();
     }
 
     /// Description of the call site where the reference was created.
@@ -647,7 +680,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// The ref count for submitted tasks that depend on the ObjectID.
     size_t submitted_task_ref_count = 0;
 
-    std::unique_ptr<ContainingRefs> containing_refs;
+    std::unique_ptr<ContainingReferences> containing_references;
+    std::unique_ptr<BorrowInfo> borrow_info;
 
     /// Object IDs that we own and that contain this object ID.
     /// ObjectIDs are added to this field when we discover that this object
@@ -674,25 +708,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// any child object is in scope.
     bool has_nested_refs_to_report = false;
 
-    /// A list of processes that are we gave a reference to that are still
-    /// borrowing the ID. This field is updated in 2 cases:
-    ///  1. If we are a borrower of the ID, then we add a process to this list
-    ///     if we passed that process a copy of the ID via task submission and
-    ///     the process is still using the ID by the time it finishes its task.
-    ///     Borrowers are removed from the list when we recursively merge our
-    ///     list into the owner.
-    ///  2. If we are the owner of the ID, then either the above case, or when
-    ///     we hear from a borrower that it has passed the ID to other
-    ///     borrowers. A borrower is removed from the list when it responds
-    ///     that it is no longer using the reference.
-    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
-    /// When a process that is borrowing an object ID stores the ID inside the
-    /// return value of a task that it executes, the caller of the task is also
-    /// considered a borrower for as long as its reference to the task's return
-    /// ID stays in scope. Thus, the borrower must notify the owner that the
-    /// task's caller is also a borrower. The key is the task's return ID, and
-    /// the value is the task ID and address of the task's caller.
-    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
     /// is inlined (not stored in plasma), then its lineage ref count is 0
