@@ -89,7 +89,10 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # for it to be used as a penalty, we would have to un-decentralize
         # DDPPO
         "kl_coeff": 0.0,
-        "kl_target": 0.0
+        "kl_target": 0.0,
+
+        # Keep using execution_plan API (training_iteration fn not defined yet).
+        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )
