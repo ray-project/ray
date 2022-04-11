@@ -54,7 +54,6 @@ from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.common import (
@@ -323,24 +322,19 @@ class DQNTrainer(SimpleQTrainer):
 
         for _ in range(store_weight):
             # (1) Sample (MultiAgentBatch) from workers
-            new_sample_batches = synchronous_parallel_sample(self.workers)
+            new_sample_batch = synchronous_parallel_sample(
+                worker_set=self.workers, concat=True
+            )
 
             # Update counters
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
-                len(s) for s in new_sample_batches
-            )
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
-                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-                for s in new_sample_batches
-            )
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += new_sample_batch.agent_steps()
+            self._counters[NUM_ENV_STEPS_SAMPLED] += new_sample_batch.env_steps()
 
-            # (2) Concatenate freshly collected samples
-            concatenated_samples = SampleBatch.concat_samples(new_sample_batches)
-            # (3) Store new samples in replay buffer
-            self.local_replay_buffer.add_batch(concatenated_samples)
+            # (2) Store new samples in replay buffer
+            self.local_replay_buffer.add_batch(new_sample_batch)
 
         for _ in range(sample_and_train_weight):
-            # (4) Sample training batch (MultiAgentBatch) from replay buffer.
+            # (3) Sample training batch (MultiAgentBatch) from replay buffer.
             train_batch = self.local_replay_buffer.replay()
 
             # Old-style replay buffers return None if learning has not started
@@ -351,7 +345,7 @@ class DQNTrainer(SimpleQTrainer):
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
             train_batch = post_fn(train_batch, self.workers, self.config)
 
-            # (5) Learn on training batch.
+            # (4) Learn on training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other
             # cases should use the multi-GPU optimizer, even if only using 1 GPU)
             if self.config.get("simple_optimizer") is True:
