@@ -8,7 +8,8 @@ from typing import Optional, Tuple, Dict, Generator, Union
 import ray
 
 
-_DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024
+_DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB
+_DEFAULT_MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GiB
 
 
 def sync_dir_between_nodes(
@@ -17,7 +18,8 @@ def sync_dir_between_nodes(
     target_ip: str,
     target_path: str,
     force_all: bool = False,
-    chunk_size: int = _DEFAULT_CHUNK_SIZE_BYTES,
+    chunk_size_bytes: int = _DEFAULT_CHUNK_SIZE_BYTES,
+    max_size_bytes: Optional[int] = _DEFAULT_MAX_SIZE_BYTES,
     return_futures: bool = False,
 ) -> Union[None, Tuple[ray.ObjectRef, ray.ActorID, ray.ObjectRef]]:
     """Synchronize directory on source node to directory on target node.
@@ -32,7 +34,9 @@ def sync_dir_between_nodes(
         target_ip: IP of target node.
         target_path: Path to file or directory on target node.
         force_all: If True, all files will be transferred (not just differing files).
-        chunk_size: Chunk size for data transfer.
+        chunk_size_bytes: Chunk size for data transfer.
+        max_size_bytes: If packed data exceeds this value, raise an error before
+            transfer. If ``None``, no limit is enforced.
         return_futures: If True, returns a tuple of the unpack future,
             the pack actor, and the files_stats future. If False (default) will
             block until synchronization finished and return None.
@@ -56,7 +60,10 @@ def sync_dir_between_nodes(
         ).remote(target_path)
 
     pack_actor = pack_actor_on_source_node.remote(
-        source_path, files_stats, chunk_size=chunk_size
+        source_dir=source_path,
+        files_stats=files_stats,
+        chunk_size_bytes=chunk_size_bytes,
+        max_size_bytes=max_size_bytes,
     )
     unpack_future = unpack_on_target_node.remote(pack_actor, target_path)
 
@@ -164,6 +171,10 @@ def _pack_dir(
     return stream
 
 
+def _gib_string(num_bytes: float) -> str:
+    return f"{float(num_bytes / 1024 ** 3):.2f}GiB"
+
+
 @ray.remote
 class _PackActor:
     """Actor wrapping around a packing job.
@@ -179,17 +190,34 @@ class _PackActor:
         files_stats: Dict of relative filenames mapping to a tuple of
             (mtime, filesize). Only files that differ from these stats
             will be packed.
-        chunk_size: Cut bytes stream into chunks of this size in bytes.
+        chunk_size_bytes: Cut bytes stream into chunks of this size in bytes.
+        max_size_bytes: If packed data exceeds this value, raise an error before
+            transfer. If ``None``, no limit is enforced.
     """
 
     def __init__(
         self,
         source_dir: str,
         files_stats: Optional[Dict[str, Tuple[float, int]]] = None,
-        chunk_size: int = _DEFAULT_CHUNK_SIZE_BYTES,
+        chunk_size_bytes: int = _DEFAULT_CHUNK_SIZE_BYTES,
+        max_size_bytes: Optional[int] = _DEFAULT_MAX_SIZE_BYTES,
     ):
         self.stream = _pack_dir(source_dir=source_dir, files_stats=files_stats)
-        self.chunk_size = chunk_size
+
+        # Get buffer size
+        self.stream.seek(0, 2)
+        file_size = self.stream.tell()
+
+        if max_size_bytes and file_size > max_size_bytes:
+            raise RuntimeError(
+                f"Packed directory {source_dir} content has a size of "
+                f"{_gib_string(file_size)}, which exceeds the limit "
+                f"of {_gib_string(max_size_bytes)}. Please check the directory "
+                f"contents. If you want to transfer everything, you can increase "
+                f"or disable the limit by passing the `max_size` argument."
+            )
+        self.chunk_size = chunk_size_bytes
+        self.max_size = max_size_bytes
         self.iter = None
 
     def get_full_data(self) -> bytes:

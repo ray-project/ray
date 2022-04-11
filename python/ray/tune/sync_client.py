@@ -464,6 +464,8 @@ class RemoteTaskClient(SyncClient):
         self._last_source_tuple = None
         self._last_target_tuple = None
 
+        self._max_size_bytes = None  # No file size limit
+
     def _sync_still_running(self) -> bool:
         if not self._sync_future:
             return False
@@ -524,6 +526,7 @@ class RemoteTaskClient(SyncClient):
             target_ip=target_ip,
             target_path=target_path,
             return_futures=True,
+            max_size_bytes=self.max_size_bytes,
         )
 
         if self._store_remotes:

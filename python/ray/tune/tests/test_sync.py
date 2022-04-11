@@ -14,6 +14,7 @@ import yaml
 from collections import deque
 
 import ray
+from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 
 from ray import tune
@@ -488,6 +489,17 @@ class TestSyncFunctionality(unittest.TestCase):
         # Check sync up
         check_dir_contents(temp_up_target)
 
+        # Max size exceeded
+        with self.assertRaises(RayTaskError):
+            sync_dir_between_nodes(
+                source_ip=ray.util.get_node_ip_address(),
+                source_path=temp_up_target,
+                target_ip=ray.util.get_node_ip_address(),
+                target_path=temp_down_target,
+                max_size_bytes=2,
+            )
+            assert not os.listdir(temp_down_target)
+
         sync_dir_between_nodes(
             source_ip=ray.util.get_node_ip_address(),
             source_path=temp_up_target,
@@ -495,7 +507,7 @@ class TestSyncFunctionality(unittest.TestCase):
             target_path=temp_down_target,
         )
 
-        # Check sync up
+        # Check sync down
         check_dir_contents(temp_down_target)
 
         # Delete in some dir
