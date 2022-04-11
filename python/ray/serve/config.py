@@ -276,6 +276,7 @@ class ReplicaConfig:
             raise ValueError("num_gpus in ray_actor_options must be >= 0.")
         self.resource_dict["GPU"] = num_gpus
 
+        # Serve deployments use Ray's default for actor memory.
         self.ray_actor_options.setdefault("memory", None)
         memory = self.ray_actor_options["memory"]
         if memory is not None and not isinstance(memory, (int, float)):
@@ -284,7 +285,9 @@ class ReplicaConfig:
             )
         elif memory is not None and memory <= 0:
             raise ValueError("memory in ray_actor_options must be > 0.")
-        self.resource_dict["memory"] = memory
+        # If memory is None, use 0 in the resource_dict, so it can be treated
+        # as an int.
+        self.resource_dict["memory"] = memory or 0
 
         if self.ray_actor_options.get("object_store_memory", None) is None:
             self.ray_actor_options["object_store_memory"] = 0
