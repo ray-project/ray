@@ -6,6 +6,7 @@ import ray.cloudpickle as pickle
 from ray.ml.config import RunConfig
 from ray.ml.trainer import Trainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
+from ray.tune.cross_validation import create_cross_validation_trainable
 from ray.tune.impl.utils import execute_dataset
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -115,7 +116,7 @@ class TunerInternal:
             "train_dataset": tune.grid_search([ds1, ds2]),
         },
         """
-        execute_dataset(self._param_space)
+        self._is_cv = execute_dataset(self._param_space)
 
     def _setup_create_experiment_checkpoint_dir(
         self, run_config: Optional[RunConfig]
@@ -156,7 +157,7 @@ class TunerInternal:
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         analysis = run(
-            trainable,
+            trainable if not self._is_cv else create_cross_validation_trainable(trainable),
             config={**param_space},
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
@@ -175,6 +176,7 @@ class TunerInternal:
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
+        assert not self._is_cv
         analysis = run(
             trainable,
             resume=True,

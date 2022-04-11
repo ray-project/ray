@@ -157,6 +157,14 @@ class PlacementGroupFactory:
 
         self._bind()
 
+    def times(self, n: int) -> "PlacementGroupFactory":
+        """Returns placement group factory that contains``n`` times the resources."""
+        bundles = list()
+        bundles.append({})  # to account for head
+        for bundle in self._bundles:
+            bundles.append([bundle] * n)
+        return PlacementGroupFactory(bundles=bundles, strategy=self._strategy, *self._args, **self._kwargs)
+
     @property
     def head_bundle_is_empty(self):
         """Returns True if head bundle is empty while child bundles
