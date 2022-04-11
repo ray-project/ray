@@ -428,13 +428,13 @@ class ReporterAgent(
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-    def _get_records_to_report(self, stats, cluster_stats):
+    def _get_records_to_report(self, stats, cluster_stats=None):
         records_to_report = []
         ip = stats["ip"]
 
         # -- Instance count of cluster --
         # Only report cluster stats on head node
-        if "autoscaler_report" in cluster_stats and self._is_head_node:
+        if cluster_stats and "autoscaler_report" in cluster_stats:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
                 records_to_report.append(
@@ -693,13 +693,16 @@ class ReporterAgent(
                     cluster_stats = (
                         json.loads(formatted_status_string.decode())
                         if formatted_status_string
-                        else {}
+                        else None
+                    )
+                    stats = self._get_all_stats()
+                    records_to_report = self._get_records_to_report(
+                        stats, cluster_stats
                     )
                 else:
-                    cluster_stats = {}
+                    stats = self._get_all_stats()
+                    records_to_report = self._get_records_to_report(stats)
 
-                stats = self._get_all_stats()
-                records_to_report = self._get_records_to_report(stats, cluster_stats)
                 self._metrics_agent.record_reporter_stats(records_to_report)
                 await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
