@@ -43,4 +43,10 @@ public class ActorId extends BaseId implements Serializable {
   public int size() {
     return LENGTH;
   }
+
+  public JobId getJobId() {
+    byte[] actorBytes = getBytes();
+    ByteBuffer bf = ByteBuffer.wrap(actorBytes, UNIQUE_BYTES_LENGTH, JobId.LENGTH);
+    return JobId.fromByteBuffer(bf);
+  }
 }

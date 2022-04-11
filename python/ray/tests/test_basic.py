@@ -234,27 +234,6 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
-def test_user_setup_function():
-    script = """
-import ray
-ray.init()
-@ray.remote
-def get_pkg_dir():
-    return ray._private.runtime_env.VAR
-
-print("remote", ray.get(get_pkg_dir.remote()))
-print("local", ray._private.runtime_env.VAR)
-
-
-"""
-
-    env = {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"}
-    out = run_string_as_driver(script, dict(os.environ, **env))
-    (remote_out, local_out) = out.strip().splitlines()[-2:]
-    assert remote_out == "remote hello world"
-    assert local_out == "local hello world"
-
-
 # https://github.com/ray-project/ray/issues/17842
 def test_disable_cuda_devices():
     script = """
