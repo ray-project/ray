@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional, Dict, Type
+from typing import Any, Callable, Generator, List, Optional, Dict, Type
 import os
 import inspect
 import gc
@@ -25,11 +25,12 @@ from ray.ml.constants import TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY
 
 
 class _HFIterableDatasetWithLen(IterableDataset):
-    def __init__(self, generator, length: int):
+    """Special Torch IterableDataset with preset length."""
+    def __init__(self, generator: Generator, length: int):
         self.generator = generator
         self._len = length
 
-    def __iter__(self):
+    def __iter__(self) -> Dict[str, torch.Tensor]:
         it = self.generator
         for x in it:
             yield {**x[0], "labels": x[1]}
@@ -39,7 +40,12 @@ class _HFIterableDatasetWithLen(IterableDataset):
 
 
 class _TrainReportCallback(TrainerCallback):
+    """HF TrainerCallback for Ray Train metric reporting & checkpointing."""
     def __init__(self) -> None:
+        # HF first logs metrics, and then checkpoints. With Ray AIR, we need the
+        # opposite. Therefore, if we detect that a checkpoint will be created,
+        # we delay the train.report call after the checkpoint is reported
+        # to Ray Train.
         self.delayed_report = None
         super().__init__()
 
@@ -75,6 +81,7 @@ class _TrainReportCallback(TrainerCallback):
 def _process_dataset_for_hf(
     dataset: Dataset, feature_columns: Dict[str, List[str]], batch_size: int = 1
 ) -> IterableDataset:
+    """Converts a Ray Dataset into a HF-compatible Torch Dataset."""
     torch_dataset = dataset.to_torch(
         batch_size=batch_size,
         feature_columns=feature_columns,
@@ -116,7 +123,10 @@ class HuggingFaceTrainer(TorchTrainer):
     sampling, as the dataset will already be sharded.
 
     Hugging Face loggers will be automatically disabled, and the ``local_rank``
-    argument in ``TrainingArguments`` will be automatically set.
+    argument in ``TrainingArguments`` will be automatically set. Please note
+    that if you want to use CPU training, you will need to set the ``no_cuda``
+    argument in ``TrainingArguments`` manually - otherwise, an exception
+    may be thrown.
 
     Example:
         .. code-block:: python
@@ -296,6 +306,7 @@ class HuggingFaceTrainer(TorchTrainer):
         ],
     ):
         def train_loop_per_worker(config):
+            # Env vars necessary for HF to setup DDP
             os.environ["RANK"] = str(train.world_rank())
             os.environ["WORLD_SIZE"] = str(train.world_size())
             os.environ["LOCAL_RANK"] = str(train.local_rank())
@@ -323,6 +334,7 @@ class HuggingFaceTrainer(TorchTrainer):
                         f"Missing columns: {list(train_columns - eval_columns)}"
                     )
 
+            # HF-supported format
             feature_columns = {column: [column] for column in train_columns}
 
             # we use batch size 1 here, as it will be converted to
@@ -350,7 +362,7 @@ class HuggingFaceTrainer(TorchTrainer):
                     train_torch_dataset, eval_torch_dataset, **config
                 )
 
-            if not trainer.args.local_rank == train.local_rank():
+            if trainer.args.local_rank != train.local_rank():
                 raise RuntimeError(
                     "local_rank set in TrainingArguments doesn't match "
                     "Ray Train local_rank "
@@ -408,11 +420,12 @@ class HuggingFaceTrainer(TorchTrainer):
                         kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
                     return train.torch.prepare_model(model, ddp_kwargs=kwargs)
 
-                def _save(self, output_dir=None, state_dict=None):
+                def _save(self, *args, **kwargs):
                     # Workaround for RayTrainingArguments not being
-                    # pickleable
+                    # pickleable due to it being defined in a local
+                    # scope
                     self.args.__class__ = base_training_arguments_class
-                    ret = super()._save(output_dir, state_dict)
+                    ret = super()._save(*args, **kwargs)
                     self.args.__class__ = RayTrainingArguments
                     return ret
 
