@@ -1,5 +1,5 @@
-base_image: "anyscale/ray:nightly-py38"
-env_vars: {"RAY_gcs_server_rpc_server_thread_num": "8", "RAY_raylet_report_resources_period_milliseconds": "50"}
+base_image: "anyscale/ray:nightly-py37"
+env_vars: {"RAY_gcs_server_rpc_server_thread_num": "8"}
 debian_packages: []
 
 python:

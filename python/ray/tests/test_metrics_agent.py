@@ -138,7 +138,7 @@ def _setup_cluster_for_test(ray_start_cluster):
     # Generate some metrics for the placement group.
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])
     ray.get(pg.ready())
-    ray.util.placement_group_table()
+    print(ray.util.placement_group_table())
     ray.util.remove_placement_group(pg)
 
     @ray.remote
@@ -155,6 +155,7 @@ def _setup_cluster_for_test(ray_start_cluster):
     obj_refs = [f.remote(), a.ping.remote()]
     # Infeasible task
     b = f.options(resources={"a": 1})
+    print(b)
 
     node_info_list = ray.nodes()
     prom_addresses = []
