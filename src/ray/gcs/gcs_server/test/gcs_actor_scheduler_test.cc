@@ -40,58 +40,59 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID::Nil(),
-      /*is_node_available_fn=*/
-      [](scheduling::NodeID node_id) { return !node_id.IsNil(); });
+        scheduling::NodeID::Nil(),
+        /*is_node_available_fn=*/
+        [](scheduling::NodeID node_id) { return !node_id.IsNil(); });
     cluster_task_manager_ =
-      std::make_shared<ClusterTaskManager>(NodeID::Nil(),
-                                           cluster_resource_scheduler,
-                                           /*get_node_info=*/
-                                           nullptr,
-                                           /*announce_infeasible_task=*/
-                                           nullptr,
-                                           /*local_task_manager=*/
-                                           nullptr);
+        std::make_shared<ClusterTaskManager>(NodeID::Nil(),
+                                             cluster_resource_scheduler,
+                                             /*get_node_info=*/
+                                             nullptr,
+                                             /*announce_infeasible_task=*/
+                                             nullptr,
+                                             /*local_task_manager=*/
+                                             nullptr);
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         gcs_table_storage_, cluster_resource_scheduler->GetClusterResourceManager());
-    gcs_actor_scheduler_ =
-        std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
-            io_service_,
-            *gcs_actor_table_,
-            *gcs_node_manager_,
-            cluster_task_manager_,
-            /*schedule_failure_handler=*/
-            [](std::shared_ptr<gcs::GcsActor> actor,
-                   const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-                   const std::string &scheduling_failure_message) {
-              return;
-            },
-            /*schedule_success_handler=*/
-            [this](std::shared_ptr<gcs::GcsActor> actor,
-                   const rpc::PushTaskReply &reply) {
-              success_actors_.emplace_back(std::move(actor));
-            },
-            raylet_client_pool_,
-            /*client_factory=*/
-            [this](const rpc::Address &address) { return worker_client_; },
-            /*normal_task_resources_changed_callback=*/
-            [gcs_resource_manager](const NodeID &node_id, const rpc::ResourcesData &resources) {
-              gcs_resource_manager->UpdateNodeNormalTaskAndAvailableResources(node_id, resources);
-            });
+    gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
+        io_service_,
+        *gcs_actor_table_,
+        *gcs_node_manager_,
+        cluster_task_manager_,
+        /*schedule_failure_handler=*/
+        [](std::shared_ptr<gcs::GcsActor> actor,
+           const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+           const std::string &scheduling_failure_message) { return; },
+        /*schedule_success_handler=*/
+        [this](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {
+          success_actors_.emplace_back(std::move(actor));
+        },
+        raylet_client_pool_,
+        /*client_factory=*/
+        [this](const rpc::Address &address) { return worker_client_; },
+        /*normal_task_resources_changed_callback=*/
+        [gcs_resource_manager](const NodeID &node_id,
+                               const rpc::ResourcesData &resources) {
+          gcs_resource_manager->UpdateNodeNormalTaskAndAvailableResources(node_id,
+                                                                          resources);
+        });
 
-    gcs_node_manager_->AddNodeAddedListener([cluster_resource_scheduler](std::shared_ptr<rpc::GcsNodeInfo> node) {
+    gcs_node_manager_->AddNodeAddedListener([cluster_resource_scheduler](
+                                                std::shared_ptr<rpc::GcsNodeInfo> node) {
       scheduling::NodeID node_id(node->node_id());
-      auto &cluster_resource_manager = cluster_resource_scheduler->GetClusterResourceManager();
-      // Give the node's total resources a place holder. Othwise, it would not be added to the `cluster_resource_manager_`.
+      auto &cluster_resource_manager =
+          cluster_resource_scheduler->GetClusterResourceManager();
+      // Give the node's total resources a place holder. Othwise, it would not be added to
+      // the `cluster_resource_manager_`.
       if (node->resources_total().empty()) {
-          const std::string cpu_resource = "CPU";
-          absl::flat_hash_map<std::string, double> resource_map;
-          resource_map[cpu_resource] = 0;
-          node->mutable_resources_total()->insert(resource_map.begin(), resource_map.end());
-      } 
+        const std::string cpu_resource = "CPU";
+        absl::flat_hash_map<std::string, double> resource_map;
+        resource_map[cpu_resource] = 0;
+        node->mutable_resources_total()->insert(resource_map.begin(), resource_map.end());
+      }
       for (const auto &entry : node->resources_total()) {
         cluster_resource_manager.UpdateResourceCapacity(
-              node_id, scheduling::ResourceID(entry.first), entry.second);
+            node_id, scheduling::ResourceID(entry.first), entry.second);
       }
     });
   }
@@ -156,7 +157,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   auto job_id = JobID::FromInt(1);
   auto create_actor_request = Mocker::GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(create_actor_request.task_spec(), "");
-  
+
   // Schedule the actor with zero node.
   gcs_actor_scheduler_->ScheduleByRaylet(actor);
 
@@ -755,14 +756,16 @@ TEST_F(GcsActorSchedulerTest, TestBalancedSchedule) {
 TEST_F(GcsActorSchedulerTest, TestRejectedRequestWorkerLeaseReply) {
   // Add two nodes, each with 32 memory units and 4 CPU.
   std::unordered_map<std::string, double> node_resources = {{kMemory_ResourceLabel, 32},
-                                                              {kCPU_ResourceLabel, 4}};
+                                                            {kCPU_ResourceLabel, 4}};
   auto node1 = AddNewNode(node_resources);
   auto node2 = AddNewNode(node_resources);
   ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
 
   // In the hybrid_policy, nodes are sorted in increasing order of scheduling::NodeID. So
   // we have to figure out which node is the first one in the sorted order.
-  auto first_node = scheduling::NodeID(node1->node_id()) < scheduling::NodeID(node2->node_id()) ? node1 : node2;
+  auto first_node =
+      scheduling::NodeID(node1->node_id()) < scheduling::NodeID(node2->node_id()) ? node1
+                                                                                  : node2;
 
   // Schedule a actor (requiring 32 memory units and 4 CPU).
   std::unordered_map<std::string, double> required_placement_resources = {

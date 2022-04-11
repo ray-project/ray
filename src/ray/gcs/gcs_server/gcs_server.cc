@@ -329,7 +329,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
                                                                          resources);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      main_service_,
       std::move(scheduler),
       gcs_table_storage_,
       gcs_publisher_,

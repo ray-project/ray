@@ -192,7 +192,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
-      boost::asio::io_context &io_context,
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
       std::shared_ptr<GcsPublisher> gcs_publisher,
@@ -275,11 +274,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \returns List of <namespace, name> pairs.
   std::vector<std::pair<std::string, std::string>> ListNamedActors(
       bool all_namespaces, const std::string &ray_namespace) const;
-
-  /// Schedule actors in the `pending_actors_` queue.
-  /// This method should be called when new nodes are registered or resources
-  /// change.
-  void SchedulePendingActors();
 
   /// Handle a node death. This will restart all actors associated with the
   /// specified node id, including actors which are scheduled or have been
@@ -503,8 +497,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// dies.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
       unresolved_actors_;
-  /// The pending actors which will not be scheduled until there's a resource change.
-  std::vector<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of node and created actors. Each node ID
   /// maps to a map from worker ID to the actor created on that worker.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;
@@ -513,7 +505,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// according to its owner, or the owner dies.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
-  boost::asio::io_context &io_context_;
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.

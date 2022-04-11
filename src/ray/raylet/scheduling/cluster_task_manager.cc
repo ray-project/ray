@@ -190,12 +190,14 @@ namespace {
 void ReplyCancelled(std::shared_ptr<internal::Work> &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
-  auto reply = work->reply;
-  auto callback = work->callback;
-  reply->set_canceled(true);
-  reply->set_failure_type(failure_type);
-  reply->set_scheduling_failure_message(scheduling_failure_message);
-  callback(NodeID::Nil());
+  if (work->reply) {
+    auto reply = work->reply;
+    auto callback = work->callback;
+    reply->set_canceled(true);
+    reply->set_failure_type(failure_type);
+    reply->set_scheduling_failure_message(scheduling_failure_message);
+    callback(NodeID::Nil());
+  }
 }
 }  // namespace
 
@@ -239,8 +241,12 @@ bool ClusterTaskManager::CancelTask(
     }
   }
 
-  return local_task_manager_->CancelTask(
-      task_id, failure_type, scheduling_failure_message);
+  if (local_task_manager_) {
+    return local_task_manager_->CancelTask(
+        task_id, failure_type, scheduling_failure_message);
+  } else {
+    return false;
+  }
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {

@@ -89,6 +89,10 @@ class GcsActorSchedulerInterface {
   /// \param actor The actor to be destoryed.
   virtual void OnActorDestruction(std::shared_ptr<GcsActor> actor) = 0;
 
+  virtual size_t GetPendingActorsCount() = 0;
+
+  virtual bool RemovePendingActor(const std::shared_ptr<GcsActor> &actor) = 0;
+
   virtual std::string DebugString() const = 0;
 
   virtual ~GcsActorSchedulerInterface() {}
@@ -175,6 +179,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   void ScheduleByGcs(std::shared_ptr<GcsActor> actor);
 
   void ScheduleByRaylet(std::shared_ptr<GcsActor> actor);
+
+  size_t GetPendingActorsCount() override;
+
+  bool RemovePendingActor(const std::shared_ptr<GcsActor> &actor) override;
 
  protected:
   /// The GcsLeasedWorker is kind of abstraction of remote leased worker inside raylet. It

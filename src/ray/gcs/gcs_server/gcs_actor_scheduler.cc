@@ -620,5 +620,15 @@ void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   }
 }
 
+size_t GcsActorScheduler::GetPendingActorsCount() {
+  return cluster_task_manager_->GetInfeasibleQueueSize() +
+         cluster_task_manager_->GetWaitingQueueSize();
+}
+
+bool GcsActorScheduler::RemovePendingActor(const std::shared_ptr<GcsActor> &actor) {
+  return cluster_task_manager_->CancelTask(
+      actor->GetCreationTaskSpecification().TaskId());
+}
+
 }  // namespace gcs
 }  // namespace ray
