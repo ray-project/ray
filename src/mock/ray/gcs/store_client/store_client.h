@@ -25,28 +25,20 @@ class MockStoreClient : public StoreClient {
                const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status,
-              AsyncPutWithIndex,
-              (const std::string &table_name,
-               const std::string &key,
-               const std::string &index_key,
-               const std::string &data,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
               AsyncGet,
               (const std::string &table_name,
                const std::string &key,
                const OptionalItemCallback<std::string> &callback),
               (override));
   MOCK_METHOD(Status,
-              AsyncGetByIndex,
+              AsyncGetAll,
               (const std::string &table_name,
-               const std::string &index_key,
                (const MapCallback<std::string, std::string> &callback)),
               (override));
   MOCK_METHOD(Status,
-              AsyncGetAll,
+              AsyncMultiGet,
               (const std::string &table_name,
+               const std::vector<std::string> &key,
                (const MapCallback<std::string, std::string> &callback)),
               (override));
   MOCK_METHOD(Status,
@@ -56,29 +48,9 @@ class MockStoreClient : public StoreClient {
                const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status,
-              AsyncDeleteWithIndex,
-              (const std::string &table_name,
-               const std::string &key,
-               const std::string &index_key,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
               AsyncBatchDelete,
               (const std::string &table_name,
                const std::vector<std::string> &keys,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncBatchDeleteWithIndex,
-              (const std::string &table_name,
-               const std::vector<std::string> &keys,
-               const std::vector<std::string> &index_keys,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status,
-              AsyncDeleteByIndex,
-              (const std::string &table_name,
-               const std::string &index_key,
                const StatusCallback &callback),
               (override));
   MOCK_METHOD(int, GetNextJobID, (), (override));
