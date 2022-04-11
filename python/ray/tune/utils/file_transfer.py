@@ -195,7 +195,7 @@ class _PackActor:
     def get_full_data(self) -> bytes:
         return self.stream.getvalue()
 
-    def _chunk_generator(self) -> Generator[None, bytes, None]:
+    def _chunk_generator(self) -> Generator[bytes, None, None]:
         self.stream.seek(0)
         data = self.stream.read(self.chunk_size)
         while data:
@@ -211,7 +211,7 @@ class _PackActor:
             return None
 
 
-def _iter_remote(actor: ray.ActorID) -> Generator[None, bytes, None]:
+def _iter_remote(actor: ray.ActorID) -> Generator[bytes, None, None]:
     """Iterate over actor task and return as generator."""
     while True:
         buffer = ray.get(actor.next.remote())
