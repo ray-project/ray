@@ -22,30 +22,6 @@ from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.stats import DatasetStats, _get_or_create_stats_actor
 
 
-def execute_read_task(
-    i: int,
-    task: ReadTask,
-    context: DatasetContext,
-    stats_uuid: str,
-    stats_actor: ray.actor.ActorHandle,
-) -> Tuple[MaybeBlockPartition, BlockPartitionMetadata]:
-    DatasetContext._set_current(context)
-    stats = BlockExecStats.builder()
-
-    # Execute the task.
-    block = task()
-
-    metadata = task.get_metadata()
-    if context.block_splitting_enabled:
-        metadata.exec_stats = stats.build()
-    else:
-        metadata = BlockAccessor.for_block(block).get_metadata(
-            input_files=metadata.input_files, exec_stats=stats.build()
-        )
-    stats_actor.record_task.remote(stats_uuid, i, metadata)
-    return block, metadata
-
-
 class LazyBlockList(BlockList):
     """A BlockList that submits tasks lazily on-demand.
 
@@ -146,7 +122,7 @@ class LazyBlockList(BlockList):
             self._execution_started = True
         task = self._tasks[task_idx]
         return (
-            cached_remote_fn(execute_read_task)
+            cached_remote_fn(_execute_read_task)
             .options(num_returns=2, **self._remote_args)
             .remote(
                 i=task_idx,
@@ -413,3 +389,27 @@ class LazyBlockList(BlockList):
             if b is not None:
                 i += 1
         return i
+
+
+def _execute_read_task(
+    i: int,
+    task: ReadTask,
+    context: DatasetContext,
+    stats_uuid: str,
+    stats_actor: ray.actor.ActorHandle,
+) -> Tuple[MaybeBlockPartition, BlockPartitionMetadata]:
+    DatasetContext._set_current(context)
+    stats = BlockExecStats.builder()
+
+    # Execute the task.
+    block = task()
+
+    metadata = task.get_metadata()
+    if context.block_splitting_enabled:
+        metadata.exec_stats = stats.build()
+    else:
+        metadata = BlockAccessor.for_block(block).get_metadata(
+            input_files=metadata.input_files, exec_stats=stats.build()
+        )
+    stats_actor.record_task.remote(stats_uuid, i, metadata)
+    return block, metadata
