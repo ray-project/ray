@@ -30,9 +30,9 @@ def sync_dir_between_nodes(
 
     Args:
         source_ip: IP of source node.
-        source_path: Path to file or directory on source node.
+        source_path: Path to directory on source node.
         target_ip: IP of target node.
-        target_path: Path to file or directory on target node.
+        target_path: Path to directory on target node.
         force_all: If True, all files will be transferred (not just differing files).
         chunk_size_bytes: Chunk size for data transfer.
         max_size_bytes: If packed data exceeds this value, raise an error before
