@@ -75,9 +75,13 @@ class TestGC:
             cluster.add_node(
                 num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
             )
+            print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
+
+        print(f"Added all {NUM_NODES} nodes.")
 
         if option == "working_dir":
             ray.init(address, runtime_env={"working_dir": source})
+            print("Initialized ray with working_dir runtime_env.")
         elif option == "py_modules":
             if source != S3_PACKAGE_URI:
                 source = str(Path(source) / "test_module")
@@ -91,6 +95,7 @@ class TestGC:
                     ]
                 },
             )
+            print("Initialized ray with py_modules runtime_env.")
 
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
@@ -103,6 +108,8 @@ class TestGC:
         else:
             assert not check_internal_kv_gced()
 
+        print(f'kv check 1 passed with source "{source}" and option "{option}".')
+
         @ray.remote(num_cpus=1)
         class A:
             def test_import(self):
@@ -113,21 +120,35 @@ class TestGC:
                 test_module.one()
 
         num_cpus = int(ray.available_resources()["CPU"])
+        print(f"{num_cpus} cpus available.")
+
         actors = [A.remote() for _ in range(num_cpus)]
+        print(f"Created {len(actors)} actors.")
+
         ray.get([a.test_import.remote() for a in actors])
+        print("Got responses from all actors.")
 
         if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
+        print(f'kv check 2 passed with source "{source}" and option "{option}".')
+
         assert not check_local_files_gced(cluster)
+        print("check_local_files_gced() check passed.")
 
         ray.shutdown()
+        print("Ray has been shut down.")
 
         # Need to re-connect to use internal_kv.
         ray.init(address=address)
+        print(f'Reconnected to Ray at address "{address}".')
+
         wait_for_condition(check_internal_kv_gced)
+        print("check_internal_kv_gced passed wait_for_condition block.")
+
         wait_for_condition(lambda: check_local_files_gced(cluster))
+        print("check_local_files_gced passed wait_for_condition block.")
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
@@ -141,8 +162,12 @@ class TestGC:
             cluster.add_node(
                 num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
             )
+            print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
+
+        print(f"Added all {NUM_NODES} nodes.")
 
         ray.init(address)
+        print(f'Initialized Ray at address "{address}".')
 
         @ray.remote(num_cpus=1)
         class A:
@@ -161,14 +186,26 @@ class TestGC:
                     ]
                 }
             )
+        print(f'Created deployment A with option "{option}".')
 
         num_cpus = int(ray.available_resources()["CPU"])
+        print(f"{num_cpus} cpus available.")
+
         actors = [A.remote() for _ in range(num_cpus)]
+        print(f"Created {len(actors)} actors.")
+
         ray.get([a.check.remote() for a in actors])
+        print("Got responses from all actors.")
+
         for i in range(num_cpus):
             assert not check_local_files_gced(cluster)
+            print(f"check_local_files_gced assertion passed for cpu {i}.")
+
             ray.kill(actors[i])
+            print(f"Issued ray.kill for actor {i}.")
+
         wait_for_condition(lambda: check_local_files_gced(cluster))
+        print("check_local_files_gced passed wait_for_condition block.")
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
@@ -201,6 +238,7 @@ class TestGC:
                     ]
                 },
             )
+        print(f'Initialized Ray with option "{option}".')
 
         # For a local directory, the package should be in the GCS.
         # For an S3 URI, there should be nothing in the GCS because
@@ -210,6 +248,7 @@ class TestGC:
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
+        print(f'kv check 1 passed with source "{source}" and option "{option}".')
 
         @ray.remote
         class A:
@@ -221,30 +260,49 @@ class TestGC:
                 test_module.one()
 
         a = A.options(name="test", lifetime="detached").remote()
+        print('Created detached actor with name "test".')
+
         ray.get(a.test_import.remote())
+        print('Got response from "test" actor.')
 
         if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
+        print(f'kv check 2 passed with source "{source}" and option "{option}".')
+
         assert not check_local_files_gced(cluster)
+        print("check_local_files_gced() check passed.")
 
         ray.shutdown()
+        print("Ray has been shut down.")
 
         ray.init(address, namespace="test")
+        print(f'Reconnected to Ray at address "{address}" and namespace "test".')
 
         if source == S3_PACKAGE_URI and option != "py_modules":
             assert check_internal_kv_gced()
         else:
             assert not check_internal_kv_gced()
+        print(f'kv check 3 passed with source "{source}" and option "{option}".')
+
         assert not check_local_files_gced(cluster)
+        print("check_local_files_gced() check passed.")
 
         a = ray.get_actor("test")
+        print('Got "test" actor.')
+
         ray.get(a.test_import.remote())
+        print('Got response from "test" actor.')
 
         ray.kill(a)
+        print('Issued ray.kill() request to "test" actor.')
+
         wait_for_condition(check_internal_kv_gced)
+        print("check_internal_kv_gced passed wait_for_condition block.")
+
         wait_for_condition(lambda: check_local_files_gced(cluster))
+        print("check_local_files_gced passed wait_for_condition block.")
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     def test_hit_cache_size_limit(self, start_cluster, URI_cache_10_MB):
@@ -255,33 +313,54 @@ class TestGC:
             cluster.add_node(
                 num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources"
             )
+            print(f'Added node with runtime_env_dir_name "node_{i}_runtime_resources".')
+
+        print(f"Added all {NUM_NODES} nodes.")
+
         with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+            print("Entered tempfile context manager.")
+
             with open("test_file_1", "wb") as f:
                 f.write(os.urandom(8 * 1024 * 1024))  # 8 MiB
+            print('Wrote random bytes to "test_file_1" file.')
 
             ray.init(address, runtime_env={"working_dir": tmp_dir})
+            print(f'Initialized Ray at "{address}" with working_dir.')
 
             @ray.remote
             def f():
                 pass
 
             ray.get(f.remote())
+            print('Created and received response from task "f".')
+
             ray.shutdown()
+            print("Ray has been shut down.")
 
             with open("test_file_2", "wb") as f:
                 f.write(os.urandom(4 * 1024 * 1024))
+            print('Wrote random bytes to "test_file_2".')
+
             os.remove("test_file_1")
+            print('Removed "test_file_1".')
 
             ray.init(address, runtime_env={"working_dir": tmp_dir})
+            print(f'Reinitialized Ray at address "{address}" with working_dir.')
+
             # Without the cache size limit, we would expect the local dir to be
             # 12 MB.  Since we do have a size limit, the first package must be
             # GC'ed, leaving us with 4 MB.  Sleep to give time for deletion.
             time.sleep(5)
-            for node in cluster.list_all_nodes():
+            print("Slept for 5 seconds.")
+
+            for idx, node in enumerate(cluster.list_all_nodes()):
                 local_dir = os.path.join(
                     node.get_runtime_env_dir_path(), "working_dir_files"
                 )
+                print("Created local_dir path.")
+
                 assert 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+                print(f"get_directory_size_bytes assertion {idx} passed.")
 
 
 # Set scope to "class" to force this to run before start_cluster, whose scope

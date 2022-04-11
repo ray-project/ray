@@ -277,8 +277,12 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+def is_nan(value):
+    return np.isnan(value)
+
+
 def is_nan_or_inf(value):
-    return np.isnan(value) or np.isinf(value)
+    return is_nan(value) or np.isinf(value)
 
 
 def _to_pinnable(obj):
