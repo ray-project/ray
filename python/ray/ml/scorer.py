@@ -35,6 +35,7 @@ class BatchScorer:
         *,
         batch_size: int = 4096,
         max_scoring_actors: Optional[int] = None,
+        num_gpus: int = 0,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs
     ) -> ray.data.Dataset:
@@ -44,8 +45,9 @@ class BatchScorer:
             dataset: Ray dataset to run batch scoring on.
             batch_size: Split dataset into batches of this size for prediction.
             max_scoring_actors: If set, specify the maximum number of scoring actors.
+            num_gpus: Number of GPUs to allocate per scoring worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray.
             predict_kwargs: Keyword arguments passed to the predictor's
                 ``predict()`` method.
 
@@ -69,6 +71,7 @@ class BatchScorer:
         compute = ray.data.ActorPoolStrategy(min_size=1, max_size=max_scoring_actors)
 
         ray_remote_args = ray_remote_args or {}
+        ray_remote_args["num_gpus"] = num_gpus
 
         return dataset.map_batches(
             ScoringWrapper,
