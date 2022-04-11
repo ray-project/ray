@@ -527,7 +527,7 @@ void LocalTaskManager::Spillback(const NodeID &spillback_to,
 
   if (work->grant_or_reject) {
     work->reply->set_rejected(true);
-    send_reply_callback();
+    send_reply_callback(NodeID::Nil());
     return;
   }
 
@@ -553,7 +553,7 @@ void LocalTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
-  send_reply_callback();
+  send_reply_callback(NodeID::Nil());
 }
 
 void LocalTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
@@ -712,7 +712,7 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work,
   reply->set_canceled(true);
   reply->set_failure_type(failure_type);
   reply->set_scheduling_failure_message(scheduling_failure_message);
-  callback();
+  callback(NodeID::Nil());
 }
 }  // namespace
 
@@ -820,7 +820,7 @@ void LocalTaskManager::Dispatch(
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayTask &task,
     rpc::RequestWorkerLeaseReply *reply,
-    std::function<void(void)> send_reply_callback) {
+    std::function<void(NodeID node_id)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
   worker->SetBundleId(task_spec.PlacementGroupBundleId());
@@ -870,7 +870,7 @@ void LocalTaskManager::Dispatch(
     }
   }
   // Send the result back.
-  send_reply_callback();
+  send_reply_callback(NodeID::Nil());
 }
 
 void LocalTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {

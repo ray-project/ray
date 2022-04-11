@@ -72,6 +72,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  void QueueAndScheduleTask(TaskSpecification task_spec,
+                            NodeID forward_to,
+                            std::function<void(NodeID node_id)> callback);
+
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
@@ -124,6 +128,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
+  std::shared_ptr<ClusterResourceScheduler> GetClusterResourceScheduler() const;
+
+  size_t GetInfeasibleQueueSize() const;
+  size_t GetWaitingQueueSize() const;
+
  private:
   void TryScheduleInfeasibleTask();
 
@@ -160,7 +169,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       infeasible_tasks_;
 
-  const SchedulerResourceReporter scheduler_resource_reporter_;
+  std::unique_ptr<SchedulerResourceReporter> scheduler_resource_reporter_;
   mutable SchedulerStats internal_stats_;
 
   /// Returns the current time in milliseconds.

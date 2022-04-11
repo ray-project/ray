@@ -20,7 +20,6 @@
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -32,7 +31,6 @@
 
 namespace ray {
 namespace gcs {
-class GcsActorWorkerAssignment;
 
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
@@ -128,16 +126,15 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
-  std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
-
-  void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
+  const ResourceRequest &GetAcquiredResources() const;
+  ResourceRequest &GetMutableAcquiredResources();
 
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
-  // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
-  std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
+  /// Resources acquired by this actor.
+  ResourceRequest acquired_resources_;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
@@ -361,10 +358,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Collect stats from gcs actor manager in-memory data structures.
   void RecordMetrics() const;
 
-  bool GetSchedulePendingActorsPosted() const;
-
-  void SetSchedulePendingActorsPosted(bool posted);
-
  private:
   /// A data structure representing an actor's owner.
   struct Owner {
@@ -546,9 +539,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
-
-  /// Indicate whether a call of SchedulePendingActors has been posted.
-  bool schedule_pending_actors_posted_;
 
   // Debug info.
   enum CountType {

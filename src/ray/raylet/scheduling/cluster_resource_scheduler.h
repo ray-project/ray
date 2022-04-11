@@ -62,6 +62,12 @@ class ClusterResourceScheduler {
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
+  // This constructor is only used by gcs scheduler. So the
+  // `local_node_id` has to be nil and `is_node_available_fn`
+  // has to exclude the local node.
+  ClusterResourceScheduler(scheduling::NodeID local_node_id,
+                           std::function<bool(scheduling::NodeID)> is_node_available_fn);
+
   /// Schedule the specified resources to the cluster nodes.
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
@@ -94,6 +100,13 @@ class ClusterResourceScheduler {
                                             bool prioritize_local_node,
                                             bool exclude_local_node,
                                             bool requires_object_store_memory,
+                                            bool *is_infeasible);
+
+  scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
+                                            bool prioritize_local_node,
+                                            bool exclude_local_node,
+                                            bool requires_object_store_memory,
+                                            scheduling::NodeID forward_to,
                                             bool *is_infeasible);
 
   /// Subtract the resources required by a given resource request (resource_request) from

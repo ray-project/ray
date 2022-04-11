@@ -36,10 +36,13 @@ ClusterTaskManager::ClusterTaskManager(
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
       local_task_manager_(std::move(local_task_manager)),
-      scheduler_resource_reporter_(
-          tasks_to_schedule_, infeasible_tasks_, *local_task_manager_),
       internal_stats_(*this, *local_task_manager_),
-      get_time_ms_(get_time_ms) {}
+      get_time_ms_(get_time_ms) {
+  if (local_task_manager_) {
+    scheduler_resource_reporter_ = std::make_unique<SchedulerResourceReporter>(
+        tasks_to_schedule_, infeasible_tasks_, *local_task_manager_);
+  }
+}
 
 void ClusterTaskManager::QueueAndScheduleTask(
     const RayTask &task,
@@ -49,13 +52,32 @@ void ClusterTaskManager::QueueAndScheduleTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
-  auto work = std::make_shared<internal::Work>(
-      task, grant_or_reject, is_selected_based_on_locality, reply, [send_reply_callback] {
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      });
+  auto work = std::make_shared<internal::Work>(task,
+                                               grant_or_reject,
+                                               is_selected_based_on_locality,
+                                               reply,
+                                               [send_reply_callback](NodeID node_id) {
+                                                 send_reply_callback(
+                                                     Status::OK(), nullptr, nullptr);
+                                               });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
+  if (infeasible_tasks_.count(scheduling_class) > 0) {
+    infeasible_tasks_[scheduling_class].push_back(work);
+  } else {
+    tasks_to_schedule_[scheduling_class].push_back(work);
+  }
+  ScheduleAndDispatchTasks();
+}
+
+void ClusterTaskManager::QueueAndScheduleTask(
+    TaskSpecification task_spec,
+    NodeID forward_to,
+    std::function<void(NodeID node_id)> callback) {
+  auto work = std::make_shared<internal::Work>(
+      RayTask(task_spec), false, false, nullptr, callback, forward_to);
+  const auto &scheduling_class = task_spec.GetSchedulingClass();
   if (infeasible_tasks_.count(scheduling_class) > 0) {
     infeasible_tasks_[scheduling_class].push_back(work);
   } else {
@@ -86,6 +108,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
           work->PrioritizeLocalNode(),
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false,
+          /*forward_to*/ scheduling::NodeID(work->forward_to.Binary()),
           &is_infeasible);
 
       // There is no node that has available resources to run the request.
@@ -108,7 +131,9 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       auto &work_queue = shapes_it->second;
       const auto &work = work_queue[0];
       const RayTask task = work->task;
-      announce_infeasible_task_(task);
+      if (announce_infeasible_task_) {
+        announce_infeasible_task_(task);
+      }
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
@@ -119,7 +144,9 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
-  local_task_manager_->ScheduleAndDispatchTasks();
+  if (local_task_manager_) {
+    local_task_manager_->ScheduleAndDispatchTasks();
+  }
 }
 
 void ClusterTaskManager::TryScheduleInfeasibleTask() {
@@ -140,6 +167,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
         work->PrioritizeLocalNode(),
         /*exclude_local_node*/ false,
         /*requires_object_store_memory*/ false,
+        /*forward_to*/ scheduling::NodeID(work->forward_to.Binary()),
         &is_infeasible);
 
     // There is no node that has available resources to run the request.
@@ -167,7 +195,7 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work,
   reply->set_canceled(true);
   reply->set_failure_type(failure_type);
   reply->set_scheduling_failure_message(scheduling_failure_message);
-  callback();
+  callback(NodeID::Nil());
 }
 }  // namespace
 
@@ -216,13 +244,13 @@ bool ClusterTaskManager::CancelTask(
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
-  scheduler_resource_reporter_.FillPendingActorInfo(reply);
+  scheduler_resource_reporter_->FillPendingActorInfo(reply);
 }
 
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
     const std::shared_ptr<SchedulingResources> &last_reported_resources) {
-  scheduler_resource_reporter_.FillResourceUsage(data, last_reported_resources);
+  scheduler_resource_reporter_->FillResourceUsage(data, last_reported_resources);
 }
 
 bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
@@ -293,7 +321,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
 
   if (work->grant_or_reject) {
     work->reply->set_rejected(true);
-    send_reply_callback();
+    send_reply_callback(NodeID::Nil());
     return;
   }
 
@@ -309,17 +337,43 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  auto node_info_ptr = get_node_info_(spillback_to);
-  RAY_CHECK(node_info_ptr)
-      << "Spilling back to a node manager, but no GCS info found for node "
-      << spillback_to;
-  auto reply = work->reply;
-  reply->mutable_retry_at_raylet_address()->set_ip_address(
-      node_info_ptr->node_manager_address());
-  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
-  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
-
-  send_reply_callback();
+  if (work->reply) {  // We are scheduling the task at Raylet.
+    auto node_info_ptr = get_node_info_(spillback_to);
+    RAY_CHECK(node_info_ptr)
+        << "Spilling back to a node manager, but no GCS info found for node "
+        << spillback_to;
+    auto reply = work->reply;
+    reply->mutable_retry_at_raylet_address()->set_ip_address(
+        node_info_ptr->node_manager_address());
+    reply->mutable_retry_at_raylet_address()->set_port(
+        node_info_ptr->node_manager_port());
+    reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+    send_reply_callback(NodeID::Nil());
+  } else {  // We are scheduling the (actor creation) task at GCS.
+    work->callback(spillback_to);
+  }
 }
+
+std::shared_ptr<ClusterResourceScheduler>
+ClusterTaskManager::GetClusterResourceScheduler() const {
+  return cluster_resource_scheduler_;
+}
+
+size_t ClusterTaskManager::GetInfeasibleQueueSize() const {
+  size_t count = 0;
+  for (const auto &cls_entry : infeasible_tasks_) {
+    count += cls_entry.second.size();
+  }
+  return count;
+}
+
+size_t ClusterTaskManager::GetWaitingQueueSize() const {
+  size_t count = 0;
+  for (const auto &cls_entry : tasks_to_schedule_) {
+    count += cls_entry.second.size();
+  }
+  return count;
+}
+
 }  // namespace raylet
 }  // namespace ray

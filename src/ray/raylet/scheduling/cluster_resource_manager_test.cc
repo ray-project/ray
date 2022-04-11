@@ -139,38 +139,42 @@ TEST_F(ClusterResourceManagerTest, UpdateNodeAvailableResourcesIfExist) {
   ASSERT_FALSE(node_resources.total.Has(ResourceID("CUSTOM_RESOURCE")));
 }
 
-TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskResources) {
+TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskAndAvailableResources) {
   const auto &node_resources = manager->GetNodeResources(node0);
   ASSERT_TRUE(node_resources.normal_task_resources.IsEmpty());
+  auto prev_available_cpu = node_resources.available.Get(ResourceID::CPU());
 
   rpc::ResourcesData resources_data;
   resources_data.set_resources_normal_task_changed(true);
   resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
   resources_data.mutable_resources_normal_task()->insert({"CPU", 0.5});
 
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
+  manager->UpdateNodeNormalTaskAndAvailableResources(node0, resources_data);
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
+  ASSERT_TRUE(prev_available_cpu ==
+              node_resources.available.Get(ResourceID::CPU()) + 0.5);
 
   (*resources_data.mutable_resources_normal_task())["CPU"] = 0.8;
   resources_data.set_resources_normal_task_changed(false);
   resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
+  manager->UpdateNodeNormalTaskAndAvailableResources(node0, resources_data);
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
+  ASSERT_TRUE(prev_available_cpu ==
+              node_resources.available.Get(ResourceID::CPU()) + 0.5);
 
   resources_data.set_resources_normal_task_changed(true);
   resources_data.set_resources_normal_task_timestamp(0);
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
+  manager->UpdateNodeNormalTaskAndAvailableResources(node0, resources_data);
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
-
-  resources_data.set_resources_normal_task_changed(true);
-  resources_data.set_resources_normal_task_timestamp(0);
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
-  ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.5);
+  ASSERT_TRUE(prev_available_cpu ==
+              node_resources.available.Get(ResourceID::CPU()) + 0.5);
 
   resources_data.set_resources_normal_task_changed(true);
   resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-  manager->UpdateNodeNormalTaskResources(node0, resources_data);
+  manager->UpdateNodeNormalTaskAndAvailableResources(node0, resources_data);
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.8);
+  ASSERT_TRUE(prev_available_cpu ==
+              node_resources.available.Get(ResourceID::CPU()) + 0.8);
 }
 
 }  // namespace ray

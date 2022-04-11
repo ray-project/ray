@@ -60,19 +60,22 @@ class Work {
   const bool grant_or_reject;
   const bool is_selected_based_on_locality;
   rpc::RequestWorkerLeaseReply *reply;
-  std::function<void(void)> callback;
+  std::function<void(NodeID node_id)> callback;
+  NodeID forward_to;
   std::shared_ptr<TaskResourceInstances> allocated_instances;
   Work(RayTask task,
        bool grant_or_reject,
        bool is_selected_based_on_locality,
        rpc::RequestWorkerLeaseReply *reply,
-       std::function<void(void)> callback,
+       std::function<void(NodeID node_id)> callback,
+       NodeID forward_to = NodeID::Nil(),
        WorkStatus status = WorkStatus::WAITING)
       : task(task),
         grant_or_reject(grant_or_reject),
         is_selected_based_on_locality(is_selected_based_on_locality),
         reply(reply),
         callback(callback),
+        forward_to(forward_to),
         allocated_instances(nullptr),
         status_(status){};
   Work(const Work &Work) = delete;
