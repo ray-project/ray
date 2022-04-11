@@ -758,7 +758,11 @@ class DeploymentReplica(VersionedReplica):
         if self._actor.actor_resources is None:
             return "UNKNOWN", "UNKNOWN"
 
-        required = {k: v for k, v in self._actor.actor_resources.items() if v > 0}
+        required = {
+            k: v
+            for k, v in self._actor.actor_resources.items()
+            if v is not None and v > 0
+        }
         available = {
             k: v for k, v in self._actor.available_resources.items() if k in required
         }
