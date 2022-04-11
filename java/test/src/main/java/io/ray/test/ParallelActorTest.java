@@ -50,21 +50,32 @@ public class ParallelActorTest extends BaseTest {
     Assert.assertEquals(1000000, (int) obj2.get());
 
     {
+      // stateless tests
       ParallelInstance<A> instance = actor.getInstance(/*index=*/2);
 
       Preconditions.checkNotNull(instance);
-      /// We haven't impled this, but it's the same implementation as above.
-      int res = instance.task(A::f1, 100, 200).remote().get();   // Executed in instance 2
-      Assert.assertEquals(res, 300);
+      int res = instance.task(A::f1, 100000, 200000).remote().get();   // Executed in instance 2
+      Assert.assertEquals(res, 300000);
+
+      instance = actor.getInstance(/*index=*/3);
+      Preconditions.checkNotNull(instance);
+      res = instance.task(A::f1, 100000, 200000).remote().get();   // Executed in instance 2
+      Assert.assertEquals(res, 300000);
     }
 
     {
-      ParallelInstance<A> instance = actor.getInstance(/*index=*/3);
+      // stateful tests
+      ParallelInstance<A> instance = actor.getInstance(/*index=*/2);
 
       Preconditions.checkNotNull(instance);
-      /// We haven't impled this, but it's the same implementation as above.
-      int res = instance.task(A::f1, 100, 200).remote().get();   // Executed in instance 2
-      Assert.assertEquals(res, 300);
+      int res = instance.task(A::incr, 1000000).remote().get();   // Executed in instance 2
+      Assert.assertEquals(res, 2000000);
+
+      instance = actor.getInstance(/*index=*/2);
+      Preconditions.checkNotNull(instance);
+      res = instance.task(A::incr, 2000000).remote().get();   // Executed in instance 2
+      Assert.assertEquals(res, 4000000);
     }
+
   }
 }

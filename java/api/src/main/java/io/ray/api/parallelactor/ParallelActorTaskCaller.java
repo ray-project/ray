@@ -26,9 +26,13 @@ public class ParallelActorTaskCaller<R> {
   }
 
   public ObjectRef<R> remote() {
-
     ParallelContext ctx = Ray.internal().getParallelContext();
-    ObjectRef<R> ret = ctx.submitTask(parallelActor, func, args);
+    ObjectRef<Object> ret;
+    if (instance != null) {
+      ret = ctx.submitTask(instance.getActor(), instance.getIndex(), func, args);
+    } else {
+      ret = ctx.submitTask(parallelActor, parallelActor.getNextIndex(), func, args);
+    }
     return (ObjectRef<R>) ret;
   }
 

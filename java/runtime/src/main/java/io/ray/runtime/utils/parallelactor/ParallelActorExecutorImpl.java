@@ -42,10 +42,10 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
 
   }
 
-  public Object execute(JavaFunctionDescriptor functionDescriptor,  Object[] args) {
+  public Object execute(int instanceIndex, JavaFunctionDescriptor functionDescriptor,  Object[] args) {
     RayFunction func = functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), functionDescriptor);
     try {
-      int instanceIndex = getNextIndex();
+//      int instanceIndex = getNextIndex();
       if (instances.get(instanceIndex) == null) {
         // How to handle? when?
       }

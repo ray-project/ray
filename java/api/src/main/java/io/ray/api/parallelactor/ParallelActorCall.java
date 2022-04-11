@@ -36,7 +36,12 @@ interface ParallelActorCall<A> {
 
   default <T0, R> ParallelActorTaskCaller<R> task(RayFunc2<A, T0, R> f, T0 t0) {
     Object[] args = new Object[]{t0};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    if (this instanceof ParallelActor) {
+      return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    } else if (this instanceof ParallelInstance) {
+      return new ParallelActorTaskCaller<>((ParallelInstance) this, f, args);
+    }
+    return null;
   }
 
   default <T0, R> ParallelActorTaskCaller<R> task(RayFunc2<A, T0, R> f, ObjectRef<T0> t0) {
