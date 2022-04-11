@@ -121,7 +121,7 @@ const Dashboard: React.FC = () => {
       >
         Usage stats collection is enabled. To disable this, add {'{"usage_stats": false}'} to ~/.ray/config.json, or run the following command:<br/><br/>
         &emsp;ray disable-usage-stats<br/><br/>
-        See <a href="https://github.com/ray-project/ray/issues/20857" target="_blank">https://github.com/ray-project/ray/issues/20857</a> for more details.
+        See <a href="https://github.com/ray-project/ray/issues/20857" target="_blank" rel="noreferrer">https://github.com/ray-project/ray/issues/20857</a> for more details.
       </Alert>
       : null}
       <Tabs
