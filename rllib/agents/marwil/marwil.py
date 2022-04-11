@@ -105,17 +105,6 @@ class MARWILTrainer(Trainer):
         return DEFAULT_CONFIG
 
     @override(Trainer)
-    def setup(self, config: PartialTrainerConfigDict):
-        super().setup(config)
-        if self.config["_disable_execution_plan_api"] is True:
-            self.local_replay_buffer = MultiAgentReplayBuffer(
-                learning_starts=config["learning_starts"],
-                capacity=config["replay_buffer_size"],
-                replay_batch_size=config["train_batch_size"],
-                replay_sequence_length=1,
-            )
-
-    @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
@@ -137,6 +126,19 @@ class MARWILTrainer(Trainer):
             return MARWILTorchPolicy
         else:
             return MARWILTFPolicy
+
+    @override(Trainer)
+    def setup(self, config: PartialTrainerConfigDict):
+        super().setup(config)
+        # `training_iteration` implementation: Setup buffer in `setup`, not
+        # in `execution_plan` (deprecated).
+        if self.config["_disable_execution_plan_api"] is True:
+            self.local_replay_buffer = MultiAgentReplayBuffer(
+                learning_starts=self.config["learning_starts"],
+                capacity=self.config["replay_buffer_size"],
+                replay_batch_size=self.config["train_batch_size"],
+                replay_sequence_length=1,
+            )
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
