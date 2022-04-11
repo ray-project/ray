@@ -58,7 +58,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
   }
 
   void TestGcsTableWithJobIdApi() {
-    auto table = gcs_table_storage_->ActorTable();
+    auto &table = gcs_table_storage_->ActorTable();
     JobID job_id1 = JobID::FromInt(1);
     JobID job_id2 = JobID::FromInt(2);
     JobID job_id3 = JobID::FromInt(3);
