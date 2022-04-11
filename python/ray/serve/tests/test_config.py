@@ -136,7 +136,12 @@ def test_replica_config_validation():
 
 @pytest.mark.parametrize(
     "memory_omitted_options",
-    [None, {}, {"CPU": 1, "GPU": 3}, {"CPU": 1, "GPU": 3, "memory": None}],
+    [
+        None,
+        {},
+        {"num_cpus": 1, "num_gpus": 3},
+        {"num_cpus": 1, "num_gpus": 3, "memory": None},
+    ],
 )
 def test_replica_config_default_memory_none(memory_omitted_options):
     """Checks that ReplicaConfig's default memory is None."""

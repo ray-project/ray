@@ -286,7 +286,8 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 
 @pytest.mark.parametrize(
-    "omitted_option", ["num_cpus", "num_gpus", "memory", "object_store_memory", "resources"],
+    "omitted_option",
+    ["num_cpus", "num_gpus", "memory", "object_store_memory", "resources"],
 )
 def test_resource_dict_omitted_option(serve_instance, omitted_option):
     """Ensure that omitting any single actor option doesn't break the deployment."""
@@ -300,12 +301,10 @@ def test_resource_dict_omitted_option(serve_instance, omitted_option):
     }
     del options_dict[omitted_option]
 
-    @serve.deployment(
-        ray_actor_options=options_dict
-    )
+    @serve.deployment(ray_actor_options=options_dict)
     def hello(*args, **kwargs):
         return "world"
-    
+
     hello.deploy()
 
 
