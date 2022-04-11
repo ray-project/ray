@@ -77,6 +77,13 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
                            const NodeID &node_id,
                            const ObjectInfo &object_info) override;
 
+  void ReportObjectSpilled(const ObjectID &object_id,
+                           const NodeID &node_id,
+                           const rpc::Address &owner_address,
+                           const std::string &spilled_url,
+                           const NodeID &spilled_node_id,
+                           int64_t object_size) override;
+
   void RecordMetrics(uint64_t duration_ms) override;
 
   std::string DebugString() const override;
@@ -126,7 +133,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed_;
 
   /// A buffer for batch object location updates.
-  absl::flat_hash_map<WorkerID, absl::flat_hash_map<ObjectID, rpc::ObjectLocationState>>
+  absl::flat_hash_map<WorkerID, std::deque<rpc::ObjectLocationStateUpdate>>
       location_buffers_;
 
   /// A set of in-flight UpdateObjectLocationBatch requests.

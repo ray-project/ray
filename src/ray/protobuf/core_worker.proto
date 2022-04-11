@@ -198,11 +198,22 @@ enum ObjectLocationState {
   ADDED = 0;
   // Object is removed.
   REMOVED = 1;
+  // Object is spilled.
+  SPILLED = 2;
 }
 
 message ObjectLocationStateUpdate {
   bytes object_id = 1;
   ObjectLocationState state = 2;
+  // The following 3 fields are set when the object is spilled.
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 3;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 4;
+  // The size of the object in bytes.
+  int64 size = 5;
 }
 
 message GetObjectLocationsOwnerRequest {
@@ -308,22 +319,6 @@ message DeleteSpilledObjectsRequest {
 message DeleteSpilledObjectsReply {
 }
 
-message AddSpilledUrlRequest {
-  // Object that was spilled.
-  bytes object_id = 1;
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  string spilled_url = 2;
-  // The ID of the node that spilled the object.
-  // This will be Nil if the object was spilled to distributed external storage.
-  bytes spilled_node_id = 3;
-  // The size of the object in bytes.
-  int64 size = 4;
-}
-
-message AddSpilledUrlReply {
-}
-
 message ExitRequest {
 }
 
@@ -392,9 +387,6 @@ service CoreWorkerService {
   // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
       returns (DeleteSpilledObjectsReply);
-  // Add spilled URL, spilled node ID, and update object size for owned object.
-  // Caller: raylet; callee: owner worker.
-  rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Request for a worker to exit.

@@ -388,12 +388,6 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     objects_pending_spill_.erase(it);
 
     // Asynchronously Update the spilled URL.
-    rpc::AddSpilledUrlRequest request;
-    request.set_object_id(object_id.Binary());
-    request.set_spilled_url(object_url);
-    request.set_spilled_node_id(node_id_object_spilled.Binary());
-    request.set_size(object_size);
-
     auto freed_it = local_objects_.find(object_id);
     if (freed_it == local_objects_.end() || freed_it->second.second) {
       RAY_LOG(DEBUG) << "Spilled object already freed, skipping send of spilled URL to "
@@ -402,24 +396,12 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
       continue;
     }
     const auto &worker_addr = freed_it->second.first;
-    auto owner_client = owner_client_pool_.GetOrConnect(worker_addr);
-    RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
-                   << " to owner " << WorkerID::FromBinary(worker_addr.worker_id());
-    owner_client->AddSpilledUrl(
-        request,
-        [object_id, object_url](Status status, const rpc::AddSpilledUrlReply &reply) {
-          // TODO(sang): Currently we assume there's no network failure. We should handle
-          // it properly.
-          if (!status.ok()) {
-            RAY_LOG(DEBUG)
-                << "Failed to send spilled url for object " << object_id
-                << " to object directory, considering the object to have been freed: "
-                << status.ToString();
-          } else {
-            RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
-                           << " and object directory has been informed";
-          }
-        });
+    object_directory_->ReportObjectSpilled(object_id,
+                                           self_node_id_,
+                                           worker_addr,
+                                           object_url,
+                                           node_id_object_spilled,
+                                           object_size);
   }
 }
 
@@ -615,8 +597,8 @@ int64_t LocalObjectManager::GetPinnedBytes() const {
     return pinned_objects_size_;
   }
   // Report non-zero usage when there are spilled / spill-pending live objects, to
-  // prevent this node from being drained. Note that the value reported here is also used
-  // for scheduling.
+  // prevent this node from being drained. Note that the value reported here is also
+  // used for scheduling.
   return (spilled_objects_url_.empty() && objects_pending_spill_.empty()) ? 0 : 1;
 }
 
