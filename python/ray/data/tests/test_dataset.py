@@ -128,11 +128,17 @@ def test_callable_classes(shutdown_only):
             self.num_reuses += 1
             return r
 
+    # Need to specify compute explicitly.
+    with pytest.raises(ValueError):
+        ds.map(StatefulFn).take()
+
+    # Need to specify actor compute strategy.
+    with pytest.raises(ValueError):
+        ds.map(StatefulFn, compute="tasks").take()
+
     # map
-    task_reuse = ds.map(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -144,16 +150,12 @@ def test_callable_classes(shutdown_only):
             return [r]
 
     # flat map
-    task_reuse = ds.flat_map(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.flat_map(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     # map batches
-    task_reuse = ds.map_batches(StatefulFn, compute="tasks").take()
-    assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -165,10 +167,8 @@ def test_callable_classes(shutdown_only):
             return r > 0
 
     # filter
-    task_reuse = ds.filter(StatefulFn, compute="tasks").take()
-    assert len(task_reuse) == 9, task_reuse
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
-    assert len(actor_reuse) == 10, actor_reuse
+    assert len(actor_reuse) == 9, actor_reuse
 
 
 def test_transform_failure(shutdown_only):
@@ -205,6 +205,23 @@ def test_zip(ray_start_regular_shared):
         ds.zip(ray.data.range(3))
 
 
+def test_zip_pandas(ray_start_regular_shared):
+    ds1 = ray.data.from_pandas(pd.DataFrame({"col1": [1, 2], "col2": [4, 5]}))
+    ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
+    ds = ds1.zip(ds2)
+    assert ds.count() == 2
+    assert "{col1: int64, col2: int64, col3: object, col4: object}" in str(ds)
+    result = [r.as_pydict() for r in ds.take()]
+    assert result[0] == {"col1": 1, "col2": 4, "col3": "a", "col4": "d"}
+
+    ds3 = ray.data.from_pandas(pd.DataFrame({"col2": ["a", "b"], "col4": ["d", "e"]}))
+    ds = ds1.zip(ds3)
+    assert ds.count() == 2
+    assert "{col1: int64, col2: int64, col2_1: object, col4: object}" in str(ds)
+    result = [r.as_pydict() for r in ds.take()]
+    assert result[0] == {"col1": 1, "col2": 4, "col2_1": "a", "col4": "d"}
+
+
 def test_zip_arrow(ray_start_regular_shared):
     ds1 = ray.data.range_arrow(5).map(lambda r: {"id": r["value"]})
     ds2 = ray.data.range_arrow(5).map(
@@ -228,7 +245,7 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
 
     ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
-    res = "Dataset(num_blocks=40, num_rows=40, " "schema=<class 'torch.Tensor'>)"
+    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -770,8 +787,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
 
     ds = ray.data.read_parquet(
         str(tmp_path),
+        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
         _block_udf=_block_udf,
-        _tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
     )
 
     assert isinstance(ds.schema().field_by_name(tensor_col_name).type, ArrowTensorType)
@@ -1561,7 +1578,8 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     assert np.array_equal(df.values, combined_iterations)
 
 
-def test_to_tf_feature_columns(ray_start_regular_shared):
+@pytest.mark.parametrize("label_column", [None, "label"])
+def test_to_tf_feature_columns(ray_start_regular_shared, label_column):
     import tensorflow as tf
 
     df1 = pd.DataFrame(
@@ -1573,17 +1591,29 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
     ds = ray.data.from_pandas([df1, df2, df3])
-    tfd = ds.to_tf(
-        label_column="label",
-        feature_columns=["one"],
-        output_signature=(
+
+    if label_column:
+        output_signature = (
             tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
             tf.TensorSpec(shape=(None), dtype=tf.float32),
-        ),
+        )
+    else:
+        output_signature = tf.TensorSpec(shape=(None, 1), dtype=tf.float32)
+        df = df.drop("label", axis=1)
+
+    tfd = ds.to_tf(
+        label_column=label_column,
+        feature_columns=["one"],
+        output_signature=output_signature,
     )
     iterations = []
     for batch in tfd.as_numpy_iterator():
-        iterations.append(np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
+        if label_column:
+            iterations.append(
+                np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1)
+            )
+        else:
+            iterations.append(batch)
     combined_iterations = np.concatenate(iterations)
     assert np.array_equal(df.values, combined_iterations)
 
@@ -2513,6 +2543,117 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert nan_ds.sum() is None
 
 
+def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
+    xs = [x % 3 for x in list(range(100))]
+
+    # ds1 has 1 block which contains 100 rows.
+    ds1 = ray.data.from_items(xs).repartition(1).sort().map_batches(lambda x: x)
+    assert ds1._block_num_rows() == [100]
+
+    # ds2 has 30 blocks, but only 3 of them are non-empty
+    ds2 = ray.data.from_items(xs).repartition(30).sort().map_batches(lambda x: x)
+    assert len(ds2._block_num_rows()) == 30
+    count = sum(1 for x in ds2._block_num_rows() if x > 0)
+    assert count == 3
+
+    # The number of partitions should not affect the map_batches() result.
+    assert ds1.take_all() == ds2.take_all()
+
+
+def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
+    ds = ray.data.from_items([])
+    mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
+    assert mapped.count() == 0
+    assert mapped.take_all() == []
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 30])
+def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_parts):
+    ds = ray.data.from_items(list(range(100)))
+    mapped = (
+        ds.repartition(num_parts).groupby(None).map_groups(lambda x: [min(x) + max(x)])
+    )
+    assert mapped.count() == 1
+    assert mapped.take_all() == [99]
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 30])
+def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num_parts):
+    xs = list(range(100))
+    mapped = (
+        ray.data.from_items(xs)
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .map_groups(lambda x: [])
+    )
+    assert mapped.count() == 0
+    assert mapped.take_all() == []
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
+def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_count with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    mapped = (
+        ray.data.from_items(xs)
+        .repartition(num_parts)
+        .groupby(lambda x: x % 3)
+        .map_groups(lambda x: [min(x) * min(x)])
+    )
+    assert mapped.count() == 3
+    assert mapped.take_all() == [0, 1, 4]
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
+def test_groupby_map_groups_for_pandas(ray_start_regular_shared, num_parts):
+    df = pd.DataFrame({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
+    grouped = ray.data.from_pandas(df).repartition(num_parts).groupby("A")
+
+    # Normalize the numeric columns (i.e. B and C) for each group.
+    mapped = grouped.map_groups(
+        lambda g: g.apply(
+            lambda col: col / g[col.name].sum() if col.name in ["B", "C"] else col
+        )
+    )
+
+    # The function (i.e. the normalization) performed on each group doesn't
+    # aggregate rows, so we still have 3 rows.
+    assert mapped.count() == 3
+    expected = pd.DataFrame(
+        {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1.000000], "C": [0.4, 0.6, 1.0]}
+    )
+    assert mapped.to_pandas().equals(expected)
+
+
+@pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
+def test_groupby_map_groups_for_arrow(ray_start_regular_shared, num_parts):
+    at = pa.Table.from_pydict({"A": "a a b".split(), "B": [1, 1, 3], "C": [4, 6, 5]})
+    grouped = ray.data.from_arrow(at).repartition(num_parts).groupby("A")
+
+    # Normalize the numeric columns (i.e. B and C) for each group.
+    def normalize(at: pa.Table):
+        r = at.select("A")
+        sb = pa.compute.sum(at.column("B")).cast(pa.float64())
+        r = r.append_column("B", pa.compute.divide(at.column("B"), sb))
+        sc = pa.compute.sum(at.column("C")).cast(pa.float64())
+        r = r.append_column("C", pa.compute.divide(at.column("C"), sc))
+        return r
+
+    mapped = grouped.map_groups(normalize, batch_format="pyarrow")
+
+    # The function (i.e. the normalization) performed on each group doesn't
+    # aggregate rows, so we still have 3 rows.
+    assert mapped.count() == 3
+    expected = pa.Table.from_pydict(
+        {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1], "C": [0.4, 0.6, 1]}
+    )
+    result = pa.Table.from_pandas(mapped.to_pandas())
+    assert result.equals(expected)
+
+
 @pytest.mark.parametrize("num_parts", [1, 30])
 def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
@@ -2897,12 +3038,26 @@ def test_sort_simple(ray_start_regular_shared):
     assert ds.count() == 0
 
 
+def test_sort_partition_same_key_to_same_block(ray_start_regular_shared):
+    num_items = 100
+    xs = [1] * num_items
+    ds = ray.data.from_items(xs)
+    sorted_ds = ds.repartition(num_items).sort()
+
+    # We still have 100 blocks
+    assert len(sorted_ds._block_num_rows()) == num_items
+    # Only one of them is non-empty
+    count = sum(1 for x in sorted_ds._block_num_rows() if x > 0)
+    assert count == 1
+    # That non-empty block contains all rows
+    total = sum(x for x in sorted_ds._block_num_rows() if x > 0)
+    assert total == num_items
+
+
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "Dataset(num_blocks=1, num_rows=10, " "schema={1: float64, a: float64})"
-    )
+    expected_str = "Dataset(num_blocks=1, num_rows=10, schema={1: float64, a: float64})"
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
@@ -2948,13 +3103,13 @@ def test_random_shuffle(shutdown_only, pipelined):
 
     # Test move.
     ds = range(100, parallelism=2)
-    r1 = ds.random_shuffle(_move=True).take(999)
+    r1 = ds.random_shuffle().take(999)
     if pipelined:
         with pytest.raises(RuntimeError):
             ds = ds.map(lambda x: x).take(999)
     else:
         ds = ds.map(lambda x: x).take(999)
-    r2 = range(100).random_shuffle(_move=True).take(999)
+    r2 = range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
     # Test empty dataset.
@@ -2964,8 +3119,55 @@ def test_random_shuffle(shutdown_only, pipelined):
     assert r1.take() == ds.take()
 
 
-@pytest.mark.parametrize("use_spread_resource_prefix", [False, True])
-def test_random_shuffle_spread(ray_start_cluster, use_spread_resource_prefix):
+def test_random_shuffle_check_random(shutdown_only):
+    # Rows from the same input should not be contiguous in the final output.
+    num_files = 10
+    num_rows = 100
+    items = [i for i in range(num_files) for _ in range(num_rows)]
+    ds = ray.data.from_items(items, parallelism=num_files)
+    out = ds.random_shuffle().take(num_files * num_rows)
+    for i in range(num_files):
+        part = out[i * num_rows : (i + 1) * num_rows]
+        seen = set()
+        num_contiguous = 1
+        prev = -1
+        for x in part:
+            if prev != x:
+                prev = x
+                num_contiguous = 1
+            else:
+                num_contiguous += 1
+                assert num_contiguous < (
+                    num_rows / num_files
+                ), f"{part} contains too many contiguous rows from same input block"
+            seen.add(x)
+        assert (
+            set(range(num_files)) == seen
+        ), f"{part} does not contain elements from all input blocks"
+
+    # Rows from the same input should appear in a different order in the
+    # output.
+    num_files = 10
+    num_rows = 100
+    items = [j for i in range(num_files) for j in range(num_rows)]
+    ds = ray.data.from_items(items, parallelism=num_files)
+    out = ds.random_shuffle().take(num_files * num_rows)
+    for i in range(num_files):
+        part = out[i * num_rows : (i + 1) * num_rows]
+        num_increasing = 0
+        prev = -1
+        for x in part:
+            if x >= prev:
+                num_increasing += 1
+            else:
+                assert num_increasing < (
+                    num_rows / num_files
+                ), f"{part} contains non-shuffled rows from input blocks"
+                num_increasing = 0
+            prev = x
+
+
+def test_random_shuffle_spread(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
@@ -2984,9 +3186,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_spread_resource_prefix):
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-    ds = ray.data.range(100, parallelism=2).random_shuffle(
-        _spread_resource_prefix=("bar:" if use_spread_resource_prefix else None)
-    )
+    ds = ray.data.range(100, parallelism=2).random_shuffle()
     blocks = ds.get_internal_block_refs()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
@@ -2996,8 +3196,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_spread_resource_prefix):
     assert set(locations) == {node1_id, node2_id}
 
 
-@pytest.mark.parametrize("use_spread_resource_prefix", [False, True])
-def test_parquet_read_spread(ray_start_cluster, tmp_path, use_spread_resource_prefix):
+def test_parquet_read_spread(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
@@ -3024,51 +3223,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, use_spread_resource_pr
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
-    ds = ray.data.read_parquet(
-        data_path,
-        _spread_resource_prefix=("bar:" if use_spread_resource_prefix else None),
-    )
-
-    # Force reads.
-    blocks = ds.get_internal_block_refs()
-    assert len(blocks) == 2
-
-    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(blocks)
-    locations = []
-    for block in blocks:
-        locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {node1_id, node2_id}
-
-
-def test_parquet_read_spread_no_cpus(ray_start_cluster, tmp_path):
-    cluster = ray_start_cluster
-    cluster.add_node(
-        resources={"foo": 100}, _system_config={"max_direct_call_object_size": 0}
-    )
-    cluster.add_node(resources={"bar:1": 100})
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=0)
-
-    ray.init(cluster.address)
-
-    @ray.remote(num_cpus=0)
-    def get_node_id():
-        return ray.get_runtime_context().node_id.hex()
-
-    node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
-    node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
-
-    data_path = str(tmp_path)
-    df1 = pd.DataFrame({"one": list(range(100)), "two": list(range(100, 200))})
-    path1 = os.path.join(data_path, "test1.parquet")
-    df1.to_parquet(path1)
-    df2 = pd.DataFrame({"one": list(range(300, 400)), "two": list(range(400, 500))})
-    path2 = os.path.join(data_path, "test2.parquet")
-    df2.to_parquet(path2)
-
-    ds = ray.data.read_parquet(
-        data_path, ray_remote_args={"num_cpus": 0}, _spread_resource_prefix="bar:"
-    )
+    ds = ray.data.read_parquet(data_path)
 
     # Force reads.
     blocks = ds.get_internal_block_refs()
@@ -3206,6 +3361,13 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
             paths=path1,
             ray_remote_args={"retry_exceptions": False},
         ).take()
+
+
+def test_datasource(ray_start_regular):
+    source = ray.data.datasource.RandomIntRowDatasource()
+    assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
+    source = ray.data.datasource.RangeDatasource()
+    assert ray.data.read_datasource(source, n=10).take() == list(range(10))
 
 
 if __name__ == "__main__":

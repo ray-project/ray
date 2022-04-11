@@ -18,7 +18,6 @@ from ray._private.test_utils import run_string_as_driver
 
 
 def start_ray_and_proxy_manager(n_ports=2):
-    agent_port = random.choice(range(50000, 55000))
     ray_instance = ray.init(_redis_password="test")
     agent_port = ray.worker.global_worker.node.metrics_agent_port
     pm = proxier.ProxyManager(

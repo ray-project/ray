@@ -33,6 +33,12 @@ Job Submission CLI
    :prog: ray job logs
    :show-nested:
 
+.. _ray-job-list-doc:
+
+.. click:: ray.dashboard.modules.job.cli:list
+   :prog: ray job list
+   :show-nested:
+
 .. _ray-job-submission-sdk-ref:
 
 Job Submission SDK
@@ -53,7 +59,6 @@ JobStatus
 
 .. autoclass:: ray.job_submission.JobStatus
     :members:
-    :undoc-members:
 
 .. _job-info-ref:
 
@@ -62,4 +67,3 @@ JobInfo
 
 .. autoclass:: ray.job_submission.JobInfo
     :members:
-    :undoc-members:

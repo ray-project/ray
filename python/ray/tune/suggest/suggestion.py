@@ -53,9 +53,9 @@ class Searcher:
     Not all implementations support multi objectives.
 
     Args:
-        metric (str or list): The training result objective value attribute. If
+        metric: The training result objective value attribute. If
             list then list of training result objective value attributes
-        mode (str or list): If string One of {min, max}. If list then
+        mode: If string One of {min, max}. If list then
             list of max and min, determines whether objective is minimizing
             or maximizing the metric attribute. Must match type of metric.
 
@@ -136,9 +136,9 @@ class Searcher:
         unsuccessful, e.g. when the search space has already been set.
 
         Args:
-            metric (str): Metric to optimize
-            mode (str): One of ["min", "max"]. Direction to optimize.
-            config (dict): Tune config dict.
+            metric: Metric to optimize
+            mode: One of ["min", "max"]. Direction to optimize.
+            config: Tune config dict.
             **spec: Any kwargs for forward compatiblity.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
         """
@@ -153,8 +153,8 @@ class Searcher:
         avoid breaking the optimization process.
 
         Args:
-            trial_id (str): A unique string ID for the trial.
-            result (dict): Dictionary of metrics for current training progress.
+            trial_id: A unique string ID for the trial.
+            result: Dictionary of metrics for current training progress.
                 Note that the result dict may include NaNs or
                 may not include the optimization metric. It is up to the
                 subclass implementation to preprocess the result to
@@ -171,14 +171,14 @@ class Searcher:
         optimizer of the result.
 
         Args:
-            trial_id (str): A unique string ID for the trial.
-            result (dict): Dictionary of metrics for current training progress.
+            trial_id: A unique string ID for the trial.
+            result: Dictionary of metrics for current training progress.
                 Note that the result dict may include NaNs or
                 may not include the optimization metric. It is up to the
                 subclass implementation to preprocess the result to
                 avoid breaking the optimization process. Upon errors, this
                 may also be None.
-            error (bool): True if the training process raised an error.
+            error: True if the training process raised an error.
 
         """
         raise NotImplementedError
@@ -187,7 +187,7 @@ class Searcher:
         """Queries the algorithm to retrieve the next set of parameters.
 
         Arguments:
-            trial_id (str): Trial ID used for subsequent notifications.
+            trial_id: Trial ID used for subsequent notifications.
 
         Returns:
             dict | FINISHED | None: Configuration for a trial, if possible.
@@ -216,11 +216,11 @@ class Searcher:
         and may not be always available.
 
         Args:
-            parameters (dict): Parameters used for the trial.
-            value (float): Metric value obtained in the trial.
-            error (bool): True if the training process raised an error.
-            pruned (bool): True if trial was pruned.
-            intermediate_values (list): List of metric values for
+            parameters: Parameters used for the trial.
+            value: Metric value obtained in the trial.
+            error: True if the training process raised an error.
+            pruned: True if trial was pruned.
+            intermediate_values: List of metric values for
                 intermediate iterations of the result. None if not
                 applicable.
 
@@ -241,9 +241,8 @@ class Searcher:
         and may not be always available (same as ``add_evaluated_point``.)
 
         Args:
-            trials_or_analysis (Trial|List[Trial]|ExperimentAnalysis):
-                Trials to pass results form to the searcher.
-            metric (str): Metric name reported by trials used for
+            trials_or_analysis: Trials to pass results form to the searcher.
+            metric: Metric name reported by trials used for
                 determining the objective value.
 
         """
@@ -300,7 +299,7 @@ class Searcher:
         """Save state to path for this search algorithm.
 
         Args:
-            checkpoint_path (str): File where the search algorithm
+            checkpoint_path: File where the search algorithm
                 state is saved. This path should be used later when
                 restoring from file.
 
@@ -332,7 +331,7 @@ class Searcher:
 
 
         Args:
-            checkpoint_path (str): File where the search algorithm
+            checkpoint_path: File where the search algorithm
                 state is saved. This path should be the same
                 as the one provided to "save".
 
@@ -362,7 +361,7 @@ class Searcher:
         logic for handling this case is present in the searcher.
 
         Args:
-            max_concurrent (int): Number of maximum concurrent trials.
+            max_concurrent: Number of maximum concurrent trials.
         """
         return False
 
@@ -378,8 +377,8 @@ class Searcher:
         This is automatically used by tune.run during a Tune job.
 
         Args:
-            checkpoint_dir (str): Filepath to experiment dir.
-            session_str (str): Unique identifier of the current run
+            checkpoint_dir: Filepath to experiment dir.
+            session_str: Unique identifier of the current run
                 session.
         """
         tmp_search_ckpt_path = os.path.join(checkpoint_dir, ".tmp_searcher_ckpt")
@@ -449,11 +448,11 @@ class ConcurrencyLimiter(Searcher):
     Searcher's internal logic take over.
 
     Args:
-        searcher (Searcher): Searcher object that the
+        searcher: Searcher object that the
             ConcurrencyLimiter will manage.
-        max_concurrent (int): Maximum concurrent samples from the underlying
+        max_concurrent: Maximum concurrent samples from the underlying
             searcher.
-        batch (bool): Whether to wait for all concurrent samples
+        batch: Whether to wait for all concurrent samples
             to finish before updating the underlying searcher.
 
     Example:

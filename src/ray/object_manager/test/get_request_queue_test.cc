@@ -35,7 +35,8 @@ class MockObjectLifecycleManager : public IObjectLifecycleManager {
   MOCK_METHOD3(CreateObject,
                std::pair<const LocalObject *, flatbuf::PlasmaError>(
                    const ray::ObjectInfo &object_info,
-                   plasma::flatbuf::ObjectSource source, bool fallback_allocator));
+                   plasma::flatbuf::ObjectSource source,
+                   bool fallback_allocator));
   MOCK_CONST_METHOD1(GetObject, const LocalObject *(const ObjectID &object_id));
   MOCK_METHOD1(SealObject, const LocalObject *(const ObjectID &object_id));
   MOCK_METHOD1(AbortObject, flatbuf::PlasmaError(const ObjectID &object_id));
@@ -103,7 +104,8 @@ TEST_F(GetRequestQueueTest, TestObjectSealed) {
   bool satisfied = false;
   MockObjectLifecycleManager object_lifecycle_manager;
   GetRequestQueue get_request_queue(
-      io_context_, object_lifecycle_manager,
+      io_context_,
+      object_lifecycle_manager,
       [&](const ObjectID &object_id, const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) { satisfied = true; });
   auto client = std::make_shared<MockClient>();
@@ -123,7 +125,8 @@ TEST_F(GetRequestQueueTest, TestObjectTimeout) {
   std::promise<bool> promise;
   MockObjectLifecycleManager object_lifecycle_manager;
   GetRequestQueue get_request_queue(
-      io_context_, object_lifecycle_manager,
+      io_context_,
+      object_lifecycle_manager,
       [&](const ObjectID &object_id, const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) { promise.set_value(true); });
   auto client = std::make_shared<MockClient>();
@@ -144,7 +147,8 @@ TEST_F(GetRequestQueueTest, TestObjectNotSealed) {
   std::promise<bool> promise;
   MockObjectLifecycleManager object_lifecycle_manager;
   GetRequestQueue get_request_queue(
-      io_context_, object_lifecycle_manager,
+      io_context_,
+      object_lifecycle_manager,
       [&](const ObjectID &object_id, const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) { promise.set_value(true); });
   auto client = std::make_shared<MockClient>();
@@ -167,7 +171,8 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
   std::promise<bool> promise1, promise2, promise3;
   MockObjectLifecycleManager object_lifecycle_manager;
   GetRequestQueue get_request_queue(
-      io_context_, object_lifecycle_manager,
+      io_context_,
+      object_lifecycle_manager,
       [&](const ObjectID &object_id, const auto &request) {
         if (object_id == object_id1) {
           promise1.set_value(true);
@@ -203,7 +208,8 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
 TEST_F(GetRequestQueueTest, TestDuplicateObjects) {
   MockObjectLifecycleManager object_lifecycle_manager;
   GetRequestQueue get_request_queue(
-      io_context_, object_lifecycle_manager,
+      io_context_,
+      object_lifecycle_manager,
       [&](const ObjectID &object_id, const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) {});
   auto client = std::make_shared<MockClient>();
@@ -227,7 +233,8 @@ TEST_F(GetRequestQueueTest, TestDuplicateObjects) {
 TEST_F(GetRequestQueueTest, TestRemoveAll) {
   MockObjectLifecycleManager object_lifecycle_manager;
   GetRequestQueue get_request_queue(
-      io_context_, object_lifecycle_manager,
+      io_context_,
+      object_lifecycle_manager,
       [&](const ObjectID &object_id, const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) {});
   auto client = std::make_shared<MockClient>();
@@ -255,7 +262,8 @@ TEST_F(GetRequestQueueTest, TestRemoveAll) {
 TEST_F(GetRequestQueueTest, TestRemoveTwice) {
   MockObjectLifecycleManager object_lifecycle_manager;
   GetRequestQueue get_request_queue(
-      io_context_, object_lifecycle_manager,
+      io_context_,
+      object_lifecycle_manager,
       [&](const ObjectID &object_id, const auto &request) {},
       [&](const std::shared_ptr<GetRequest> &get_req) {});
   auto client = std::make_shared<MockClient>();

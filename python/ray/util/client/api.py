@@ -212,7 +212,7 @@ class ClientAPI:
 
         return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.NODES)
 
-    def method(self, num_returns=1):
+    def method(self, *args, **kwargs):
         """Annotate an actor method
 
         Args:
@@ -227,8 +227,25 @@ class ClientAPI:
         # activates the same logic on the server side; so there's no need to
         # pass anything else. It's inside the class definition that becomes an
         # actor. Similar annotations would follow the same way.
+        valid_kwargs = ["num_returns", "concurrency_group"]
+        error_string = (
+            "The @ray.method decorator must be applied using at least one of "
+            f"the arguments in the list {valid_kwargs}, for example "
+            "'@ray.method(num_returns=2)'."
+        )
+        assert len(args) == 0 and len(kwargs) > 0, error_string
+        for key in kwargs:
+            key_error_string = (
+                f'Unexpected keyword argument to @ray.method: "{key}". The '
+                f"supported keyword arguments are {valid_kwargs}"
+            )
+            assert key in valid_kwargs, key_error_string
+
         def annotate_method(method):
-            method.__ray_num_returns__ = num_returns
+            if "num_returns" in kwargs:
+                method.__ray_num_returns__ = kwargs["num_returns"]
+            if "concurrency_group" in kwargs:
+                method.__ray_concurrency_group__ = kwargs["concurrency_group"]
             return method
 
         return annotate_method
@@ -283,7 +300,7 @@ class ClientAPI:
 
     def timeline(self, filename: Optional[str] = None) -> Optional[List[Any]]:
         logger.warning(
-            "Timeline will include events from other clients using " "this server."
+            "Timeline will include events from other clients using this server."
         )
         # This should be imported here, otherwise, it will error doc build.
         import ray.core.generated.ray_client_pb2 as ray_client_pb2

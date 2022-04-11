@@ -77,25 +77,50 @@ def set_env_var(key: str, val: Optional[str] = None):
         os.environ[key] = old_val
 
 
-class TestSubmit:
-    def test_address(self, mock_sdk_client):
-        runner = CliRunner()
+def _job_cli_group_test_address(mock_sdk_client, cmd, *args):
+    runner = CliRunner()
 
-        # Test passing address via command line.
-        result = runner.invoke(
-            job_cli_group, ["submit", "--address=arg_addr", "--", "echo hello"]
-        )
-        assert mock_sdk_client.called_with("arg_addr")
+    # Test passing address via command line.
+    result = runner.invoke(job_cli_group, [cmd, "--address=arg_addr", *args])
+    assert mock_sdk_client.called_with("arg_addr")
+    assert result.exit_code == 0
+    # Test passing address via env var.
+    with set_env_var("RAY_ADDRESS", "env_addr"):
+        result = runner.invoke(job_cli_group, [cmd, *args])
         assert result.exit_code == 0
-        # Test passing address via env var.
+        assert mock_sdk_client.called_with("env_addr")
+    # Test passing no address.
+    result = runner.invoke(job_cli_group, [cmd, *args])
+    assert result.exit_code == 1
+    assert "Address must be specified" in str(result.exception)
+
+
+class TestList:
+    def test_address(self, mock_sdk_client):
+        _job_cli_group_test_address(mock_sdk_client, "list")
+
+    def test_list(self, mock_sdk_client):
+        runner = CliRunner()
         with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["list"],
+            )
+            assert result.exit_code == 0
+
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             assert result.exit_code == 0
-            assert mock_sdk_client.called_with("env_addr")
-        # Test passing no address.
-        result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
-        assert result.exit_code == 1
-        assert "Address must be specified" in str(result.exception)
+
+            result = runner.invoke(
+                job_cli_group,
+                ["list"],
+            )
+            assert result.exit_code == 0
+
+
+class TestSubmit:
+    def test_address(self, mock_sdk_client):
+        _job_cli_group_test_address(mock_sdk_client, "submit", "--", "echo", "hello")
 
     def test_working_dir(self, mock_sdk_client):
         runner = CliRunner()

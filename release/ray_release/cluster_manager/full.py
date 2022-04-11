@@ -8,7 +8,11 @@ from ray_release.exception import (
 )
 from ray_release.logger import logger
 from ray_release.cluster_manager.minimal import MinimalClusterManager
-from ray_release.util import format_link, anyscale_cluster_url
+from ray_release.util import (
+    format_link,
+    anyscale_cluster_url,
+    exponential_backoff_retry,
+)
 
 REPORT_S = 30.0
 
@@ -22,6 +26,7 @@ class FullClusterManager(MinimalClusterManager):
 
     def start_cluster(self, timeout: float = 600.0):
         logger.info(f"Creating cluster {self.cluster_name}")
+        logger.info(f"Autosuspend time: {self.autosuspend_minutes} minutes")
         try:
             result = self.sdk.create_cluster(
                 dict(
@@ -77,7 +82,12 @@ class FullClusterManager(MinimalClusterManager):
             # Sleep 1 sec before next check.
             time.sleep(1)
 
-            result = self.sdk.get_cluster_operation(cop_id, _request_timeout=30)
+            result = exponential_backoff_retry(
+                lambda: self.sdk.get_cluster_operation(cop_id, _request_timeout=30),
+                retry_exceptions=Exception,
+                initial_retry_delay_s=2,
+                max_retries=3,
+            )
             completed = result.result.completed
 
         result = self.sdk.get_cluster(self.cluster_id)
@@ -115,6 +125,3 @@ class FullClusterManager(MinimalClusterManager):
             while result.result.state != "Terminated":
                 time.sleep(1)
                 result = self.sdk.get_cluster(self.cluster_id)
-
-    def get_cluster_address(self) -> str:
-        return f"anyscale://{self.project_name}/{self.cluster_name}"

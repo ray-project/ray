@@ -252,7 +252,7 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
         self.assertEqual(ea.best_trial, trials[2])
         self.assertEqual(ea.best_config, trials[2].config)
         self.assertEqual(ea.best_logdir, trials[2].logdir)
-        self.assertEqual(ea.best_checkpoint, trials[2].checkpoint.value)
+        self.assertEqual(ea.best_checkpoint.local_path, trials[2].checkpoint.value)
         self.assertTrue(all(ea.best_dataframe["trial_id"] == trials[2].trial_id))
         self.assertEqual(ea.results_df.loc[trials[2].trial_id, "res"], 309)
         self.assertEqual(ea.best_result["res"], 309)

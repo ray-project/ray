@@ -7,6 +7,7 @@ import os
 import pickle
 import random
 import time
+import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
@@ -28,12 +29,15 @@ from ray.serve.constants import (
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (
+    JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,
     logger,
+    msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
@@ -133,12 +137,15 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(detached)
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached, _override_controller_namespace=_override_controller_namespace
+        )
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name
@@ -167,6 +174,8 @@ class ActorReplicaWrapper:
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
 
+        self._is_cross_language = False
+
     @property
     def replica_tag(self) -> str:
         return self._replica_tag
@@ -184,6 +193,10 @@ class ActorReplicaWrapper:
                 )
             except ValueError:
                 self._actor_handle = None
+
+        if self._is_cross_language:
+            assert isinstance(self._actor_handle, JavaActorHandleProxy)
+            return self._actor_handle.handle
 
         return self._actor_handle
 
@@ -265,14 +278,8 @@ class ActorReplicaWrapper:
             f"{self.deployment_name} replica={self.replica_tag}"
         )
 
-        self._actor_handle = deployment_info.actor_def.options(
-            name=self._actor_name,
-            namespace=self._controller_namespace,
-            lifetime="detached" if self._detached else None,
-            placement_group=self._placement_group,
-            placement_group_capture_child_tasks=False,
-            **deployment_info.replica_config.ray_actor_options,
-        ).remote(
+        actor_def = deployment_info.actor_def
+        init_args = (
             self.deployment_name,
             self.replica_tag,
             deployment_info.replica_config.init_args,
@@ -283,6 +290,45 @@ class ActorReplicaWrapper:
             self._controller_namespace,
             self._detached,
         )
+        # TODO(simon): unify the constructor arguments across language
+        if (
+            deployment_info.deployment_config.deployment_language
+            == DeploymentLanguage.JAVA
+        ):
+            self._is_cross_language = True
+            actor_def = ray.cross_language.java_actor_class(
+                "io.ray.serve.RayServeWrappedReplica"
+            )
+            init_args = (
+                # String deploymentName,
+                self.deployment_name,
+                # String replicaTag,
+                self.replica_tag,
+                # String deploymentDef
+                deployment_info.replica_config.func_or_class_name,
+                # byte[] initArgsbytes
+                msgpack_serialize(deployment_info.replica_config.init_args),
+                # byte[] deploymentConfigBytes,
+                deployment_info.deployment_config.to_proto_bytes(),
+                # byte[] deploymentVersionBytes,
+                version.to_proto().SerializeToString(),
+                # String controllerName
+                self._controller_name,
+            )
+
+        self._actor_handle = actor_def.options(
+            name=self._actor_name,
+            namespace=self._controller_namespace,
+            lifetime="detached" if self._detached else None,
+            placement_group=self._placement_group,
+            placement_group_capture_child_tasks=False,
+            **deployment_info.replica_config.ray_actor_options,
+        ).remote(*init_args)
+
+        # Perform auto method name translation for java handles.
+        # See https://github.com/ray-project/ray/issues/21474
+        if self._is_cross_language:
+            self._actor_handle = JavaActorHandleProxy(self._actor_handle)
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
@@ -360,6 +406,10 @@ class ActorReplicaWrapper:
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
+                # TODO(simon): fully implement reconfigure for Java replicas.
+                if self._is_cross_language:
+                    return ReplicaStartupStatus.SUCCEEDED, None
+
                 deployment_config, version = ray.get(self._ready_obj_ref)
                 self._max_concurrent_queries = deployment_config.max_concurrent_queries
                 self._graceful_shutdown_timeout_s = (
@@ -563,6 +613,7 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
@@ -570,6 +621,7 @@ class DeploymentReplica(VersionedReplica):
             controller_name,
             replica_tag,
             deployment_name,
+            _override_controller_namespace=_override_controller_namespace,
         )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
@@ -861,6 +913,7 @@ class DeploymentState:
         detached: bool,
         long_poll_host: LongPollHost,
         _save_checkpoint_func: Callable,
+        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._name = name
@@ -868,6 +921,9 @@ class DeploymentState:
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._save_checkpoint_func = _save_checkpoint_func
+        self._override_controller_namespace: Optional[
+            str
+        ] = _override_controller_namespace
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -927,6 +983,7 @@ class DeploymentState:
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 None,
+                _override_controller_namespace=self._override_controller_namespace,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
@@ -1127,9 +1184,9 @@ class DeploymentState:
     def _scale_deployment_replicas(self) -> bool:
         """Scale the given deployment to the number of replicas."""
 
-        assert self._target_replicas >= 0, (
-            "Number of replicas must be" " greater than or equal to 0."
-        )
+        assert (
+            self._target_replicas >= 0
+        ), "Number of replicas must be greater than or equal to 0."
 
         replicas_stopped = self._stop_wrong_version_replicas()
 
@@ -1164,6 +1221,7 @@ class DeploymentState:
                     replica_name.replica_tag,
                     replica_name.deployment_tag,
                     self._target_version,
+                    _override_controller_namespace=self._override_controller_namespace,
                 )
                 new_deployment_replica.start(self._target_info, self._target_version)
 
@@ -1335,6 +1393,7 @@ class DeploymentState:
 
         Returns if any running replicas transitioned to another state.
         """
+
         running_replicas_changed = False
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
@@ -1447,10 +1506,10 @@ class DeploymentState:
                 self._notify_running_replicas_changed()
 
             deleted = self._check_curr_status()
-        except Exception as e:
+        except Exception:
             self._curr_status_info = DeploymentStatusInfo(
                 status=DeploymentStatus.UNHEALTHY,
-                message=f"Failed to update deployment:\n{e}.",
+                message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
             deleted = False
 
@@ -1479,6 +1538,7 @@ class DeploymentStateManager:
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
+        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._controller_name = controller_name
@@ -1491,6 +1551,7 @@ class DeploymentStateManager:
             detached,
             long_poll_host,
             self._save_checkpoint_func,
+            _override_controller_namespace=_override_controller_namespace,
         )
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()

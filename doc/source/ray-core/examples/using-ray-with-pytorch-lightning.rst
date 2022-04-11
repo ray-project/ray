@@ -1,6 +1,10 @@
 Using Ray with Pytorch Lightning
 ================================
 
+.. note::
+    For an overview of Ray's distributed training library,
+    see :ref:`Ray Train <train-docs>`.
+
 PyTorch Lightning is a framework which brings structure into training PyTorch models. It
 aims to avoid boilerplate code, so you don't have to write the same training
 loops all over again when building a new model.
@@ -44,6 +48,8 @@ To use, simply pass in the plugin to your Pytorch Lightning ``Trainer``. For ful
 
 Here is an example of using the ``RayPlugin`` for Distributed Data Parallel training on a Ray cluster:
 
+.. TODO: code snippet untested
+
 .. code-block:: python
 
     import pytorch_lightning as pl
@@ -76,6 +82,8 @@ Then, run your Ray script using one of the following options:
 1. on the head node of the cluster (``python train_script.py``)
 2. via ``ray job submit`` (:ref:`docs <jobs-overview>`) from your laptop (``ray job submit -- python train.py``)
 3. via the :ref:`Ray Client<ray-client>` from your laptop.
+
+.. _pytorch-lightning-tune:
 
 Distributed Hyperparameter Optimization with Ray Tune
 -----------------------------------------------------

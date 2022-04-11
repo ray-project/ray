@@ -483,6 +483,14 @@ cdef class MessagePackSerializedObject(SerializedObject):
     def total_bytes(self):
         return self._total_bytes
 
+    def to_bytes(self) -> bytes:
+        cdef shared_ptr[CBuffer] data = \
+          dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+            make_shared[LocalMemoryBuffer](self._total_bytes))
+        buffer = Buffer.make(data)
+        self.write_to(buffer)
+        return buffer.to_pybytes()
+
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:

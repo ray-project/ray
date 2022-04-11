@@ -67,6 +67,30 @@ class LazyBlockList(BlockList):
             output.append(LazyBlockList(c.tolist(), m.tolist(), b.tolist()))
         return output
 
+    # Note: does not force execution prior to splitting.
+    def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
+        self._check_if_cleared()
+        output = []
+        cur_calls, cur_meta, cur_blocks = [], [], []
+        cur_size = 0
+        for c, m, b in zip(self._calls, self._metadata, self._block_partitions):
+            if m.size_bytes is None:
+                raise RuntimeError(
+                    "Block has unknown size, cannot use split_by_bytes()"
+                )
+            size = m.size_bytes
+            if cur_blocks and cur_size + size > bytes_per_split:
+                output.append(LazyBlockList(cur_calls, cur_meta, cur_blocks))
+                cur_calls, cur_meta, cur_blocks = [], [], []
+                cur_size = 0
+            cur_calls.append(c)
+            cur_meta.append(m)
+            cur_blocks.append(b)
+            cur_size += size
+        if cur_blocks:
+            output.append(LazyBlockList(cur_calls, cur_meta, cur_blocks))
+        return output
+
     # Note: does not force execution prior to division.
     def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
         left = LazyBlockList(

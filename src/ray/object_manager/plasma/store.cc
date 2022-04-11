@@ -69,8 +69,10 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
 }
 }  // namespace
 
-PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
-                         const std::string &socket_name, uint32_t delay_on_oom_ms,
+PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
+                         IAllocator &allocator,
+                         const std::string &socket_name,
+                         uint32_t delay_on_oom_ms,
                          float object_spilling_threshold,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
@@ -88,7 +90,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
       object_spilling_threshold_(object_spilling_threshold),
       create_request_queue_(
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
-          spill_objects_callback, object_store_full_callback,
+          spill_objects_callback,
+          object_store_full_callback,
           /*get_time=*/
           []() { return absl::GetCurrentTimeNanos(); },
           // absl can't check thread safety for lambda
@@ -98,7 +101,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
           }),
       total_consumed_bytes_(0),
       get_request_queue_(
-          io_context_, object_lifecycle_mgr_,
+          io_context_,
+          object_lifecycle_mgr_,
           // absl failed to check thread safety for lambda
           [this](const ObjectID &object_id, const auto &request)
               ABSL_NO_THREAD_SAFETY_ANALYSIS {
@@ -181,7 +185,8 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
 PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
                                       fb::ObjectSource source,
                                       const std::shared_ptr<Client> &client,
-                                      bool fallback_allocator, PlasmaObject *result) {
+                                      bool fallback_allocator,
+                                      PlasmaObject *result) {
   auto pair = object_lifecycle_mgr_.CreateObject(object_info, source, fallback_allocator);
   auto entry = pair.first;
   auto error = pair.second;
@@ -219,8 +224,11 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
   }
   // Send the get reply to the client.
   Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_request->client),
-                          &get_request->object_ids[0], get_request->objects,
-                          get_request->object_ids.size(), store_fds, mmap_sizes);
+                          &get_request->object_ids[0],
+                          get_request->objects,
+                          get_request->object_ids.size(),
+                          store_fds,
+                          mmap_sizes);
   // If we successfully sent the get reply message to the client, then also send
   // the file descriptors.
   if (s.ok()) {
@@ -239,7 +247,8 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
 
 void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
-                                    int64_t timeout_ms, bool is_from_worker) {
+                                    int64_t timeout_ms,
+                                    bool is_from_worker) {
   get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
 }
 
@@ -312,7 +321,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   client->Close();
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
-  std::unordered_map<ObjectID, const LocalObject *> sealed_objects;
+  absl::flat_hash_map<ObjectID, const LocalObject *> sealed_objects;
   auto &object_ids = client->GetObjectIDs();
   for (const auto &object_id : object_ids) {
     auto entry = object_lifecycle_mgr_.GetObject(object_id);
@@ -333,8 +342,8 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   /// Remove all of the client's GetRequests.
   get_request_queue_.RemoveGetRequestsForClient(client);
 
-  for (const auto &entry : sealed_objects) {
-    RemoveFromClientObjectIds(entry.first, client);
+  for (const auto &[object_id, _] : sealed_objects) {
+    RemoveFromClientObjectIds(object_id, client);
   }
 
   create_request_queue_.RemoveDisconnectedClientRequests(client);
@@ -357,13 +366,14 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const size_t object_size = request->data_size() + request->metadata_size();
 
     // absl failed analyze mutex safety for lambda
-    auto handle_create = [this, client, message](
-                             bool fallback_allocator, PlasmaObject *result,
-                             bool *spilling_required) ABSL_NO_THREAD_SAFETY_ANALYSIS {
-      mutex_.AssertHeld();
-      return HandleCreateObjectRequest(client, message, fallback_allocator, result,
-                                       spilling_required);
-    };
+    auto handle_create =
+        [this, client, message](
+            bool fallback_allocator, PlasmaObject *result, bool *spilling_required)
+            ABSL_NO_THREAD_SAFETY_ANALYSIS {
+              mutex_.AssertHeld();
+              return HandleCreateObjectRequest(
+                  client, message, fallback_allocator, result, spilling_required);
+            };
 
     if (request->try_immediately()) {
       RAY_LOG(DEBUG) << "Received request to create object " << object_id
@@ -403,8 +413,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     std::vector<ObjectID> object_ids_to_get;
     int64_t timeout_ms;
     bool is_from_worker;
-    RAY_RETURN_NOT_OK(ReadGetRequest(input, input_size, object_ids_to_get, &timeout_ms,
-                                     &is_from_worker));
+    RAY_RETURN_NOT_OK(ReadGetRequest(
+        input, input_size, object_ids_to_get, &timeout_ms, &is_from_worker));
     ProcessGetRequest(client, object_ids_to_get, timeout_ms, is_from_worker);
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {
@@ -461,8 +471,9 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
 }
 
 void PlasmaStore::DoAccept() {
-  acceptor_.async_accept(socket_, boost::bind(&PlasmaStore::ConnectClient, this,
-                                              boost::asio::placeholders::error));
+  acceptor_.async_accept(
+      socket_,
+      boost::bind(&PlasmaStore::ConnectClient, this, boost::asio::placeholders::error));
 }
 
 void PlasmaStore::ProcessCreateRequests() {
@@ -501,7 +512,8 @@ void PlasmaStore::ProcessCreateRequests() {
 }
 
 void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
-                                      const ObjectID &object_id, uint64_t req_id) {
+                                      const ObjectID &object_id,
+                                      uint64_t req_id) {
   PlasmaObject result = {};
   PlasmaError error;
   bool finished = create_request_queue_.GetRequestResult(req_id, &result, &error);
@@ -533,7 +545,8 @@ void PlasmaStore::PrintAndRecordDebugDump() const {
   RecordMetrics();
   RAY_LOG(INFO) << GetDebugDump();
   stats_timer_ = execute_after(
-      io_context_, [this]() { PrintAndRecordDebugDump(); },
+      io_context_,
+      [this]() { PrintAndRecordDebugDump(); },
       RayConfig::instance().event_stats_print_interval_ms());
 }
 

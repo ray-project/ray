@@ -11,7 +11,8 @@ import starlette.responses
 
 import ray
 from ray import cloudpickle
-from ray.actor import ActorHandle
+from ray.remote_function import RemoteFunction
+from ray.actor import ActorClass, ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
@@ -29,6 +30,7 @@ from ray.serve.constants import (
 )
 from ray.serve.version import DeploymentVersion
 from ray.serve.utils import wrap_to_ray_error, parse_import_path
+from ray.serve.deployment import Deployment
 
 logger = _get_logger()
 
@@ -72,6 +74,20 @@ def create_replica_wrapper(
             if import_path is not None:
                 module_name, attr_name = parse_import_path(import_path)
                 deployment_def = getattr(import_module(module_name), attr_name)
+                # For ray or serve decorated class or function, strip to return
+                # original body
+                if isinstance(deployment_def, RemoteFunction):
+                    deployment_def = deployment_def._function
+                elif isinstance(deployment_def, ActorClass):
+                    deployment_def = deployment_def.__ray_metadata__.modified_class
+                elif isinstance(deployment_def, Deployment):
+                    logger.warning(
+                        f'The import path "{import_path}" contains a '
+                        "decorated Serve deployment. The decorator's settings "
+                        "are ignored when deploying via import path."
+                    )
+                    deployment_def = deployment_def.func_or_class
+
             else:
                 deployment_def = cloudpickle.loads(serialized_deployment_def)
 
@@ -237,7 +253,7 @@ class RayServeReplica:
         self.request_counter = metrics.Counter(
             "serve_deployment_request_counter",
             description=(
-                "The number of queries that have been " "processed in this replica."
+                "The number of queries that have been processed in this replica."
             ),
             tag_keys=("deployment", "replica"),
         )
@@ -248,7 +264,7 @@ class RayServeReplica:
         self.error_counter = metrics.Counter(
             "serve_deployment_error_counter",
             description=(
-                "The number of exceptions that have " "occurred in this replica."
+                "The number of exceptions that have occurred in this replica."
             ),
             tag_keys=("deployment", "replica"),
         )
@@ -259,7 +275,7 @@ class RayServeReplica:
         self.restart_counter = metrics.Counter(
             "serve_deployment_replica_starts",
             description=(
-                "The number of times this replica " "has been restarted due to failure."
+                "The number of times this replica has been restarted due to failure."
             ),
             tag_keys=("deployment", "replica"),
         )

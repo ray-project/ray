@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 
+"""This example demonstrates the usage of BOHB with Ray Tune.
+
+Requires the HpBandSter and ConfigSpace libraries to be installed
+(`pip install hpbandster ConfigSpace`).
+"""
+
 import argparse
 import json
 import time
@@ -45,15 +51,13 @@ class MyTrainableClass(Trainable):
 
 
 if __name__ == "__main__":
-    import ConfigSpace as CS  # noqa: F401
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--server-address",
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     args, _ = parser.parse_known_args()
 
@@ -70,6 +74,7 @@ if __name__ == "__main__":
     }
 
     # Optional: Pass the parameter space yourself
+    # import ConfigSpace as CS
     # config_space = CS.ConfigurationSpace()
     # config_space.add_hyperparameter(
     #     CS.UniformFloatHyperparameter("width", lower=0, upper=20))

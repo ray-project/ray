@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -21,6 +22,7 @@ class RunScriptTest(unittest.TestCase):
         os.environ["NO_ARTIFACTS"] = "1"
         os.environ["RAY_TEST_SCRIPT"] = "ray_release/tests/_test_run_release_test_sh.py"
         os.environ["OVERRIDE_SLEEP_TIME"] = "0"
+        os.environ["MAX_RETRIES"] = "3"
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tempdir)
@@ -101,3 +103,9 @@ class RunScriptTest(unittest.TestCase):
         os.unlink(argv_file)
 
         self.assertIn("--smoke-test", data)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
