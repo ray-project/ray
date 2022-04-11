@@ -30,7 +30,7 @@ until the resource utilization is beyond a certain threshold and spread tasks af
 
 "SPREAD" strategy will try to spread the tasks among available nodes.
 
-NodeAffinitySchedulingStrategy is a low-level strategy that allows a task to be scheduled onto a particular node specified by its hexadecimal node id.
+NodeAffinitySchedulingStrategy is a low-level strategy that allows a task to be scheduled onto a particular node specified by its node id.
 The ``soft`` flag specifies whether the task is allowed to run somewhere else if the specified node doesn't exist (e.g. if the node dies)
 or is infeasible because it does not have the resources required to run the task. In these cases, if ``soft`` is True, the task will be scheduled onto a different feasible node.
 Otherwise, the task will fail with ``TaskUnschedulableError``.
@@ -67,12 +67,12 @@ especially in a multi-tenant cluster: for example, an application won't know wha
 
         @ray.remote
         def node_affinity_function():
-            return ray.get_runtime_context().node_id.hex()
+            return ray.get_runtime_context().node_id
 
         # Only run the task on the local node.
         node_affinity_function.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id = ray.get_runtime_context().node_id.hex(),
+                node_id = ray.get_runtime_context().node_id,
                 soft = False,
             )
         ).remote()

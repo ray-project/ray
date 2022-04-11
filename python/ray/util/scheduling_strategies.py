@@ -1,4 +1,5 @@
 from typing import Union, Optional
+from ray import NodeID
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
 
@@ -60,6 +61,10 @@ class NodeAffinitySchedulingStrategy:
     """
 
     def __init__(self, node_id: str, soft: bool):
+        # This will be removed once we standardize on node id being hex string.
+        if isinstance(node_id, NodeID):
+            node_id = node_id.hex()
+
         self.node_id = node_id
         self.soft = soft
 

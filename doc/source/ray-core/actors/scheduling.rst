@@ -31,7 +31,7 @@ Currently the supported strategies for actors are ``"DEFAULT"`` and ``ray.util.s
 ``"DEFAULT"`` is the default strategy used by Ray. With the current implementation, Ray will try to pack actors on nodes
 until the resource utilization is beyond a certain threshold and spread actors afterwards.
 
-NodeAffinitySchedulingStrategy is a low-level strategy that allows an actor to be scheduled onto a particular node specified by its hexadecimal node id.
+NodeAffinitySchedulingStrategy is a low-level strategy that allows an actor to be scheduled onto a particular node specified by its node id.
 The ``soft`` flag specifies whether the actor is allowed to run somewhere else if the specified node doesn't exist (e.g. if the node dies)
 or is infeasible because it does not have the resources required to run the actor. In these cases, if ``soft`` is True, the actor will be scheduled onto a different feasible node.
 Otherwise, the actor will fail with ``ActorUnschedulableError``.
@@ -61,7 +61,7 @@ Since nodes are randomly chosen, actors that don't require any resources are eff
         # Only run the actor on the local node.
         a3 = Actor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id = ray.get_runtime_context().node_id.hex(),
+                node_id = ray.get_runtime_context().node_id,
                 soft = False,
             )
         ).remote()

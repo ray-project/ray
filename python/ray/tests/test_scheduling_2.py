@@ -266,7 +266,7 @@ def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client)
 
         @ray.remote
         def get_node_id():
-            return ray.get_runtime_context().node_id.hex()
+            return ray.get_runtime_context().node_id
 
         head_node_id = ray.get(
             get_node_id.options(num_cpus=0, resources={"head": 1}).remote()
@@ -345,14 +345,14 @@ def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client)
             ),
         )
         def crashed_get_node_id():
-            if ray.get_runtime_context().node_id.hex() == crashed_worker_node_id:
+            if ray.get_runtime_context().node_id == crashed_worker_node_id:
                 internal_kv._internal_kv_put(
                     "crashed_get_node_id", "crashed_worker_node_id"
                 )
                 while True:
                     time.sleep(1)
             else:
-                return ray.get_runtime_context().node_id.hex()
+                return ray.get_runtime_context().node_id
 
         r = crashed_get_node_id.remote()
         while not internal_kv._internal_kv_exists("crashed_get_node_id"):
@@ -363,7 +363,7 @@ def test_node_affinity_scheduling_strategy(ray_start_cluster, connect_to_client)
         @ray.remote(num_cpus=1)
         class Actor:
             def get_node_id(self):
-                return ray.get_runtime_context().node_id.hex()
+                return ray.get_runtime_context().node_id
 
         actor = Actor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
