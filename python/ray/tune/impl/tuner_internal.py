@@ -168,6 +168,7 @@ class TunerInternal:
             name=self._run_config.name,
             callbacks=self._run_config.callbacks,
             sync_config=self._run_config.sync_config,
+            stop=self._run_config.stop,
             max_failures=(
                 self._run_config.failure.max_failures if self._run_config.failure else 0
             ),
@@ -186,6 +187,7 @@ class TunerInternal:
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
             sync_config=self._run_config.sync_config,
+            stop=self._run_config.stop,
             max_failures=(
                 self._run_config.failure.max_failures if self._run_config.failure else 0
             ),
