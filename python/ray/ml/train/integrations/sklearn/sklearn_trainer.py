@@ -30,7 +30,9 @@ class SklearnTrainer(Trainer):
     non-distributed manner on a single Ray Actor.
 
     The ``n_jobs`` (or ``thread_count``) parameters will be set to match
-    the number of CPUs assigned to the Ray Actor.
+    the number of CPUs assigned to the Ray Actor. Please note that
+    parallelism for joblib-based estimators is not yet implemented
+    (though technically possible).
 
     Example:
         .. code-block:: python
@@ -94,6 +96,8 @@ class SklearnTrainer(Trainer):
             other cases, ``KFold`` is used. These splitters are instantiated
             with ``shuffle=False`` so the splits will be the same across calls.
         scaling_config: Configuration for how to scale training.
+            Only the ``trainer_resources`` key can be provided,
+            as the training is not distributed.
         run_config: Configuration for the execution of the training run.
         preprocessor: A ray.ml.preprocessor.Preprocessor to preprocess the
             provided datasets.
