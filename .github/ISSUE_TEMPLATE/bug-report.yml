@@ -51,12 +51,12 @@ body:
   - type: dropdown
     attributes:
       label: Issue Severity
-        description: |
-          How does this issue affect your experience as a Ray user?
-        multiple: false
-        options:
+      description: |
+        How does this issue affect your experience as a Ray user?
+      multiple: false
+      options:
           - "Low: It annoys or frustrates me."
           - "Medium: It is a significant difficulty but I can work around it."
           - "High: It blocks me from completing my task."
-      validations:
+    validations:
         required: false
