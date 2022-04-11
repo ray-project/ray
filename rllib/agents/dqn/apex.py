@@ -260,11 +260,11 @@ class ApexTrainer(DQNTrainer):
 
         # Create a number of replay buffer actors.
         num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
-
+        buffer_size = config["buffer_size"] // num_replay_buffer_shards
         replay_actor_args = [
             num_replay_buffer_shards,
             config["learning_starts"],
-            config["buffer_size"],
+            buffer_size,
             config["train_batch_size"],
             config["replay_buffer_config"]["prioritized_replay_alpha"],
             config["replay_buffer_config"]["prioritized_replay_beta"],
