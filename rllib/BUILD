@@ -1144,7 +1144,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole"],
+    args = ["local", "cartpole", "8800"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1153,7 +1153,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole"],
+    args = ["remote", "cartpole", "8810"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1162,7 +1162,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "large",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole_lstm"],
+    args = ["remote", "cartpole_lstm", "8820"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1171,7 +1171,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole-dummy-2-episodes"],
+    args = ["local", "cartpole-dummy-2-episodes", "8830"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1180,7 +1180,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole-dummy-2-episodes"],
+    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1189,7 +1189,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "unity3d"],
+    args = ["local", "unity3d", "8850"],
     data = glob(["examples/serving/*.py"]),
 )
 
@@ -1198,7 +1198,7 @@ sh_test(
     tags = ["team:ml", "env"],
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "unity3d"],
+    args = ["remote", "unity3d", "8860"],
     data = glob(["examples/serving/*.py"]),
 )
 
