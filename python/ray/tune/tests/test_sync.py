@@ -28,6 +28,7 @@ from ray.tune.syncer import (
     SyncerCallback,
 )
 from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -454,6 +455,53 @@ class TestSyncFunctionality(unittest.TestCase):
         client.wait_or_retry(max_retries=3, backoff_s=0)
 
         self.assertEquals(client._sync_downs, 2)
+
+    def testSyncBetweenNodesAndDelete(self):
+        temp_source = tempfile.mkdtemp()
+        temp_up_target = tempfile.mkdtemp()
+        temp_down_target = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_source)
+        self.addCleanup(shutil.rmtree, temp_up_target, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, temp_down_target)
+
+        os.makedirs(os.path.join(temp_source, "dir_level0", "dir_level1"))
+        with open(os.path.join(temp_source, "dir_level0", "file_level1.txt"), "w") as f:
+            f.write("Data\n")
+
+        def check_dir_contents(path: str):
+            assert os.path.exists(os.path.join(path, "dir_level0"))
+            assert os.path.exists(os.path.join(path, "dir_level0", "dir_level1"))
+            assert os.path.exists(os.path.join(path, "dir_level0", "file_level1.txt"))
+            with open(os.path.join(path, "dir_level0", "file_level1.txt"), "r") as f:
+                assert f.read() == "Data\n"
+
+        # Sanity check
+        check_dir_contents(temp_source)
+
+        sync_dir_between_nodes(
+            source_ip=ray.util.get_node_ip_address(),
+            source_path=temp_source,
+            target_ip=ray.util.get_node_ip_address(),
+            target_path=temp_up_target,
+        )
+
+        # Check sync up
+        check_dir_contents(temp_up_target)
+
+        sync_dir_between_nodes(
+            source_ip=ray.util.get_node_ip_address(),
+            source_path=temp_up_target,
+            target_ip=ray.util.get_node_ip_address(),
+            target_path=temp_down_target,
+        )
+
+        # Check sync up
+        check_dir_contents(temp_down_target)
+
+        # Delete in some dir
+        delete_on_node(node_ip=ray.util.get_node_ip_address(), path=temp_up_target)
+
+        assert not os.path.exists(temp_up_target)
 
     def testSyncRemoteTaskOnlyDifferences(self):
         """Tests the RemoteTaskClient sync client.

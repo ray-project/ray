@@ -523,7 +523,7 @@ class RemoteTaskClient(SyncClient):
             source_path=source_path,
             target_ip=target_ip,
             target_path=target_path,
-            _return_all_remotes=True,
+            return_futures=True,
         )
 
         if self._store_remotes:
@@ -535,14 +535,14 @@ class RemoteTaskClient(SyncClient):
     def delete(self, target: str):
         if not self._last_target_tuple:
             logger.error(
-                f"Could not delete path {target} as we target node is not known."
+                f"Could not delete path {target} as the target node is not known."
             )
             return
 
         node_ip = self._last_target_tuple[0]
 
         try:
-            ray.get(delete_on_node(node_ip=node_ip, path=target))
+            delete_on_node(node_ip=node_ip, path=target)
         except Exception as e:
             logger.error(
                 f"Could not delete path {target} on remote node {node_ip}: {e}"
