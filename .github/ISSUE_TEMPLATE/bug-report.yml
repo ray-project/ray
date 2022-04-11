@@ -47,16 +47,3 @@ body:
         until the repro instruction is updated.
     validations:
       required: true
-
-  - type: dropdown
-    attributes:
-      label: Issue Severity
-        description: |
-          How does this issue affect your experience as a Ray user?
-        multiple: false
-        options:
-          - "Low: It annoys or frustrates me."
-          - "Medium: It is a significant difficulty towards completing my task but I can work around it and get it resolved."
-          - "High: It blocks me from completing my task."
-      validations:
-        required: false
