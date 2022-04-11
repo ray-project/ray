@@ -197,7 +197,6 @@ if __name__ == "__main__":
     elif args.run == "IMPALA":
         config.update(
             {
-                "num_gpus": 0,
                 "model": {"use_lstm": args.use_lstm},
             }
         )
