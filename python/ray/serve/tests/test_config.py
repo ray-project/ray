@@ -148,6 +148,9 @@ def test_replica_config_default_memory_none(memory_omitted_options):
     config = ReplicaConfig("fake.import_path", ray_actor_options=memory_omitted_options)
     assert config.ray_actor_options["memory"] is None
 
+    # Ensure resource_dict["memory"] is 0, so it can be compared as an int
+    assert config.resource_dict["memory"] == 0
+
 
 def test_http_options():
     HTTPOptions()
