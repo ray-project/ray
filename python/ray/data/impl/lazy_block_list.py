@@ -288,25 +288,37 @@ class LazyBlockList(BlockList):
     def ensure_metadata_for_first_block(self) -> Optional[BlockMetadata]:
         """Ensure that the metadata is fetched and set for the first block.
 
-        Returns None if the block list is empty.
+        This will only block execution in order to fetch the post-read metadata for the
+        first block if the pre-read metadata for the first block has no schema.
+
+        Returns:
+            None if the block list is empty, the metadata for the first block otherwise.
         """
+        if not self._tasks:
+            return None
+        metadata = self._tasks[0].get_metadata()
+        if metadata.schema is not None:
+            return metadata
         try:
-            _, metadata = next(self.iter_blocks_with_metadata())
+            _, metadata_ref = next(self._iter_block_partition_refs())
         except (StopIteration, ValueError):
             # Dataset is empty (no blocks) or was manually cleared.
-            return None
-
-        # Set the metadata.
-        self._fetched_metadata[0] = metadata
+            pass
+        else:
+            # This blocks until the underlying read task is finished.
+            metadata = ray.get(metadata_ref)
+            self._fetched_metadata[0] = metadata
         return metadata
 
     def iter_blocks_with_metadata(
         self,
     ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
-        """Iterate over the blocks along with their runtime metadata.
+        """Iterate over the blocks along with their metadata.
 
-        This blocks on the execution of each submitted task.
         The length of this iterator is not known until execution.
+
+        Returns:
+            An iterator of block references and the corresponding block metadata.
         """
         context = DatasetContext.get_current()
         outer = self
@@ -327,9 +339,8 @@ class LazyBlockList(BlockList):
                         part_ref, _ = next(self._base_iter)
                         partition = ray.get(part_ref)
                     else:
-                        block, metadata_ref = next(self._base_iter)
-                        # This blocks until the underlying read task is finished.
-                        metadata = ray.get(metadata_ref)
+                        block, _ = next(self._base_iter)
+                        metadata = outer._tasks[self._pos].get_metadata()
                         partition = [(block, metadata)]
                     for ref, metadata in partition:
                         self._buffer.append((ref, metadata))

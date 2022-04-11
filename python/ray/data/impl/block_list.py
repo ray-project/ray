@@ -1,12 +1,11 @@
 import math
-from typing import List, Iterator, Tuple, Optional
+from typing import List, Iterator, Tuple
 
 import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, BlockAccessor
-from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.block import Block, BlockMetadata
 
 
 class BlockList:
@@ -175,23 +174,3 @@ class BlockList:
         doesn't know how many blocks will be produced until tasks finish.
         """
         return len(self.get_blocks())
-
-    def ensure_metadata_for_first_block(self) -> BlockMetadata:
-        """Ensure that the metadata is fetched and set for the first block.
-
-        Returns None if the block list is empty.
-        """
-        get_metadata = cached_remote_fn(_get_metadata)
-        try:
-            block, metadata = next(self.iter_blocks_with_metadata())
-        except (StopIteration, ValueError):
-            # Dataset is empty (no blocks) or was manually cleared.
-            return None
-        input_files = metadata.input_files
-        metadata = ray.get(get_metadata.remote(block, input_files))
-        self._metadata[0] = metadata
-        return metadata
-
-
-def _get_metadata(block: Block, input_files=Optional[List[str]]) -> BlockMetadata:
-    return BlockAccessor.for_block(block).get_metadata(input_files=input_files)

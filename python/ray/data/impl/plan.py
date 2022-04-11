@@ -116,7 +116,7 @@ class ExecutionPlan:
         else:
             blocks = self._in_blocks
         metadata = blocks.get_metadata() if blocks else None
-        if metadata and metadata[0].num_rows is not None:
+        if metadata and all(m.num_rows is not None for m in metadata):
             return sum(m.num_rows for m in metadata)
         else:
             return None
