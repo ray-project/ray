@@ -4,8 +4,8 @@ from typing import Tuple
 import pandas as pd
 
 import ray
+from ray.ml.predictor import BatchPredictor
 from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
-from ray.ml.scorer import BatchScorer
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.data.dataset import Dataset
 from ray.ml.result import Result
@@ -59,16 +59,18 @@ def train_xgboost(num_workers: int, use_gpu: bool = False) -> Result:
 def predict_xgboost(result: Result):
     _, _, test_dataset = prepare_data()
 
-    scorer = BatchScorer(XGBoostPredictor, result.checkpoint)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, XGBoostPredictor
+    )
 
     predicted_labels = (
-        scorer.score(test_dataset)
+        batch_predictor.predict(test_dataset)
         .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
         .to_pandas(limit=float("inf"))
     )
     print(f"PREDICTED LABELS\n{predicted_labels}")
 
-    shap_values = scorer.score(test_dataset, pred_contribs=True).to_pandas(
+    shap_values = batch_predictor.predict(test_dataset, pred_contribs=True).to_pandas(
         limit=float("inf")
     )
     print(f"SHAP VALUES\n{shap_values}")

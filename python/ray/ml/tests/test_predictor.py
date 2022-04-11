@@ -2,8 +2,12 @@ import pytest
 
 import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.predictor import Predictor, DataBatchType, PredictorNotSerializableException
-from ray.ml.scorer import BatchScorer
+from ray.ml.predictor import (
+    Predictor,
+    DataBatchType,
+    PredictorNotSerializableException,
+    BatchPredictor,
+)
 
 
 class DummyPredictor(Predictor):
@@ -32,10 +36,14 @@ def test_serialization():
 
 
 def test_scoring():
-    scorer = BatchScorer(DummyPredictor, Checkpoint.from_dict({"factor": 2.0}))
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0}), DummyPredictor
+    )
 
     test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
-    assert scorer.score(test_dataset).to_pandas().to_numpy().squeeze().tolist() == [
+    assert batch_predictor.predict(
+        test_dataset
+    ).to_pandas().to_numpy().squeeze().tolist() == [
         2.0,
         4.0,
         6.0,

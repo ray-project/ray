@@ -3,7 +3,7 @@ import numpy as np
 
 
 import tensorflow as tf
-from ray.ml.scorer import BatchScorer
+from ray.ml.predictor import BatchPredictor
 from tensorflow.keras.callbacks import Callback
 
 import ray
@@ -89,14 +89,14 @@ def train_tensorflow_linear(num_workers: int = 2, use_gpu: bool = False) -> Resu
 
 
 def predict_linear(result: Result) -> Dataset:
-    scorer = BatchScorer(
-        TensorflowPredictor, result.checkpoint, model_definition=build_model
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, TensorflowPredictor, model_definition=build_model
     )
 
     items = [{"x": np.random.uniform(0, 1)} for _ in range(10)]
     prediction_dataset = ray.data.from_items(items)
 
-    predictions = scorer.score(prediction_dataset, dtype=tf.float32)
+    predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
 
     pandas_predictions = predictions.to_pandas(float("inf"))
 
