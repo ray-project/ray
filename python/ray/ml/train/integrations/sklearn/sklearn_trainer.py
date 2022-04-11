@@ -76,9 +76,8 @@ class SklearnTrainer(Trainer):
 
             - a list or tuple of unique strings;
             - a callable returning a dictionary where the keys are the metric
-            names and the values are the metric scores;
+              names and the values are the metric scores;
             - a dictionary with metric names as keys and callables a values.
-
 
         cv: Determines the cross-validation splitting strategy. If specified,
             cross-validation will be run on the train dataset, in addition to
