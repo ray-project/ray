@@ -175,7 +175,7 @@ def run(
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
             model to train. This may refer to the name of a built-on algorithm
-            (e.g. RLLib's DQN or PPO), a user-defined trainable
+            (e.g. RLlib's DQN or PPO), a user-defined trainable
             function or class, or the string identifier of a
             trainable function or class registered in the tune registry.
             If Experiment, then Tune will execute training based on

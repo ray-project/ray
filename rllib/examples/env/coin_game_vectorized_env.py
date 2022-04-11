@@ -85,7 +85,7 @@ class VectorizedCoinGame(CoinGame):
     @override(CoinGame)
     def step(self, actions: Iterable):
 
-        actions = self._from_RLLib_API_to_list(actions)
+        actions = self._from_RLlib_API_to_list(actions)
         self.step_count_in_current_episode += 1
 
         (
@@ -121,7 +121,7 @@ class VectorizedCoinGame(CoinGame):
 
         obs, rewards = self._optional_unvectorize(obs, rewards)
 
-        return self._to_RLLib_API(obs, rewards)
+        return self._to_RLlib_API(obs, rewards)
 
     @override(CoinGame)
     def _get_episode_info(self):
@@ -147,7 +147,7 @@ class VectorizedCoinGame(CoinGame):
         return player_red_info, player_blue_info
 
     @override(CoinGame)
-    def _from_RLLib_API_to_list(self, actions):
+    def _from_RLlib_API_to_list(self, actions):
 
         ac_red = actions[self.player_red_id]
         ac_blue = actions[self.player_blue_id]
