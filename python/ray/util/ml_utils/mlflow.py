@@ -179,8 +179,7 @@ class MLflowLoggerUtil:
             return active_run
 
         return self._mlflow.start_run(
-            run_name=run_name, experiment_id=self.experiment_id, tags=tags
-        )
+            run_name=run_name, experiment_id=self.experiment_id, tags=tags)
 
     def _run_exists(self, run_id: str) -> bool:
         """Check if run with the provided id exists."""
