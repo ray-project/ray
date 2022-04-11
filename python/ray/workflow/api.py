@@ -364,19 +364,19 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 @PublicAPI(stability="beta")
 def wait_for_event(
     event_listener_type: EventListenerType, *args, **kwargs
-) -> Workflow[Event]:
+) -> "DAGNode[Event]":
     if not issubclass(event_listener_type, EventListener):
         raise TypeError(
             f"Event listener type is {event_listener_type.__name__}"
             ", which is not a subclass of workflow.EventListener"
         )
 
-    @step
+    @ray.remote
     def get_message(event_listener_type: EventListenerType, *args, **kwargs) -> Event:
         event_listener = event_listener_type()
         return asyncio_run(event_listener.poll_for_event(*args, **kwargs))
 
-    @step
+    @ray.remote
     def message_committed(
         event_listener_type: EventListenerType, event: Event
     ) -> Event:
@@ -384,22 +384,22 @@ def wait_for_event(
         asyncio_run(event_listener.event_checkpointed(event))
         return event
 
-    return message_committed.step(
-        event_listener_type, get_message.step(event_listener_type, *args, **kwargs)
+    return message_committed.bind(
+        event_listener_type, get_message.bind(event_listener_type, *args, **kwargs)
     )
 
 
 @PublicAPI(stability="beta")
-def sleep(duration: float) -> Workflow[Event]:
+def sleep(duration: float) -> "DAGNode[Event]":
     """
     A workfow that resolves after sleeping for a given duration.
     """
 
-    @step
+    @ray.remote
     def end_time():
         return time.time() + duration
 
-    return wait_for_event(TimerListener, end_time.step())
+    return wait_for_event(TimerListener, end_time.bind())
 
 
 @PublicAPI(stability="beta")
