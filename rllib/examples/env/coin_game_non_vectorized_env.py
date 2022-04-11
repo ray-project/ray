@@ -135,7 +135,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         :param actions: Dict containing both actions for player_1 and player_2
         :return: observations, rewards, done, info
         """
-        actions = self._from_RLLib_API_to_list(actions)
+        actions = self._from_RLlib_API_to_list(actions)
 
         self.step_count_in_current_episode += 1
         self._move_players(actions)
@@ -144,7 +144,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             self._generate_coin()
         observations = self._generate_observation()
 
-        return self._to_RLLib_API(observations, reward_list)
+        return self._to_RLlib_API(observations, reward_list)
 
     def _same_pos(self, x, y):
         return (x == y).all()
@@ -219,7 +219,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 
         return reward_list, generate_new_coin
 
-    def _from_RLLib_API_to_list(self, actions):
+    def _from_RLlib_API_to_list(self, actions):
         """
         Format actions from dict of players to list of lists
         """
@@ -245,7 +245,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 
         return [player_red_observation, player_blue_observation]
 
-    def _to_RLLib_API(self, observations, rewards):
+    def _to_RLlib_API(self, observations, rewards):
         state = {
             self.player_red_id: observations[0],
             self.player_blue_id: observations[1],

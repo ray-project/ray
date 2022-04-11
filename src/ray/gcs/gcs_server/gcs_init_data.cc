@@ -98,7 +98,8 @@ void GcsInitData::AsyncLoadActorTableData(const EmptyCallback &on_done) {
                       << actor_table_data_.size();
         on_done();
       };
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().GetAll(load_actor_table_data_callback));
+  RAY_CHECK_OK(gcs_table_storage_->ActorTable().AsyncRebuildIndexAndGetAll(
+      load_actor_table_data_callback));
 }
 
 }  // namespace gcs

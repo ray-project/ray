@@ -577,18 +577,26 @@ py_test(
 # Generic (all Trainers)
 py_test(
     name = "test_callbacks",
-    tags = ["team:ml", "trainers_dir"],
+    tags = ["team:ml", "trainers_dir", "trainers_dir_generic"],
     size = "medium",
     srcs = ["agents/tests/test_callbacks.py"]
 )
 
 py_test(
     name = "test_trainer",
-    tags = ["team:ml", "trainers_dir"],
+    tags = ["team:ml", "trainers_dir", "trainers_dir_generic"],
     size = "large",
     srcs = ["agents/tests/test_trainer.py"]
 )
 
+py_test(
+    name = "tests/test_worker_failures",
+    tags = ["team:ml", "tests_dir", "trainers_dir_generic"],
+    size = "large",
+    srcs = ["agents/tests/test_worker_failures.py"]
+)
+
+# Specific Trainers (Algorithms)
 # A2/3CTrainer
 py_test(
     name = "test_a2c",
@@ -1639,13 +1647,6 @@ py_test(
     tags = ["team:ml", "tests_dir", "tests_dir_G"],
     size = "large",
     srcs = ["tests/test_gpus.py"]
-)
-
-py_test(
-    name = "tests/test_ignore_worker_failure",
-    tags = ["team:ml", "tests_dir", "tests_dir_I"],
-    size = "large",
-    srcs = ["tests/test_ignore_worker_failure.py"]
 )
 
 py_test(
