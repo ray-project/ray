@@ -95,7 +95,7 @@ def test_http_access_log(serve_instance):
         with pytest.raises(requests.exceptions.RequestException):
             requests.get(f"http://127.0.0.1:8000{prefix}?throw=True").raise_for_status()
 
-        wait_for_condition(check_log, fail=True)
+        wait_for_condition(check_log, timeout=30, fail=True)
 
 
 def test_user_logs(serve_instance):
