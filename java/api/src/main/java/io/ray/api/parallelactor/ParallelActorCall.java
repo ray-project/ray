@@ -6,6 +6,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.parallelactor.ParallelActor;
 import io.ray.api.parallelactor.ParallelActorTaskCaller;
 import io.ray.api.parallelactor.VoidParallelActorTaskCaller;
+import io.ray.api.function.*;
 import io.ray.api.function.RayFunc1;
 import io.ray.api.function.RayFunc2;
 import io.ray.api.function.RayFunc3;
@@ -24,644 +25,650 @@ import io.ray.api.function.RayFuncVoid6;
  **/
 interface ParallelActorCall<A> {
 
+    default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {
+   if (this instanceof ParallelActor) {
+     return new VoidParallelActorTaskCaller((ParallelActor) this, func, args);
+   } else if (this instanceof ParallelInstance) {
+     return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);
+   }
+   return null;
+ }
+      default <R> ParallelActorTaskCaller<R> buildCaller(RayFuncR<R> func, Object[] args) {
+    if (this instanceof ParallelActor) {
+      return new ParallelActorTaskCaller<R>((ParallelActor) this, func, args);
+    } else if (this instanceof ParallelInstance) {
+      return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);
+    }
+    return null;
+  }
   default <R> ParallelActorTaskCaller<R> task(RayFunc1<A, R> f) {
     Object[] args = new Object[]{};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default VoidParallelActorTaskCaller task(RayFuncVoid1<A> f) {
     Object[] args = new Object[]{};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, R> ParallelActorTaskCaller<R> task(RayFunc2<A, T0, R> f, T0 t0) {
     Object[] args = new Object[]{t0};
-    if (this instanceof ParallelActor) {
-      return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
-    } else if (this instanceof ParallelInstance) {
-      return new ParallelActorTaskCaller<>((ParallelInstance) this, f, args);
-    }
-    return null;
+    return buildCaller(f, args);
   }
 
   default <T0, R> ParallelActorTaskCaller<R> task(RayFunc2<A, T0, R> f, ObjectRef<T0> t0) {
     Object[] args = new Object[]{t0};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0> VoidParallelActorTaskCaller task(RayFuncVoid2<A, T0> f, T0 t0) {
     Object[] args = new Object[]{t0};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0> VoidParallelActorTaskCaller task(RayFuncVoid2<A, T0> f, ObjectRef<T0> t0) {
     Object[] args = new Object[]{t0};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, R> ParallelActorTaskCaller<R> task(RayFunc3<A, T0, T1, R> f, T0 t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    if (this instanceof ParallelActor) {
-      return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
-    } else if (this instanceof ParallelInstance) {
-      return new ParallelActorTaskCaller<>((ParallelInstance) this, f, args);
-    }
-    return null;
+    return buildCaller(f, args);
   }
 
   default <T0, T1, R> ParallelActorTaskCaller<R> task(RayFunc3<A, T0, T1, R> f, T0 t0, ObjectRef<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, R> ParallelActorTaskCaller<R> task(RayFunc3<A, T0, T1, R> f, ObjectRef<T0> t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, R> ParallelActorTaskCaller<R> task(RayFunc3<A, T0, T1, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1> VoidParallelActorTaskCaller task(RayFuncVoid3<A, T0, T1> f, T0 t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1> VoidParallelActorTaskCaller task(RayFuncVoid3<A, T0, T1> f, T0 t0, ObjectRef<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1> VoidParallelActorTaskCaller task(RayFuncVoid3<A, T0, T1> f, ObjectRef<T0> t0, T1 t1) {
     Object[] args = new Object[]{t0, t1};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1> VoidParallelActorTaskCaller task(RayFuncVoid3<A, T0, T1> f, ObjectRef<T0> t0, ObjectRef<T1> t1) {
     Object[] args = new Object[]{t0, t1};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, R> ParallelActorTaskCaller<R> task(RayFunc4<A, T0, T1, T2, R> f, T0 t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, R> ParallelActorTaskCaller<R> task(RayFunc4<A, T0, T1, T2, R> f, T0 t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, R> ParallelActorTaskCaller<R> task(RayFunc4<A, T0, T1, T2, R> f, T0 t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, R> ParallelActorTaskCaller<R> task(RayFunc4<A, T0, T1, T2, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, R> ParallelActorTaskCaller<R> task(RayFunc4<A, T0, T1, T2, R> f, ObjectRef<T0> t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, R> ParallelActorTaskCaller<R> task(RayFunc4<A, T0, T1, T2, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, R> ParallelActorTaskCaller<R> task(RayFunc4<A, T0, T1, T2, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, R> ParallelActorTaskCaller<R> task(RayFunc4<A, T0, T1, T2, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2> VoidParallelActorTaskCaller task(RayFuncVoid4<A, T0, T1, T2> f, T0 t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2> VoidParallelActorTaskCaller task(RayFuncVoid4<A, T0, T1, T2> f, T0 t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2> VoidParallelActorTaskCaller task(RayFuncVoid4<A, T0, T1, T2> f, T0 t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2> VoidParallelActorTaskCaller task(RayFuncVoid4<A, T0, T1, T2> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2> VoidParallelActorTaskCaller task(RayFuncVoid4<A, T0, T1, T2> f, ObjectRef<T0> t0, T1 t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2> VoidParallelActorTaskCaller task(RayFuncVoid4<A, T0, T1, T2> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2> VoidParallelActorTaskCaller task(RayFuncVoid4<A, T0, T1, T2> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2> VoidParallelActorTaskCaller task(RayFuncVoid4<A, T0, T1, T2> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2) {
     Object[] args = new Object[]{t0, t1, t2};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, R> ParallelActorTaskCaller<R> task(RayFunc5<A, T0, T1, T2, T3, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3> VoidParallelActorTaskCaller task(RayFuncVoid5<A, T0, T1, T2, T3> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3) {
     Object[] args = new Object[]{t0, t1, t2, t3};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4, R> ParallelActorTaskCaller<R> task(RayFunc6<A, T0, T1, T2, T3, T4, R> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new ParallelActorTaskCaller<>((ParallelActor) this, f, args);
+    return buildCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, T0 t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, T1 t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, T2 t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, T3 t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, T4 t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
   default <T0, T1, T2, T3, T4> VoidParallelActorTaskCaller task(RayFuncVoid6<A, T0, T1, T2, T3, T4> f, ObjectRef<T0> t0, ObjectRef<T1> t1, ObjectRef<T2> t2, ObjectRef<T3> t3, ObjectRef<T4> t4) {
     Object[] args = new Object[]{t0, t1, t2, t3, t4};
-    return new VoidParallelActorTaskCaller((ParallelActor) this, f, args);
+    return buildVoidReturnCaller(f, args);
   }
 
 }

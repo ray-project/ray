@@ -4,7 +4,7 @@ package io.ray.api.parallelactor;
 
 import io.ray.api.parallelactor.ParallelActor;
 import io.ray.api.parallelactor.ParallelActorCreator;
-import io.ray.api.function.PyFunction;
+import io.ray.api.function.*;
 import io.ray.api.ObjectRef;
 import io.ray.api.function.RayFunc0;
 import io.ray.api.function.RayFunc1;

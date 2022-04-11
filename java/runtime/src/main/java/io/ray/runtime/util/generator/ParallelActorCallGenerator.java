@@ -24,7 +24,7 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine("");
     newLine("import io.ray.api.parallelactor.ParallelActor;");
     newLine("import io.ray.api.parallelactor.ParallelActorCreator;");
-    newLine("import io.ray.api.function.PyFunction;");
+    newLine("import io.ray.api.function.*;");
     newLine("import io.ray.api.ObjectRef;");
 
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
@@ -62,6 +62,8 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine("import io.ray.api.parallelactor.ParallelActor;");
     newLine("import io.ray.api.parallelactor.ParallelActorTaskCaller;");
     newLine("import io.ray.api.parallelactor.VoidParallelActorTaskCaller;");
+    newLine("import io.ray.api.function.*;");
+
     for (int i = 1; i <= MAX_PARAMETERS; i++) {
       newLine("import io.ray.api.function.RayFunc" + i + ";");
     }
@@ -74,6 +76,29 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine(" **/");
     newLine("interface ParallelActorCall<A> {");
     newLine("");
+
+    {
+      /// Generate buildVoidReturnCaller()
+      newLine(2, "default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {\n" +
+        "   if (this instanceof ParallelActor) {\n" +
+        "     return new VoidParallelActorTaskCaller((ParallelActor) this, func, args);\n" +
+        "   } else if (this instanceof ParallelInstance) {\n" +
+        "     return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);\n" +
+        "   }\n" +
+        "   return null;\n" +
+        " }");
+
+      /// Generate buildCaller()
+      newLine(2, "  default <R> ParallelActorTaskCaller<R> buildCaller(RayFuncR<R> func, Object[] args) {\n" +
+        "    if (this instanceof ParallelActor) {\n" +
+        "      return new ParallelActorTaskCaller<R>((ParallelActor) this, func, args);\n" +
+        "    } else if (this instanceof ParallelInstance) {\n" +
+        "      return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);\n" +
+        "    }\n" +
+        "    return null;\n" +
+        "  }");
+    }
+
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
       buildCalls(i, true, false, true);
       buildCalls(i, true, false, false);
@@ -128,6 +153,7 @@ public class ParallelActorCallGenerator extends BaseGenerator {
       if (forActor) {
         returnType = hasReturn ? "ParallelActorTaskCaller<R>" : "VoidParallelActorTaskCaller";
       } else {
+        // TODO(qwang): This should be removed since we don't have normal task calls for parallel actor.
         returnType = hasReturn ? "TaskCaller<R>" : "VoidTaskCaller";
       }
     }
@@ -154,9 +180,9 @@ public class ParallelActorCallGenerator extends BaseGenerator {
       caller = "ParallelActorCreator<>";
     } else {
       if (forActor) {
-        caller = hasReturn ? "ParallelActorTaskCaller<>" : "VoidParallelActorTaskCaller";
+      caller = hasReturn ? "buildCaller" : "buildVoidReturnCaller";
       } else {
-        caller = hasReturn ? "ParallelActorTaskCaller<>" : "VoidParallelActorTaskCaller";
+        caller = hasReturn ? "buildCaller" : "buildVoidReturnCaller";
       }
     }
 
@@ -190,12 +216,16 @@ public class ParallelActorCallGenerator extends BaseGenerator {
 
       // 5) Construct the third line.
       String ctrArgs = "";
-      if (forActor) {
-        ctrArgs += "(ParallelActor) this, ";
-      }
+//      if (forActor) {
+//        ctrArgs += "(ParallelActor) this, ";
+//      }
       ctrArgs += "f, args, ";
       ctrArgs = ctrArgs.substring(0, ctrArgs.length() - 2);
-      newLine(2, String.format("return new %s(%s);", caller, ctrArgs));
+      if (forActorCreation) {
+        newLine(2, String.format("return new %s(%s);", caller, ctrArgs));
+      } else {
+        newLine(2, String.format("return %s(%s);", caller, ctrArgs));
+      }
       newLine(1, "}");
       newLine("");
     }
