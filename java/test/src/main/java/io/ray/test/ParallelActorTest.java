@@ -15,6 +15,7 @@ import org.testng.annotations.Test;
 public class ParallelActorTest extends BaseTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(ParallelActorTest.class);
+
   private static class A {
     private int value = 0;
 
@@ -33,13 +34,15 @@ public class ParallelActorTest extends BaseTest {
   }
 
   /// 1. How to support concurrency group on parallel actor?
-  /// 2. how to align all functionalities of ActorCaller/ActorTaskCaller, we need to extends from ActorHandle?
+  /// 2. how to align all functionalities of ActorCaller/ActorTaskCaller, we need to extends from
+  // ActorHandle?
   /// 3. How do we reuse APIs ActorCreator for parallelActorCreator, like setRuntimeEnv
-  /// 4. The router is in the caller, to decide which index we should route. How to solve? Move to callee?
+  /// 4. The router is in the caller, to decide which index we should route. How to solve? Move to
+  // callee?
   /// 5. We used function manager.
   public void testF() {
-    ParallelActor<A> actor = Parallel.actor(A::new)
-      .setParallels(ParallelStrategy.ROUND_ROBIN, 10).remote();
+    ParallelActor<A> actor =
+        Parallel.actor(A::new).setParallels(ParallelStrategy.ROUND_ROBIN, 10).remote();
 
     /// TODO: Why we set the delta so large? since it's cast to short otherwise.
     ObjectRef<Integer> obj0 = actor.task(A::incr, 1000000).remote(); // 调用的是instance 0
@@ -51,31 +54,30 @@ public class ParallelActorTest extends BaseTest {
 
     {
       // stateless tests
-      ParallelInstance<A> instance = actor.getInstance(/*index=*/2);
+      ParallelInstance<A> instance = actor.getInstance(/*index=*/ 2);
 
       Preconditions.checkNotNull(instance);
-      int res = instance.task(A::f1, 100000, 200000).remote().get();   // Executed in instance 2
+      int res = instance.task(A::f1, 100000, 200000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 300000);
 
-      instance = actor.getInstance(/*index=*/3);
+      instance = actor.getInstance(/*index=*/ 3);
       Preconditions.checkNotNull(instance);
-      res = instance.task(A::f1, 100000, 200000).remote().get();   // Executed in instance 2
+      res = instance.task(A::f1, 100000, 200000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 300000);
     }
 
     {
       // stateful tests
-      ParallelInstance<A> instance = actor.getInstance(/*index=*/2);
+      ParallelInstance<A> instance = actor.getInstance(/*index=*/ 2);
 
       Preconditions.checkNotNull(instance);
-      int res = instance.task(A::incr, 1000000).remote().get();   // Executed in instance 2
+      int res = instance.task(A::incr, 1000000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 2000000);
 
-      instance = actor.getInstance(/*index=*/2);
+      instance = actor.getInstance(/*index=*/ 2);
       Preconditions.checkNotNull(instance);
-      res = instance.task(A::incr, 2000000).remote().get();   // Executed in instance 2
+      res = instance.task(A::incr, 2000000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 4000000);
     }
-
   }
 }

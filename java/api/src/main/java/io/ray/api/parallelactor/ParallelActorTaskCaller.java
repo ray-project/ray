@@ -35,5 +35,4 @@ public class ParallelActorTaskCaller<R> {
     }
     return (ObjectRef<R>) ret;
   }
-
 }

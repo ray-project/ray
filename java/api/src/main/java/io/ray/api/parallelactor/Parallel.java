@@ -1,6 +1,3 @@
 package io.ray.api.parallelactor;
 
-
-public class Parallel extends ParallelCall {
-
-}
+public class Parallel extends ParallelCall {}

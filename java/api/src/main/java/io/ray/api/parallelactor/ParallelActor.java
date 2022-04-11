@@ -9,7 +9,10 @@ public class ParallelActor<A> implements ParallelActorCall<A> {
   private int lastIndex = -1;
   private ActorHandle<? extends ParallelActorExecutor> parallelExecutorHandle = null;
 
-  public ParallelActor(ParallelStrategy strategy, int parallelNum, ActorHandle<? extends ParallelActorExecutor> handle) {
+  public ParallelActor(
+      ParallelStrategy strategy,
+      int parallelNum,
+      ActorHandle<? extends ParallelActorExecutor> handle) {
     this.strategy = strategy;
     this.parallelNum = parallelNum;
     parallelExecutorHandle = handle;
@@ -23,8 +26,6 @@ public class ParallelActor<A> implements ParallelActorCall<A> {
   public ActorHandle<? extends ParallelActorExecutor> getExecutor() {
     return parallelExecutorHandle;
   }
-
-
 
   public ParallelStrategy getStrategy() {
     return strategy;
@@ -46,5 +47,4 @@ public class ParallelActor<A> implements ParallelActorCall<A> {
 
     return 0;
   }
-
 }

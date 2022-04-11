@@ -1,8 +1,6 @@
 package io.ray.api.parallelactor;
 
 import io.ray.api.Ray;
-import io.ray.api.concurrencygroup.ConcurrencyGroup;
-import io.ray.api.concurrencygroup.ConcurrencyGroupBuilder;
 import io.ray.api.function.RayFuncR;
 
 public class ParallelActorCreator<A> {
@@ -16,7 +14,7 @@ public class ParallelActorCreator<A> {
   private Object[] args;
 
   public ParallelActorCreator(RayFuncR<A> func, Object[] args) {
-//    ObjectRef
+    //    ObjectRef
     this.func = func;
     this.args = args;
   }
@@ -31,5 +29,4 @@ public class ParallelActorCreator<A> {
     ParallelContext ctx = Ray.internal().getParallelContext();
     return ctx.createParallelActorExecutor(strategy, parallelNum, this.func);
   }
-
 }

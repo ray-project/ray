@@ -8,11 +8,10 @@ import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ParallelActorExecutorImpl extends ParallelActorExecutor {
 
@@ -23,12 +22,15 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
   /// This should be thread safe.
   private List<Object> instances = new ArrayList<>();
 
-  public ParallelActorExecutorImpl(ParallelStrategy strategy, int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor) {
+  public ParallelActorExecutorImpl(
+      ParallelStrategy strategy, int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor) {
     super(strategy, parallelNum);
 
     functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
 
-    RayFunction init = functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), javaFunctionDescriptor);
+    RayFunction init =
+        functionManager.getFunction(
+            Ray.getRuntimeContext().getCurrentJobId(), javaFunctionDescriptor);
     Thread.currentThread().setContextClassLoader(init.classLoader);
     try {
       for (int i = 0; i < parallelNum; ++i) {
@@ -41,11 +43,12 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
     } finally {
       ////
     }
-
   }
 
-  public Object execute(int instanceIndex, JavaFunctionDescriptor functionDescriptor,  Object[] args) {
-    RayFunction func = functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), functionDescriptor);
+  public Object execute(
+      int instanceIndex, JavaFunctionDescriptor functionDescriptor, Object[] args) {
+    RayFunction func =
+        functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), functionDescriptor);
     try {
       Preconditions.checkState(instances.contains(instanceIndex));
       return func.getMethod().invoke(instances.get(instanceIndex), args);
@@ -53,5 +56,4 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
       throw new RuntimeException(a);
     }
   }
-
 }

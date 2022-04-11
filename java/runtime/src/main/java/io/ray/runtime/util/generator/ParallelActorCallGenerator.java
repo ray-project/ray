@@ -1,12 +1,11 @@
 package io.ray.runtime.util.generator;
 
-import org.apache.commons.io.FileUtils;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.io.FileUtils;
 
 /**
  * A util class that generates `RayCall.java` and `ActorCall.java`, which provide type-safe
@@ -24,7 +23,6 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine("");
     newLine("import io.ray.api.parallelactor.ParallelActor;");
     newLine("import io.ray.api.parallelactor.ParallelActorCreator;");
-    newLine("import io.ray.api.function.*;");
     newLine("import io.ray.api.ObjectRef;");
 
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
@@ -62,7 +60,8 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine("import io.ray.api.parallelactor.ParallelActor;");
     newLine("import io.ray.api.parallelactor.ParallelActorTaskCaller;");
     newLine("import io.ray.api.parallelactor.VoidParallelActorTaskCaller;");
-    newLine("import io.ray.api.function.*;");
+    newLine("import io.ray.api.function.RayFuncVoid;");
+    newLine("import io.ray.api.function.RayFuncR;");
 
     for (int i = 1; i <= MAX_PARAMETERS; i++) {
       newLine("import io.ray.api.function.RayFunc" + i + ";");
@@ -79,24 +78,28 @@ public class ParallelActorCallGenerator extends BaseGenerator {
 
     {
       /// Generate buildVoidReturnCaller()
-      newLine(2, "default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {\n" +
-        "   if (this instanceof ParallelActor) {\n" +
-        "     return new VoidParallelActorTaskCaller((ParallelActor) this, func, args);\n" +
-        "   } else if (this instanceof ParallelInstance) {\n" +
-        "     return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);\n" +
-        "   }\n" +
-        "   return null;\n" +
-        " }");
+      newLine(
+          2,
+          "default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {\n"
+              + "   if (this instanceof ParallelActor) {\n"
+              + "     return new VoidParallelActorTaskCaller((ParallelActor) this, func, args);\n"
+              + "   } else if (this instanceof ParallelInstance) {\n"
+              + "     return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);\n"
+              + "   }\n"
+              + "   return null;\n"
+              + " }");
 
       /// Generate buildCaller()
-      newLine(2, "  default <R> ParallelActorTaskCaller<R> buildCaller(RayFuncR<R> func, Object[] args) {\n" +
-        "    if (this instanceof ParallelActor) {\n" +
-        "      return new ParallelActorTaskCaller<R>((ParallelActor) this, func, args);\n" +
-        "    } else if (this instanceof ParallelInstance) {\n" +
-        "      return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);\n" +
-        "    }\n" +
-        "    return null;\n" +
-        "  }");
+      newLine(
+          2,
+          "  default <R> ParallelActorTaskCaller<R> buildCaller(RayFuncR<R> func, Object[] args) {\n"
+              + "    if (this instanceof ParallelActor) {\n"
+              + "      return new ParallelActorTaskCaller<R>((ParallelActor) this, func, args);\n"
+              + "    } else if (this instanceof ParallelInstance) {\n"
+              + "      return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);\n"
+              + "    }\n"
+              + "    return null;\n"
+              + "  }");
     }
 
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
@@ -153,7 +156,8 @@ public class ParallelActorCallGenerator extends BaseGenerator {
       if (forActor) {
         returnType = hasReturn ? "ParallelActorTaskCaller<R>" : "VoidParallelActorTaskCaller";
       } else {
-        // TODO(qwang): This should be removed since we don't have normal task calls for parallel actor.
+        // TODO(qwang): This should be removed since we don't have normal task calls for parallel
+        // actor.
         returnType = hasReturn ? "TaskCaller<R>" : "VoidTaskCaller";
       }
     }
@@ -180,7 +184,7 @@ public class ParallelActorCallGenerator extends BaseGenerator {
       caller = "ParallelActorCreator<>";
     } else {
       if (forActor) {
-      caller = hasReturn ? "buildCaller" : "buildVoidReturnCaller";
+        caller = hasReturn ? "buildCaller" : "buildVoidReturnCaller";
       } else {
         caller = hasReturn ? "buildCaller" : "buildVoidReturnCaller";
       }
@@ -212,13 +216,13 @@ public class ParallelActorCallGenerator extends BaseGenerator {
         args = args.substring(0, args.length() - 2);
       }
       // Print the second line (local args declaration).
-      newLine(2, String.format("Object[] args = new Object[]{%s};", args));
+      newLine(2, String.format("Object[] args = new Object[] {%s};", args));
 
       // 5) Construct the third line.
       String ctrArgs = "";
-//      if (forActor) {
-//        ctrArgs += "(ParallelActor) this, ";
-//      }
+      //      if (forActor) {
+      //        ctrArgs += "(ParallelActor) this, ";
+      //      }
       ctrArgs += "f, args, ";
       ctrArgs = ctrArgs.substring(0, ctrArgs.length() - 2);
       if (forActorCreation) {
@@ -273,11 +277,15 @@ public class ParallelActorCallGenerator extends BaseGenerator {
 
     String genericType = forActorCreation ? "" : " <R>";
     String returnType =
-        forActorCreation ? "ParallelActorCreator" : forActor ? "PyActorTaskCaller<R>" : "PyTaskCaller<R>";
+        forActorCreation
+            ? "ParallelActorCreator"
+            : forActor ? "PyActorTaskCaller<R>" : "PyTaskCaller<R>";
 
     String funcName = forActorCreation ? "actor" : "task";
     String caller =
-        forActorCreation ? "ParallelActorCreator" : forActor ? "PyActorTaskCaller<>" : "PyTaskCaller<>";
+        forActorCreation
+            ? "ParallelActorCreator"
+            : forActor ? "PyActorTaskCaller<>" : "PyTaskCaller<>";
     funcArgs += ", args";
     // Method signature.
     newLine(
@@ -286,7 +294,7 @@ public class ParallelActorCallGenerator extends BaseGenerator {
             "%s%s %s %s(%s) {",
             modifiers, genericType, returnType, funcName, paramPrefix + paramList));
     // Method body.
-    newLine(2, String.format("Object[] args = new Object[]{%s};", argList));
+    newLine(2, String.format("Object[] args = new Object[] {%s};", argList));
     if (forActor) {
       newLine(2, String.format("return new %s((PyActorHandle)this, %s);", caller, funcArgs));
     } else {
@@ -314,10 +322,16 @@ public class ParallelActorCallGenerator extends BaseGenerator {
   }
 
   public static void main(String[] args) throws IOException {
-    String path = System.getProperty("user.dir") + "/api/src/main/java/io/ray/api/parallelactor/ParallelCall.java";
+    String path =
+        System.getProperty("user.dir")
+            + "/api/src/main/java/io/ray/api/parallelactor/ParallelCall.java";
     FileUtils.write(
-        new File(path), new ParallelActorCallGenerator().generateRayCallDotJava(), Charset.defaultCharset());
-    path = System.getProperty("user.dir") + "/api/src/main/java/io/ray/api/parallelactor/ParallelActorCall.java";
+        new File(path),
+        new ParallelActorCallGenerator().generateRayCallDotJava(),
+        Charset.defaultCharset());
+    path =
+        System.getProperty("user.dir")
+            + "/api/src/main/java/io/ray/api/parallelactor/ParallelActorCall.java";
     FileUtils.write(
         new File(path),
         new ParallelActorCallGenerator().generateActorCallDotJava(),
