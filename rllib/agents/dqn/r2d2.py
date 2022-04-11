@@ -32,7 +32,7 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # === Replay buffer ===
         "replay_buffer_config": {
             # For now we don't use the new ReplayBuffer API here
-            "_enable_replay_buffer_api": True,
+            "_enable_replay_buffer_api": False,
             "type": "MultiAgentReplayBuffer",
             "replay_batch_size": 32,
             "prioritized_replay_alpha": 0.6,
