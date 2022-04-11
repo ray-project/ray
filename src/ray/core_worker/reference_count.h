@@ -494,7 +494,26 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences();
 
  private:
-  struct NestedInfo {
+  struct ContainingRefs {
+    /// When a process that is borrowing an object ID stores the ID inside the
+    /// return value of a task that it executes, the caller of the task is also
+    /// considered a borrower for as long as its reference to the task's return
+    /// ID stays in scope. Thus, the borrower must notify the owner that the
+    /// task's caller is also a borrower. The key is the task's return ID, and
+    /// the value is the task ID and address of the task's caller.
+    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    /// A list of processes that are we gave a reference to that are still
+    /// borrowing the ID. This field is updated in 2 cases:
+    ///  1. If we are a borrower of the ID, then we add a process to this list
+    ///     if we passed that process a copy of the ID via task submission and
+    ///     the process is still using the ID by the time it finishes its task.
+    ///     Borrowers are removed from the list when we recursively merge our
+    ///     list into the owner.
+    ///  2. If we are the owner of the ID, then either the above case, or when
+    ///     we hear from a borrower that it has passed the ID to other
+    ///     borrowers. A borrower is removed from the list when it responds
+    ///     that it is no longer using the reference.
+    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
     /// Object IDs that we own and that contain this object ID.
     /// ObjectIDs are added to this field when we discover that this object
     /// contains other IDs. This can happen in 2 cases:
@@ -521,28 +540,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     bool has_nested_refs_to_report = false;
   };
 
-  struct BorrowInfo {
-    /// A list of processes that are we gave a reference to that are still
-    /// borrowing the ID. This field is updated in 2 cases:
-    ///  1. If we are a borrower of the ID, then we add a process to this list
-    ///     if we passed that process a copy of the ID via task submission and
-    ///     the process is still using the ID by the time it finishes its task.
-    ///     Borrowers are removed from the list when we recursively merge our
-    ///     list into the owner.
-    ///  2. If we are the owner of the ID, then either the above case, or when
-    ///     we hear from a borrower that it has passed the ID to other
-    ///     borrowers. A borrower is removed from the list when it responds
-    ///     that it is no longer using the reference.
-    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
-    /// When a process that is borrowing an object ID stores the ID inside the
-    /// return value of a task that it executes, the caller of the task is also
-    /// considered a borrower for as long as its reference to the task's return
-    /// ID stays in scope. Thus, the borrower must notify the owner that the
-    /// task's caller is also a borrower. The key is the task's return ID, and
-    /// the value is the task ID and address of the task's caller.
-    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
-  };
-
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
     Reference() {}
@@ -567,7 +564,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// another process, so the object defaults to not being owned by us.
     static Reference FromProto(const rpc::ObjectReferenceCount &ref_count);
     /// Serialize to a protobuf.
-    void ToProto(rpc::ObjectReferenceCount *ref) const;
+    void ToProto(rpc::ObjectReferenceCount *ref, int deduct_ref_count = 0) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
@@ -650,7 +647,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// The ref count for submitted tasks that depend on the ObjectID.
     size_t submitted_task_ref_count = 0;
 
-    // std::unique_ptr<NestedInfo> nested_info;
+    std::unique_ptr<ContainingRefs> containing_refs;
 
     /// Object IDs that we own and that contain this object ID.
     /// ObjectIDs are added to this field when we discover that this object
@@ -723,6 +720,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+  using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -742,8 +740,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Deserialize a ReferenceTable.
   static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
 
-  /// Serialize a ReferenceTable.
-  static void ReferenceTableToProto(const ReferenceTable &table,
+  /// Packs an object ID to ObjectReferenceCount map, into an array of
+  /// ObjectReferenceCount. Consumes the input proto table.
+  static void ReferenceTableToProto(ReferenceProtoTable &table,
                                     ReferenceTableProto *proto);
 
   /// Remove references for the provided object IDs that correspond to them
@@ -790,7 +789,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///   borrowed_refs.
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
                                          bool for_ref_removed,
-                                         ReferenceTable *borrowed_refs)
+                                         bool deduct_local_ref,
+                                         ReferenceProtoTable *borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any
