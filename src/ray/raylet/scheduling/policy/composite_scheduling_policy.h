@@ -39,8 +39,9 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
             local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
         spread_policy_(
             local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
-        node_affinity_policy_(
-            local_node_id, cluster_resource_manager.GetResourceView(), is_node_available) {}
+        node_affinity_policy_(local_node_id,
+                              cluster_resource_manager.GetResourceView(),
+                              is_node_available) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
