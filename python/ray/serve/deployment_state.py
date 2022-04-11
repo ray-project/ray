@@ -264,7 +264,7 @@ class ActorReplicaWrapper:
         )
 
         self._actor_resources = deployment_info.replica_config.resource_dict
-        # it is currently not possiible to create a placement group
+        # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         has_resources_assigned = all((r > 0 for r in self._actor_resources.values()))
         if USE_PLACEMENT_GROUP and has_resources_assigned:
