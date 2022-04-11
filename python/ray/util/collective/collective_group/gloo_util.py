@@ -111,6 +111,9 @@ def get_gloo_tensor_dtype(tensor):
     """Return the corresponded GLOO dtype given a tensor."""
     if isinstance(tensor, numpy.ndarray):
         return NUMPY_GLOO_DTYPE_MAP[tensor.dtype.type]
+    if isinstance(tensor, pygloo.FixedBuffer):
+        # FixedBuffer use uint8 hardly.
+        return pygloo.glooDataType_t.glooUint8 
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             if not tensor.is_cuda:
@@ -140,6 +143,9 @@ def get_tensor_ptr(tensor):
     """Return the pointer to the underlying memory storage of a tensor."""
     if isinstance(tensor, numpy.ndarray):
         return tensor.ctypes.data
+    if isinstance(tensor, pygloo.FixedBuffer):
+        # TODO(qwang): Confirm what is tensor.ctypes.data
+        return tensor.buffer()
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             if tensor.is_cuda:
@@ -158,6 +164,8 @@ def get_tensor_n_elements(tensor):
     """Return the number of elements in a tensor."""
     if isinstance(tensor, numpy.ndarray):
         return tensor.size
+    if isinstance(tensor, pygloo.FixedBuffer):
+        return tensor.size()
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return torch.numel(tensor)
@@ -172,7 +180,7 @@ def get_gloo_store_path(store_name):
 
 
 def get_tensor_device(tensor):
-    if isinstance(tensor, numpy.ndarray):
+    if isinstance(tensor, numpy.ndarray) or isinstance(tensor, pygloo.FixedBuffer):
         return "cpu"
     elif torch_available() and isinstance(tensor, torch.Tensor):
         if not tensor.is_cuda:
@@ -187,6 +195,8 @@ def get_tensor_shape(tensor):
     """Return the shape of the tensor as a list."""
     if isinstance(tensor, numpy.ndarray):
         return list(tensor.shape)
+    if isinstance(tensor, pygloo.FixedBuffer):
+        return list(tensor.size())
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return list(tensor.size())

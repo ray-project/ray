@@ -476,6 +476,7 @@ class GLOOGroup(BaseGroup):
         Returns:
             None
         """
+        tensors = _convert_tensors_type(tensors)
         _check_cpu_tensors(tensors)
 
         p2p_fn(tensors[0], self._gloo_context, peer_rank)
@@ -561,3 +562,15 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
                 "All tensor operands to scatter/gather must "
                 "have the same shape. Got '{}' and '{}'.".format(s, shape)
             )
+
+def _convert_tensors_type(tensors: list):
+    """Explicitly convert tensor type. This method is used to covert
+    a python bytes to a native buffer."""
+
+    def _convet_fn(tensor):
+        if isinstance(tensor, bytes):
+            return pygloo.FixedBuffer(bytes)
+        else:
+            return tensor
+
+    return [_convet_fn(t) for t in tensors]
