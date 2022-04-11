@@ -45,6 +45,10 @@ from ray.data.datasource import (
     BinaryDatasource,
     NumpyDatasource,
     ReadTask,
+    BaseFileMetadataProvider,
+    DefaultFileMetadataProvider,
+    ParquetMetadataProvider,
+    DefaultParquetMetadataProvider,
 )
 from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
@@ -69,7 +73,8 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
     Examples:
-        >>> ray.data.from_items([1, 2, 3, 4, 5])
+        >>> import ray
+        >>> ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
 
     Args:
         items: List of local Python objects.
@@ -113,7 +118,8 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
     Examples:
-        >>> ray.data.range(10000).map(lambda x: x * 2).show()
+        >>> import ray
+        >>> ray.data.range(10000).map(lambda x: x * 2).show() # doctest: +SKIP
 
     Args:
         n: The upper bound of the range of integers.
@@ -133,8 +139,9 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
     Examples:
-        >>> ds = ray.data.range_arrow(1000)
-        >>> ds.map(lambda r: {"v2": r["value"] * 2}).show()
+        >>> import ray
+        >>> ds = ray.data.range_arrow(1000) # doctest: +SKIP
+        >>> ds.map(lambda r: {"v2": r["value"] * 2}).show() # doctest: +SKIP
 
     This is similar to range(), but uses Arrow tables to hold the integers
     in Arrow records. The dataset elements take the form {"value": N}.
@@ -159,8 +166,10 @@ def range_tensor(
     """Create a Tensor dataset from a range of integers [0..n).
 
     Examples:
-        >>> ds = ray.data.range_tensor(1000, shape=(3, 10))
-        >>> ds.map_batches(lambda arr: arr * 2, batch_format="pandas").show()
+        >>> import ray
+        >>> ds = ray.data.range_tensor(1000, shape=(3, 10)) # doctest: +SKIP
+        >>> ds.map_batches( # doctest: +SKIP
+        ...     lambda arr: arr * 2, batch_format="pandas").show()
 
     This is similar to range_arrow(), but uses the ArrowTensorArray extension
     type. The dataset elements take the form {"value": array(N, shape=shape)}.
@@ -233,6 +242,16 @@ def read_datasource(
             )
         )
 
+    if len(read_tasks) < parallelism and (
+        len(read_tasks) < ray.available_resources().get("CPU", parallelism) // 2
+    ):
+        logger.warning(
+            "The number of blocks in this dataset ({}) limits its parallelism to {} "
+            "concurrent tasks. This is much less than the number of available "
+            "CPU slots in the cluster. Use `.repartition(n)` to increase the number of "
+            "dataset blocks.".format(len(read_tasks), len(read_tasks))
+        )
+
     context = DatasetContext.get_current()
     stats_actor = get_or_create_stats_actor()
     stats_uuid = uuid.uuid4()
@@ -303,16 +322,18 @@ def read_parquet(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
     **arrow_parquet_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from parquet files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_parquet("s3://bucket/path")
+        >>> ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_parquet(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -327,6 +348,8 @@ def read_parquet(
             type. This assumes that the tensors were serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
             `arr.tobytes()`).
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
     Returns:
@@ -368,6 +391,7 @@ def read_parquet(
         filesystem=filesystem,
         columns=columns,
         ray_remote_args=ray_remote_args,
+        meta_provider=meta_provider,
         **arrow_parquet_args,
     )
 
@@ -380,19 +404,22 @@ def read_json(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_json("s3://bucket/path")
+        >>> ray.data.read_json("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_json(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_json(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_json(["s3://bucket/path1", "s3://bucket/path2"])
+        >>> ray.data.read_json( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -403,6 +430,8 @@ def read_json(
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
         arrow_json_args: Other json read options to pass to pyarrow.
 
     Returns:
@@ -415,6 +444,7 @@ def read_json(
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
         **arrow_json_args,
     )
 
@@ -427,19 +457,22 @@ def read_csv(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_csv("s3://bucket/path")
+        >>> ray.data.read_csv("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_csv(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_csv(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_csv(["s3://bucket/path1", "s3://bucket/path2"])
+        >>> ray.data.read_csv( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -450,6 +483,8 @@ def read_csv(
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -462,6 +497,7 @@ def read_csv(
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
         **arrow_csv_args,
     )
 
@@ -476,15 +512,17 @@ def read_text(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_text("s3://bucket/path")
+        >>> ray.data.read_text("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_text(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_text(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -496,6 +534,8 @@ def read_text(
             limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
 
     Returns:
         Dataset holding lines of text read from the specified paths.
@@ -512,6 +552,7 @@ def read_text(
         filesystem=filesystem,
         parallelism=parallelism,
         arrow_open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
     ).flat_map(to_text)
 
 
@@ -522,19 +563,22 @@ def read_numpy(
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_numpy("s3://bucket/path")
+        >>> ray.data.read_numpy("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_numpy(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_numpy(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
         >>> # Read multiple directories.
-        >>> ray.data.read_numpy(["s3://bucket/path1", "s3://bucket/path2"])
+        >>> ray.data.read_numpy( # doctest: +SKIP
+        ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -545,7 +589,8 @@ def read_numpy(
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         numpy_load_args: Other options to pass to np.load.
-
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """
@@ -555,6 +600,7 @@ def read_numpy(
         paths=paths,
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
+        meta_provider=meta_provider,
         **numpy_load_args,
     )
 
@@ -568,15 +614,18 @@ def read_binary_files(
     parallelism: int = 200,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
     Examples:
+        >>> import ray
         >>> # Read a directory of files in remote storage.
-        >>> ray.data.read_binary_files("s3://bucket/path")
+        >>> ray.data.read_binary_files("s3://bucket/path") # doctest: +SKIP
 
         >>> # Read multiple local files.
-        >>> ray.data.read_binary_files(["/path/to/file1", "/path/to/file2"])
+        >>> ray.data.read_binary_files( # doctest: +SKIP
+        ...     ["/path/to/file1", "/path/to/file2"])
 
     Args:
         paths: A single file path or a list of file paths (or directories).
@@ -589,6 +638,8 @@ def read_binary_files(
             limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
+        meta_provider: File metadata provider. Custom metadata providers may
+            be able to resolve file metadata more quickly and/or accurately.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -602,6 +653,7 @@ def read_binary_files(
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         schema=bytes,
+        meta_provider=meta_provider,
     )
 
 

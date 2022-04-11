@@ -3,6 +3,8 @@ multi-objective optimization.
 
 Please note that schedulers may not work correctly with multi-objective
 optimization.
+
+Requires the Optuna library to be installed (`pip install optuna`).
 """
 import time
 
@@ -68,7 +70,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="The address of server to connect to if using " "Ray Client.",
+        help="The address of server to connect to if using Ray Client.",
     )
     args, _ = parser.parse_known_args()
     if args.server_address is not None:

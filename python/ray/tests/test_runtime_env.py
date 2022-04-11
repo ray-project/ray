@@ -145,52 +145,6 @@ def test_container_option_serialize(runtime_env_class):
     assert job_config_serialized.count(b"--name=test") == 1
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="conda in runtime_env unsupported on Windows."
-)
-@pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_invalid_conda_env(shutdown_only, runtime_env_class):
-    ray.init()
-
-    @ray.remote
-    def f():
-        pass
-
-    @ray.remote
-    class A:
-        def f(self):
-            pass
-
-    start = time.time()
-    bad_env = runtime_env_class(conda={"dependencies": ["this_doesnt_exist"]})
-    with pytest.raises(
-        RuntimeEnvSetupError,
-        # The actual error message should be included in the exception.
-        match="ResolvePackageNotFound",
-    ):
-        ray.get(f.options(runtime_env=bad_env).remote())
-    first_time = time.time() - start
-
-    # Check that another valid task can run.
-    ray.get(f.remote())
-
-    a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(
-        ray.exceptions.RuntimeEnvSetupError, match="ResolvePackageNotFound"
-    ):
-        ray.get(a.f.remote())
-
-    # The second time this runs it should be faster as the error is cached.
-    start = time.time()
-    with pytest.raises(RuntimeEnvSetupError, match="ResolvePackageNotFound"):
-        ray.get(f.options(runtime_env=bad_env).remote())
-
-    assert (time.time() - start) < (first_time / 2.0)
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="runtime_env unsupported on Windows."
-)
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     """Test that no extra workers start up during a long env installation."""
@@ -276,7 +230,7 @@ def test_runtime_env_no_spurious_resource_deadlock_msg(
     assert len(errors) == 0
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="pip not supported on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows.")
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
     """Test that after a failed job-level env, tasks can still be run."""
@@ -304,17 +258,9 @@ def set_agent_failure_env_var():
     del os.environ["_RAY_AGENT_FAILING"]
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head",
-    [
-        {
-            "_system_config": {
-                "agent_restart_interval_ms": 10,
-                "agent_max_restart_count": 5,
-            }
-        }
-    ],
-    indirect=True,
+# TODO(SongGuyang): Fail the agent which is in different node from driver.
+@pytest.mark.skip(
+    reason="Agent failure will lead to raylet failure and driver failure."
 )
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
 def test_runtime_env_broken(
@@ -333,13 +279,13 @@ def test_runtime_env_broken(
     """
     Test task raises an exception.
     """
-    with pytest.raises(RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.LocalRayletDiedError):
         ray.get(f.options(runtime_env=runtime_env).remote())
     """
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
 
@@ -665,12 +611,18 @@ def test_runtime_env_retry(set_runtime_env_retry_times, ray_start_regular):
 )
 @pytest.mark.parametrize(
     "option",
-    ["pip_list", "conda_name", "conda_dict", "container", "plugins"],
+    ["pip_list", "pip_dict", "conda_name", "conda_dict", "container", "plugins"],
 )
 def test_serialize_deserialize(option):
     runtime_env = dict()
     if option == "pip_list":
         runtime_env["pip"] = ["pkg1", "pkg2"]
+    elif option == "pip_dict":
+        runtime_env["pip"] = {
+            "packages": ["pkg1", "pkg2"],
+            "pip_check": False,
+            "pip_version": "<22,>20",
+        }
     elif option == "conda_name":
         runtime_env["conda"] = "env_name"
     elif option == "conda_dict":
@@ -693,7 +645,17 @@ def test_serialize_deserialize(option):
         **runtime_env, _validate=False
     ).build_proto_runtime_env()
     cls_runtime_env = RuntimeEnv.from_proto(proto_runtime_env)
-    assert cls_runtime_env.to_dict() == runtime_env
+    cls_runtime_env_dict = cls_runtime_env.to_dict()
+
+    if "pip" in runtime_env and isinstance(runtime_env["pip"], list):
+        pip_config_in_cls_runtime_env = cls_runtime_env_dict.pop("pip")
+        pip_config_in_runtime_env = runtime_env.pop("pip")
+        assert {
+            "packages": pip_config_in_runtime_env,
+            "pip_check": False,
+        } == pip_config_in_cls_runtime_env
+
+    assert cls_runtime_env_dict == runtime_env
 
 
 @pytest.mark.skipif(
@@ -801,21 +763,27 @@ def test_runtime_env_interface():
         runtime_env = RuntimeEnv(pip=pip_packages)
         runtime_env_dict = runtime_env.to_dict()
         assert runtime_env.has_pip()
-        assert set(runtime_env.pip_packages()) == set(pip_packages)
+        assert set(runtime_env.pip_config()["packages"]) == set(pip_packages)
         assert runtime_env.virtualenv_name() is None
-        runtime_env["pip"].extend(addition_pip_packages)
-        runtime_env_dict["pip"].extend(addition_pip_packages)
+        runtime_env["pip"]["packages"].extend(addition_pip_packages)
+        runtime_env_dict["pip"]["packages"].extend(addition_pip_packages)
+        # The default value of pip_check is False
+        runtime_env_dict["pip"]["pip_check"] = False
         assert runtime_env_dict == runtime_env.to_dict()
         assert runtime_env.has_pip()
-        assert set(runtime_env.pip_packages()) == set(
+        assert set(runtime_env.pip_config()["packages"]) == set(
             pip_packages + addition_pip_packages
         )
         assert runtime_env.virtualenv_name() is None
         runtime_env["pip"] = requirement_file
         runtime_env_dict["pip"] = requirement_packages
         assert runtime_env.has_pip()
-        assert set(runtime_env.pip_packages()) == set(requirement_packages)
+        assert set(runtime_env.pip_config()["packages"]) == set(requirement_packages)
         assert runtime_env.virtualenv_name() is None
+        # The default value of pip_check is False
+        runtime_env_dict["pip"] = dict(
+            packages=runtime_env_dict["pip"], pip_check=False
+        )
         assert runtime_env_dict == runtime_env.to_dict()
         # Test that the modification of pip also works on
         # proto serialization

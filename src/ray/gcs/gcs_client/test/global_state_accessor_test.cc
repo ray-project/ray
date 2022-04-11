@@ -27,22 +27,18 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  public:
   GlobalStateAccessorTest() {
     if (GetParam()) {
-      RayConfig::instance().bootstrap_with_gcs() = true;
       RayConfig::instance().gcs_storage() = "memory";
-      RayConfig::instance().gcs_grpc_based_pubsub() = true;
     } else {
-      RayConfig::instance().bootstrap_with_gcs() = false;
       RayConfig::instance().gcs_storage() = "redis";
-      RayConfig::instance().gcs_grpc_based_pubsub() = false;
     }
 
-    if (!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!GetParam()) {
       TestSetupUtil::StartUpRedisServers(std::vector<int>());
     }
   }
 
   virtual ~GlobalStateAccessorTest() {
-    if (!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!GetParam()) {
       TestSetupUtil::ShutDownRedisServers();
     }
   }
@@ -50,21 +46,18 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
-    if (RayConfig::instance().bootstrap_with_gcs()) {
-      config.grpc_server_port = 6379;
-      config.grpc_pubsub_enabled = true;
-    } else {
-      config.grpc_server_port = 0;
-      config.redis_address = "127.0.0.1";
-      config.enable_sharding_conn = false;
-      config.grpc_pubsub_enabled = false;
-      config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    }
+
+    config.grpc_server_port = 6379;
 
     config.node_ip_address = "127.0.0.1";
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
 
+    if (!GetParam()) {
+      config.redis_address = "127.0.0.1";
+      config.enable_sharding_conn = false;
+      config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    }
     io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
@@ -77,16 +70,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client and global state.
-    if (RayConfig::instance().bootstrap_with_gcs()) {
-      gcs::GcsClientOptions options("127.0.0.1:6379");
-      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-      global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
-    } else {
-      gcs::GcsClientOptions options(config.redis_address, config.redis_port,
-                                    config.redis_password);
-      gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-      global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
-    }
+    gcs::GcsClientOptions options("127.0.0.1:6379");
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
+    global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
     RAY_CHECK(global_state_->Connect());
@@ -100,7 +86,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     gcs_server_->Stop();
-    if (!RayConfig::instance().bootstrap_with_gcs()) {
+    if (!GetParam()) {
       TestSetupUtil::FlushAllRedisServers();
     }
 
@@ -168,6 +154,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
 
   auto node_table_data = Mocker::GenNodeInfo();
+  node_table_data->mutable_resources_total()->insert({"CPU", 1});
+
   std::promise<bool> promise;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
       *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -272,7 +260,8 @@ TEST_P(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
 }
 
-INSTANTIATE_TEST_SUITE_P(RedisRemovalTest, GlobalStateAccessorTest,
+INSTANTIATE_TEST_SUITE_P(RedisRemovalTest,
+                         GlobalStateAccessorTest,
                          ::testing::Values(false, true));
 
 }  // namespace ray
@@ -280,7 +269,8 @@ INSTANTIATE_TEST_SUITE_P(RedisRemovalTest, GlobalStateAccessorTest,
 int main(int argc, char **argv) {
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLog::ShutDownRayLog,
+                                         argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);

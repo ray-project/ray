@@ -24,8 +24,11 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
-    const ResourceRequest &resource_request, float spread_threshold, bool force_spillback,
-    bool require_node_available, NodeFilter node_filter) {
+    const ResourceRequest &resource_request,
+    float spread_threshold,
+    bool force_spillback,
+    bool require_node_available,
+    NodeFilter node_filter) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
   // consistent, to encourage using "warm" workers.
@@ -41,7 +44,7 @@ scheduling::NodeID HybridSchedulingPolicy::HybridPolicyWithFilter(
     if (node_filter == NodeFilter::kAny) {
       return true;
     }
-    const bool has_gpu = node_resources.HasGPU();
+    const bool has_gpu = node_resources.total.Has(ResourceID::GPU());
     if (node_filter == NodeFilter::kGPU) {
       return has_gpu;
     }
@@ -137,24 +140,29 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type == SchedulingType::HYBRID)
       << "HybridPolicy policy requires type = HYBRID";
-  if (!options.avoid_gpu_nodes || resource_request.IsGPURequest()) {
-    return HybridPolicyWithFilter(resource_request, options.spread_threshold,
+  if (!options.avoid_gpu_nodes || resource_request.Has(ResourceID::GPU())) {
+    return HybridPolicyWithFilter(resource_request,
+                                  options.spread_threshold,
                                   options.avoid_local_node,
                                   options.require_node_available);
   }
 
   // Try schedule on non-GPU nodes.
-  auto best_node_id = HybridPolicyWithFilter(
-      resource_request, options.spread_threshold, options.avoid_local_node,
-      /*require_node_available*/ true, NodeFilter::kNonGpu);
+  auto best_node_id = HybridPolicyWithFilter(resource_request,
+                                             options.spread_threshold,
+                                             options.avoid_local_node,
+                                             /*require_node_available*/ true,
+                                             NodeFilter::kNonGpu);
   if (!best_node_id.IsNil()) {
     return best_node_id;
   }
 
   // If we cannot find any available node from non-gpu nodes, fallback to the original
   // scheduling
-  return HybridPolicyWithFilter(resource_request, options.spread_threshold,
-                                options.avoid_local_node, options.require_node_available);
+  return HybridPolicyWithFilter(resource_request,
+                                options.spread_threshold,
+                                options.avoid_local_node,
+                                options.require_node_available);
 }
 
 }  // namespace raylet_scheduling_policy

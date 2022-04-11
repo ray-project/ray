@@ -21,10 +21,13 @@ option java_package = "io.ray.runtime.generated";
 
 /// The pip type runtime env.
 message PipRuntimeEnv {
-  /// The pip packages config.
   message Config {
     /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
     repeated string packages = 1;
+    /// Whether enable pip check after runtime env finish pip install packages
+    bool pip_check = 2;
+    /// Pip version in virtualenv
+    string pip_version = 3;
   }
   oneof pip_runtime_env {
     /// The pip packages config.
@@ -178,6 +181,13 @@ message RuntimeEnv {
   RuntimeEnvUris uris = 7;
 }
 
+/// The runtime env config, include some fields that do not
+/// participate in the calculation of the runtime_env hash.
+message RuntimeEnvConfig {
+  /// The timeout of runtime env creation.
+  int32 setup_timeout_seconds = 1;
+}
+
 /// The runtime env information which is transfered between ray core processes.
 message RuntimeEnvInfo {
   /// The serialized runtime env passed from the user.
@@ -186,4 +196,6 @@ message RuntimeEnvInfo {
   repeated string uris = 2;
   /// Indicates whether to install runtime env eagerly before the workers are leased.
   bool runtime_env_eager_install = 3;
+  /// The serialized runtime env config passed from the user.
+  RuntimeEnvConfig runtime_env_config = 4;
 }

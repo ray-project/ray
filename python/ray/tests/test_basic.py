@@ -183,7 +183,7 @@ def test_invalid_arguments(shutdown_only):
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
             ValueError,
-            match="The keyword 'num_returns' only accepts 0 or a" " positive integer",
+            match="The keyword 'num_returns' only accepts 0 or a positive integer",
         ):
 
             @ray.remote(num_returns=opt)
@@ -204,7 +204,7 @@ def test_invalid_arguments(shutdown_only):
     for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
         with pytest.raises(
             ValueError,
-            match="The keyword 'max_calls' only accepts 0 or a positive" " integer",
+            match="The keyword 'max_calls' only accepts 0 or a positive integer",
         ):
 
             @ray.remote(max_calls=opt)
@@ -232,27 +232,6 @@ def test_invalid_arguments(shutdown_only):
             @ray.remote(max_task_retries=opt)
             class A2:
                 x = 1
-
-
-def test_user_setup_function():
-    script = """
-import ray
-ray.init()
-@ray.remote
-def get_pkg_dir():
-    return ray._private.runtime_env.VAR
-
-print("remote", ray.get(get_pkg_dir.remote()))
-print("local", ray._private.runtime_env.VAR)
-
-
-"""
-
-    env = {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"}
-    out = run_string_as_driver(script, dict(os.environ, **env))
-    (remote_out, local_out) = out.strip().splitlines()[-2:]
-    assert remote_out == "remote hello world"
-    assert local_out == "local hello world"
 
 
 # https://github.com/ray-project/ray/issues/17842

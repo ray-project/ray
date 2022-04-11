@@ -37,10 +37,16 @@ namespace raylet {
 class LocalObjectManager {
  public:
   LocalObjectManager(
-      const NodeID &node_id, std::string self_node_address, int self_node_port,
-      size_t free_objects_batch_size, int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool, rpc::CoreWorkerClientPool &owner_client_pool,
-      int max_io_workers, int64_t min_spilling_size, bool is_external_storage_type_fs,
+      const NodeID &node_id,
+      std::string self_node_address,
+      int self_node_port,
+      size_t free_objects_batch_size,
+      int64_t free_objects_period_ms,
+      IOWorkerPoolInterface &io_worker_pool,
+      rpc::CoreWorkerClientPool &owner_client_pool,
+      int max_io_workers,
+      int64_t min_spilling_size,
+      bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
@@ -99,7 +105,9 @@ class LocalObjectManager {
   /// \param object_url The URL where the object is spilled.
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
-  void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
+  void AsyncRestoreSpilledObject(const ObjectID &object_id,
+                                 int64_t object_size,
+                                 const std::string &object_url,
                                  std::function<void(const ray::Status &)> callback);
 
   /// Clear any freed objects. This will trigger the callback for freed
@@ -139,21 +147,25 @@ class LocalObjectManager {
   /// In that case, the URL is supposed to be obtained by the object directory.
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
-  /// Get the current pinned object store memory usage.
-  int64_t GetPinnedBytes() const { return pinned_objects_size_; }
+  /// Get the current pinned object store memory usage to help node scale down decisions.
+  /// A node can only be safely drained when this function reports zero.
+  int64_t GetPinnedBytes() const;
 
   std::string DebugString() const;
 
  private:
-  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
-  /// Asynchronously spill objects when space is needed.
-  /// The callback tries to spill objects as much as num_bytes_to_spill and returns
-  /// true if we could spill the corresponding bytes.
+  /// Asynchronously spill objects when space is needed. The callback tries to
+  /// spill at least num_bytes_to_spill and returns true if we found objects to
+  /// spill.
+  /// If num_bytes_to_spill many objects cannot be found and there are other
+  /// objects already being spilled, this will return false to give the
+  /// currently spilling objects time to finish.
   /// NOTE(sang): If 0 is given, this method spills a single object.
   ///
   /// \param num_bytes_to_spill The total number of bytes to spill.
@@ -237,7 +249,13 @@ class LocalObjectManager {
 
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.
-  size_t num_bytes_pending_spill_;
+  size_t num_bytes_pending_spill_ = 0;
+
+  /// The total size of the objects that are currently being
+  /// restored from this node, in bytes. Note that this only includes objects
+  /// that are being restored into the local object store. Objects restored on
+  /// behalf of remote nodes will be read directly from disk to the network.
+  size_t num_bytes_pending_restore_ = 0;
 
   /// A list of object id and url pairs that need to be deleted.
   /// We don't instantly delete objects when it goes out of scope from external storages
@@ -321,7 +339,9 @@ class LocalObjectManager {
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
 
+  friend class LocalObjectManagerTestWithMinSpillingSize;
   friend class LocalObjectManagerTest;
+  friend class LocalObjectManagerFusedTest;
 };
 
 };  // namespace raylet

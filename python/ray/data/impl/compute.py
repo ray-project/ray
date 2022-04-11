@@ -96,11 +96,13 @@ class TaskPoolStrategy(ComputeStrategy):
 class ActorPoolStrategy(ComputeStrategy):
     """Specify the compute strategy for a Dataset transform.
 
-    ActorPool specifies that an autoscaling pool of actors should be used for a given
-    Dataset transform. This is useful for stateful setup of callable classes.
+    ActorPoolStrategy specifies that an autoscaling pool of actors should be used
+    for a given Dataset transform. This is useful for stateful setup of callable
+    classes.
 
-    To autoscale from ``m`` to ``n`` actors, specify ``compute=ActorPool(m, n)``.
-    For a fixed-sized pool of size ``n``, specify ``compute=ActorPool(n, n)``.
+    To autoscale from ``m`` to ``n`` actors, specify
+    ``compute=ActorPoolStrategy(m, n)``.
+    For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(n, n)``.
     """
 
     def __init__(self, min_size: int = 1, max_size: Optional[int] = None):
@@ -232,9 +234,14 @@ def cache_wrapper(
     """
     if isinstance(fn, CallableClass):
 
-        if compute is None:
+        if (
+            compute is None
+            or compute == "tasks"
+            or isinstance(compute, TaskPoolStrategy)
+        ):
             raise ValueError(
-                "``compute`` must be specified when using a callable class. "
+                "``compute`` must be specified when using a callable class, and must "
+                "specify the actor compute strategy. "
                 'For example, use ``compute="actors"`` or '
                 "``compute=ActorPoolStrategy(min, max)``."
             )

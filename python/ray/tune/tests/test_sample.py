@@ -1859,7 +1859,7 @@ class SearchSpaceTest(unittest.TestCase):
             log_warning_mock.assert_called_once()
             self.assertEqual(
                 log_warning_mock.call_args[0],
-                ("Pre-set value `2` is not equal to the value of parameter " "`a`: 1",),
+                ("Pre-set value `2` is not equal to the value of parameter `a`: 1",),
             )
 
     def testConstantGridSearchBasicVariant(self):

@@ -20,8 +20,14 @@ def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData
 
     def _node_visitor(node: Any) -> Any:
         if isinstance(node, FunctionNode):
-            workflow_step = workflow.step(node._body).options(**node._bound_options)
-            return workflow_step.step(*node._bound_args, **node._bound_kwargs)
+            # "_resolve_like_object_ref_in_args" indicates we should resolve the
+            # workflow like an ObjectRef, when included in the arguments of
+            # another workflow.
+            workflow_step = workflow.step(node._body).options(
+                **node._bound_options, _resolve_like_object_ref_in_args=True
+            )
+            wf = workflow_step.step(*node._bound_args, **node._bound_kwargs)
+            return wf
         if isinstance(node, InputAtrributeNode):
             return node._execute_impl()  # get data from input node
         if isinstance(node, InputNode):
@@ -30,4 +36,4 @@ def transform_ray_dag_to_workflow(dag_node: DAGNode, input_context: DAGInputData
             return node  # return normal objects
         raise TypeError(f"Unsupported DAG node: {node}")
 
-    return dag_node._apply_recursive(_node_visitor)
+    return dag_node.apply_recursive(_node_visitor)

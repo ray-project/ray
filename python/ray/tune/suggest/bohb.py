@@ -57,23 +57,23 @@ class TuneBOHB(Searcher):
     This should be used in conjunction with HyperBandForBOHB.
 
     Args:
-        space (ConfigurationSpace): Continuous ConfigSpace search space.
+        space: Continuous ConfigSpace search space.
             Parameters will be sampled from this space which will be used
             to run trials.
-        bohb_config (dict): configuration for HpBandSter BOHB algorithm
-        max_concurrent (int): Deprecated. Use
+        bohb_config: configuration for HpBandSter BOHB algorithm
+        max_concurrent: Deprecated. Use
             ``tune.suggest.ConcurrencyLimiter()``.
-        metric (str): The training result objective value attribute. If None
+        metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list): Initial parameter suggestions to be run
+        points_to_evaluate: Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        seed (int): Optional random seed to initialize the random number
+        seed: Optional random seed to initialize the random number
             generator. Setting this should lead to identical initial
             configurations at each run.
 

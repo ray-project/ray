@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/common/ray_config.h"
+#include "ray/raylet/scheduling/policy/scheduling_context.h"
 
 namespace ray {
 namespace raylet {
@@ -28,13 +29,18 @@ enum class SchedulingType {
   HYBRID = 0,
   SPREAD = 1,
   RANDOM = 2,
+  BUNDLE_PACK = 3,
+  BUNDLE_SPREAD = 4,
+  BUNDLE_STRICT_PACK = 5,
+  BUNDLE_STRICT_SPREAD = 6,
 };
 
 // Options that controls the scheduling behavior.
 struct SchedulingOptions {
   static SchedulingOptions Random() {
     return SchedulingOptions(SchedulingType::RANDOM,
-                             /*spread_threshold*/ 0, /*avoid_local_node*/ false,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false);
   }
@@ -42,7 +48,8 @@ struct SchedulingOptions {
   // construct option for spread scheduling policy.
   static SchedulingOptions Spread(bool avoid_local_node, bool require_node_available) {
     return SchedulingOptions(SchedulingType::SPREAD,
-                             /*spread_threshold*/ 0, avoid_local_node,
+                             /*spread_threshold*/ 0,
+                             avoid_local_node,
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes());
   }
@@ -51,8 +58,47 @@ struct SchedulingOptions {
   static SchedulingOptions Hybrid(bool avoid_local_node, bool require_node_available) {
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
-                             avoid_local_node, require_node_available,
+                             avoid_local_node,
+                             require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes());
+  }
+
+  // construct option for soft pack scheduling policy.
+  static SchedulingOptions BundlePack() {
+    return SchedulingOptions(SchedulingType::BUNDLE_PACK,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false);
+  }
+
+  // construct option for strict spread scheduling policy.
+  static SchedulingOptions BundleSpread() {
+    return SchedulingOptions(SchedulingType::BUNDLE_SPREAD,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false);
+  }
+
+  // construct option for strict pack scheduling policy.
+  static SchedulingOptions BundleStrictPack() {
+    return SchedulingOptions(SchedulingType::BUNDLE_STRICT_PACK,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false);
+  }
+
+  // construct option for strict spread scheduling policy.
+  static SchedulingOptions BundleStrictSpread(
+      std::unique_ptr<SchedulingContext> scheduling_context = nullptr) {
+    return SchedulingOptions(SchedulingType::BUNDLE_STRICT_SPREAD,
+                             /*spread_threshold*/ 0,
+                             /*avoid_local_node*/ false,
+                             /*require_node_available*/ true,
+                             /*avoid_gpu_nodes*/ false,
+                             /*scheduling_context*/ std::move(scheduling_context));
   }
 
   SchedulingType scheduling_type;
@@ -60,15 +106,21 @@ struct SchedulingOptions {
   bool avoid_local_node;
   bool require_node_available;
   bool avoid_gpu_nodes;
+  std::shared_ptr<SchedulingContext> scheduling_context;
 
  private:
-  SchedulingOptions(SchedulingType type, float spread_threshold, bool avoid_local_node,
-                    bool require_node_available, bool avoid_gpu_nodes)
+  SchedulingOptions(SchedulingType type,
+                    float spread_threshold,
+                    bool avoid_local_node,
+                    bool require_node_available,
+                    bool avoid_gpu_nodes,
+                    std::shared_ptr<SchedulingContext> scheduling_context = nullptr)
       : scheduling_type(type),
         spread_threshold(spread_threshold),
         avoid_local_node(avoid_local_node),
         require_node_available(require_node_available),
-        avoid_gpu_nodes(avoid_gpu_nodes) {}
+        avoid_gpu_nodes(avoid_gpu_nodes),
+        scheduling_context(std::move(scheduling_context)) {}
 
   friend class ::ray::raylet::SchedulingPolicyTest;
 };

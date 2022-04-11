@@ -50,7 +50,7 @@ def create_parser(parser_creator=None):
     parser_creator = parser_creator or argparse.ArgumentParser
     parser = parser_creator(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Roll out a reinforcement learning agent " "given a checkpoint.",
+        description="Roll out a reinforcement learning agent given a checkpoint.",
         epilog=EXAMPLE_USAGE,
     )
 
@@ -68,7 +68,7 @@ def create_parser(parser_creator=None):
         type=str,
         required=True,
         help="The algorithm or model to train. This may refer to the name "
-        "of a built-on algorithm (e.g. RLLib's `DQN` or `PPO`), or a "
+        "of a built-on algorithm (e.g. RLlib's `DQN` or `PPO`), or a "
         "user-defined trainable function or class registered in the "
         "tune registry.",
     )

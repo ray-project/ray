@@ -67,8 +67,9 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   auto bundle_state =
       std::make_shared<BundleTransactionState>(CommitState::PREPARED, resource_instances);
   pg_bundles_[bundle_spec.BundleId()] = bundle_state;
-  bundle_spec_map_.emplace(bundle_spec.BundleId(), std::make_shared<BundleSpecification>(
-                                                       bundle_spec.GetMessage()));
+  bundle_spec_map_.emplace(
+      bundle_spec.BundleId(),
+      std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
 
   return true;
 }
@@ -129,7 +130,8 @@ void NewPlacementGroupResourceManager::CommitBundle(
     const auto &resource_name = resource.first;
     const auto &original_resource_name = GetOriginalResourceName(resource_name);
     if (original_resource_name != kBundle_ResourceLabel) {
-      const auto &instances = task_resource_instances.Get(original_resource_name);
+      const auto &instances =
+          task_resource_instances.Get(ResourceID(original_resource_name));
       cluster_resource_scheduler_->GetLocalResourceManager().AddLocalResourceInstances(
           scheduling::ResourceID{resource_name}, instances);
     } else {

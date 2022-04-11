@@ -75,11 +75,12 @@ class GcsServerTest : public ::testing::Test {
 
   bool MarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
     std::promise<bool> promise;
-    client_->MarkJobFinished(request, [&promise](const Status &status,
-                                                 const rpc::MarkJobFinishedReply &reply) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    });
+    client_->MarkJobFinished(
+        request,
+        [&promise](const Status &status, const rpc::MarkJobFinishedReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -88,17 +89,17 @@ class GcsServerTest : public ::testing::Test {
     request.set_actor_id(actor_id);
     boost::optional<rpc::ActorTableData> actor_table_data_opt;
     std::promise<bool> promise;
-    client_->GetActorInfo(
-        request, [&actor_table_data_opt, &promise](const Status &status,
-                                                   const rpc::GetActorInfoReply &reply) {
-          RAY_CHECK_OK(status);
-          if (reply.has_actor_table_data()) {
-            actor_table_data_opt = reply.actor_table_data();
-          } else {
-            actor_table_data_opt = boost::none;
-          }
-          promise.set_value(true);
-        });
+    client_->GetActorInfo(request,
+                          [&actor_table_data_opt, &promise](
+                              const Status &status, const rpc::GetActorInfoReply &reply) {
+                            RAY_CHECK_OK(status);
+                            if (reply.has_actor_table_data()) {
+                              actor_table_data_opt = reply.actor_table_data();
+                            } else {
+                              actor_table_data_opt = boost::none;
+                            }
+                            promise.set_value(true);
+                          });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data_opt;
   }
@@ -129,8 +130,9 @@ class GcsServerTest : public ::testing::Test {
     rpc::GetAllNodeInfoRequest request;
     std::promise<bool> promise;
     client_->GetAllNodeInfo(
-        request, [&node_info_list, &promise](const Status &status,
-                                             const rpc::GetAllNodeInfoReply &reply) {
+        request,
+        [&node_info_list, &promise](const Status &status,
+                                    const rpc::GetAllNodeInfoReply &reply) {
           RAY_CHECK_OK(status);
           for (int index = 0; index < reply.node_info_list_size(); ++index) {
             node_info_list.push_back(reply.node_info_list(index));
@@ -143,11 +145,12 @@ class GcsServerTest : public ::testing::Test {
 
   bool ReportHeartbeat(const rpc::ReportHeartbeatRequest &request) {
     std::promise<bool> promise;
-    client_->ReportHeartbeat(request, [&promise](const Status &status,
-                                                 const rpc::ReportHeartbeatReply &reply) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    });
+    client_->ReportHeartbeat(
+        request,
+        [&promise](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -196,8 +199,9 @@ class GcsServerTest : public ::testing::Test {
     boost::optional<rpc::WorkerTableData> worker_table_data_opt;
     std::promise<bool> promise;
     client_->GetWorkerInfo(
-        request, [&worker_table_data_opt, &promise](
-                     const Status &status, const rpc::GetWorkerInfoReply &reply) {
+        request,
+        [&worker_table_data_opt, &promise](const Status &status,
+                                           const rpc::GetWorkerInfoReply &reply) {
           RAY_CHECK_OK(status);
           if (reply.has_worker_table_data()) {
             worker_table_data_opt = reply.worker_table_data();
@@ -215,8 +219,9 @@ class GcsServerTest : public ::testing::Test {
     rpc::GetAllWorkerInfoRequest request;
     std::promise<bool> promise;
     client_->GetAllWorkerInfo(
-        request, [&worker_table_data, &promise](const Status &status,
-                                                const rpc::GetAllWorkerInfoReply &reply) {
+        request,
+        [&worker_table_data, &promise](const Status &status,
+                                       const rpc::GetAllWorkerInfoReply &reply) {
           RAY_CHECK_OK(status);
           for (int index = 0; index < reply.worker_table_data_size(); ++index) {
             worker_table_data.push_back(reply.worker_table_data(index));

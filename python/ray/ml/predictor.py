@@ -10,6 +10,12 @@ if TYPE_CHECKING:
 DataBatchType = Union["pd.DataFrame", "np.ndarray"]
 
 
+class PredictorNotSerializableException(RuntimeError):
+    """Error raised when trying to serialize a Predictor instance."""
+
+    pass
+
+
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference."""
 
@@ -30,10 +36,18 @@ class Predictor(abc.ABC):
         """Perform inference on a batch of data.
 
         Args:
-            data: A batch of input data.
+            data: A batch of input data. Either a pandas Dataframe or numpy
+                array.
             kwargs: Arguments specific to predictor implementations.
 
         Returns:
             DataBatchType: Prediction result.
         """
         raise NotImplementedError
+
+    def __reduce__(self):
+        raise PredictorNotSerializableException(
+            "Predictor instances are not serializable. Instead, you may want "
+            "to serialize a checkpoint and initialize the Predictor with "
+            "Predictor.from_checkpoint."
+        )

@@ -49,6 +49,12 @@ GroupedDataset API
 .. autoclass:: ray.data.grouped_dataset.GroupedDataset
     :members:
 
+RandomAccessDataset API
+-----------------------
+
+.. autoclass:: ray.data.random_access_dataset.RandomAccessDataset
+    :members:
+
 Tensor Column Extension API
 ---------------------------
 

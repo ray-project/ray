@@ -51,9 +51,8 @@
         your ``gym.Envs`` via the ``num_envs_per_worker`` config. Environment workers can
         then batch and thus significantly speedup the action computing forward pass.
         On top of that, RLlib offers the ``remote_worker_envs`` config to create
-        `single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_vector_env_with_custom_api.py>`_,
+        `single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_envs_with_inference_done_on_main_node.py>`_,
         thus parallelizing even the env stepping process.
-
 
 .. container:: clear-both
 

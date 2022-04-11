@@ -41,13 +41,18 @@ class SpilledObjectReader : public IObjectReader {
   const rpc::Address &GetOwnerAddress() const override;
 
   bool ReadFromDataSection(uint64_t offset, uint64_t size, char *output) const override;
-  bool ReadFromMetadataSection(uint64_t offset, uint64_t size,
+  bool ReadFromMetadataSection(uint64_t offset,
+                               uint64_t size,
                                char *output) const override;
 
  private:
-  SpilledObjectReader(std::string file_path, uint64_t total_size, uint64_t data_offset,
-                      uint64_t data_size, uint64_t metadata_offset,
-                      uint64_t metadata_size, rpc::Address owner_address);
+  SpilledObjectReader(std::string file_path,
+                      uint64_t total_size,
+                      uint64_t data_offset,
+                      uint64_t data_size,
+                      uint64_t metadata_offset,
+                      uint64_t metadata_size,
+                      rpc::Address owner_address);
 
   /// Parse the object url in the form of {path}?offset={offset}&size={size}.
   /// Return false if parsing failed.
@@ -57,8 +62,10 @@ class SpilledObjectReader : public IObjectReader {
   /// \param[out] object_offset offset of the object stored in the file..
   /// \param[out] total_size object size in the file.
   /// \return bool.
-  static bool ParseObjectURL(const std::string &object_url, std::string &file_path,
-                             uint64_t &object_offset, uint64_t &total_size);
+  static bool ParseObjectURL(const std::string &object_url,
+                             std::string &file_path,
+                             uint64_t &object_offset,
+                             uint64_t &total_size);
 
   /// Read the istream, parse the object header according to the following format.
   /// Return false if the input stream is deleted or corrupted.
@@ -80,9 +87,12 @@ class SpilledObjectReader : public IObjectReader {
   /// \param[out] metadata_size size of the metadata payload.
   /// \param[out] owner_address owner address.
   /// \return bool.
-  static bool ParseObjectHeader(std::istream &is, uint64_t object_offset,
-                                uint64_t &data_offset, uint64_t &data_size,
-                                uint64_t &metadata_offset, uint64_t &metadata_size,
+  static bool ParseObjectHeader(std::istream &is,
+                                uint64_t object_offset,
+                                uint64_t &data_offset,
+                                uint64_t &data_size,
+                                uint64_t &metadata_offset,
+                                uint64_t &metadata_size,
                                 rpc::Address &owner_address);
 
   /// Read 8 bytes from inputstream and deserialize it as a little-endian

@@ -57,7 +57,10 @@ class AsyncClient {
   /// \param is_timeout Whether connection timeout.
   /// \param error_code Set to indicate what error occurred, if any.
   /// \return Whether the connection is successful.
-  bool Connect(const std::string &ip, int port, int64_t timeout_ms, bool *is_timeout,
+  bool Connect(const std::string &ip,
+               int port,
+               int64_t timeout_ms,
+               bool *is_timeout,
                boost::system::error_code *error_code = nullptr) {
     try {
       auto endpoint =
@@ -65,9 +68,11 @@ class AsyncClient {
 
       bool is_connected = false;
       *is_timeout = false;
-      socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this,
-                                                  boost::asio::placeholders::error,
-                                                  boost::ref(is_connected)));
+      socket_.async_connect(endpoint,
+                            boost::bind(&AsyncClient::ConnectHandle,
+                                        this,
+                                        boost::asio::placeholders::error,
+                                        boost::ref(is_connected)));
 
       // Set a deadline for the asynchronous operation.
       timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
