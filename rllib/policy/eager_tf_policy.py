@@ -768,7 +768,7 @@ def build_eager_tf_policy(
                     if len(action_sampler_outputs) == 4:
                         actions, logp, dist_inputs, state_out = action_sampler_outputs
                     else:
-                        dis_inputs = None
+                        dist_inputs = None
                         state_out = []
                         actions, logp = action_sampler_outputs
                 else:

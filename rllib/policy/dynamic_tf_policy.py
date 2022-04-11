@@ -318,7 +318,7 @@ class DynamicTFPolicy(TFPolicy):
                         self._state_out,
                     ) = action_sampler_outputs
                 else:
-                    dis_inputs = None
+                    dist_inputs = None
                     self._state_out = []
                     sampled_action, sampled_action_logp = action_sampler_outputs
             # Distribution generation is customized, e.g., DQN, DDPG.
