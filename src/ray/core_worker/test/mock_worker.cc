@@ -106,7 +106,7 @@ class MockWorker {
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;
     for (const auto &arg : args) {
-      auto &data = arg->GetData();
+      auto data = arg->GetData();
       buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
     }
     if (buffer.size() >= 8) {
