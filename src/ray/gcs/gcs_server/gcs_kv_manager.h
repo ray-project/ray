@@ -47,6 +47,8 @@ class InternalKVInterface {
   /// \param overwrite Whether to overwrite existing values. Otherwise, the update
   ///   will be ignored.
   /// \param callback Callback function.
+  /// WARNING: it returns true if and only if A NEW ENTRY is added.
+  /// Overwritten return false.
   virtual void Put(const std::string &ns,
                    const std::string &key,
                    const std::string &value,
@@ -82,10 +84,6 @@ class InternalKVInterface {
   virtual void Keys(const std::string &ns,
                     const std::string &prefix,
                     std::function<void(std::vector<std::string>)> callback) = 0;
-
-  /// Return the event loop associated with the instance. This is where the
-  /// callback is called.
-  virtual instrumented_io_context &GetEventLoop() = 0;
 
   virtual ~InternalKVInterface(){};
 };
@@ -124,8 +122,6 @@ class RedisInternalKV : public InternalKVInterface {
             const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
 
-  instrumented_io_context &GetEventLoop() override { return io_service_; }
-
  private:
   RedisClientOptions redis_options_;
   std::unique_ptr<RedisClient> redis_client_;
@@ -161,8 +157,6 @@ class MemoryInternalKV : public InternalKVInterface {
             const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
 
-  instrumented_io_context &GetEventLoop() override { return io_context_; }
-
  private:
   instrumented_io_context &io_context_;
   absl::Mutex mu_;
@@ -196,8 +190,6 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::SendReplyCallback send_reply_callback) override;
 
   InternalKVInterface &GetInstance() { return *kv_instance_; }
-
-  instrumented_io_context &GetEventLoop() { return kv_instance_->GetEventLoop(); }
 
  private:
   std::unique_ptr<InternalKVInterface> kv_instance_;

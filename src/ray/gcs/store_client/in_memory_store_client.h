@@ -35,7 +35,8 @@ class InMemoryStoreClient : public StoreClient {
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
                   const std::string &data,
-                  const StatusCallback &callback) override;
+                  bool overwrite,
+                  std::function<void(bool)> callback) override;
 
   Status AsyncGet(const std::string &table_name,
                   const std::string &key,
@@ -50,13 +51,21 @@ class InMemoryStoreClient : public StoreClient {
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,
-                     const StatusCallback &callback) override;
+                     std::function<void(bool)> callback) override;
 
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
-                          const StatusCallback &callback) override;
+                          std::function<void(int64_t)> callback) override;
 
   int GetNextJobID() override;
+
+  Status AsyncGetKeys(const std::string &table_name,
+                      const std::string &prefix,
+                      std::function<void(std::vector<std::string>)> callback) override;
+
+  Status AsyncExists(const std::string &table_name,
+                     const std::string &key,
+                     std::function<void(bool)> callback) override;
 
  private:
   struct InMemoryTable {
