@@ -1144,6 +1144,23 @@ class Trainer(Trainable):
                     step_attempt_results=step_attempt_results,
                 )
 
+        # Check `env_task_fn` for possible update of the env's task.
+        if self.config["env_task_fn"] is not None:
+            if not callable(self.config["env_task_fn"]):
+                raise ValueError(
+                    "`env_task_fn` must be None or a callable taking "
+                    "[train_results, env, env_ctx] as args!"
+                )
+
+            def fn(env, env_context, task_fn):
+                new_task = task_fn(result, env, env_context)
+                cur_task = env.get_task()
+                if cur_task != new_task:
+                    env.set_task(new_task)
+
+            fn = functools.partial(fn, task_fn=self.config["env_task_fn"])
+            self.workers.foreach_env_with_context(fn)
+
         return result
 
     def step_attempt(self) -> ResultDict:
@@ -1233,23 +1250,6 @@ class Trainer(Trainable):
                 self.evaluation_metrics, dict
             ), "Trainer.evaluate() needs to return a dict."
             step_results.update(self.evaluation_metrics)
-
-        # Check `env_task_fn` for possible update of the env's task.
-        if self.config["env_task_fn"] is not None:
-            if not callable(self.config["env_task_fn"]):
-                raise ValueError(
-                    "`env_task_fn` must be None or a callable taking "
-                    "[train_results, env, env_ctx] as args!"
-                )
-
-            def fn(env, env_context, task_fn):
-                new_task = task_fn(step_results, env, env_context)
-                cur_task = env.get_task()
-                if cur_task != new_task:
-                    env.set_task(new_task)
-
-            fn = functools.partial(fn, task_fn=self.config["env_task_fn"])
-            self.workers.foreach_env_with_context(fn)
 
         return step_results
 
@@ -1443,30 +1443,18 @@ class Trainer(Trainable):
         Returns:
             The results dict from executing the training iteration.
         """
-        # Some shortcuts.
-        batch_size = self.config["train_batch_size"]
-
-        # Collects SampleBatches in parallel and synchronously
-        # from the Trainer's RolloutWorkers until we hit the
-        # configured `train_batch_size`.
-        sample_batches = []
-        num_env_steps = 0
-        num_agent_steps = 0
-        while (not self._by_agent_steps and num_env_steps < batch_size) or (
-            self._by_agent_steps and num_agent_steps < batch_size
-        ):
-            new_sample_batches = synchronous_parallel_sample(self.workers)
-            sample_batches.extend(new_sample_batches)
-            num_env_steps += sum(len(s) for s in new_sample_batches)
-            num_agent_steps += sum(
-                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-                for s in new_sample_batches
+        # Collect SampleBatches from sample workers until we have a full batch.
+        if self._by_agent_steps:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
             )
-        self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
-
-        # Combine all batches at once
-        train_batch = SampleBatch.concat_samples(sample_batches)
+        else:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+            )
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
         # Use simple optimizer (only for multi-agent or tf-eager; all other
         # cases should use the multi-GPU optimizer, even if only using 1 GPU).
@@ -1479,9 +1467,12 @@ class Trainer(Trainable):
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+        }
         if self.workers.remote_workers():
             with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights()
+                self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
 

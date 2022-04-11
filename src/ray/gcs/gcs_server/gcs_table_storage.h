@@ -144,8 +144,14 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   Status BatchDelete(const std::vector<Key> &keys,
                      const StatusCallback &callback) override;
 
+  /// Rebuild the index during startup.
+  Status AsyncRebuildIndexAndGetAll(const MapCallback<Key, Data> &callback);
+
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
+
+  absl::Mutex mutex_;
+  absl::flat_hash_map<JobID, absl::flat_hash_set<Key>> index_ GUARDED_BY(mutex_);
 };
 
 class GcsJobTable : public GcsTable<JobID, JobTableData> {

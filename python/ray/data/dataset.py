@@ -85,6 +85,9 @@ logger = logging.getLogger(__name__)
 # Whether we have warned of Datasets containing multiple epochs of data.
 _epoch_warned = False
 
+# Whether we have warned about using slow Dataset transforms.
+_slow_warned = False
+
 
 @PublicAPI
 class Dataset(Generic[T]):
@@ -178,6 +181,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        self._warn_slow()
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
@@ -393,6 +397,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        self._warn_slow()
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
@@ -443,6 +448,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        self._warn_slow()
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
@@ -2980,6 +2986,15 @@ Dict[str, List[str]]]): The names of the columns
 
     def _set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
+
+    def _warn_slow(self):
+        global _slow_warned
+        if not _slow_warned:
+            _slow_warned = True
+            logger.warning(
+                "The `map`, `flat_map`, and `filter` operations are unvectorized and "
+                "can be very slow. Consider using `.map_batches()` instead."
+            )
 
 
 def _get_num_rows(block: Block) -> int:
