@@ -26,6 +26,9 @@
 # Formatting tool
 /ci/travis/format.sh @richardliaw @ericl @edoakes
 
+# Docker image build script.
+/ci/travis/build-docker-images.py @amogkam @krfricke
+
 # Python worker.
 #/python/ray/ @ray-project/ray-core-python
 #!/python/ray/tune/ @ray-project/ray-core-python
