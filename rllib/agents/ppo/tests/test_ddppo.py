@@ -26,8 +26,7 @@ class TestDDPPO(unittest.TestCase):
         """Test whether a DDPPOTrainer can be built with both frameworks."""
         config = ppo.ddppo.DEFAULT_CONFIG.copy()
         config["num_gpus_per_worker"] = 0
-        #config["_disable_execution_plan_api"]=False#todo
-        num_iterations = 30#TODO:2
+        num_iterations = 2
 
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")

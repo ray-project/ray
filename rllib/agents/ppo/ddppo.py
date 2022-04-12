@@ -219,7 +219,7 @@ class DDPPOTrainer(PPOTrainer):
                         url=address,
                         world_rank=i,
                         world_size=len(self.workers.remote_workers()),
-                        backend=config["torch_distributed_backend"],
+                        backend=self.config["torch_distributed_backend"],
                     )
                     for i, worker in enumerate(self.workers.remote_workers())
                 ]
