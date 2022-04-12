@@ -19,16 +19,14 @@ from ray.util import PublicAPI
 from ray.ml.trainer import Trainer
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.util.joblib import register_ray
+from ray.ml.train.integrations.sklearn.score import score
 
 from sklearn.base import BaseEstimator, clone
 from sklearn.model_selection import BaseCrossValidator, cross_validate
 from sklearn.metrics import check_scoring
 
 # we are using a private API here, but it's consistent across versions
-from sklearn.model_selection._validation import (
-    _score,
-    _check_multimetric_scoring,
-)
+from sklearn.model_selection._validation import _check_multimetric_scoring
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +258,7 @@ class SklearnTrainer(Trainer):
         for key, X_y_tuple in datasets.items():
             X_test, y_test = X_y_tuple
             start_time = time()
-            test_scores = _score(estimator, X_test, y_test, scorers, np.nan)
+            test_scores = score(estimator, X_test, y_test, scorers, np.nan)
             score_time = time() - start_time
             results[key]["score_time"] = score_time
             if not isinstance(test_scores, dict):
