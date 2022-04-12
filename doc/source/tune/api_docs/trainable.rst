@@ -292,25 +292,22 @@ It is up to the user to correctly update the hyperparameters of your trainable.
 
 .. code-block:: python
 
-    class PytorchTrainble(tune.Trainable):
+    class PytorchTrainable(tune.Trainable):
         """Train a Pytorch ConvNet."""
-
-        def setup(self, config):
+        def _setup_model_and_optimizer(config):
             self.train_loader, self.test_loader = get_data_loaders()
             self.model = ConvNet()
             self.optimizer = optim.SGD(
                 self.model.parameters(),
                 lr=config.get("lr", 0.01),
                 momentum=config.get("momentum", 0.9))
-
+        def setup(self, config):
+            # If dataset creation is expensive, do it just once for all trials.
+            self.data = create_expensive_dataset(...)
+            self._setup_model_and_optimizer(config)
         def reset_config(self, new_config):
-            for param_group in self.optimizer.param_groups:
-                if "lr" in new_config:
-                    param_group["lr"] = new_config["lr"]
-                if "momentum" in new_config:
-                    param_group["momentum"] = new_config["momentum"]
-
-            self.config = new_config
+            # When reusing actors, we only re-create the model and optimizer, but do not call `create_expensive_dataset` again.
+            self._setup_model_and_optimizer(new_config)
             return True
 
 
