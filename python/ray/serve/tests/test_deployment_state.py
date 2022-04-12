@@ -21,6 +21,7 @@ from ray.serve.deployment_state import (
     DeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
+    DeploymentReplica,
     ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
@@ -2088,8 +2089,6 @@ def test_stopping_replicas_ranking():
 
 def test_resource_requirements_none(mock_deployment_state):
     """Ensure resource_requirements doesn't break if a requirement is None"""
-
-    from ray.serve.deployment_state import DeploymentReplica
 
     class FakeActor:
 
