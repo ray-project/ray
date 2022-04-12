@@ -545,6 +545,9 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
           RAY_CHECK(
               inner_it->second.mutable_containing()->contained_in_borrowed_ids.erase(id));
         }
+        // NOTE: a ContainingReferences struct is created after the first mutable_containing()
+        // call, but the struct will not be deleted until the enclosing Reference struct is
+        // deleted.
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
@@ -758,6 +761,10 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
   absl::MutexLock lock(&mutex_);
   ReferenceProtoTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
+    // Setting `deduct_local_ref` to true to decrease the ref count for each of the 
+    // borrowed IDs. This is because we artificially increment each borrowed ID to 
+    // keep it pinned during task execution. However, this should not count towards
+    // the final ref count / existence of local ref returned to the task's caller.
     RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id,
                                                 /*for_ref_removed=*/false,
                                                 /*deduct_local_ref=*/true,
@@ -1464,11 +1471,11 @@ ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
 }
 
 void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
-                                          int deduct_ref_count) const {
+                                          bool deduct_local_ref) const {
   if (owner_address) {
     ref->mutable_reference()->mutable_owner_address()->CopyFrom(*owner_address);
   }
-  ref->set_has_local_ref(RefCount() > deduct_ref_count);
+  ref->set_has_local_ref(RefCount() > (deduct_local_ref ? 1 : 0));
   for (const auto &borrower : borrow().borrowers) {
     ref->add_borrowers()->CopyFrom(borrower.ToProto());
   }

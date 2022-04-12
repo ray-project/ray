@@ -554,15 +554,17 @@ class ReferenceCounter : public ReferenceCounterInterface,
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
           owned_by_us(true),
-          foreign_owner_already_monitoring(false),
           is_reconstructable(is_reconstructable),
+          foreign_owner_already_monitoring(false),
           pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
     static Reference FromProto(const rpc::ObjectReferenceCount &ref_count);
     /// Serialize to a protobuf.
-    void ToProto(rpc::ObjectReferenceCount *ref, int deduct_ref_count = 0) const;
+    /// When `deduct_local_ref` is true, one local ref should be removed
+    /// when determining if the object has actual local references.
+    void ToProto(rpc::ObjectReferenceCount *ref, bool deduct_local_ref = false) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
@@ -608,6 +610,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       }
     }
 
+    /// Access BorrowInfo without modifications.
+    /// Returns the default value of the struct if it is not set.
     const BorrowInfo &borrow() const {
       if (borrow_info == nullptr) {
         static auto *default_info = new BorrowInfo();
@@ -616,6 +620,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return *borrow_info;
     }
 
+    /// Returns the borrow info for updates.
+    /// Creates the underlying field if it is not set.
     BorrowInfo *mutable_borrow() {
       if (borrow_info == nullptr) {
         borrow_info = std::make_unique<BorrowInfo>();
@@ -623,6 +629,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return borrow_info.get();
     }
 
+    /// Access ContainingReferences without modifications.
+    /// Returns the default value of the struct if it is not set.
     const ContainingReferences &containing() const {
       if (containing_references == nullptr) {
         static auto *default_refs = new ContainingReferences();
@@ -631,6 +639,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return *containing_references;
     }
 
+    /// Returns the containing references for updates.
+    /// Creates the underlying field if it is not set.
     ContainingReferences *mutable_containing() {
       if (containing_references == nullptr) {
         containing_references = std::make_unique<ContainingReferences>();
@@ -650,7 +660,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
     absl::optional<rpc::Address> owner_address;
-
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
@@ -659,31 +668,31 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
     bool owned_by_us = false;
-    /// Whether the object was created with a foreign owner (i.e., _owner set).
-    /// In this case, the owner is already monitoring this reference with a
-    /// WaitForRefRemoved() call, and it is an error to return borrower
-    /// metadata to the parent of the current task.
-    /// See https://github.com/ray-project/ray/pull/19910 for more context.
-    bool foreign_owner_already_monitoring = false;
+
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage. This should be set to false if the object was created
     // by ray.put(), a task that cannot be retried, or its lineage was evicted.
     bool is_reconstructable = false;
+    /// Whether the lineage of this object was evicted due to memory pressure.
+    bool lineage_evicted = false;
+    /// The number of tasks that depend on this object that may be retried in
+    /// the future (pending execution or finished but retryable). If the object
+    /// is inlined (not stored in plasma), then its lineage ref count is 0
+    /// because any dependent task will already have the value of the object.
+    size_t lineage_ref_count = 0;
 
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;
     /// The ref count for submitted tasks that depend on the ObjectID.
     size_t submitted_task_ref_count = 0;
 
+    /// Metadata for references that contain this reference.
     std::unique_ptr<ContainingReferences> containing_references;
+
+    /// Metadata related to borrowing.
     std::unique_ptr<BorrowInfo> borrow_info;
 
-    /// The number of tasks that depend on this object that may be retried in
-    /// the future (pending execution or finished but retryable). If the object
-    /// is inlined (not stored in plasma), then its lineage ref count is 0
-    /// because any dependent task will already have the value of the object.
-    size_t lineage_ref_count = 0;
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -698,16 +707,22 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
+    /// Whether this object has been spilled to external storage.
+    bool spilled = false;
+
+    /// Whether the object was created with a foreign owner (i.e., _owner set).
+    /// In this case, the owner is already monitoring this reference with a
+    /// WaitForRefRemoved() call, and it is an error to return borrower
+    /// metadata to the parent of the current task.
+    /// See https://github.com/ray-project/ray/pull/19910 for more context.
+    bool foreign_owner_already_monitoring = false;
 
     /// ObjectRefs nested in this object that are or were in use. These objects
     /// are not owned by us, and we need to report that we are borrowing them
     /// to their owner. Nesting is transitive, so this flag is set as long as
     /// any child object is in scope.
     bool has_nested_refs_to_report = false;
-    /// Whether the lineage of this object was evicted due to memory pressure.
-    bool lineage_evicted = false;
-    /// Whether this object has been spilled to external storage.
-    bool spilled = false;
+
     /// Whether the task that creates this object is scheduled/executing.
     bool pending_creation = false;
   };
@@ -763,9 +778,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Populates the table with the ObjectID that we were or are still
   /// borrowing. The table also includes any IDs that we discovered were
-  /// contained in the ID. For each borrowed ID, we will return:
+  /// contained in the ID. For each borrowed ID, we will return in proto:
   /// - The borrowed ID's owner's address.
-  /// - Whether we are still using the ID or not (RefCount() > 0).
+  /// - Whether we are still using the ID or not:
+  ///     RefCount() > 1 when deduct_local_ref, and RefCount() > 0 when not.
   /// - Addresses of new borrowers that we passed the ID to.
   /// - Whether the borrowed ID was contained in another ID that we borrowed.
   ///
