@@ -148,6 +148,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
         def contains_all_filters(string):
             return all(f in string for f in filters)
+
         links = list(filter(contains_all_filters, reply.log_files))
         logs = {}
         logs["worker_errors"] = list(

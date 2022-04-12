@@ -174,6 +174,7 @@ def test_logs_experimental_index(ray_start_with_dashboard):
             core_worker_logs = logs[node_id]["python_core_worker_logs"]
 
             assert len(outs) == len(errs) == len(core_worker_logs)
+            assert len(outs) > 0
 
             for file in ["debug_state_gcs.txt", "gcs_sever.out", "gcs_server.err"]:
                 assert file in logs[node_id]["gcs"]
@@ -252,4 +253,4 @@ def test_logs_experimental_write(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", f"{__file__}::test_logs_experimental"]))
+    sys.exit(pytest.main(["-sv", __file__]))
