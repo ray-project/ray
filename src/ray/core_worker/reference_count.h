@@ -551,10 +551,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
               const absl::optional<NodeID> &pinned_at_raylet_id)
         : call_site(call_site),
           object_size(object_size),
-          owned_by_us(true),
-          foreign_owner_already_monitoring(false),
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
+          owned_by_us(true),
+          foreign_owner_already_monitoring(false),
           is_reconstructable(is_reconstructable),
           pending_creation(!pinned_at_raylet_id.has_value()) {}
 
@@ -642,7 +642,19 @@ class ReferenceCounter : public ReferenceCounterInterface,
     std::string call_site = "<unknown>";
     /// Object size if known, otherwise -1;
     int64_t object_size = -1;
+    /// If this object is owned by us and stored in plasma, this contains all
+    /// object locations.
+    absl::flat_hash_set<NodeID> locations;
+    /// The object's owner's address, if we know it. If this process is the
+    /// owner, then this is added during creation of the Reference. If this is
+    /// process is a borrower, the borrower must add the owner's address before
+    /// using the ObjectID.
+    absl::optional<rpc::Address> owner_address;
 
+    /// If this object is owned by us and stored in plasma, and reference
+    /// counting is enabled, then some raylet must be pinning the object value.
+    /// This is the address of that raylet.
+    absl::optional<NodeID> pinned_at_raylet_id;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
@@ -653,18 +665,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// metadata to the parent of the current task.
     /// See https://github.com/ray-project/ray/pull/19910 for more context.
     bool foreign_owner_already_monitoring = false;
-    /// The object's owner's address, if we know it. If this process is the
-    /// owner, then this is added during creation of the Reference. If this is
-    /// process is a borrower, the borrower must add the owner's address before
-    /// using the ObjectID.
-    absl::optional<rpc::Address> owner_address;
-    /// If this object is owned by us and stored in plasma, and reference
-    /// counting is enabled, then some raylet must be pinning the object value.
-    /// This is the address of that raylet.
-    absl::optional<NodeID> pinned_at_raylet_id;
-    /// If this object is owned by us and stored in plasma, this contains all
-    /// object locations.
-    absl::flat_hash_set<NodeID> locations;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage. This should be set to false if the object was created
@@ -679,21 +679,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
     std::unique_ptr<ContainingReferences> containing_references;
     std::unique_ptr<BorrowInfo> borrow_info;
 
-    /// ObjectRefs nested in this object that are or were in use. These objects
-    /// are not owned by us, and we need to report that we are borrowing them
-    /// to their owner. Nesting is transitive, so this flag is set as long as
-    /// any child object is in scope.
-    bool has_nested_refs_to_report = false;
-
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
-    /// Whether the lineage of this object was evicted due to memory pressure.
-    bool lineage_evicted = false;
-    /// Whether this object has been spilled to external storage.
-    bool spilled = false;
+    /// Callback that will be called when this ObjectID no longer has
+    /// references.
+    std::function<void(const ObjectID &)> on_delete;
+    /// Callback that is called when this process is no longer a borrower
+    /// (RefCount() == 0).
+    std::function<void(const ObjectID &)> on_ref_removed;
+
     /// For objects that have been spilled to external storage, the URL from which
     /// they can be retrieved.
     std::string spilled_url = "";
@@ -701,14 +698,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
+
+    /// ObjectRefs nested in this object that are or were in use. These objects
+    /// are not owned by us, and we need to report that we are borrowing them
+    /// to their owner. Nesting is transitive, so this flag is set as long as
+    /// any child object is in scope.
+    bool has_nested_refs_to_report = false;
+    /// Whether the lineage of this object was evicted due to memory pressure.
+    bool lineage_evicted = false;
+    /// Whether this object has been spilled to external storage.
+    bool spilled = false;
     /// Whether the task that creates this object is scheduled/executing.
     bool pending_creation = false;
-    /// Callback that will be called when this ObjectID no longer has
-    /// references.
-    std::function<void(const ObjectID &)> on_delete;
-    /// Callback that is called when this process is no longer a borrower
-    /// (RefCount() == 0).
-    std::function<void(const ObjectID &)> on_ref_removed;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
