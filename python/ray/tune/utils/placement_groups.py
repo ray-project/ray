@@ -508,6 +508,8 @@ class PlacementGroupManager:
             head_bundle = pg.bundle_specs[0].copy()
             num_cpus = head_bundle.pop("CPU", 0)
             num_gpus = head_bundle.pop("GPU", 0)
+            memory = head_bundle.pop("memory", 0)
+            object_store_memory = head_bundle.pop("object_store_memory", 0)
 
             # Only custom resources remain in `head_bundle`
             resources = head_bundle
@@ -517,6 +519,8 @@ class PlacementGroupManager:
                 placement_group_capture_child_tasks=True,
                 num_cpus=num_cpus,
                 num_gpus=num_gpus,
+                memory=memory,
+                object_store_memory=object_store_memory,
                 resources=resources,
             )
         else:
