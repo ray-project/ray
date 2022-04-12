@@ -1224,44 +1224,57 @@ cdef class CoreWorker:
 
         return has_object and (not memory_store_only or not is_in_plasma)
 
-    cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_ref,
-                            c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+    cdef _create_put_buffer(self,
+                            c_vector[shared_ptr[CBuffer]] &batch_metadata,
+                            c_vector[size_t] batch_data_size, c_vector[CObjectID] object_refs,
+                            c_vector[CObjectID] total_contained_ids,
+                            c_vector[int] contained_ids_numbers,
+                            c_vector[CObjectID_ptr] c_object_ids,
+                            c_vector[shared_ptr_of_CBuffer_ptr] datas,
                             c_bool created_by_worker,
                             owner_address=None,
                             c_bool inline_small_object=True):
         cdef:
             unique_ptr[CAddress] c_owner_address
+            shared_ptr[CBuffer] metadata
+            size_t data_size
 
         c_owner_address = move(self._convert_python_address(owner_address))
 
-        if object_ref is None:
+        if object_refs.empty():
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker()
-                             .CreateOwnedAndIncrementLocalRef(
-                             metadata, data_size, contained_ids,
-                             c_object_id, data, created_by_worker,
+                             .BatchCreateOwnedAndIncrementLocalRef(
+                             batch_metadata, batch_data_size, total_contained_ids, contained_ids_numbers,
+                             c_object_ids, datas, created_by_worker,
                              move(c_owner_address),
                              inline_small_object))
         else:
-            c_object_id[0] = object_ref.native()
-            if owner_address is None:
-                c_owner_address = make_unique[CAddress]()
-                dereference(
-                    c_owner_address
-                ).CopyFrom(CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())
-            with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
-                            metadata, data_size, c_object_id[0],
-                            dereference(c_owner_address), data,
-                            created_by_worker))
+            for index in range(c_object_ids.size()):
+                c_object_id = c_object_ids[index]
+                object_ref = object_refs[index]
+                c_object_id[0] = object_ref
+                metadata = batch_metadata[index]
+                data_size = batch_data_size[index]
+                data = datas[index]
+
+                if owner_address is None:
+                    c_owner_address = make_unique[CAddress]()
+                    dereference(
+                        c_owner_address
+                    ).CopyFrom(CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())
+                with nogil:
+                    check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
+                                metadata, data_size, c_object_id[0],
+                                dereference(c_owner_address), data,
+                                created_by_worker))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
         # TODO(edoakes): this is hacky, we should return the error instead
         # and deal with it here.
-        return data.get() == NULL
+        # return data.get() == NULL
+        return False
 
     cdef unique_ptr[CAddress] _convert_python_address(self, address=None):
         """ convert python address to `CAddress`, If not provided,
@@ -1329,65 +1342,93 @@ cdef class CoreWorker:
                             c_object_id, pin_object=False,
                             owner_address=c_owner_address))
 
-    def put_serialized_object_and_increment_local_ref(self, serialized_object,
-                                                      ObjectRef object_ref=None,
+    def put_serialized_objects_and_increment_local_refs(self, serialized_objects,
+                                                      object_refs=None,
                                                       c_bool pin_object=True,
                                                       owner_address=None,
                                                       c_bool inline_small_object=True):
         cdef:
-            CObjectID c_object_id
-            shared_ptr[CBuffer] data
-            shared_ptr[CBuffer] metadata
+            c_vector[CObjectID_ptr] c_object_ids
+            c_vector[shared_ptr_of_CBuffer_ptr] datas
+            c_vector[shared_ptr[CBuffer]] batch_metadata
             int64_t put_threshold
             unique_ptr[CAddress] c_owner_address
-            c_vector[CObjectID] contained_object_ids
+            c_vector[CObjectID] total_contained_object_ids
+            c_vector[int] contained_object_numbers
+            c_vector[size_t] batch_data_size
             c_vector[CObjectReference] contained_object_refs
+            c_vector[CObjectID] c_object_refs
+            shared_ptr[CBuffer] data
+            ObjectRef cy_object_ref
 
-        metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
-        total_bytes = serialized_object.total_bytes
-        contained_object_ids = ObjectRefsToVector(
+        for index in range(len(serialized_objects)):
+            c_object_ids.push_back(new CObjectID())
+            datas.push_back(new shared_ptr[CBuffer]())
+            serialized_object = serialized_objects[index]
+            if object_refs is not None:
+                cy_object_ref = object_refs[index]
+                c_object_refs.push_back(cy_object_ref.native())
+            batch_metadata.push_back(string_to_buffer(serialized_object.metadata))
+            contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
+            total_contained_object_ids.insert(total_contained_object_ids.end(), contained_object_ids.begin(), contained_object_ids.end())
+            contained_object_numbers.push_back(contained_object_ids.size())
+            batch_data_size.push_back(serialized_object.total_bytes)
+
         object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_ref,
-            contained_object_ids,
-            &c_object_id, &data, True, owner_address, inline_small_object)
+            batch_metadata, batch_data_size, c_object_refs,
+            total_contained_object_ids, contained_object_numbers,
+            c_object_ids, datas, True, owner_address, inline_small_object)
 
         if not object_already_exists:
-            if total_bytes > 0:
-                (<SerializedObject>serialized_object).write_to(
-                    Buffer.make(data))
-            if self.is_local_mode:
-                contained_object_refs = (
-                        CCoreWorkerProcess.GetCoreWorker().
-                        GetObjectRefs(contained_object_ids))
-                if owner_address is not None:
-                    raise Exception(
-                        "cannot put data into memory store directly"
-                        " and assign owner at the same time")
-                check_status(CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(data, metadata, contained_object_refs),
-                        contained_object_ids, c_object_id))
-            else:
-                c_owner_address = move(self._convert_python_address(
-                    owner_address))
-                with nogil:
-                    if object_ref is None:
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealOwned(
-                                        c_object_id,
-                                        pin_object,
-                                        move(c_owner_address)))
-                    else:
-                        # Using custom object refs is not supported because we
-                        # can't track their lifecycle, so we don't pin the
-                        # object in this case.
-                        check_status(
-                            CCoreWorkerProcess.GetCoreWorker().SealExisting(
-                                        c_object_id, pin_object=False,
-                                        owner_address=move(c_owner_address)))
+            for index in range(len(serialized_objects)):
+                serialized_object = serialized_objects[index]
+                data = dereference(datas[index])
+                contained_object_ids = ObjectRefsToVector(
+                    serialized_object.contained_object_refs)
+                c_object_id = dereference(c_object_ids[index])
+                metadata = batch_metadata[index]
 
-        return c_object_id.Binary()
+                if serialized_object.total_bytes > 0:
+                    (<SerializedObject>serialized_object).write_to(
+                        Buffer.make(data))
+                if self.is_local_mode:
+                    contained_object_refs = (
+                            CCoreWorkerProcess.GetCoreWorker().
+                            GetObjectRefs(contained_object_ids))
+                    if owner_address is not None:
+                        raise Exception(
+                            "cannot put data into memory store directly"
+                            " and assign owner at the same time")
+                    check_status(CCoreWorkerProcess.GetCoreWorker().Put(
+                            CRayObject(data, metadata, contained_object_refs),
+                            contained_object_ids, c_object_id))
+                else:
+                    c_owner_address = move(self._convert_python_address(
+                        owner_address))
+                    with nogil:
+                        if c_object_refs.empty():
+                            check_status(
+                                CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                                            c_object_id,
+                                            pin_object,
+                                            move(c_owner_address)))
+                        else:
+                            # Using custom object refs is not supported because we
+                            # can't track their lifecycle, so we don't pin the
+                            # object in this case.
+                            check_status(
+                                CCoreWorkerProcess.GetCoreWorker().SealExisting(
+                                            c_object_id, pin_object=False,
+                                            owner_address=move(c_owner_address)))
+
+        res = []
+        for index in range(len(serialized_objects)):
+            res.append(c_object_ids[index].Binary())
+            del c_object_ids[index]
+            del datas[index]
+        return res
 
     def wait(self, object_refs, int num_returns, int64_t timeout_ms,
              TaskID current_task_id, c_bool fetch_local):

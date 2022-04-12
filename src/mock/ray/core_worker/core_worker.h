@@ -166,9 +166,9 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleAssignObjectOwner,
-              (const rpc::AssignObjectOwnerRequest &request,
-               rpc::AssignObjectOwnerReply *reply,
+              HandleBatchAssignObjectOwner,
+              (const rpc::BatchAssignObjectOwnerRequest &request,
+               rpc::BatchAssignObjectOwnerReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
 };

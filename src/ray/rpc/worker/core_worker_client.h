@@ -192,9 +192,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void Exit(const ExitRequest &request,
                     const ClientCallback<ExitReply> &callback) {}
 
-  virtual void AssignObjectOwner(const AssignObjectOwnerRequest &request,
-                                 const ClientCallback<AssignObjectOwnerReply> &callback) {
-  }
+  virtual void BatchAssignObjectOwner(
+      const BatchAssignObjectOwnerRequest &request,
+      const ClientCallback<BatchAssignObjectOwnerReply> &callback) {}
 
   /// Returns the max acked sequence number, useful for checking on progress.
   virtual int64_t ClientProcessedUpToSeqno() { return -1; }
@@ -325,7 +325,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       CoreWorkerService, Exit, grpc_client_, /*method_timeout_ms*/ -1, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         AssignObjectOwner,
+                         BatchAssignObjectOwner,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

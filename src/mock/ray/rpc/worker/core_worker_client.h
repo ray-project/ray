@@ -130,9 +130,9 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
               (const ExitRequest &request, const ClientCallback<ExitReply> &callback),
               (override));
   MOCK_METHOD(void,
-              AssignObjectOwner,
-              (const AssignObjectOwnerRequest &request,
-               const ClientCallback<AssignObjectOwnerReply> &callback),
+              BatchAssignObjectOwner,
+              (const BatchAssignObjectOwnerRequest &request,
+               const ClientCallback<BatchAssignObjectOwnerReply> &callback),
               (override));
   MOCK_METHOD(int64_t, ClientProcessedUpToSeqno, (), (override));
 };

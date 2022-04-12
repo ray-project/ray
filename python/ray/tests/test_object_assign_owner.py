@@ -14,6 +14,7 @@ def test_owner_assign_bug(ray_start_regular):
     @ray.remote
     class Executor:
         def f(self):
+            print("hejialing test")
             x = [ray.put("World", _owner=owner)]
             print("World id:", x)
             return x

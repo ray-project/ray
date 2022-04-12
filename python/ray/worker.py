@@ -263,10 +263,10 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None):
-        """Put value in the local object store with object reference `object_ref`.
+    def put_objects(self, values, object_refs=None, owner_address=None):
+        """Put values in the local object store with object reference `object_ref`.
 
-        This assumes that the value for `object_ref` has not yet been placed in
+        This assumes that the values for list of `object_ref` has not yet been placed in
         the local object store. If the plasma store is full, the worker will
         automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
         retry will delay for an exponentially doubling amount of time,
@@ -274,7 +274,7 @@ class Worker:
         will be raised.
 
         Args:
-            value: The value to put in the object store.
+            values: The list of value to put in the object store.
             object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
@@ -287,8 +287,9 @@ class Worker:
                 to store the object fails because the object store is full even
                 after multiple retries.
         """
+        assert object_refs is None or len(object_refs) == len(values)
         # Make sure that the value is not an object ref.
-        if isinstance(value, ObjectRef):
+        if any(map(lambda value: isinstance(value, ObjectRef), values)):
             raise TypeError(
                 "Calling 'put' on an ray.ObjectRef is not allowed "
                 "(similarly, returning an ray.ObjectRef from a remote "
@@ -299,23 +300,31 @@ class Worker:
 
         if self.mode == LOCAL_MODE:
             assert (
-                object_ref is None
+                object_refs is None
             ), "Local Mode does not support inserting with an ObjectRef"
 
-        serialized_value = self.get_serialization_context().serialize(value)
+        serialized_values = list(
+            map(self.get_serialization_context().serialize, values)
+        )
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
-        return ray.ObjectRef(
-            self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value, object_ref=object_ref, owner_address=owner_address
-            ),
-            # The initial local reference is already acquired internally.
-            skip_adding_local_ref=True,
+        object_refs_binary = self.core_worker.put_serialized_objects_and_increment_local_refs(
+                serialized_values, object_refs=object_refs, owner_address=owner_address
         )
+        res_object_refs = []
+        for object_ref_binary in object_refs_binary:
+            res_object_refs.append(
+                ray.ObjectRef(
+                    object_ref_binary,
+                    # The initial local reference is already acquired internally.
+                    skip_adding_local_ref=True,
+                )
+            )
+        return res_object_refs
 
     def raise_errors(self, data_metadata_pairs, object_refs):
         out = self.deserialize_objects(data_metadata_pairs, object_refs)
@@ -1867,7 +1876,9 @@ def put(
 
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, owner_address=serialize_owner_address)
+            object_ref = worker.put_objects(
+                [value], owner_address=serialize_owner_address
+            )[0]
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
@@ -1875,6 +1886,56 @@ def put(
             )
             raise
         return object_ref
+
+
+@client_mode_hook(auto_init=True)
+def batch_put(
+    values: List[Any], *, _owner: Optional["ray.actor.ActorHandle"] = None
+) -> List[ray.ObjectRef]:
+    """Store an object in the object store.
+
+    The object may not be evicted while a reference to the returned ID exists.
+
+    Args:
+        value: The Python object to be stored.
+        _owner: The actor that should own this object. This allows creating
+            objects with lifetimes decoupled from that of the creating process.
+            Note that the owner actor must be passed a reference to the object
+            prior to the object creator exiting, otherwise the reference will
+            still be lost.
+
+    Returns:
+        The object ref assigned to this value.
+    """
+    worker = global_worker
+    worker.check_connected()
+
+    if _owner is None:
+        serialize_owner_address = None
+    elif isinstance(_owner, ray.actor.ActorHandle):
+        # Ensure `ray.state.state.global_state_accessor` is not None
+        ray.state.state._check_connected()
+        owner_address = gcs_utils.ActorTableData.FromString(
+            ray.state.state.global_state_accessor.get_actor_info(_owner._actor_id)
+        ).address
+        if len(owner_address.worker_id) == 0:
+            raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
+        serialize_owner_address = owner_address.SerializeToString()
+    else:
+        raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
+
+    with profiling.profile("ray.put"):
+        try:
+            object_refs = worker.put_objects(
+                values, owner_address=serialize_owner_address
+            )
+        except ObjectStoreFullError:
+            logger.info(
+                "Put failed since the value was either too large or the "
+                "store was full of pinned objects."
+            )
+            raise
+        return object_refs
 
 
 # Global variable to make sure we only send out the warning once.

@@ -294,6 +294,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::unique_ptr<rpc::Address> &owner_address = nullptr,
       bool inline_small_object = true);
 
+  Status BatchCreateOwnedAndIncrementLocalRef(
+      const std::vector<std::shared_ptr<Buffer>> &batch_metadata,
+      const std::vector<size_t> &batch_data_size,
+      const std::vector<ObjectID> &total_contained_object_ids,
+      const std::vector<int> &contained_object_numbers,
+      std::vector<ObjectID *> &batch_object_id,
+      std::vector<std::shared_ptr<Buffer> *> &batch_data,
+      bool created_by_worker,
+      const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+      bool inline_small_object = true);
+
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
   /// caller must call `SealExisting()` to finalize the object. The `CreateExisting()`
@@ -776,9 +787,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Set local worker as the owner of object.
   // Request by borrower's worker, execute by owner's worker.
-  void HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
-                               rpc::AssignObjectOwnerReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
+  void HandleBatchAssignObjectOwner(const rpc::BatchAssignObjectOwnerRequest &request,
+                                    rpc::BatchAssignObjectOwnerReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when

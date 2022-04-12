@@ -17,6 +17,7 @@
 #include <google/protobuf/util/json_util.h>
 
 #include "boost/fiber/all.hpp"
+#include "boost/range/combine.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -946,77 +947,143 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
     bool created_by_worker,
     const std::unique_ptr<rpc::Address> &owner_address,
     bool inline_small_object) {
-  auto status = WaitForActorRegistered(contained_object_ids);
+  std::vector<std::shared_ptr<Buffer>> batch_metadata(0);
+  batch_metadata.push_back(metadata);
+
+  std::vector<size_t> batch_data_size(0);
+  batch_data_size.push_back(data_size);
+
+  std::vector<int> contained_object_numbers(0);
+  contained_object_numbers.push_back(contained_object_ids.size());
+
+  std::vector<ObjectID *> batch_object_id(0);
+  batch_object_id.push_back(object_id);
+
+  std::vector<std::shared_ptr<Buffer> *> batch_data(0);
+  batch_data.push_back(data);
+
+  return BatchCreateOwnedAndIncrementLocalRef(batch_metadata,
+                                              batch_data_size,
+                                              contained_object_ids,
+                                              contained_object_numbers,
+                                              batch_object_id,
+                                              batch_data,
+                                              created_by_worker,
+                                              owner_address,
+                                              inline_small_object);
+}
+
+Status CoreWorker::BatchCreateOwnedAndIncrementLocalRef(
+    const std::vector<std::shared_ptr<Buffer>> &batch_metadata,
+    const std::vector<size_t> &batch_data_size,
+    const std::vector<ObjectID> &total_contained_object_ids,
+    const std::vector<int> &contained_object_numbers,
+    std::vector<ObjectID *> &batch_object_id,
+    std::vector<std::shared_ptr<Buffer> *> &batch_data,
+    bool created_by_worker,
+    const std::unique_ptr<rpc::Address> &owner_address,
+    bool inline_small_object) {
+  auto status = WaitForActorRegistered(total_contained_object_ids);
   if (!status.ok()) {
     return status;
   }
-  *object_id = ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
-                                   worker_context_.GetNextPutIndex());
+  auto it = total_contained_object_ids.begin();
+
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
-  if (owned_by_us) {
-    reference_counter_->AddOwnedObject(*object_id,
-                                       contained_object_ids,
-                                       rpc_address_,
-                                       CurrentCallSite(),
-                                       data_size + metadata->Size(),
-                                       /*is_reconstructable=*/false,
-                                       /*add_local_ref=*/true,
-                                       NodeID::FromBinary(rpc_address_.raylet_id()));
-  } else {
-    // Because in the remote worker's `HandleAssignObjectOwner`,
+  for (auto [metadata, data_size, contained_object_number, object_id] : boost::combine(
+           batch_metadata, batch_data_size, contained_object_numbers, batch_object_id)) {
+    std::vector<ObjectID> contained_object_ids(0);
+    if (it != total_contained_object_ids.end()) {
+      contained_object_ids.insert(
+          contained_object_ids.begin(), it, it + contained_object_number);
+      it += contained_object_number;
+    } else {
+      RAY_CHECK(contained_object_number == 0);
+    }
+
+    *object_id = ObjectID::FromIndex(worker_context_.GetCurrentInternalTaskId(),
+                                     worker_context_.GetNextPutIndex());
+    if (owned_by_us) {
+      reference_counter_->AddOwnedObject(*object_id,
+                                         contained_object_ids,
+                                         rpc_address_,
+                                         CurrentCallSite(),
+                                         data_size + metadata->Size(),
+                                         /*is_reconstructable=*/false,
+                                         /*add_local_ref=*/true,
+                                         NodeID::FromBinary(rpc_address_.raylet_id()));
+    }
+  }
+  RAY_CHECK(it == total_contained_object_ids.end());
+
+  if (!owned_by_us) {
+    // Because in the remote worker's `HandleBatchAssignObjectOwner`,
     // a `WaitForRefRemoved` RPC request will be sent back to
     // the current worker. So we need to make sure ref count is > 0
     // by invoking `AddLocalReference` first. Note that in worker.py we set
     // skip_adding_local_ref=True to avoid double referencing the object.
-    AddLocalReference(*object_id);
-    RAY_UNUSED(
-        reference_counter_->AddBorrowedObject(*object_id,
-                                              ObjectID::Nil(),
-                                              real_owner_address,
-                                              /*foreign_owner_already_monitoring=*/true));
 
-    // Remote call `AssignObjectOwner()`.
-    rpc::AssignObjectOwnerRequest request;
-    request.set_object_id(object_id->Binary());
+    // Remote call `BatchAssignObjectOwner()`.
+    rpc::BatchAssignObjectOwnerRequest request;
+    for (auto [metadata, data_size, contained_object_number, object_id] :
+         boost::combine(batch_metadata,
+                        batch_data_size,
+                        contained_object_numbers,
+                        batch_object_id)) {
+      AddLocalReference(*object_id);
+      RAY_UNUSED(reference_counter_->AddBorrowedObject(
+          *object_id,
+          ObjectID::Nil(),
+          real_owner_address,
+          /*foreign_owner_already_monitoring=*/true));
+
+      request.add_batch_object_ids(object_id->Binary());
+      request.add_batch_object_sizes(data_size + metadata->Size());
+      request.add_contained_object_numbers(contained_object_number);
+    }
     request.mutable_borrower_address()->CopyFrom(rpc_address_);
     request.set_call_site(CurrentCallSite());
-
-    for (auto &contained_object_id : contained_object_ids) {
-      request.add_contained_object_ids(contained_object_id.Binary());
+    for (auto &contained_object_id : total_contained_object_ids) {
+      request.add_total_contained_object_ids(contained_object_id.Binary());
     }
-    request.set_object_size(data_size + metadata->Size());
+
     auto conn = core_worker_client_pool_->GetOrConnect(real_owner_address);
     std::promise<Status> status_promise;
-    conn->AssignObjectOwner(request,
-                            [&status_promise](const Status &returned_status,
-                                              const rpc::AssignObjectOwnerReply &reply) {
-                              status_promise.set_value(returned_status);
-                            });
-    // Block until the remote call `AssignObjectOwner` returns.
+    conn->BatchAssignObjectOwner(
+        request,
+        [&status_promise](const Status &returned_status,
+                          const rpc::BatchAssignObjectOwnerReply &reply) {
+          status_promise.set_value(returned_status);
+        });
+    // Block until the remote call `BatchAssignObjectOwner` returns.
     status = status_promise.get_future().get();
+    if (!status.ok()) return status;
   }
 
-  if (options_.is_local_mode && owned_by_us && inline_small_object) {
-    *data = std::make_shared<LocalMemoryBuffer>(data_size);
-  } else {
-    if (status.ok()) {
-      status = plasma_store_provider_->Create(metadata,
-                                              data_size,
-                                              *object_id,
-                                              /* owner_address = */ rpc_address_,
-                                              data,
-                                              created_by_worker);
-    }
-    if (!status.ok()) {
-      RemoveLocalReference(*object_id);
-      return status;
-    } else if (*data == nullptr) {
-      // Object already exists in plasma. Store the in-memory value so that the
-      // client will check the plasma store.
-      RAY_CHECK(
-          memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
+  for (auto [metadata, data_size, object_id, data] :
+       boost::combine(batch_metadata, batch_data_size, batch_object_id, batch_data)) {
+    if (options_.is_local_mode && owned_by_us && inline_small_object) {
+      *data = std::make_shared<LocalMemoryBuffer>(data_size);
+    } else {
+      if (status.ok()) {
+        status = plasma_store_provider_->Create(metadata,
+                                                data_size,
+                                                *object_id,
+                                                /* owner_address = */ rpc_address_,
+                                                data,
+                                                created_by_worker);
+      }
+      if (!status.ok()) {
+        RemoveLocalReference(*object_id);
+        return status;
+      } else if (*data == nullptr) {
+        // Object already exists in plasma. Store the in-memory value so that the
+        // client will check the plasma store.
+        RAY_CHECK(
+            memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
+      }
     }
   }
   return Status::OK();
@@ -3248,29 +3315,44 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request,
       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
-void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
-                                         rpc::AssignObjectOwnerReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+void CoreWorker::HandleBatchAssignObjectOwner(
+    const rpc::BatchAssignObjectOwnerRequest &request,
+    rpc::BatchAssignObjectOwnerReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   const auto &borrower_address = request.borrower_address();
   std::string call_site = request.call_site();
+  NodeID borrower_node_id = NodeID::FromBinary(borrower_address.raylet_id());
   // Get a list of contained object ids.
-  std::vector<ObjectID> contained_object_ids;
-  contained_object_ids.reserve(request.contained_object_ids_size());
-  for (const auto &id_binary : request.contained_object_ids()) {
-    contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
+  std::vector<ObjectID> total_contained_object_ids;
+  total_contained_object_ids.reserve(request.total_contained_object_ids_size());
+  for (const auto &id_binary : request.total_contained_object_ids()) {
+    total_contained_object_ids.push_back(ObjectID::FromBinary(id_binary));
   }
-  reference_counter_->AddOwnedObject(
-      object_id,
-      contained_object_ids,
-      rpc_address_,
-      call_site,
-      request.object_size(),
-      /*is_reconstructable=*/false,
-      /*add_local_ref=*/false,
-      /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
-  reference_counter_->AddBorrowerAddress(object_id, borrower_address);
-  RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  auto it = total_contained_object_ids.begin();
+  for (auto [object_id_binary, contained_object_number, object_size] :
+       boost::combine(request.batch_object_ids(),
+                      request.contained_object_numbers(),
+                      request.batch_object_sizes())) {
+    ObjectID object_id = ObjectID::FromBinary(object_id_binary);
+    std::vector<ObjectID> contained_object_ids(0);
+    if (it != total_contained_object_ids.end()) {
+      contained_object_ids.insert(
+          contained_object_ids.begin(), it, it + contained_object_number);
+      it += contained_object_number;
+    } else {
+      RAY_CHECK(contained_object_number == 0);
+    }
+    reference_counter_->AddOwnedObject(object_id,
+                                       contained_object_ids,
+                                       rpc_address_,
+                                       call_site,
+                                       object_size,
+                                       /*is_reconstructable=*/false,
+                                       /*add_local_ref=*/false,
+                                       /*pinned_at_raylet_id=*/borrower_node_id);
+    reference_counter_->AddBorrowerAddress(object_id, borrower_address);
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

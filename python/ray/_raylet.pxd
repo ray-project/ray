@@ -26,6 +26,8 @@ from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
     CActorHandle,
     CFiberEvent,
+    CObjectID_ptr,
+    shared_ptr_of_CBuffer_ptr,
 )
 
 from ray.includes.unique_ids cimport (
@@ -114,10 +116,14 @@ cdef class CoreWorker:
         object thread_for_default_cg
         object fd_to_cgname_dict
 
-    cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
-                            size_t data_size, ObjectRef object_ref,
-                            c_vector[CObjectID] contained_ids,
-                            CObjectID *c_object_id, shared_ptr[CBuffer] *data,
+    cdef _create_put_buffer(self,
+                            c_vector[shared_ptr[CBuffer]] &metadata,
+                            c_vector[size_t] batch_data_size,
+                            c_vector[CObjectID] object_refs,
+                            c_vector[CObjectID] total_contained_ids,
+                            c_vector[int] contained_ids_numbers,
+                            c_vector[CObjectID_ptr] c_object_ids,
+                            c_vector[shared_ptr_of_CBuffer_ptr] datas,
                             c_bool created_by_worker,
                             owner_address=*,
                             c_bool inline_small_object=*)

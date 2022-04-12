@@ -66,6 +66,10 @@ ctypedef void (*plasma_callback_function) \
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
+ctypedef CObjectID* CObjectID_ptr
+
+ctypedef shared_ptr[CBuffer]* shared_ptr_of_CBuffer_ptr
+
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::core::worker::Profiler":
         void Start()
@@ -204,6 +208,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const size_t data_size,
                     const c_vector[CObjectID] &contained_object_ids,
                     CObjectID *object_id, shared_ptr[CBuffer] *data,
+                    c_bool created_by_worker,
+                    const unique_ptr[CAddress] &owner_address,
+                    c_bool inline_small_object)
+        CRayStatus BatchCreateOwnedAndIncrementLocalRef(
+                    const c_vector[shared_ptr[CBuffer]] &batch_metadata,
+                    const c_vector[size_t] &batch_data_size,
+                    const c_vector[CObjectID] &total_contained_object_ids,
+                    const c_vector[int] &contained_object_numbers,
+                    c_vector[CObjectID_ptr] batch_object_id,
+                    c_vector[shared_ptr_of_CBuffer_ptr] batch_data,
                     c_bool created_by_worker,
                     const unique_ptr[CAddress] &owner_address,
                     c_bool inline_small_object)
