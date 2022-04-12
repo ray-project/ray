@@ -17,6 +17,10 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
 
   private static final Logger LOG = LoggerFactory.getLogger(ParallelActorExecutorImpl.class);
 
+  private ParallelStrategy strategy;
+
+  private int parallelNum;
+
   private FunctionManager functionManager = null;
 
   /// This should be thread safe.
@@ -25,7 +29,8 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
   public ParallelActorExecutorImpl(
       ParallelStrategy strategy, int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor)
       throws InvocationTargetException, IllegalAccessException {
-    super(strategy, parallelNum);
+    this.strategy = strategy;
+    this.parallelNum = parallelNum;
 
     functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
     RayFunction init =
