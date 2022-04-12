@@ -64,7 +64,7 @@ class LogAgentV1Grpc(
         lines = request.lines if request.lines else 1000
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
-        if not os.path.isfile(filepath):
+        if "/" in request.log_file_name or not os.path.isfile(filepath):
             await context.send_initial_metadata(
                 [[log_consts.LOG_STREAM_STATUS, log_consts.FILE_NOT_FOUND]]
             )
