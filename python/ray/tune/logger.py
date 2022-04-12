@@ -160,11 +160,12 @@ class CSVLogger(Logger):
         self._file.flush()
 
     def flush(self):
-        if not self._file.closed:
+        if self._initialized and not self._file.closed:
             self._file.flush()
 
     def close(self):
-        self._file.close()
+        if self._initialized:
+            self._file.close()
 
 
 class TBXLogger(Logger):
