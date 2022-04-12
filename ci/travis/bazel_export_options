@@ -2,3 +2,4 @@
 
 mkdir -p /tmp/bazel_event_logs
 echo "--build_event_json_file=$(mktemp /tmp/bazel_event_logs/bazel_log.XXXXX)"
+echo "--test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs"

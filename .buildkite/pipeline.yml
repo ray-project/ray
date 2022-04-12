@@ -33,7 +33,6 @@
       --test_env=CONDA_DEFAULT_ENV
       --test_env=CI
       --test_env=RAY_CI_POST_WHEEL_TESTS=True
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
 
 - label: ":ferris_wheel: Debug Wheels"
@@ -209,9 +208,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./dashboard/tests/run_ui_tests.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
-      python/ray/dashboard/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/dashboard/...
 - label: ":serverless: Serve Release Tests"
   conditions:
     [
@@ -246,7 +243,6 @@
     - cat test_shard.txt
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       $(cat test_shard.txt)
 
 
@@ -311,7 +307,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       -- python/ray/tests/...
 - label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -325,7 +320,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       python/ray/tests/...
 - label: ":python: (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -333,7 +327,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       python/ray/tests/...
 - label: ":python: Debug Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -343,7 +336,6 @@
     - RAY_DEBUG_BUILD=debug ./ci/travis/ci.sh build
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,debug_tests
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       python/ray/tests/...
 - label: ":python: (ASAN tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -359,7 +351,6 @@
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      --test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
       python/ray/tests/...
 
 # https://github.com/ray-project/ray/issues/22460
