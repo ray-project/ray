@@ -1858,7 +1858,8 @@ def format_print_logs_index(api_endpoint, node_id, links):
             print(f"\n{name}")
             print("----------------------------")
             [
-                print(f"{api_endpoint}/v1/api/logs/file/{node_id}/{log}")
+                print(f"{api_endpoint}/api/experimental/logs/file"
+                      f"?node_id={node_id}&log_file_name={log}")
                 for log in links[key]
             ]
 
@@ -1869,8 +1870,8 @@ def format_print_logs_index(api_endpoint, node_id, links):
         )
     print_section("Worker Errors", "worker_errors")
     print_section("Worker Stdout", "worker_outs")
-    print_section("Raylet Logs", "raylet_logs")
-    print_section("GCS Logs", "gcs_logs")
+    print_section("Raylet Logs", "raylet")
+    print_section("GCS Logs", "gcs")
     print_section("Miscellaneous Logs", "misc")
     print_section("Autoscaler Monitor Logs", "autoscaler_monitor")
     print_section("Dashboard Logs", "dashboard")
