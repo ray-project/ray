@@ -23,7 +23,7 @@
                  << it->second.containing().contained_in_owned.size()              \
                  << " contained_in_borrowed: "                                     \
                  << (it)->second.containing().contained_in_borrowed_ids.size()     \
-                 << " contains: " << it->second.containing().contains.size()                    \
+                 << " contains: " << it->second.containing().contains.size()       \
                  << " stored_in: " << it->second.borrow().stored_in_objects.size() \
                  << " lineage_ref_count: " << it->second.lineage_ref_count;
 
