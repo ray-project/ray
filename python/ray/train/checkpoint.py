@@ -11,8 +11,8 @@ from ray.train.constants import TIMESTAMP, TUNE_INSTALLED, TRAIN_CHECKPOINT_SUBD
 from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, TUNE_CHECKPOINT_ID
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
-from ray.tune.utils.util import is_nan
 from ray.util import PublicAPI
+from ray.util.ml_utils.util import is_nan
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -214,12 +214,9 @@ class CheckpointManager:
 
         def priority(checkpoint_score_order, checkpoint_score):
             # Treat NaN as worst
-            if is_nan(checkpoint_score):
-                checkpoint_score = float("inf")
-            if checkpoint_score_order == MAX:
-                return checkpoint_score
-            else:
-                return -checkpoint_score
+            if checkpoint_score_order != MAX:
+                checkpoint_score = -checkpoint_score
+            return (not is_nan(checkpoint_score), checkpoint_score)
 
         checkpoint_priority = priority(checkpoint_score_order, checkpoint_score)
 
