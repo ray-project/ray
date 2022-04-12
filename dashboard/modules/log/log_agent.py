@@ -46,9 +46,14 @@ class LogAgentV1Grpc(
         return False
 
     async def LogIndex(self, request, context):
-        return reporter_pb2.LogIndexReply(
-            log_files=os.listdir(self._dashboard_agent.log_dir)
-        )
+        if os.path.exists(self._dashboard_agent.log_dir):
+            log_files = os.listdir(self._dashboard_agent.log_dir)
+        else:
+            logger.error(
+                f"Could not find log dir at path: {self._dashboard_agent.log_dir}"
+            )
+            log_files = []
+        return reporter_pb2.LogIndexReply(log_files=log_files)
 
     async def StreamLog(self, request, context):
         """
