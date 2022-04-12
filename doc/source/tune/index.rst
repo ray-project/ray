@@ -10,11 +10,9 @@ Tune: Scalable Hyperparameter Tuning
     :align: center
 
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale.
-You can tune your favorite machine learning framework, :ref:`including PyTorch, XGBoost, TensorFlow and Keras <tune-guides>`,
-and choose among state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`,
-:ref:`BayesOptSearch <bayesopt>`, or :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
-Tune integrates with a wide range of hyperparameter optimization tools, like
-:ref:`Optuna, Hyperopt, Ax, and Nevergrad <tune-search-alg>`, to name a few.
+You can tune your favorite machine learning framework, including :ref:`PyTorch <tune-pytorch-cifar-ref>`, :ref:`XGBoost <tune-xgboost-ref>`, :ref:`Scikit-Learn <tune-sklearn>`, :ref:`TensorFlow and Keras <tune-mnist-keras>`, and :ref:`more <tune-examples-ref>`.
+State of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>` and :ref:`HyperBand/ASHA <tune-scheduler-hyperband>` are easily accessible while using Tune.
+Tune further integrates with a wide range of additional hyperparameter optimization tools, including :ref:`Ax <ax_example>`, :ref:`BayesOpt <bayesopt_example>`, :ref:`BOHB <bohb_example>`, :ref:`Dragonfly <dragonfly_example>`, :ref:`FLAML <flaml_example>`, :ref:`HEBO <hebo_example>`, :ref:`Hyperopt <hyperopt_example>`, :ref:`Nevergrad <nevergrad_example>`, :ref:`Optuna <optuna_example>`, :ref:`SigOpt <sigopt_example>`, :ref:`skopt <skopt_example>`, :ref:`ZOOpt <zoopt_example>`.
 
 
 .. tabbed:: Examples
@@ -123,8 +121,8 @@ And you can move your models from training to serving on the same infrastructure
     **Examples**
     ^^^
 
-    In our examples you can find practical tutorials for
-    scikit-learn, Keras, TensorFlow, PyTorch, mlflow, and many more.
+    In our examples you can find practical tutorials for using frameworks such as
+    scikit-learn, Keras, TensorFlow, PyTorch, and mlflow, and state of the art search algorithm integrations.
 
     +++
     .. link-button:: tune-examples-ref
@@ -204,7 +202,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
 
     In this situation, Tune actually allows you to power up your existing workflow.
     Tune's :ref:`Search Algorithms <tune-search-alg>` integrate with a variety of popular hyperparameter tuning
-    libraries (such as Nevergrad or HyperOpt) and allow you to seamlessly scale up your optimization
+    libraries (see :ref:`examples <tune-examples-ref>`) and allow you to seamlessly scale up your optimization
     process - without sacrificing performance.
 
 Projects using Tune
