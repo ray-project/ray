@@ -119,6 +119,10 @@ def validate_buffer_config(config: dict):
             "no_local_replay_buffer"
         ] = no_local_replay_buffer
 
+    # TODO (Artur):
+    if config["replay_buffer_config"].get("no_local_replay_buffer", False):
+        return
+
     replay_buffer_config = config["replay_buffer_config"]
     assert (
         "type" in replay_buffer_config
