@@ -12,6 +12,7 @@ from ray import tune
 from ray.tune import ExperimentAnalysis
 import ray.tune.registry
 from ray.tune.utils.mock_trainable import MyTrainableClass
+from ray.tune.utils.util import is_nan
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
@@ -152,12 +153,43 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
     def testGetBestCheckpoint(self):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
+        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(
+            best_trial, metric=self.metric
+        )
         expected_path = max(checkpoints_metrics, key=lambda x: x[1])[0]
         best_checkpoint = self.ea.get_best_checkpoint(
             best_trial, self.metric, mode="max"
         )
         assert expected_path == best_checkpoint
+
+    def testGetBestCheckpointNan(self):
+        """Tests if nan values are excluded from best checkpoint."""
+        metric = "loss"
+
+        def train(config):
+            for i in range(config["steps"]):
+                if i == 0:
+                    value = float("nan")
+                else:
+                    value = i
+                result = {metric: value}
+                with tune.checkpoint_dir(step=i):
+                    pass
+                tune.report(**result)
+
+        ea = tune.run(train, local_dir=self.test_dir, config={"steps": 3})
+        best_trial = ea.get_best_trial(metric, mode="min")
+        best_checkpoint = ea.get_best_checkpoint(best_trial, metric, mode="min")
+        checkpoints_metrics = ea.get_trial_checkpoints_paths(best_trial, metric=metric)
+        expected_checkpoint_no_nan = min(
+            [
+                checkpoint_metric
+                for checkpoint_metric in checkpoints_metrics
+                if not is_nan(checkpoint_metric[1])
+            ],
+            key=lambda x: x[1],
+        )[0]
+        assert best_checkpoint == expected_checkpoint_no_nan
 
     def testGetLastCheckpoint(self):
         # one more experiment with 2 iterations
