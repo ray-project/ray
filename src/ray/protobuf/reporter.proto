@@ -79,16 +79,16 @@ message StreamLogRequest {
 message StreamLogReply {
   bytes data = 1;
 }
-message LogIndexRequest {
+message ListLogsRequest {
 }
-message LogIndexReply {
+message ListLogsReply {
   repeated string log_files = 1;
 }
 
 // Service for communicating with the log agent module on a remote node.
 service LogService {
   // Get the log index from the agent.
-  rpc LogIndex(LogIndexRequest) returns (LogIndexReply);
+  rpc ListLogs(ListLogsRequest) returns (ListLogsReply);
   // Get log file from the agent.
   rpc StreamLog(StreamLogRequest) returns (stream StreamLogReply);
 }

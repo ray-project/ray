@@ -162,7 +162,7 @@ def test_logs_experimental_index(ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            response = requests.get(webui_url + "/api/experimental/logs/index")
+            response = requests.get(webui_url + "/api/experimental/logs/list")
             response.raise_for_status()
             logs = json.loads(response.text)
             assert len(logs) == 1
@@ -216,7 +216,7 @@ def test_logs_experimental_write(ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            response = requests.get(webui_url + "/api/experimental/logs/index")
+            response = requests.get(webui_url + "/api/experimental/logs/list")
             response.raise_for_status()
             logs = json.loads(response.text)
             assert len(logs) == 1

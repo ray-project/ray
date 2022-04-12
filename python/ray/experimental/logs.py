@@ -111,7 +111,7 @@ def list_logs(
             query_string += f"{arg}={args[arg]}&"
 
     response = requests.get(
-        f"{api_server_url}/api/experimental/logs/index?{query_string}"
+        f"{api_server_url}/api/experimental/logs/list?{query_string}"
         f"filters={filters}"
     )
     if response.status_code != 200:
