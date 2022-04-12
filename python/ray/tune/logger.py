@@ -130,13 +130,20 @@ class CSVLogger(Logger):
     """
 
     def _init(self):
+        self._initialized = False
+
+    def _maybe_init(self):
         """CSV outputted with Headers as first set of results."""
-        progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
-        self._continuing = os.path.exists(progress_file)
-        self._file = open(progress_file, "a")
-        self._csv_out = None
+        if not self._initialized:
+            progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
+            self._continuing = os.path.exists(progress_file)
+            self._file = open(progress_file, "a")
+            self._csv_out = None
+            self._initialized = True
 
     def on_result(self, result: Dict):
+        self._maybe_init()
+
         tmp = result.copy()
         if "config" in tmp:
             del tmp["config"]
@@ -556,7 +563,7 @@ class CSVLoggerCallback(LoggerCallback):
         self._trial_files: Dict["Trial", TextIO] = {}
         self._trial_csv: Dict["Trial", csv.DictWriter] = {}
 
-    def log_trial_start(self, trial: "Trial"):
+    def _setup_trial(self, trial: "Trial"):
         if trial in self._trial_files:
             self._trial_files[trial].close()
 
@@ -569,7 +576,7 @@ class CSVLoggerCallback(LoggerCallback):
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         if trial not in self._trial_files:
-            self.log_trial_start(trial)
+            self._setup_trial(trial)
 
         tmp = result.copy()
         tmp.pop("config", None)
