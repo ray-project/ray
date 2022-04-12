@@ -46,17 +46,17 @@ def sync_dir_between_nodes(
 
     """
     pack_actor_on_source_node = _PackActor.options(
-        num_cpus=0, resources={f"node:{source_ip}": 0.01}
+        num_cpus=0, resources={f"node:{source_ip}": 0.01}, placement_group=None
     )
     unpack_on_target_node = _unpack_from_actor.options(
-        num_cpus=0, resources={f"node:{target_ip}": 0.01}
+        num_cpus=0, resources={f"node:{target_ip}": 0.01}, placement_group=None
     )
 
     if force_all:
         files_stats = None
     else:
         files_stats = _remote_get_recursive_files_and_stats.options(
-            num_cpus=0, resources={f"node:{target_ip}": 0.01}
+            num_cpus=0, resources={f"node:{target_ip}": 0.01}, placement_group=None
         ).remote(target_path)
 
     pack_actor = pack_actor_on_source_node.remote(
@@ -90,7 +90,7 @@ def delete_on_node(
         for scheduled delete task.
     """
     delete_task = _remote_delete_path.options(
-        num_cpus=0, resources={f"node:{node_ip}": 0.01}
+        num_cpus=0, resources={f"node:{node_ip}": 0.01}, placement_group=None
     )
     future = delete_task.remote(path)
 
