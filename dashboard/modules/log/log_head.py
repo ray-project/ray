@@ -137,11 +137,18 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
     async def get_logs_json_index(
         grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: [str]
     ):
+        """
+        Returns a JSON file mapping, for the node corresponding to the given
+        gRPC stub, a category of log component to a list of filenames.
+        """
         reply = await grpc_stub.LogIndex(
             reporter_pb2.LogIndexRequest(), timeout=log_consts.GRPC_TIMEOUT
         )
         filters = [] if filters == [""] else filters
-        links = list(filter(lambda s: all(f in s for f in filters), reply.log_files))
+
+        def contains_all_filters(string):
+            return all(f in string for f in filters)
+        links = list(filter(contains_all_filters, reply.log_files))
         logs = {}
         logs["worker_errors"] = list(
             filter(lambda s: "worker" in s and s.endswith(".err"), links)
