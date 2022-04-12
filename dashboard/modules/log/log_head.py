@@ -134,10 +134,22 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             self._ip_to_node_id[ip] = node_id
 
     @staticmethod
-    async def get_logs_json_index(grpc_stub, filters):
-        reply = await grpc_stub.LogIndex(reporter_pb2.LogIndexRequest())
+    async def get_logs_json_index(
+        grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: [str]
+    ):
+        """
+        Returns a JSON file mapping, for the node corresponding to the given
+        gRPC stub, a category of log component to a list of filenames.
+        """
+        reply = await grpc_stub.LogIndex(
+            reporter_pb2.LogIndexRequest(), timeout=log_consts.GRPC_TIMEOUT
+        )
         filters = [] if filters == [""] else filters
-        links = list(filter(lambda s: all(f in s for f in filters), reply.log_files))
+
+        def contains_all_filters(string):
+            return all(f in string for f in filters)
+
+        links = list(filter(contains_all_filters, reply.log_files))
         logs = {}
         logs["worker_errors"] = list(
             filter(lambda s: "worker" in s and s.endswith(".err"), links)
@@ -159,8 +171,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 )
             )
         logs["dashboard"] = list(filter(lambda s: "dashboard" in s, links))
-        logs["raylet_logs"] = list(filter(lambda s: "raylet" in s, links))
-        logs["gcs_logs"] = list(filter(lambda s: "gcs" in s, links))
+        logs["raylet"] = list(filter(lambda s: "raylet" in s, links))
+        logs["gcs"] = list(filter(lambda s: "gcs" in s, links))
         logs["ray_client"] = list(filter(lambda s: "ray_client" in s, links))
         logs["autoscaler_monitor"] = list(
             filter(lambda s: "monitor" in s and "log_monitor" not in s, links)
@@ -173,12 +185,26 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/experimental/logs/index")
     async def handle_log_index(self, req):
-        node_id_query = req.query.get("node_id", None)
+        """
+        Returns a JSON file containing, for each node in the cluster,
+        a dict mapping a category of log component to a list of filenames.
+        """
+        node_id = req.query.get("node_id", None)
+        if node_id is None:
+            ip = req.query.get("node_ip", None)
+            if ip is not None:
+                if ip not in self._ip_to_node_id:
+                    return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
+                node_id = self._ip_to_node_id[ip]
         filters = req.query.get("filters", "").split(",")
-        response = await self.get_log_index(node_id_query, filters)
+        response = await self.get_log_index(node_id, filters)
         return aiohttp.web.json_response(response)
 
     async def get_log_index(self, node_id_query, filters):
+        """
+        Helper function to get the logs index by querying each agent
+        on each cluster via gRPC.
+        """
         response = {}
         while self._stubs == {}:
             await asyncio.sleep(0.5)
@@ -197,9 +223,17 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/experimental/logs/{media_type}")
     async def handle_log(self, req):
+        """
+        If `media_type = stream`, creates HTTP stream which is either kept alive while
+        the HTTP connection is not closed. Else, if `media_type = file`, the stream
+        ends once all the lines in the file requested are transmitted.
+        """
         while self._stubs == {}:
             await asyncio.sleep(0.5)
         node_id = req.query.get("node_id", None)
+
+        # If no `node_id` is provided, try to determine node_id
+        # via the `node_ip` if it is provided
         if node_id is None:
             ip = req.query.get("node_ip", None)
             if ip is not None:
@@ -209,6 +243,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
         log_file_name = req.query.get("log_file_name", None)
 
+        # If `log_file_name` is not provided, check if we can get the
+        # corresponding `log_file_name` if an `actor_id` is provided.
         if log_file_name is None or node_id is None:
             actor_id = req.query.get("actor_id", None)
             if actor_id is not None:
@@ -232,6 +268,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                                 node_id = node
                             break
 
+        # If `log_file_name` cannot be resolved, check if we can get the
+        # corresponding `log_file_name` if a `pid` is provided.
         if log_file_name is None:
             pid = req.query.get("pid", None)
             if node_id is None:
@@ -244,6 +282,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 for file in index[node_id]["worker_outs"]:
                     if file.split(".")[0].split("-")[3] == pid:
                         log_file_name = file
+                        break
+                return aiohttp.web.HTTPNotFound(
+                    reason=f"Worker with pid {pid} not found on node {node_id}"
+                )
 
         media_type = req.match_info.get("media_type", None)
 
@@ -257,7 +299,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
         if log_file_name is None:
             return aiohttp.web.HTTPNotFound(
-                reason="Could not resolve file identifiers to file name."
+                reason="Could not resolve file identifiers to a file name."
             )
 
         if media_type == "stream":

@@ -150,7 +150,55 @@ def test_log_proxy(ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
-def test_logs_experimental(ray_start_with_dashboard):
+def test_logs_experimental_index(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = ray_start_with_dashboard["node_id"]
+
+    timeout_seconds = 10
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            response = requests.get(webui_url + "/api/experimental/logs/index")
+            response.raise_for_status()
+            logs = json.loads(response.text)
+            assert len(logs) == 1
+            node_id = next(iter(logs))
+
+            # test worker logs
+            outs = logs[node_id]["worker_outs"]
+            errs = logs[node_id]["worker_outs"]
+            core_worker_logs = logs[node_id]["python_core_worker_logs"]
+
+            assert len(outs) == len(errs) == len(core_worker_logs)
+            assert len(outs) > 0
+
+            for file in ["debug_state_gcs.txt", "gcs_server.out", "gcs_server.err"]:
+                assert file in logs[node_id]["gcs"]
+            for file in ["raylet.out", "raylet.err"]:
+                assert file in logs[node_id]["raylet"]
+            for file in ["dashboard_agent.log", "dashboard.log"]:
+                assert file in logs[node_id]["dashboard"]
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_logs_experimental_write(ray_start_with_dashboard):
     @ray.remote
     def write_log(s):
         print(s)
@@ -180,8 +228,8 @@ def test_logs_experimental(ray_start_with_dashboard):
                 if "worker" in f:
                     urls.append(
                         webui_url
-                        + f"/api/experimental/logs/file?node_id={node_id}&log_file_name="
-                        + f
+                        + f"/api/experimental/logs/file?node_id={node_id}"
+                        + "&log_file_name=" + f
                     )
 
             for u in urls:

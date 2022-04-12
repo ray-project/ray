@@ -39,13 +39,11 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
 
-from ray.internal.internal_api import (
-    memory_summary,
-    ray_log,
-    ray_log_index,
-    ray_nodes,
-    ray_actors,
+from ray.experimental.logs import (
+    get_log,
+    list_logs,
 )
+from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -1969,24 +1967,25 @@ def logs(
 
     Example usage:
 
-    ray logs --actor-id=XYZ              # Display stdout log by actor-id
+    ray logs -a <actor-id>               # Display worker stdout log by actor-id
 
-    ray logs --task-id=XYZ               # Display stdout log by task-id
-
-    ray logs --ip=198.0.0.1 --pid=987    # Display worker stdout by ip & pid
+    ray logs -ip 198.0.0.1 -pid 98712    # Display worker stdout log by ip & pid
 
     ray logs -n <node-id> -f raylet.out  # Display log by filename & node-id
 
     ray logs                             # Display list of logs by category
 
-    ray logs worker .out <worker-id>     # Filter logs by substring
+    ray logs worker .out <worker-id>     # Filter logs by filename substring
+
+    ray logs --endpoint=198.0.0.1:8265   # Retrieves logs from a remote cluster
+
     """
 
     try:
         found_many = False
 
         if task_id is not None:
-            raise ValueError("task_id is not yet supported")
+            raise ValueError("--task-id is not yet supported")
 
         match_node = node_ip is not None or node_id is not None
         match_file = filename is not None or pid is not None
@@ -1994,13 +1993,20 @@ def logs(
 
         match_unique = (match_node and match_file) or match_actor
 
+        if match_file and not match_node:
+            identifier = f"filename: {filename}" if filename else f"pid: {pid}"
+            raise ValueError(
+                f"Unique logfile identifier '{identifier}' needs to be "
+                "accompanied with a node identifier (--node-id or --node-ip)."
+            )
+
         if not match_unique:
             # Try to match a single log file.
             # If we find more than one match, we output the index.
             filters = ",".join(filters) + (
                 f",{filename}" if filename is not None else ""
             )
-            api_endpoint, logs_dict = ray_log_index(node_id, filters)
+            api_endpoint, logs_dict = list_logs(node_id, node_ip, filters)
             # to_dedup = ["gcs_logs", "dashboard", "autoscaler", "autoscaler_monitor"] ?
             if len(logs_dict) == 0:
                 raise Exception("Could not find node.")
@@ -2052,18 +2058,18 @@ def logs(
             if watch:
                 if lines is None:
                     lines = default_lines(1000)
-                for bytes in ray_log(
+                for chunk in get_log(
                     node_ip, pid, node_id, actor_id, task_id, filename, True, lines
                 ):
-                    print(bytes, end="", flush=True)
+                    print(chunk, end="", flush=True)
 
             elif not watch:
                 if lines is None:
                     lines = default_lines(100)
-                for bytes in ray_log(
+                for chunk in get_log(
                     node_ip, pid, node_id, actor_id, task_id, filename, False, lines
                 ):
-                    print(bytes, end="", flush=True)
+                    print(chunk, end="", flush=True)
 
     except Exception as e:
         print(e)
