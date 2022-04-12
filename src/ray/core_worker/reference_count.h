@@ -514,11 +514,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///  2. We call ray.get() on an ID whose contents we do not know and we
     ///     discover that it contains these IDs.
     absl::flat_hash_set<ObjectID> contains;
-    /// ObjectRefs nested in this object that are or were in use. These objects
-    /// are not owned by us, and we need to report that we are borrowing them
-    /// to their owner. Nesting is transitive, so this flag is set as long as
-    /// any child object is in scope.
-    bool has_nested_refs_to_report = false;
   };
 
   struct BorrowInfo {
@@ -575,7 +570,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - ObjectIDs containing this ObjectID that we own and that are still in
     /// scope.
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
+      return local_ref_count + submitted_task_ref_count +
+             containing().contained_in_owned.size();
     }
 
     /// Whether this reference is no longer in scope. A reference is in scope
@@ -586,7 +582,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool is_nested = contained_in_borrowed_ids.size();
+      bool is_nested = containing().contained_in_borrowed_ids.size();
       bool has_borrowers = borrow().borrowers.size() > 0;
       bool was_stored_in_objects = borrow().stored_in_objects.size() > 0;
 
@@ -627,7 +623,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return borrow_info.get();
     }
 
-    const ContainingReferences &containing_refs() const {
+    const ContainingReferences &containing() const {
       if (containing_references == nullptr) {
         static auto *default_refs = new ContainingReferences();
         return *default_refs;
@@ -635,7 +631,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return *containing_references;
     }
 
-    ContainingReferences *mutable_containing_refs() {
+    ContainingReferences *mutable_containing() {
       if (containing_references == nullptr) {
         containing_references = std::make_unique<ContainingReferences>();
       }
@@ -683,25 +679,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     std::unique_ptr<ContainingReferences> containing_references;
     std::unique_ptr<BorrowInfo> borrow_info;
 
-    /// Object IDs that we own and that contain this object ID.
-    /// ObjectIDs are added to this field when we discover that this object
-    /// contains other IDs. This can happen in 2 cases:
-    ///  1. We call ray.put() and store the inner ID(s) in the outer object.
-    ///  2. A task that we submitted returned an ID(s).
-    /// ObjectIDs are erased from this field when their Reference is deleted.
-    absl::flat_hash_set<ObjectID> contained_in_owned;
-    /// Object IDs that we borrowed and that contain this object ID.
-    /// ObjectIDs are added to this field when we get the value of an ObjectRef
-    /// (either by deserializing the object or receiving the GetObjectStatus
-    /// reply for inlined objects) and it contains another ObjectRef.
-    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
-    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
-    /// The object IDs contained in this object. These could be objects that we
-    /// own or are borrowing. This field is updated in 2 cases:
-    ///  1. We call ray.put() on this ID and store the contained IDs.
-    ///  2. We call ray.get() on an ID whose contents we do not know and we
-    ///     discover that it contains these IDs.
-    absl::flat_hash_set<ObjectID> contains;
     /// ObjectRefs nested in this object that are or were in use. These objects
     /// are not owned by us, and we need to report that we are borrowing them
     /// to their owner. Nesting is transitive, so this flag is set as long as
