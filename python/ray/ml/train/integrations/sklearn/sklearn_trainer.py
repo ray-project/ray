@@ -90,6 +90,8 @@ class SklearnTrainer(Trainer):
         label_column: Name of the label column. A column with this name
             must be present in the training dataset. If None, no validation
             will be done.
+        params: Optional dict of params to be set on the estimator before
+            fitting. Useful for hyperparameter tuning.
         scoring: Strategy to evaluate the performance of the model on
             the validation sets and for cross-validation. Same as in
             ``sklearn.model_selection.cross_validation``.
@@ -152,6 +154,7 @@ class SklearnTrainer(Trainer):
         estimator: BaseEstimator,
         datasets: Dict[str, GenDataset],
         label_column: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
         scoring: Optional[ScoringType] = None,
         cv: Optional[CVType] = None,
         parallelise_cv: Optional[bool] = None,
@@ -163,6 +166,7 @@ class SklearnTrainer(Trainer):
     ):
         self.estimator = clone(estimator)
         self.label_column = label_column
+        self.params = params or {}
         self.fit_params = fit_params
         self.scoring = scoring
         self.cv = cv
@@ -196,7 +200,7 @@ class SklearnTrainer(Trainer):
                 "`parallelise_cv` must be a bool or None, got "
                 f"'{self.parallelise_cv}'"
             )
-        scaling_config = ScalingConfigDataClass(self.scaling_config)
+        scaling_config = ScalingConfigDataClass(**self.scaling_config)
         ScalingConfigDataClass.validate_config(
             config=scaling_config,
             allowed_keys=["trainer_resources"],
@@ -301,26 +305,7 @@ class SklearnTrainer(Trainer):
 
         return {"cv": {**cv_results, **cv_aggregates}}
 
-    def training_loop(self) -> None:
-        register_ray()
-
-        datasets = self._get_datasets()
-        X_train, y_train = datasets.pop(TRAIN_DATASET_KEY)
-        groups = None
-        if "cv_groups" in X_train.columns:
-            groups = X_train["cv_groups"]
-            X_train = X_train.drop("cv_groups", axis=1)
-
-        trial_resources = tune.get_trial_resources().required_resources
-        num_cpus = int(trial_resources.get("CPU", 0))
-        has_gpus = bool(trial_resources.get("GPU", 0))
-
-        # see https://scikit-learn.org/stable/computing/parallelism.html
-        os.environ["OMP_NUM_THREADS"] = str(num_cpus)
-        os.environ["MKL_NUM_THREADS"] = str(num_cpus)
-        os.environ["OPENBLAS_NUM_THREADS"] = str(num_cpus)
-        os.environ["BLIS_NUM_THREADS"] = str(num_cpus)
-
+    def _set_estimator_cv_parallelism(self, num_cpus: int, has_gpus: bool) -> bool:
         parallelise_cv = False
 
         assert not (has_gpus and self.parallelise_cv)
@@ -346,6 +331,31 @@ class SklearnTrainer(Trainer):
                 "will parallelise cross-validation instead."
             )
             parallelise_cv = True
+        return parallelise_cv
+
+    def training_loop(self) -> None:
+        register_ray()
+
+        self.estimator.set_params(**self.params)
+
+        datasets = self._get_datasets()
+        X_train, y_train = datasets.pop(TRAIN_DATASET_KEY)
+        groups = None
+        if "cv_groups" in X_train.columns:
+            groups = X_train["cv_groups"]
+            X_train = X_train.drop("cv_groups", axis=1)
+
+        trial_resources = tune.get_trial_resources().required_resources
+        num_cpus = int(trial_resources.get("CPU", 0))
+        has_gpus = bool(trial_resources.get("GPU", 0))
+
+        # see https://scikit-learn.org/stable/computing/parallelism.html
+        os.environ["OMP_NUM_THREADS"] = str(num_cpus)
+        os.environ["MKL_NUM_THREADS"] = str(num_cpus)
+        os.environ["OPENBLAS_NUM_THREADS"] = str(num_cpus)
+        os.environ["BLIS_NUM_THREADS"] = str(num_cpus)
+
+        parallelise_cv = self._set_estimator_cv_parallelism(num_cpus, has_gpus)
 
         with parallel_backend("ray", n_jobs=num_cpus):
             start_time = time()
