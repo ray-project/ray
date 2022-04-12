@@ -169,6 +169,9 @@ class CheckpointManager:
 
         try:
             # NaN metrics are treated as worst checkpoint
+            # The tuple structure is (not is_nan(), metric), which makes
+            # the nan values to be always considered as the worst
+            # metrics by the heap
             queue_item = QueueItem(self._priority(checkpoint), checkpoint)
         except KeyError:
             logger.error(

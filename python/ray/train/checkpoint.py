@@ -214,6 +214,9 @@ class CheckpointManager:
 
         def priority(checkpoint_score_order, checkpoint_score):
             # Treat NaN as worst
+            # The tuple structure is (not is_nan(), metric), which makes
+            # the nan values to be always considered as the worst
+            # metrics by the heap
             if checkpoint_score_order != MAX:
                 checkpoint_score = -checkpoint_score
             return (not is_nan(checkpoint_score), checkpoint_score)

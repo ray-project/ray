@@ -125,6 +125,7 @@ class CheckpointManagerTest(unittest.TestCase):
             checkpoint_manager.on_checkpoint(checkpoint)
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
+        # best_checkpoints is sorted from worst to best
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
         self.assertEqual(best_checkpoints[0].value, None)
         self.assertEqual(best_checkpoints[1].value, 3)
