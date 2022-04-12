@@ -278,6 +278,10 @@ def test_wf_in_actor_seq_2(workflow_start_regular, tmp_path):
     ],
     indirect=True,
 )
+@pytest.mark.skip(
+    reason="The test become flaky on CI recently, but we could not "
+    "reproduce it locally. Skip it temporarily."
+)
 def test_wf_in_actor_seq_3(workflow_start_regular, tmp_path):
     @workflow.virtual_actor
     class Counter:

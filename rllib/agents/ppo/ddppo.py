@@ -17,7 +17,6 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
-import sys
 import time
 from typing import Callable, Optional, Union
 
@@ -157,12 +156,6 @@ class DDPPOTrainer(PPOTrainer):
         # Note that this will not touch or check on the train_batch_size=-1
         # setting.
         super().validate_config(config)
-
-        # Error if run on Win.
-        if sys.platform in ["win32", "cygwin"]:
-            raise ValueError(
-                "DD-PPO not supported on Win yet! Due to usage of torch.distributed."
-            )
 
         # Only supported for PyTorch so far.
         if config["framework"] != "torch":
