@@ -96,8 +96,17 @@ def test_wait_mixup(init):
 
         return asyncio.ensure_future(_g(n))
 
-    tasks = [f.remote(0.1).as_future(), g(7), f.remote(5).as_future(), g(2)]
-    ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
+    if sys.platform == "win32":
+        factor = 2
+    else:
+        factor = 1
+    tasks = [
+        f.remote(0.1 * factor).as_future(),
+        g(7 * factor),
+        f.remote(5 * factor).as_future(),
+        g(2 * factor),
+    ]
+    ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4 * factor))
     assert set(ready) == {tasks[0], tasks[-1]}
 
 

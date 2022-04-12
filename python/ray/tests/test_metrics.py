@@ -19,6 +19,13 @@ _WIN32 = os.name == "nt"
 
 
 def test_worker_stats(shutdown_only):
+    if _WIN32:
+        # Make sure the previous agent has indeed gone away
+        # Sometimes the Windows tasks claim they are dead before they
+        # actually release all the resources. This manifests as a failure
+        # to start up the agent.
+        time.sleep(5)
+
     ray.init(num_cpus=1, include_dashboard=True)
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
@@ -29,7 +36,12 @@ def test_worker_stats(shutdown_only):
     channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
 
-    def try_get_node_stats(num_retry=5, timeout=2):
+    if _WIN32:
+        _timeout = 4
+    else:
+        _timeout = 2
+
+    def try_get_node_stats(num_retry=5, timeout=_timeout):
         reply = None
         for _ in range(num_retry):
             try:
