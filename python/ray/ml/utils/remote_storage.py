@@ -154,10 +154,12 @@ def upload_to_uri(local_path: str, uri: str):
 def _ensure_directory(uri: str):
     """Create directory at remote URI.
 
-    This utility is needed e.g. for the mock filesystem to work.
+    Some external filesystems require directories to already exist, or at least
+    the `netloc` to be created (e.g. PyArrows ``mock://`` filesystem).
+
+    Generally this should be done before and outside of Ray applications. This
+    utility is thus primarily used in testing, e.g. of ``mock://` URIs.
     """
-    # This function is a private API used in testing. If this is required
-    # for other filesystems we can consider calling this before uploading.
     fs, path = get_fs_and_path(uri)
     try:
         fs.create_dir(path)
