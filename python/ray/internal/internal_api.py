@@ -1,5 +1,3 @@
-import json
-
 import ray
 import ray._private.services as services
 import ray.worker

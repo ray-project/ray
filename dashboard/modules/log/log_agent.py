@@ -73,7 +73,7 @@ class LogAgentV1Grpc(
                 await context.send_initial_metadata(
                     [[log_consts.LOG_STREAM_STATUS, log_consts.OK]]
                 )
-                # If requesting the whole file, we stream the file since it may be large.
+                # If requesting the whole file, we stream it since it may be large.
                 if lines == -1:
                     while True:
                         bytes = f.read(BLOCK_SIZE)
