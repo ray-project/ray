@@ -136,7 +136,9 @@ class CSVLogger(Logger):
         """CSV outputted with Headers as first set of results."""
         if not self._initialized:
             progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
-            self._continuing = os.path.exists(progress_file)
+            self._continuing = (
+                os.path.exists(progress_file) and os.path.getsize(progress_file) > 0
+            )
             self._file = open(progress_file, "a")
             self._csv_out = None
             self._initialized = True
@@ -570,7 +572,9 @@ class CSVLoggerCallback(LoggerCallback):
         # Make sure logdir exists
         trial.init_logdir()
         local_file = os.path.join(trial.logdir, EXPR_PROGRESS_FILE)
-        self._trial_continue[trial] = os.path.exists(local_file)
+        self._trial_continue[trial] = (
+            os.path.exists(local_file) and os.path.getsize(local_file) > 0
+        )
         self._trial_files[trial] = open(local_file, "at")
         self._trial_csv[trial] = None
 
