@@ -139,19 +139,19 @@ void ClientSyncConnection::StartLongPolling() {
   //    1. there is a new version of message
   //    2. and it has passed X ms since last update.
   auto client_context = std::make_shared<grpc::ClientContext>();
+  auto in_message = std::make_shared<ray::rpc::syncer::RaySyncMessages>();
   stub_->async()->LongPolling(
       client_context.get(),
       &dummy_,
-      &in_message_,
-      [this, client_context](grpc::Status status) {
+      in_message.get(),
+      [this, client_context, in_message](grpc::Status status) mutable {
         if (status.ok()) {
           RAY_CHECK(in_message_.GetArena() == nullptr);
           io_context_.post(
-              [this, messages = std::move(in_message_)]() mutable {
+              [this, messages = std::move(*in_message)]() mutable {
                 ReceiveUpdate(std::move(messages));
               },
               "LongPollingCallback");
-          in_message_.Clear();
           // Start the next polling.
           StartLongPolling();
         }
