@@ -60,6 +60,10 @@ Trainer
     :members:
     :show-inheritance:
 
+.. automodule:: ray.ml.train.integrations.sklearn
+    :members:
+    :show-inheritance:
+
 .. autoclass:: ray.ml.train.data_parallel_trainer.DataParallelTrainer
     :members:
     :show-inheritance:
@@ -98,6 +102,10 @@ Predictors
     :show-inheritance:
 
 .. automodule:: ray.ml.predictors.integrations.torch
+    :members:
+    :show-inheritance:
+
+.. automodule:: ray.ml.predictors.integrations.sklearn
     :members:
     :show-inheritance:
 
