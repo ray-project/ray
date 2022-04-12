@@ -1,8 +1,13 @@
-from typing import Any, Callable, Generator, List, Optional, Dict, Type
+from pathlib import Path
+import shutil
+import tempfile
+from typing import Any, Callable, Generator, Iterator, List, Optional, Dict, Type
 import os
 import inspect
 import gc
 from unittest.mock import patch
+from ray.train.checkpoint import TuneCheckpointManager
+from ray.train.constants import TUNE_CHECKPOINT_ID
 
 import torch
 import transformers.trainer
@@ -12,6 +17,8 @@ from torch.utils.data import Dataset as TorchDataset, IterableDataset, DataLoade
 
 
 from ray import train
+from ray import tune
+import ray.cloudpickle as cpickle
 from ray.data.dataset import Dataset
 from ray.train.torch import TorchConfig
 from ray.train.session import get_session
@@ -20,83 +27,22 @@ from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.util import PublicAPI
-from ray.ml.constants import TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY
+from ray.util import PublicAPI, get_node_ip_address
+from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.ml.constants import TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY, PREPROCESSOR_KEY
 
+# This trainer uses a special checkpoint syncing logic.
+# Because HF checkpoints are very large dirs (at least several GBs),
+# we use directory checkpoints that are synced between nodes when
+# required instead of serializing the checkpoints and sending
+# bytes over nodes. This is a much more performant solution for
+# large directory checkpoints. The current implementation
+# is special for HuggingFaceTrainer, but can and should be
+# made generic.
+# TODO(ml-team): Make dir syncing checkpoint logic generic.
 
-class _HFIterableDatasetWithLen(IterableDataset):
-    """Special Torch IterableDataset with preset length."""
-    def __init__(self, generator: Generator, length: int):
-        self.generator = generator
-        self._len = length
-
-    def __iter__(self) -> Dict[str, torch.Tensor]:
-        it = self.generator
-        for x in it:
-            yield {**x[0], "labels": x[1]}
-
-    def __len__(self):
-        return self._len
-
-
-class _TrainReportCallback(TrainerCallback):
-    """HF TrainerCallback for Ray Train metric reporting & checkpointing."""
-    def __init__(self) -> None:
-        # HF first logs metrics, and then checkpoints. With Ray AIR, we need the
-        # opposite. Therefore, if we detect that a checkpoint will be created,
-        # we delay the train.report call after the checkpoint is reported
-        # to Ray Train.
-        self.delayed_report = None
-        super().__init__()
-
-    def on_log(self, args, state, control, model=None, logs=None, **kwargs):
-        print(f"on log {state.epoch}, should save {control.should_save}")
-        report = {**logs, "step": state.global_step, "epoch": state.epoch}
-        if control.should_save:
-            self.delayed_report = report
-        else:
-            train.report(**report)
-
-    def on_save(self, args, state, control, **kwargs):
-        checkpoint_path = transformers.trainer.get_last_checkpoint(args.output_dir)
-        print(
-            f"on save {state.epoch}, checkpoint_path {checkpoint_path}, delayed_report {bool(self.delayed_report)}"
-        )
-        if checkpoint_path:
-            print("creating checkpoint")
-            ml_checkpoint = Checkpoint.from_directory(str(checkpoint_path))
-            print("saving checkpoint")
-            if train.world_rank() == 0:
-                train.save_checkpoint(**ml_checkpoint.to_dict())
-            else:
-                train.save_checkpoint(**{"DUMMY": 0})
-            print("checkpoint saved")
-        if self.delayed_report:
-            train.report(**self.delayed_report)
-            self.delayed_report = None
-        print("on save done")
-        gc.collect()
-
-
-def _process_dataset_for_hf(
-    dataset: Dataset, feature_columns: Dict[str, List[str]], batch_size: int = 1
-) -> IterableDataset:
-    """Converts a Ray Dataset into a HF-compatible Torch Dataset."""
-    torch_dataset = dataset.to_torch(
-        batch_size=batch_size,
-        feature_columns=feature_columns,
-        label_column="labels",
-        unsqueeze_label_tensor=False,
-        unsqueeze_feature_tensors=False,
-    )
-    try:
-        count = dataset.count()
-    except ValueError:
-        # pipeline case
-        count = None
-    if count:
-        torch_dataset = _HFIterableDatasetWithLen(torch_dataset, count)
-    return torch_dataset
+NODE_IP_KEY = "node_ip"
+CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
 
 
 @PublicAPI(stability="alpha")
@@ -284,6 +230,36 @@ class HuggingFaceTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+    def __new__(cls, *args, **kwargs):
+        """Store the init args as attributes so this can be merged with Tune hparams."""
+        # This if will be entered in the driver-side Trainer.
+        # The Trainer inside the trainable will have a dict
+        # checkpoint created here.
+        # This is required to ensure that the dir syncing logic
+        # is used instead of serializing several gigabytes of data
+        # when a Checkpoint is sent to a Ray Actor.
+        if (
+            "resume_from_checkpoint" in kwargs
+            and kwargs["resume_from_checkpoint"]._local_path
+        ):
+            checkpoint_path = kwargs["resume_from_checkpoint"].to_directory()
+
+            # Load checkpoint from path.
+            checkpoint_path = Path(checkpoint_path).expanduser().absolute()
+            if not checkpoint_path.exists():
+                raise ValueError(f"Checkpoint path {checkpoint_path} does not exist.")
+            with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
+                tune_checkpoint_id = int(f.read())
+
+            kwargs["resume_from_checkpoint"] = Checkpoint.from_dict(
+                {
+                    NODE_IP_KEY: get_node_ip_address(),
+                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
+                    TUNE_CHECKPOINT_ID: tune_checkpoint_id,
+                }
+            )
+        return super(HuggingFaceTrainer, cls).__new__(cls, *args, **kwargs)
+
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str
     ) -> None:
@@ -297,7 +273,12 @@ class HuggingFaceTrainer(TorchTrainer):
     def _validate_train_loop_per_worker(
         self, train_loop_per_worker: Callable, fn_name: str
     ) -> None:
+        # Do not validate train_loop_per_worker. We validate
+        # trainer_init_per_worker instead.
         pass
+
+    def _get_checkpoint_manager(self) -> TuneCheckpointManager:
+        return _DataParallelSyncingCheckpointManager()
 
     def _create_train_func(
         self,
@@ -355,6 +336,7 @@ class HuggingFaceTrainer(TorchTrainer):
             # ensure no HF logging callbacks are added
             # aside from doubling functionality with our callbacks,
             # the Wandb callbacks causes training to freeze
+            # TODO(yard1): Automatically set `no_cuda`
             with patch(
                 "transformers.trainer.get_reporting_integration_callbacks", lambda x: []
             ):
@@ -436,6 +418,147 @@ class HuggingFaceTrainer(TorchTrainer):
             trainer.add_callback(_TrainReportCallback)
             if trainer.args.device.type == "cuda":
                 torch.cuda.set_device(trainer.args.device)
-            trainer.train()
+
+            checkpoint = train.load_checkpoint()
+            checkpoint_path = None
+            if checkpoint:
+                source_ip = checkpoint[NODE_IP_KEY]
+                source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
+                target_ip = get_node_ip_address()
+                if source_ip == target_ip:
+                    checkpoint_path = source_path
+                else:
+                    # TODO(yard1): Confirm if tempdir is the right approach here.
+                    checkpoint_path = tempfile.mkdtemp()
+                    sync_dir_between_nodes(
+                        source_ip=source_ip,
+                        source_path=source_path,
+                        target_ip=target_ip,
+                        target_path=checkpoint_path,
+                        return_futures=False,
+                        max_size_bytes=None,
+                    )
+            trainer.train(resume_from_checkpoint=checkpoint_path)
 
         return train_loop_per_worker
+
+
+class _HFIterableDatasetWithLen(IterableDataset):
+    """Special Torch IterableDataset with preset length."""
+
+    def __init__(self, generator: Generator, length: int):
+        self.generator = generator
+        self._len = length
+
+    def __iter__(self) -> Iterator[Dict[str, torch.Tensor]]:
+        it = self.generator
+        for x in it:
+            # HF-specific format
+            yield {**x[0], "labels": x[1]}
+
+    def __len__(self):
+        return self._len
+
+
+class _TrainReportCallback(TrainerCallback):
+    """HF TrainerCallback for Ray Train metric reporting & checkpointing."""
+
+    def __init__(self) -> None:
+        # HF first logs metrics, and then checkpoints. With Ray AIR, we need the
+        # opposite. Therefore, if we detect that a checkpoint will be created,
+        # we delay the train.report call after the checkpoint is reported
+        # to Ray Train.
+        self.delayed_report = None
+        # Avoid double reporting at the end.
+        # TODO(yard1): Train statistics are only reported at the end. Combine
+        # the second to last report and the last report somehow. We want
+        # steps/epochs to match the training iteration.
+        self.last_step = None
+        super().__init__()
+
+    def on_log(self, args, state, control, model=None, logs=None, **kwargs):
+        if state.global_step == self.last_step:
+            return
+        self.last_step = state.global_step
+        report = {**logs, "step": state.global_step, "epoch": state.epoch}
+        if control.should_save:
+            self.delayed_report = report
+        else:
+            train.report(**report)
+
+    def on_save(self, args, state, control, **kwargs):
+        checkpoint_path = Path(
+            transformers.trainer.get_last_checkpoint(args.output_dir)
+        ).absolute()
+        if checkpoint_path:
+            train.save_checkpoint(
+                **{
+                    NODE_IP_KEY: get_node_ip_address(),
+                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
+                }
+            )
+        if self.delayed_report:
+            train.report(**self.delayed_report)
+            self.delayed_report = None
+        gc.collect()
+
+
+def _process_dataset_for_hf(
+    dataset: Dataset, feature_columns: Dict[str, List[str]], batch_size: int = 1
+) -> IterableDataset:
+    """Converts a Ray Dataset into a HF-compatible Torch Dataset."""
+    torch_dataset = dataset.to_torch(
+        batch_size=batch_size,
+        feature_columns=feature_columns,
+        label_column="labels",
+        unsqueeze_label_tensor=False,
+        unsqueeze_feature_tensors=False,
+    )
+    try:
+        count = dataset.count()
+    except ValueError:
+        # pipeline case
+        count = None
+    if count:
+        torch_dataset = _HFIterableDatasetWithLen(torch_dataset, count)
+    return torch_dataset
+
+
+# TODO(team-ml): Refactor checkpoint management along with Tune.
+class _DataParallelSyncingCheckpointManager(TuneCheckpointManager):
+    """Same as _DataParallelCheckpointManager, but syncs the dir instead
+    of serializing it."""
+
+    def add_tune_checkpoint_id(self, path: str):
+        # Store the checkpoint_id in the file so that the Tune trial can be
+        # resumed after failure or cancellation.
+        with open(Path(path).joinpath(TUNE_CHECKPOINT_ID), "w") as f:
+            f.write(str(self._latest_checkpoint_id))
+
+    def on_init(self, preprocessor: Preprocessor):
+        self.preprocessor = preprocessor
+        super(_DataParallelSyncingCheckpointManager, self).on_init()
+
+    def write_checkpoint(self, checkpoint: Dict):
+        # If inside a Tune Trainable, then checkpoint with Tune.
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
+            source_ip = checkpoint[NODE_IP_KEY]
+            source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
+            target_ip = get_node_ip_address()
+            sync_dir_between_nodes(
+                source_ip=source_ip,
+                source_path=source_path,
+                target_ip=target_ip,
+                target_path=checkpoint_dir,
+                return_futures=False,
+                max_size_bytes=None,
+            )
+            if source_ip == target_ip:
+                shutil.rmtree(source_path, ignore_errors=True)
+            with open(Path(checkpoint_dir).joinpath(PREPROCESSOR_KEY), "wb") as f:
+                cpickle.dump(self.preprocessor, f)
+            self.add_tune_checkpoint_id(checkpoint_dir)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        raise NotImplementedError

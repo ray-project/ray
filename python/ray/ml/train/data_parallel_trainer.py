@@ -249,6 +249,9 @@ class DataParallelTrainer(Trainer):
                 f"but it accepts {num_params} arguments instead."
             )
 
+    def _get_checkpoint_manager(self) -> TuneCheckpointManager:
+        return _DataParallelCheckpointManager()
+
     def training_loop(self) -> None:
         scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
 
@@ -271,7 +274,7 @@ class DataParallelTrainer(Trainer):
             max_retries=0,
         )
 
-        checkpoint_manager = _DataParallelCheckpointManager()
+        checkpoint_manager = self._get_checkpoint_manager()
         checkpoint_manager.on_init(preprocessor=self.preprocessor)
 
         # Start the remote actors.
