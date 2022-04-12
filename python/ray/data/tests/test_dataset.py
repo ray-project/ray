@@ -1476,6 +1476,12 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
         ).take()
 
 
+def test_map_batch_actors_preserves_order(ray_start_regular_shared):
+    # Test that actor compute model preserves block order.
+    ds = ray.data.range(10, parallelism=5)
+    assert ds.map_batches(lambda x: x, compute="actors").take() == list(range(10))
+
+
 def test_union(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
 
@@ -2565,6 +2571,27 @@ def test_groupby_map_groups_for_empty_dataset(ray_start_regular_shared):
     mapped = ds.groupby(lambda x: x % 3).map_groups(lambda x: [min(x) * min(x)])
     assert mapped.count() == 0
     assert mapped.take_all() == []
+
+
+def test_groupby_map_groups_merging_empty_result(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3])
+    # This needs to merge empty and non-empty results from different groups.
+    mapped = ds.groupby(lambda x: x).map_groups(lambda x: [] if x == [1] else x)
+    assert mapped.count() == 2
+    assert mapped.take_all() == [2, 3]
+
+
+def test_groupby_map_groups_merging_invalid_result(ray_start_regular_shared):
+    ds = ray.data.from_items([1, 2, 3])
+    grouped = ds.groupby(lambda x: x)
+
+    # The UDF returns None, which is invalid.
+    with pytest.raises(AssertionError):
+        grouped.map_groups(lambda x: None if x == [1] else x)
+
+    # The UDF returns a type that's different than the input type, which is invalid.
+    with pytest.raises(AssertionError):
+        grouped.map_groups(lambda x: pd.DataFrame([1]) if x == [1] else x)
 
 
 @pytest.mark.parametrize("num_parts", [1, 2, 30])

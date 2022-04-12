@@ -156,6 +156,7 @@ class ActorPoolStrategy(ComputeStrategy):
         workers = [BlockWorker.remote() for _ in range(self.min_size)]
         tasks = {w.ready.remote(): w for w in workers}
         metadata_mapping = {}
+        block_indices = {}
         ready_workers = set()
 
         while len(results) < orig_num_blocks:
@@ -204,9 +205,12 @@ class ActorPoolStrategy(ComputeStrategy):
                     )
                     metadata_mapping[ref] = meta_ref
                 tasks[ref] = worker
+                block_indices[ref] = len(blocks_in)
 
         map_bar.close()
         new_blocks, new_metadata = [], []
+        # Put blocks in input order.
+        results.sort(key=block_indices.get)
         if context.block_splitting_enabled:
             for result in ray.get(results):
                 for block, metadata in result:
