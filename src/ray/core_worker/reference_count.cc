@@ -1465,19 +1465,10 @@ ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
 
 void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
                                           int deduct_ref_count) const {
-  RAY_LOG(INFO) << "dbg Reference size=" << sizeof(Reference);
-  RAY_LOG(INFO) << "dbg ContainingReferences size=" << sizeof(ContainingReferences);
   if (owner_address) {
     ref->mutable_reference()->mutable_owner_address()->CopyFrom(*owner_address);
   }
   ref->set_has_local_ref(RefCount() > deduct_ref_count);
-  RAY_LOG(INFO) << "dbg "
-                << absl::StrCat("RefCount()=",
-                                RefCount(),
-                                " local_ref_count=",
-                                local_ref_count,
-                                " ref->has_local_ref()=",
-                                ref->has_local_ref());
   for (const auto &borrower : borrow().borrowers) {
     ref->add_borrowers()->CopyFrom(borrower.ToProto());
   }
@@ -1492,7 +1483,6 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   for (const auto &contains_id : containing().contains) {
     ref->add_contains(contains_id.Binary());
   }
-  RAY_LOG(INFO) << "dbg ReferenceCounter::Reference::ToProto()\n" << ref->DebugString();
 }
 
 }  // namespace core
