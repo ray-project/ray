@@ -7,6 +7,8 @@ from mock_server import start_service, stop_process
 
 import tempfile
 from ray.tests.conftest import get_default_fixture_ray_kwargs
+# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
 import os
 import uuid
 from ray.workflow.tests import utils

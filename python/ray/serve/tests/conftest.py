@@ -8,6 +8,7 @@ import random
 import ray
 from ray import serve
 from ray.serve.pipeline.generate import DeploymentNameGenerator
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
