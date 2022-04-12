@@ -39,13 +39,11 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_retries
 
-from ray.internal.internal_api import (
-    memory_summary,
-    ray_log,
-    ray_log_index,
-    ray_nodes,
-    ray_actors,
+from ray.experimental.logs import (
+    get_log,
+    list_logs,
 )
+from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -2008,7 +2006,7 @@ def logs(
             filters = ",".join(filters) + (
                 f",{filename}" if filename is not None else ""
             )
-            api_endpoint, logs_dict = ray_log_index(node_id, node_ip, filters)
+            api_endpoint, logs_dict = list_logs(node_id, node_ip, filters)
             # to_dedup = ["gcs_logs", "dashboard", "autoscaler", "autoscaler_monitor"] ?
             if len(logs_dict) == 0:
                 raise Exception("Could not find node.")
@@ -2060,18 +2058,18 @@ def logs(
             if watch:
                 if lines is None:
                     lines = default_lines(1000)
-                for bytes in ray_log(
+                for chunk in get_log(
                     node_ip, pid, node_id, actor_id, task_id, filename, True, lines
                 ):
-                    print(bytes, end="", flush=True)
+                    print(chunk, end="", flush=True)
 
             elif not watch:
                 if lines is None:
                     lines = default_lines(100)
-                for bytes in ray_log(
+                for chunk in get_log(
                     node_ip, pid, node_id, actor_id, task_id, filename, False, lines
                 ):
-                    print(bytes, end="", flush=True)
+                    print(chunk, end="", flush=True)
 
     except Exception as e:
         print(e)
