@@ -5,9 +5,7 @@ import io.ray.api.function.RayFuncR;
 
 public class ParallelActorCreator<A> {
 
-  private ParallelStrategy strategy = ParallelStrategy.ALWAYS_FIRST;
-
-  private int parallelNum = 1;
+  private ParallelStrategyInterface strategy = null;
 
   private RayFuncR<A> func;
 
@@ -17,16 +15,20 @@ public class ParallelActorCreator<A> {
     //    ObjectRef
     this.func = func;
     this.args = args;
+
+    // By default, it should be ALWAYS_FIRST with 1 parallel.
+    ParallelContext ctx = Ray.internal().getParallelContext();
+    this.strategy = ctx.createParallelStrategy(ParallelStrategy.ALWAYS_FIRST, 1);
   }
 
   public ParallelActorCreator<A> setParallels(ParallelStrategy strategy, int parallelNum) {
-    this.strategy = strategy;
-    this.parallelNum = parallelNum;
+    ParallelContext ctx = Ray.internal().getParallelContext();
+    this.strategy = ctx.createParallelStrategy(strategy, parallelNum);
     return this;
   }
 
   public ParallelActor<A> remote() {
     ParallelContext ctx = Ray.internal().getParallelContext();
-    return ctx.createParallelActorExecutor(strategy, parallelNum, this.func);
+    return ctx.createParallelActorExecutor(strategy, this.func);
   }
 }

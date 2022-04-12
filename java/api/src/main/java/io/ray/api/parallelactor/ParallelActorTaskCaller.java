@@ -31,7 +31,7 @@ public class ParallelActorTaskCaller<R> {
     if (instance != null) {
       ret = ctx.submitTask(instance.getActor(), instance.getIndex(), func, args);
     } else {
-      ret = ctx.submitTask(parallelActor, parallelActor.getNextIndex(), func, args);
+      ret = ctx.submitTask(parallelActor, parallelActor.getStrategy().getNextIndex(), func, args);
     }
     return (ObjectRef<R>) ret;
   }

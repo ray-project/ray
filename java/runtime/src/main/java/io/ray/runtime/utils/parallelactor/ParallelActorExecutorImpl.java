@@ -8,8 +8,7 @@ import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +19,7 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
   private FunctionManager functionManager = null;
 
   /// This should be thread safe.
-  private List<Object> instances = new ArrayList<>();
+  private ConcurrentHashMap<Integer, Object> instances = new ConcurrentHashMap<>();
 
   public ParallelActorExecutorImpl(
       ParallelStrategy strategy, int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor) {
@@ -35,7 +34,7 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
     try {
       for (int i = 0; i < parallelNum; ++i) {
         Object instance = init.getMethod().invoke(null, null);
-        instances.add(instance);
+        instances.put(i, instance);
       }
     } catch (Exception e) {
       ////
@@ -50,7 +49,7 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
     RayFunction func =
         functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), functionDescriptor);
     try {
-      Preconditions.checkState(instances.contains(instanceIndex));
+      Preconditions.checkState(instances.containsKey(instanceIndex));
       return func.getMethod().invoke(instances.get(instanceIndex), args);
     } catch (Throwable a) {
       throw new RuntimeException(a);

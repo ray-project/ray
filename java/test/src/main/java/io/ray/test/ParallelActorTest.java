@@ -2,16 +2,13 @@ package io.ray.test;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
-import io.ray.api.parallelactor.Parallel;
-import io.ray.api.parallelactor.ParallelActor;
-import io.ray.api.parallelactor.ParallelInstance;
-import io.ray.api.parallelactor.ParallelStrategy;
+import io.ray.api.parallelactor.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test
+@Test(groups = "cluster")
 public class ParallelActorTest extends BaseTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(ParallelActorTest.class);
