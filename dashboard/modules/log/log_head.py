@@ -135,10 +135,11 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @staticmethod
     async def get_logs_json_index(
-        grpc_stub: reporter_pb2_grpc.LogServiceStub,
-        filters: [str]
+        grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: [str]
     ):
-        reply = await grpc_stub.LogIndex(reporter_pb2.LogIndexRequest())
+        reply = await grpc_stub.LogIndex(
+            reporter_pb2.LogIndexRequest(), timeout=log_consts.GRPC_TIMEOUT
+        )
         filters = [] if filters == [""] else filters
         links = list(filter(lambda s: all(f in s for f in filters), reply.log_files))
         logs = {}
@@ -223,8 +224,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             await asyncio.sleep(0.5)
         node_id = req.query.get("node_id", None)
 
-        # If no node_id is provided, try to determine node_id
-        # via the node_ip if it is provided
+        # If no `node_id` is provided, try to determine node_id
+        # via the `node_ip` if it is provided
         if node_id is None:
             ip = req.query.get("node_ip", None)
             if ip is not None:
@@ -235,7 +236,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         log_file_name = req.query.get("log_file_name", None)
 
         # If `log_file_name` is not provided, check if we can get the
-        # corresponding log_file_name if an `actor_id` is provided.
+        # corresponding `log_file_name` if an `actor_id` is provided.
         if log_file_name is None or node_id is None:
             actor_id = req.query.get("actor_id", None)
             if actor_id is not None:
@@ -290,7 +291,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
         if log_file_name is None:
             return aiohttp.web.HTTPNotFound(
-                reason="Could not resolve file identifiers to file name."
+                reason="Could not resolve file identifiers to a file name."
             )
 
         if media_type == "stream":

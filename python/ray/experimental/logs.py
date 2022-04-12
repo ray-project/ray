@@ -51,7 +51,8 @@ def get_log(
         api_server_url = _get_dashboard_url()
     if task_id is not None:
         raise NotImplementedError(
-            "querying for logs by`task_id` is not yet implemented")
+            "querying for logs by`task_id` is not yet implemented"
+        )
 
     query_string = ""
     args = {
@@ -89,7 +90,7 @@ def list_logs(
     """
     Returns a JSON file containing, for each node in the cluster,
     a dict mapping a category of log component to a list of filenames.
-    If a node_ip or node_id is provided, only that node's index will be
+    If a node_ip or node_id is provided, only that node's logs will be
     returned.
 
     filters: a list of strings to match against each filename.
