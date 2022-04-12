@@ -1476,6 +1476,12 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
         ).take()
 
 
+def test_map_batch_actors_preserves_order(ray_start_regular_shared):
+    # Test that actor compute model preserves block order.
+    ds = ray.data.range(10, parallelism=5)
+    assert ds.map_batches(lambda x: x, compute="actors").take() == list(range(10))
+
+
 def test_union(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
 
