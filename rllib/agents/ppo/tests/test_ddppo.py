@@ -26,7 +26,8 @@ class TestDDPPO(unittest.TestCase):
         """Test whether a DDPPOTrainer can be built with both frameworks."""
         config = ppo.ddppo.DEFAULT_CONFIG.copy()
         config["num_gpus_per_worker"] = 0
-        num_iterations = 2
+        #config["_disable_execution_plan_api"]=False#todo
+        num_iterations = 30#TODO:2
 
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
@@ -34,11 +35,10 @@ class TestDDPPO(unittest.TestCase):
                 results = trainer.train()
                 check_train_results(results)
                 print(results)
-                # Make sure, weights on all workers are the same (including
-                # local one).
+                # Make sure, weights on all workers are the same.
                 weights = trainer.workers.foreach_worker(lambda w: w.get_weights())
                 for w in weights[1:]:
-                    check(w, weights[0])
+                    check(w, weights[1])
 
             check_compute_single_action(trainer)
             trainer.stop()

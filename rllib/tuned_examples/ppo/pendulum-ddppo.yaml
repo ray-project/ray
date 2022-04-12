@@ -1,0 +1,10 @@
+pendulum-ddppo:
+    env: Pendulum-v1
+    run: DDPPO
+    stop:
+        episode_reward_mean: -500
+        timesteps_total: 400000
+    config:
+        framework: torch
+        num_gpus_per_worker: 0
+        observation_filter: MeanStdFilter

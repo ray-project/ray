@@ -30,7 +30,6 @@ from ray.rllib.execution.common import (
     STEPS_SAMPLED_COUNTER,
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
-    LEARN_ON_BATCH_TIMER,
     _get_shared_metrics,
     _get_global_vars,
 )
@@ -40,10 +39,12 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
+    LEARN_ON_BATCH_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -227,6 +228,8 @@ class DDPPOTrainer(PPOTrainer):
 
     @override(PPOTrainer)
     def training_iteration(self) -> ResultDict:
+        # Shortcut.
+        first_worker = self.workers.remote_workers()[0]
 
         # Run sampling and update steps on each worker in asynchronous fashion.
         sample_and_update_results = asynchronous_parallel_requests(
@@ -243,16 +246,17 @@ class DDPPOTrainer(PPOTrainer):
         # - Build info dict using a LearnerInfoBuilder object.
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
         steps_this_iter = 0
-        for worker, worker_results in sample_and_update_results.items():
-            for info, env_steps, agent_steps, learn_on_batch_time in worker_results:
-                steps_this_iter += env_steps
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += agent_steps
-                self._counters[NUM_AGENT_STEPS_TRAINED] += agent_steps
-                self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps
-                self._counters[NUM_ENV_STEPS_TRAINED] += env_steps
-                self._timers[LEARN_ON_BATCH_TIMER].push(learn_on_batch_time)
-                # Add partial learner info to builder object.
-                learner_info_builder.add_learn_on_batch_results_multi_agent(info)
+        for worker, result in sample_and_update_results.items():
+            # TODO: Add an inner loop over (>1) results here once APEX has been merged!
+            steps_this_iter += result["env_steps"]
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
+            self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
+            self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
+            self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
+            self._timers[LEARN_ON_BATCH_TIMER].push(result["learn_on_batch_time"])
+            self._timers[SAMPLE_TIMER].push(result["sample_time"])
+            # Add partial learner info to builder object.
+            learner_info_builder.add_learn_on_batch_results_multi_agent(result["info"])
 
             # Broadcast the local set of global vars.
             global_vars = {
@@ -268,9 +272,9 @@ class DDPPOTrainer(PPOTrainer):
         # As with the sync up, this is not really needed unless the user is
         # reading the local weights.
         if self.config["keep_local_weights_in_sync"] and \
-                sample_and_update_results[self.workers.remote_workers()[0]]:
+                first_worker in sample_and_update_results:
             self.workers.local_worker().set_weights(
-                ray.get(self.workers.remote_workers()[0].get_weights.remote())
+                ray.get(first_worker.get_weights.remote())
             )
         # Return merged laarner into results.
         return learner_info_builder.finalize()
@@ -281,7 +285,9 @@ class DDPPOTrainer(PPOTrainer):
         config = worker.policy_config
 
         # Generate a sample.
+        start = time.perf_counter()
         batch = worker.sample()
+        sample_time = time.perf_counter() - start
         expected_batch_size = (
             config["rollout_fragment_length"] * config["num_envs_per_worker"]
         )
@@ -303,7 +309,13 @@ class DDPPOTrainer(PPOTrainer):
             [Postprocessing.ADVANTAGES],
         )
         learn_on_batch_time = time.perf_counter() - start
-        return info, batch.count, learn_on_batch_time
+        return {
+            "info": info,
+            "env_steps": batch.env_steps(),
+            "agent_steps": batch.agent_steps(),
+            "sample_time": sample_time,
+            "learn_on_batch_time": learn_on_batch_time,
+        }
 
     @staticmethod
     @override(PPOTrainer)
@@ -388,6 +400,7 @@ class DDPPOTrainer(PPOTrainer):
                 self.fetch_start_time = time.perf_counter()
 
             def __call__(self, items):
+                assert len(items) == config["num_workers"]
                 for item in items:
                     info, count = item
                     metrics = _get_shared_metrics()
