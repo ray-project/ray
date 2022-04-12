@@ -171,8 +171,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 )
             )
         logs["dashboard"] = list(filter(lambda s: "dashboard" in s, links))
-        logs["raylet_logs"] = list(filter(lambda s: "raylet" in s, links))
-        logs["gcs_logs"] = list(filter(lambda s: "gcs" in s, links))
+        logs["raylet"] = list(filter(lambda s: "raylet" in s, links))
+        logs["gcs"] = list(filter(lambda s: "gcs" in s, links))
         logs["ray_client"] = list(filter(lambda s: "ray_client" in s, links))
         logs["autoscaler_monitor"] = list(
             filter(lambda s: "monitor" in s and "log_monitor" not in s, links)

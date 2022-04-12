@@ -176,13 +176,13 @@ def test_logs_experimental_index(ray_start_with_dashboard):
             assert len(outs) == len(errs) == len(core_worker_logs)
             assert len(outs) > 0
 
-            for file in ["debug_state_gcs.txt", "gcs_sever.out", "gcs_server.err"]:
+            for file in ["debug_state_gcs.txt", "gcs_server.out", "gcs_server.err"]:
                 assert file in logs[node_id]["gcs"]
             for file in ["raylet.out", "raylet.err"]:
                 assert file in logs[node_id]["raylet"]
             for file in ["dashboard_agent.log", "dashboard.log"]:
                 assert file in logs[node_id]["dashboard"]
-
+            break
         except Exception as ex:
             last_ex = ex
         finally:
@@ -227,7 +227,9 @@ def test_logs_experimental_write(ray_start_with_dashboard):
             for f in file_names:
                 if "worker" in f:
                     urls.append(
-                        webui_url + f"/api/experimental/logs/file/{node_id}/" + f
+                        webui_url
+                        + f"/api/experimental/logs/file?node_id={node_id}"
+                        + "&log_file_name=" + f
                     )
 
             for u in urls:
@@ -237,6 +239,7 @@ def test_logs_experimental_write(ray_start_with_dashboard):
                     break
             else:
                 raise Exception(f"Can't find {test_log_text} from {urls}")
+            break
         except Exception as ex:
             last_ex = ex
         finally:
