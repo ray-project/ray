@@ -35,6 +35,8 @@
 # - Examples directory (everything in rllib/examples/...), tagged: "examples" and
 #   "examples_[A-Z]"
 
+# - Memory leak tests tagged "memory_leak_tests".
+
 # Note: The "examples" and "tests_dir" tags have further sub-tags going by the
 # starting letter of the test name (e.g. "examples_A", or "tests_dir_F") for
 # split-up purposes in buildkite.
@@ -583,6 +585,14 @@ py_test(
 )
 
 py_test(
+    name = "test_memory_leaks_generic",
+    main = "agents/tests/test_memory_leaks.py",
+    tags = ["team:ml", "trainers_dir"],
+    size = "large",
+    srcs = ["agents/tests/test_memory_leaks.py"]
+)
+
+py_test(
     name = "test_trainer",
     tags = ["team:ml", "trainers_dir", "trainers_dir_generic"],
     size = "large",
@@ -851,6 +861,82 @@ py_test(
     args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
 )
 
+
+# --------------------------------------------------------------------
+# Memory leak tests
+#
+# Tag: memory_leak_tests
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_memory_leak_a3c",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/a3c/memory-leak-test-a3c.yaml"],
+    args = ["--yaml-dir=tuned_examples/a3c"]
+)
+
+py_test(
+    name = "test_memory_leak_appo",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ppo/memory-leak-test-appo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "test_memory_leak_ddpg",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ddpg/memory-leak-test-ddpg.yaml"],
+    args = ["--yaml-dir=tuned_examples/ddpg"]
+)
+
+py_test(
+    name = "test_memory_leak_dqn",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/dqn/memory-leak-test-dqn.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn"]
+)
+
+py_test(
+    name = "test_memory_leak_impala",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/impala/memory-leak-test-impala.yaml"],
+    args = ["--yaml-dir=tuned_examples/impala"]
+)
+
+py_test(
+    name = "test_memory_leak_ppo",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "test_memory_leak_sac",
+    tags = ["team:ml", "memory_leak_tests"],
+    main = "utils/tests/run_memory_leak_tests.py",
+    size = "large",
+    srcs = ["utils/tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/sac/memory-leak-test-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac"]
+)
 
 # --------------------------------------------------------------------
 # Agents (quick training test iterations via `rllib train`)

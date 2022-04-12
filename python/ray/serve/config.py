@@ -257,6 +257,7 @@ class ReplicaConfig:
                     f"Specifying {option} in ray_actor_options is not allowed."
                 )
 
+        # TODO(suquark): reuse options validation of remote function/actor.
         # Ray defaults to zero CPUs for placement, we default to one here.
         if self.ray_actor_options.get("num_cpus", None) is None:
             self.ray_actor_options["num_cpus"] = 1
@@ -287,14 +288,13 @@ class ReplicaConfig:
             raise ValueError("memory in ray_actor_options must be > 0.")
         self.resource_dict["memory"] = memory
 
-        if self.ray_actor_options.get("object_store_memory", None) is None:
-            self.ray_actor_options["object_store_memory"] = 0
-        object_store_memory = self.ray_actor_options["object_store_memory"]
-        if not isinstance(object_store_memory, (int, float)):
+        object_store_memory = self.ray_actor_options.get("object_store_memory")
+        if not isinstance(object_store_memory, (int, float, type(None))):
             raise TypeError(
-                "object_store_memory in ray_actor_options must be an int or a float."
+                "object_store_memory in ray_actor_options must be an int, float "
+                "or None."
             )
-        elif object_store_memory < 0:
+        elif object_store_memory is not None and object_store_memory < 0:
             raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
         self.resource_dict["object_store_memory"] = object_store_memory
 
