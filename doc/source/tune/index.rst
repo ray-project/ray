@@ -10,12 +10,11 @@ Tune: Scalable Hyperparameter Tuning
     :align: center
 
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale.
-You can tune your favorite machine learning framework, including :ref:`PyTorch <tune-pytorch-cifar-ref>`, :ref:`XGBoost <tune-xgboost-ref>`, :ref:`Scikit-Learn <tune-sklearn>`, :ref:`TensorFlow and Keras <tune-mnist-keras>`, and :ref:`more <tune-examples-ref>`.
-State of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>` and :ref:`HyperBand/ASHA <tune-scheduler-hyperband>` are easily accessible while using Tune.
-Tune further integrates with a wide range of additional hyperparameter optimization tools, including :ref:`Ax <ax_example>`, :ref:`BayesOpt <bayesopt_example>`, :ref:`BOHB <bohb_example>`, :ref:`Dragonfly <dragonfly_example>`, :ref:`FLAML <flaml_example>`, :ref:`HEBO <hebo_example>`, :ref:`Hyperopt <hyperopt_example>`, :ref:`Nevergrad <nevergrad_example>`, :ref:`Optuna <optuna_example>`, :ref:`SigOpt <sigopt_example>`, :ref:`skopt <skopt_example>`, :ref:`ZOOpt <zoopt_example>`.
+You can tune your favorite machine learning framework (:ref:`PyTorch <tune-pytorch-cifar-ref>`, :ref:`XGBoost <tune-xgboost-ref>`, :doc:`Scikit-Learn <examples/tune-sklearn>`, :doc:`TensorFlow and Keras <examples/tune_mnist_keras>`, and :doc:`more <examples/index>`) by running state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>` and :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
+Tune further integrates with a wide range of additional hyperparameter optimization tools, including :doc:`Ax <examples/ax_example>`, :doc:`BayesOpt <examples/bayesopt_example>`, :doc:`BOHB <examples/bohb_example>`, :doc:`Dragonfly <examples/dragonfly_example>`, :doc:`FLAML <examples/flaml_example>`, :doc:`HEBO <examples/hebo_example>`, :doc:`Hyperopt <examples/hyperopt_example>`, :doc:`Nevergrad <examples/nevergrad_example>`, :doc:`Optuna <examples/optuna_example>`, :doc:`SigOpt <examples/sigopt_example>`, :doc:`skopt <examples/skopt_example>`, :doc:`ZOOpt <examples/zoopt_example>`.
 
 
-.. tabbed:: Examples
+.. tabbed:: Example
 
     Learn how to use Ray Tune for various machine learning frameworks in just a few steps.
     **Click on the tabs to see code examples**.
