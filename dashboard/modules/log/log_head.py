@@ -134,7 +134,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             self._ip_to_node_id[ip] = node_id
 
     @staticmethod
-    async def get_logs_json_index(grpc_stub, filters):
+    async def get_logs_json_index(
+        grpc_stub: reporter_pb2_grpc.LogServiceStub,
+        filters: [str]
+    ):
         reply = await grpc_stub.LogIndex(reporter_pb2.LogIndexRequest())
         filters = [] if filters == [""] else filters
         links = list(filter(lambda s: all(f in s for f in filters), reply.log_files))
@@ -173,6 +176,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/experimental/logs/index")
     async def handle_log_index(self, req):
+        """
+        Returns a JSON file containing, for each node in the cluster,
+        a dict mapping a category of log component to a list of filenames.
+        """
         node_id = req.query.get("node_id", None)
         if node_id is None:
             ip = req.query.get("node_ip", None)
@@ -185,6 +192,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         return aiohttp.web.json_response(response)
 
     async def get_log_index(self, node_id_query, filters):
+        """
+        Helper function to get the logs index by querying each agent
+        on each cluster via gRPC.
+        """
         response = {}
         while self._stubs == {}:
             await asyncio.sleep(0.5)
@@ -203,9 +214,17 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/experimental/logs/{media_type}")
     async def handle_log(self, req):
+        """
+        If `media_type = stream`, creates HTTP stream which is either kept alive while
+        the HTTP connection is not closed. Else, if `media_type = file`, the stream
+        ends once all the lines in the file requested are transmitted.
+        """
         while self._stubs == {}:
             await asyncio.sleep(0.5)
         node_id = req.query.get("node_id", None)
+
+        # If no node_id is provided, try to determine node_id
+        # via the node_ip if it is provided
         if node_id is None:
             ip = req.query.get("node_ip", None)
             if ip is not None:
@@ -215,6 +234,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
         log_file_name = req.query.get("log_file_name", None)
 
+        # If `log_file_name` is not provided, check if we can get the
+        # corresponding log_file_name if an `actor_id` is provided.
         if log_file_name is None or node_id is None:
             actor_id = req.query.get("actor_id", None)
             if actor_id is not None:
@@ -238,6 +259,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                                 node_id = node
                             break
 
+        # If `log_file_name` cannot be resolved, check if we can get the
+        # corresponding `log_file_name` if a `pid` is provided.
         if log_file_name is None:
             pid = req.query.get("pid", None)
             if node_id is None:
