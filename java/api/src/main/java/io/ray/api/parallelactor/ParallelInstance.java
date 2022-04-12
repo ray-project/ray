@@ -10,7 +10,7 @@ public class ParallelInstance<A> implements ParallelActorCall<A> {
 
   private int currentIndex;
 
-  ParallelInstance(ParallelActor<A> parallelActor, int index) {
+  public ParallelInstance(ParallelActor<A> parallelActor, int index) {
     this.parallelActor = parallelActor;
     this.currentIndex = index;
   }

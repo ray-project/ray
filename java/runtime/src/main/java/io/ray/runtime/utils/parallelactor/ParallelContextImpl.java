@@ -43,7 +43,7 @@ public class ParallelContextImpl implements ParallelContext {
             .setConcurrencyGroups(concurrencyGroups)
             .remote();
 
-    return new ParallelActor<>(strategy, parallelExecutorHandle);
+    return new ParallelActorImpl<>(strategy, parallelExecutorHandle);
   }
 
   @Override

@@ -8,6 +8,7 @@ import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
+import java.lang.reflect.InvocationTargetException;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,37 +23,26 @@ public class ParallelActorExecutorImpl extends ParallelActorExecutor {
   private ConcurrentHashMap<Integer, Object> instances = new ConcurrentHashMap<>();
 
   public ParallelActorExecutorImpl(
-      ParallelStrategy strategy, int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor) {
+      ParallelStrategy strategy, int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor)
+      throws InvocationTargetException, IllegalAccessException {
     super(strategy, parallelNum);
 
     functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
-
     RayFunction init =
         functionManager.getFunction(
             Ray.getRuntimeContext().getCurrentJobId(), javaFunctionDescriptor);
     Thread.currentThread().setContextClassLoader(init.classLoader);
-    try {
-      for (int i = 0; i < parallelNum; ++i) {
-        Object instance = init.getMethod().invoke(null, null);
-        instances.put(i, instance);
-      }
-    } catch (Exception e) {
-      ////
-      throw new RuntimeException(e);
-    } finally {
-      ////
+    for (int i = 0; i < parallelNum; ++i) {
+      Object instance = init.getMethod().invoke(null, null);
+      instances.put(i, instance);
     }
   }
 
-  public Object execute(
-      int instanceIndex, JavaFunctionDescriptor functionDescriptor, Object[] args) {
+  public Object execute(int instanceIndex, JavaFunctionDescriptor functionDescriptor, Object[] args)
+      throws IllegalAccessException, InvocationTargetException {
     RayFunction func =
         functionManager.getFunction(Ray.getRuntimeContext().getCurrentJobId(), functionDescriptor);
-    try {
-      Preconditions.checkState(instances.containsKey(instanceIndex));
-      return func.getMethod().invoke(instances.get(instanceIndex), args);
-    } catch (Throwable a) {
-      throw new RuntimeException(a);
-    }
+    Preconditions.checkState(instances.containsKey(instanceIndex));
+    return func.getMethod().invoke(instances.get(instanceIndex), args);
   }
 }
