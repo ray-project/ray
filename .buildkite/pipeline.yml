@@ -6,7 +6,7 @@
     ]
   commands:
     # Build the wheels and jars
-    - LINUX_WHEELS=1 LINUX_JARS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
     - bash ./java/build-jar-multiplatform.sh linux
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
@@ -22,7 +22,7 @@
 - label: ":ferris_wheel: Post-wheel tests"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=post_wheel_build
@@ -43,7 +43,7 @@
     ]
   commands:
     # Build the debug wheels
-    - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/ci.sh build
     # Upload the wheels.
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -62,7 +62,7 @@
 #     ]
 #   commands:
 #     # Build the asan wheels
-#     - RAY_DEBUG_BUILD=asan LINUX_WHEELS=1 ./ci/travis/ci.sh build
+#     - RAY_DEBUG_BUILD=asan LINUX_WHEELS=1 ./ci/ci.sh build
 #     # Upload the wheels.
 #     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
 #     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -75,7 +75,7 @@
 - label: ":docker: Build Images: py36 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
@@ -83,7 +83,7 @@
 - label: ":docker: Build Images: py36 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
@@ -91,7 +91,7 @@
 - label: ":docker: Build Images: py37 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
@@ -99,7 +99,7 @@
 - label: ":docker: Build Images: py37 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
@@ -107,7 +107,7 @@
 - label: ":docker: Build Images: py38 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
@@ -115,7 +115,7 @@
 - label: ":docker: Build Images: py38 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
@@ -123,7 +123,7 @@
 - label: ":docker: Build Images: py39 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
@@ -131,7 +131,7 @@
 - label: ":docker: Build Images: py39 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
@@ -140,14 +140,14 @@
   commands:
     - export LINT=1
     - ./ci/env/install-dependencies.sh
-    - ./ci/travis/ci.sh lint
-    - ./ci/travis/ci.sh build
+    - ./ci/ci.sh lint
+    - ./ci/ci.sh build
 
 - label: ":book: LinkCheck"
   commands:
     - export LINT=1
     - ./ci/env/install-dependencies.sh
-    - ./ci/travis/ci.sh check_sphinx_links
+    - ./ci/ci.sh check_sphinx_links
   soft_fail: True
 
 - label: ":java: Java"
@@ -159,7 +159,7 @@
   conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/travis/ci.sh test_cpp
+    - ./ci/ci.sh test_cpp
 
 - label: ":cpp: Tests"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
@@ -313,7 +313,7 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - . ./ci/travis/ci.sh test_large
+    - . ./ci/ci.sh test_large
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -333,7 +333,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
-    - RAY_DEBUG_BUILD=debug ./ci/travis/ci.sh build
+    - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
     - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
       --test_tag_filters=-kubernetes,debug_tests
       python/ray/tests/...
@@ -357,7 +357,7 @@
 #- label: ":python: (Privileged test)"
   #conditions: ["RAY_CI_PYTHON_AFFECTED"]
   #commands:
-    #- LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    #- LINUX_WHEELS=1 ./ci/ci.sh build
     #- pip install docker
      #We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
      #And we save this image to a tarball, so that we can load it to podman image storage in the
@@ -393,7 +393,7 @@
     # Set up local kind cluster.
     - ./ci/k8s/prep-k8s-environment.sh
     # Build py37-cpu Ray image for the test.
-    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker
     - python ci/build/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
     # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.

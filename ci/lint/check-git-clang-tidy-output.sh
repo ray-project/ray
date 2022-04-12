@@ -28,16 +28,16 @@ printInfo "Generating compilation database ..."
 case "${OSTYPE}" in
   linux*)
     printInfo "Running on Linux, using clang to build C++ targets. Please make sure it is installed with install-llvm-binaries.sh"
-    bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg --config=llvm \
-        --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
+    bazel build //ci/lint/generate_compile_commands:extract_compile_command //:ray_pkg --config=llvm \
+        --experimental_action_listener=//ci/lint/generate_compile_commands:compile_command_listener;;
   darwin*)
     printInfo "Running on MacOS, assuming default C++ compiler is clang."
-    bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
-        --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
+    bazel build //ci/lint/generate_compile_commands:extract_compile_command //:ray_pkg \
+        --experimental_action_listener=//ci/lint/generate_compile_commands:compile_command_listener;;
   msys*)
     printInfo "Running on Windows, using clang-cl to build C++ targets. Please make sure it is installed."
-    CC=clang-cl bazel build //ci/generate_compile_commands:extract_compile_command //:ray_pkg \
-        --experimental_action_listener=//ci/generate_compile_commands:compile_command_listener;;
+    CC=clang-cl bazel build //ci/lint/generate_compile_commands:extract_compile_command //:ray_pkg \
+        --experimental_action_listener=//ci/lint/generate_compile_commands:compile_command_listener;;
 esac
 
 printInfo "Assembling compilation database ..."

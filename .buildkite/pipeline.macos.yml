@@ -13,8 +13,8 @@ common: &common
 prelude_commands: &prelude_commands |-
   ./ci/build/upload_build_info.sh
   (which bazel && bazel clean) || true;
-  . ./ci/travis/ci.sh init && source ~/.zshrc
-  . ./ci/travis/ci.sh build
+  . ./ci/ci.sh init && source ~/.zshrc
+  . ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
 
 epilogue_commands: &epilogue_commands |-
@@ -41,10 +41,10 @@ steps:
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1
-    - . ./ci/travis/ci.sh init && source ~/.zshrc
-    - . ./ci/travis/ci.sh build
+    - . ./ci/ci.sh init && source ~/.zshrc
+    - . ./ci/ci.sh build
     # Test wheels
-    - . ./ci/travis/ci.sh test_wheels
+    - . ./ci/ci.sh test_wheels
     # Build jars
     - bash ./java/build-jar-multiplatform.sh darwin
     # Upload the wheels and jars
@@ -79,7 +79,7 @@ steps:
   commands:
     - *prelude_commands
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/travis/ci.sh test_cpp
+    - ./ci/ci.sh test_cpp
 
 - label: ":mac: :apple: Small & Client"
   <<: *common
@@ -97,7 +97,7 @@ steps:
   parallelism: 3
   commands:
     - *prelude_commands
-    - . ./ci/travis/ci.sh test_large
+    - . ./ci/ci.sh test_large
     - *epilogue_commands
 
 - label: ":mac: :apple: Medium A-J"

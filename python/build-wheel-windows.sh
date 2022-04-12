@@ -53,7 +53,7 @@ EOF
 }
 
 install_ray() {
-  # TODO(mehrdadn): This function should be unified with the one in ci/travis/ci.sh.
+  # TODO(mehrdadn): This function should be unified with the one in ci/ci.sh.
   (
     pip install wheel
 

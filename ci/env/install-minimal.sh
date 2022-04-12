@@ -9,7 +9,7 @@ MINIMAL_INSTALL=1 PYTHON=${PYTHON-3.7} "${WORKSPACE_DIR}/ci/env/install-dependen
 # Re-install Ray wheels
 rm -rf "${WORKSPACE_DIR}/python/ray/thirdparty_files"
 rm -rf "${WORKSPACE_DIR}/python/ray/pickle5_files"
-eval "${WORKSPACE_DIR}/ci/travis/ci.sh build"
+eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \

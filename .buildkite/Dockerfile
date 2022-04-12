@@ -61,8 +61,8 @@ WORKDIR /ray
 
 # Below should be re-run each time
 COPY . .
-RUN ./ci/travis/ci.sh init
-RUN bash --login -i ./ci/travis/ci.sh build
+RUN ./ci/ci.sh init
+RUN bash --login -i ./ci/ci.sh build
 
 RUN (if [ "${INSTALL_DEPENDENCIES}" = "ML" ]; then RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh; fi)
 
