@@ -129,7 +129,7 @@ ClientSyncConnection::ClientSyncConnection(
     std::shared_ptr<grpc::Channel> channel)
     : NodeSyncConnection(io_context, node_id, std::move(message_processor)),
       stub_(ray::rpc::syncer::RaySyncer::NewStub(channel)) {
-  for(int64_t i = 0; i < RayConfig::instance().ray_syncer_polling_buffer(); ++i) {
+  for (int64_t i = 0; i < RayConfig::instance().ray_syncer_polling_buffer(); ++i) {
     StartLongPolling();
   }
 }
