@@ -99,7 +99,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             # Size of the replay buffer. Note that if async_updates is set,
             # then each worker will have a replay buffer of this size.
             "capacity": 50000,
-            "replay_batch_size": 32,
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,

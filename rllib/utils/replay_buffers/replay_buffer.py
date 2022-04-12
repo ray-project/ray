@@ -235,6 +235,10 @@ def validate_buffer_config(config: dict):
                 "ray.rllib.utils.replay_buffers." + buffer_type
             )
 
+    if config["replay_buffer_config"].get("replay_batch_size", None) is None:
+        # Fall back to train batch size if no replay batch size was provided
+        config["replay_buffer_config"]["replay_batch_size"] = config["train_batch_size"]
+
     # Pop prioritized replay because it's not a valid parameter for older
     # replay buffers
     config["replay_buffer_config"].pop("prioritized_replay", None)
