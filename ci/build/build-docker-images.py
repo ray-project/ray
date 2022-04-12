@@ -134,7 +134,7 @@ def _check_if_docker_files_modified():
     stdout = subprocess.check_output(
         [
             sys.executable,
-            f"{_get_curr_dir()}/determine_tests_to_run.py",
+            f"{_get_curr_dir()}/../pipeline/determine_tests_to_run.py",
             "--output=json",
         ]
     )

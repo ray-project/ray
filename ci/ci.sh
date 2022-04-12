@@ -7,7 +7,7 @@ set -eo pipefail
 if [ -z "${TRAVIS_PULL_REQUEST-}" ] || [ -n "${OSTYPE##darwin*}" ]; then set -ux; fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
-WORKSPACE_DIR="${ROOT_DIR}/../.."
+WORKSPACE_DIR="${ROOT_DIR}/.."
 
 suppress_output() {
   "${WORKSPACE_DIR}"/ci/suppress_output "$@"
@@ -130,7 +130,7 @@ test_core() {
       ;;
   esac
   # shellcheck disable=SC2046
-  bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) -- "${args[@]}"
+  bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
 }
 
 # For running Python tests on Windows.
@@ -170,7 +170,7 @@ test_python() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./scripts/bazel-sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    test_shard_selection=$(python ./ci/run/bazel-sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
 
     # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
@@ -178,7 +178,7 @@ test_python() {
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046,SC2086
     bazel test --config=ci \
-      --build_tests_only $(./scripts/bazel_export_options) \
+      --build_tests_only $(./ci/run/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" \
       --test_env=USERPROFILE="${USERPROFILE}" \
       --test_env=CI=1 \
@@ -191,7 +191,7 @@ test_python() {
 
 # For running large Python tests on Linux and MacOS.
 test_large() {
-  bazel test --config=ci "$(./scripts/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
+  bazel test --config=ci "$(./ci/run/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
       -- python/ray/tests/...
@@ -203,7 +203,7 @@ test_cpp() {
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
@@ -219,7 +219,7 @@ test_wheels() {
   local result=0 flush_logs=0
 
   if need_wheels; then
-    "${WORKSPACE_DIR}"/ci/travis/test-wheels.sh || { result=$? && flush_logs=1; }
+    "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
   fi
 
   if [ 0 -ne "${flush_logs}" ]; then
@@ -459,7 +459,7 @@ lint_readme() {
 }
 
 lint_scripts() {
-  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/format.sh --all-scripts
+  FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/lint/format.sh --all-scripts
 }
 
 lint_bazel() {
@@ -472,7 +472,7 @@ lint_bazel() {
     go get github.com/bazelbuild/buildtools/buildifier
 
     # Now run buildifier
-    "${ROOT_DIR}"/bazel-format.sh
+    "${ROOT_DIR}"/lint/bazel-format.sh
   )
 }
 
@@ -500,7 +500,7 @@ lint_web() {
 
 lint_copyright() {
   (
-    "${ROOT_DIR}"/copyright-format.sh -c
+    "${ROOT_DIR}"/lint/copyright-format.sh -c
   )
 }
 
@@ -511,17 +511,17 @@ _lint() {
   esac
 
   if command -v clang-format > /dev/null; then
-    "${ROOT_DIR}"/check-git-clang-format-output.sh
+    "${ROOT_DIR}"/lint/check-git-clang-format-output.sh
   else
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
   fi
 
   if command -v clang-tidy > /dev/null; then
     pushd "${WORKSPACE_DIR}"
-      "${ROOT_DIR}"/install-llvm-binaries.sh
+      "${ROOT_DIR}"/env/install-llvm-binaries.sh
     popd
     # Disable clang-tidy until ergonomic issues are resolved.
-    # "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+    # "${ROOT_DIR}"/lint/check-git-clang-tidy-output.sh
   else
     { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
   fi
@@ -544,12 +544,12 @@ _lint() {
 
     # lint test script
     pushd "${WORKSPACE_DIR}"
-       bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
-       bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+       bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/lint/check-bazel-team-owner.py
+       bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/lint/check-bazel-team-owner.py
     popd
 
     # Make sure tests will be run by CI.
-    python "${ROOT_DIR}"/check-test-run.py
+    python "${ROOT_DIR}"/pipeline/check-test-run.py
   fi
 }
 
@@ -559,7 +559,7 @@ lint() {
   (
     WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
     # shellcheck disable=SC2030
-    ROOT_DIR="${WORKSPACE_DIR}"/ci/travis
+    ROOT_DIR="${WORKSPACE_DIR}"/ci
     git worktree add -q "${WORKSPACE_DIR}"
     pushd "${WORKSPACE_DIR}"
       . "${ROOT_DIR}"/ci.sh _lint
@@ -575,10 +575,10 @@ _check_job_triggers() {
   local variable_definitions
   if command -v python3; then
     # shellcheck disable=SC2031
-    variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
+    variable_definitions=($(python3 "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
   else
     # shellcheck disable=SC2031
-    variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+    variable_definitions=($(python "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
   fi
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
@@ -638,7 +638,7 @@ init() {
   configure_system
 
   # shellcheck disable=SC2031
-  . "${ROOT_DIR}"/install-dependencies.sh  # Script is sourced to propagate up environment changes
+  . "${ROOT_DIR}"/env/install-dependencies.sh  # Script is sourced to propagate up environment changes
 }
 
 build() {

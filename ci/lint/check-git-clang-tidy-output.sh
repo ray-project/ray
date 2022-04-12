@@ -77,7 +77,7 @@ fi
 
 trap - EXIT
 
-if git diff -U0 "$base_commit" | ci/travis/clang-tidy-diff.py -p1 -fix; then
+if git diff -U0 "$base_commit" | ci/lint/clang-tidy-diff.py -p1 -fix; then
   printInfo "clang-tidy passed."
 else
   printError "clang-tidy failed. See above for details including suggested fixes."
@@ -87,6 +87,6 @@ else
   printError
   printError "To run clang-tidy locally with fix suggestions, make sure clang and clang-tidy are installed and"
   printError "available in PATH (version 12 is preferred). Then run"
-  printError "scripts/check-git-clang-tidy-output.sh"
+  printError "ci/lint/check-git-clang-tidy-output.sh"
   printError "from repo root."
 fi

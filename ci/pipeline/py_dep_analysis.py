@@ -8,9 +8,9 @@
 #
 # Example usage:
 #     To find all circular dependencies under ray/python/:
-#         python ci/travis/py_dep_analysis.py --mode=circular-dep
+#         python ci/pipeline/py_dep_analysis.py --mode=circular-dep
 #     To find all the RLlib tests that depend on a file:
-#         python ci/travis/py_dep_analysis.py --mode=test-dep \
+#         python ci/pipeline/py_dep_analysis.py --mode=test-dep \
 #             --file=python/ray/tune/tune.py
 #     For testing, add --smoke-test to any commands, so it doesn't spend
 #     tons of time querying for available RLlib tests.

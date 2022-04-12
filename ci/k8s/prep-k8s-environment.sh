@@ -17,7 +17,7 @@ mv ./kubectl /usr/bin/kubectl
 kubectl version --client
 
 # Create the cluster
-time kind create cluster --wait 120s --config ./ci/travis/kind.config.yaml
+time kind create cluster --wait 120s --config ./ci/k8s/kind.config.yaml
 docker ps
 
 # Now the kind node is running, it exposes port 6443 in the dind-daemon network.

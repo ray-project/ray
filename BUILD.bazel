@@ -2186,7 +2186,7 @@ cc_proto_library(
 
 filegroup(
     name = "iwyu_sh",
-    srcs = ["ci/travis/iwyu.sh"],
+    srcs = ["ci/run/iwyu.sh"],
 )
 
 action_listener(

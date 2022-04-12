@@ -5,8 +5,8 @@
 
 set -euxo pipefail
 
-ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-WORKSPACE_DIR="${ROOT_DIR}/../.."
+SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+WORKSPACE_DIR="${SCRIPT_DIR}/../.."
 
 pkg_install_helper() {
   case "${OSTYPE}" in
@@ -28,7 +28,7 @@ install_bazel() {
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
-      new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
+      new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${SCRIPT_DIR}/../../python/setup.py")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
         return
@@ -36,7 +36,7 @@ install_bazel() {
     fi
   fi
 
-  "${ROOT_DIR}"/install-bazel.sh
+  "${SCRIPT_DIR}"/install-bazel.sh
   if [ -f /etc/profile.d/bazel.sh ]; then
     . /etc/profile.d/bazel.sh
   fi
@@ -62,7 +62,7 @@ install_base() {
         fi
       fi
       if [ -n "${PYTHON-}" ]; then
-        "${ROOT_DIR}/install-strace.sh" || true
+        "${SCRIPT_DIR}/install-strace.sh" || true
       fi
       ;;
   esac
@@ -263,11 +263,11 @@ install_node() {
 
 install_toolchains() {
   if [ -z "${BUILDKITE-}" ]; then
-    "${ROOT_DIR}"/install-toolchains.sh
+    "${SCRIPT_DIR}"/install-toolchains.sh
   fi
   if [[ "${OSTYPE}" = linux* ]]; then
     pushd "${WORKSPACE_DIR}"
-      "${ROOT_DIR}"/install-llvm-binaries.sh
+      "${SCRIPT_DIR}"/install-llvm-binaries.sh
     popd
   fi
 }

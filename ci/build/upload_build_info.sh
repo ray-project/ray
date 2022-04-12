@@ -17,7 +17,7 @@ if [[ "${OSTYPE}" = darwin* ]]; then
 fi
 mkdir -p /tmp/bazel_event_logs
 
-./ci/travis/get_build_info.py > /tmp/bazel_event_logs/metadata.json
+./ci/build/get_build_info.py > /tmp/bazel_event_logs/metadata.json
 
 if [[ -z "${BUILDKITE-}" ]]; then
     # Codepath for Github Actions and Travis CI

@@ -128,7 +128,7 @@ if [[ ${#ERROR_FILES[*]} -gt 0 ]];then
         printf '%s\n' "${ERROR_FILES[@]}"
         exit 0
     else
-        echo "Missing copyright info at the beginning of below files. Please run 'sh ci/travis/copyright-format.sh -f' to fix them:"
+        echo "Missing copyright info at the beginning of below files. Please run 'sh ci/lint/copyright-format.sh -f' to fix them:"
         printf '%s\n' "${ERROR_FILES[@]}"
         exit 1
     fi

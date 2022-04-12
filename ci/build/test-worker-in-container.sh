@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
 set -exo pipefail
 
@@ -19,10 +19,10 @@ export RAY_BACKEND_LOG_LEVEL=debug
 "$HOME/anaconda3/bin/pip" install --no-cache-dir pytest
 
 pushd /ray || true
-bash ./ci/travis/install-bazel.sh --system
+bash ./ci/env/install-bazel.sh --system
 
 # shellcheck disable=SC2046
-bazel test --test_timeout 60 --config=ci $(./scripts/bazel_export_options) \
+bazel test --test_timeout 60 --config=ci $(./ci/run/bazel_export_options) \
 --test_tag_filters=-kubernetes,worker-container \
 python/ray/tests/...  --test_output=all
 
