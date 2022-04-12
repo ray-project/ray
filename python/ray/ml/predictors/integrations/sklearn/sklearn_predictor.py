@@ -1,9 +1,15 @@
 from typing import Optional, List, Union
-import pandas as pd
+import os
+import shutil
 
+import pandas as pd
+import numpy as np
+
+import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
 
 from sklearn.base import BaseEstimator
 
@@ -36,7 +42,18 @@ class SklearnPredictor(Predictor):
                 ``SklearnTrainer`` run.
 
         """
-        raise NotImplementedError
+        path = checkpoint.to_directory()
+        estimator_path = os.path.join(path, MODEL_KEY)
+        with open(estimator_path, "rb") as f:
+            estimator = cpickle.load(f)
+        preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
+        if os.path.exists(preprocessor_path):
+            with open(preprocessor_path, "rb") as f:
+                preprocessor = cpickle.load(f)
+        else:
+            preprocessor = None
+        shutil.rmtree(path)
+        return SklearnPredictor(estimator=estimator, preprocessor=preprocessor)
 
     def predict(
         self,
@@ -100,4 +117,18 @@ class SklearnPredictor(Predictor):
             pd.DataFrame: Prediction result.
 
         """
-        raise NotImplementedError
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
+
+        if feature_columns:
+            if isinstance(data, np.ndarray):
+                data = data[:, feature_columns]
+            else:
+                data = data[feature_columns]
+        df = pd.DataFrame(self.estimator.predict(data, **predict_kwargs))
+        df.columns = (
+            ["predictions"]
+            if len(df.columns) == 1
+            else [f"predictions_{i}" for i in range(len(df.columns))]
+        )
+        return df
