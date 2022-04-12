@@ -141,8 +141,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         Returns a JSON file mapping, for the node corresponding to the given
         gRPC stub, a category of log component to a list of filenames.
         """
-        reply = await grpc_stub.LogIndex(
-            reporter_pb2.LogIndexRequest(), timeout=log_consts.GRPC_TIMEOUT
+        reply = await grpc_stub.ListLogs(
+            reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
         )
         filters = [] if filters == [""] else filters
 
@@ -183,7 +183,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         )
         return logs
 
-    @routes.get("/api/experimental/logs/index")
+    @routes.get("/api/experimental/logs/list")
     async def handle_log_index(self, req):
         """
         Returns a JSON file containing, for each node in the cluster,

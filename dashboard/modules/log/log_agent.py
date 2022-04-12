@@ -45,7 +45,7 @@ class LogAgentV1Grpc(
     def is_minimal_module():
         return False
 
-    async def LogIndex(self, request, context):
+    async def ListLogs(self, request, context):
         if os.path.exists(self._dashboard_agent.log_dir):
             log_files = os.listdir(self._dashboard_agent.log_dir)
         else:
@@ -53,7 +53,7 @@ class LogAgentV1Grpc(
                 f"Could not find log dir at path: {self._dashboard_agent.log_dir}"
             )
             log_files = []
-        return reporter_pb2.LogIndexReply(log_files=log_files)
+        return reporter_pb2.ListLogsReply(log_files=log_files)
 
     async def StreamLog(self, request, context):
         """
@@ -64,7 +64,7 @@ class LogAgentV1Grpc(
         lines = request.lines if request.lines else 1000
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
-        if not os.path.isfile(filepath):
+        if "/" in request.log_file_name or not os.path.isfile(filepath):
             await context.send_initial_metadata(
                 [[log_consts.LOG_STREAM_STATUS, log_consts.FILE_NOT_FOUND]]
             )

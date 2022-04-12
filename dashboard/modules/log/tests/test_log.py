@@ -162,7 +162,7 @@ def test_logs_experimental_index(ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
-            response = requests.get(webui_url + "/api/experimental/logs/index")
+            response = requests.get(webui_url + "/api/experimental/logs/list")
             response.raise_for_status()
             logs = json.loads(response.text)
             assert len(logs) == 1
@@ -198,5 +198,62 @@ def test_logs_experimental_index(ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
+def test_logs_experimental_write(ray_start_with_dashboard):
+    @ray.remote
+    def write_log(s):
+        print(s)
+
+    test_log_text = "test_log_text"
+    ray.get(write_log.remote(test_log_text))
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = ray_start_with_dashboard["node_id"]
+
+    timeout_seconds = 10
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            response = requests.get(webui_url + "/api/experimental/logs/list")
+            response.raise_for_status()
+            logs = json.loads(response.text)
+            assert len(logs) == 1
+
+            node_id = next(iter(logs))
+            file_names = logs[node_id]["worker_outs"]
+            urls = []
+            for f in file_names:
+                if "worker" in f:
+                    urls.append(
+                        webui_url
+                        + f"/api/experimental/logs/file?node_id={node_id}"
+                        + "&log_file_name=" + f
+                    )
+
+            for u in urls:
+                response = requests.get(u)
+                response.raise_for_status()
+                if test_log_text in response.text:
+                    break
+            else:
+                raise Exception(f"Can't find {test_log_text} from {urls}")
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
