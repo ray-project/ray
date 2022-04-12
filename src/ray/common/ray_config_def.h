@@ -337,6 +337,7 @@ RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
 /// Feature flag to use the ray syncer for resource synchronization
 RAY_CONFIG(bool, use_ray_syncer, false)
+RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 10)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
