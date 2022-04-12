@@ -4,7 +4,7 @@ from typing import Tuple
 import pandas as pd
 
 import ray
-from ray.ml.predictor import BatchPredictor
+from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
 from ray.ml.train.integrations.lightgbm import LightGBMTrainer
 from ray.data.dataset import Dataset

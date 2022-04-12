@@ -8,7 +8,7 @@ import torch.nn as nn
 import ray
 import ray.train as train
 from ray.data import Dataset
-from ray.ml.predictor import BatchPredictor
+from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.torch import TorchPredictor
 from ray.ml.result import Result
 from ray.ml.train.integrations.torch import TorchTrainer

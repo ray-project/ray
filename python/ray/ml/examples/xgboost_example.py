@@ -4,7 +4,7 @@ from typing import Tuple
 import pandas as pd
 
 import ray
-from ray.ml.predictor import BatchPredictor
+from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.data.dataset import Dataset

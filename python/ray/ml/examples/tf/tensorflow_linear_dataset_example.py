@@ -3,7 +3,7 @@ import numpy as np
 
 
 import tensorflow as tf
-from ray.ml.predictor import BatchPredictor
+from ray.ml.batch_predictor import BatchPredictor
 from tensorflow.keras.callbacks import Callback
 
 import ray

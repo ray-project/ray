@@ -6,8 +6,8 @@ from ray.ml.predictor import (
     Predictor,
     DataBatchType,
     PredictorNotSerializableException,
-    BatchPredictor,
 )
+from ray.ml.batch_predictor import BatchPredictor
 
 
 class DummyPredictor(Predictor):
@@ -41,10 +41,9 @@ def test_batch_prediction():
     )
 
     test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
-    # Todo: Remove sorted after https://github.com/ray-project/ray/issues/23833 fixed
-    assert sorted(
-        batch_predictor.predict(test_dataset).to_pandas().to_numpy().squeeze().tolist()
-    ) == [
+    assert batch_predictor.predict(
+        test_dataset
+    ).to_pandas().to_numpy().squeeze().tolist() == [
         2.0,
         4.0,
         6.0,
