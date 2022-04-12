@@ -285,17 +285,5 @@ def test_http_proxy_request_cancellation(serve_instance):
     assert requests.get(url).text == "2"
 
 
-def test_memory_omitted_option(serve_instance):
-    """Ensure that omitting memory doesn't break the deployment."""
-
-    @serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
-    def hello(*args, **kwargs):
-        return "world"
-
-    hello.deploy()
-
-    assert ray.get(hello.get_handle().remote()) == "world"
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
