@@ -285,9 +285,7 @@ class ReplicaConfig:
             )
         elif memory is not None and memory <= 0:
             raise ValueError("memory in ray_actor_options must be > 0.")
-        # If memory is None, use 0 in the resource_dict, so it can be treated
-        # as an int.
-        self.resource_dict["memory"] = memory or 0
+        self.resource_dict["memory"] = memory
 
         if self.ray_actor_options.get("object_store_memory", None) is None:
             self.ray_actor_options["object_store_memory"] = 0
