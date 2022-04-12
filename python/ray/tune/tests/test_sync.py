@@ -498,6 +498,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 target_path=temp_down_target,
                 max_size_bytes=2,
             )
+
         assert not os.listdir(temp_down_target)
 
         sync_dir_between_nodes(
