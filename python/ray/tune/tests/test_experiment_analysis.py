@@ -263,6 +263,31 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
+    def testGetTrialCheckpointsPathsWithTemporaryCheckpoints(self):
+        analysis = tune.run(
+            MyTrainableClass,
+            name="test_example",
+            local_dir=self.test_dir,
+            stop={"training_iteration": 2},
+            num_samples=1,
+            config={"test": tune.grid_search([[1, 2], [3, 4]])},
+            checkpoint_at_end=True,
+        )
+        logdir = analysis.get_best_logdir(self.metric, mode="max")
+
+        shutil.copytree(
+            os.path.join(logdir, "checkpoint_000002"),
+            os.path.join(logdir, "checkpoint_tmpxxx"),
+        )
+
+        checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
+        expected_path = os.path.join(logdir, "checkpoint_000002/", "checkpoint")
+
+        assert len(checkpoints_metrics) == 1
+
+        assert checkpoints_metrics[0][0] == expected_path
+        assert checkpoints_metrics[0][1] == 2
+
 
 class ExperimentAnalysisPropertySuite(unittest.TestCase):
     def testBestProperties(self):
