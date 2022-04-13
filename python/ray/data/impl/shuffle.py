@@ -5,6 +5,7 @@ from collections import defaultdict
 import numpy as np
 
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
@@ -226,33 +227,37 @@ class PushBasedShuffleOp(ShuffleOp):
             num_cpus = int(resources.get("CPU", 0))
             if num_cpus == 0:
                 continue
-            for resource in resources:
-                if resource.startswith("node:"):
-                    cpu_map[resource] = num_cpus
+            cpu_map[node["NodeID"]] = num_cpus
         return cpu_map
 
     @staticmethod
-    def _compute_merge_task_args(num_merge_tasks: int, cpu_map):
-        merge_to_node_map = [{} for _ in range(num_merge_tasks)]
-        #merge_to_node_map = []
-        #merge_tasks_assigned = 0
-        #node_names = list(cpu_map)
-        #leftover_cpu_map = {}
-        #while merge_tasks_assigned < num_merge_tasks_per_round and cpu_map:
-        #    node_name = node_names[merge_tasks_assigned % len(node_names)]
-        #    if cpu_map[node_name] >= merge_factor + 1:
-        #        cpu_map[node_name] -= (merge_factor + 1)
-        #        merge_to_node_map.append(node_name)
-        #        merge_tasks_assigned += 1
-        #    else:
-        #        leftover_cpu_map[node_name] = cpu_map.pop(node_name)
-        #        node_names.remove(node_name)
-        #while merge_tasks_assigned < num_merge_tasks_per_round:
-        #    node_name = max(leftover_cpu_map, key=leftover_cpu_map.get)
-        #    assert leftover_cpu_map[node_name] <= merge_factor
-        #    merge_to_node_map.append(node_name)
-        #    merge_tasks_assigned += 1
-        return merge_to_node_map
+    def _compute_merge_task_args(num_merge_tasks_per_round: int, merge_factor: int, cpu_map):
+        merge_to_node_map = []
+        merge_tasks_assigned = 0
+        node_ids = list(cpu_map)
+        leftover_cpu_map = {}
+        while merge_tasks_assigned < num_merge_tasks_per_round and cpu_map:
+            node_id = node_ids[merge_tasks_assigned % len(node_ids)]
+            if cpu_map[node_id] >= merge_factor + 1:
+                cpu_map[node_id] -= (merge_factor + 1)
+                merge_to_node_map.append(node_id)
+                merge_tasks_assigned += 1
+            else:
+                leftover_cpu_map[node_id] = cpu_map.pop(node_id)
+                node_ids.remove(node_id)
+        while merge_tasks_assigned < num_merge_tasks_per_round:
+            node_id = max(leftover_cpu_map, key=leftover_cpu_map.get)
+            # We should have enough CPUs to schedule a round of merge tasks in
+            # parallel.
+            assert leftover_cpu_map[node_id] != 0
+            assert leftover_cpu_map[node_id] <= merge_factor
+            merge_to_node_map.append(node_id)
+            merge_tasks_assigned += 1
+            leftover_cpu_map[node_id] -= 1
+        merge_task_args = [{
+            "scheduling_strategy": NodeAffinitySchedulingStrategy(node_id, soft=True)
+            } for node_id in merge_to_node_map]
+        return merge_task_args
 
 
     def execute(
@@ -272,9 +277,6 @@ class PushBasedShuffleOp(ShuffleOp):
             map_ray_remote_args = {}
         if reduce_ray_remote_args is None:
             reduce_ray_remote_args = {}
-        if "scheduling_strategy" not in reduce_ray_remote_args:
-            reduce_ray_remote_args = reduce_ray_remote_args.copy()
-            reduce_ray_remote_args["scheduling_strategy"] = "SPREAD"
 
         def map_partition(*args, **kwargs):
             return self._map_partition(self.map, *args, **kwargs)
@@ -293,16 +295,16 @@ class PushBasedShuffleOp(ShuffleOp):
         # Total number of merge tasks.
         num_merge_tasks = math.ceil(input_num_blocks / merge_factor)
         # Number of map-merge rounds.
-        num_rounds = math.ceil(task_parallelism / (input_num_blocks + num_merge_tasks))
+        num_rounds = math.ceil((input_num_blocks + num_merge_tasks) / task_parallelism)
         # M: Number of map tasks in one map-merge round.
-        num_map_tasks_per_round = math.ceil(input_num_blocks / num_rounds)
+        num_map_tasks_per_round = math.ceil(task_parallelism / num_rounds)
         # N: Number of merge tasks in one map-merge round. Each map_partition
         # task will send one output to each of these merge tasks.
         num_merge_tasks_per_round = math.ceil(num_merge_tasks / num_rounds)
         # Scheduling args for assign merge tasks to nodes. We use node-affinity
         # scheduling here to colocate merge tasks that output to the same
         # reducer.
-        merge_task_args = self._compute_merge_task_args(num_merge_tasks, cpu_map)
+        merge_task_args = self._compute_merge_task_args(num_merge_tasks_per_round, merge_factor, cpu_map)
 
         # Intermediate results for the map-merge stage.
         map_results = []
