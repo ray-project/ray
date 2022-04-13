@@ -6,8 +6,6 @@ import os
 import inspect
 import gc
 from unittest.mock import patch
-from ray.train.checkpoint import TuneCheckpointManager
-from ray.train.constants import TUNE_CHECKPOINT_ID
 
 import torch
 import transformers.trainer
@@ -28,6 +26,8 @@ from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI, get_node_ip_address
+from ray.train.checkpoint import TuneCheckpointManager
+from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 from ray.ml.constants import TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY, PREPROCESSOR_KEY
 
@@ -476,6 +476,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
             checkpoint = train.load_checkpoint()
             checkpoint_path = None
+            remove_checkpoint_path = False
             if checkpoint:
                 source_ip = checkpoint[NODE_IP_KEY]
                 source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
@@ -484,7 +485,10 @@ class HuggingFaceTrainer(TorchTrainer):
                     checkpoint_path = source_path
                 else:
                     # TODO(yard1): Confirm if tempdir is the right approach here.
-                    checkpoint_path = tempfile.mkdtemp()
+                    checkpoint_path = tempfile.mkdtemp(
+                        suffix=Path(trainer.args.output_dir).name
+                    )
+                    remove_checkpoint_path = True
                     sync_dir_between_nodes(
                         source_ip=source_ip,
                         source_path=source_path,
@@ -494,6 +498,8 @@ class HuggingFaceTrainer(TorchTrainer):
                         max_size_bytes=None,
                     )
             trainer.train(resume_from_checkpoint=checkpoint_path)
+            if remove_checkpoint_path:
+                shutil.rmtree(checkpoint_path, ignore_errors=True)
 
         return train_loop_per_worker
 
