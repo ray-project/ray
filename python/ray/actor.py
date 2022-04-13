@@ -965,7 +965,9 @@ class ActorClass:
         """
         from ray.experimental.dag.class_node import ClassNode
 
-        return ClassNode(self.__ray_metadata__.modified_class, args, kwargs, {})
+        return ClassNode(
+            self.__ray_metadata__.modified_class, args, kwargs, self._default_options
+        )
 
 
 class ActorHandle:

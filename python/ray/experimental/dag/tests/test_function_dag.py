@@ -170,18 +170,40 @@ def test_nested_args(shared_ray_instance):
     assert ray.get(ct.get.remote()) == 4
 
 
-def test_task_options(shared_ray_instance):
+def test_dag_options(shared_ray_instance):
     @ray.remote(num_gpus=100)
     def foo():
         pass
 
     assert foo.bind().get_options() == {"num_gpus": 100}
+    assert foo.options(num_cpus=500).bind().get_options() == {
+        "num_gpus": 100,
+        "num_cpus": 500,
+    }
 
     @ray.remote
     def bar():
         pass
 
+    assert bar.bind().get_options() == {}
     assert bar.options(num_gpus=100).bind().get_options() == {"num_gpus": 100}
+
+    @ray.remote(num_gpus=100)
+    class Foo:
+        pass
+
+    assert Foo.bind().get_options() == {"num_gpus": 100}
+    assert Foo.options(num_cpus=500).bind().get_options() == {
+        "num_gpus": 100,
+        "num_cpus": 500,
+    }
+
+    @ray.remote
+    class Bar:
+        pass
+
+    assert Bar.bind().get_options() == {}
+    assert Foo.options(num_gpus=100).bind().get_options() == {"num_gpus": 100}
 
 
 if __name__ == "__main__":

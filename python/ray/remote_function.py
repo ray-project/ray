@@ -352,4 +352,4 @@ class RemoteFunction:
 
         from ray.experimental.dag.function_node import FunctionNode
 
-        return FunctionNode(self._function, args, kwargs, {})
+        return FunctionNode(self._function, args, kwargs, self._default_options)
