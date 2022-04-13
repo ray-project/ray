@@ -42,7 +42,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         node_info["logUrl"] = log_url
 
     @routes.get("/log_index")
-    async def get_log_index(self, req) -> aiohttp.web.Response:
+    async def list_logs(self, req) -> aiohttp.web.Response:
         url_list = []
         agent_ips = []
         for node_id, ports in DataSource.agents.items():
@@ -190,9 +190,9 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 return
             await asyncio.sleep(0.5)
 
-    async def get_log_index(self, node_id_query, filters):
+    async def list_logs(self, node_id_query: str, filters: [str]):
         """
-        Helper function to get the logs index by querying each agent
+        Helper function to list the logs by querying each agent
         on each cluster via gRPC.
         """
         response = {}
@@ -224,7 +224,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                     return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
                 node_id = self._ip_to_node_id[ip]
         filters = req.query.get("filters", "").split(",")
-        response = await self.get_log_index(node_id, filters)
+        response = await self.list_logs(node_id, filters)
         return aiohttp.web.json_response(response)
 
     @routes.get("/api/experimental/logs/{media_type}")
@@ -264,7 +264,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                         reason=f"Worker Id for Actor ID {actor_id} not found."
                     )
 
-                index = await self.get_log_index(node_id, [worker_id])
+                index = await self.list_logs(node_id, [worker_id])
                 for node in index:
                     for file in index[node]["worker_outs"]:
                         if file.split(".")[0].split("-")[1] == worker_id:
@@ -283,7 +283,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                     f" Available: {self._ip_to_node_id}"
                 )
             if pid is not None:
-                index = await self.get_log_index(node_id, [pid])
+                index = await self.list_logs(node_id, [pid])
                 for file in index[node_id]["worker_outs"]:
                     if file.split(".")[0].split("-")[3] == pid:
                         log_file_name = file
