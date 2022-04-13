@@ -200,11 +200,13 @@ def test_logs_experimental_index(ray_start_with_dashboard):
 
 def test_logs_experimental_write(ray_start_with_dashboard):
     @ray.remote
-    def write_log(s):
-        print(s)
+    class Actor:
+        def write_log(s):
+            print(s)
 
     test_log_text = "test_log_text"
-    ray.get(write_log.remote(test_log_text))
+    actor = Actor.remote()
+    ray.get(actor.write_log(test_log_text))
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)

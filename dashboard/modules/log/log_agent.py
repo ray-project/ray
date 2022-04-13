@@ -27,7 +27,8 @@ class LogAgent(dashboard_utils.DashboardAgentModule):
         return False
 
 
-BLOCK_SIZE = 8192
+# 64 KB
+BLOCK_SIZE = 1 << 16
 
 
 class LogAgentV1Grpc(
@@ -94,12 +95,13 @@ class LogAgentV1Grpc(
                             yield reporter_pb2.StreamLogReply(data=bytes)
 
 
-def tail(f, lines=1000):
+def tail(f, lines):
     """
+    We assume that any "lines" parameter is not significant (<100,000 lines)
+    and will result in a buffer with a small memory profile (<1MB)
+
     Taken from: https://stackoverflow.com/a/136368/8299684
 
-    We assume that any "lines" parameter is not significant and will result
-    in a buffer with a small memory profile (<1MB)
     """
 
     total_lines_wanted = lines
