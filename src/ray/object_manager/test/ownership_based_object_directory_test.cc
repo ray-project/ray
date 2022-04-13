@@ -41,9 +41,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     for (const auto &object_location_state : object_location_states) {
       const auto &object_id = ObjectID::FromBinary(object_location_state.object_id());
-      const auto &state = object_location_state.state();
 
-      buffered_object_locations_[worker_id][object_id] = state;
+      buffered_object_locations_[worker_id][object_id] = object_location_state;
     }
     batch_sent++;
     callbacks.push_back(callback);
@@ -68,8 +67,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     RAY_CHECK(it != buffered_object_locations_.end())
         << "Worker ID " << worker_id << " wasn't updated.";
     auto object_it = it->second.find(object_id);
-    RAY_CHECK(object_it->second == state)
-        << "Object ID " << object_id << "'s state " << object_it->second
+    RAY_CHECK(object_it->second.state() == state)
+        << "Object ID " << object_id << "'s state " << object_it->second.state()
         << "is unexpected. Expected: " << state;
   }
 
@@ -80,7 +79,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     batch_sent = 0;
   }
 
-  absl::flat_hash_map<WorkerID, absl::flat_hash_map<ObjectID, rpc::ObjectLocationState>>
+  absl::flat_hash_map<WorkerID,
+                      absl::flat_hash_map<ObjectID, rpc::ObjectLocationStateUpdate>>
       buffered_object_locations_;
   std::deque<rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply>> callbacks;
   int callback_invoked = 0;
@@ -219,6 +219,31 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
     ASSERT_EQ(NumBatchRequestSent(), 2);
     ASSERT_EQ(NumBatchReplied(), 2);
+    AssertNoLeak();
+  }
+
+  {
+    RAY_LOG(INFO) << "Object spilled basic.";
+    auto object_info_spilled = CreateNewObjectInfo(owner_id);
+    rpc::Address owner_address;
+    owner_address.set_worker_id(object_info_spilled.owner_worker_id.Binary());
+    obod_.ReportObjectSpilled(object_info_spilled.object_id,
+                              current_node_id,
+                              owner_address,
+                              "url1",
+                              current_node_id,
+                              128);
+    AssertObjectIDState(object_info_spilled.owner_worker_id,
+                        object_info_spilled.object_id,
+                        rpc::ObjectLocationState::SPILLED);
+    rpc::ObjectLocationStateUpdate state =
+        owner_client->buffered_object_locations_[object_info_spilled.owner_worker_id]
+                                                [object_info_spilled.object_id];
+    ASSERT_EQ(state.spilled_url(), "url1");
+    ASSERT_EQ(state.spilled_node_id(), current_node_id.Binary());
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+    ASSERT_EQ(NumBatchRequestSent(), 3);
+    ASSERT_EQ(NumBatchReplied(), 3);
     AssertNoLeak();
   }
 }
