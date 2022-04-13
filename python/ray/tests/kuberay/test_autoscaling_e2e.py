@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import pathlib
@@ -11,6 +12,7 @@ import yaml
 
 from ray.tests.kuberay.utils import (
     get_pod,
+    get_pod_names,
     get_raycluster,
     kubectl_exec,
     wait_for_pods,
@@ -107,12 +109,27 @@ class KubeRayAutoscalingTest(unittest.TestCase):
     def _get_ray_cr_config(
         self, min_replicas=0, max_replicas=300, replicas=0
     ) -> Dict[str, Any]:
-        """Get Ray CR config yaml, with configurable replica fields for the single
-        workerGroup."""
+        """Get Ray CR config yaml.
+
+        Use configurable replica fields for a CPU workerGroup.
+
+        Also add a GPU-annotated group for testing GPU upscaling.
+        """
         config = yaml.safe_load(open(self._get_ray_cr_config_file()).read())
-        config["spec"]["workerGroupSpecs"][0]["replicas"] = replicas
-        config["spec"]["workerGroupSpecs"][0]["minReplicas"] = min_replicas
-        config["spec"]["workerGroupSpecs"][0]["maxReplicas"] = max_replicas
+        cpu_group = config["spec"]["workerGroupSpecs"][0]
+        cpu_group["replicas"] = replicas
+        cpu_group["minReplicas"] = min_replicas
+        cpu_group["maxReplicas"] = max_replicas
+
+        # Add a GPU-annotated group.
+        # (We're not using real GPUs, just adding a GPU annotation for the autoscaler
+        # and Ray scheduler.)
+        gpu_group = copy.deepcopy(cpu_group)
+        gpu_group["rayStartParams"]["num-gpus"] = "1"
+        gpu_group["replicas"] = 0
+        gpu_group["minReplicas"] = 0
+        gpu_group["maxReplicas"] = 1
+        config["spec"]["workerGroupSpecs"][1] = gpu_group
 
         return config
 
@@ -205,6 +222,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             container="ray-head",
             namespace="default",
         )
+        # TODO (Dmitri) Use Ray Client and/or Ray Job submission API to submit
+        # instead of `kubectl exec`.
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=2, namespace="default")
 
@@ -221,6 +240,41 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=3, namespace="default")
 
+        # GPU upscaling.
+        # 1. Check we haven't spuriously already started a GPU node.
+        assert not any(
+            "gpu" in pod_name for pod_name in get_pod_names(namespace="default")
+        )
+        # 2. Trigger GPU upscaling with a resource request.
+        gpu_actor_placement_script = (
+            "import ray;"
+            'ray.init("auto");'
+            "class"
+        )
+        # 3. Confirm new pod number and presence of GPU
+        wait_for_pods(goal_num_pods=4, namespace="default")
+        gpu_workers = [
+            pod_name for pod_name in get_pod_names(namespace="default")
+            if "gpu" in pod_name
+        ]
+        assert len(gpu_workers) == 1
+        # 4. Confirm that the GPU actor is up and running.
+        gpu_worker = gpu_workers.pop()
+        gpu_validation_script = (
+            "import ray;"
+            'ray.init("auto");'
+            'gpu_actor = ray.get("gpu_actor");'
+            "actor_response = ray.get(gpu_actor.where_am_i.remote());"
+            "print(actor_response);"
+        )
+        out = kubectl_exec(
+            command=["python", "-c", gpu_validation_script],
+            pod=gpu_worker,
+            container="ray-head",
+            namespace="default",
+        )
+        assert out == "on-a-gpu-node"
+
         # Scale-down
         logger.info("Removing resource request.")
         scale_down_script = (
@@ -235,6 +289,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             namespace="default",
         )
         logger.info("Scaling down all workers by editing maxReplicas.")
+        # TODO (Dmitri) Expose worker idleTimeout in KubeRay CRD, set it low,
+        # and validate autoscaler-initiated idle timeout, instead of modifying CR.
         # (replicas=2 reflects the current number of workers)
         self._apply_ray_cr(
             min_replicas=0,

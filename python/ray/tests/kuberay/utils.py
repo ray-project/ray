@@ -50,6 +50,14 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
 
 
 def _get_num_pods(namespace: str) -> int:
+    return len(
+        get_pod_names(namespace)
+    )
+
+
+def get_pod_names(namespace: str) -> List[str]:
+    """Get the list of pod names in the namespace.
+    """
     get_pod_output = (
         subprocess.check_output(
             ["kubectl", "-n", namespace, "get", "pods", "--no-headers"]
@@ -60,9 +68,10 @@ def _get_num_pods(namespace: str) -> int:
 
     # If there aren't any pods, the output is any empty string.
     if not get_pod_output:
-        return 0
+        return []
     else:
-        return len(get_pod_output.split("\n"))
+        return get_pod_output.split("\n")
+    pass
 
 
 def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> None:
