@@ -250,7 +250,7 @@ class LocalTaskManager : public ILocalTaskManager {
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayTask &task,
       rpc::RequestWorkerLeaseReply *reply,
-      std::function<void(NodeID node_id)> send_reply_callback);
+      std::function<void(const NodeID &node_id)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 

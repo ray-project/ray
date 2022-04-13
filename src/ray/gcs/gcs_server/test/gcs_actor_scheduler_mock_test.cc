@@ -42,10 +42,24 @@ class GcsActorSchedulerTest : public Test {
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
-    actor_scheduler = std::make_unique<RayletBasedActorScheduler>(
+    auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
+        scheduling::NodeID::Nil(),
+        /*is_node_available_fn=*/
+        [](scheduling::NodeID node_id) { return !node_id.IsNil(); });
+    auto cluster_task_manager =
+        std::make_shared<ClusterTaskManager>(NodeID::Nil(),
+                                             cluster_resource_scheduler,
+                                             /*get_node_info=*/
+                                             nullptr,
+                                             /*announce_infeasible_task=*/
+                                             nullptr,
+                                             /*local_task_manager=*/
+                                             nullptr);
+    actor_scheduler = std::make_unique<GcsActorScheduler>(
         io_context,
         *actor_table,
         *gcs_node_manager,
+        cluster_task_manager,
         [this](auto a, auto b, auto c) { schedule_failure_handler(a); },
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
         client_pool,
@@ -55,6 +69,24 @@ class GcsActorSchedulerTest : public Test {
     node_id = NodeID::FromRandom();
     node_info->set_node_id(node_id.Binary());
     worker_id = WorkerID::FromRandom();
+    gcs_node_manager->AddNodeAddedListener([cluster_resource_scheduler](
+                                               std::shared_ptr<rpc::GcsNodeInfo> node) {
+      scheduling::NodeID node_id(node->node_id());
+      auto &cluster_resource_manager =
+          cluster_resource_scheduler->GetClusterResourceManager();
+      // Give the node's total resources a place holder. Otherwise, it would not be added
+      // to the `cluster_resource_manager_`.
+      if (node->resources_total().empty()) {
+        const std::string cpu_resource = "CPU";
+        absl::flat_hash_map<std::string, double> resource_map;
+        resource_map[cpu_resource] = 0;
+        node->mutable_resources_total()->insert(resource_map.begin(), resource_map.end());
+      }
+      for (const auto &entry : node->resources_total()) {
+        cluster_resource_manager.UpdateResourceCapacity(
+            node_id, scheduling::ResourceID(entry.first), entry.second);
+      }
+    });
     gcs_node_manager->AddNode(node_info);
   }
   std::shared_ptr<MockRayletClientInterface> raylet_client;
@@ -88,7 +120,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
       .WillOnce(testing::SaveArg<2>(&cb));
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
-  actor_scheduler->Schedule(actor);
+  actor_scheduler->ScheduleByRaylet(actor);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
   actor_scheduler->CancelOnNode(node_id);
   ray::rpc::RequestWorkerLeaseReply reply;
@@ -120,7 +152,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
   // Leasing successfully
   EXPECT_CALL(*store_client, AsyncPut(_, _, _, _))
       .WillOnce(DoAll(SaveArg<3>(&async_put_with_index_cb), Return(Status::OK())));
-  actor_scheduler->Schedule(actor);
+  actor_scheduler->ScheduleByRaylet(actor);
   rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
   reply.mutable_worker_address()->set_worker_id(worker_id.Binary());

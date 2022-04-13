@@ -129,18 +129,16 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const rpc::GetAllAvailableResourcesRequest &request,
     rpc::GetAllAvailableResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
-    const auto &node_id = node_resources_entry.first;
-    const auto &node_resources = node_resources_entry.second.GetLocalView();
-    rpc::AvailableResources resource;
-    resource.set_node_id(node_id.Binary());
-
-    for (const auto &resource_id : node_resources.available.ResourceIds()) {
-      const auto &resource_value = node_resources.available.Get(resource_id);
-      const auto &resource_name = resource_id.Binary();
-      resource.mutable_resources_available()->insert(
-          {resource_name, resource_value.Double()});
+  for (const auto &iter : node_resource_usages_) {
+    // The GCS itself does not run any tasks so it has nothing to report.
+    if (iter.first.IsNil()) {
+      continue;
     }
+    rpc::AvailableResources resource;
+    resource.set_node_id(iter.first.Binary());
+    resource.mutable_resources_available()->insert(
+        iter.second.resources_available().begin(),
+        iter.second.resources_available().end());
     reply->add_resources_list()->CopyFrom(resource);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());

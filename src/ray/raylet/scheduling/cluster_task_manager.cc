@@ -52,14 +52,14 @@ void ClusterTaskManager::QueueAndScheduleTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
-  auto work = std::make_shared<internal::Work>(task,
-                                               grant_or_reject,
-                                               is_selected_based_on_locality,
-                                               reply,
-                                               [send_reply_callback](NodeID node_id) {
-                                                 send_reply_callback(
-                                                     Status::OK(), nullptr, nullptr);
-                                               });
+  auto work = std::make_shared<internal::Work>(
+      task,
+      grant_or_reject,
+      is_selected_based_on_locality,
+      reply,
+      [send_reply_callback](const NodeID &node_id) {
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
@@ -74,9 +74,15 @@ void ClusterTaskManager::QueueAndScheduleTask(
 void ClusterTaskManager::QueueAndScheduleTask(
     TaskSpecification task_spec,
     NodeID forward_to,
-    std::function<void(NodeID node_id)> callback) {
-  auto work = std::make_shared<internal::Work>(
-      RayTask(task_spec), false, false, nullptr, callback, forward_to);
+    bool use_required_resources,
+    std::function<void(const NodeID &node_id)> callback) {
+  auto work = std::make_shared<internal::Work>(RayTask(task_spec),
+                                               false,
+                                               false,
+                                               nullptr,
+                                               callback,
+                                               forward_to,
+                                               use_required_resources);
   const auto &scheduling_class = task_spec.GetSchedulingClass();
   if (infeasible_tasks_.count(scheduling_class) > 0) {
     infeasible_tasks_[scheduling_class].push_back(work);
@@ -108,8 +114,9 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
           work->PrioritizeLocalNode(),
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false,
+          &is_infeasible,
           /*forward_to*/ scheduling::NodeID(work->forward_to.Binary()),
-          &is_infeasible);
+          /*use_required_resources*/ work->use_required_resources);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -167,8 +174,9 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
         work->PrioritizeLocalNode(),
         /*exclude_local_node*/ false,
         /*requires_object_store_memory*/ false,
+        &is_infeasible,
         /*forward_to*/ scheduling::NodeID(work->forward_to.Binary()),
-        &is_infeasible);
+        /*use_required_resources*/ work->use_required_resources);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
@@ -190,7 +198,7 @@ namespace {
 void ReplyCancelled(std::shared_ptr<internal::Work> &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
-  if (work->reply) {
+  if (work->reply) {  // We are scheduling the task at Raylet.
     auto reply = work->reply;
     auto callback = work->callback;
     reply->set_canceled(true);

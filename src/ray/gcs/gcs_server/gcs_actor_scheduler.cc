@@ -57,7 +57,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
 }
 
 void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
-  auto callback = [this, actor](NodeID node_id) {
+  auto callback = [this, actor](const NodeID &node_id) {
     auto node = gcs_node_manager_.GetAliveNode(node_id);
     RAY_CHECK(node.has_value());
 
@@ -81,11 +81,12 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   // Queue and schedule the actor locally (gcs).
   cluster_task_manager_->QueueAndScheduleTask(actor->GetCreationTaskSpecification(),
                                               /*forward_to=*/NodeID::Nil(),
+                                              /*use_required_resources=*/false,
                                               callback);
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
-  auto callback = [this, actor](NodeID node_id) {
+  auto callback = [this, actor](const NodeID &node_id) {
     auto node = gcs_node_manager_.GetAliveNode(node_id);
     RAY_CHECK(node.has_value());
 
@@ -110,6 +111,7 @@ void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
                                                               : actor->GetOwnerNodeID();
   cluster_task_manager_->QueueAndScheduleTask(task_spec,
                                               /*forward_to=*/node_id,
+                                              /*use_required_resources=*/true,
                                               callback);
 }
 
@@ -372,12 +374,6 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
       << ", cancel type: "
       << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
 
-  if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED) {
-    // We will attempt to schedule this actor once an eligible node is
-    // registered.
-    Schedule(std::move(actor));
-    return;
-  }
   if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) {
     // Return directly if the actor was canceled actively as we've already done the
     // recreate and destroy operation when we killed the actor.

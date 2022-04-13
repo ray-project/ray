@@ -57,28 +57,13 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
-    std::function<bool(scheduling::NodeID)> is_node_available_fn) {
-  RAY_CHECK(local_node_id.IsNil());
-  local_node_id_ = local_node_id;
+    std::function<bool(scheduling::NodeID)> is_node_available_fn)
+    : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
   // The GCS itself should have no resources for running tasks.
   NodeResources local_node_resources;
-  is_node_available_fn_ = std::move(is_node_available_fn);
-  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
-  local_resource_manager_ = std::make_unique<LocalResourceManager>(
-      local_node_id_,
-      local_node_resources,
-      /*get_used_object_store_memory*/ nullptr,
-      /*get_pull_manager_at_capacity*/ nullptr,
-      [&](const NodeResources &local_resource_update) {
-        cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
-      });
-  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
-  scheduling_policy_ =
-      std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
-          local_node_id_,
-          *cluster_resource_manager_,
-          /*is_node_available_fn*/
-          is_node_available_fn_);
+  Init(local_node_resources,
+       /*get_used_object_store_memory=*/nullptr,
+       /*get_pull_manager_at_capacity=*/nullptr);
 }
 
 void ClusterResourceScheduler::Init(
@@ -91,12 +76,10 @@ void ClusterResourceScheduler::Init(
       local_node_resources,
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
-      [&](const NodeResources &local_resource_update) {
+      [this](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
-  if (!local_node_id_.IsNil()) {
-    cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
-  }
+  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
   scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
@@ -111,7 +94,7 @@ void ClusterResourceScheduler::Init(
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
-  if (node_id == local_node_id_) {
+  if (!local_node_id_.IsNil() && node_id == local_node_id_) {
     return true;
   }
   if (node_id.IsNil()) {
@@ -237,7 +220,13 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool prioritize_local_node,
     bool exclude_local_node,
     bool requires_object_store_memory,
-    bool *is_infeasible) {
+    bool *is_infeasible,
+    scheduling::NodeID forward_to,
+    bool use_required_resources) {
+  if (!forward_to.IsNil() && cluster_resource_manager_->ContainsNode(forward_to)) {
+    return forward_to;
+  }
+
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
   if (prioritize_local_node && !exclude_local_node &&
@@ -249,30 +238,15 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
-  return GetBestSchedulableNode(
-      task_spec.GetRequiredPlacementResources().GetResourceMap(),
-      task_spec.GetMessage().scheduling_strategy(),
-      requires_object_store_memory,
-      task_spec.IsActorCreationTask(),
-      exclude_local_node,
-      &_unused,
-      is_infeasible);
-}
-
-scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
-    const TaskSpecification &task_spec,
-    bool prioritize_local_node,
-    bool exclude_local_node,
-    bool requires_object_store_memory,
-    scheduling::NodeID forward_to,
-    bool *is_infeasible) {
-  if (!forward_to.IsNil() && cluster_resource_manager_->ContainsNode(forward_to)) {
-    return forward_to;
-  }
-  return GetBestSchedulableNode(task_spec,
-                                prioritize_local_node,
-                                exclude_local_node,
+  auto resource_map = use_required_resources
+                          ? task_spec.GetRequiredResources().GetResourceMap()
+                          : task_spec.GetRequiredPlacementResources().GetResourceMap();
+  return GetBestSchedulableNode(resource_map,
+                                task_spec.GetMessage().scheduling_strategy(),
                                 requires_object_store_memory,
+                                task_spec.IsActorCreationTask(),
+                                exclude_local_node,
+                                &_unused,
                                 is_infeasible);
 }
 

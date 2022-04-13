@@ -820,7 +820,7 @@ void LocalTaskManager::Dispatch(
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayTask &task,
     rpc::RequestWorkerLeaseReply *reply,
-    std::function<void(NodeID node_id)> send_reply_callback) {
+    std::function<void(const NodeID &node_id)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
   worker->SetBundleId(task_spec.PlacementGroupBundleId());

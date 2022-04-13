@@ -72,9 +72,16 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                             rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Queue task and schedule. This is called by `GcsActorScheduler` for actor scheduling.
+  /// \param task_spec: The (actor creatioin) task's specification.
+  /// \param forward_to: The node to be forwarded to for scheduling.
+  /// \param use_required_resources: Whether using required_resources (instead of
+  /// required_placement_resources) for scheduling. \param callback: The function used
+  /// when finding an available node.
   void QueueAndScheduleTask(TaskSpecification task_spec,
                             NodeID forward_to,
-                            std::function<void(NodeID node_id)> callback);
+                            bool use_required_resources,
+                            std::function<void(const NodeID &node_id)> callback);
 
   /// Attempt to cancel an already queued task.
   ///
@@ -171,7 +178,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       infeasible_tasks_;
 
-  std::unique_ptr<SchedulerResourceReporter> scheduler_resource_reporter_;
+  std::shared_ptr<SchedulerResourceReporter> scheduler_resource_reporter_;
   mutable SchedulerStats internal_stats_;
 
   /// Returns the current time in milliseconds.
