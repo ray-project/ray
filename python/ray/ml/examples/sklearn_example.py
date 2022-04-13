@@ -11,9 +11,10 @@ from ray.ml.train.integrations.sklearn import SklearnTrainer
 from ray.data.dataset import Dataset
 from ray.ml.result import Result
 from ray.ml.preprocessors import StandardScaler, OrdinalEncoder, Chain
+
 from sklearn.datasets import load_breast_cancer
-from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 
 try:
     from cuml.ensemble import RandomForestClassifier as cuMLRandomForestClassifier
