@@ -2,6 +2,7 @@ import pytest
 
 import ray
 from ray.ml import Checkpoint
+from ray.ml.config import ScalingConfigDataClass
 from ray.ml.trainer import Trainer
 from ray.ml.preprocessor import Preprocessor
 
@@ -51,6 +52,30 @@ def test_scaling_config():
 
     # Succeed
     DummyTrainer(scaling_config=None)
+
+
+def test_scaling_config_validate_config():
+    scaling_config = {"num_workers": 2}
+    ScalingConfigDataClass.validate_config(
+        scaling_config, ["num_workers"], "test", "test"
+    )
+    # Check for prohibited keys
+    with pytest.raises(ValueError):
+        ScalingConfigDataClass.validate_config(
+            scaling_config, ["trainer_resources"], "test", "test"
+        )
+    with pytest.raises(ValueError):
+        ScalingConfigDataClass.validate_config(
+            ScalingConfigDataClass(**scaling_config),
+            ["trainer_resources"],
+            "test",
+            "test",
+        )
+    # Check for bad allowed keys
+    with pytest.raises(KeyError):
+        ScalingConfigDataClass.validate_config(
+            scaling_config, ["invalid"], "test", "test"
+        )
 
 
 def test_datasets():
