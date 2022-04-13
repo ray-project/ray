@@ -104,7 +104,7 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            # The number of contiguous environment steps to replay at once. This may
+            # The number of continuous environment steps to replay at once. This may
             # be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
         },
@@ -265,9 +265,11 @@ class DQNTrainer(SimpleQTrainer):
                 _fake_gpus=config["_fake_gpus"],
             )
 
-        if type(local_replay_buffer) is LegacyMultiAgentReplayBuffer or isinstance(
-            local_replay_buffer, MultiAgentPrioritizedReplayBuffer
-        ):
+        if (
+            type(local_replay_buffer) is LegacyMultiAgentReplayBuffer
+            and config["replay_buffer_config"].get("prioritized_replay_alpha", 0.0)
+            > 0.0
+        ) or isinstance(local_replay_buffer, MultiAgentPrioritizedReplayBuffer):
             update_prio_fn = update_prio
         else:
 
@@ -353,9 +355,13 @@ class DQNTrainer(SimpleQTrainer):
                 train_results = multi_gpu_train_one_step(self, train_batch)
 
             # Update priorities
-            if type(
-                self.local_replay_buffer
-            ) is LegacyMultiAgentReplayBuffer or isinstance(
+            if (
+                type(self.local_replay_buffer) is LegacyMultiAgentReplayBuffer
+                and self.config["replay_buffer_config"].get(
+                    "prioritized_replay_alpha", 0.0
+                )
+                > 0.0
+            ) or isinstance(
                 self.local_replay_buffer, MultiAgentPrioritizedReplayBuffer
             ):
                 prio_dict = {}
