@@ -19,6 +19,7 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/policy/bundle_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/node_affinity_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/random_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/spread_scheduling_policy.h"
 
@@ -36,9 +37,11 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
             local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
         random_policy_(
             local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
-        spread_policy_(local_node_id,
-                       cluster_resource_manager.GetResourceView(),
-                       is_node_available) {}
+        spread_policy_(
+            local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
+        node_affinity_policy_(local_node_id,
+                              cluster_resource_manager.GetResourceView(),
+                              is_node_available) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -47,6 +50,7 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
   HybridSchedulingPolicy hybrid_policy_;
   RandomSchedulingPolicy random_policy_;
   SpreadSchedulingPolicy spread_policy_;
+  NodeAffinitySchedulingPolicy node_affinity_policy_;
 };
 
 /// A composite scheduling policy that routes the request to the underlining
