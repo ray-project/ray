@@ -19,7 +19,7 @@ you will learn
     creating-datasets
     saving-datasets
     transforming-datasets
-    exchanging-datasets
+    accessing-datasets
     pipelining-compute
     dataset-ml-preprocessing
     dataset-tensor-support

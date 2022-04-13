@@ -971,6 +971,35 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterTaskManagerTest, TaskUnschedulableTest) {
+  TaskSpecification task_spec =
+      CreateTask({{ray::kCPU_ResourceLabel, 1}}).GetTaskSpecification();
+  task_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_node_id(NodeID::FromRandom().Binary());
+  task_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_soft(false);
+  rpc::RequestWorkerLeaseReply reply;
+
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_called_ptr = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(RayTask(task_spec), false, false, &reply, callback);
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
