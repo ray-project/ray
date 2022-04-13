@@ -75,7 +75,7 @@ def get_fs_and_path(
         return None, None
 
     parsed = urllib.parse.urlparse(uri)
-    path = parsed.path
+    path = parsed.netloc + parsed.path
 
     cache_key = (parsed.scheme, parsed.netloc)
 
