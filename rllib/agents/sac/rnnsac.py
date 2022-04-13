@@ -44,9 +44,6 @@ class RNNSACTrainer(SACTrainer):
 
     @override(SACTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
-        # Call super's validation method.
-        super().validate_config(config)
-
         if config["replay_sequence_length"] != -1:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
@@ -57,6 +54,9 @@ class RNNSACTrainer(SACTrainer):
         config["replay_sequence_length"] = (
             config["burn_in"] + config["model"]["max_seq_len"]
         )
+
+        # Call super's validation method.
+        super().validate_config(config)
 
         if config["framework"] != "torch":
             raise ValueError(
