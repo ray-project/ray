@@ -136,23 +136,23 @@ class ScalingConfigDataClass:
 
         allowed_keys = set(allowed_keys)
 
-        for key in allowed_keys:
-            if key not in config.__dict__:
-                raise KeyError(
-                    f"Allowed key {key} is not valid. "
-                    f"Valid keys: {list(config.__dict__.keys())}"
-                )
+        bad_allowed_keys = [key for key in allowed_keys if key not in config.__dict__]
+        if bad_allowed_keys:
+            raise KeyError(
+                f"Allowed key(s) {bad_allowed_keys} are not valid. "
+                f"Valid keys: {list(config.__dict__.keys())}"
+            )
 
         prohibited_keys = set(default_config.__dict__) - allowed_keys
 
-        bad_keys = {
+        bad_keys = [
             key
             for key in prohibited_keys
             if config.__dict__[key] != default_config.__dict__[key]
-        }
+        ]
         if bad_keys:
             raise ValueError(
-                f"Key(s) {list(bad_keys)} are not allowed in the current context. "
+                f"Key(s) {bad_keys} are not allowed in the current context. "
                 "Remove them from the ScalingConfig."
             )
 
