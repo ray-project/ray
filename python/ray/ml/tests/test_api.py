@@ -57,24 +57,25 @@ def test_scaling_config():
 def test_scaling_config_validate_config():
     scaling_config = {"num_workers": 2}
     ScalingConfigDataClass.validate_config(
-        scaling_config, ["num_workers"], "test", "test"
+        scaling_config,
+        ["num_workers"],
     )
     # Check for prohibited keys
     with pytest.raises(ValueError):
         ScalingConfigDataClass.validate_config(
-            scaling_config, ["trainer_resources"], "test", "test"
+            scaling_config,
+            ["trainer_resources"],
         )
     with pytest.raises(ValueError):
         ScalingConfigDataClass.validate_config(
             ScalingConfigDataClass(**scaling_config),
             ["trainer_resources"],
-            "test",
-            "test",
         )
     # Check for bad allowed keys
     with pytest.raises(KeyError):
         ScalingConfigDataClass.validate_config(
-            scaling_config, ["invalid"], "test", "test"
+            scaling_config,
+            ["invalid"],
         )
 
 
