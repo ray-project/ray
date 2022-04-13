@@ -2246,6 +2246,8 @@ def remote(*args, **kwargs):
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
+        metadata (Dict[str, Any]): Extended options for Ray libraries. For example,
+            metadata={"workflows.io/options": <workflow options>} for Ray workflows.
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
