@@ -91,7 +91,7 @@ def test_deploy_with_overriden_namespace(shutdown_ray, detached):
 
 
 @pytest.mark.parametrize("detached", [True, False])
-def test_update_with_overriden_namespace(shutdown_ray, detached):
+def test_update_num_replicas_with_overriden_namespace(shutdown_ray, detached):
     """Test updating num_replicas with overriden namespace."""
 
     ray_namespace = "ray_namespace"
