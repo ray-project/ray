@@ -50,7 +50,7 @@ class SklearnTrainer(Trainer):
 
     By default, the ``n_jobs`` (or ``thread_count``) estimator parameters will be set
     to match the number of CPUs assigned to the Ray Actor. This behavior can be
-    disabled by setting ``set_estimator_parallelism=False``.
+    disabled by setting ``set_estimator_cpus=False``.
 
     If you wish to use GPU-enabled estimators (eg. cuML), make sure to
     set ``"GPU": 1`` in ``scaling_config.trainer_resources``.
@@ -138,7 +138,7 @@ class SklearnTrainer(Trainer):
             If False, will not parallelize cross-validation. Cannot be
             set to True if there are any GPUs assigned to the trainer.
             Ignored if ``cv`` is None.
-        set_estimator_parallelism: If set to True, will automatically set
+        set_estimator_cpus: If set to True, will automatically set
             the values of all ``n_jobs`` and ``thread_count`` parameters
             in the estimator (including in nested objects) to match
             the number of available CPUs.
@@ -163,7 +163,7 @@ class SklearnTrainer(Trainer):
         cv: Optional[CVType] = None,
         return_train_score_cv: bool = False,
         parallelize_cv: Optional[bool] = None,
-        set_estimator_parallelism: bool = True,
+        set_estimator_cpus: bool = True,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional[Preprocessor] = None,
@@ -182,7 +182,7 @@ class SklearnTrainer(Trainer):
         self.scoring = scoring
         self.cv = cv
         self.parallelize_cv = parallelize_cv
-        self.set_estimator_parallelism = set_estimator_parallelism
+        self.set_estimator_cpus = set_estimator_cpus
         self.return_train_score_cv = return_train_score_cv
         super().__init__(
             scaling_config=scaling_config,
@@ -356,7 +356,7 @@ class SklearnTrainer(Trainer):
         os.environ["BLIS_NUM_THREADS"] = str(num_cpus)
 
         parallelize_cv = self._get_cv_parallelism(has_gpus)
-        if self.set_estimator_parallelism:
+        if self.set_estimator_cpus:
             num_estimator_cpus = 1 if parallelize_cv else num_cpus
             set_cpu_params(self.estimator, num_estimator_cpus)
 
