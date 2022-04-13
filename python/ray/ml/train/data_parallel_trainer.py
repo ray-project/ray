@@ -19,6 +19,7 @@ from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
+
 # TODO(team-ml): Refactor checkpoint management along with Tune.
 class _DataParallelCheckpointManager(TuneCheckpointManager):
     def on_init(self, preprocessor: Preprocessor):

@@ -1,29 +1,31 @@
-import gc
 import inspect
 import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, Iterator, List, Optional, Type
+from typing import Any, Callable, Dict, Optional, Type
 
 import torch
 import transformers.trainer
 import ray.cloudpickle as cpickle
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset as TorchDataset
-from torch.utils.data import IterableDataset
-from transformers.trainer_callback import TrainerCallback
+from torch.utils.data import DataLoader, Dataset as TorchDataset
 from transformers.training_args import TrainingArguments
 
-from ray import train, tune
+from ray import train
+from ray import tune
 from ray.util import PublicAPI, get_node_ip_address
-from ray.data.dataset import Dataset
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig, ScalingConfig
 from ray.ml.constants import EVALUATION_DATASET_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.trainer import GenDataset
+from ray.ml.utils.huggingface_utils import (
+    CHECKPOINT_PATH_ON_NODE_KEY,
+    NODE_IP_KEY,
+    process_dataset_for_hf,
+    TrainReportCallback,
+)
 from ray.train.checkpoint import TuneCheckpointManager
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.session import get_session
@@ -40,9 +42,6 @@ from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 # is special for HuggingFaceTrainer, but can and should be
 # made generic.
 # TODO(ml-team): Make dir syncing checkpoint logic generic.
-
-NODE_IP_KEY = "node_ip"
-CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
 
 
 # TODO(team-ml): Refactor checkpoint management along with Tune.
@@ -377,12 +376,12 @@ class HuggingFaceTrainer(TorchTrainer):
             # desired size inside transformers.Trainer. Possible optimization
             # in the future
             batch_size = 1
-            train_torch_dataset = _process_dataset_for_hf(
+            train_torch_dataset = process_dataset_for_hf(
                 train_dataset, feature_columns, batch_size=batch_size
             )
 
             if eval_dataset:
-                eval_torch_dataset = _process_dataset_for_hf(
+                eval_torch_dataset = process_dataset_for_hf(
                     eval_dataset, feature_columns, batch_size=batch_size
                 )
             else:
@@ -476,7 +475,7 @@ class HuggingFaceTrainer(TorchTrainer):
             for callback in integration_callbacks:
                 trainer.pop_callback(callback)
 
-            trainer.add_callback(_TrainReportCallback)
+            trainer.add_callback(TrainReportCallback)
             if trainer.args.device.type == "cuda":
                 torch.cuda.set_device(trainer.args.device)
 
@@ -508,84 +507,3 @@ class HuggingFaceTrainer(TorchTrainer):
                 shutil.rmtree(checkpoint_path, ignore_errors=True)
 
         return train_loop_per_worker
-
-
-class _HFIterableDatasetWithLen(IterableDataset):
-    """Special Torch IterableDataset with preset length."""
-
-    def __init__(self, generator: Generator, length: int):
-        self.generator = generator
-        self._len = length
-
-    def __iter__(self) -> Iterator[Dict[str, torch.Tensor]]:
-        it = self.generator
-        for x in it:
-            # HF-specific format
-            yield {**x[0], "labels": x[1]}
-
-    def __len__(self):
-        return self._len
-
-
-class _TrainReportCallback(TrainerCallback):
-    """HF TrainerCallback for Ray Train metric reporting & checkpointing."""
-
-    def __init__(self) -> None:
-        # HF first logs metrics, and then checkpoints. With Ray AIR, we need the
-        # opposite. Therefore, if we detect that a checkpoint will be created,
-        # we delay the train.report call after the checkpoint is reported
-        # to Ray Train.
-        self.delayed_report = None
-        # Avoid double reporting at the end.
-        # TODO(yard1): Train statistics are only reported at the end. Combine
-        # the second to last report and the last report somehow. We want
-        # steps/epochs to match the training iteration.
-        self.last_step = None
-        super().__init__()
-
-    def on_log(self, args, state, control, model=None, logs=None, **kwargs):
-        if state.global_step == self.last_step:
-            return
-        self.last_step = state.global_step
-        report = {**logs, "step": state.global_step, "epoch": state.epoch}
-        if control.should_save:
-            self.delayed_report = report
-        else:
-            train.report(**report)
-
-    def on_save(self, args, state, control, **kwargs):
-        checkpoint_path = Path(
-            transformers.trainer.get_last_checkpoint(args.output_dir)
-        ).absolute()
-        if checkpoint_path:
-            train.save_checkpoint(
-                **{
-                    NODE_IP_KEY: get_node_ip_address(),
-                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                }
-            )
-        if self.delayed_report:
-            train.report(**self.delayed_report)
-            self.delayed_report = None
-        gc.collect()
-
-
-def _process_dataset_for_hf(
-    dataset: Dataset, feature_columns: Dict[str, List[str]], batch_size: int = 1
-) -> IterableDataset:
-    """Converts a Ray Dataset into a HF-compatible Torch Dataset."""
-    torch_dataset = dataset.to_torch(
-        batch_size=batch_size,
-        feature_columns=feature_columns,
-        label_column="labels",
-        unsqueeze_label_tensor=False,
-        unsqueeze_feature_tensors=False,
-    )
-    try:
-        count = dataset.count()
-    except ValueError:
-        # pipeline case
-        count = None
-    if count:
-        torch_dataset = _HFIterableDatasetWithLen(torch_dataset, count)
-    return torch_dataset
