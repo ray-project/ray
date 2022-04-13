@@ -693,11 +693,13 @@ def pytest_runtest_makereport(item, call):
         if dir is not None:
             import shutil
             import time
+            import platform
             from tempfile import gettempdir
 
             if not os.path.exists(archive_dir):
                 os.makedirs(archive_dir)
             output_file = f"{dir}/{rep.nodeid.split('/')[-1]}-{time.time()}"
-            log_dir = f"{gettempdir()}/ray/session_latest/logs"
+            tmp_dir = "/tmp" if platform.system() == "Darwin" else gettempdir()
+            log_dir = f"{tmp_dir}/ray/session_latest/logs"
             if os.path.exists(log_dir):
                 shutil.make_archive(output_file, "zip", log_dir)
