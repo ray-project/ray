@@ -3126,6 +3126,10 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     task_manager_->AddTaskStatusInfo(stats);
   }
 
+  if (request.include_task_info()) {
+    task_manager_->FillTaskInfo(reply);
+  }
+
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

@@ -8,6 +8,8 @@ from ray.experimental.state.api import (
     list_nodes,
     list_jobs,
     list_workers,
+    list_tasks,
+    list_objects,
 )
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
@@ -124,6 +126,33 @@ def test_list_workers(shutdown_only):
 
     wait_for_condition(verify)
     print(list_workers())
+
+
+def test_list_tasks(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    out = [f.remote() for _ in range(3)]  # noqa
+    print(list_tasks())
+
+
+def test_list_objects(shutdown_only):
+    ray.init()
+    import numpy as np
+
+    plasma_obj = ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))  # noqa
+
+    @ray.remote
+    def f(obj):
+        print(obj)
+
+    ray.get(f.remote(plasma_obj))
+    print(list_objects())
 
 
 if __name__ == "__main__":

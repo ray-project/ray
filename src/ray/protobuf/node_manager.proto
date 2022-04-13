@@ -298,6 +298,18 @@ message GetGcsServerAddressReply {
   int32 port = 2;
 }
 
+message GetTasksInfoRequest {}
+
+message GetTasksInfoReply {
+  repeated TaskInfoEntry task_info_entries = 1;
+}
+
+message GetObjectsInfoRequest {}
+
+message GetObjectsInfoReply {
+  repeated CoreWorkerStats core_workers_stats = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage
@@ -355,4 +367,6 @@ service NodeManagerService {
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
   // Get gcs server address.
   rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
+  rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
+  rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
 }

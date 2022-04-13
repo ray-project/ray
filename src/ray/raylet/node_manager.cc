@@ -729,6 +729,85 @@ void NodeManager::HandleReleaseUnusedBundles(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
+                                     rpc::GetTasksInfoReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  QueryAllWorkerStates(
+      /*on_replied*/
+      [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
+        if (status.ok()) {
+          for (const auto &task_info : r.task_info_entries()) {
+            reply->add_task_info_entries()->CopyFrom(task_info);
+          }
+        }
+      },
+      send_reply_callback,
+      /*include_memory_info*/ false,
+      /*include_task_info*/ true);
+}
+
+void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
+                                       rpc::GetObjectsInfoReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  QueryAllWorkerStates(
+      /*on_replied*/
+      [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
+        if (status.ok()) {
+          reply->add_core_workers_stats()->MergeFrom(r.core_worker_stats());
+        }
+      },
+      send_reply_callback,
+      /*include_memory_info*/ true,
+      /*include_task_info*/ false);
+}
+
+void NodeManager::QueryAllWorkerStates(
+    const std::function<void(const ray::Status &, const rpc::GetCoreWorkerStatsReply &)>
+        &on_replied,
+    rpc::SendReplyCallback &send_reply_callback,
+    bool include_memory_info,
+    bool include_task_info) {
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
+  for (auto driver :
+       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
+    all_workers.push_back(driver);
+  }
+
+  if (all_workers.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  RAY_LOG(ERROR) << "[Sang] Querying " << all_workers.size() << " workers";
+
+  auto rpc_replied = std::make_shared<size_t>(0);
+  auto num_workers = all_workers.size();
+  for (const auto &worker : all_workers) {
+    if (worker->IsDead()) {
+      continue;
+    }
+    rpc::GetCoreWorkerStatsRequest request;
+    request.set_intended_worker_id(worker->WorkerId().Binary());
+    request.set_include_memory_info(include_memory_info);
+    request.set_include_task_info(include_task_info);
+    // TODO(sang): Add timeout to the RPC call.
+    worker->rpc_client()->GetCoreWorkerStats(
+        request,
+        [num_workers,
+         rpc_replied,
+         send_reply_callback,
+         on_replied = std::move(on_replied)](const ray::Status &status,
+                                             const rpc::GetCoreWorkerStatsReply &r) {
+          *rpc_replied += 1;
+          RAY_LOG(ERROR) << "Replied, num_replied=" << rpc_replied;
+          on_replied(status, r);
+          if (*rpc_replied == num_workers) {
+            send_reply_callback(Status::OK(), nullptr, nullptr);
+          }
+        });
+  }
+}
+
 // This warns users that there could be the resource deadlock. It works this way;
 // - If there's no available workers for scheduling
 // - But if there are still pending tasks waiting for resource acquisition
