@@ -2,6 +2,7 @@ from collections import defaultdict, OrderedDict
 from enum import Enum
 import itertools
 import json
+import logging
 import math
 import os
 import pickle
@@ -14,6 +15,8 @@ import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
+from ray.util.placement_group import PlacementGroup
+
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -28,6 +31,7 @@ from ray.serve.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
@@ -36,11 +40,11 @@ from ray.serve.utils import (
     JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,
-    logger,
     msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
-from ray.util.placement_group import PlacementGroup
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ReplicaState(Enum):
@@ -224,7 +228,6 @@ class ActorReplicaWrapper:
             "Creating placement group '{}' for deployment '{}'".format(
                 placement_group_name, self.deployment_name
             )
-            + f" component=serve deployment={self.deployment_name}"
         )
 
         self._placement_group = ray.util.placement_group(
@@ -276,8 +279,7 @@ class ActorReplicaWrapper:
 
         logger.debug(
             f"Starting replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag}"
+            f"{self.deployment_name}."
         )
 
         actor_def = deployment_info.actor_def
@@ -342,13 +344,6 @@ class ActorReplicaWrapper:
         Update user config of existing actor behind current
         DeploymentReplica instance.
         """
-        logger.debug(
-            f"Updating replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag} "
-            f"with user_config {user_config}"
-        )
-
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
 
     def recover(self):
@@ -358,10 +353,8 @@ class ActorReplicaWrapper:
         """
         logger.debug(
             f"Recovering replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag}"
+            f"{self.deployment_name}."
         )
-
         self._actor_handle = self.actor_handle
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.get_placement_group(self._placement_group_name)
@@ -485,7 +478,6 @@ class ActorReplicaWrapper:
                 response = ReplicaHealthCheckResponse.SUCCEEDED
             except RayActorError:
                 # Health check failed due to actor crashing.
-                # logger.info(f"Actor for replica {self._replica_tag} crashed.")
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
                 # Health check failed due to application-level exception.
@@ -733,8 +725,6 @@ class DeploymentReplica(VersionedReplica):
             logger.debug(
                 f"Replica {self.replica_tag} did not shut down after grace "
                 "period, force-killing it. "
-                f"component=serve deployment={self.deployment_name} "
-                f"replica={self.replica_tag}"
             )
 
             self._actor.force_stop()
@@ -1173,16 +1163,14 @@ class DeploymentState:
         if code_version_changes > 0:
             logger.info(
                 f"Stopping {code_version_changes} replicas of "
-                f"deployment '{self._name}' with outdated versions. "
-                f"component=serve deployment={self._name}"
+                f"deployment '{self._name}' with outdated versions."
             )
 
         if user_config_changes > 0:
             logger.info(
                 f"Updating {user_config_changes} replicas of "
                 f"deployment '{self._name}' with outdated "
-                f"user_configs. component=serve "
-                f"deployment={self._name}"
+                f"user_configs."
             )
 
         return replicas_stopped
@@ -1215,9 +1203,7 @@ class DeploymentState:
             to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
                 logger.info(
-                    f"Adding {to_add} replicas to deployment "
-                    f"'{self._name}'. component=serve "
-                    f"deployment={self._name}"
+                    f"Adding {to_add} replicas to deployment " f"'{self._name}'."
                 )
             for _ in range(to_add):
                 replica_name = ReplicaName(self._name, get_random_letters())
@@ -1234,16 +1220,14 @@ class DeploymentState:
                 self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
                 logger.debug(
                     "Adding STARTING to replica_tag: "
-                    f"{replica_name}, deployment_name: {self._name}"
+                    f"{replica_name}, deployment: {self._name}"
                 )
 
         elif delta_replicas < 0:
             replicas_stopped = True
             to_remove = -delta_replicas
             logger.info(
-                f"Removing {to_remove} replicas from deployment "
-                f"'{self._name}'. component=serve "
-                f"deployment={self._name}"
+                f"Removing {to_remove} replicas from deployment '{self._name}'."
             )
             replicas_to_stop = self._replicas.pop(
                 states=[
@@ -1408,9 +1392,7 @@ class DeploymentState:
                 running_replicas_changed = True
                 logger.warning(
                     f"Replica {replica.replica_tag} of deployment "
-                    f"{self._name} failed health check, stopping it. "
-                    f"component=serve deployment={self._name} "
-                    f"replica={replica.replica_tag}"
+                    f"{self._name} failed health check, stopping it."
                 )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
@@ -1465,8 +1447,7 @@ class DeploymentState:
                     f"auto-scale, or waiting for a runtime environment "
                     f"to install. "
                     f"Resources required for each replica: {required}, "
-                    f"resources available: {available}. "
-                    f"component=serve deployment={self._name}"
+                    f"resources available: {available}."
                 )
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
@@ -1477,7 +1458,6 @@ class DeploymentState:
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
                     f"may be caused by a slow __init__ or reconfigure method."
-                    f"component=serve deployment={self._name}"
                 )
 
             self._prev_startup_warning = time.time()

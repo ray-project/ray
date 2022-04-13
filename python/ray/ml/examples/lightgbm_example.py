@@ -4,7 +4,7 @@ from typing import Tuple
 import pandas as pd
 
 import ray
-from ray.ml.checkpoint import Checkpoint
+from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
 from ray.ml.train.integrations.lightgbm import LightGBMTrainer
 from ray.data.dataset import Dataset
@@ -57,33 +57,20 @@ def train_lightgbm(num_workers: int, use_gpu: bool = False) -> Result:
 
 def predict_lightgbm(result: Result):
     _, _, test_dataset = prepare_data()
-    checkpoint_object_ref = result.checkpoint.to_object_ref()
-
-    class LightGBMScorer:
-        def __init__(self):
-            self.predictor = LightGBMPredictor.from_checkpoint(
-                Checkpoint.from_object_ref(checkpoint_object_ref)
-            )
-
-        def __call__(self, batch) -> pd.DataFrame:
-            return self.predictor.predict(batch)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, LightGBMPredictor
+    )
 
     predicted_labels = (
-        test_dataset.map_batches(
-            LightGBMScorer, compute="actors", batch_format="pandas"
-        )
+        batch_predictor.predict(test_dataset)
         .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
         .to_pandas(limit=float("inf"))
     )
     print(f"PREDICTED LABELS\n{predicted_labels}")
 
-    class LightGBMScorerSHAP(LightGBMScorer):
-        def __call__(self, batch) -> pd.DataFrame:
-            return self.predictor.predict(batch, pred_contrib=True)
-
-    shap_values = test_dataset.map_batches(
-        LightGBMScorerSHAP, compute="actors", batch_format="pandas"
-    ).to_pandas(limit=float("inf"))
+    shap_values = batch_predictor.predict(test_dataset, pred_contrib=True).to_pandas(
+        limit=float("inf")
+    )
     print(f"SHAP VALUES\n{shap_values}")
 
 
