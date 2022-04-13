@@ -14,9 +14,8 @@ from ray.util import PublicAPI
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.train.integrations.sklearn.score import score
 from ray.ml.trainer import GenDataset, Trainer
-from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
+from ray.ml.utils.sklearn_utils import has_cpu_params, score, set_cpu_params
 from ray.tune import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.joblib import register_ray
