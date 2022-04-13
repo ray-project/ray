@@ -1,33 +1,33 @@
-from collections import defaultdict
-from typing import Any, Tuple, Type, Union, Callable, Dict, Iterable, Optional
-from time import time
-import os
 import logging
+import os
+from collections import defaultdict
+from time import time
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Type, Union
 
 import numpy as np
 import pandas as pd
 from joblib import parallel_backend
 
-from ray import tune
 import ray.cloudpickle as cpickle
-from ray.ml.trainer import GenDataset
-from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
+from ray import tune
+from ray.util import PublicAPI
+from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.train.integrations.sklearn.score import score
+from ray.ml.trainer import GenDataset, Trainer
+from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
 from ray.tune import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.util import PublicAPI
-from ray.ml.trainer import Trainer
-from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.util.joblib import register_ray
-from ray.ml.train.integrations.sklearn.score import score
-from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
 
 from sklearn.base import BaseEstimator, clone
-from sklearn.model_selection import BaseCrossValidator, cross_validate
 from sklearn.metrics import check_scoring
+from sklearn.model_selection import BaseCrossValidator, cross_validate
 
 # we are using a private API here, but it's consistent across versions
 from sklearn.model_selection._validation import _check_multimetric_scoring
+
 
 logger = logging.getLogger(__name__)
 
