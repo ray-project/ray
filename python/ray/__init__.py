@@ -14,7 +14,7 @@ def _configure_system():
     # Sanity check pickle5 if it has been installed.
     if "pickle5" in sys.modules:
         if sys.version_info >= (3, 8):
-            raise ImportError(
+            logger.warning(
                 "Package pickle5 becomes unnecessary in Python 3.8 and above. "
                 "Its presence may confuse libraries including Ray. "
                 "Please uninstall the package."
@@ -26,10 +26,9 @@ def _configure_system():
             version_info = pkg_resources.require("pickle5")
             version = tuple(int(n) for n in version_info[0].version.split("."))
             if version < (0, 0, 10):
-                raise ImportError(
-                    "You are using an old version of pickle5 "
-                    "that leaks memory, please run "
-                    "'pip install pickle5 -U' to upgrade."
+                logger.warning(
+                    "Although not used by Ray, a version of pickle5 that leaks memory "
+                    "is found in the environment. Please run 'pip install pickle5 -U' to upgrade."
                 )
         except pkg_resources.DistributionNotFound:
             logger.warning(
