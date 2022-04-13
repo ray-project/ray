@@ -37,6 +37,7 @@ using rpc::ResourceTableData;
 using rpc::ResourceUsageBatchData;
 using rpc::ScheduleData;
 using rpc::StoredConfig;
+using rpc::TaskSpec;
 using rpc::WorkerTableData;
 
 /// \class GcsTable
@@ -173,6 +174,17 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
   JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
 };
 
+class GcsActorTaskSpecTable : public GcsTableWithJobId<ActorID, TaskSpec> {
+ public:
+  explicit GcsActorTaskSpecTable(std::shared_ptr<StoreClient> &store_client)
+      : GcsTableWithJobId(store_client) {
+    table_name_ = TablePrefix_Name(TablePrefix::ACTOR_TASK_SPEC);
+  }
+
+ private:
+  JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
+};
+
 class GcsPlacementGroupTable
     : public GcsTable<PlacementGroupID, PlacementGroupTableData> {
  public:
@@ -248,6 +260,7 @@ class GcsTableStorage {
       : store_client_(std::move(store_client)) {
     job_table_ = std::make_unique<GcsJobTable>(store_client_);
     actor_table_ = std::make_unique<GcsActorTable>(store_client_);
+    actor_task_spec_table_ = std::make_unique<GcsActorTaskSpecTable>(store_client_);
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
     node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
@@ -268,6 +281,11 @@ class GcsTableStorage {
   GcsActorTable &ActorTable() {
     RAY_CHECK(actor_table_ != nullptr);
     return *actor_table_;
+  }
+
+  GcsActorTaskSpecTable &ActorTaskSpecTable() {
+    RAY_CHECK(actor_task_spec_table_ != nullptr);
+    return *actor_task_spec_table_;
   }
 
   GcsPlacementGroupTable &PlacementGroupTable() {
@@ -319,6 +337,7 @@ class GcsTableStorage {
   std::shared_ptr<StoreClient> store_client_;
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
+  std::unique_ptr<GcsActorTaskSpecTable> actor_task_spec_table_;
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;

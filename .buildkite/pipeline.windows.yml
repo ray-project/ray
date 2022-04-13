@@ -14,8 +14,8 @@ prelude_commands: &prelude_commands |-
     export RAY_DEFAULT_BUILD="1"
     export LC_ALL="en_US.UTF-8"
     export LANG="en_US.UTF-8"
-    powershell ci/travis/fix-windows-container-networking.ps1
-    cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    powershell ci/pipeline/fix-windows-container-networking.ps1
+    cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
 upload_wheels_if_needed: &upload_wheels_if_needed |-
     if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -31,16 +31,16 @@ steps:
     - *prelude_commands
     # conda init should be moved to the docker image setup
     - conda init
-    - . ./ci/travis/ci.sh init
-    - . ./ci/travis/ci.sh build
-    - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/travis/ci.sh test_core; fi
+    - . ./ci/ci.sh init
+    - . ./ci/ci.sh build
+    - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/ci.sh test_core; fi
     # The next command will be sharded into $parallelism shards.
-    - . ./ci/travis/ci.sh test_python
+    - . ./ci/ci.sh test_python
 
 - label: ":windows: Wheels"
   commands:
     - *prelude_commands
     - export WINDOWS_WHEELS="1"
-    - . ./ci/travis/ci.sh init
-    - . ./ci/travis/ci.sh build
+    - . ./ci/ci.sh init
+    - . ./ci/ci.sh build
     - *upload_wheels_if_needed
