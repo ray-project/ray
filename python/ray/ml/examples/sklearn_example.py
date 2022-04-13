@@ -5,7 +5,7 @@ import math
 import pandas as pd
 
 import ray
-from ray.ml.checkpoint import Checkpoint
+from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.sklearn import SklearnPredictor
 from ray.ml.train.integrations.sklearn import SklearnTrainer
 from ray.data.dataset import Dataset
@@ -38,7 +38,7 @@ def prepare_data() -> Tuple[Dataset, Dataset, Dataset]:
     return train_dataset, valid_dataset, test_dataset
 
 
-def train_sklearn(num_workers: int, use_gpu: bool = False) -> Result:
+def train_sklearn(num_cpus: int, use_gpu: bool = False) -> Result:
     if use_gpu and not cuMLRandomForestClassifier:
         raise RuntimeError("cuML must be installed for GPU enabled sklearn estimators.")
 
@@ -54,7 +54,7 @@ def train_sklearn(num_workers: int, use_gpu: bool = False) -> Result:
         trainer_resources = {"CPU": 1, "GPU": 1}
         estimator = cuMLRandomForestClassifier()
     else:
-        trainer_resources = {"CPU": num_workers}
+        trainer_resources = {"CPU": num_cpus}
         estimator = RandomForestClassifier()
 
     trainer = SklearnTrainer(
@@ -73,24 +73,21 @@ def train_sklearn(num_workers: int, use_gpu: bool = False) -> Result:
     return result
 
 
-def predict_sklearn(result: Result, num_workers: int, use_gpu: bool = False):
+def predict_sklearn(result: Result, num_cpus: int, use_gpu: bool = False):
     _, _, test_dataset = prepare_data()
-    checkpoint_object_ref = result.checkpoint.to_object_ref()
 
-    class SklearnScorer:
-        def __init__(self):
-            self.predictor = SklearnPredictor.from_checkpoint(
-                Checkpoint.from_object_ref(checkpoint_object_ref)
-            )
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, SklearnPredictor
+    )
 
-        def __call__(self, batch) -> pd.DataFrame:
-            return self.predictor.predict(batch)
-
-    scorer_resources = dict(num_gpus=1) if use_gpu else dict(num_cpus=num_workers)
+    num_cpus = 1 if use_gpu else num_cpus
 
     predicted_labels = (
-        test_dataset.map_batches(
-            SklearnScorer, compute="actors", batch_format="pandas", **scorer_resources
+        batch_predictor.predict(
+            test_dataset,
+            num_cpus_per_worker=num_cpus,  # responsible for CPU assignment
+            num_gpus_per_worker=int(use_gpu),
+            num_estimator_cpus=num_cpus,  # allows the estimator to use assigned CPUs
         )
         .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
         .to_pandas(limit=float("inf"))
@@ -104,11 +101,11 @@ if __name__ == "__main__":
         "--address", required=False, type=str, help="the address to use for Ray"
     )
     parser.add_argument(
-        "--num-workers",
+        "--num-cpus",
         "-n",
         type=int,
         default=2,
-        help="Sets number of workers for training.",
+        help="Sets number of CPUs used for training & prediction.",
     )
     parser.add_argument(
         "--use-gpu", action="store_true", default=False, help="Enables GPU training"
@@ -116,5 +113,5 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     ray.init(address=args.address)
-    result = train_sklearn(num_workers=args.num_workers, use_gpu=args.use_gpu)
-    predict_sklearn(result, num_workers=args.num_workers, use_gpu=args.use_gpu)
+    result = train_sklearn(num_cpus=args.num_cpus, use_gpu=args.use_gpu)
+    predict_sklearn(result, num_cpus=args.num_cpus, use_gpu=args.use_gpu)

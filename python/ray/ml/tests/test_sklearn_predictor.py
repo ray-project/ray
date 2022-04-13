@@ -1,15 +1,25 @@
 import os
 import tempfile
+import pytest
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 
+import ray
 import ray.cloudpickle as cpickle
 from ray.ml.predictors.integrations.sklearn import SklearnPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 class DummyPreprocessor(Preprocessor):
@@ -57,6 +67,17 @@ def test_predict():
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])
     predictions = predictor.predict(data_batch)
+
+    assert len(predictions) == 3
+    assert hasattr(predictor.preprocessor, "_batch_transformed")
+
+
+def test_predict_set_cpus(ray_start_4_cpus):
+    preprocessor = DummyPreprocessor()
+    predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)
+
+    data_batch = np.array([[1, 2], [3, 4], [5, 6]])
+    predictions = predictor.predict(data_batch, num_estimator_cpus=2)
 
     assert len(predictions) == 3
     assert hasattr(predictor.preprocessor, "_batch_transformed")
