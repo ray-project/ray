@@ -1,9 +1,7 @@
 from sklearn.base import BaseEstimator
 
-SKLEARN_CPU_PARAM_NAMES = [
-    "n_jobs",
-    "thread_count"  # catboost
-]
+# thread_count is a catboost parameter
+SKLEARN_CPU_PARAM_NAMES = ["n_jobs", "thread_count"]
 
 
 def has_cpu_params(estimator: BaseEstimator) -> bool:
