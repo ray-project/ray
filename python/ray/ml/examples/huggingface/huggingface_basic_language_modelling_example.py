@@ -12,6 +12,8 @@ from transformers import (
     TrainingArguments,
 )
 
+import torch
+
 import ray
 import ray.data
 from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
@@ -86,6 +88,8 @@ def main(
             weight_decay=0.01,
             disable_tqdm=True,
             save_strategy="epoch",
+            # Required to avoid an exception
+            no_cuda=not torch.cuda.is_available(),
         )
         print("Initializing Trainer...")
         trainer = Trainer(

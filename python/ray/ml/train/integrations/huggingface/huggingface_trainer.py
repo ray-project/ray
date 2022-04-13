@@ -2,10 +2,12 @@ import inspect
 import os
 import shutil
 import tempfile
+from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type
 
 import torch
+import transformers
 import transformers.trainer
 import ray.cloudpickle as cpickle
 from torch.utils.data import DataLoader, Dataset as TorchDataset
@@ -31,7 +33,6 @@ from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.session import get_session
 from ray.train.torch import TorchConfig
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
-
 
 # This trainer uses a special checkpoint syncing logic.
 # Because HF checkpoints are very large dirs (at least several GBs),
@@ -249,6 +250,15 @@ class HuggingFaceTrainer(TorchTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
+        # Functionality required for HuggingFaceTrainer only added in this
+        # version
+        if LooseVersion(transformers.__version__) < LooseVersion("4.18.0"):
+            raise RuntimeError(
+                "HuggingFaceTrainer requires transformers>=4.18.0, but you "
+                f"have {transformers.__version__} which is incompatible. "
+                "Update on all nodes with `pip install -U 'transformers>=4.18.0'`."
+            )
 
         self._validate_trainer_init_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"
