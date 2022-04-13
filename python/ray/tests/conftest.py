@@ -690,7 +690,7 @@ def pytest_runtest_makereport(item, call):
     if rep.when == "call":  # and rep.failed:
         archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
 
-        if dir is not None:
+        if archive_dir is not None:
             import shutil
             import time
             import platform
@@ -698,7 +698,7 @@ def pytest_runtest_makereport(item, call):
 
             if not os.path.exists(archive_dir):
                 os.makedirs(archive_dir)
-            output_file = f"{dir}/{rep.nodeid.split('/')[-1]}-{time.time()}"
+            output_file = f"{archive_dir}/{rep.nodeid.split('/')[-1]}-{time.time()}"
             tmp_dir = "/tmp" if platform.system() == "Darwin" else gettempdir()
             log_dir = f"{tmp_dir}/ray/session_latest/logs"
             if os.path.exists(log_dir):
