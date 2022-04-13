@@ -317,9 +317,9 @@ class TorchPolicy(Policy):
             # Calculate RNN sequence lengths.
             seq_lens = (
                 torch.tensor(
-                    [1] * len(input_dict["obs"]),
+                    [1] * len(state_batches[0]),
                     dtype=torch.long,
-                    device=input_dict["obs"].device,
+                    device=state_batches[0].device,
                 )
                 if state_batches
                 else None
