@@ -253,6 +253,7 @@ def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
     assert num_reads == 1, num_reads
 
 
+@pytest.mark.skip(reason="reusing base data not enabled")
 @pytest.mark.parametrize("with_shuffle", [True, False])
 @pytest.mark.parametrize("enable_dynamic_splitting", [True, False])
 def test_optimize_lazy_reuse_base_data(

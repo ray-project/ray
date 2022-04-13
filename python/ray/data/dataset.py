@@ -990,25 +990,27 @@ class Dataset(Generic[T]):
         start_time = time.perf_counter()
         context = DatasetContext.get_current()
         tasks: List[ReadTask] = []
-        block_partitions: List[ObjectRef[BlockPartition]] = []
-        block_partitions_meta: List[ObjectRef[BlockPartitionMetadata]] = []
+        block_partition_refs: List[ObjectRef[BlockPartition]] = []
+        block_partition_meta_refs: List[ObjectRef[BlockPartitionMetadata]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
             bl = ds._plan.execute()
             if isinstance(bl, LazyBlockList):
                 tasks.extend(bl._tasks)
-                block_partitions.extend(bl._block_partitions)
-                block_partitions_meta.extend(bl._block_partitions_meta)
+                block_partition_refs.extend(bl._block_partition_refs)
+                block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             else:
                 tasks.extend([ReadTask(lambda: None, meta) for meta in bl._metadata])
                 if context.block_splitting_enabled:
-                    block_partitions.extend(
+                    block_partition_refs.extend(
                         [ray.put([(b, m)]) for b, m in bl.get_blocks_with_metadata()]
                     )
                 else:
-                    block_partitions.extend(bl.get_blocks())
-                block_partitions_meta.extend([ray.put(meta) for meta in bl._metadata])
+                    block_partition_refs.extend(bl.get_blocks())
+                block_partition_meta_refs.extend(
+                    [ray.put(meta) for meta in bl._metadata]
+                )
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1029,7 +1031,7 @@ class Dataset(Generic[T]):
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             ExecutionPlan(
-                LazyBlockList(tasks, block_partitions, block_partitions_meta),
+                LazyBlockList(tasks, block_partition_refs, block_partition_meta_refs),
                 dataset_stats,
             ),
             max_epoch,

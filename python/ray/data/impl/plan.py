@@ -5,9 +5,8 @@ if TYPE_CHECKING:
     import pyarrow
 
 import ray
-from ray.types import ObjectRef
 from ray.data.context import DatasetContext
-from ray.data.block import Block, BlockPartition
+from ray.data.block import Block
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import get_compute
 from ray.data.impl.stats import DatasetStats
@@ -195,38 +194,18 @@ class ExecutionPlan:
         now we can fuse the latter two MapBatches stages into a single OneToOne stage:
         [GetReadTasks -> MapBatches(DoRead -> Fn)].
         """
-        context = DatasetContext.get_current()
         # Generate the "GetReadTasks" stage blocks.
         remote_args = self._in_blocks._remote_args
         blocks = []
         metadata = []
-        for part, read_task in zip(
-            self._in_blocks._block_partitions, self._in_blocks._tasks
-        ):
-            # Use block partition future if the read task has already been submitted,
-            # otherwise use the read task that the block UDF will execute.
-            blocks.append(ray.put(read_task._read_fn) if part is None else part)
+        for read_task in self._in_blocks._tasks:
+            blocks.append(ray.put(read_task._read_fn))
             metadata.append(read_task.get_metadata())
         block_list = BlockList(blocks, metadata)
 
-        def block_fn(
-            part_or_read_fn: Union[
-                ObjectRef[BlockPartition], Callable[[], Iterator[Block]]
-            ]
-        ) -> Iterator[Block]:
-            if not callable(part_or_read_fn):
-                # Block partition was provided.
-                if context.block_splitting_enabled:
-                    for block_and_meta in part_or_read_fn:
-                        block, _ = block_and_meta
-                        block = ray.get(block)
-                        yield block
-                else:
-                    yield part_or_read_fn
-            else:
-                # Read task was provided.
-                for block in part_or_read_fn():
-                    yield block
+        def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
+            for block in read_fn():
+                yield block
 
         return block_list, OneToOneStage("read", block_fn, "tasks", remote_args)
 
