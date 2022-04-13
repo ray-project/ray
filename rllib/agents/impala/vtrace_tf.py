@@ -360,15 +360,6 @@ def from_importance_weights(
         rhos = tf.math.exp(log_rhos)
         if clip_rho_threshold is not None:
             clipped_rhos = tf.minimum(clip_rho_threshold, rhos, name="clipped_rhos")
-
-            tf1.summary.histogram("clipped_rhos_1000", tf.minimum(1000.0, rhos))
-            tf1.summary.scalar(
-                "num_of_clipped_rhos",
-                tf.reduce_sum(
-                    tf.cast(tf.equal(clipped_rhos, clip_rho_threshold), tf.int32)
-                ),
-            )
-            tf1.summary.scalar("size_of_clipped_rhos", tf.size(clipped_rhos))
         else:
             clipped_rhos = rhos
 

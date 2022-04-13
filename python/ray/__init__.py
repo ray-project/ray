@@ -57,12 +57,15 @@ def _configure_system():
         )
         os.environ["OMP_NUM_THREADS"] = "1"
 
-    # Add the directory containing pickle5 to the Python path so that we find
-    # the pickle5 version packaged with ray and not a pre-existing pickle5.
-    pickle5_path = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "pickle5_files"
-    )
-    sys.path.insert(0, pickle5_path)
+    # When running Python version < 3.8, Ray needs to use pickle5 instead of
+    # Python's built-in pickle. Add the directory containing pickle5 to the
+    # Python path so that we find the pickle5 version packaged with Ray and
+    # not a pre-existing pickle5.
+    if sys.version_info < (3, 8):
+        pickle5_path = os.path.join(
+            os.path.abspath(os.path.dirname(__file__)), "pickle5_files"
+        )
+        sys.path.insert(0, pickle5_path)
 
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
@@ -155,6 +158,9 @@ import ray.internal  # noqa: E402
 # some functions in the worker.
 import ray.actor  # noqa: E402,F401
 from ray.actor import method  # noqa: E402
+
+# TODO(qwang): We should remove this exporting in Ray2.0.
+from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import autoscaler  # noqa:E402
 from ray import data  # noqa: E402,F401
@@ -218,27 +224,5 @@ __all__ += [
 ]
 
 
-# Remove modules from top-level ray
-def _ray_user_setup_function():
-    import os
-
-    user_setup_fn = os.environ.get("RAY_USER_SETUP_FUNCTION")
-    if user_setup_fn is not None:
-        try:
-            module_name, fn_name = user_setup_fn.rsplit(".", 1)
-            m = __import__(module_name, globals(), locals(), [fn_name])
-            getattr(m, fn_name)()
-        except Exception as e:
-            # We still need to allow ray to be imported, even there is
-            # something in the setup function.
-            logger.warning(
-                f"Failed to run user setup function: {user_setup_fn}. "
-                f"Error message {e}"
-            )
-
-
-_ray_user_setup_function()
-
 del os
 del logging
-del _ray_user_setup_function
