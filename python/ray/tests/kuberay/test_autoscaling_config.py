@@ -96,7 +96,7 @@ def _get_ray_cr_memory_and_gpu() -> dict:
     """CR with memory and gpu rayStartParams."""
     cr = _get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["memory"] = "300000000"
-    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num_gpus"] = "1"
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-gpus"] = "1"
     return cr
 
 
