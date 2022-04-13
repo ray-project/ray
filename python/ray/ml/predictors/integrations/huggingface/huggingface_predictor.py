@@ -50,8 +50,9 @@ class HuggingFacePredictor(Predictor):
             model: Either a ``transformers.PreTrainedModel`` class, or a
                 PyTorch model to load the weights to. This should be the
                 same model used for training.
-            **pretrained_model_kwargs: Any kwargs to pass to the ``model.from_pretrained()``
-                call. Only used if ``model`` is a ``PreTrainerModel``.
+            **pretrained_model_kwargs: Any kwargs to pass to the
+                ``model.from_pretrained()`` call. Only used if
+                ``model`` is a ``PreTrainerModel`` class.
         """
         (
             checkpoint_type,
@@ -79,9 +80,7 @@ class HuggingFacePredictor(Predictor):
     def predict(
         self,
         data: DataBatchType,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], List[int], List[List[int]]]
-        ] = None,
+        feature_columns: Optional[List[str]] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
@@ -93,10 +92,7 @@ class HuggingFacePredictor(Predictor):
             data: A batch of input data. Either a pandas DataFrame or numpy
                 array.
             feature_columns: The names or indices of the columns in the
-                data to use as features to predict on. If this arg is a
-                list of lists, then the data batch will be converted into a
-                multiple tensors which are then concatenated before feeding
-                into the model. This is useful for multi-input models. If
+                data to use as features to predict on. If
                 None, then use all columns in ``data``.
             dtype: The torch dtype to use when creating the torch tensor.
                 If set to None, then automatically infer the dtype.
@@ -147,6 +143,12 @@ class HuggingFacePredictor(Predictor):
         if isinstance(data, np.ndarray):
             # If numpy array, then convert to pandas dataframe.
             data = pd.DataFrame(data)
+
+        if not feature_columns:
+            feature_columns = data.columns
+
+        # HF-supported format
+        feature_columns = {column: [column] for column in feature_columns}
 
         # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
         # Reduce conversion cost if input is in Numpy
