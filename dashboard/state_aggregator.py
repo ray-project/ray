@@ -1,11 +1,10 @@
 import logging
 
-from dataclasses import fields
-
 import ray.dashboard.utils as dashboard_utils
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.state.common import (
+    filter_fields,
     ActorState,
     PlacementGroupState,
     NodeState,
@@ -17,6 +16,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_RPC_TIMEOUT = 30
 
 
+# TODO(sang): Add error handling.
 class GcsStateAggregator:
     def __init__(self, gcs_channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
@@ -39,24 +39,24 @@ class GcsStateAggregator:
         )
         result = {}
         for message in reply.actor_table_data:
-            data = self.message_to_dict_by_schema(
-                message=message, schema=ActorState, ids_to_decode=["actor_id"]
-            )
+            data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
+            data = filter_fields(data, ActorState)
             result[data["actor_id"]] = data
         return result
 
     async def get_placement_groups(self) -> dict:
-        request = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+        request = gcs_service_pb2.GetAllPlacementGroupRequest()
+        reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
             request, timeout=DEFAULT_RPC_TIMEOUT
         )
         result = {}
+        logger.error(reply)
         for message in reply.placement_group_table_data:
-            data = self.message_to_dict_by_schema(
+            data = self._message_to_dict(
                 message=message,
-                schema=PlacementGroupState,
-                ids_to_decode=["placement_group_id"],
+                fields_to_decode=["placement_group_id"],
             )
+            data = filter_fields(data, PlacementGroupState)
             result[data["placement_group_id"]] = data
         return result
 
@@ -67,9 +67,8 @@ class GcsStateAggregator:
         )
         result = {}
         for message in reply.node_info_list:
-            data = self.message_to_dict_by_schema(
-                message=message, schema=NodeState, ids_to_decode=["node_id"]
-            )
+            data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
+            data = filter_fields(data, NodeState)
             result[data["node_id"]] = data
         return result
 
@@ -80,51 +79,18 @@ class GcsStateAggregator:
         )
         result = {}
         for message in reply.worker_table_data:
-            data = self.message_to_dict_by_schema(
-                message=message, schema=WorkerState, ids_to_decode=["worker_id"]
+            data = self._message_to_dict(
+                message=message, fields_to_decode=["worker_id"]
             )
+            data["worker_id"] = data["worker_address"]["worker_id"]
+            data = filter_fields(data, WorkerState)
             result[data["worker_id"]] = data
         return result
 
-    def message_to_dict_by_schema(
-        self, *, message, schema, ids_to_decode  # gRPC messages
-    ) -> dict:
-        """Generate the data from gRPC message filtered by the given schema.
-
-        Example:
-            message gRPCmessage {
-                actor_id
-                other_field
-            }
-
-            grpc_message = gRPCmessage(actor_id=[ABCD in bytes], other_field=XYZ)
-
-            @dataclass
-            class Schema:
-                actor_id: str
-
-            message_to_dict_by_schema(grpc_message, schema, ids_to_decode=["actor_id"])
-            -> {
-                actor_id: ABCD
-            }
-
-        Args:
-            message: gRPC message.
-            schema: The dataclass which contains the fields that correspond to
-                gRPC message key. The returned dictionary will only contain keys
-                from this dataclass.
-            ids_to_decode: A list of fields that need to be decoded
-                to hex string from bytes. For example, if the schema contains
-                "actor_id", the caller can pass ["actor_id"] to decode the
-                bytes id to hex string.
-        """
-        data = dashboard_utils.message_to_dict(
+    def _message_to_dict(self, *, message, fields_to_decode) -> dict:
+        return dashboard_utils.message_to_dict(
             message,
-            ids_to_decode,
+            fields_to_decode,
             including_default_value_fields=True,
             preserving_proto_field_name=True,
         )
-        filtered_data = {}
-        for field in fields(schema):
-            filtered_data[field.name] = data[field.name]
-        return filtered_data

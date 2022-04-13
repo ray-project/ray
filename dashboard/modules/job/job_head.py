@@ -233,6 +233,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 job_id: dataclasses.asdict(job_info)
                 for job_id, job_info in data.items()
             },
+            convert_google_style=False,
         )
 
     async def run(self, server):

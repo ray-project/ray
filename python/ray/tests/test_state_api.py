@@ -12,6 +12,14 @@ from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
 
 
+def is_hex(val):
+    try:
+        int_val = int(val, 16)
+    except ValueError:
+        return False
+    return f"0x{val}" == hex(int_val)
+
+
 def test_list_actors(shutdown_only):
     ray.init()
 
@@ -21,11 +29,14 @@ def test_list_actors(shutdown_only):
 
     a = A.remote()  # noqa
 
-    def f():
-        state = list(list_actors().values())[0]["state"]
-        return state == "ALIVE"
+    def verify():
+        actor_data = list(list_actors().values())[0]
+        correct_state = actor_data["state"] == "ALIVE"
+        is_id_hex = is_hex(actor_data["actor_id"])
+        correct_id = a._actor_id.hex() == actor_data["actor_id"]
+        return correct_state and is_id_hex and correct_id
 
-    wait_for_condition(lambda: f())
+    wait_for_condition(verify)
     print(list_actors())
 
 
@@ -33,23 +44,28 @@ def test_list_pgs(shutdown_only):
     ray.init()
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
 
-    def f():
-        state = list(list_placement_groups().values())[0]["state"]
-        return state == "CREATED"
+    def verify():
+        pg_data = list(list_placement_groups().values())[0]
+        correct_state = pg_data["state"] == "CREATED"
+        is_id_hex = is_hex(pg_data["placement_group_id"])
+        correct_id = pg.id.hex() == pg_data["placement_group_id"]
+        return correct_state and is_id_hex and correct_id
 
-    wait_for_condition(lambda: f())
+    wait_for_condition(verify)
     print(list_placement_groups())
 
 
 def test_list_nodes(shutdown_only):
     ray.init()
-    print(list_nodes())
 
-    def f():
-        state = list(list_nodes().values())[0]["state"]
-        return state == "ALIVE"
+    def verify():
+        node_data = list(list_nodes().values())[0]
+        correct_state = node_data["state"] == "ALIVE"
+        is_id_hex = is_hex(node_data["node_id"])
+        correct_id = ray.nodes()[0]["NodeID"] == node_data["node_id"]
+        return correct_state and is_id_hex and correct_id
 
-    wait_for_condition(lambda: f())
+    wait_for_condition(verify)
     print(list_nodes())
 
 
@@ -63,23 +79,30 @@ def test_list_jobs(shutdown_only):
         entrypoint="ls",
     )
 
-    def f():
-        state = list(list_jobs().values())[0]["status"]
-        return state == "SUCCEEDED"
+    def verify():
+        job_data = list(list_jobs().values())[0]
+        job_id_from_api = list(list_jobs().keys())[0]
+        correct_state = job_data["status"] == "SUCCEEDED"
+        correct_id = job_id == job_id_from_api
+        return correct_state and correct_id
 
-    wait_for_condition(f)
+    wait_for_condition(verify)
     print(list_jobs())
 
 
 def test_list_workers(shutdown_only):
     ray.init()
-    print(list_workers())
 
-    def f():
+    def verify():
         # +1 to take into account of drivers.
-        return len(list_workers()) == ray.cluster_resources()["CPU"] + 1
+        worker_data = list(list_workers().values())[0]
+        is_id_hex = is_hex(worker_data["worker_id"])
+        print(is_id_hex)
+        correct_num_workers = len(list_workers()) == ray.cluster_resources()["CPU"] + 1
+        return is_id_hex and correct_num_workers
 
-    wait_for_condition(f)
+    wait_for_condition(verify)
+    print(list_workers())
 
 
 if __name__ == "__main__":

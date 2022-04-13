@@ -28,7 +28,7 @@ def _list(resource_name: str, options: ListApiOptions, api_server_url: str = Non
         query_strings.append(f"{field.name}={getattr(options, field.name)}")
     r = requests.request(
         "GET",
-        f"{api_server_url}/api/v0/{resource_name}?{'?'.join(query_strings)}",
+        f"{api_server_url}/api/v0/{resource_name}?{'&'.join(query_strings)}",
         headers={"Content-Type": "application/json"},
         json=None,
         timeout=options.timeout,

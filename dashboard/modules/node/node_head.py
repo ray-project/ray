@@ -322,8 +322,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/nodes")
     async def get_nodes(self, req) -> aiohttp.web.Response:
-        nodes = await self._dashboard_head.gcs_state_aggregator.get_nodes()
-        return rest_response(success=True, message="", result=nodes)
+        data = await self._dashboard_head.gcs_state_aggregator.get_nodes()
+        return rest_response(
+            success=True, message="", result=data, convert_google_style=False
+        )
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

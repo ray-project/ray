@@ -725,7 +725,6 @@ void CoreWorker::RegisterToGcs() {
   }
 
   auto worker_data = std::make_shared<rpc::WorkerTableData>();
-  worker_data->set_worker_id(worker_id.Binary());
   worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
   worker_data->set_worker_type(options_.worker_type);
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());

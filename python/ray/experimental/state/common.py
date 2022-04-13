@@ -1,10 +1,18 @@
 import logging
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from ray.dashboard.modules.job.common import JobInfo
 
 logger = logging.getLogger(__name__)
+
+
+def filter_fields(data: dict, state_dataclass) -> dict:
+    """Filter the given data using keys from a given state dataclass."""
+    filtered_data = {}
+    for field in fields(state_dataclass):
+        filtered_data[field.name] = data[field.name]
+    return filtered_data
 
 
 @dataclass(init=True)
@@ -13,7 +21,7 @@ class ListApiOptions:
     timeout: int
 
 
-# TODO(sang): Replace it with Pydantic after the migration.
+# TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
 class ActorState:
     actor_id: str
