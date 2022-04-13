@@ -687,14 +687,17 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    if rep.when == "call": # and rep.failed:
-        dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
+    if rep.when == "call":  # and rep.failed:
+        archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
 
         if dir is not None:
             import shutil
             import time
+            from tempfile import gettempdir
 
-            if not os.path.exists(dir):
-                os.makedirs(dir)
+            if not os.path.exists(archive_dir):
+                os.makedirs(archive_dir)
             output_file = f"{dir}/{rep.nodeid.split('/')[-1]}-{time.time()}"
-            shutil.make_archive(output_file, "zip", "/tmp/ray/session_latest/logs")
+            log_dir = f"{gettempdir()}/ray/session_latest/logs"
+            if os.path.exists(log_dir):
+                shutil.make_archive(output_file, "zip", log_dir)

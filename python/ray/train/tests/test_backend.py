@@ -22,8 +22,10 @@ from ray.train.constants import (
 )
 from ray.train.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group
+
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+
 
 @pytest.fixture
 def ray_start_2_cpus():
