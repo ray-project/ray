@@ -16,6 +16,7 @@ import ray
 import ray.data
 from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
 
+
 def main(
     model_checkpoint="gpt2",
     tokenizer_checkpoint="sgugger/gpt2-like-tokenizer",
