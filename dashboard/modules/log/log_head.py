@@ -138,8 +138,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: [str]
     ):
         """
-        Returns a JSON file mapping, for the node corresponding to the given
-        gRPC stub, a category of log component to a list of filenames.
+        Returns a JSON file mapping a category of log component to a list of filenames,
+        on the given node via the gRPC connection to its agent.
         """
         reply = await grpc_stub.ListLogs(
             reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
@@ -172,16 +172,43 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             )
         logs["dashboard"] = list(filter(lambda s: "dashboard" in s, filtered))
         logs["raylet"] = list(filter(lambda s: "raylet" in s, filtered))
-        logs["gcs"] = list(filter(lambda s: "gcs" in s, filtered))
+        logs["gcs_server"] = list(filter(lambda s: "gcs" in s, filtered))
         logs["ray_client"] = list(filter(lambda s: "ray_client" in s, filtered))
-        logs["autoscaler_monitor"] = list(
+        logs["autoscaler"] = list(
             filter(lambda s: "monitor" in s and "log_monitor" not in s, filtered)
         )
+        logs["runtime_env"] = list(filter(lambda s: "runtime_env" in s, filtered))
         logs["folders"] = list(filter(lambda s: "." not in s, filtered))
         logs["misc"] = list(
             filter(lambda s: all([s not in logs[k] for k in logs]), filtered)
         )
         return logs
+
+    async def wait_until_initialized(self):
+        for _ in range(10):
+            if self._stubs != {}:
+                return
+            await asyncio.sleep(0.5)
+
+    async def get_log_index(self, node_id_query, filters):
+        """
+        Helper function to get the logs index by querying each agent
+        on each cluster via gRPC.
+        """
+        response = {}
+        tasks = []
+        await self.wait_until_initialized()
+        for node_id, grpc_stub in self._stubs.items():
+            if node_id_query is None or node_id_query == node_id:
+
+                async def coro():
+                    response[node_id] = await self.get_logs_json_index(
+                        grpc_stub, filters
+                    )
+
+                tasks.append(coro())
+        await asyncio.gather(*tasks)
+        return response
 
     @routes.get("/api/experimental/logs/list")
     async def handle_log_index(self, req):
@@ -200,27 +227,6 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         response = await self.get_log_index(node_id, filters)
         return aiohttp.web.json_response(response)
 
-    async def get_log_index(self, node_id_query, filters):
-        """
-        Helper function to get the logs index by querying each agent
-        on each cluster via gRPC.
-        """
-        response = {}
-        while self._stubs == {}:
-            await asyncio.sleep(0.5)
-        tasks = []
-        for node_id, grpc_stub in self._stubs.items():
-            if node_id_query is None or node_id_query == node_id:
-
-                async def coro():
-                    response[node_id] = await self.get_logs_json_index(
-                        grpc_stub, filters
-                    )
-
-                tasks.append(coro())
-        await asyncio.gather(*tasks)
-        return response
-
     @routes.get("/api/experimental/logs/{media_type}")
     async def handle_log(self, req):
         """
@@ -228,8 +234,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         the HTTP connection is not closed. Else, if `media_type = file`, the stream
         ends once all the lines in the file requested are transmitted.
         """
-        while self._stubs == {}:
-            await asyncio.sleep(0.5)
+        await self.wait_until_initialized()
         node_id = req.query.get("node_id", None)
 
         # If no `node_id` is provided, try to determine node_id

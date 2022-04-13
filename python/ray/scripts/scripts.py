@@ -1871,9 +1871,10 @@ def format_print_logs_index(api_endpoint, node_id, links):
     print_section("Worker Errors", "worker_errors")
     print_section("Worker Stdout", "worker_outs")
     print_section("Raylet Logs", "raylet")
-    print_section("GCS Logs", "gcs")
+    print_section("GCS Logs", "gcs_server")
     print_section("Miscellaneous Logs", "misc")
-    print_section("Autoscaler Monitor Logs", "autoscaler_monitor")
+    print_section("Autoscaler Monitor Logs", "autoscaler")
+    print_section("Runtime Environment Logs", "runtime_env")
     print_section("Dashboard Logs", "dashboard")
     print_section("Ray Client Logs", "ray_client")
 
