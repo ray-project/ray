@@ -20,6 +20,7 @@ from ray.ml.trainer import Trainer
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.util.joblib import register_ray
 from ray.ml.train.integrations.sklearn.score import score
+from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
 
 from sklearn.base import BaseEstimator, clone
 from sklearn.model_selection import BaseCrossValidator, cross_validate
@@ -47,8 +48,9 @@ class SklearnTrainer(Trainer):
     This Trainer runs the ``fit`` method of the given estimator in a
     non-distributed manner on a single Ray Actor.
 
-    The ``n_jobs`` (or ``thread_count``) parameters will be set to match
-    the number of CPUs assigned to the Ray Actor.
+    By default, the ``n_jobs`` (or ``thread_count``) estimator parameters will be set
+    to match the number of CPUs assigned to the Ray Actor. This behavior can be
+    disabled by setting ``set_estimator_parallelism=False``.
 
     If you wish to use GPU-enabled estimators (eg. cuML), make sure to
     set ``"GPU": 1`` in ``scaling_config.trainer_resources``.
@@ -127,6 +129,8 @@ class SklearnTrainer(Trainer):
             train/test set. Only used in conjunction with a "Group" ``cv``
             instance (e.g., ``GroupKFold``). This corresponds to the ``groups``
             argument in ``sklearn.model_selection.cross_validation``.
+        return_train_score_cv: Whether to also return train scores during
+            cross-validation. Ignored if ``cv`` is None.
         parallelize_cv: If set to True, will parallelize cross-validation
             instead of the estimator. If set to None, will detect if the estimator
             has any parallelism-related params (``n_jobs`` or ``thread_count``)
@@ -134,8 +138,10 @@ class SklearnTrainer(Trainer):
             If False, will not parallelize cross-validation. Cannot be
             set to True if there are any GPUs assigned to the trainer.
             Ignored if ``cv`` is None.
-        return_train_score_cv: Whether to also return train scores during
-            cross-validation. Ignored if ``cv`` is None.
+        set_estimator_parallelism: If set to True, will automatically set
+            the values of all ``n_jobs`` and ``thread_count`` parameters
+            in the estimator (including in nested objects) to match
+            the number of available CPUs.
         scaling_config: Configuration for how to scale training.
             Only the ``trainer_resources`` key can be provided,
             as the training is not distributed.
@@ -155,8 +161,9 @@ class SklearnTrainer(Trainer):
         params: Optional[Dict[str, Any]] = None,
         scoring: Optional[ScoringType] = None,
         cv: Optional[CVType] = None,
-        parallelize_cv: Optional[bool] = None,
         return_train_score_cv: bool = False,
+        parallelize_cv: Optional[bool] = None,
+        set_estimator_parallelism: bool = True,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional[Preprocessor] = None,
@@ -175,6 +182,7 @@ class SklearnTrainer(Trainer):
         self.scoring = scoring
         self.cv = cv
         self.parallelize_cv = parallelize_cv
+        self.set_estimator_parallelism = set_estimator_parallelism
         self.return_train_score_cv = return_train_score_cv
         super().__init__(
             scaling_config=scaling_config,
@@ -220,17 +228,6 @@ class SklearnTrainer(Trainer):
                 "`parallelize_cv` cannot be True if there are GPUs assigned to the "
                 "trainer."
             )
-
-    def _set_estimator_cpus(self, estimator: BaseEstimator, num_cpus: int) -> bool:
-        """Returns True if there are any params related to CPUs."""
-        cpu_params = {
-            param: num_cpus
-            for param in estimator.get_params(deep=True)
-            if param.endswith("n_jobs") or param.endswith("thread_count")
-        }
-        estimator_has_parallelism_params = bool(cpu_params)
-        estimator.set_params(**cpu_params)
-        return estimator_has_parallelism_params
 
     def _get_datasets(self) -> Dict[str, Tuple[pd.DataFrame, pd.Series]]:
         pd_datasets = {}
@@ -313,20 +310,15 @@ class SklearnTrainer(Trainer):
 
         return {"cv": {**cv_results, **cv_aggregates}}
 
-    def _set_estimator_cv_parallelism(self, num_cpus: int, has_gpus: bool) -> bool:
+    def _get_cv_parallelism(self, has_gpus: bool) -> bool:
         parallelize_cv = False
 
         assert not (has_gpus and self.parallelize_cv)
 
+        estimator_has_parallelism_params = has_cpu_params(self.estimator)
+
         if self.cv and self.parallelize_cv is True:
-            estimator_has_parallelism_params = self._set_estimator_cpus(
-                self.estimator, 1
-            )
             parallelize_cv = True
-        else:
-            estimator_has_parallelism_params = self._set_estimator_cpus(
-                self.estimator, num_cpus
-            )
 
         if (
             not has_gpus
@@ -363,7 +355,10 @@ class SklearnTrainer(Trainer):
         os.environ["OPENBLAS_NUM_THREADS"] = str(num_cpus)
         os.environ["BLIS_NUM_THREADS"] = str(num_cpus)
 
-        parallelize_cv = self._set_estimator_cv_parallelism(num_cpus, has_gpus)
+        parallelize_cv = self._get_cv_parallelism(has_gpus)
+        if self.set_estimator_parallelism:
+            num_estimator_cpus = 1 if parallelize_cv else num_cpus
+            set_cpu_params(self.estimator, num_estimator_cpus)
 
         with parallel_backend("ray", n_jobs=num_cpus):
             start_time = time()
@@ -391,6 +386,8 @@ class SklearnTrainer(Trainer):
                 validation_set_scores = {}
                 cv_scores = {}
 
+        # cv_scores will not override validation_set_scores as we
+        # check for that during initialization
         results = {
             **validation_set_scores,
             **cv_scores,
