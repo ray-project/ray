@@ -8,7 +8,7 @@ setup(
     author="Joe Marshall",
     author_email="joe.marshall@nottingham.ac.uk",
     url="https://github.com/joemarshall/unthrow",
+    package_dir={"unthrow": "unthrow"},
     py_modules=["unthrow"],
-
-    ext_modules = cythonize("unthrow/*.pyx")
+    ext_modules = cythonize("unthrow/unthrow.pyx")
 )

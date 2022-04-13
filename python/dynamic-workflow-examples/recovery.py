@@ -11,7 +11,7 @@ import time
 def identity(v):
     time.sleep(1)
     if v % 2 == 0:
-        raise RuntimeError()
+        raise Exception()
     return v
 
 @workflow.step
@@ -37,11 +37,11 @@ def s(v):
             s1, ss1 = x
             s += s1
             ss += ss1
-        except RuntimeError:
+        except Exception:
             pass
 
         if i > 5 and failure_flag.exists():
-            raise RuntimeError()
+            raise Exception()
     return (s, ss)
 
 import uuid

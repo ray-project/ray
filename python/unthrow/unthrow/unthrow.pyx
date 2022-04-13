@@ -5,7 +5,7 @@ from libc.string cimport memcpy
 from cpython cimport array
 import array
 import collections
-
+import helper
 import sys,inspect,dis
 
 traceall=False
@@ -23,25 +23,25 @@ class Resumer:
         self.task = None
 
     def cancel(self):
-        global __skip_stop
+        global _skip_stop
         self.resume_stack=None
-        __skip_stop=False
+        _skip_stop=False
         set_resume(0)
 
     def run_once(self, mainfn, *args, **kwargs):
-        global interrupts_enabled, __resume_return, __resume_except, __skip_stop
+        global interrupts_enabled, _resume_return, _resume_except, _skip_stop
         # print("RUN_ONCE: ", mainfn, args, kwargs, self.resume_ret, self.resume_except)
         if self.resume_stack:
-            __skip_stop=True
-            __resume_return = self.resume_ret
-            __resume_except = self.resume_except
+            _skip_stop=True
+            _resume_return = self.resume_ret
+            _resume_except = self.resume_except
             # print("ABOUT TO RESUME")
             _do_resume(<PyObject*>self.resume_stack)
             # print("CLEANUP")
             self.resume_stack=None
             self.resume_except = None
         else:
-            __skip_stop=False
+            _skip_stop=False
 
         self.running=1
         interrupts_enabled=1
@@ -54,29 +54,28 @@ class Resumer:
         r = None
         err = None
         try:
-            # print("BEG:MainFn", *args, **kwargs)
-            r = mainfn(*args, **kwargs)
-            # print("END:MainFn", *args, **kwargs)
-        except ResumableException as re:
-            # print("SUS_RET:MainFn", re.parameter)
-            r = re.parameter
-            self.resume_stack=re.saved_frames
-            re.with_traceback(None)
-            self.finished=False
-            _truncate_frame(<PyObject*>self.resume_stack)
-        except Exception as e:
-            err =  e
-        finally:
-            interrupts_enabled=0
+            if helper.setjmp():
+                r = mainfn(*args, **kwargs)
+                clearjmp()
 
-        # stop interrupts
-        global interrupts_enabled
-        set_interrupt_frequency(0)
-        self.running=0
-        interrupts_enabled=0
-        if err is not None:
-            raise err
-        return r
+                self.finished=True
+                return r
+            else:
+                global _ret
+                re = _ret
+                _ret = None
+                r = re.parameter
+                self.resume_stack=re.saved_frames
+                re.with_traceback(None)
+                self.finished=False
+                _truncate_frame(<PyObject*>self.resume_stack)
+                return r
+        finally:
+            # stop interrupts
+            interrupts_enabled = 0
+            global interrupts_enabled
+            set_interrupt_frequency(0)
+            self.running=0
 
     def set_interrupt_frequency(self,freq):
         self.freq=freq
@@ -115,10 +114,10 @@ def test_iter(maxVal):
         yield c
 
 
-cdef int  __skip_stop=False
+cdef int  _skip_stop=False
 
-__resume_return = None
-__resume_except = None
+_resume_return = None
+_resume_except = None
 
 cdef extern from "frameobject.h":
     ctypedef struct PyTryBlock:
@@ -307,6 +306,7 @@ cdef object save_frame(PyFrameObject* source_frame,from_interrupt):
     code_obj=(<object>source_frame).f_code.co_code
     # grab everything off the locals and value stack
     valuestack=[]
+
     for c in range(our_stacksize+our_localsize):
         if <int>source_frame.f_localsplus[c] ==0:
             valuestack.append(_PythonNULL())
@@ -434,6 +434,9 @@ cdef void set_resume(int is_resuming):
         # print("PyEval_SetTrace(_c_trace_fn, NULL)")
         PyEval_SetTrace(&_c_trace_fn,NULL)
 
+def _set_interrupt_frequency(freq):
+    set_interrupt_frequency(freq)
+
 cdef void set_interrupt_frequency(int freq):
     global in_resume,resume_state,interrupt_frequency,interrupt_counter,_trace_obj
     if interrupt_frequency!=freq:
@@ -546,6 +549,12 @@ cdef PyObject* make_resumable_exception(PyObject* msg,PyFrameObject* frame):
     return exc
 
 
+cdef extern from "ceval.h":
+    int _PyEval_RequestCodeExtraIndex(freefunc)
+    PyFrameObject *PyEval_GetFrame()
+    PyObject* PyEval_CallFunction(PyObject *callable, const char *format, ...)
+
+    object _PyEval_EvalFrameDefault(PyFrameObject *frame, int exc)
 
 # store locals and stack for all the things, while we're still in a call, before exception is thrown
 # and calling stack objects are dereferenced etc.
@@ -576,6 +585,8 @@ cdef void _truncate_frame(PyObject* c_saved_frames):
     allStack=[]
     Py_XINCREF(c_saved_frames)
 
+def do_resume(frames):
+    _do_resume(<PyObject*>frames)
 
 cdef void _do_resume(PyObject* c_saved_frames):
     global _resume_list
@@ -615,34 +626,86 @@ cdef void _resume_frame(PyObject* c_saved_frames,PyFrameObject* c_frame):
                 set_resume(0)
                 _resume_list=NULL;
                 interrupts_enabled=1
-
+_ret = None
 # this is a c function so it doesn't get traced into
 def stop(msg):
-    global __skip_stop,interrupts_enabled, __resume_return, __resume_except
-    # print("STOP - ", __skip_stop, __resume_return, __resume_except)
+    global _skip_stop,interrupts_enabled, _resume_return, _resume_except, _ret
 
-    if __skip_stop:
+    if _skip_stop:
         #print("RESUMING - enable interrupts")
-        __skip_stop=False
+        _skip_stop=False
         interrupts_enabled=1
-        # print(f"RESUMING - STOP - ${__resume_return}$, ${type(__resume_except)}.{__resume_except}$")
+        # print(f"RESUMING - STOP - ${_resume_return}$, ${type(_resume_except)}.{_resume_except}$")
 
-        (r, e) = (__resume_return, __resume_except)
-        (__resume_return, __resume_except) = (None, None)
+        (r, e) = (_resume_return, _resume_except)
+        (_resume_return, _resume_except) = (None, None)
 
         if e is not None:
             # print("RAISE e")
             raise e
         return r
     else:
-        __skip_stop=True
+        _skip_stop=True
         # disable interrupts until we return from this
         interrupts_enabled=0
         #print("STOPPING NOW - disabled interrupts",<object>msg)
         rex=make_resumable_exception(<PyObject*>msg,NULL)
         objRex=<object>rex
         Py_XDECREF(rex)
-        raise objRex
+        global _ret
+        _ret = objRex
+
+        helper.jmp()
+
+_jmp = None
+
+def clearjmp():
+    global _jmp
+    _jmp = None
+
+def setjmp():
+    cdef PyFrameObject* f
+    global _jmp
+    if _jmp is None:
+        import inspect
+        _jmp = inspect.currentframe().f_back
+        return True
+    else:
+        _jmp = None
+        return False
+def jmp():
+    cdef PyFrameObject* source_frame
+    source_frame = <PyFrameObject*>(_jmp)
+    from_interrupt = False
+    curr_frame = source_frame
+
+    lasti=source_frame.f_lasti
+    if (source_frame.f_code.co_flags & inspect.CO_OPTIMIZED) != 0:
+        PyFrame_LocalsToFast(source_frame,0)
+    if from_interrupt:
+        # in an interrupt top level frame, the function is at the start of an instruction
+        # and the next instruction is about to run
+        lasti-=2
+        if source_frame.f_stacktop!=NULL:
+            our_stacksize=source_frame.f_stacktop - source_frame.f_valuestack
+        else:
+            our_stacksize=get_stack_pos_before(<object>source_frame.f_code,lasti+2)
+    else:
+        # anywhere else, the frame is half way through a call and lasti points
+        # at just the call. But we still have the call args pushed on stack,
+        # lasti = lasti-2 to make the next thing be the call again
+        # i.e. we want to run this instruction twice
+        lasti=get_line_start(<object>source_frame.f_code,lasti)
+        lasti-=2
+        our_stacksize=get_stack_pos_before(<object>source_frame.f_code,lasti+2)
+
+
+    our_localsize=<int>(source_frame.f_valuestack-source_frame.f_localsplus);
+    top_size = our_localsize + our_stacksize
+
+    source_frame.f_stacktop = &source_frame.f_localsplus[top_size]
+    source_frame.f_lasti = lasti
+    _PyEval_EvalFrameDefault(source_frame, 0)
 
 
 cdef PyObject* _resume_list=NULL
