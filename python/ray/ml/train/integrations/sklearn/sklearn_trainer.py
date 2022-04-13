@@ -8,9 +8,8 @@ import numpy as np
 import pandas as pd
 from joblib import parallel_backend
 
-import ray.cloudpickle as cpickle
 from ray import tune
-from ray.util import PublicAPI
+import ray.cloudpickle as cpickle
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
@@ -18,6 +17,7 @@ from ray.ml.trainer import GenDataset, Trainer
 from ray.ml.utils.sklearn_utils import has_cpu_params, score, set_cpu_params
 from ray.tune import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.util import PublicAPI
 from ray.util.joblib import register_ray
 
 from sklearn.base import BaseEstimator, clone
