@@ -30,6 +30,8 @@ from ray.serve.generated.serve_pb2 import (
     ReplicaConfig as ReplicaConfigProto,
 )
 from ray.serve.utils import ServeEncoder
+from ray._private import ray_option_utils
+from ray._private.utils import resources_from_ray_options
 
 
 class AutoscalingConfig(BaseModel):
@@ -273,8 +275,6 @@ class ReplicaConfig:
             raise TypeError("ray_actor_options must be a dictionary.")
 
         disallowed_ray_actor_options = {
-            "args",
-            "kwargs",
             "max_concurrency",
             "max_restarts",
             "max_task_retries",
@@ -293,54 +293,10 @@ class ReplicaConfig:
                 raise ValueError(
                     f"Specifying {option} in ray_actor_options is not allowed."
                 )
+        ray_option_utils.validate_actor_options(self.ray_actor_options, in_options=True)
 
-        # TODO(suquark): reuse options validation of remote function/actor.
-        # Ray defaults to zero CPUs for placement, we default to one here.
-        if self.ray_actor_options.get("num_cpus") is None:
-            self.ray_actor_options["num_cpus"] = 1
-        num_cpus = self.ray_actor_options["num_cpus"]
-        if not isinstance(num_cpus, (int, float)):
-            raise TypeError("num_cpus in ray_actor_options must be an int or a float.")
-        elif num_cpus < 0:
-            raise ValueError("num_cpus in ray_actor_options must be >= 0.")
-        self.resource_dict["CPU"] = num_cpus
-
-        if self.ray_actor_options.get("num_gpus") is None:
-            self.ray_actor_options["num_gpus"] = 0
-        num_gpus = self.ray_actor_options["num_gpus"]
-        if not isinstance(num_gpus, (int, float)):
-            raise TypeError("num_gpus in ray_actor_options must be an int or a float.")
-        elif num_gpus < 0:
-            raise ValueError("num_gpus in ray_actor_options must be >= 0.")
-        self.resource_dict["GPU"] = num_gpus
-
-        # Serve deployments use Ray's default for actor memory.
-        self.ray_actor_options.setdefault("memory", None)
-        memory = self.ray_actor_options["memory"]
-        if memory is not None and not isinstance(memory, (int, float)):
-            raise TypeError(
-                "memory in ray_actor_options must be an int, a float, or None."
-            )
-        elif memory is not None and memory <= 0:
-            raise ValueError("memory in ray_actor_options must be > 0.")
-        self.resource_dict["memory"] = memory
-
-        object_store_memory = self.ray_actor_options.get("object_store_memory")
-        if not isinstance(object_store_memory, (int, float, type(None))):
-            raise TypeError(
-                "object_store_memory in ray_actor_options must be an int, float "
-                "or None."
-            )
-        elif object_store_memory is not None and object_store_memory < 0:
-            raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
-        self.resource_dict["object_store_memory"] = object_store_memory
-
-        if self.ray_actor_options.get("resources") is None:
-            self.ray_actor_options["resources"] = {}
-        custom_resources = self.ray_actor_options["resources"]
-        if not isinstance(custom_resources, dict):
-            raise TypeError("resources in ray_actor_options must be a dictionary.")
-        self.resource_dict.update(custom_resources)
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
+        self.resource_dict.setdefault("CPU", 1)
 
     @classmethod
     def from_proto(
