@@ -73,21 +73,17 @@ def train_sklearn(num_cpus: int, use_gpu: bool = False) -> Result:
     return result
 
 
-def predict_sklearn(result: Result, num_cpus: int, use_gpu: bool = False):
+def predict_sklearn(result: Result, use_gpu: bool = False):
     _, _, test_dataset = prepare_data()
 
     batch_predictor = BatchPredictor.from_checkpoint(
         result.checkpoint, SklearnPredictor
     )
 
-    num_cpus = 1 if use_gpu else num_cpus
-
     predicted_labels = (
         batch_predictor.predict(
             test_dataset,
-            num_cpus_per_worker=num_cpus,  # responsible for CPU assignment
             num_gpus_per_worker=int(use_gpu),
-            num_estimator_cpus=num_cpus,  # allows the estimator to use assigned CPUs
         )
         .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
         .to_pandas(limit=float("inf"))
@@ -105,7 +101,7 @@ if __name__ == "__main__":
         "-n",
         type=int,
         default=2,
-        help="Sets number of CPUs used for training & prediction.",
+        help="Sets number of CPUs used for training.",
     )
     parser.add_argument(
         "--use-gpu", action="store_true", default=False, help="Enables GPU training"
@@ -114,4 +110,4 @@ if __name__ == "__main__":
 
     ray.init(address=args.address)
     result = train_sklearn(num_cpus=args.num_cpus, use_gpu=args.use_gpu)
-    predict_sklearn(result, num_cpus=args.num_cpus, use_gpu=args.use_gpu)
+    predict_sklearn(result, use_gpu=args.use_gpu)
