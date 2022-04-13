@@ -301,10 +301,14 @@ class SklearnTrainer(Trainer):
             if not isinstance(v, np.ndarray):
                 continue
             try:
-                cv_aggregates[f"{k}_mean"] = np.mean(v)
-                cv_aggregates[f"{k}_std"] = np.std(v)
-            except Exception:
-                # if we can't average for some reason
+                cv_aggregates[f"{k}_mean"] = np.nanmean(v)
+                cv_aggregates[f"{k}_std"] = np.nanstd(v)
+            except Exception as e:
+                logger.warning(
+                    f"Couldn't calculate aggregate metrics for CV folds! {e}"
+                )
+                cv_aggregates[f"{k}_mean"] = np.nan
+                cv_aggregates[f"{k}_std"] = np.nan
                 pass
 
         return {"cv": {**cv_results, **cv_aggregates}}
