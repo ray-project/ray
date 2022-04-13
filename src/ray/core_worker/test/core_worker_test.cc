@@ -101,12 +101,12 @@ class CoreWorkerTest : public ::testing::Test {
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] =
-          TestSetupUtil::StartRaylet("127.0.0.1",
-                                     node_manager_port + i,
-                                     "127.0.0.1:6379",
-                                     "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
-                                     &raylet_store_socket_names_[i]);
+      raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
+          "127.0.0.1",
+          node_manager_port + i,
+          "127.0.0.1:6379",
+          "\"CPU,4.0,object_store_memory,100,resource" + std::to_string(i) + ",10\"",
+          &raylet_store_socket_names_[i]);
     }
   }
 
@@ -875,6 +875,63 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(results[0]->IsException());
   ASSERT_TRUE(results[1]->IsException());
+}
+
+TEST_F(SingleNodeTest, TestHandleUpdateObjectLocationBatch) {
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
+  auto buffer = GenerateRandomBuffer();
+
+  ObjectID object_id;
+  RAY_CHECK_OK(driver.Put(
+      RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {}, &object_id));
+  rpc::UpdateObjectLocationBatchRequest request;
+  rpc::UpdateObjectLocationBatchReply reply;
+  request.set_intended_worker_id(driver.GetWorkerID().Binary());
+  request.set_node_id(driver.GetCurrentNodeId().Binary());
+  auto state = request.add_object_location_states();
+  state->set_object_id(object_id.Binary());
+  state->set_state(rpc::ObjectLocationState::SPILLED);
+  state->set_spilled_url("url1");
+  state->set_spilled_node_id(driver.GetCurrentNodeId().Binary());
+  state->set_size(64);
+  state = request.add_object_location_states();
+  state->set_object_id(object_id.Binary());
+  state->set_state(rpc::ObjectLocationState::REMOVED);
+  driver.HandleUpdateObjectLocationBatch(
+      request,
+      &reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {});
+
+  rpc::GetObjectLocationsOwnerRequest get_request;
+  get_request.mutable_object_location_request()->set_intended_worker_id(
+      driver.GetWorkerID().Binary());
+  get_request.mutable_object_location_request()->set_object_id(object_id.Binary());
+  rpc::GetObjectLocationsOwnerReply get_reply;
+  driver.HandleGetObjectLocationsOwner(
+      get_request,
+      &get_reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  ASSERT_EQ(get_reply.object_location_info().node_ids().size(), 0);
+  ASSERT_EQ(get_reply.object_location_info().object_size(), 64);
+  ASSERT_EQ(get_reply.object_location_info().spilled_url(), "url1");
+  ASSERT_EQ(get_reply.object_location_info().spilled_node_id(),
+            driver.GetCurrentNodeId().Binary());
+
+  request.clear_object_location_states();
+  state = request.add_object_location_states();
+  state->set_object_id(object_id.Binary());
+  state->set_state(rpc::ObjectLocationState::ADDED);
+  driver.HandleUpdateObjectLocationBatch(
+      request,
+      &reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  driver.HandleGetObjectLocationsOwner(
+      get_request,
+      &get_reply,
+      [](Status status, std::function<void()> success, std::function<void()> failure) {});
+  ASSERT_EQ(get_reply.object_location_info().node_ids().size(), 1);
+  ASSERT_EQ(get_reply.object_location_info().node_ids(0),
+            driver.GetCurrentNodeId().Binary());
 }
 
 TEST_F(SingleNodeTest, TestNormalTaskLocal) { TestNormalTask(); }

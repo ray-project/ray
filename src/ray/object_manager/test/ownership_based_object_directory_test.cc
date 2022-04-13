@@ -347,8 +347,6 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateMaxBatchSize) {
   for (int i = 0; i < max_batch_size + 1; i++) {
     auto object_info = CreateNewObjectInfo(owner_1);
     object_infos.emplace_back(object_info);
-    obod_.ReportObjectAdded(object_info.object_id, current_node_id, object_info);
-    obod_.ReportObjectAdded(object_info.object_id, current_node_id, object_info);
     obod_.ReportObjectRemoved(object_info.object_id, current_node_id, object_info);
   }
 
