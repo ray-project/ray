@@ -6,6 +6,7 @@ import queue
 import threading
 import time
 import tree  # pip install dm_tree
+from copy import deepcopy
 from typing import (
     Any,
     Callable,
@@ -718,7 +719,7 @@ def _env_runner(
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
         t4 = time.time()
-        base_env.send_actions(actions_to_send)
+        base_env.send_actions(deepcopy(actions_to_send))
         perf_stats.env_wait_time += time.time() - t4
 
         # Try to render the env, if required.
