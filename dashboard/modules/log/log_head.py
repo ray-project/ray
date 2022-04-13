@@ -146,40 +146,40 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         )
         filters = [] if filters == [""] else filters
 
-        def contains_all_filters(string):
-            return all(f in string for f in filters)
+        def contains_all_filters(log_file_name):
+            return all(f in log_file_name for f in filters)
 
-        links = list(filter(contains_all_filters, reply.log_files))
+        filtered = list(filter(contains_all_filters, reply.log_files))
         logs = {}
         logs["worker_errors"] = list(
-            filter(lambda s: "worker" in s and s.endswith(".err"), links)
+            filter(lambda s: "worker" in s and s.endswith(".err"), filtered)
         )
         logs["worker_outs"] = list(
-            filter(lambda s: "worker" in s and s.endswith(".out"), links)
+            filter(lambda s: "worker" in s and s.endswith(".out"), filtered)
         )
         for lang in ray_constants.LANGUAGE_WORKER_TYPES:
             logs[f"{lang}_core_worker_logs"] = list(
                 filter(
                     lambda s: f"{lang}-core-worker" in s and s.endswith(".log"),
-                    links,
+                    filtered,
                 )
             )
             logs[f"{lang}_driver_logs"] = list(
                 filter(
                     lambda s: f"{lang}-core-driver" in s and s.endswith(".log"),
-                    links,
+                    filtered,
                 )
             )
-        logs["dashboard"] = list(filter(lambda s: "dashboard" in s, links))
-        logs["raylet"] = list(filter(lambda s: "raylet" in s, links))
-        logs["gcs"] = list(filter(lambda s: "gcs" in s, links))
-        logs["ray_client"] = list(filter(lambda s: "ray_client" in s, links))
+        logs["dashboard"] = list(filter(lambda s: "dashboard" in s, filtered))
+        logs["raylet"] = list(filter(lambda s: "raylet" in s, filtered))
+        logs["gcs"] = list(filter(lambda s: "gcs" in s, filtered))
+        logs["ray_client"] = list(filter(lambda s: "ray_client" in s, filtered))
         logs["autoscaler_monitor"] = list(
-            filter(lambda s: "monitor" in s and "log_monitor" not in s, links)
+            filter(lambda s: "monitor" in s and "log_monitor" not in s, filtered)
         )
-        logs["folders"] = list(filter(lambda s: "." not in s, links))
+        logs["folders"] = list(filter(lambda s: "." not in s, filtered))
         logs["misc"] = list(
-            filter(lambda s: all([s not in logs[k] for k in logs]), links)
+            filter(lambda s: all([s not in logs[k] for k in logs]), filtered)
         )
         return logs
 
