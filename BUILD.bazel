@@ -2394,6 +2394,17 @@ cc_test(
 )
 
 cc_test(
+    name = "task_spec_test",
+    srcs = ["src/ray/common/test/task_spec_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "callback_reply_test",
     size = "small",
     srcs = ["src/ray/gcs/test/callback_reply_test.cc"],

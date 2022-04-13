@@ -7,8 +7,8 @@ Getting Started
 In this tutorial you will learn how to:
 
 - Create and save a Ray ``Dataset``.
-- How to transform a ``Dataset`` and pass it into other Ray Tasks.
-- How to create a Ray ``DatasetPipeline`` and run transformations on it.
+- Transform a ``Dataset``.
+- Pass a ``Dataset`` to Ray tasks/actors and access the data inside.
 
 .. _ray_datasets_quick_start:
 
@@ -16,10 +16,11 @@ In this tutorial you will learn how to:
 Dataset Quick Start
 -------------------
 
-Ray Datasets implements `Distributed Arrow <https://arrow.apache.org/>`__.
+Ray Datasets implements Distributed `Arrow <https://arrow.apache.org/>`__.
 A Dataset consists of a list of Ray object references to *blocks*.
 Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__
-or a Python list (for Arrow incompatible objects).
+(when creating from or transforming to tabular or tensor data), a `Pandas DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
+(when creating from or transforming to Pandas data), or a Python list (otherwise).
 Let's start by creating a Dataset.
 
 Creating Datasets
@@ -179,10 +180,10 @@ The following is an end-to-end example of reading, transforming, and saving batc
     # Save the results.
     ds.repartition(1).write_json("s3://bucket/inference-results")
 
-Exchanging datasets
-===================
+Passing and accessing datasets
+==============================
 
-Datasets can be passed to Ray tasks or actors and read with ``.iter_batches()`` or ``.iter_rows()``.
+Datasets can be passed to Ray tasks or actors and accessed with ``.iter_batches()`` or ``.iter_rows()``.
 This does not incur a copy, since the blocks of the Dataset are passed by reference as Ray objects:
 
 .. code-block:: python

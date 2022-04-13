@@ -26,6 +26,7 @@ Creating Datasets
 .. autofunction:: ray.data.from_pandas
 .. autofunction:: ray.data.from_pandas_refs
 .. autofunction:: ray.data.from_numpy
+.. autofunction:: ray.data.from_numpy_refs
 
 .. _dataset-api:
 
