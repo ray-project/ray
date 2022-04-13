@@ -129,7 +129,7 @@ class SimpleBlockAccessor(BlockAccessor):
             return ret
         return [key(x) for x in ret]
 
-    def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def count(self, on: KeyFn) -> Optional[U]:
         if on is not None and not callable(on):
             raise ValueError(
                 "on must be a callable or None when aggregating on Simple blocks, but "
@@ -138,6 +138,7 @@ class SimpleBlockAccessor(BlockAccessor):
 
         if self.num_rows() == 0:
             return None
+
         count = 0
         for r in self.iter_rows():
             if on is not None:

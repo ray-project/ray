@@ -3,7 +3,10 @@ from types import ModuleType
 
 import numpy as np
 
-from ray.data.block import T, U, BlockAccessor, KeyType, AggType
+from ray.data.block import T, U, Block, KeyType, AggType
+
+
+WrappedAggType = Tuple[AggType, int]
 
 
 # This module contains aggregation helpers for handling nulls.
@@ -23,7 +26,7 @@ from ray.data.block import T, U, BlockAccessor, KeyType, AggType
 # intermediate block accumulations under a streaming constraint.
 
 
-def _wrap_acc(a: AggType, has_data: bool) -> AggType:
+def _wrap_acc(a: AggType, has_data: bool) -> WrappedAggType:
     """
     Wrap accumulation with a numeric boolean flag indicating whether or not
     this accumulation contains real data; if it doesn't, we consider it to be
@@ -43,7 +46,7 @@ def _wrap_acc(a: AggType, has_data: bool) -> AggType:
     return a + [1 if has_data else 0]
 
 
-def _unwrap_acc(a: AggType) -> Tuple[AggType, bool]:
+def _unwrap_acc(a: WrappedAggType) -> Tuple[AggType, bool]:
     """
     Unwrap the accumulation, which we assume has been wrapped (via _wrap_acc) with a
     numeric boolean flag indicating whether or not this accumulation contains real data.
@@ -62,7 +65,9 @@ def _unwrap_acc(a: AggType) -> Tuple[AggType, bool]:
     return a, has_data
 
 
-def _null_wrap_init(init: Callable[[KeyType], AggType]) -> Callable[[KeyType], AggType]:
+def _null_wrap_init(
+    init: Callable[[KeyType], AggType]
+) -> Callable[[KeyType], WrappedAggType]:
     """
     Wraps an accumulation initializer with null handling.
 
@@ -88,7 +93,7 @@ def _null_wrap_init(init: Callable[[KeyType], AggType]) -> Callable[[KeyType], A
 def _null_wrap_merge(
     ignore_nulls: bool,
     merge: Callable[[AggType, AggType], AggType],
-) -> AggType:
+) -> Callable[[WrappedAggType, WrappedAggType], WrappedAggType]:
     """
     Wrap merge function with null handling.
 
@@ -110,7 +115,7 @@ def _null_wrap_merge(
         A new merge function that handles nulls.
     """
 
-    def _merge(a1: AggType, a2: AggType) -> AggType:
+    def _merge(a1: WrappedAggType, a2: WrappedAggType) -> WrappedAggType:
         if a1 is None:
             # If we're ignoring nulls, propagate a2; otherwise, propagate None.
             return a2 if ignore_nulls else None
@@ -137,7 +142,7 @@ def _null_wrap_accumulate_row(
     ignore_nulls: bool,
     on_fn: Callable[[T], T],
     accum: Callable[[AggType, T], AggType],
-) -> Callable[[AggType, T], AggType]:
+) -> Callable[[WrappedAggType, T], WrappedAggType]:
     """
     Wrap accumulator function with null handling.
 
@@ -159,7 +164,7 @@ def _null_wrap_accumulate_row(
         A new accumulator function that handles nulls.
     """
 
-    def _accum(a: AggType, r: T) -> AggType:
+    def _accum(a: WrappedAggType, r: T) -> WrappedAggType:
         r = on_fn(r)
         if _is_null(r):
             if ignore_nulls:
@@ -185,8 +190,9 @@ def _null_wrap_accumulate_row(
 
 def _null_wrap_accumulate_block(
     ignore_nulls: bool,
-    accum_block: Callable[[AggType, BlockAccessor[T]], AggType],
-) -> Callable[[AggType, BlockAccessor[T]], AggType]:
+    accum_block: Callable[[AggType, Block[T]], AggType],
+    null_merge: Callable[[WrappedAggType, WrappedAggType], WrappedAggType],
+) -> Callable[[WrappedAggType, Block[T]], WrappedAggType]:
     """
     Wrap vectorized aggregate function with null handling.
 
@@ -200,31 +206,28 @@ def _null_wrap_accumulate_block(
     Args:
         ignore_nulls: Whether nulls should be ignored or cause a None result.
         accum_block: The core vectorized aggregate function to wrap.
+        null_merge: A null-handling merge, as returned from _null_wrap_merge().
 
     Returns:
         A new vectorized aggregate function that handles nulls.
     """
 
-    def _accum_block_null(a: AggType, block_acc: BlockAccessor[T]) -> AggType:
-        a_data, _ = _unwrap_acc(a)
-        ret = accum_block(a_data, block_acc)
-        if ret is None:
-            if ignore_nulls:
-                # This can happen if we're ignoring nulls but the entire block only
-                # consists of nulls. We treat the block as if it were empty in this
-                # case.
-                return a
-            else:
-                return ret
-        else:
-            return _wrap_acc(ret, has_data=True)
+    def _accum_block_null(a: WrappedAggType, block: Block[T]) -> WrappedAggType:
+        ret = accum_block(block)
+        if ret is not None:
+            ret = _wrap_acc(ret, has_data=True)
+        elif ignore_nulls:
+            # This can happen if we're ignoring nulls but the entire block only consists
+            # of nulls. We treat the block as if it were empty in this case.
+            ret = a
+        return null_merge(a, ret)
 
     return _accum_block_null
 
 
 def _null_wrap_finalize(
     finalize: Callable[[AggType], AggType]
-) -> Callable[[AggType], U]:
+) -> Callable[[WrappedAggType], U]:
     """
     Wrap finalizer with null handling.
 

@@ -138,6 +138,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return self._table
 
     def num_rows(self) -> int:
+        # Arrow may represent an empty table via an N > 0 row, 0-column table, e.g. when
+        # slicing an empty table, so we return 0 if num_columns == 0.
         return self._table.num_rows if self._table.num_columns > 0 else 0
 
     def size_bytes(self) -> int:
@@ -171,13 +173,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
         indices = random.sample(range(self._table.num_rows), n_samples)
         return self._table.select([k[0] for k in key]).take(indices)
 
-    def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def count(self, on: KeyFn) -> Optional[U]:
+        """Count the number of non-null values in the provided column."""
         import pyarrow.compute as pac
 
-        if on is not None and not isinstance(on, str):
+        if not isinstance(on, str):
             raise ValueError(
-                "on must be a string or None when aggregating on Arrow blocks, but "
-                f"got: {type(on)}."
+                "on must be a string when aggregating on Arrow blocks, but got:"
+                f"{type(on)}."
             )
 
         if self.num_rows() == 0:
@@ -192,10 +195,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         """Helper providing null handling around applying an aggregation to a column."""
         import pyarrow as pa
 
-        if on is not None and not isinstance(on, str):
+        if not isinstance(on, str):
             raise ValueError(
-                "on must be a string or None when aggregating on Arrow blocks, but "
-                f"got: {type(on)}."
+                "on must be a string when aggregating on Arrow blocks, but got:"
+                f"{type(on)}."
             )
 
         if self.num_rows() == 0:
@@ -238,6 +241,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if mean is None:
             # If precomputed mean not given, we compute it ourselves.
             mean = self.mean(on, ignore_nulls)
+            if mean is None:
+                return None
         return self._apply_arrow_compute(
             lambda col, skip_nulls: pac.sum(
                 pac.power(pac.subtract(col, mean), 2),

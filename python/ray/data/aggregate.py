@@ -115,21 +115,15 @@ class Sum(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
-        def merge(a1: AggType, a2: AggType) -> AggType:
-            return a1 + a2
-
-        def accumulate_block(a: AggType, block: Block) -> AggType:
-            ret = BlockAccessor.for_block(block).sum(on, ignore_nulls)
-            if ret is not None:
-                ret = merge(a, ret)
-            return ret
+        null_merge = _null_wrap_merge(ignore_nulls, lambda a1, a2: a1 + a2)
 
         super().__init__(
             init=_null_wrap_init(lambda k: 0),
-            merge=_null_wrap_merge(ignore_nulls, merge),
+            merge=null_merge,
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                accumulate_block,
+                lambda block: BlockAccessor.for_block(block).sum(on, ignore_nulls),
+                null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"sum({str(on)})"),
@@ -143,20 +137,15 @@ class Min(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
-        merge = min
-
-        def accumulate_block(a: AggType, block: Block) -> AggType:
-            ret = BlockAccessor.for_block(block).min(on, ignore_nulls)
-            if ret is not None:
-                ret = merge(a, ret)
-            return ret
+        null_merge = _null_wrap_merge(ignore_nulls, min)
 
         super().__init__(
             init=_null_wrap_init(lambda k: float("inf")),
-            merge=_null_wrap_merge(ignore_nulls, merge),
+            merge=null_merge,
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                accumulate_block,
+                lambda block: BlockAccessor.for_block(block).min(on, ignore_nulls),
+                null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"min({str(on)})"),
@@ -170,20 +159,15 @@ class Max(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
-        merge = max
-
-        def accumulate_block(a: AggType, block: Block) -> AggType:
-            ret = BlockAccessor.for_block(block).max(on, ignore_nulls)
-            if ret is not None:
-                ret = merge(a, ret)
-            return ret
+        null_merge = _null_wrap_merge(ignore_nulls, max)
 
         super().__init__(
             init=_null_wrap_init(lambda k: float("-inf")),
-            merge=_null_wrap_merge(ignore_nulls, merge),
+            merge=null_merge,
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
-                accumulate_block,
+                lambda block: BlockAccessor.for_block(block).max(on, ignore_nulls),
+                null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"max({str(on)})"),
@@ -197,23 +181,29 @@ class Mean(_AggregateOnKeyBase):
     def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
         self._set_key_fn(on)
 
-        def merge(a1: AggType, a2: AggType) -> AggType:
-            return [a1[0] + a2[0], a1[1] + a2[1]]
+        null_merge = _null_wrap_merge(
+            ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
+        )
 
-        def vectorized_mean(a: AggType, block: Block[T]) -> AggType:
+        def vectorized_mean(block: Block[T]) -> AggType:
             block_acc = BlockAccessor.for_block(block)
+            count = block_acc.count(on)
+            if count == 0 or count is None:
+                # Empty or all null.
+                return None
             sum_ = block_acc.sum(on, ignore_nulls)
             if sum_ is None:
+                # ignore_nulls=False and at least one null.
                 return None
-            count = block_acc.count(on, ignore_nulls)
-            return merge(a, [sum_, count])
+            return [sum_, count]
 
         super().__init__(
             init=_null_wrap_init(lambda k: [0, 0]),
-            merge=_null_wrap_merge(ignore_nulls, merge),
+            merge=null_merge,
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
                 vectorized_mean,
+                null_merge,
             ),
             finalize=_null_wrap_finalize(lambda a: a[0] / a[1]),
             name=(f"mean({str(on)})"),
@@ -258,17 +248,21 @@ class Std(_AggregateOnKeyBase):
             M2 = M2_a + M2_b + (delta ** 2) * count_a * count_b / count
             return [M2, mean, count]
 
-        def vectorized_std(a: AggType, block: Block[T]) -> AggType:
+        null_merge = _null_wrap_merge(ignore_nulls, merge)
+
+        def vectorized_std(block: Block[T]) -> AggType:
             block_acc = BlockAccessor.for_block(block)
-            count = block_acc.count(on, ignore_nulls)
-            if count == 0:
+            count = block_acc.count(on)
+            if count == 0 or count is None:
+                # Empty or all null.
                 return None
             sum_ = block_acc.sum(on, ignore_nulls)
             if sum_ is None:
+                # ignore_nulls=False and at least one null.
                 return None
             mean = sum_ / count
             M2 = block_acc.sum_of_squared_diffs_from_mean(on, ignore_nulls, mean)
-            return merge(a, [M2, mean, count])
+            return [M2, mean, count]
 
         def finalize(a: List[float]):
             # Compute the final standard deviation from the accumulated
@@ -280,10 +274,11 @@ class Std(_AggregateOnKeyBase):
 
         super().__init__(
             init=_null_wrap_init(lambda k: [0, 0, 0]),
-            merge=_null_wrap_merge(ignore_nulls, merge),
+            merge=null_merge,
             accumulate_block=_null_wrap_accumulate_block(
                 ignore_nulls,
                 vectorized_std,
+                null_merge,
             ),
             finalize=_null_wrap_finalize(finalize),
             name=(f"std({str(on)})"),

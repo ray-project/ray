@@ -197,7 +197,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 return None
             raise e from None
 
-    def count(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def count(self, on: KeyFn) -> Optional[U]:
         return self._apply_agg(lambda col: col.count(), on)
 
     def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
@@ -209,7 +209,9 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         col = self._table[on]
         if col.isnull().all():
-            # Short-circuit on an all-null column, returning None.
+            # Short-circuit on an all-null column, returning None. This is required for
+            # sum() since it will otherwise return 0 when summing on an all-null column,
+            # which is not what we want.
             return None
         return col.sum(skipna=ignore_nulls)
 
