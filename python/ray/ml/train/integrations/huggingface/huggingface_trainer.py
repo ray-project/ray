@@ -45,6 +45,52 @@ NODE_IP_KEY = "node_ip"
 CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
 
 
+# TODO(team-ml): Refactor checkpoint management along with Tune.
+class _DataParallelSyncingCheckpointManager(TuneCheckpointManager):
+    """Same as _DataParallelCheckpointManager, but syncs the dir instead
+    of serializing it."""
+
+    def add_tune_checkpoint_id(self, path: str):
+        # Store the checkpoint_id in the file so that the Tune trial can be
+        # resumed after failure or cancellation.
+        with open(Path(path).joinpath(TUNE_CHECKPOINT_ID), "w") as f:
+            f.write(str(self._latest_checkpoint_id))
+
+    def on_init(self, preprocessor: Preprocessor):
+        self.preprocessor = preprocessor
+        super(_DataParallelSyncingCheckpointManager, self).on_init()
+
+    def write_checkpoint(self, checkpoint: Dict):
+        # If inside a Tune Trainable, then checkpoint with Tune.
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
+            source_ip = checkpoint[NODE_IP_KEY]
+            source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
+            target_ip = get_node_ip_address()
+            if source_ip == target_ip:
+                # Move contents of source_path, but not source_path
+                # itself. shutil.move is already recursive.
+                for path in Path(source_path).iterdir():
+                    shutil.move(str(path.absolute()), checkpoint_dir)
+                shutil.rmtree(source_path, ignore_errors=True)
+            else:
+                sync_dir_between_nodes(
+                    source_ip=source_ip,
+                    source_path=source_path,
+                    target_ip=target_ip,
+                    target_path=checkpoint_dir,
+                    return_futures=False,
+                    max_size_bytes=None,
+                )
+                delete_on_node(node_ip=source_ip, path=source_path)
+            with open(Path(checkpoint_dir).joinpath(PREPROCESSOR_KEY), "wb") as f:
+                cpickle.dump(self.preprocessor, f)
+            self.add_tune_checkpoint_id(checkpoint_dir)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        raise NotImplementedError
+
+
 @PublicAPI(stability="alpha")
 class HuggingFaceTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
@@ -186,6 +232,10 @@ class HuggingFaceTrainer(TorchTrainer):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
+    _checkpoint_manager_cls: Type[
+        TuneCheckpointManager
+    ] = _DataParallelSyncingCheckpointManager
+
     def __init__(
         self,
         *,
@@ -276,9 +326,6 @@ class HuggingFaceTrainer(TorchTrainer):
         # Do not validate train_loop_per_worker. We validate
         # trainer_init_per_worker instead.
         pass
-
-    def _get_checkpoint_manager(self) -> TuneCheckpointManager:
-        return _DataParallelSyncingCheckpointManager()
 
     def _create_train_func(
         self,
@@ -522,43 +569,3 @@ def _process_dataset_for_hf(
     if count:
         torch_dataset = _HFIterableDatasetWithLen(torch_dataset, count)
     return torch_dataset
-
-
-# TODO(team-ml): Refactor checkpoint management along with Tune.
-class _DataParallelSyncingCheckpointManager(TuneCheckpointManager):
-    """Same as _DataParallelCheckpointManager, but syncs the dir instead
-    of serializing it."""
-
-    def add_tune_checkpoint_id(self, path: str):
-        # Store the checkpoint_id in the file so that the Tune trial can be
-        # resumed after failure or cancellation.
-        with open(Path(path).joinpath(TUNE_CHECKPOINT_ID), "w") as f:
-            f.write(str(self._latest_checkpoint_id))
-
-    def on_init(self, preprocessor: Preprocessor):
-        self.preprocessor = preprocessor
-        super(_DataParallelSyncingCheckpointManager, self).on_init()
-
-    def write_checkpoint(self, checkpoint: Dict):
-        # If inside a Tune Trainable, then checkpoint with Tune.
-        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
-            source_ip = checkpoint[NODE_IP_KEY]
-            source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
-            target_ip = get_node_ip_address()
-            sync_dir_between_nodes(
-                source_ip=source_ip,
-                source_path=source_path,
-                target_ip=target_ip,
-                target_path=checkpoint_dir,
-                return_futures=False,
-                max_size_bytes=None,
-            )
-            if source_ip == target_ip:
-                shutil.rmtree(source_path, ignore_errors=True)
-            with open(Path(checkpoint_dir).joinpath(PREPROCESSOR_KEY), "wb") as f:
-                cpickle.dump(self.preprocessor, f)
-            self.add_tune_checkpoint_id(checkpoint_dir)
-
-    @property
-    def latest_checkpoint_dir(self) -> Optional[Path]:
-        raise NotImplementedError
