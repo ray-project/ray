@@ -5,7 +5,6 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, Iterator, List, Optional, Type
-from unittest.mock import patch
 
 import torch
 import transformers.trainer
@@ -389,16 +388,10 @@ class HuggingFaceTrainer(TorchTrainer):
             else:
                 eval_torch_dataset = None
 
-            # ensure no HF logging callbacks are added
-            # aside from doubling functionality with our callbacks,
-            # the Wandb callbacks causes training to freeze
-            # TODO(yard1): Automatically set `no_cuda`
-            with patch(
-                "transformers.trainer.get_reporting_integration_callbacks", lambda x: []
-            ):
-                trainer: transformers.trainer.Trainer = trainer_init_per_worker(
-                    train_torch_dataset, eval_torch_dataset, **config
-                )
+            # TODO(yard1): Automatically set `no_cuda` somehow
+            trainer: transformers.trainer.Trainer = trainer_init_per_worker(
+                train_torch_dataset, eval_torch_dataset, **config
+            )
 
             if trainer.args.local_rank != train.local_rank():
                 raise RuntimeError(
@@ -471,6 +464,18 @@ class HuggingFaceTrainer(TorchTrainer):
             trainer.args.__class__ = RayTrainingArguments
             trainer.args.no_cuda = not torch.cuda.is_available()
             trainer.args.save_on_each_node = True
+
+            # ensure no HF logging callbacks are added
+            # aside from doubling functionality with our callbacks,
+            # the Wandb callbacks causes training to freeze
+            integration_callbacks = (
+                transformers.trainer.get_reporting_integration_callbacks(
+                    trainer.args.report_to
+                )
+            )
+            for callback in integration_callbacks:
+                trainer.pop_callback(callback)
+
             trainer.add_callback(_TrainReportCallback)
             if trainer.args.device.type == "cuda":
                 torch.cuda.set_device(trainer.args.device)
