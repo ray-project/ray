@@ -304,10 +304,7 @@ class HuggingFaceTrainer(TorchTrainer):
                 checkpoint_path,
             ) = resume_from_checkpoint.get_internal_representation()
             if checkpoint_type != "local_path":
-                raise ValueError(
-                    "Unexpected checkpoint type in `resume_from_checkpoint`. "
-                    f"Expected 'local_path', got '{checkpoint_type}'"
-                )
+                checkpoint_path = resume_from_checkpoint.to_directory()
             if checkpoint_path:
                 # Load checkpoint from path.
                 checkpoint_path = Path(checkpoint_path).expanduser().absolute()
