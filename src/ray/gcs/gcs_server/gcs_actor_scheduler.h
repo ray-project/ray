@@ -89,8 +89,15 @@ class GcsActorSchedulerInterface {
   /// \param actor The actor to be destoryed.
   virtual void OnActorDestruction(std::shared_ptr<GcsActor> actor) = 0;
 
+  /// Get the count of pending actors.
+  ///
+  /// \return The count of pending actors.
   virtual size_t GetPendingActorsCount() = 0;
 
+  /// Remove a pending actor.
+  ///
+  /// \param The actor to be removed.
+  /// \return Whether the actor is removed successfully.
   virtual bool RemovePendingActor(const std::shared_ptr<GcsActor> &actor) = 0;
 
   virtual std::string DebugString() const = 0;
@@ -107,11 +114,15 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param io_context The main event loop.
   /// \param gcs_actor_table Used to flush actor info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
-  /// \param cluster_task_manager The task manager that queues and schedules actor
-  /// creation tasks. \param schedule_failure_handler Invoked when there are no available
-  /// nodes to schedule actors. \param schedule_success_handler Invoked when actors are
-  /// created on the worker successfully. \param raylet_client_pool Raylet client pool to
-  /// construct connections to raylets. \param client_factory Factory to create remote
+  /// \param cluster_task_manager The task manager that queues and schedules actor.
+  /// creation tasks.
+  /// \param schedule_failure_handler Invoked when there are no available
+  /// nodes to schedule actors.
+  /// \param schedule_success_handler Invoked when actors are
+  /// created on the worker successfully.
+  /// \param raylet_client_pool Raylet client pool to
+  /// construct connections to raylets.
+  /// \param client_factory Factory to create remote
   /// core worker client, default factor will be used if not set.
   explicit GcsActorScheduler(
       instrumented_io_context &io_context,
@@ -127,8 +138,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   virtual ~GcsActorScheduler() = default;
 
   /// Schedule the specified actor.
-  /// If there is no available nodes then the `schedule_failed_handler_` will be
-  /// triggered, otherwise the actor will be scheduled until succeed or canceled.
+  /// If there is no available nodes then the actor would be queued in the
+  /// `cluster_task_manager_`.
   ///
   /// \param actor to be scheduled.
   void Schedule(std::shared_ptr<GcsActor> actor) override;
@@ -176,12 +187,28 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
 
   std::string DebugString() const override;
 
+  /// Schedule the actor at GCS. The target Raylet is selected by hybrid_policy by
+  /// default.
+  ///
+  /// \param actor The actor to be scheduled.
   void ScheduleByGcs(std::shared_ptr<GcsActor> actor);
 
+  /// Forward the actor to a Raylet for scheduling. The target Raylet is the same node for
+  /// the actor's owner, or selected randomly.
+  ///
+  /// \param actor The actor to be scheduled.
   void ScheduleByRaylet(std::shared_ptr<GcsActor> actor);
 
+  /// Get the count of pending actors, which considers both infeasible and waiting queues.
+  ///
+  /// \return The count of pending actors.
   size_t GetPendingActorsCount() override;
 
+  /// Remove a pending actor, which considers both infeasible and waiting queues.
+  ///
+  /// \param The actor to be removed.
+  /// \return Whether the actor is found (at the infeasible or waiting queue) and removed
+  /// successfully.
   bool RemovePendingActor(const std::shared_ptr<GcsActor> &actor) override;
 
  protected:

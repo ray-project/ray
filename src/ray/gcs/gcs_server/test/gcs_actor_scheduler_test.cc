@@ -82,8 +82,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
       scheduling::NodeID node_id(node->node_id());
       auto &cluster_resource_manager =
           cluster_resource_scheduler->GetClusterResourceManager();
-      // Give the node's total resources a place holder. Othwise, it would not be added to
-      // the `cluster_resource_manager_`.
+      // Give the node's total resources a place holder. Otherwise, it would not be added
+      // to the `cluster_resource_manager_`.
       if (node->resources_total().empty()) {
         const std::string cpu_resource = "CPU";
         absl::flat_hash_map<std::string, double> resource_map;

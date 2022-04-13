@@ -130,7 +130,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   std::shared_ptr<ClusterResourceScheduler> GetClusterResourceScheduler() const;
 
+  /// Get the count of tasks in `infeasible_tasks_`.
   size_t GetInfeasibleQueueSize() const;
+  /// Get the count of tasks in `tasks_to_schedule_`.
   size_t GetWaitingQueueSize() const;
 
  private:

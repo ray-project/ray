@@ -103,7 +103,8 @@ void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
   };
 
   // If an actor has resource requirements, we will try to forward it to the owner's node
-  // for scheduling.
+  // for scheduling. Otherwise, it would be forwarded to a random remote node for
+  // scheduling.
   const auto task_spec = actor->GetCreationTaskSpecification();
   NodeID node_id = task_spec.GetRequiredResources().IsEmpty() ? NodeID::Nil()
                                                               : actor->GetOwnerNodeID();
