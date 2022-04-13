@@ -92,7 +92,7 @@ def load_torch_model(
     saved_model: Union[torch.nn.Module, Dict],
     model_definition: Optional[torch.nn.Module] = None,
 ) -> torch.nn.Module:
-    """Loads a PyTorch model from the provided``saved_model``.
+    """Loads a PyTorch model from the provided ``saved_model``.
 
     If ``saved_model`` is a torch Module, then return it directly. If ``saved_model`` is
     a torch state dict, then load it in the ``model_definition`` and return the loaded
