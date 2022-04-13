@@ -127,11 +127,11 @@ class SklearnTrainer(Trainer):
             train/test set. Only used in conjunction with a "Group" ``cv``
             instance (e.g., ``GroupKFold``). This corresponds to the ``groups``
             argument in ``sklearn.model_selection.cross_validation``.
-        parallelise_cv: If set to True, will parallelise cross-validation
+        parallelize_cv: If set to True, will parallelize cross-validation
             instead of the estimator. If set to None, will detect if the estimator
             has any parallelism-related params (``n_jobs`` or ``thread_count``)
-            and parallelise cross-validation if there are none.
-            If False, will not parallelise cross-validation. Cannot be
+            and parallelize cross-validation if there are none.
+            If False, will not parallelize cross-validation. Cannot be
             set to True if there are any GPUs assigned to the trainer.
             Ignored if ``cv`` is None.
         return_train_score_cv: Whether to also return train scores during
@@ -155,7 +155,7 @@ class SklearnTrainer(Trainer):
         params: Optional[Dict[str, Any]] = None,
         scoring: Optional[ScoringType] = None,
         cv: Optional[CVType] = None,
-        parallelise_cv: Optional[bool] = None,
+        parallelize_cv: Optional[bool] = None,
         return_train_score_cv: bool = False,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -168,7 +168,7 @@ class SklearnTrainer(Trainer):
         self.fit_params = fit_params
         self.scoring = scoring
         self.cv = cv
-        self.parallelise_cv = parallelise_cv
+        self.parallelize_cv = parallelize_cv
         self.return_train_score_cv = return_train_score_cv
         super().__init__(
             scaling_config=scaling_config,
@@ -191,12 +191,12 @@ class SklearnTrainer(Trainer):
                 "for the dataset."
             )
         if (
-            not isinstance(self.parallelise_cv, bool)
-            and self.parallelise_cv is not None
+            not isinstance(self.parallelize_cv, bool)
+            and self.parallelize_cv is not None
         ):
             raise ValueError(
-                "`parallelise_cv` must be a bool or None, got "
-                f"'{self.parallelise_cv}'"
+                "`parallelize_cv` must be a bool or None, got "
+                f"'{self.parallelize_cv}'"
             )
         scaling_config = ScalingConfigDataClass(**self.scaling_config)
         ScalingConfigDataClass.validate_config(
@@ -207,11 +207,11 @@ class SklearnTrainer(Trainer):
         )
         if (
             self.cv
-            and self.parallelise_cv
+            and self.parallelize_cv
             and scaling_config.trainer_resources.get("GPU", 0)
         ):
             raise ValueError(
-                "`parallelise_cv` cannot be True if there are GPUs assigned to the "
+                "`parallelize_cv` cannot be True if there are GPUs assigned to the "
                 "trainer."
             )
 
@@ -304,15 +304,15 @@ class SklearnTrainer(Trainer):
         return {"cv": {**cv_results, **cv_aggregates}}
 
     def _set_estimator_cv_parallelism(self, num_cpus: int, has_gpus: bool) -> bool:
-        parallelise_cv = False
+        parallelize_cv = False
 
-        assert not (has_gpus and self.parallelise_cv)
+        assert not (has_gpus and self.parallelize_cv)
 
-        if self.cv and self.parallelise_cv is True:
+        if self.cv and self.parallelize_cv is True:
             estimator_has_parallelism_params = self._set_estimator_cpus(
                 self.estimator, 1
             )
-            parallelise_cv = True
+            parallelize_cv = True
         else:
             estimator_has_parallelism_params = self._set_estimator_cpus(
                 self.estimator, num_cpus
@@ -321,15 +321,15 @@ class SklearnTrainer(Trainer):
         if (
             not has_gpus
             and self.cv
-            and self.parallelise_cv is None
+            and self.parallelize_cv is None
             and not estimator_has_parallelism_params
         ):
             logger.info(
                 "No parallelism-related params detected in estimator, "
-                "will parallelise cross-validation instead."
+                "will parallelize cross-validation instead."
             )
-            parallelise_cv = True
-        return parallelise_cv
+            parallelize_cv = True
+        return parallelize_cv
 
     def training_loop(self) -> None:
         register_ray()
@@ -353,7 +353,7 @@ class SklearnTrainer(Trainer):
         os.environ["OPENBLAS_NUM_THREADS"] = str(num_cpus)
         os.environ["BLIS_NUM_THREADS"] = str(num_cpus)
 
-        parallelise_cv = self._set_estimator_cv_parallelism(num_cpus, has_gpus)
+        parallelize_cv = self._set_estimator_cv_parallelism(num_cpus, has_gpus)
 
         with parallel_backend("ray", n_jobs=num_cpus):
             start_time = time()
@@ -375,7 +375,7 @@ class SklearnTrainer(Trainer):
                     groups,
                     # if estimator has parallelism, use that. Otherwise,
                     # parallelize CV
-                    n_jobs=1 if not parallelise_cv else num_cpus,
+                    n_jobs=1 if not parallelize_cv else num_cpus,
                 )
             else:
                 validation_set_scores = {}

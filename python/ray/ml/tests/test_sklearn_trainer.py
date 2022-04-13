@@ -170,13 +170,13 @@ def test_validation(ray_start_4_cpus):
             label_column="target",
             datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         )
-    with pytest.raises(ValueError, match="parallelise_cv"):
+    with pytest.raises(ValueError, match="parallelize_cv"):
         SklearnTrainer(
             estimator=RandomForestClassifier(),
             scaling_config={"trainer_resources": {"GPU": 1}},
             label_column="target",
             cv=5,
-            parallelise_cv=True,
+            parallelize_cv=True,
             datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         )
 
