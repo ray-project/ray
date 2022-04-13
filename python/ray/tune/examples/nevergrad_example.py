@@ -1,6 +1,8 @@
 """This example demonstrates the usage of Nevergrad with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+Requires the Nevergrad library to be installed (`pip install nevergrad`).
 """
 import time
 
