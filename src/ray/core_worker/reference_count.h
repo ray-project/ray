@@ -494,7 +494,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences();
 
  private:
-  struct ContainingReferences {
+  /// Contains information related to nested object refs only.
+  struct NestedReferenceCount {
     /// Object IDs that we own and that contain this object ID.
     /// ObjectIDs are added to this field when we discover that this object
     /// contains other IDs. This can happen in 2 cases:
@@ -516,6 +517,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     absl::flat_hash_set<ObjectID> contains;
   };
 
+  /// Contains information related to borrowing only.
   struct BorrowInfo {
     /// When a process that is borrowing an object ID stores the ID inside the
     /// return value of a task that it executes, the caller of the task is also
@@ -573,7 +575,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// scope.
     size_t RefCount() const {
       return local_ref_count + submitted_task_ref_count +
-             containing().contained_in_owned.size();
+             nested().contained_in_owned.size();
     }
 
     /// Whether this reference is no longer in scope. A reference is in scope
@@ -584,7 +586,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool is_nested = containing().contained_in_borrowed_ids.size();
+      bool is_nested = nested().contained_in_borrowed_ids.size();
       bool has_borrowers = borrow().borrowers.size() > 0;
       bool was_stored_in_objects = borrow().stored_in_objects.size() > 0;
 
@@ -629,23 +631,23 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return borrow_info.get();
     }
 
-    /// Access ContainingReferences without modifications.
+    /// Access NestedReferenceCount without modifications.
     /// Returns the default value of the struct if it is not set.
-    const ContainingReferences &containing() const {
-      if (containing_references == nullptr) {
-        static auto *default_refs = new ContainingReferences();
+    const NestedReferenceCount &nested() const {
+      if (nested_reference_count == nullptr) {
+        static auto *default_refs = new NestedReferenceCount();
         return *default_refs;
       }
-      return *containing_references;
+      return *nested_reference_count;
     }
 
     /// Returns the containing references for updates.
     /// Creates the underlying field if it is not set.
-    ContainingReferences *mutable_containing() {
-      if (containing_references == nullptr) {
-        containing_references = std::make_unique<ContainingReferences>();
+    NestedReferenceCount *mutable_nested() {
+      if (nested_reference_count == nullptr) {
+        nested_reference_count = std::make_unique<NestedReferenceCount>();
       }
-      return containing_references.get();
+      return nested_reference_count.get();
     }
 
     /// Description of the call site where the reference was created.
@@ -687,8 +689,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// The ref count for submitted tasks that depend on the ObjectID.
     size_t submitted_task_ref_count = 0;
 
-    /// Metadata for references that contain this reference.
-    std::unique_ptr<ContainingReferences> containing_references;
+    /// Metadata related to nesting, including references that contain this
+    /// reference, and references contained by this reference.
+    std::unique_ptr<NestedReferenceCount> nested_reference_count;
 
     /// Metadata related to borrowing.
     std::unique_ptr<BorrowInfo> borrow_info;
