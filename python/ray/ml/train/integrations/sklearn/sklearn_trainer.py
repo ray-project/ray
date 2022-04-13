@@ -87,7 +87,7 @@ class SklearnTrainer(Trainer):
             validation sets, each reporting separate metrics.
         label_column: Name of the label column. A column with this name
             must be present in the training dataset. If None, no validation
-            will be done.
+            will be performed.
         params: Optional dict of params to be set on the estimator before
             fitting. Useful for hyperparameter tuning.
         scoring: Strategy to evaluate the performance of the model on
