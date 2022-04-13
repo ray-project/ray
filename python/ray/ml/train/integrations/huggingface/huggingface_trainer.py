@@ -28,7 +28,7 @@ from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.util import PublicAPI, get_node_ip_address
-from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 from ray.ml.constants import TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY, PREPROCESSOR_KEY
 
 # This trainer uses a special checkpoint syncing logic.
@@ -288,35 +288,43 @@ class HuggingFaceTrainer(TorchTrainer):
         # This is required to ensure that the dir syncing logic
         # is used instead of serializing several gigabytes of data
         # when a Checkpoint is sent to a Ray Actor.
-        if (
-            "resume_from_checkpoint" in kwargs
-            and kwargs["resume_from_checkpoint"]._local_path
-        ):
-            checkpoint_path = kwargs["resume_from_checkpoint"].to_directory()
+        if "resume_from_checkpoint" in kwargs:
+            resume_from_checkpoint: Checkpoint = kwargs["resume_from_checkpoint"]
+            (
+                checkpoint_type,
+                checkpoint_path,
+            ) = resume_from_checkpoint.get_internal_representation()
+            if checkpoint_type != "local_path":
+                raise ValueError(
+                    "Unexpected checkpoint type in `resume_from_checkpoint`. "
+                    f"Expected 'local_path', got '{checkpoint_type}'"
+                )
+            if checkpoint_path:
+                # Load checkpoint from path.
+                checkpoint_path = Path(checkpoint_path).expanduser().absolute()
+                if not checkpoint_path.exists():
+                    raise ValueError(
+                        f"Checkpoint path {checkpoint_path} does not exist."
+                    )
+                with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
+                    tune_checkpoint_id = int(f.read())
 
-            # Load checkpoint from path.
-            checkpoint_path = Path(checkpoint_path).expanduser().absolute()
-            if not checkpoint_path.exists():
-                raise ValueError(f"Checkpoint path {checkpoint_path} does not exist.")
-            with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
-                tune_checkpoint_id = int(f.read())
-
-            kwargs["resume_from_checkpoint"] = Checkpoint.from_dict(
-                {
-                    NODE_IP_KEY: get_node_ip_address(),
-                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                    TUNE_CHECKPOINT_ID: tune_checkpoint_id,
-                }
-            )
+                kwargs["resume_from_checkpoint"] = Checkpoint.from_dict(
+                    {
+                        NODE_IP_KEY: get_node_ip_address(),
+                        CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
+                        TUNE_CHECKPOINT_ID: tune_checkpoint_id,
+                    }
+                )
         return super(HuggingFaceTrainer, cls).__new__(cls, *args, **kwargs)
 
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str
     ) -> None:
         num_params = len(inspect.signature(trainer_init_per_worker).parameters)
-        if num_params != 3:
+        if num_params < 3:
             raise ValueError(
-                f"{fn_name} should take in 3 arguments, "
+                f"{fn_name} should take in at least 3 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
 
