@@ -990,7 +990,7 @@ def test_convert_types(ray_start_regular_shared):
 
     arrow_ds = ray.data.range_arrow(1)
     assert arrow_ds.map(lambda x: "plain_{}".format(x["value"])).take() == ["plain_0"]
-    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": (0,)}]
+    assert arrow_ds.map(lambda x: {"a": (x["value"],)}).take() == [{"a": [0]}]
 
 
 def test_from_items(ray_start_regular_shared):

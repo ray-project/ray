@@ -1,24 +1,22 @@
-from typing import Dict, List, Union, Type, Callable, Any
 import copy
 import glob
+import inspect
 import logging
 import os
-import inspect
 import threading
 import time
 import uuid
 from collections import defaultdict
 from datetime import datetime
 from threading import Thread
+from typing import Dict, List, Union, Type, Callable, Any
 from typing import Optional
 
 import numpy as np
-import ray
 import psutil
+import ray
 from ray.ml.checkpoint import Checkpoint
-from ray.util.ml_utils.cloud import clear_bucket
-
-from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+from ray.ml.utils.remote_storage import delete_at_uri
 from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
@@ -27,6 +25,7 @@ from ray.util.ml_utils.dict import (  # noqa: F401
     unflatten_list_dict,
     unflattened_lookup,
 )
+from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +178,7 @@ def get_checkpoint_from_remote_node(
 
 
 def delete_external_checkpoint(checkpoint_uri: str):
-    clear_bucket(checkpoint_uri)
+    delete_at_uri(checkpoint_uri)
 
 
 class warn_if_slow:
