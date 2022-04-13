@@ -1,59 +1,80 @@
-from typing import Optional, Union, List
+import os
+from typing import Optional, Type, Union, List
 
 import numpy as np
 import pandas as pd
 import torch
+from transformers.modeling_utils import PreTrainedModel
+from transformers.trainer import WEIGHTS_NAME
 
+import ray.cloudpickle as cpickle
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.utils.torch_utils import load_torch_model, convert_pandas_to_torch_tensor
-from ray.ml.constants import PREPROCESSOR_KEY, MODEL_KEY
+from ray.ml.constants import PREPROCESSOR_KEY
 
 
-class TorchPredictor(Predictor):
-    """A predictor for PyTorch models.
+class HuggingFacePredictor(Predictor):
+    """A predictor for HuggingFace Transformers PyTorch models.
 
     Args:
-        model: The torch module to use for predictions.
+        model: The Transformers model to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
     """
 
     def __init__(
-        self, model: torch.nn.Module, preprocessor: Optional[Preprocessor] = None
+        self,
+        model: Union[PreTrainedModel, torch.nn.Module],
+        preprocessor: Optional[Preprocessor] = None,
     ):
         self.model = model
         self.preprocessor = preprocessor
 
     @classmethod
     def from_checkpoint(
-        cls, checkpoint: Checkpoint, model: Optional[torch.nn.Module] = None
-    ) -> "TorchPredictor":
+        cls,
+        checkpoint: Checkpoint,
+        model: Union[Type[PreTrainedModel], torch.nn.Module],
+        **pretrained_model_kwargs,
+    ) -> "HuggingFacePredictor":
         """Instantiate the predictor from a Checkpoint.
 
-        The checkpoint is expected to be a result of ``TorchTrainer``.
+        The checkpoint is expected to be a result of ``HuggingFaceTrainer``.
 
         Args:
             checkpoint: The checkpoint to load the model and
                 preprocessor from. It is expected to be from the result of a
-                ``TorchTrainer`` run.
-            model: If the checkpoint contains a model state dict, and not
-                the model itself, then the state dict will be loaded to this
-                ``model``.
+                ``HuggingFaceTrainer`` run.
+            model: Either a ``transformers.PreTrainedModel`` class, or a
+                PyTorch model to load the weights to. This should be the
+                same model used for training.
+            **pretrained_model_kwargs: Any kwargs to pass to the ``model.from_pretrained()``
+                call. Only used if ``model`` is a ``PreTrainerModel``.
         """
-        checkpoint_dict = checkpoint.to_dict()
-        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-        if MODEL_KEY not in checkpoint_dict:
-            raise RuntimeError(
-                f"No item with key: {MODEL_KEY} is found in the "
-                f"Checkpoint. Make sure this key exists when saving the "
-                f"checkpoint in ``TorchTrainer``."
+        (
+            checkpoint_type,
+            checkpoint_path,
+        ) = checkpoint.get_internal_representation()
+        if checkpoint_type != "local_path":
+            checkpoint_path = checkpoint.to_directory()
+        preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
+        if os.path.exists(preprocessor_path):
+            with open(preprocessor_path, "rb") as f:
+                preprocessor = cpickle.load(f)
+        else:
+            preprocessor = None
+        if issubclass(model, PreTrainedModel):
+            model = PreTrainedModel.from_pretrained(
+                checkpoint_path, **pretrained_model_kwargs
             )
-        model = load_torch_model(
-            saved_model=checkpoint_dict[MODEL_KEY], model_definition=model
-        )
-        return TorchPredictor(model=model, preprocessor=preprocessor)
+        else:
+            state_dict = torch.load(
+                os.path.join(checkpoint_path, WEIGHTS_NAME), map_location="cpu"
+            )
+            model = load_torch_model(saved_model=state_dict, model_definition=model)
+        return HuggingFacePredictor(model=model, preprocessor=preprocessor)
 
     def predict(
         self,
@@ -130,7 +151,7 @@ class TorchPredictor(Predictor):
         # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
         # Reduce conversion cost if input is in Numpy
         tensor = convert_pandas_to_torch_tensor(
-            data, columns=feature_columns, column_dtypes=dtype
+            data, columns=feature_columns, column_dtypes=dtype, unsqueeze=False
         )
         prediction = self.model(tensor).cpu().detach().numpy()
         return pd.DataFrame(prediction, columns=["predictions"])
