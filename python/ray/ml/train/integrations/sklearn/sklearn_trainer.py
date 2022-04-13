@@ -162,6 +162,12 @@ class SklearnTrainer(Trainer):
         preprocessor: Optional[Preprocessor] = None,
         **fit_params,
     ):
+        if fit_params.pop("resume_from_checkpoint", None):
+            raise AttributeError(
+                "SklearnTrainer does not support resuming from checkpoints. "
+                "Remove the `resume_from_checkpoint` argument."
+            )
+
         self.estimator = clone(estimator)
         self.label_column = label_column
         self.params = params or {}
