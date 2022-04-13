@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Callable, Container, List, Optional, Tuple, TYPE_CHECKING
+from typing import Container, List, Optional, Tuple, TYPE_CHECKING, Union
 
 import ray
 from ray.rllib.evaluation.rollout_worker import get_global_worker
@@ -33,9 +33,12 @@ logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 def synchronous_parallel_sample(
+    *,
     worker_set: WorkerSet,
-    remote_fn: Optional[Callable[["RolloutWorker"], None]] = None,
-) -> List[SampleBatch]:
+    max_agent_steps: Optional[int] = None,
+    max_env_steps: Optional[int] = None,
+    concat: bool = True,
+) -> Union[List[SampleBatchType], SampleBatchType]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
     Waits for all workers to return from the remote calls.
@@ -50,6 +53,12 @@ def synchronous_parallel_sample(
         worker_set: The WorkerSet to use for sampling.
         remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
             of `worker.sample.remote()` to generate the requests.
+        max_agent_steps: Optional number of agent steps to be included in the
+            final batch.
+        max_env_steps: Optional number of environment steps to be included in the
+            final batch.
+        concat: Whether to concat all resulting batches at the end and return the
+            concat'd batch.
 
     Returns:
         The list of collected sample batch types (one for each parallel
@@ -69,16 +78,46 @@ def synchronous_parallel_sample(
         >>> print(len(batches)) # doctest: +SKIP
         1
     """
-    # No remote workers in the set -> Use local worker for collecting
-    # samples.
-    if not worker_set.remote_workers():
-        return [worker_set.local_worker().sample()]
+    # Only allow one of `max_agent_steps` or `max_env_steps` to be defined.
+    assert not (max_agent_steps is not None and max_env_steps is not None)
 
-    # Loop over remote workers' `sample()` method in parallel.
-    sample_batches = ray.get([r.sample.remote() for r in worker_set.remote_workers()])
+    agent_or_env_steps = 0
+    max_agent_or_env_steps = max_agent_steps or max_env_steps or None
+    all_sample_batches = []
 
-    # Return all collected batches.
-    return sample_batches
+    # Stop collecting batches as soon as one criterium is met.
+    while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
+        max_agent_or_env_steps is not None
+        and agent_or_env_steps < max_agent_or_env_steps
+    ):
+        # No remote workers in the set -> Use local worker for collecting
+        # samples.
+        if not worker_set.remote_workers():
+            sample_batches = [worker_set.local_worker().sample()]
+        # Loop over remote workers' `sample()` method in parallel.
+        else:
+            sample_batches = ray.get(
+                [worker.sample.remote() for worker in worker_set.remote_workers()]
+            )
+        # Update our counters for the stopping criterion of the while loop.
+        for b in sample_batches:
+            if max_agent_steps:
+                agent_or_env_steps += b.agent_steps()
+            else:
+                agent_or_env_steps += b.env_steps()
+        all_sample_batches.extend(sample_batches)
+
+    if concat is True:
+        full_batch = SampleBatch.concat_samples(all_sample_batches)
+        # Discard collected incomplete episodes in episode mode.
+        # if max_episodes is not None and episodes >= max_episodes:
+        #    last_complete_ep_idx = len(full_batch) - full_batch[
+        #        SampleBatch.DONES
+        #    ].reverse().index(1)
+        #    full_batch = full_batch.slice(0, last_complete_ep_idx)
+        return full_batch
+    else:
+        return all_sample_batches
 
 
 def ParallelRollouts(
@@ -337,6 +376,27 @@ class SelectExperiences:
         return samples
 
 
+def standardize_fields(samples: SampleBatchType, fields: List[str]) -> SampleBatchType:
+    """Standardize fields of the given SampleBatch"""
+    _check_sample_batch_type(samples)
+    wrapped = False
+
+    if isinstance(samples, SampleBatch):
+        samples = samples.as_multi_agent()
+        wrapped = True
+
+    for policy_id in samples.policy_batches:
+        batch = samples.policy_batches[policy_id]
+        for field in fields:
+            if field in batch:
+                batch[field] = standardized(batch[field])
+
+    if wrapped:
+        samples = samples.policy_batches[DEFAULT_POLICY_ID]
+
+    return samples
+
+
 class StandardizeFields:
     """Callable used to standardize fields of batches.
 
@@ -358,28 +418,4 @@ class StandardizeFields:
         self.fields = fields
 
     def __call__(self, samples: SampleBatchType) -> SampleBatchType:
-        _check_sample_batch_type(samples)
-        wrapped = False
-
-        if isinstance(samples, SampleBatch):
-            samples = samples.as_multi_agent()
-            wrapped = True
-
-        for policy_id in samples.policy_batches:
-            batch = samples.policy_batches[policy_id]
-            for field in self.fields:
-                if field not in batch:
-                    raise KeyError(
-                        f"`{field}` not found in SampleBatch for policy "
-                        f"`{policy_id}`! Maybe this policy fails to add "
-                        f"{field} in its `postprocess_trajectory` method? Or "
-                        "this policy is not meant to learn at all and you "
-                        "forgot to add it to the list under `config."
-                        "multiagent.policies_to_train`."
-                    )
-                batch[field] = standardized(batch[field])
-
-        if wrapped:
-            samples = samples.policy_batches[DEFAULT_POLICY_ID]
-
-        return samples
+        return standardize_fields(samples, self.fields)

@@ -35,7 +35,6 @@
 
 namespace ray {
 
-using raylet_scheduling_policy::SchedulingContext;
 using raylet_scheduling_policy::SchedulingOptions;
 using raylet_scheduling_policy::SchedulingResult;
 using rpc::HeartbeatTableData;
@@ -79,8 +78,7 @@ class ClusterResourceScheduler {
   /// a flag to indicate whether this request can be retry or not.
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context = nullptr);
+      SchedulingOptions options);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -211,6 +209,9 @@ class ClusterResourceScheduler {
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   /// The scheduling policy to use.
   std::unique_ptr<raylet_scheduling_policy::ISchedulingPolicy> scheduling_policy_;
+  /// The bundle scheduling policy to use.
+  std::unique_ptr<raylet_scheduling_policy::IBundleSchedulingPolicy>
+      bundle_scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);

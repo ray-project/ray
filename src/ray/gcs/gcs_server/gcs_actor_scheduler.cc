@@ -274,7 +274,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // Actor leases should be sent to the raylet immediately, so we should never build up a
   // backlog in GCS.
   lease_client->RequestWorkerLease(
-      actor->GetActorTableData().task_spec(),
+      actor->GetCreationTaskSpecification().GetMessage(),
       RayConfig::instance().gcs_actor_scheduling_enabled(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
