@@ -98,7 +98,7 @@ class ExecutionPlan:
         # For lazy block lists, this launches read tasks and fetches block metadata
         # until we find valid block schema.
         for _, m in blocks.iter_blocks_with_metadata():
-            if m.schema is not None and (m.num_rows > 0 or m.num_rows is None):
+            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
                 return m.schema
         return None
 

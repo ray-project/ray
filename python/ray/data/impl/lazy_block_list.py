@@ -114,27 +114,6 @@ class LazyBlockList(BlockList):
             stats_uuid=self._stats_uuid,
         )
 
-    def _submit_task(
-        self, task_idx: int
-    ) -> Tuple[ObjectRef[MaybeBlockPartition], ObjectRef[BlockPartitionMetadata]]:
-        """Submit the task with index task_idx."""
-        stats_actor = _get_or_create_stats_actor()
-        if not self._execution_started:
-            stats_actor.record_start.remote(self._stats_uuid)
-            self._execution_started = True
-        task = self._tasks[task_idx]
-        return (
-            cached_remote_fn(_execute_read_task)
-            .options(num_returns=2, **self._remote_args)
-            .remote(
-                i=task_idx,
-                task=task,
-                context=DatasetContext.get_current(),
-                stats_uuid=self._stats_uuid,
-                stats_actor=stats_actor,
-            )
-        )
-
     def copy(self) -> "LazyBlockList":
         return LazyBlockList(
             self._tasks.copy(),
@@ -421,6 +400,27 @@ class LazyBlockList(BlockList):
             assert self._block_partition_refs[i], self._block_partition_refs
             assert self._block_partition_meta_refs[i], self._block_partition_meta_refs
         return self._block_partition_refs[i], self._block_partition_meta_refs[i]
+
+    def _submit_task(
+        self, task_idx: int
+    ) -> Tuple[ObjectRef[MaybeBlockPartition], ObjectRef[BlockPartitionMetadata]]:
+        """Submit the task with index task_idx."""
+        stats_actor = _get_or_create_stats_actor()
+        if not self._execution_started:
+            stats_actor.record_start.remote(self._stats_uuid)
+            self._execution_started = True
+        task = self._tasks[task_idx]
+        return (
+            cached_remote_fn(_execute_read_task)
+            .options(num_returns=2, **self._remote_args)
+            .remote(
+                i=task_idx,
+                task=task,
+                context=DatasetContext.get_current(),
+                stats_uuid=self._stats_uuid,
+                stats_actor=stats_actor,
+            )
+        )
 
     def _num_computed(self) -> int:
         i = 0
