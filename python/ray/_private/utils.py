@@ -389,7 +389,12 @@ def get_system_memory():
             docker_limit = int(f.read())
     elif os.path.exists(memory_limit_filename_v2):
         with open(memory_limit_filename_v2, "r") as f:
-            docker_limit = int(f.read())
+            max_file = f.read()
+            if max_file.isnumeric():
+                docker_limit = int(max_file)
+            else:
+                # max_file is "max", i.e. is unset.
+                docker_limit = None
 
     # Use psutil if it is available.
     psutil_memory_in_bytes = psutil.virtual_memory().total
