@@ -306,6 +306,3 @@ Feel free to open new github issues and contribute more storage backends!
 .. _`Persistent Volumes`: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 
 .. _`KVStoreBase`: https://github.com/ray-project/ray/blob/master/python/ray/serve/storage/kv_store_base.py
-
-.. _serve-monitoring:
-

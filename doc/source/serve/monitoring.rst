@@ -1,8 +1,10 @@
+.. _serve-monitoring:
 ======================
 Debugging & Monitoring
 ======================
 
 This section should help you understand how to debug and monitor your Serve application.
+
 
 Ray Dashboard
 =============
