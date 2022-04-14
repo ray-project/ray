@@ -11,6 +11,7 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data import context
 
 T = TypeVar("T")
 
@@ -471,7 +472,7 @@ class PushBasedShuffleOp(ShuffleOp):
         return BlockList(list(new_blocks), list(new_metadata)), stats
 
 
-class ShufflePartitionOp(PushBasedShuffleOp):
+class ShufflePartitionOp(PushBasedShuffleOp if context.DEFAULT_PUSH_BASED_SHUFFLE else ShuffleOp):
     """
     Operator used for `random_shuffle` and `repartition` transforms.
     """
