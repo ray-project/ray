@@ -26,8 +26,7 @@ public class ParallelActorImpl<A> implements ParallelActor<A>, Externalizable {
 
   @Override
   public ParallelInstance<A> getInstance(int index) {
-    // TODO(qwang): Not new this object every time.
-    return new ParallelInstance(this, index);
+    return new ParallelInstance<A>(this, index);
   }
 
   public ActorHandle<? extends ParallelActorExecutorImpl> getExecutor() {
@@ -54,7 +53,8 @@ public class ParallelActorImpl<A> implements ParallelActor<A>, Externalizable {
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.parallelExecutorHandle = (ActorHandle<ParallelActorExecutorImpl>) in.readObject();
     this.strategy = (ParallelStrategyInterface) in.readObject();
-    //
+    // Note that this is necessary so that the strategy could be passed as argument in
+    // remote call. A new worker shouldn't resume from the old one.
     this.strategy.reset();
   }
 }

@@ -16,7 +16,7 @@ public class ParallelActorCreator<A> {
     this.func = func;
     this.args = args;
 
-    // By default, it should be RoundRobinStrategy with 1 parallel.
+    // By default, it should be `RoundRobinStrategy` with 1 parallel.
     ParallelContext ctx = Ray.internal().getParallelContext();
     this.strategy = new RoundRobinStrategy(1);
   }
