@@ -260,22 +260,15 @@ class HuggingFaceTrainer(TorchTrainer):
             trainer_init_per_worker, "trainer_init_per_worker"
         )
 
-        if TRAIN_DATASET_KEY not in datasets:
-            raise KeyError(
-                f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
-                f"Got {list(self.datasets.keys())}"
+        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
+        if "_trainer_init_per_worker" in trainer_init_config:
+            raise ValueError(
+                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
             )
-        if not all(
-            key in (TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY) for key in datasets
-        ):
-            raise KeyError(
-                f"Only '{TRAIN_DATASET_KEY}' and '{EVALUATION_DATASET_KEY}' "
-                "keys can be preset in `datasets`. "
-                f"Got {list(self.datasets.keys())}"
-            )
+        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
 
         super().__init__(
-            train_loop_per_worker=self._create_train_func(trainer_init_per_worker),
+            train_loop_per_worker=_huggingface_train_loop_per_worker,
             train_loop_config=trainer_init_config,
             torch_config=torch_config,
             scaling_config=scaling_config,
@@ -330,124 +323,125 @@ class HuggingFaceTrainer(TorchTrainer):
                 f"but it accepts {num_params} arguments instead."
             )
 
-    def _validate_train_loop_per_worker(
-        self, train_loop_per_worker: Callable, fn_name: str
-    ) -> None:
-        # Do not validate train_loop_per_worker. We validate
-        # trainer_init_per_worker instead.
-        pass
+    def _validate_attributes(self):
+        if TRAIN_DATASET_KEY not in self.datasets:
+            raise KeyError(
+                f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
+                f"Got {list(self.datasets.keys())}"
+            )
+        if not all(
+            key in (TRAIN_DATASET_KEY, EVALUATION_DATASET_KEY) for key in self.datasets
+        ):
+            raise KeyError(
+                f"Only '{TRAIN_DATASET_KEY}' and '{EVALUATION_DATASET_KEY}' "
+                "keys can be preset in `datasets`. "
+                f"Got {list(self.datasets.keys())}"
+            )
+        return super()._validate_attributes()
 
-    def _create_train_func(
-        self,
-        trainer_init_per_worker: Callable[
-            [TorchDataset, Optional[TorchDataset], Any], transformers.trainer.Trainer
-        ],
-    ):
-        def train_loop_per_worker(config):
-            # Env vars necessary for HF to setup DDP
-            os.environ["RANK"] = str(train.world_rank())
-            os.environ["WORLD_SIZE"] = str(train.world_size())
-            os.environ["LOCAL_RANK"] = str(train.local_rank())
 
-            train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
-            eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
-            train_columns = set(train_dataset.schema(fetch_if_missing=True).names)
+def _huggingface_train_loop_per_worker(config):
+    """Per-worker training loop for HuggingFace Transformers."""
+    trainer_init_per_worker = config.pop("_trainer_init_per_worker")
 
-            # HF-specific format. See transformers.Trainer._prepare_inputs
-            feature_columns = {column: [column] for column in train_columns}
+    # Env vars necessary for HF to setup DDP
+    os.environ["RANK"] = str(train.world_rank())
+    os.environ["WORLD_SIZE"] = str(train.world_size())
+    os.environ["LOCAL_RANK"] = str(train.local_rank())
 
-            batch_size = 1
-            train_torch_dataset = process_dataset_for_hf(
-                train_dataset, feature_columns, batch_size=batch_size
+    train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
+    eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
+    train_columns = set(train_dataset.schema(fetch_if_missing=True).names)
+
+    # HF-specific format. See transformers.Trainer._prepare_inputs
+    feature_columns = {column: [column] for column in train_columns}
+
+    batch_size = 1
+    train_torch_dataset = process_dataset_for_hf(
+        train_dataset, feature_columns, batch_size=batch_size
+    )
+
+    if eval_dataset:
+        eval_torch_dataset = process_dataset_for_hf(
+            eval_dataset, feature_columns, batch_size=batch_size
+        )
+    else:
+        eval_torch_dataset = None
+
+    # TODO(yard1): Automatically set `no_cuda` somehow
+    trainer: transformers.trainer.Trainer = trainer_init_per_worker(
+        train_torch_dataset, eval_torch_dataset, **config
+    )
+
+    base_training_arguments_class: Type[TrainingArguments] = trainer.args.__class__
+
+    class RayTrainingArguments(base_training_arguments_class):
+        @property
+        def device(self) -> "torch.device":
+            return train.torch.get_device()
+
+    base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
+
+    class RayTrainer(base_trainer_class):
+        def get_train_dataloader(self):
+            return DataLoader(
+                self.train_dataset,
+                batch_size=self.args.per_device_train_batch_size,
+                collate_fn=self.data_collator,
+                num_workers=self.args.dataloader_num_workers,
+                pin_memory=self.args.dataloader_pin_memory,
             )
 
-            if eval_dataset:
-                eval_torch_dataset = process_dataset_for_hf(
-                    eval_dataset, feature_columns, batch_size=batch_size
-                )
-            else:
-                eval_torch_dataset = None
+        def _save(self, *args, **kwargs):
+            # Workaround for RayTrainingArguments not being
+            # pickleable due to it being defined in a local
+            # scope
+            self.args.__class__ = base_training_arguments_class
+            ret = super()._save(*args, **kwargs)
+            self.args.__class__ = RayTrainingArguments
+            return ret
 
-            # TODO(yard1): Automatically set `no_cuda` somehow
-            trainer: transformers.trainer.Trainer = trainer_init_per_worker(
-                train_torch_dataset, eval_torch_dataset, **config
+    trainer.__class__ = RayTrainer
+    trainer.args.__class__ = RayTrainingArguments
+    trainer.args.no_cuda = not torch.cuda.is_available()
+    trainer.args.save_on_each_node = True
+
+    # ensure no HF logging callbacks are added
+    # aside from doubling functionality with our callbacks,
+    # the Wandb callbacks causes training to freeze
+    integration_callbacks = transformers.trainer.get_reporting_integration_callbacks(
+        trainer.args.report_to
+    )
+    for callback in integration_callbacks:
+        trainer.pop_callback(callback)
+
+    trainer.add_callback(TrainReportCallback)
+    if trainer.args.device.type == "cuda":
+        torch.cuda.set_device(trainer.args.device)
+
+    checkpoint = train.load_checkpoint()
+    checkpoint_path = None
+    remove_checkpoint_path = False
+    if checkpoint:
+        source_ip = checkpoint[NODE_IP_KEY]
+        source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
+        target_ip = get_node_ip_address()
+        if source_ip == target_ip:
+            checkpoint_path = source_path
+        else:
+            # TODO(yard1): Confirm if tempdir is the right approach here.
+            checkpoint_path = tempfile.mkdtemp(
+                suffix=Path(trainer.args.output_dir).name
             )
-
-            base_training_arguments_class: Type[
-                TrainingArguments
-            ] = trainer.args.__class__
-
-            class RayTrainingArguments(base_training_arguments_class):
-                @property
-                def device(self) -> "torch.device":
-                    return train.torch.get_device()
-
-            base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
-
-            class RayTrainer(base_trainer_class):
-                def get_train_dataloader(self):
-                    return DataLoader(
-                        self.train_dataset,
-                        batch_size=self.args.per_device_train_batch_size,
-                        collate_fn=self.data_collator,
-                        num_workers=self.args.dataloader_num_workers,
-                        pin_memory=self.args.dataloader_pin_memory,
-                    )
-
-                def _save(self, *args, **kwargs):
-                    # Workaround for RayTrainingArguments not being
-                    # pickleable due to it being defined in a local
-                    # scope
-                    self.args.__class__ = base_training_arguments_class
-                    ret = super()._save(*args, **kwargs)
-                    self.args.__class__ = RayTrainingArguments
-                    return ret
-
-            trainer.__class__ = RayTrainer
-            trainer.args.__class__ = RayTrainingArguments
-            trainer.args.no_cuda = not torch.cuda.is_available()
-            trainer.args.save_on_each_node = True
-
-            # ensure no HF logging callbacks are added
-            # aside from doubling functionality with our callbacks,
-            # the Wandb callbacks causes training to freeze
-            integration_callbacks = (
-                transformers.trainer.get_reporting_integration_callbacks(
-                    trainer.args.report_to
-                )
+            remove_checkpoint_path = True
+            sync_dir_between_nodes(
+                source_ip=source_ip,
+                source_path=source_path,
+                target_ip=target_ip,
+                target_path=checkpoint_path,
+                return_futures=False,
+                max_size_bytes=None,
             )
-            for callback in integration_callbacks:
-                trainer.pop_callback(callback)
-
-            trainer.add_callback(TrainReportCallback)
-            if trainer.args.device.type == "cuda":
-                torch.cuda.set_device(trainer.args.device)
-
-            checkpoint = train.load_checkpoint()
-            checkpoint_path = None
-            remove_checkpoint_path = False
-            if checkpoint:
-                source_ip = checkpoint[NODE_IP_KEY]
-                source_path = checkpoint[CHECKPOINT_PATH_ON_NODE_KEY]
-                target_ip = get_node_ip_address()
-                if source_ip == target_ip:
-                    checkpoint_path = source_path
-                else:
-                    # TODO(yard1): Confirm if tempdir is the right approach here.
-                    checkpoint_path = tempfile.mkdtemp(
-                        suffix=Path(trainer.args.output_dir).name
-                    )
-                    remove_checkpoint_path = True
-                    sync_dir_between_nodes(
-                        source_ip=source_ip,
-                        source_path=source_path,
-                        target_ip=target_ip,
-                        target_path=checkpoint_path,
-                        return_futures=False,
-                        max_size_bytes=None,
-                    )
-            trainer.train(resume_from_checkpoint=checkpoint_path)
-            if remove_checkpoint_path:
-                shutil.rmtree(checkpoint_path, ignore_errors=True)
-
-        return train_loop_per_worker
+    trainer.train(resume_from_checkpoint=checkpoint_path)
+    if remove_checkpoint_path:
+        shutil.rmtree(checkpoint_path, ignore_errors=True)
