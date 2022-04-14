@@ -96,12 +96,20 @@ class LogAgentV1Grpc(
 
 
 def tail(f, lines):
-    """
+    """Tails the given file (in 'rb' mode)
+
     We assume that any "lines" parameter is not significant (<100,000 lines)
     and will result in a buffer with a small memory profile (<1MB)
 
     Taken from: https://stackoverflow.com/a/136368/8299684
 
+    Examples:
+    Args:
+        f: text file in 'rb' mode
+        lines: The number of lines to read from the end of the file.
+    Returns:
+        string containing the lines of the file,
+        the position of the last byte read in units of bytes
     """
 
     total_lines_wanted = lines

@@ -6,6 +6,7 @@ import traceback
 import html.parser
 import urllib.parse
 import json
+import os
 
 from ray.dashboard.tests.conftest import *  # noqa
 import pytest
@@ -14,6 +15,7 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
+from ray.dashboard.modules.log.log_agent import tail as tail_file
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +200,28 @@ def test_logs_experimental_index(ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
+def test_logs_tail():
+    """
+    Unit test for tail
+    """
+    TOTAL_LINES = 1000
+    FILE_NAME = "test_file.txt"
+    try:
+        with open(FILE_NAME, "w") as f:
+            for i in range(TOTAL_LINES):
+                f.write(f"Message {i:4}\n")
+        file = open(FILE_NAME, "rb")
+        text, byte_pos = tail_file(file, 100)
+        assert byte_pos == TOTAL_LINES * len(b"Message 1000\n")
+        lines = text.decode("utf-8").split("\n")
+        assert len(lines) == 100
+        assert lines[0] == "Message  900"
+        assert lines[99] == "Message  999"
+    finally:
+        if os.path.exists(FILE_NAME):
+            os.remove(FILE_NAME)
+
+
 def test_logs_experimental_write(ray_start_with_dashboard):
     @ray.remote
     class Actor:
@@ -206,7 +230,7 @@ def test_logs_experimental_write(ray_start_with_dashboard):
 
     test_log_text = "test_log_text"
     actor = Actor.remote()
-    ray.get(actor.write_log(test_log_text))
+    ray.get(actor.write_log.remote(test_log_text))
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -259,4 +283,4 @@ def test_logs_experimental_write(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", f"{__file__}::test_logs_tail"]))
