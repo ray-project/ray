@@ -999,6 +999,7 @@ def install_matching_ray():
     wheel = wheel.replace("manylinux2014_x86_64", platform)
     subprocess.check_output(["pip", "uninstall", "-y", "ray"], text=True)
     subprocess.check_output(["pip", "install", "-U", wheel], text=True)
+    subprocess.check_output(["pip", "install", "aiohttp==3.8.1"], text=True)
 
 
 def wait_for_build_or_raise(sdk: AnyscaleSDK,
