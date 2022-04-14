@@ -48,4 +48,4 @@ class Normalizer(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Columns={self.columns} method={self.method} power={self.power}>"
+        return f"<Columns={self.columns} norm={self.norm}>"
