@@ -147,7 +147,7 @@ class RobustScaler(Preprocessor):
     are calculated from the fitted dataset.
 
     Args:
-        columns: The columns that will individually be scaled.
+        columns: The columns that will be scaled individually.
     """
 
     def __init__(self, columns: List[str]):
