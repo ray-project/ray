@@ -2213,14 +2213,16 @@ Dict[str, List[str]]]): The names of the columns
 
         return TorchIterableDataset(make_generator)
 
-    FeatureTypeSpec = Union[
+    TensorflowFeatureTypeSpec = Union[
         "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
     ]
 
     def to_tf(
         self,
         *,
-        output_signature: Union[FeatureTypeSpec, Tuple[FeatureTypeSpec, "tf.TypeSpec"]],
+        output_signature: Union[
+            TensorflowFeatureTypeSpec, Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]
+        ],
         label_column: Optional[str] = None,
         feature_columns: Optional[
             Union[List[str], List[List[str]], Dict[str, List[str]]]
