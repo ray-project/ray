@@ -2,7 +2,6 @@ package io.ray.runtime.utils.parallelactor;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.Ray;
-import io.ray.api.parallelactor.ParallelActorExecutor;
 import io.ray.api.parallelactor.ParallelStrategy;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.FunctionManager;
@@ -13,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class ParallelActorExecutorImpl extends ParallelActorExecutor {
+public class ParallelActorExecutorImpl {
 
   private static final Logger LOG = LoggerFactory.getLogger(ParallelActorExecutorImpl.class);
 

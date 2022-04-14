@@ -2,17 +2,16 @@ package io.ray.runtime.utils.parallelactor;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.parallelactor.ParallelActor;
-import io.ray.api.parallelactor.ParallelActorExecutor;
 import io.ray.api.parallelactor.ParallelInstance;
 import io.ray.api.parallelactor.ParallelStrategyInterface;
 
 public class ParallelActorImpl<A> implements ParallelActor<A> {
 
   private ParallelStrategyInterface strategy;
-  private ActorHandle<? extends ParallelActorExecutor> parallelExecutorHandle = null;
+  private ActorHandle<? extends ParallelActorExecutorImpl> parallelExecutorHandle = null;
 
   public ParallelActorImpl(
-      ParallelStrategyInterface strategy, ActorHandle<? extends ParallelActorExecutor> handle) {
+      ParallelStrategyInterface strategy, ActorHandle<? extends ParallelActorExecutorImpl> handle) {
     this.strategy = strategy;
     parallelExecutorHandle = handle;
   }
@@ -23,8 +22,7 @@ public class ParallelActorImpl<A> implements ParallelActor<A> {
     return new ParallelInstance(this, index);
   }
 
-  @Override
-  public ActorHandle<? extends ParallelActorExecutor> getExecutor() {
+  public ActorHandle<? extends ParallelActorExecutorImpl> getExecutor() {
     return parallelExecutorHandle;
   }
 

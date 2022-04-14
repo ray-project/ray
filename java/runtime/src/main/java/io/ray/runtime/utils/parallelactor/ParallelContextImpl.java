@@ -6,6 +6,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.concurrencygroup.ConcurrencyGroupBuilder;
+import io.ray.api.function.RayFunc;
 import io.ray.api.function.RayFuncR;
 import io.ray.api.parallelactor.*;
 import io.ray.runtime.RayRuntimeInternal;
@@ -23,7 +24,7 @@ public class ParallelContextImpl implements ParallelContext {
     ConcurrencyGroup[] concurrencyGroups = new ConcurrencyGroup[parallelNum];
     for (int i = 0; i < parallelNum; ++i) {
       concurrencyGroups[i] =
-          new ConcurrencyGroupBuilder<ParallelActorExecutor>()
+          new ConcurrencyGroupBuilder<ParallelActorExecutorImpl>()
               .setName(String.format("PARALLEL_INSTANCE_%d", i))
               .setMaxConcurrency(1)
               .build();
@@ -47,9 +48,9 @@ public class ParallelContextImpl implements ParallelContext {
   }
 
   @Override
-  public <R> ObjectRef<R> submitTask(
-      ParallelActor parallelActor, int instanceIndex, RayFuncR func, Object[] args) {
-    ActorHandle<ParallelActorExecutorImpl> parallelExecutor = parallelActor.getExecutor();
+  public <A, R> ObjectRef<R> submitTask(
+    ParallelActor<A> parallelActor, int instanceIndex, RayFunc func, Object[] args) {
+    ActorHandle<ParallelActorExecutorImpl> parallelExecutor = ((ParallelActorImpl) parallelActor).getExecutor();
     FunctionManager functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
     JavaFunctionDescriptor functionDescriptor =
         functionManager

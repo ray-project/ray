@@ -8,5 +8,4 @@ public interface ParallelActor<A> extends ParallelActorCall<A> {
 
   ParallelStrategyInterface getStrategy();
 
-  ActorHandle<? extends ParallelActorExecutor> getExecutor();
 }
