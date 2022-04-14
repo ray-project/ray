@@ -53,7 +53,7 @@ class ShuffleOp:
         clear_input_blocks: bool,
         *,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
-        reduce_ray_remote_args: Optional[Dict[str, Any]] = None
+        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
         input_blocks_list = input_blocks.get_blocks()
         input_num_blocks = len(input_blocks_list)
@@ -133,7 +133,7 @@ class PushBasedShuffleOp(ShuffleOp):
        Where M and N are chosen to maximize parallelism across CPUs. Note that
        this assumes that all CPUs in the cluster will be dedicated to the
        shuffle job.
- 
+
        Map and merge tasks are pipelined so that we always merge the previous
        round of map outputs while executing the next round of map tasks.
 
@@ -238,7 +238,9 @@ class PushBasedShuffleOp(ShuffleOp):
         return cpu_map
 
     @staticmethod
-    def _compute_merge_task_args(num_merge_tasks_per_round: int, merge_factor: int, cpu_map):
+    def _compute_merge_task_args(
+        num_merge_tasks_per_round: int, merge_factor: int, cpu_map
+    ):
         merge_to_node_map = []
         merge_tasks_assigned = 0
         node_ids = list(cpu_map)
@@ -246,7 +248,7 @@ class PushBasedShuffleOp(ShuffleOp):
         while merge_tasks_assigned < num_merge_tasks_per_round and cpu_map:
             node_id = node_ids[merge_tasks_assigned % len(node_ids)]
             if cpu_map[node_id] >= merge_factor + 1:
-                cpu_map[node_id] -= (merge_factor + 1)
+                cpu_map[node_id] -= merge_factor + 1
                 merge_to_node_map.append(node_id)
                 merge_tasks_assigned += 1
             else:
@@ -261,11 +263,11 @@ class PushBasedShuffleOp(ShuffleOp):
             merge_to_node_map.append(node_id)
             merge_tasks_assigned += 1
             leftover_cpu_map[node_id] -= 1
-        merge_task_args = [{
-            "scheduling_strategy": NodeAffinitySchedulingStrategy(node_id, soft=True)
-            } for node_id in merge_to_node_map]
+        merge_task_args = [
+            {"scheduling_strategy": NodeAffinitySchedulingStrategy(node_id, soft=True)}
+            for node_id in merge_to_node_map
+        ]
         return merge_task_args
-
 
     def execute(
         self,
@@ -321,7 +323,9 @@ class PushBasedShuffleOp(ShuffleOp):
         # Scheduling args for assign merge tasks to nodes. We use node-affinity
         # scheduling here to colocate merge tasks that output to the same
         # reducer.
-        merge_task_args = self._compute_merge_task_args(num_merge_tasks_per_round, merge_factor, cpu_map)
+        merge_task_args = self._compute_merge_task_args(
+            num_merge_tasks_per_round, merge_factor, cpu_map
+        )
 
         # Intermediate results for the map-merge stage.
         map_results = []
@@ -389,9 +393,9 @@ class PushBasedShuffleOp(ShuffleOp):
                 )
                 assert merge_idx < len(merge_task_args)
                 merge_results.append(
-                    shuffle_merge.options(num_returns=1 + num_merge_returns,
-                        **merge_task_args[merge_idx]
-                        ).remote(
+                    shuffle_merge.options(
+                        num_returns=1 + num_merge_returns, **merge_task_args[merge_idx]
+                    ).remote(
                         *[map_result[merge_idx] for map_result in map_results],
                         reduce_args=self._reduce_args,
                     )
@@ -431,7 +435,7 @@ class PushBasedShuffleOp(ShuffleOp):
                     shuffle_reduce.options(
                         **reduce_ray_remote_args,
                         **merge_task_args[merge_idx],
-                        num_returns=2
+                        num_returns=2,
                     ).remote(
                         *self._reduce_args,
                         *[
