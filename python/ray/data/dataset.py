@@ -2114,7 +2114,7 @@ class Dataset(Generic[T]):
 Dict[str, List[str]]]): The names of the columns
                 to use as the features. Can be a list of lists or
                 a dict of string-list pairs for multi-tensor output.
-                If None, then use all columns except the label columns as
+                If None, then use all columns except the label column as
                 the features.
             label_column_dtype (Optional[torch.dtype]): The torch dtype to
                 use for the label column. If None, then automatically infer
