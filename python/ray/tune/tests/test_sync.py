@@ -14,6 +14,7 @@ import yaml
 from collections import deque
 
 import ray
+from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 
 from ray import tune
@@ -28,6 +29,7 @@ from ray.tune.syncer import (
     SyncerCallback,
 )
 from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -455,6 +457,65 @@ class TestSyncFunctionality(unittest.TestCase):
 
         self.assertEquals(client._sync_downs, 2)
 
+    def testSyncBetweenNodesAndDelete(self):
+        temp_source = tempfile.mkdtemp()
+        temp_up_target = tempfile.mkdtemp()
+        temp_down_target = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_source)
+        self.addCleanup(shutil.rmtree, temp_up_target, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, temp_down_target)
+
+        os.makedirs(os.path.join(temp_source, "dir_level0", "dir_level1"))
+        with open(os.path.join(temp_source, "dir_level0", "file_level1.txt"), "w") as f:
+            f.write("Data\n")
+
+        def check_dir_contents(path: str):
+            assert os.path.exists(os.path.join(path, "dir_level0"))
+            assert os.path.exists(os.path.join(path, "dir_level0", "dir_level1"))
+            assert os.path.exists(os.path.join(path, "dir_level0", "file_level1.txt"))
+            with open(os.path.join(path, "dir_level0", "file_level1.txt"), "r") as f:
+                assert f.read() == "Data\n"
+
+        # Sanity check
+        check_dir_contents(temp_source)
+
+        sync_dir_between_nodes(
+            source_ip=ray.util.get_node_ip_address(),
+            source_path=temp_source,
+            target_ip=ray.util.get_node_ip_address(),
+            target_path=temp_up_target,
+        )
+
+        # Check sync up
+        check_dir_contents(temp_up_target)
+
+        # Max size exceeded
+        with self.assertRaises(RayTaskError):
+            sync_dir_between_nodes(
+                source_ip=ray.util.get_node_ip_address(),
+                source_path=temp_up_target,
+                target_ip=ray.util.get_node_ip_address(),
+                target_path=temp_down_target,
+                max_size_bytes=2,
+            )
+
+        assert not os.listdir(temp_down_target)
+
+        sync_dir_between_nodes(
+            source_ip=ray.util.get_node_ip_address(),
+            source_path=temp_up_target,
+            target_ip=ray.util.get_node_ip_address(),
+            target_path=temp_down_target,
+        )
+
+        # Check sync down
+        check_dir_contents(temp_down_target)
+
+        # Delete in some dir
+        delete_on_node(node_ip=ray.util.get_node_ip_address(), path=temp_up_target)
+
+        assert not os.path.exists(temp_up_target)
+
     def testSyncRemoteTaskOnlyDifferences(self):
         """Tests the RemoteTaskClient sync client.
 
@@ -489,7 +550,7 @@ class TestSyncFunctionality(unittest.TestCase):
         this_node_ip = ray.util.get_node_ip_address()
 
         # Sync everything up
-        client = RemoteTaskClient(store_pack_future=True)
+        client = RemoteTaskClient(_store_remotes=True)
         client.sync_up(source=temp_source, target=(this_node_ip, temp_up_target))
         client.wait()
 
@@ -526,8 +587,8 @@ class TestSyncFunctionality(unittest.TestCase):
         client.sync_up(source=temp_source, target=(this_node_ip, temp_up_target))
 
         # Hi-jack futures
-        files_stats = ray.get(client._last_files_stats)
-        tarball = ray.get(client._pack_future)
+        files_stats = ray.get(client._stored_files_stats)
+        tarball = ray.get(client._stored_pack_actor_ref.get_full_data.remote())
         client.wait()
 
         # Existing file should have new content
@@ -559,8 +620,8 @@ class TestSyncFunctionality(unittest.TestCase):
         client.sync_down(source=(this_node_ip, temp_source), target=temp_down_target)
 
         # Hi-jack futures
-        files_stats = client._last_files_stats
-        tarball = ray.get(client._pack_future)
+        files_stats = ray.get(client._stored_files_stats)
+        tarball = ray.get(client._stored_pack_actor_ref.get_full_data.remote())
         client.wait()
 
         # Existing file should have new content

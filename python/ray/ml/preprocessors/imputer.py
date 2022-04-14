@@ -1,10 +1,11 @@
 from typing import List, Union, Optional, Dict
 from numbers import Number
+from collections import Counter
 
 import pandas as pd
 
 from ray.data import Dataset
-from ray.data.aggregate import Mean, Max
+from ray.data.aggregate import Mean
 from ray.ml.preprocessor import Preprocessor
 
 
@@ -79,26 +80,18 @@ class SimpleImputer(Preprocessor):
 def _get_most_frequent_values(
     dataset: Dataset, *columns: str
 ) -> Dict[str, Union[str, Number]]:
-    # TODO(matt): Optimize this.
-    results = {}
-    for column in columns:
-        # Remove nulls.
-        nonnull_dataset = dataset.map_batches(
-            lambda df: df.dropna(subset=[column]), batch_format="pandas"
-        )
-        # Count values.
-        counts = nonnull_dataset.groupby(column).count()
-        # Find max count.
-        max_aggregate = counts.aggregate(Max("count()"))
-        max_count = max_aggregate["max(count())"]
-        # Find values with max_count.
-        most_frequent_values = counts.map_batches(
-            lambda df: df.drop(df[df["count()"] < max_count].index),
-            batch_format="pandas",
-        )
-        # Take first (sorted) value.
-        most_frequent_value_count = most_frequent_values.take(1)[0]
-        most_frequent_value = most_frequent_value_count[column]
-        results[f"most_frequent({column})"] = most_frequent_value
+    columns = list(columns)
 
-    return results
+    def get_pd_value_counts(df: pd.DataFrame) -> List[Counter]:
+        return [Counter(df[col].value_counts().to_dict()) for col in columns]
+
+    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
+    final_counters = [Counter() for _ in columns]
+    for batch in value_counts.iter_batches():
+        for i, col_value_counts in enumerate(batch):
+            final_counters[i] += col_value_counts
+
+    return {
+        f"most_frequent({column})": final_counters[i].most_common(1)[0][0]
+        for i, column in enumerate(columns)
+    }

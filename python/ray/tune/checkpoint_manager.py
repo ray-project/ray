@@ -5,7 +5,7 @@ import logging
 from typing import Any, Callable, Optional
 
 from ray.tune.result import NODE_IP
-from ray.tune.utils.util import flatten_dict
+from ray.tune.utils.util import flatten_dict, is_nan
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +168,10 @@ class CheckpointManager:
             self.delete(old_checkpoint)
 
         try:
+            # NaN metrics are treated as worst checkpoint
+            # The tuple structure is (not is_nan(), metric), which makes
+            # the nan values to be always considered as the worst
+            # metrics by the heap
             queue_item = QueueItem(self._priority(checkpoint), checkpoint)
         except KeyError:
             logger.error(
@@ -198,7 +202,9 @@ class CheckpointManager:
     def _priority(self, checkpoint):
         result = flatten_dict(checkpoint.result)
         priority = result[self._checkpoint_score_attr]
-        return -priority if self._checkpoint_score_desc else priority
+        if self._checkpoint_score_desc:
+            priority = -priority
+        return (not is_nan(priority), priority, checkpoint.order)
 
     def __getstate__(self):
         state = self.__dict__.copy()
