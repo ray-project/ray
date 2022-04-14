@@ -2,24 +2,19 @@ pendulum-ddppo:
     env: Pendulum-v1
     run: DDPPO
     stop:
-        episode_reward_mean: -300
+        episode_reward_mean: -500
         timesteps_total: 1000000
     config:
         framework: torch
-        #rollout_fragment_length: 50
-        #num_sgd_iter: 4
-        #num_workers: 8
+        rollout_fragment_length: 512
         num_gpus_per_worker: 0
-
-        #num_envs_per_worker: 5
-
+        num_workers: 2
+        num_envs_per_worker: 20
         observation_filter: MeanStdFilter
-        #lr: 0.0001
+        gamma: 0.95
+        sgd_minibatch_size: 64
+        num_sgd_iter: 6
+        clip_param: 0.3
+        vf_clip_param: 10.0
         lambda: 0.1
-        #clip_param: 0.1
-        #vf_clip_param: 10.0
-        entropy_coeff:
-            grid_search: [0.015, 0.01, 0.02, 0.0]
-        #model:
-        #    vf_share_layers: true
-        #vf_loss_coeff: 0.01
+        lr: 0.0003

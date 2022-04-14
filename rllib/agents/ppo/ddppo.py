@@ -48,8 +48,12 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.typing import EnvType, PartialTrainerConfigDict, ResultDict, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import (
+    EnvType,
+    PartialTrainerConfigDict,
+    ResultDict,
+    TrainerConfigDict,
+)
 from ray.tune.logger import Logger
 from ray.util.iter import LocalIterator
 
@@ -90,9 +94,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         "num_gpus": 0,
         # Each rollout worker gets a GPU.
         "num_gpus_per_worker": 1,
-        # Require evenly sized batches. Otherwise,
-        # collective allreduce could fail.
-        #"truncate_episodes": True,
         # This is auto set based on sample batch size.
         "train_batch_size": -1,
         # Kl divergence penalty should be fixed to 0 in DDPPO because in order
@@ -235,8 +236,8 @@ class DDPPOTrainer(PPOTrainer):
         sample_and_update_results = asynchronous_parallel_requests(
             remote_requests_in_flight=self.remote_requests_in_flight,
             actors=self.workers.remote_workers(),
-            ray_wait_timeout_s=0.0,
-            max_remote_requests_in_flight_per_actor=2,
+            ray_wait_timeout_s=1000.0,  # 0.0
+            max_remote_requests_in_flight_per_actor=1,  # 2
             remote_fn=self._sample_and_train_torch_distributed,
         )
 
@@ -259,9 +260,7 @@ class DDPPOTrainer(PPOTrainer):
             learner_info_builder.add_learn_on_batch_results_multi_agent(result["info"])
 
             # Broadcast the local set of global vars.
-            global_vars = {
-                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]
-            }
+            global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
             for worker in self.workers.remote_workers():
                 worker.set_global_vars.remote(global_vars)
 
@@ -271,8 +270,10 @@ class DDPPOTrainer(PPOTrainer):
         # some results from it).
         # As with the sync up, this is not really needed unless the user is
         # reading the local weights.
-        if self.config["keep_local_weights_in_sync"] and \
-                first_worker in sample_and_update_results:
+        if (
+            self.config["keep_local_weights_in_sync"]
+            and first_worker in sample_and_update_results
+        ):
             self.workers.local_worker().set_weights(
                 ray.get(first_worker.get_weights.remote())
             )
