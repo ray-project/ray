@@ -17,7 +17,6 @@ public class ParallelActorExecutorImpl {
 
   private FunctionManager functionManager = null;
 
-  /// This should be thread safe.
   private ConcurrentHashMap<Integer, Object> instances = new ConcurrentHashMap<>();
 
   public ParallelActorExecutorImpl(int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor)

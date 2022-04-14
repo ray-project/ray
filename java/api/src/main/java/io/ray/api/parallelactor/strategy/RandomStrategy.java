@@ -6,7 +6,9 @@ import java.util.Random;
 
 public class RandomStrategy implements ParallelStrategyInterface, Serializable {
 
-  private static Random random = new Random();
+  private static final long serialVersionUID = 4760632395229286424L;
+
+  private static final Random RANDOM = new Random();
 
   private int parallelNum = 1;
 
@@ -21,7 +23,7 @@ public class RandomStrategy implements ParallelStrategyInterface, Serializable {
 
   @Override
   public int getNextIndex() {
-    return random.nextInt(parallelNum);
+    return RANDOM.nextInt(parallelNum);
   }
 
   @Override

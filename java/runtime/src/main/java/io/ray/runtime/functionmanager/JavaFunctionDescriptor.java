@@ -9,6 +9,8 @@ import java.util.List;
 /** Represents metadata of Java function. */
 public final class JavaFunctionDescriptor implements FunctionDescriptor, Serializable {
 
+  private static final long serialVersionUID = -2137471820857197094L;
+
   /** Function's class name. */
   public final String className;
   /** Function's name. */

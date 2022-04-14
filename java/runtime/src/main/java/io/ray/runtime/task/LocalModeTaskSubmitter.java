@@ -613,7 +613,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private static void appendFunctionDescriptors(
       Common.ConcurrencyGroup.Builder builder, List<FunctionDescriptor> functionDescriptors) {
     Preconditions.checkNotNull(functionDescriptors);
-    //    Preconditions.checkState(!functionDescriptors.isEmpty());
+    Preconditions.checkState(!functionDescriptors.isEmpty());
     functionDescriptors.stream()
         .map(functionDescriptor -> (JavaFunctionDescriptor) functionDescriptor)
         .map(

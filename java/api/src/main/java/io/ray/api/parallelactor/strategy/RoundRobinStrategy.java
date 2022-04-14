@@ -4,7 +4,8 @@ import io.ray.api.parallelactor.ParallelStrategyInterface;
 import java.io.*;
 
 public class RoundRobinStrategy implements ParallelStrategyInterface, Serializable {
-  // add serializing id
+
+  private static final long serialVersionUID = -8822673941240683915L;
 
   private int lastIndex = -1;
 
@@ -21,7 +22,6 @@ public class RoundRobinStrategy implements ParallelStrategyInterface, Serializab
 
   @Override
   public int getNextIndex() {
-    // TODO: lastIndex = (lastIndex % parallelNum)
     return (++lastIndex) % parallelNum;
   }
 
