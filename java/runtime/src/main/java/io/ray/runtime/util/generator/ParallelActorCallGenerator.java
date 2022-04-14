@@ -79,19 +79,19 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     {
       /// Generate buildVoidReturnCaller()
       newLine(
-          2,
-          "default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {\n"
+          0,
+        "  default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {\n"
               + "   if (this instanceof ParallelActor) {\n"
               + "     return new VoidParallelActorTaskCaller((ParallelActor) this, func, args);\n"
               + "   } else if (this instanceof ParallelInstance) {\n"
               + "     return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);\n"
               + "   }\n"
               + "   return null;\n"
-              + " }");
+              + " }\n");
 
       /// Generate buildCaller()
       newLine(
-          2,
+          0,
           "  default <R> ParallelActorTaskCaller<R> buildCaller(RayFuncR<R> func, Object[] args) {\n"
               + "    if (this instanceof ParallelActor) {\n"
               + "      return new ParallelActorTaskCaller<R>((ParallelActor) this, func, args);\n"
@@ -99,7 +99,7 @@ public class ParallelActorCallGenerator extends BaseGenerator {
               + "      return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);\n"
               + "    }\n"
               + "    return null;\n"
-              + "  }");
+              + "  }\n");
     }
 
     for (int i = 0; i <= MAX_PARAMETERS - 1; i++) {
