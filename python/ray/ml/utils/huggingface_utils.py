@@ -14,18 +14,25 @@ CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
 NODE_IP_KEY = "node_ip"
 
 
-class HFIterableDatasetWithLen(IterableDataset):
+class HFIterableDataset(IterableDataset):
+    """Special Torch IterableDataset with preset length."""
+
+    def __init__(self, generator: Generator):
+        self.generator = generator
+
+    def __iter__(self) -> Iterator[Dict[str, torch.Tensor]]:
+        it = self.generator
+        for x in it:
+            # HF-specific format. See transformers.Trainer._prepare_inputs
+            yield {**x[0]}
+
+
+class HFIterableDatasetWithLen(HFIterableDataset):
     """Special Torch IterableDataset with preset length."""
 
     def __init__(self, generator: Generator, length: int):
         self.generator = generator
         self._len = length
-
-    def __iter__(self) -> Iterator[Dict[str, torch.Tensor]]:
-        it = self.generator
-        for x in it:
-            # HF-specific format
-            yield {**x[0], "labels": x[1]}
 
     def __len__(self):
         return self._len
@@ -38,7 +45,7 @@ def process_dataset_for_hf(
     torch_dataset = dataset.to_torch(
         batch_size=batch_size,
         feature_columns=feature_columns,
-        label_column="labels",
+        label_column=None,
         unsqueeze_label_tensor=False,
         unsqueeze_feature_tensors=False,
     )
@@ -48,7 +55,12 @@ def process_dataset_for_hf(
         # pipeline case
         count = None
     if count:
+        # By adding length to the dataset we let HF calculate steps per epoch
+        # and other such values. Without length, it's not possible to use
+        # epochs as the evaluation strategy.
         torch_dataset = HFIterableDatasetWithLen(torch_dataset, count)
+    else:
+        torch_dataset = HFIterableDataset(torch_dataset)
     return torch_dataset
 
 

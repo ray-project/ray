@@ -30,7 +30,6 @@ from ray.ml.utils.huggingface_utils import (
 )
 from ray.train.checkpoint import TuneCheckpointManager
 from ray.train.constants import TUNE_CHECKPOINT_ID
-from ray.train.session import get_session
 from ray.train.torch import TorchConfig
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 
@@ -356,32 +355,10 @@ class HuggingFaceTrainer(TorchTrainer):
             train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
             eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
             train_columns = set(train_dataset.schema(fetch_if_missing=True).names)
-            if "labels" not in train_columns:
-                raise ValueError(
-                    "'labels' column must be present in the training dataset!"
-                )
-            train_columns.remove("labels")
-            if eval_dataset:
-                eval_columns = set(eval_dataset.schema(fetch_if_missing=True).names)
-                if "labels" not in eval_columns:
-                    raise ValueError(
-                        "'labels' column must be present in the evaluation dataset!"
-                    )
-                eval_columns.remove("labels")
 
-                if not eval_columns.issuperset(train_columns):
-                    raise ValueError(
-                        "Evaluation dataset must have a superset of the columns in "
-                        "the training dataset. "
-                        f"Missing columns: {list(train_columns - eval_columns)}"
-                    )
-
-            # HF-supported format
+            # HF-specific format. See transformers.Trainer._prepare_inputs
             feature_columns = {column: [column] for column in train_columns}
 
-            # we use batch size 1 here, as it will be converted to
-            # desired size inside transformers.Trainer. Possible optimization
-            # in the future
             batch_size = 1
             train_torch_dataset = process_dataset_for_hf(
                 train_dataset, feature_columns, batch_size=batch_size
@@ -399,14 +376,6 @@ class HuggingFaceTrainer(TorchTrainer):
                 train_torch_dataset, eval_torch_dataset, **config
             )
 
-            if trainer.args.local_rank != train.local_rank():
-                raise RuntimeError(
-                    "local_rank set in TrainingArguments doesn't match "
-                    "Ray Train local_rank "
-                    f"({trainer.args.local_rank} != {train.local_rank()}. "
-                    "Ensure you are not setting local_rank manually."
-                )
-
             base_training_arguments_class: Type[
                 TrainingArguments
             ] = trainer.args.__class__
@@ -414,16 +383,12 @@ class HuggingFaceTrainer(TorchTrainer):
             class RayTrainingArguments(base_training_arguments_class):
                 @property
                 def device(self) -> "torch.device":
-                    if get_session() is None:
-                        return super().device
                     return train.torch.get_device()
 
             base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
 
             class RayTrainer(base_trainer_class):
                 def get_train_dataloader(self):
-                    if get_session() is None:
-                        return super().get_train_dataloader()
                     return DataLoader(
                         self.train_dataset,
                         batch_size=self.args.per_device_train_batch_size,
@@ -431,31 +396,6 @@ class HuggingFaceTrainer(TorchTrainer):
                         num_workers=self.args.dataloader_num_workers,
                         pin_memory=self.args.dataloader_pin_memory,
                     )
-
-                def _wrap_model(self, model, training=True):
-                    if get_session() is None:
-                        return super()._wrap_model(model, training=training)
-
-                    if not training:
-                        return model
-                    kwargs = {}
-                    # same logic as in transformers.Trainer
-                    if self.args.ddp_find_unused_parameters is not None:
-                        kwargs[
-                            "find_unused_parameters"
-                        ] = self.args.ddp_find_unused_parameters
-                    elif isinstance(model, transformers.trainer.PreTrainedModel):
-                        # find_unused_parameters breaks checkpointing as per
-                        # https://github.com/huggingface/transformers/pull/4659#issuecomment-643356021
-                        kwargs[
-                            "find_unused_parameters"
-                        ] = not model.is_gradient_checkpointing
-                    else:
-                        kwargs["find_unused_parameters"] = True
-
-                    if self.args.ddp_bucket_cap_mb is not None:
-                        kwargs["bucket_cap_mb"] = self.args.ddp_bucket_cap_mb
-                    return train.torch.prepare_model(model, ddp_kwargs=kwargs)
 
                 def _save(self, *args, **kwargs):
                     # Workaround for RayTrainingArguments not being
