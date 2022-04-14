@@ -223,7 +223,7 @@ class _deprecated_default_config(dict):
     @Deprecated(
         old="ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG",
         new="ray.rllib.agents.ppo.ppo.PPOConfig(...)",
-        error=False,
+        error=True,
     )
     def __getitem__(self, item):
         return super().__getitem__(item)

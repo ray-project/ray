@@ -810,7 +810,7 @@ class ModelCatalog:
         return prep
 
     @staticmethod
-    @Deprecated(error=False)
+    @Deprecated(error=True)
     def register_custom_preprocessor(
         preprocessor_name: str, preprocessor_class: type
     ) -> None:

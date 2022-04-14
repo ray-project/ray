@@ -273,7 +273,7 @@ class DQNTrainer(SimpleQTrainer):
 
 
 @Deprecated(
-    new="Sub-class directly from `DQNTrainer` and override its methods", error=False
+    new="Sub-class directly from `DQNTrainer` and override its methods", error=True
 )
 class GenericOffPolicyTrainer(DQNTrainer):
     pass

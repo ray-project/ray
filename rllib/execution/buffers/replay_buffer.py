@@ -47,7 +47,7 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
             logger.info(msg)
 
 
-@Deprecated(new="warn_replay_capacity", error=False)
+@Deprecated(new="warn_replay_capacity", error=True)
 def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
     return warn_replay_capacity(item=item, num_items=num_items)
 

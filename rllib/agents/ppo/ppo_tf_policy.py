@@ -410,7 +410,7 @@ def setup_mixins(
 @Deprecated(
     old="rllib.agents.ppo.ppo_tf_policy.postprocess_ppo_gae",
     new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=False,
+    error=True,
 )
 def postprocess_ppo_gae(
     policy: Policy,

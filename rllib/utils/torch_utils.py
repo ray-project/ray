@@ -59,7 +59,7 @@ def apply_grad_clipping(
 
 
 @Deprecated(
-    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=False
+    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True
 )
 def atanh(x: TensorType) -> TensorType:
     """Atanh function for PyTorch."""
@@ -94,7 +94,7 @@ def concat_multi_gpu_td_errors(policy: "TorchPolicy") -> Dict[str, TensorType]:
     }
 
 
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=False)
+@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
 def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
     """Converts values in `stats` to non-Tensor numpy or python types.
 

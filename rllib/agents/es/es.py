@@ -399,7 +399,7 @@ class ESTrainer(Trainer):
             return action[0], [], {}
         return action[0]
 
-    @Deprecated(new="compute_single_action", error=False)
+    @Deprecated(new="compute_single_action", error=True)
     def compute_action(self, observation, *args, **kwargs):
         return self.compute_single_action(observation, *args, **kwargs)
 

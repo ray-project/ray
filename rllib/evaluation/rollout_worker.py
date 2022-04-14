@@ -1837,7 +1837,7 @@ class RolloutWorker(ParallelIteratorWorker):
             return _make_sub_env_local
 
     @Deprecated(
-        new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=False
+        new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=True
     )
     def export_policy_model(
         self,
@@ -1848,7 +1848,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_map[policy_id].export_model(export_dir, onnx=onnx)
 
     @Deprecated(
-        new="Trainer.get_policy().import_model_from_h5([import_file])", error=False
+        new="Trainer.get_policy().import_model_from_h5([import_file])", error=True
     )
     def import_policy_model_from_h5(
         self, import_file: str, policy_id: PolicyID = DEFAULT_POLICY_ID
@@ -1857,7 +1857,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @Deprecated(
         new="Trainer.get_policy().export_checkpoint([export_dir], [filename]?)",
-        error=False,
+        error=True,
     )
     def export_policy_checkpoint(
         self,
@@ -1867,7 +1867,7 @@ class RolloutWorker(ParallelIteratorWorker):
     ):
         self.policy_map[policy_id].export_checkpoint(export_dir, filename_prefix)
 
-    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=False)
+    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func, **kwargs):
         return self.foreach_policy_to_train(func, **kwargs)
 

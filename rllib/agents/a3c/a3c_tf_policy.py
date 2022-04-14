@@ -32,7 +32,7 @@ tf1, tf, tfv = try_import_tf()
 @Deprecated(
     old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
     new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=False,
+    error=True,
 )
 def postprocess_advantages(
     policy: Policy,

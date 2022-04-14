@@ -172,7 +172,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         return sum(len(buffer._storage) for buffer in self.replay_buffers.values())
 
     @ExperimentalAPI
-    @Deprecated(old="replay", new="sample", error=False)
+    @Deprecated(old="replay", new="sample", error=True)
     def replay(self, num_items: int = None, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API."""
         if num_items is None:

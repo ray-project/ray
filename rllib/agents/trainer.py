@@ -3091,7 +3091,7 @@ class Trainer(Trainable):
     def __repr__(self):
         return type(self).__name__
 
-    @Deprecated(new="Trainer.compute_single_action()", error=False)
+    @Deprecated(new="Trainer.compute_single_action()", error=True)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
@@ -3099,7 +3099,7 @@ class Trainer(Trainable):
     def _evaluate(self) -> dict:
         return self.evaluate()
 
-    @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
+    @Deprecated(new="construct WorkerSet(...) instance directly", error=True)
     def _make_workers(
         self,
         *,
@@ -3120,12 +3120,12 @@ class Trainer(Trainable):
             logdir=self.logdir,
         )
 
-    @Deprecated(new="Trainer.try_recover_from_step_attempt()", error=False)
+    @Deprecated(new="Trainer.try_recover_from_step_attempt()", error=True)
     def _try_recover(self):
         return self.try_recover_from_step_attempt()
 
     @staticmethod
-    @Deprecated(new="Trainer.validate_config()", error=False)
+    @Deprecated(new="Trainer.validate_config()", error=True)
     def _validate_config(config, trainer_or_none):
         assert trainer_or_none is not None
         return trainer_or_none.validate_config(config)

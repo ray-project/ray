@@ -30,7 +30,7 @@ torch, nn = try_import_torch()
 @Deprecated(
     old="rllib.agents.a3c.a3c_torch_policy.add_advantages",
     new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-    error=False,
+    error=True,
 )
 def add_advantages(
     policy: Policy,

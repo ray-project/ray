@@ -97,13 +97,13 @@ class ReplayBuffer:
         return len(self._storage)
 
     @ExperimentalAPI
-    @Deprecated(old="add_batch", new="add", error=False)
+    @Deprecated(old="add_batch", new="add", error=True)
     def add_batch(self, batch: SampleBatchType, **kwargs) -> None:
         """Deprecated in favor of new ReplayBuffer API."""
         return self.add(batch, **kwargs)
 
     @ExperimentalAPI
-    @Deprecated(old="replay", new="sample", error=False)
+    @Deprecated(old="replay", new="sample", error=True)
     def replay(self, num_items: int = 1, **kwargs) -> Optional[SampleBatchType]:
         """Deprecated in favor of new ReplayBuffer API."""
         return self.sample(num_items, **kwargs)

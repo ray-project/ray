@@ -156,10 +156,10 @@ class OffPolicyEstimator:
         self.new_estimates = []
         return out
 
-    @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=False)
+    @Deprecated(new="OffPolicyEstimator.create_from_io_context", error=True)
     def create(self, *args, **kwargs):
         return self.create_from_io_context(*args, **kwargs)
 
-    @Deprecated(new="OffPolicyEstimator.action_log_likelihood", error=False)
+    @Deprecated(new="OffPolicyEstimator.action_log_likelihood", error=True)
     def action_prob(self, *args, **kwargs):
         return self.action_log_likelihood(*args, **kwargs)

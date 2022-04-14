@@ -468,7 +468,7 @@ class SampleBatch(dict):
 
         return slices
 
-    @Deprecated(new="SampleBatch[start:stop]", error=False)
+    @Deprecated(new="SampleBatch[start:stop]", error=True)
     def slice(
         self, start: int, end: int, state_start=None, state_end=None
     ) -> "SampleBatch":
@@ -613,7 +613,7 @@ class SampleBatch(dict):
 
             return slices
 
-    @Deprecated(new="SampleBatch.right_zero_pad", error=False)
+    @Deprecated(new="SampleBatch.right_zero_pad", error=True)
     def zero_pad(self, max_seq_len, exclude_states=True):
         return self.right_zero_pad(max_seq_len, exclude_states)
 
@@ -976,7 +976,7 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
             )
 
-    @Deprecated(error=False)
+    @Deprecated(error=True)
     def _get_slice_indices(self, slice_size):
         data_slices = []
         data_slices_states = []

@@ -252,7 +252,7 @@ def split_colocated(
         return co_located, non_co_located
 
 
-@Deprecated(new="create_colocated_actors", error=False)
+@Deprecated(new="create_colocated_actors", error=True)
 def create_colocated(cls, arg, count):
     kwargs = {}
     args = arg
@@ -263,7 +263,7 @@ def create_colocated(cls, arg, count):
     )[cls]
 
 
-@Deprecated(error=False)
+@Deprecated(error=True)
 def drop_colocated(actors: List[ActorHandle]) -> List[ActorHandle]:
     colocated, non_colocated = split_colocated(actors)
     for a in colocated:

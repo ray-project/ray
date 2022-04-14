@@ -272,7 +272,7 @@ def get_variable(
 @Deprecated(
     old="rllib/utils/framework.py::get_activation_fn",
     new="rllib/models/utils.py::get_activation_fn",
-    error=False,
+    error=True,
 )
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.

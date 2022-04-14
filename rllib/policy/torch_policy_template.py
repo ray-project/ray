@@ -14,7 +14,7 @@ from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
 torch, _ = try_import_torch()
 
 
-@Deprecated(new="build_policy_class(framework='torch')", error=False)
+@Deprecated(new="build_policy_class(framework='torch')", error=True)
 def build_torch_policy(
     name: str,
     *,
