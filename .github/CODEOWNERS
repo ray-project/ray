@@ -24,10 +24,10 @@
 /python/setup.py @richardliaw @ericl @edoakes
 
 # Formatting tool
-/ci/travis/format.sh @richardliaw @ericl @edoakes
+/ci/lint/format.sh @richardliaw @ericl @edoakes
 
 # Docker image build script.
-/ci/travis/build-docker-images.py @amogkam @krfricke
+/ci/build/build-docker-images.py @amogkam @krfricke
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core-python
@@ -86,6 +86,6 @@
 
 # CI scripts.
 #/.travis.yml @ray-project/ray-core
-#/ci/travis/ @ray-project/ray-core
+#/ci/ @ray-project/ray-core
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz
