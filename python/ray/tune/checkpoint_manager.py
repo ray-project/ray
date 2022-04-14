@@ -204,7 +204,11 @@ class CheckpointManager:
         priority = result[self._checkpoint_score_attr]
         if self._checkpoint_score_desc:
             priority = -priority
-        return (not is_nan(priority), priority, checkpoint.order)
+        return (
+            not is_nan(priority),
+            priority if not is_nan(priority) else 0,
+            checkpoint.order,
+        )
 
     def __getstate__(self):
         state = self.__dict__.copy()
