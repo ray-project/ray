@@ -228,11 +228,6 @@ def get_trainer_class(alg: str, return_config=False) -> type:
         return class_
 
 
-@Deprecated(new="ray.rllib.agents.registry::get_trainer_class()", error=True)
-def get_agent_class(alg: str) -> type:
-    return get_trainer_class(alg)
-
-
 def _get_trainer_class(alg: str, return_config=False) -> type:
     if alg in ALGORITHMS:
         class_, config = ALGORITHMS[alg]()

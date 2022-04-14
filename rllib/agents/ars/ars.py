@@ -405,10 +405,6 @@ class ARSTrainer(Trainer):
             return action[0], [], {}
         return action[0]
 
-    @Deprecated(new="compute_single_action", error=True)
-    def compute_action(self, observation, *args, **kwargs):
-        return self.compute_single_action(observation, *args, **kwargs)
-
     @override(Trainer)
     def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
         # Broadcast the new policy weights to all evaluation workers.

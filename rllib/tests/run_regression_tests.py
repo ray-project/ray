@@ -64,10 +64,6 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # Error if deprecated --torch option used.
-    if args.torch:
-        deprecation_warning(old="--torch", new="--framework=torch", error=True)
-
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
     rllib_dir = Path(__file__).parent.parent

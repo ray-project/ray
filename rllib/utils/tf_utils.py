@@ -22,30 +22,6 @@ if TYPE_CHECKING:
 tf1, tf, tfv = try_import_tf()
 
 
-@Deprecated(new="ray.rllib.utils.numpy.convert_to_numpy()", error=True)
-def convert_to_non_tf_type(x: TensorStructType) -> TensorStructType:
-    """Converts values in `stats` to non-Tensor numpy or python types.
-
-    Args:
-        x: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all tf (eager) tensors
-            being converted to numpy types.
-
-    Returns:
-        A new struct with the same structure as `x`, but with all
-        values converted to non-tf Tensor types.
-    """
-
-    # The mapping function used to numpyize torch Tensors.
-    def mapping(item):
-        if isinstance(item, (tf.Tensor, tf.Variable)):
-            return item.numpy()
-        else:
-            return item
-
-    return tree.map_structure(mapping, x)
-
-
 def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """Computes the explained variance for a pair of labels and predictions.
 
