@@ -194,7 +194,7 @@ def run(args, parser):
 
     # Ray UI.
     if args.no_ray_ui:
-        deprecation_warning(old="--no-ray-ui", new="--ray-ui", error=False)
+        deprecation_warning(old="--no-ray-ui", new="--ray-ui", error=True)
         args.ray_ui = False
 
     verbose = 1
@@ -230,10 +230,10 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
 
         if args.torch:
-            deprecation_warning("--torch", "--framework=torch")
+            deprecation_warning("--torch", "--framework=torch", error=True)
             exp["config"]["framework"] = "torch"
         elif args.eager:
-            deprecation_warning("--eager", "--framework=[tf2|tfe]")
+            deprecation_warning("--eager", "--framework=[tf2|tfe]", error=True)
             exp["config"]["framework"] = "tfe"
         elif args.framework is not None:
             exp["config"]["framework"] = args.framework

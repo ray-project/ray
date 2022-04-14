@@ -264,7 +264,7 @@ class ImpalaTrainer(Trainer):
 
         if config["num_data_loader_buffers"] != DEPRECATED_VALUE:
             deprecation_warning(
-                "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=False
+                "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
             config["num_multi_gpu_tower_stacks"] = config["num_data_loader_buffers"]
 

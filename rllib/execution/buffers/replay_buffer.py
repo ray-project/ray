@@ -66,7 +66,7 @@ class ReplayBuffer:
         # Deprecated args.
         if size != DEPRECATED_VALUE:
             deprecation_warning(
-                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=False
+                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=True
             )
             capacity = size
 

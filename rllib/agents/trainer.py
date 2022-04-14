@@ -1263,7 +1263,7 @@ class Trainer(Trainable):
             deprecation_warning(
                 old="Trainer.evaluate(episodes_left_fn)",
                 new="Trainer.evaluate(duration_fn)",
-                error=False,
+                error=True,
             )
             duration_fn = episodes_left_fn
 
@@ -1586,14 +1586,14 @@ class Trainer(Trainable):
             deprecation_warning(
                 old="Trainer.compute_single_action(`clip_actions`=...)",
                 new="Trainer.compute_single_action(`clip_action`=...)",
-                error=False,
+                error=True,
             )
             clip_action = clip_actions
         if unsquash_actions != DEPRECATED_VALUE:
             deprecation_warning(
                 old="Trainer.compute_single_action(`unsquash_actions`=...)",
                 new="Trainer.compute_single_action(`unsquash_action`=...)",
-                error=False,
+                error=True,
             )
             unsquash_action = unsquash_actions
 
@@ -1737,7 +1737,7 @@ class Trainer(Trainable):
             deprecation_warning(
                 old="Trainer.compute_actions(`normalize_actions`=...)",
                 new="Trainer.compute_actions(`unsquash_actions`=...)",
-                error=False,
+                error=True,
             )
             unsquash_actions = normalize_actions
 
@@ -2355,7 +2355,7 @@ class Trainer(Trainable):
 
         # Monitor should be replaced by `record_env`.
         if config.get("monitor", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-            deprecation_warning("monitor", "record_env", error=False)
+            deprecation_warning("monitor", "record_env", error=True)
             config["record_env"] = config.get("monitor", False)
         # Empty string would fail some if-blocks checking for this setting.
         # Set to True instead, meaning: use default output dir to store
@@ -2377,7 +2377,7 @@ class Trainer(Trainable):
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
         if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning(old="simple_optimizer", error=False)
+            deprecation_warning(old="simple_optimizer", error=True)
 
         # Validate "multiagent" sub-dict and convert policy 4-tuples to
         # PolicySpec objects.
@@ -2459,7 +2459,7 @@ class Trainer(Trainable):
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
-                error=False,
+                error=True,
             )
             model_config["lstm_use_prev_action"] = prev_a_r
             model_config["lstm_use_prev_reward"] = prev_a_r
@@ -2481,7 +2481,7 @@ class Trainer(Trainable):
             deprecation_warning(
                 old="metrics_smoothing_episodes",
                 new="metrics_num_episodes_for_smoothing",
-                error=False,
+                error=True,
             )
             config["metrics_num_episodes_for_smoothing"] = config[
                 "metrics_smoothing_episodes"
@@ -2490,7 +2490,7 @@ class Trainer(Trainable):
             deprecation_warning(
                 old="min_iter_time_s",
                 new="min_time_s_per_reporting",
-                error=False,
+                error=True,
             )
             config["min_time_s_per_reporting"] = config["min_iter_time_s"]
 
@@ -2523,7 +2523,7 @@ class Trainer(Trainable):
             deprecation_warning(
                 old="evaluation_num_episodes",
                 new="`evaluation_duration` and `evaluation_duration_unit=episodes`",
-                error=False,
+                error=True,
             )
             config["evaluation_duration"] = config["evaluation_num_episodes"]
             config["evaluation_duration_unit"] = "episodes"
@@ -2772,7 +2772,7 @@ class Trainer(Trainable):
                     "you are not using a Q-Learning algorithm and still "
                     "provide {}."
                     "".format(k, k),
-                    error=False,
+                    error=True,
                 )
                 # Copy values over to new location in config to support new
                 # and old configuration style
@@ -2797,7 +2797,7 @@ class Trainer(Trainable):
                 help="Buffer size specified at new location config["
                 "'replay_buffer_config']["
                 "'capacity'] will be overwritten.",
-                error=False,
+                error=True,
             )
             config["replay_buffer_config"]["capacity"] = capacity
 
@@ -2841,7 +2841,7 @@ class Trainer(Trainable):
             deprecation_warning(
                 old="config['multiagent']['replay_mode']",
                 new="config['replay_buffer_config']['replay_mode']",
-                error=False,
+                error=True,
             )
 
             config["replay_buffer_config"]["replay_sequence_length"] = config.get(
@@ -2851,7 +2851,7 @@ class Trainer(Trainable):
                 deprecation_warning(
                     old="config['replay_sequence_length']",
                     new="config['replay_buffer_config']['replay_sequence_length']",
-                    error=False,
+                    error=True,
                 )
 
             config["replay_buffer_config"]["replay_burn_in"] = config.get(
@@ -2864,6 +2864,7 @@ class Trainer(Trainable):
                     help="Burn in specified at new location config["
                     "'replay_buffer_config']["
                     "'replay_burn_in'] will be overwritten.",
+                    error=True
                 )
                 config["replay_buffer_config"]["replay_burn_in"] = config["burn_in"]
 
@@ -2874,7 +2875,7 @@ class Trainer(Trainable):
                 deprecation_warning(
                     old="config['replay_zero_init_states']",
                     new="config['replay_buffer_config']['replay_zero_init_states']",
-                    error=False,
+                    error=True,
                 )
 
             # If no prioritized replay, old-style replay buffer should

@@ -27,7 +27,7 @@ def to_float_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
-@Deprecated(new="a child class of `SampleCollector`", error=False)
+@Deprecated(new="a child class of `SampleCollector`", error=True)
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
 
@@ -96,7 +96,7 @@ class MultiAgentSampleBatchBuilder:
             callbacks (DefaultCallbacks): RLlib callbacks.
         """
         if log_once("MultiAgentSampleBatchBuilder"):
-            deprecation_warning(old="MultiAgentSampleBatchBuilder", error=False)
+            deprecation_warning(old="MultiAgentSampleBatchBuilder", error=True)
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
         # Build the Policies' SampleBatchBuilders.

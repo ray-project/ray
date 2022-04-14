@@ -8,7 +8,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 deprecation_warning(
     old="ray.rllib.execution.multi_gpu_learner.py",
     new="ray.rllib.execution.multi_gpu_learner_thread.py",
-    error=False,
+    error=True,
 )
 # Old names.
 TFMultiGPULearner = MultiGPULearnerThread

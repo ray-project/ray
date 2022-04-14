@@ -42,6 +42,7 @@ class DefaultCallbacks:
             deprecation_warning(
                 "callbacks dict interface",
                 "a class extending rllib.agents.callbacks.DefaultCallbacks",
+                error=True,
             )
         self.legacy_callbacks = legacy_callbacks_dict or {}
 

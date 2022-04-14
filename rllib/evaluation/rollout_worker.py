@@ -375,7 +375,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Deprecated args.
         if policy is not None:
-            deprecation_warning("policy", "policy_spec", error=False)
+            deprecation_warning("policy", "policy_spec", error=True)
             policy_spec = policy
         assert (
             policy_spec is not None
@@ -390,7 +390,7 @@ class RolloutWorker(ParallelIteratorWorker):
         }
 
         if monitor_path is not None:
-            deprecation_warning("monitor_path", "record_env", error=False)
+            deprecation_warning("monitor_path", "record_env", error=True)
             record_env = monitor_path
 
         self._original_kwargs: dict = locals().copy()

@@ -5,7 +5,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 deprecation_warning(
     old="ray.rllib.execution.multi_gpu_impl.LocalSyncParallelOptimizer",
     new="ray.rllib.policy.dynamic_tf_policy.TFMultiGPUTowerStack",
-    error=False,
+    error=True,
 )
 # Old name.
 LocalSyncParallelOptimizer = TFMultiGPUTowerStack

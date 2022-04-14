@@ -75,7 +75,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         # Deprecated args.
         if buffer_size != DEPRECATED_VALUE:
             deprecation_warning(
-                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=False
+                "ReplayBuffer(size)", "ReplayBuffer(capacity)", error=True
             )
             capacity = buffer_size
 

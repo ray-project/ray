@@ -841,7 +841,7 @@ class ModelCatalog:
         """
         if tf is not None:
             if issubclass(model_class, tf.keras.Model):
-                deprecation_warning(old="register_custom_model", error=False)
+                deprecation_warning(old="register_custom_model", error=True)
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
 
     @staticmethod
@@ -1000,7 +1000,7 @@ class ModelCatalog:
                 old="model.custom_preprocessor",
                 new="gym.ObservationWrapper around your env or handle complex "
                 "inputs inside your Model",
-                error=False,
+                error=True,
             )
 
         if config.get("use_attention") and config.get("use_lstm"):

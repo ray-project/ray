@@ -1072,7 +1072,7 @@ class TFPolicy(Policy):
                 deprecation_warning(
                     old="_build_compute_actions(.., obs_batch=.., ..)",
                     new="_build_compute_actions(.., input_dict=..)",
-                    error=False,
+                    error=True,
                 )
             state_batches = state_batches or []
             if len(self._state_inputs) != len(state_batches):

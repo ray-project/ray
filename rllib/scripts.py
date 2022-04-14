@@ -42,7 +42,7 @@ def cli():
     elif options.command == "evaluate":
         evaluate.run(options, evaluate_parser)
     elif options.command == "rollout":
-        deprecation_warning(old="rllib rollout", new="rllib evaluate", error=False)
+        deprecation_warning(old="rllib rollout", new="rllib evaluate", error=True)
         evaluate.run(options, rollout_parser)
     else:
         parser.print_help()

@@ -336,7 +336,7 @@ def run(args, parser):
 
     # Rendering and video recording settings.
     if args.no_render:
-        deprecation_warning(old="--no-render", new="--render", error=False)
+        deprecation_warning(old="--no-render", new="--render", error=True)
         args.render = False
     config["render_env"] = args.render
     config["record_env"] = args.video_dir

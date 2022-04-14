@@ -236,15 +236,15 @@ class SyncSampler(SamplerInput):
         # provided via the passed in `worker` arg, e.g. `worker.policy_map`.
         if log_once("deprecated_sync_sampler_args"):
             if policies is not None:
-                deprecation_warning(old="policies")
+                deprecation_warning(old="policies", error=True)
             if policy_mapping_fn is not None:
-                deprecation_warning(old="policy_mapping_fn")
+                deprecation_warning(old="policy_mapping_fn", error=True)
             if preprocessors is not None:
-                deprecation_warning(old="preprocessors")
+                deprecation_warning(old="preprocessors", error=True)
             if obs_filters is not None:
-                deprecation_warning(old="obs_filters")
+                deprecation_warning(old="obs_filters", error=True)
             if tf_sess is not None:
-                deprecation_warning(old="tf_sess")
+                deprecation_warning(old="tf_sess", error=True)
 
         self.base_env = convert_to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
@@ -394,15 +394,15 @@ class AsyncSampler(threading.Thread, SamplerInput):
         # provided via the passed in `worker` arg, e.g. `worker.policy_map`.
         if log_once("deprecated_async_sampler_args"):
             if policies is not None:
-                deprecation_warning(old="policies")
+                deprecation_warning(old="policies", error=True)
             if policy_mapping_fn is not None:
-                deprecation_warning(old="policy_mapping_fn")
+                deprecation_warning(old="policy_mapping_fn", error=True)
             if preprocessors is not None:
-                deprecation_warning(old="preprocessors")
+                deprecation_warning(old="preprocessors", error=True)
             if obs_filters is not None:
-                deprecation_warning(old="obs_filters")
+                deprecation_warning(old="obs_filters", error=True)
             if tf_sess is not None:
-                deprecation_warning(old="tf_sess")
+                deprecation_warning(old="tf_sess", error=True)
 
         self.worker = worker
 

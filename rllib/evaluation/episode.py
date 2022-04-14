@@ -160,6 +160,7 @@ class Episode:
                             old="policy_mapping_fn(agent_id)",
                             new="policy_mapping_fn(agent_id, episode, "
                             "worker, **kwargs)",
+                            error=True
                         )
                     policy_id = self._agent_to_policy[
                         agent_id
@@ -448,7 +449,7 @@ class Episode:
         deprecation_warning(
             old="Episode._policy_mapping_fn",
             new="Episode.policy_mapping_fn",
-            error=False,
+            error=True,
         )
         return self.policy_mapping_fn
 

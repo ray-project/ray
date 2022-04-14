@@ -580,7 +580,7 @@ class SampleBatch(dict):
             SampleBatches each one of size `size`.
         """
         if size is None and num_slices is None:
-            deprecation_warning("k", "size or num_slices")
+            deprecation_warning("k", "size or num_slices", error=True)
             assert k is not None
             size = k
 
@@ -758,7 +758,7 @@ class SampleBatch(dict):
                 deprecation_warning(
                     old="SampleBatch['is_training']",
                     new="SampleBatch.is_training",
-                    error=False,
+                    error=True,
                 )
             return self.is_training
 
@@ -792,7 +792,7 @@ class SampleBatch(dict):
                 deprecation_warning(
                     old="SampleBatch['is_training']",
                     new="SampleBatch.is_training",
-                    error=False,
+                    error=True,
                 )
             self._is_training = item
             return
