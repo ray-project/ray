@@ -85,6 +85,10 @@ logger = logging.getLogger(__name__)
 # Whether we have warned of Datasets containing multiple epochs of data.
 _epoch_warned = False
 
+TensorflowFeatureTypeSpec = Union[
+    "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
+]
+
 
 @PublicAPI
 class Dataset(Generic[T]):
@@ -2212,10 +2216,6 @@ Dict[str, List[str]]]): The names of the columns
                 yield (features_tensor, label_tensor)
 
         return TorchIterableDataset(make_generator)
-
-    TensorflowFeatureTypeSpec = Union[
-        "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
-    ]
 
     def to_tf(
         self,
