@@ -118,7 +118,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       current_gcs_server_address_.first,
       current_gcs_server_address_.second,
       *client_call_manager_,
-      [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); });
+      [this](rpc::GcsServiceFailureType type) { current_connection_failure_ = type; });
 
   rpc::Address gcs_address;
   gcs_address.set_ip_address(current_gcs_server_address_.first);
@@ -180,8 +180,36 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() {
   return current_gcs_server_address_;
 }
 
+/// Checks whether GCS at the specified address is healthy.
+bool GcsClient::CheckHealth(const std::string &ip, int port, int64_t timeout_ms) {
+  // Health checking currently needs to be blocking. So it cannot use the event loop
+  // in the GcsClient. Otherwise there can be deadlocks.
+  auto channel = grpc::CreateChannel(absl::StrCat(ip, ":", port),
+                                     grpc::InsecureChannelCredentials());
+  std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
+      rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::milliseconds(timeout_ms));
+  const rpc::CheckAliveRequest request;
+  rpc::CheckAliveReply reply;
+  auto status = stub->CheckAlive(&context, request, &reply);
+  if (!status.ok()) {
+    RAY_LOG(WARNING) << "Unable to reach GCS at " << ip << ":" << port
+                     << ". Failure: " << status.error_code() << " "
+                     << status.error_message();
+    return false;
+  }
+  return true;
+}
+
 void GcsClient::PeriodicallyCheckGcsServerAddress() {
   if (disconnected_) {
+    return;
+  }
+  if (current_connection_failure_.has_value()) {
+    GcsServiceFailureDetected(*current_connection_failure_);
+    current_connection_failure_.reset();
     return;
   }
   std::pair<std::string, int> address;
@@ -248,7 +276,7 @@ void GcsClient::ReconnectGcsServer() {
 
       RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
                      << address.second;
-      if (Ping(address.first, address.second, 100)) {
+      if (CheckHealth(address.first, address.second, /*timeout_ms=*/2000)) {
         // If `last_reconnect_address_` port is -1, it means that this is the first
         // connection and no log will be printed.
         if (last_reconnect_address_.second != -1) {

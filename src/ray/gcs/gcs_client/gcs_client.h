@@ -170,6 +170,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
 
  private:
+  /// Checks whether GCS at the specified address is healthy.
+  bool CheckHealth(const std::string &ip, int port, int64_t timeout_ms);
+
   /// Fire a periodic timer to check if GCS sever address has changed.
   void PeriodicallyCheckGcsServerAddress();
 
@@ -198,6 +201,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::pair<std::string, int> current_gcs_server_address_;
   int64_t last_reconnect_timestamp_ms_;
   std::pair<std::string, int> last_reconnect_address_;
+  std::optional<rpc::GcsServiceFailureType> current_connection_failure_;
 
   /// Retry interval to reconnect to a GCS server.
   const int64_t kGCSReconnectionRetryIntervalMs = 1000;
