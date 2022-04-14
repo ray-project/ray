@@ -1507,13 +1507,11 @@ def run_test_config(
             response = sdk.get_cluster_environment_build(build_id_override)
             app_config = response.result.config_json
         install_app_config_packages(app_config)
-        install_matching_ray()
     elif "autosuspend_mins" in test_config["run"]:
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
-    if test_config["cluster"].get("compute_on_k8s"):
-        install_matching_ray()
+    install_matching_ray()
 
     # Add information to results dict
     def _update_results(results: Dict):
