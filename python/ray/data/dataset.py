@@ -2793,11 +2793,12 @@ Dict[str, List[str]]]): The names of the columns
             Serialized bytes.
         """
         if not self._plan.has_lazy_input():
-            raise ValueError(
+            logger.warning(
                 "Out-of-band serialization is only supported for Datasets created from "
                 "lazy datasources. Explicitly, out-of-band serialization is not "
                 "supported for any ray.data.from_* APIs."
             )
+            return b""
         # Copy Dataset and clear the execution plan so the Dataset is out-of-band
         # serializable.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
@@ -2839,6 +2840,8 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A deserialized ``Dataset`` instance.
         """
+        if serialized_ds == b"":
+            return None
         return pickle.loads(serialized_ds)
 
     def _split(

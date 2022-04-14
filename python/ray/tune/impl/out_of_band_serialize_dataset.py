@@ -7,6 +7,8 @@ from ray.tune.impl.dataset_execution_registry import dataset_execution_registry
 
 def _deserialize_and_fully_execute_if_needed(serialized_ds: bytes):
     ds = ray.data.Dataset.deserialize_out_of_band(serialized_ds)
+    if ds is None:
+        return None
     return dataset_execution_registry.execute_if_needed(ds)
 
 

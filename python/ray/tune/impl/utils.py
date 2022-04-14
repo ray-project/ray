@@ -23,7 +23,7 @@ def execute_dataset(config_dict: dict, config_dict_key: Optional[str] = None) ->
     is_recurring_cv = False
     for k, v in config_dict.items():
         if isinstance(v, dict):
-            is_recurring_cv = execute_dataset(v, config_dict_key=k) and is_recurring_cv
+            is_recurring_cv = execute_dataset(v, config_dict_key=k) or is_recurring_cv
         elif isinstance(v, Dataset):
             config_dict[k] = v.fully_executed()
         elif k == "num_folds":

@@ -2,7 +2,7 @@ import copy
 from typing import Dict, Type
 
 import ray
-from ray.tune import Trainable
+from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.result import RESULT_DUPLICATE
 from ray.util.placement_group import get_current_placement_group
 
@@ -32,9 +32,6 @@ class _CrossValidationTrainable(Trainable):
         num_folds, dataset = self._validate_cv_config(config.pop("datasets"))
         shards = dataset.split(num_folds)
         pg_factory = self.__class__._trainable.default_resource_request(config)
-        resources = pg_factory.required_resources()
-        cpus_per_fold = resources.get("CPU", 0)
-        gpus_per_fold = resources.get("GPU", 0)
         assert num_folds == 3  # just gonna verify the simple case.
         for i in range(num_folds):
             # check the API
@@ -51,8 +48,6 @@ class _CrossValidationTrainable(Trainable):
             worker_config = copy.deepcopy(config)
             worker_config.update({"datasets": {"train": train_ds, "validation": val_ds}})
             worker = remote_trainable_cls.options(
-                num_cpus=cpus_per_fold,
-                num_gpus=gpus_per_fold,
                 placement_group_capture_child_tasks=True,
                 placement_group=self._placement_group,
                 placement_group_bundle_index=-1).remote(**worker_config)
@@ -61,8 +56,12 @@ class _CrossValidationTrainable(Trainable):
     @classmethod
     def default_resource_request(cls, config):
         num_folds, _ = cls._validate_cv_config(config["datasets"])
+        # assuming a trainer + workers bundle structure.
         per_trainable_pg = cls._trainable.default_resource_request(config)
-        return per_trainable_pg.times(cls._num_folds)
+        bundles = per_trainable_pg._bundles
+        assert len(bundles) > 0
+        new_bundles = bundles * num_folds
+        return PlacementGroupFactory(new_bundles, strategy=per_trainable_pg._strategy)
 
     def step(self) -> Dict:
         if self._finished:
