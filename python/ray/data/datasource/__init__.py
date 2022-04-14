@@ -24,6 +24,7 @@ from ray.data.datasource.file_based_datasource import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
+from ray.data.datasource.torch_datasource import TorchDatasource
 
 __all__ = [
     "JSONDatasource",
@@ -46,4 +47,5 @@ __all__ = [
     "DefaultFileMetadataProvider",
     "ParquetMetadataProvider",
     "DefaultParquetMetadataProvider",
+    "TorchDatasource",
 ]

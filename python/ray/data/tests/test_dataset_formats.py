@@ -14,7 +14,7 @@ from io import BytesIO
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.datasource import DummyOutputDatasource
+from ray.data.datasource import DummyOutputDatasource, TorchDatasource
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
@@ -1455,6 +1455,27 @@ def test_csv_write_block_path_provider(
         ]
     )
     assert df.equals(ds_df)
+
+
+def test_torch_datasource(ray_start_regular_shared, local_path):
+    import torchvision
+
+    # Download datasets to separate folders to prevent interference.
+    torch_dataset_root = os.path.join(local_path, "torch")
+    ray_dataset_root = os.path.join(local_path, "ray")
+
+    torch_dataset = torchvision.datasets.MNIST(torch_dataset_root, download=True)
+    expected_data = list(torch_dataset)
+
+    dataset_factory = lambda: torchvision.datasets.MNIST(
+        ray_dataset_root, download=True
+    )
+    ray_dataset = ray.data.read_datasource(
+        TorchDatasource(), parallelism=1, dataset_factory=dataset_factory
+    )
+    actual_data = list(next(ray_dataset.iter_batches(batch_size=len(torch_dataset))))
+
+    assert actual_data == expected_data
 
 
 if __name__ == "__main__":
