@@ -1,20 +1,18 @@
-package io.ray.runtime.utils.parallelactor.strategy;
+package io.ray.api.parallelactor.strategy;
 
-import io.ray.api.parallelactor.ParallelStrategy;
 import io.ray.api.parallelactor.ParallelStrategyInterface;
 
-public class RoundRobinStrategy implements ParallelStrategyInterface {
+import java.io.*;
+
+public class RoundRobinStrategy implements ParallelStrategyInterface, Serializable {
+  // add serializing id
+
   private int lastIndex = -1;
 
   private int parallelNum = 1;
 
   public RoundRobinStrategy(int parallelNum) {
     this.parallelNum = parallelNum;
-  }
-
-  @Override
-  public ParallelStrategy getStrategyEnum() {
-    return ParallelStrategy.ROUND_ROBIN;
   }
 
   @Override
@@ -27,4 +25,5 @@ public class RoundRobinStrategy implements ParallelStrategyInterface {
     // TODO: lastIndex = (lastIndex % parallelNum)
     return (++lastIndex) % parallelNum;
   }
+
 }

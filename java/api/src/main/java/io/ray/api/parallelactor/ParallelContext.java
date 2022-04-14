@@ -12,5 +12,4 @@ public interface ParallelContext {
   <A, R> ObjectRef<R> submitTask(
     ParallelActor<A> parallelActor, int instanceIndex, RayFunc func, Object[] args);
 
-  ParallelStrategyInterface createParallelStrategy(ParallelStrategy strategyEnum, int parallelNum);
 }

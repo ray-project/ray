@@ -2,6 +2,7 @@ package io.ray.api.parallelactor;
 
 import io.ray.api.Ray;
 import io.ray.api.function.RayFuncR;
+import io.ray.api.parallelactor.strategy.RoundRobinStrategy;
 
 public class ParallelActorCreator<A> {
 
@@ -16,14 +17,14 @@ public class ParallelActorCreator<A> {
     this.func = func;
     this.args = args;
 
-    // By default, it should be ALWAYS_FIRST with 1 parallel.
+    // By default, it should be RoundRobinStrategy with 1 parallel.
     ParallelContext ctx = Ray.internal().getParallelContext();
-    this.strategy = ctx.createParallelStrategy(ParallelStrategy.ALWAYS_FIRST, 1);
+    this.strategy = new RoundRobinStrategy(1);
   }
 
-  public ParallelActorCreator<A> setParallels(ParallelStrategy strategy, int parallelNum) {
+  public ParallelActorCreator<A> setParallels(ParallelStrategyInterface strategy, int parallelNum) {
     ParallelContext ctx = Ray.internal().getParallelContext();
-    this.strategy = ctx.createParallelStrategy(strategy, parallelNum);
+    this.strategy = strategy;
     return this;
   }
 

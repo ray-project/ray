@@ -3,6 +3,7 @@ package io.ray.test;
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.parallelactor.*;
+import io.ray.api.parallelactor.strategy.RoundRobinStrategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -39,12 +40,12 @@ public class ParallelActorTest extends BaseTest {
   /// 5. We used function manager.
   public void testF() {
     ParallelActor<A> actor =
-        Parallel.actor(A::new).setParallels(ParallelStrategy.ROUND_ROBIN, 10).remote();
+        Parallel.actor(A::new).setParallels(new RoundRobinStrategy(10), 10).remote();
 
     /// TODO: Why we set the delta so large? since it's cast to short otherwise.
-    ObjectRef<Integer> obj0 = actor.task(A::incr, 1000000).remote(); // 调用的是instance 0
-    ObjectRef<Integer> obj1 = actor.task(A::incr, 1000000).remote(); // 调用的是instance 1
-    ObjectRef<Integer> obj2 = actor.task(A::incr, 1000000).remote(); // 调用的是instance 2
+    ObjectRef<Integer> obj0 = actor.task(A::incr, 1000000).remote(); // on instance 0
+    ObjectRef<Integer> obj1 = actor.task(A::incr, 1000000).remote(); // on instance 1
+    ObjectRef<Integer> obj2 = actor.task(A::incr, 1000000).remote(); // on instance 2
     Assert.assertEquals(1000000, (int) obj0.get());
     Assert.assertEquals(1000000, (int) obj1.get());
     Assert.assertEquals(1000000, (int) obj2.get());
