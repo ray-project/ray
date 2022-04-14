@@ -368,7 +368,7 @@ class Checkpoint:
         else:
             temp_dir = self.to_directory()
             yield temp_dir
-            shutil.rmtree(temp_dir)
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     @classmethod
     def from_uri(cls, uri: str) -> "Checkpoint":
