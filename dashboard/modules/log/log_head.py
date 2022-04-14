@@ -216,7 +216,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         return response
 
     @routes.get("/api/experimental/logs/list")
-    async def handle_log_index(self, req):
+    async def handle_list_logs(self, req):
         """
         Returns a JSON file containing, for each node in the cluster,
         a dict mapping a category of log component to a list of filenames.

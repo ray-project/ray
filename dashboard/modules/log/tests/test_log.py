@@ -152,7 +152,7 @@ def test_log_proxy(ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
-def test_logs_experimental_index(ray_start_with_dashboard):
+def test_logs_experimental_list(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -164,6 +164,7 @@ def test_logs_experimental_index(ray_start_with_dashboard):
     while True:
         time.sleep(1)
         try:
+            # Test that logs/list is comprehensive
             response = requests.get(webui_url + "/api/experimental/logs/list")
             response.raise_for_status()
             logs = json.loads(response.text)
@@ -179,12 +180,32 @@ def test_logs_experimental_index(ray_start_with_dashboard):
             assert len(outs) > 0
 
             for file in ["debug_state_gcs.txt", "gcs_server.out", "gcs_server.err"]:
-                assert file in logs[node_id]["gcs"]
+                assert file in logs[node_id]["gcs_server"]
             for file in ["raylet.out", "raylet.err"]:
                 assert file in logs[node_id]["raylet"]
             for file in ["dashboard_agent.log", "dashboard.log"]:
                 assert file in logs[node_id]["dashboard"]
             break
+
+            # Test that logs/list can be filtered
+            response = requests.get(
+                webui_url + "/api/experimental/logs/list?filters=gcs")
+            response.raise_for_status()
+            logs = json.loads(response.text)
+            assert len(logs) == 1
+            node_id = next(iter(logs))
+            assert "gcs_server" in logs[node_id] and len(logs[node_id]) == 1
+
+            response = requests.get(
+                webui_url + "/api/experimental/logs/list?filters=worker")
+            response.raise_for_status()
+            logs = json.loads(response.text)
+            assert len(logs) == 1
+            node_id = next(iter(logs))
+            worker_log_categories = ["python_core_worker_logs",
+                                     "worker_outs", "worker_errors"]
+            assert all([cat in logs[node_id] for cat in worker_log_categories]) and len(
+                logs[node_id]) == 3
         except Exception as ex:
             last_ex = ex
         finally:
@@ -225,12 +246,10 @@ def test_logs_tail():
 def test_logs_experimental_write(ray_start_with_dashboard):
     @ray.remote
     class Actor:
-        def write_log(s):
-            print(s)
-
-    test_log_text = "test_log_text"
-    actor = Actor.remote()
-    ray.get(actor.write_log.remote(test_log_text))
+        def write_log(self, strings):
+            for s in strings:
+                print(s)
+    test_log_text = "test_log_text{}"
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -239,6 +258,7 @@ def test_logs_experimental_write(ray_start_with_dashboard):
     timeout_seconds = 10
     start_time = time.time()
     last_ex = None
+
     while True:
         time.sleep(1)
         try:
@@ -246,26 +266,49 @@ def test_logs_experimental_write(ray_start_with_dashboard):
             response.raise_for_status()
             logs = json.loads(response.text)
             assert len(logs) == 1
-
             node_id = next(iter(logs))
-            file_names = logs[node_id]["worker_outs"]
-            urls = []
-            for f in file_names:
-                if "worker" in f:
-                    urls.append(
-                        webui_url
-                        + f"/api/experimental/logs/file?node_id={node_id}"
-                        + "&log_file_name="
-                        + f
-                    )
 
-            for u in urls:
-                response = requests.get(u)
-                response.raise_for_status()
-                if test_log_text in response.text:
-                    break
-            else:
-                raise Exception(f"Can't find {test_log_text} from {urls}")
+            actor = Actor.remote()
+            ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
+
+            # Test stream and fetching by actor id
+            stream_response = requests.get(
+                webui_url
+                + f"/api/experimental/logs/stream?node_id={node_id}&lines=2"
+                + "&actor_id="
+                + actor._ray_actor_id.hex(),
+                stream=True,
+            )
+            if stream_response.status_code != 200:
+                raise ValueError(stream_response.text)
+            stream_iterator = stream_response.iter_content(chunk_size=None)
+            assert next(stream_iterator).decode("utf-8") == ":actor_name:Actor\n" + \
+                test_log_text.format("XXXXXX") + "\n"
+
+            streamed_string = ""
+            for i in range(5):
+                strings = []
+                for j in range(100):
+                    strings.append(test_log_text.format(f"{100*i + j:06d}"))
+
+                ray.get(actor.write_log.remote(strings))
+
+                string = ""
+                for s in strings:
+                    string += s + "\n"
+                assert next(stream_iterator).decode("utf-8") == string
+                streamed_string += string
+            del stream_response
+
+            # Test tailing log by actor id
+            LINES = 150
+            file_response = requests.get(
+                webui_url
+                + f"/api/experimental/logs/file?node_id={node_id}&lines={LINES}"
+                + "&actor_id="
+                + actor._ray_actor_id.hex(),
+            ).text
+            assert file_response == "\n".join(streamed_string.split("\n")[-(LINES+1):])
             break
         except Exception as ex:
             last_ex = ex
@@ -283,4 +326,4 @@ def test_logs_experimental_write(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", f"{__file__}::test_logs_tail"]))
+    sys.exit(pytest.main(["-v", __file__]))
