@@ -1,20 +1,19 @@
 import io
+import os
 import shutil
 import tarfile
 import tempfile
-
-import os
 from typing import Optional, Union, Tuple
 
 import ray
 from ray import cloudpickle as pickle
-from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.cloud import (
-    upload_to_bucket,
-    is_cloud_target,
-    download_from_bucket,
+from ray.ml.utils.remote_storage import (
+    upload_to_uri,
+    is_non_local_path_uri,
+    download_from_uri,
+    fs_hint,
 )
-
+from ray.util.annotations import DeveloperAPI
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
@@ -331,7 +330,7 @@ class Checkpoint:
                     shutil.copytree(local_path, path)
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
-                download_from_bucket(bucket=external_path, local_path=path)
+                download_from_uri(uri=external_path, local_path=path)
             else:
                 raise RuntimeError(
                     f"No valid location found for checkpoint {self}: {self._uri}"
@@ -358,7 +357,7 @@ class Checkpoint:
     def to_uri(self, uri: str) -> str:
         """Write checkpoint data to location URI (e.g. cloud storage).
 
-        ARgs:
+        Args:
             uri (str): Target location URI to write data to.
 
         Returns:
@@ -368,7 +367,12 @@ class Checkpoint:
             local_path = uri[7:]
             return self.to_directory(local_path)
 
-        assert is_cloud_target(uri)
+        if not is_non_local_path_uri(uri):
+            raise RuntimeError(
+                f"Cannot upload checkpoint to URI: Provided URI "
+                f"does not belong to a registered storage provider: `{uri}`. "
+                f"Hint: {fs_hint(uri)}"
+            )
 
         cleanup = False
 
@@ -377,7 +381,7 @@ class Checkpoint:
             cleanup = True
             local_path = self.to_directory()
 
-        upload_to_bucket(bucket=uri, local_path=local_path)
+        upload_to_uri(local_path=local_path, uri=uri)
 
         if cleanup:
             shutil.rmtree(local_path)
@@ -429,7 +433,7 @@ class Checkpoint:
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
     """Check if path is a local path. Otherwise return None."""
-    if path is None or is_cloud_target(path):
+    if path is None or is_non_local_path_uri(path):
         return None
     if path.startswith("file://"):
         path = path[7:]
@@ -440,7 +444,7 @@ def _get_local_path(path: Optional[str]) -> Optional[str]:
 
 def _get_external_path(path: Optional[str]) -> Optional[str]:
     """Check if path is an external path. Otherwise return None."""
-    if not isinstance(path, str) or not is_cloud_target(path):
+    if not isinstance(path, str) or not is_non_local_path_uri(path):
         return None
     return path
 
