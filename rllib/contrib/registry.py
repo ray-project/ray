@@ -26,11 +26,13 @@ def _import_alphazero():
 
 def _import_bandit_lints():
     from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
+
     return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
 
 
 def _import_bandit_linucb():
     from ray.rllib.agents.bandit.bandit import BanditLinUCBTrainer
+
     return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
 
 
