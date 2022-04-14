@@ -3,7 +3,7 @@ import ray
 import subprocess
 import sys
 
-from ray._private.gcs_utils import ping_cluster
+from ray._private.gcs_utils import check_health
 from ray._private.test_utils import Semaphore, client_test_enabled, wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
 
@@ -103,12 +103,12 @@ def test_jemalloc_env_var_propagate():
     assert actual == expected
 
 
-def test_ping_cluster(shutdown_only):
-    assert not ping_cluster("127.0.0.1:8888")
+def test_check_health(shutdown_only):
+    assert not check_health("127.0.0.1:8888")
 
     conn = ray.init()
     addr = conn.address_info["address"]
-    assert ping_cluster(addr)
+    assert check_health(addr)
 
 
 def test_back_pressure(shutdown_only_with_initialization_check):

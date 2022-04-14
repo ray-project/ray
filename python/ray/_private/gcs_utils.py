@@ -96,14 +96,13 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
-def ping_cluster(address: str, timeout=2):
-    """Pings Ray cluster at address. This is useful to check is a Ray cluster
-    is running, before / without actually connecting to the cluster via
-    ray.init().
+def check_health(address: str, timeout=2):
+    """Checks Ray cluster health, before / without actually connecting to the
+    cluster via ray.init().
 
     Args:
-        address: GCS address string, e.g. ip:port.
-        timeout: request.
+        address: Ray cluster / GCS address string, e.g. ip:port.
+        timeout: request timeout.
     Returns:
         Returns True if the cluster is running and has matching Ray version.
         Returns False if no service is running.

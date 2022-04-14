@@ -1726,7 +1726,7 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address(address)
-    if not ray._private.gcs_utils.ping_cluster(address):
+    if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
     time = datetime.now()
@@ -1759,7 +1759,7 @@ def memory(
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
-    if not ray._private.gcs_utils.ping_cluster(address):
+    if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
     gcs_client = ray._private.gcs_utils.GcsClient(address=address)
@@ -2060,7 +2060,7 @@ def healthcheck(address, redis_password, component):
 
     if not component:
         try:
-            if ray._private.gcs_utils.ping_cluster(address):
+            if ray._private.gcs_utils.check_health(address):
                 sys.exit(0)
         except Exception:
             pass

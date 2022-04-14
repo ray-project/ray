@@ -12,7 +12,7 @@ except ImportError:
 
 import ray.experimental.internal_kv as internal_kv
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient, ping_cluster
+from ray._private.gcs_utils import GcsClient, check_health
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -44,7 +44,7 @@ class GCSHealthCheckThread(threading.Thread):
     def run(self) -> None:
         while True:
             future = self.work_queue.get()
-            check_result = ping_cluster(self.gcs_address)
+            check_result = check_health(self.gcs_address)
             future.set_result(check_result)
 
     async def check_once(self) -> bool:
