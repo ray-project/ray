@@ -42,7 +42,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         node_info["logUrl"] = log_url
 
     @routes.get("/log_index")
-    async def get_log_index(self, req) -> aiohttp.web.Response:
+    async def list_logs(self, req) -> aiohttp.web.Response:
         url_list = []
         agent_ips = []
         for node_id, ports in DataSource.agents.items():
@@ -138,76 +138,70 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: [str]
     ):
         """
-        Returns a JSON file mapping, for the node corresponding to the given
-        gRPC stub, a category of log component to a list of filenames.
+        Returns a JSON file mapping a category of log component to a list of filenames,
+        on the given node via the gRPC connection to its agent.
         """
         reply = await grpc_stub.ListLogs(
             reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
         )
         filters = [] if filters == [""] else filters
 
-        def contains_all_filters(string):
-            return all(f in string for f in filters)
+        def contains_all_filters(log_file_name):
+            return all(f in log_file_name for f in filters)
 
-        links = list(filter(contains_all_filters, reply.log_files))
+        filtered = list(filter(contains_all_filters, reply.log_files))
         logs = {}
         logs["worker_errors"] = list(
-            filter(lambda s: "worker" in s and s.endswith(".err"), links)
+            filter(lambda s: "worker" in s and s.endswith(".err"), filtered)
         )
         logs["worker_outs"] = list(
-            filter(lambda s: "worker" in s and s.endswith(".out"), links)
+            filter(lambda s: "worker" in s and s.endswith(".out"), filtered)
         )
         for lang in ray_constants.LANGUAGE_WORKER_TYPES:
             logs[f"{lang}_core_worker_logs"] = list(
                 filter(
                     lambda s: f"{lang}-core-worker" in s and s.endswith(".log"),
-                    links,
+                    filtered,
                 )
             )
             logs[f"{lang}_driver_logs"] = list(
                 filter(
                     lambda s: f"{lang}-core-driver" in s and s.endswith(".log"),
-                    links,
+                    filtered,
                 )
             )
-        logs["dashboard"] = list(filter(lambda s: "dashboard" in s, links))
-        logs["raylet"] = list(filter(lambda s: "raylet" in s, links))
-        logs["gcs"] = list(filter(lambda s: "gcs" in s, links))
-        logs["ray_client"] = list(filter(lambda s: "ray_client" in s, links))
-        logs["autoscaler_monitor"] = list(
-            filter(lambda s: "monitor" in s and "log_monitor" not in s, links)
+        logs["dashboard"] = list(filter(lambda s: "dashboard" in s, filtered))
+        logs["raylet"] = list(filter(lambda s: "raylet" in s, filtered))
+        logs["gcs_server"] = list(filter(lambda s: "gcs" in s, filtered))
+        logs["ray_client"] = list(filter(lambda s: "ray_client" in s, filtered))
+        logs["autoscaler"] = list(
+            filter(lambda s: "monitor" in s and "log_monitor" not in s, filtered)
         )
-        logs["folders"] = list(filter(lambda s: "." not in s, links))
+        logs["runtime_env"] = list(filter(lambda s: "runtime_env" in s, filtered))
+        logs["folders"] = list(filter(lambda s: "." not in s, filtered))
         logs["misc"] = list(
-            filter(lambda s: all([s not in logs[k] for k in logs]), links)
+            filter(lambda s: all([s not in logs[k] for k in logs]), filtered)
         )
         return logs
 
-    @routes.get("/api/experimental/logs/list")
-    async def handle_log_index(self, req):
-        """
-        Returns a JSON file containing, for each node in the cluster,
-        a dict mapping a category of log component to a list of filenames.
-        """
-        node_id = req.query.get("node_id", None)
-        if node_id is None:
-            ip = req.query.get("node_ip", None)
-            if ip is not None:
-                if ip not in self._ip_to_node_id:
-                    return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
-                node_id = self._ip_to_node_id[ip]
-        filters = req.query.get("filters", "").split(",")
-        response = await self.get_log_index(node_id, filters)
-        return aiohttp.web.json_response(response)
+    async def wait_until_initialized(self):
+        POLL_SLEEP_TIME = 0.5
+        POLL_RETRIES = 10
+        for _ in range(POLL_RETRIES):
+            if self._stubs != {}:
+                return None
+            await asyncio.sleep(POLL_SLEEP_TIME)
+        return aiohttp.web.HTTPGatewayTimeout(
+            reason="Could not connect to agents via gRPC after "
+            f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds."
+        )
 
-    async def get_log_index(self, node_id_query, filters):
+    async def list_logs(self, node_id_query: str, filters: [str]):
         """
-        Helper function to get the logs index by querying each agent
+        Helper function to list the logs by querying each agent
         on each cluster via gRPC.
         """
         response = {}
-        while self._stubs == {}:
-            await asyncio.sleep(0.5)
         tasks = []
         for node_id, grpc_stub in self._stubs.items():
             if node_id_query is None or node_id_query == node_id:
