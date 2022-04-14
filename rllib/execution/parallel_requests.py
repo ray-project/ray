@@ -119,6 +119,11 @@ def asynchronous_parallel_requests(
                 args = remote_args[actor_idx] if remote_args else []
                 kwargs = remote_kwargs[actor_idx] if remote_kwargs else {}
                 for _ in range(num_requests_to_launch):
+                    if (
+                        len(remote_requests_in_flight[actor])
+                        >= max_remote_requests_in_flight_per_actor
+                    ):
+                        break
                     req = actor.apply.remote(remote_fn, *args, **kwargs)
                     # Add to our set to send to ray.wait().
                     pending_remotes.add(req)

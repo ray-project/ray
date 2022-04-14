@@ -437,7 +437,7 @@ class ApexTrainer(DQNTrainer):
             ] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_sampling_requests_in_flight,
                 actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=0.0,
+                 ray_wait_timeout_s=0.02,
                 max_remote_requests_in_flight_per_actor=4,
                 remote_fn=remote_worker_sample_and_store,
                 remote_kwargs=[{"replay_actors": self.replay_actors}]
@@ -504,9 +504,9 @@ class ApexTrainer(DQNTrainer):
             replay_samples_ready: Dict[ActorHandle, T] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_replay_requests_in_flight,
                 actors=[rand_actor],
-                ray_wait_timeout_s=0.0,
+                ray_wait_timeout_s=0.02,
                 num_requests_to_launch=num_requests_to_launch,
-                max_remote_requests_in_flight_per_actor=float("inf"),
+                max_remote_requests_in_flight_per_actor=100,
                 remote_fn=lambda actor: actor.replay(),
             )
             for replay_actor, sample_batches in replay_samples_ready.items():
@@ -516,7 +516,7 @@ class ApexTrainer(DQNTrainer):
         replay_samples_ready: Dict[ActorHandle, T] = asynchronous_parallel_requests(
             remote_requests_in_flight=self.remote_replay_requests_in_flight,
             actors=self.replay_actors,
-            ray_wait_timeout_s=0.0,
+            ray_wait_timeout_s=0.02,
             max_remote_requests_in_flight_per_actor=float("inf"),
             remote_fn=None,
         )
