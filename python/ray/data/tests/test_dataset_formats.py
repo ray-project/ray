@@ -763,7 +763,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=None, "
+        "Dataset(num_blocks=1, num_rows=10, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
