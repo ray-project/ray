@@ -238,6 +238,8 @@ def test_logs_tail():
         assert len(lines) == 100
         assert lines[0] == "Message  900"
         assert lines[99] == "Message  999"
+    except Exception as e:
+        raise e
     finally:
         if os.path.exists(FILE_NAME):
             os.remove(FILE_NAME)
