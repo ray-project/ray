@@ -1858,8 +1858,10 @@ def format_print_logs_index(api_endpoint, node_id, links):
             print(f"\n{name}")
             print("----------------------------")
             [
-                print(f"{api_endpoint}/api/experimental/logs/file"
-                      f"?node_id={node_id}&log_file_name={log}")
+                print(
+                    f"{api_endpoint}/api/experimental/logs/file"
+                    f"?node_id={node_id}&log_file_name={log}"
+                )
                 for log in links[key]
             ]
 
@@ -2075,45 +2077,6 @@ def logs(
 
     except Exception as e:
         print(e)
-
-
-@cli.command(hidden=True)
-@click.option(
-    "--ip-address",
-    required=False,
-    type=str,
-    default=None,
-    help="The ip address of the log",
-)
-@click.option(
-    "--node-id",
-    required=False,
-    type=str,
-    default=None,
-    help="The unique id of the node.",
-)
-def nodes(ip_address, node_id):
-    nodes = ray_nodes(node_id, ip_address)
-    for node in nodes:
-        id = node.pop("id")
-        print(f"Node ID: {id}")
-        for key, val in node.items():
-            print(f"{key}: {val}")
-        print()
-
-
-@cli.command(hidden=True)
-@click.option(
-    "--actor-id",
-    required=False,
-    type=str,
-    default=None,
-    help="The ip address of the log",
-)
-def actors(actor_id):
-    from pprint import pprint
-
-    pprint(ray_actors(actor_id))
 
 
 @cli.command()
@@ -2524,8 +2487,6 @@ cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(logs)
-cli.add_command(nodes)
-cli.add_command(actors)
 add_command_alias(job_cli_group, name="job", hidden=True)
 
 try:

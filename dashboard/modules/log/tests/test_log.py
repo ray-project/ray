@@ -231,7 +231,8 @@ def test_logs_experimental_write(ray_start_with_dashboard):
                     urls.append(
                         webui_url
                         + f"/api/experimental/logs/file?node_id={node_id}"
-                        + "&log_file_name=" + f
+                        + "&log_file_name="
+                        + f
                     )
 
             for u in urls:

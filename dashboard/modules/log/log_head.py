@@ -185,10 +185,16 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         return logs
 
     async def wait_until_initialized(self):
-        for _ in range(10):
+        POLL_SLEEP_TIME = 0.5
+        POLL_RETRIES = 10
+        for _ in range(POLL_RETRIES):
             if self._stubs != {}:
-                return
-            await asyncio.sleep(0.5)
+                return None
+            await asyncio.sleep(POLL_SLEEP_TIME)
+        return aiohttp.web.HTTPGatewayTimeout(
+            reason="Could not connect to agents via gRPC after "
+            f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds."
+        )
 
     async def list_logs(self, node_id_query: str, filters: [str]):
         """
@@ -197,7 +203,6 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         """
         response = {}
         tasks = []
-        await self.wait_until_initialized()
         for node_id, grpc_stub in self._stubs.items():
             if node_id_query is None or node_id_query == node_id:
 
@@ -224,6 +229,9 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                     return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
                 node_id = self._ip_to_node_id[ip]
         filters = req.query.get("filters", "").split(",")
+        err = await self.wait_until_initialized()
+        if err is not None:
+            return err
         response = await self.list_logs(node_id, filters)
         return aiohttp.web.json_response(response)
 
@@ -234,7 +242,9 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         the HTTP connection is not closed. Else, if `media_type = file`, the stream
         ends once all the lines in the file requested are transmitted.
         """
-        await self.wait_until_initialized()
+        err = await self.wait_until_initialized()
+        if err is not None:
+            return err
         node_id = req.query.get("node_id", None)
 
         # If no `node_id` is provided, try to determine node_id
