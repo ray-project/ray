@@ -888,14 +888,11 @@ TEST_F(SingleNodeTest, TestHandleUpdateObjectLocationBatch) {
   rpc::UpdateObjectLocationBatchReply reply;
   request.set_intended_worker_id(driver.GetWorkerID().Binary());
   request.set_node_id(driver.GetCurrentNodeId().Binary());
-  auto state = request.add_object_location_states();
-  state->set_object_id(object_id.Binary());
-  state->set_state(rpc::ObjectLocationState::SPILLED);
-  state->set_spilled_url("url1");
-  state->set_spilled_node_id(driver.GetCurrentNodeId().Binary());
-  state = request.add_object_location_states();
-  state->set_object_id(object_id.Binary());
-  state->set_state(rpc::ObjectLocationState::REMOVED);
+  auto update = request.add_object_location_updates();
+  update->set_object_id(object_id.Binary());
+  update->set_spilled_url("url1");
+  update->set_spilled_node_id(driver.GetCurrentNodeId().Binary());
+  update->set_in_plasma(false);
   driver.HandleUpdateObjectLocationBatch(
       request,
       &reply,
@@ -915,10 +912,10 @@ TEST_F(SingleNodeTest, TestHandleUpdateObjectLocationBatch) {
   ASSERT_EQ(get_reply.object_location_info().spilled_node_id(),
             driver.GetCurrentNodeId().Binary());
 
-  request.clear_object_location_states();
-  state = request.add_object_location_states();
-  state->set_object_id(object_id.Binary());
-  state->set_state(rpc::ObjectLocationState::ADDED);
+  request.clear_object_location_updates();
+  update = request.add_object_location_updates();
+  update->set_object_id(object_id.Binary());
+  update->set_in_plasma(true);
   driver.HandleUpdateObjectLocationBatch(
       request,
       &reply,

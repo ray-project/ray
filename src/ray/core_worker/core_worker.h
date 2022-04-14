@@ -997,9 +997,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
 
-  void SpillObjectLocationOwner(const ObjectID &object_id,
-                                const std::string &spilled_url,
-                                const NodeID &spilled_node_id);
+  void AddSpilledObjectLocationOwner(const ObjectID &object_id,
+                                     const std::string &spilled_url,
+                                     const NodeID &spilled_node_id);
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 

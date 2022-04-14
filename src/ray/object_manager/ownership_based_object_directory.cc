@@ -129,10 +129,13 @@ void OwnershipBasedObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
     return;
   }
   metrics_num_object_locations_added_++;
-  rpc::ObjectLocationStateUpdate update;
+  const bool existing_object = location_buffers_[worker_id].second.contains(object_id);
+  rpc::ObjectLocationUpdate &update = location_buffers_[worker_id].second[object_id];
   update.set_object_id(object_id.Binary());
-  update.set_state(rpc::ObjectLocationState::ADDED);
-  location_buffers_[worker_id].emplace_back(std::move(update));
+  update.set_in_plasma(true);
+  if (!existing_object) {
+    location_buffers_[worker_id].first.emplace_back(object_id);
+  }
   SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
 }
 
@@ -149,10 +152,13 @@ void OwnershipBasedObjectDirectory::ReportObjectRemoved(const ObjectID &object_i
     return;
   }
   metrics_num_object_locations_removed_++;
-  rpc::ObjectLocationStateUpdate update;
+  const bool existing_object = location_buffers_[worker_id].second.contains(object_id);
+  rpc::ObjectLocationUpdate &update = location_buffers_[worker_id].second[object_id];
   update.set_object_id(object_id.Binary());
-  update.set_state(rpc::ObjectLocationState::REMOVED);
-  location_buffers_[worker_id].emplace_back(std::move(update));
+  update.set_in_plasma(false);
+  if (!existing_object) {
+    location_buffers_[worker_id].first.emplace_back(object_id);
+  }
   SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
 }
 
@@ -172,12 +178,15 @@ void OwnershipBasedObjectDirectory::ReportObjectSpilled(const ObjectID &object_i
                    << "This should only happen for Plasma store warmup objects.";
     return;
   }
-  rpc::ObjectLocationStateUpdate update;
+
+  const bool existing_object = location_buffers_[worker_id].second.contains(object_id);
+  rpc::ObjectLocationUpdate &update = location_buffers_[worker_id].second[object_id];
   update.set_object_id(object_id.Binary());
-  update.set_state(rpc::ObjectLocationState::SPILLED);
   update.set_spilled_url(spilled_url);
   update.set_spilled_node_id(spilled_node_id.Binary());
-  location_buffers_[worker_id].emplace_back(std::move(update));
+  if (!existing_object) {
+    location_buffers_[worker_id].first.emplace_back(object_id);
+  }
   SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
 }
 
@@ -195,24 +204,29 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
     return;
   }
 
-  const auto &object_state_buffers = location_buffer_it->second;
-  RAY_CHECK_NE(object_state_buffers.size(), 0u);
+  auto &object_queue = location_buffer_it->second.first;
+  auto &object_map = location_buffer_it->second.second;
+  RAY_CHECK_EQ(object_queue.size(), object_map.size());
+  RAY_CHECK_NE(object_queue.size(), 0u);
 
   rpc::UpdateObjectLocationBatchRequest request;
   request.set_intended_worker_id(worker_id.Binary());
   request.set_node_id(node_id.Binary());
-  auto object_state_buffers_it = object_state_buffers.begin();
+  auto object_queue_it = object_queue.begin();
   auto batch_size = 0;
-  while (object_state_buffers_it != object_state_buffers.end() &&
+  while (object_queue_it != object_queue.end() &&
          batch_size < kMaxObjectReportBatchSize) {
-    auto state = request.add_object_location_states();
-    *state = std::move(*object_state_buffers_it);
+    auto update = request.add_object_location_updates();
+    const ObjectID &object_id = *object_queue_it;
+    *update = std::move(object_map.at(object_id));
+    object_map.erase(object_id);
     batch_size++;
-    object_state_buffers_it++;
+    object_queue_it++;
   }
-  location_buffer_it->second.erase(object_state_buffers.begin(), object_state_buffers_it);
+  object_queue.erase(object_queue.begin(), object_queue_it);
 
-  if (object_state_buffers.size() == 0) {
+  RAY_CHECK_EQ(object_queue.size(), object_map.size());
+  if (object_queue.size() == 0) {
     location_buffers_.erase(location_buffer_it);
   }
 

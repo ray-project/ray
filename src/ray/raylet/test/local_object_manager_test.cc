@@ -112,10 +112,10 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   void UpdateObjectLocationBatch(
       const rpc::UpdateObjectLocationBatchRequest &request,
       const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
-    for (const auto &object_location_state : request.object_location_states()) {
-      ASSERT_TRUE(object_location_state.state() == rpc::ObjectLocationState::SPILLED);
-      object_urls.emplace(ObjectID::FromBinary(object_location_state.object_id()),
-                          object_location_state.spilled_url());
+    for (const auto &object_location_update : request.object_location_updates()) {
+      ASSERT_TRUE(object_location_update.has_spilled_url());
+      object_urls.emplace(ObjectID::FromBinary(object_location_update.object_id()),
+                          object_location_update.spilled_url());
     }
     update_object_location_batch_callbacks.push_back(callback);
   }

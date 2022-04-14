@@ -2886,24 +2886,23 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
     return;
   }
   const auto &node_id = NodeID::FromBinary(request.node_id());
-  const auto &object_location_states = request.object_location_states();
+  const auto &object_location_updates = request.object_location_updates();
 
-  for (const auto &object_location_state : object_location_states) {
-    const auto &object_id = ObjectID::FromBinary(object_location_state.object_id());
-    const auto &state = object_location_state.state();
+  for (const auto &object_location_update : object_location_updates) {
+    const auto &object_id = ObjectID::FromBinary(object_location_update.object_id());
 
-    if (state == rpc::ObjectLocationState::ADDED) {
-      AddObjectLocationOwner(object_id, node_id);
-    } else if (state == rpc::ObjectLocationState::REMOVED) {
-      RemoveObjectLocationOwner(object_id, node_id);
-    } else if (state == rpc::ObjectLocationState::SPILLED) {
-      SpillObjectLocationOwner(
+    if (object_location_update.has_spilled_url()) {
+      AddSpilledObjectLocationOwner(
           object_id,
-          object_location_state.spilled_url(),
-          NodeID::FromBinary(object_location_state.spilled_node_id()));
-    } else {
-      RAY_LOG(FATAL) << "Invalid object location state " << state
-                     << " has been received.";
+          object_location_update.spilled_url(),
+          NodeID::FromBinary(object_location_update.spilled_node_id()));
+    }
+
+    if (object_location_update.has_in_plasma() && object_location_update.in_plasma()) {
+      AddObjectLocationOwner(object_id, node_id);
+    } else if (object_location_update.has_in_plasma() &&
+               !object_location_update.in_plasma()) {
+      RemoveObjectLocationOwner(object_id, node_id);
     }
   }
 
@@ -2912,9 +2911,9 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                       /*failure_callback_on_reply*/ nullptr);
 }
 
-void CoreWorker::SpillObjectLocationOwner(const ObjectID &object_id,
-                                          const std::string &spilled_url,
-                                          const NodeID &spilled_node_id) {
+void CoreWorker::AddSpilledObjectLocationOwner(const ObjectID &object_id,
+                                               const std::string &spilled_url,
+                                               const NodeID &spilled_node_id) {
   RAY_LOG(DEBUG) << "Received object spilled location update for object " << object_id
                  << ", which has been spilled to " << spilled_url << " on node "
                  << spilled_node_id;
