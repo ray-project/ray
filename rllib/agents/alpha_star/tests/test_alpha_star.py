@@ -1,4 +1,3 @@
-import pprint
 import pyspiel
 import unittest
 
@@ -61,8 +60,8 @@ class TestAlphaStar(unittest.TestCase):
             trainer = alpha_star.AlphaStarTrainer(config=_config)
             for i in range(num_iterations):
                 results = trainer.train()
+                print(results)
                 check_train_results(results)
-                pprint.pprint(results)
             check_compute_single_action(trainer)
             trainer.stop()
 

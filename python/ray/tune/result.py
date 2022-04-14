@@ -120,6 +120,7 @@ STDERR_FILE = "__stderr_file__"
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = (
+    # This is the file system that bazel test uses.
     os.environ.get("TEST_TMPDIR")
     or os.environ.get("TUNE_RESULT_DIR")
     or os.path.expanduser("~/ray_results")

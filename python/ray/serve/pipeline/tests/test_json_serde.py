@@ -5,6 +5,12 @@ from typing import TypeVar
 import ray
 from ray.experimental.dag.dag_node import DAGNode
 from ray.experimental.dag.input_node import InputNode
+from ray import serve
+from ray.serve.handle import (
+    RayServeSyncHandle,
+    serve_handle_to_json_dict,
+    serve_handle_from_json_dict,
+)
 from ray.serve.pipeline.json_serde import (
     DAGNodeEncoder,
     dagnode_from_json,
@@ -91,24 +97,6 @@ def test_non_json_serializable_args():
 
     ray_dag = combine.bind(MyNonJSONClass(1), MyNonJSONClass(2))
     # General context
-    with pytest.raises(
-        TypeError,
-        match=(
-            "All args and kwargs used in Ray DAG building for serve "
-            "deployment need to be JSON serializable."
-        ),
-    ):
-        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
-    # User actionable item
-    with pytest.raises(
-        TypeError,
-        match=(
-            "Please JSON serialize your args to make your ray application "
-            "deployment ready"
-        ),
-    ):
-        _ = json.dumps(ray_dag, cls=DAGNodeEncoder)
-    # Original error message
     with pytest.raises(
         TypeError,
         match=r"Object of type .* is not JSON serializable",
@@ -320,6 +308,44 @@ def test_nested_deployment_node_json_serde(serve_instance):
     assert ray.get(serve_root_dag.execute(1)) == ray.get(
         deserialized_serve_root_dag_node.execute(1)
     )
+
+
+def get_handle(sync: bool = True):
+    @serve.deployment
+    def echo(inp: str):
+        return inp
+
+    echo.deploy()
+    return echo.get_handle(sync=sync)
+
+
+async def call(handle, inp):
+    if isinstance(handle, RayServeSyncHandle):
+        ref = handle.remote(inp)
+    else:
+        ref = await handle.remote(inp)
+
+    return ray.get(ref)
+
+
+@pytest.mark.asyncio
+class TestHandleJSON:
+    def test_invalid(self, serve_instance):
+        with pytest.raises(ValueError):
+            serve_handle_from_json_dict({"blah": 123})
+
+    @pytest.mark.parametrize("sync", [False, True])
+    async def test_basic(self, serve_instance, sync):
+        handle = get_handle(sync)
+        assert await call(handle, "hi") == "hi"
+
+        serialized = json.dumps(serve_handle_to_json_dict(handle))
+        # Check we can go through multiple rounds of serde.
+        serialized = json.dumps(json.loads(serialized))
+
+        # Load the handle back from the dict.
+        handle = serve_handle_from_json_dict(json.loads(serialized))
+        assert await call(handle, "hi") == "hi"
 
 
 if __name__ == "__main__":

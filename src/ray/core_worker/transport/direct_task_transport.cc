@@ -51,8 +51,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               task_finisher_->CompletePendingTask(
                   task_id, push_task_reply, reply.actor_address());
             } else {
-              RAY_LOG(ERROR) << "Failed to create actor " << actor_id
-                             << " with status: " << status.ToString();
+              RAY_LOG(INFO) << "Failed to create actor " << actor_id
+                            << " with status: " << status.ToString();
               RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
                   task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
             }
@@ -381,7 +381,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                         SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED ||
                 reply.failure_type() ==
                     rpc::RequestWorkerLeaseReply::
-                        SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED) {
+                        SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
+                reply.failure_type() ==
+                    rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE) {
               // We need to actively fail all of the pending tasks in the queue when the
               // placement group was removed or the runtime env failed to be set up. Such
               // an operation is straightforward for the scenario of placement group
@@ -401,6 +403,17 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                   RAY_UNUSED(task_finisher_->FailPendingTask(
                       task_spec.TaskId(),
                       rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                      /*status*/ nullptr,
+                      &error_info));
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                  rpc::RayErrorInfo error_info;
+                  *(error_info.mutable_error_message()) =
+                      reply.scheduling_failure_message();
+                  RAY_UNUSED(task_finisher_->FailPendingTask(
+                      task_spec.TaskId(),
+                      rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR,
                       /*status*/ nullptr,
                       &error_info));
                 } else {

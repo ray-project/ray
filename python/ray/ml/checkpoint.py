@@ -1,3 +1,4 @@
+import io
 import shutil
 import tarfile
 import tempfile
@@ -99,6 +100,21 @@ class Checkpoint:
             # It is guaranteed that the original data was recovered
             assert isinstance(clf, RandomForestClassifier)
 
+        Checkpoints can be pickled and sent to remote processes.
+        Please note that checkpoints pointing to local directories will be
+        pickled as data representations, so the full checkpoint data will be
+        contained in the checkpoint object. If you want to avoid this,
+        consider passing only the checkpoint directory to the remote task
+        and re-construct your checkpoint object in that function. Note that
+        this will only work if the "remote" task is scheduled on the
+        same node or a node that also has access to the local data path (e.g.
+        on a shared file system like NFS).
+
+        Checkpoints pointing to object store references will keep the
+        object reference in tact - this means that these checkpoints cannot
+        be properly deserialized on other Ray clusters or outside a Ray
+        cluster. If you need persistence across clusters, use the ``to_uri()``
+        or ``to_directory()`` methods to persist your checkpoints to disk.
 
     """
 
@@ -142,12 +158,13 @@ class Checkpoint:
                 )
         elif uri:
             assert not local_path and not data_dict and not obj_ref
-            uri = _get_external_path(uri)
-            if not uri:
+            resolved = _get_external_path(uri)
+            if not resolved:
                 raise RuntimeError(
                     f"Cannot create checkpoint from URI as it is not "
-                    f"supported: {uri}"
+                    f"supported: {resolved}"
                 )
+            uri = resolved
         else:
             raise ValueError("Cannot create checkpoint without data.")
 
@@ -400,6 +417,15 @@ class Checkpoint:
                 "Cannot get internal representation of empty checkpoint."
             )
 
+    def __getstate__(self):
+        if self._local_path:
+            blob = self.to_bytes()
+            return Checkpoint.from_bytes(blob).__getstate__()
+        return self.__dict__
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
     """Check if path is a local path. Otherwise return None."""
@@ -421,31 +447,20 @@ def _get_external_path(path: Optional[str]) -> Optional[str]:
 
 def _temporary_checkpoint_dir() -> str:
     """Create temporary checkpoint dir."""
-    return tempfile.mkdtemp(prefix="checkpoint_tmp_", dir=os.getcwd())
+    return tempfile.mkdtemp(prefix="checkpoint_tmp_")
 
 
 def _pack(path: str) -> bytes:
     """Pack directory in ``path`` into an archive, return as bytes string."""
-    _, tmpfile = tempfile.mkstemp()
-    with tarfile.open(tmpfile, "w:gz") as tar:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT) as tar:
         tar.add(path, arcname="")
 
-    with open(tmpfile, "rb") as f:
-        stream = f.read()
-
-    os.remove(tmpfile)
-    return stream
+    return stream.getvalue()
 
 
 def _unpack(stream: bytes, path: str) -> str:
     """Unpack archive in bytes string into directory in ``path``."""
-    _, tmpfile = tempfile.mkstemp()
-
-    with open(tmpfile, "wb") as f:
-        f.write(stream)
-
-    with tarfile.open(tmpfile) as tar:
+    with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
         tar.extractall(path)
-
-    os.remove(tmpfile)
     return path

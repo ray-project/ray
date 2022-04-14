@@ -949,10 +949,17 @@ class DockerCommandRunner(CommandRunnerInterface):
                 .strip()
             )
             home_directory = "/root"
-            for env_var in json.loads(image_env):
-                if env_var.startswith("HOME="):
-                    home_directory = env_var.split("HOME=")[1]
-                    break
+            try:
+                for env_var in json.loads(image_env):
+                    if env_var.startswith("HOME="):
+                        home_directory = env_var.split("HOME=")[1]
+                        break
+            except json.JSONDecodeError as e:
+                cli_logger.error(
+                    "Unable to deserialize `image_env` to Python object. "
+                    f"The `image_env` is:\n{image_env}"
+                )
+                raise e
 
             user_docker_run_options = self.docker_config.get(
                 "run_options", []

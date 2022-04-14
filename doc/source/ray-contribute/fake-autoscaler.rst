@@ -158,6 +158,16 @@ some limitations still remain:
 
 3. In docker-in-docker setups, a careful setup has to be followed to make the fake multinode docker provider work (see below).
 
+Shared directories within the docker environment
+------------------------------------------------
+The containers will mount two locations to host storage:
+
+- ``/cluster/node``: This location (in the container) will point to ``cluster_dir/nodes/<node_id>`` (on the host).
+  This location is individual per node, but it can be used so that the host can examine contents stored in this directory.
+- ``/cluster/shared``: This location (in the container) will point to ``cluster_dir/shared`` (on the host). This location
+  is shared across nodes and effectively acts as a shared filesystem (comparable to NFS).
+
+
 Setting up in a Docker-in-Docker (dind) environment
 ---------------------------------------------------
 When setting up in a Docker-in-Docker (dind) environment (e.g. the Ray OSS Buildkite environment), some

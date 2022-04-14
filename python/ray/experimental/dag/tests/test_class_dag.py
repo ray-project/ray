@@ -240,6 +240,44 @@ def test_dynamic_pipeline(shared_ray_instance):
     assert ray.get(odd_input.execute()) == "Odd: 21"
 
 
+def test_unsupported_bind():
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(
+        AttributeError,
+        match="'Actor' has no attribute 'bind'",
+    ):
+        actor = Actor.bind()
+        _ = actor.bind()
+
+    with pytest.raises(
+        AttributeError,
+        match=r"\.remote\(\) cannot be used on ClassMethodNodes",
+    ):
+        actor = Actor.bind()
+        _ = actor.ping.remote()
+
+
+def test_unsupported_remote():
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return "hello"
+
+    with pytest.raises(AttributeError, match="'Actor' has no attribute 'remote'"):
+        _ = Actor.bind().remote()
+
+    @ray.remote
+    def func():
+        return 1
+
+    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
+        _ = func.bind().remote()
+
+
 if __name__ == "__main__":
     import sys
 

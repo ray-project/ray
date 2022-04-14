@@ -109,6 +109,14 @@ if __name__ == "__main__":
     result["max_iteration_time"] = max(loop_times)
     result["min_iteration_time"] = min(loop_times)
     result["success"] = 1
+    if os.environ.get("IS_SMOKE_TEST") != "1":
+        result["perf_metrics"] = [
+            {
+                "perf_metric_name": "avg_iteration_time",
+                "perf_metric_value": result["avg_iteration_time"],
+                "perf_metric_type": "LATENCY",
+            }
+        ]
     print("PASSED.")
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:

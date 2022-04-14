@@ -10,10 +10,15 @@ class ActorPool:
         actors (list): List of Ray actor handles to use in this pool.
 
     Examples:
-        >>> a1, a2 = Actor.remote(), Actor.remote()
-        >>> pool = ActorPool([a1, a2])
-        >>> print(list(pool.map(lambda a, v: a.double.remote(v),\
-        ...                     [1, 2, 3, 4])))
+        >>> import ray
+        >>> from ray.util.actor_pool import ActorPool
+        >>> @ray.remote # doctest: +SKIP
+        >>> class Actor: # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        >>> a1, a2 = Actor.remote(), Actor.remote() # doctest: +SKIP
+        >>> pool = ActorPool([a1, a2]) # doctest: +SKIP
+        >>> print(list(pool.map(lambda a, v: a.double.remote(v), # doctest: +SKIP
+        ...                     [1, 2, 3, 4]))) # doctest: +SKIP
         [2, 4, 6, 8]
     """
 
@@ -54,9 +59,10 @@ class ActorPool:
             Iterator over results from applying fn to the actors and values.
 
         Examples:
-            >>> pool = ActorPool(...)
-            >>> print(list(pool.map(lambda a, v: a.double.remote(v),\
-            ...                     [1, 2, 3, 4])))
+            >>> from ray.util.actor_pool import ActorPool
+            >>> pool = ActorPool(...) # doctest: +SKIP
+            >>> print(list(pool.map(lambda a, v: a.double.remote(v),
+            ...                     [1, 2, 3, 4]))) # doctest: +SKIP
             [2, 4, 6, 8]
         """
         # Ignore/Cancel all the previous submissions
@@ -90,9 +96,10 @@ class ActorPool:
             Iterator over results from applying fn to the actors and values.
 
         Examples:
-            >>> pool = ActorPool(...)
-            >>> print(list(pool.map_unordered(lambda a, v: a.double.remote(v),\
-            ...                               [1, 2, 3, 4])))
+            >>> from ray.util.actor_pool import ActorPool
+            >>> pool = ActorPool(...) # doctest: +SKIP
+            >>> print(list(pool.map_unordered(lambda a, v: a.double.remote(v),
+            ...                               [1, 2, 3, 4]))) # doctest: +SKIP
             [6, 2, 4, 8]
         """
         # Ignore/Cancel all the previous submissions
@@ -122,10 +129,11 @@ class ActorPool:
             value (object): Value to compute a result for.
 
         Examples:
-            >>> pool = ActorPool(...)
-            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
-            >>> pool.submit(lambda a, v: a.double.remote(v), 2)
-            >>> print(pool.get_next(), pool.get_next())
+            >>> from ray.util.actor_pool import ActorPool
+            >>> pool = ActorPool(...) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 2) # doctest: +SKIP
+            >>> print(pool.get_next(), pool.get_next()) # doctest: +SKIP
             2, 4
         """
         if self._idle_actors:
@@ -145,13 +153,14 @@ class ActorPool:
             True if there are any pending results not yet returned.
 
         Examples:
-            >>> pool = ActorPool(...)
-            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
-            >>> print(pool.has_next())
+            >>> from ray.util.actor_pool import ActorPool
+            >>> pool = ActorPool(...) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1) # doctest: +SKIP
+            >>> print(pool.has_next()) # doctest: +SKIP
             True
-            >>> print(pool.get_next())
+            >>> print(pool.get_next()) # doctest: +SKIP
             2
-            >>> print(pool.has_next())
+            >>> print(pool.has_next()) # doctest: +SKIP
             False
         """
         return bool(self._future_to_actor)
@@ -169,9 +178,10 @@ class ActorPool:
             TimeoutError if the timeout is reached.
 
         Examples:
-            >>> pool = ActorPool(...)
-            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
-            >>> print(pool.get_next())
+            >>> from ray.util.actor_pool import ActorPool
+            >>> pool = ActorPool(...) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1) # doctest: +SKIP
+            >>> print(pool.get_next()) # doctest: +SKIP
             2
         """
         if not self.has_next():
@@ -209,12 +219,13 @@ class ActorPool:
             TimeoutError if the timeout is reached.
 
         Examples:
-            >>> pool = ActorPool(...)
-            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
-            >>> pool.submit(lambda a, v: a.double.remote(v), 2)
-            >>> print(pool.get_next_unordered())
+            >>> from ray.util.actor_pool import ActorPool
+            >>> pool = ActorPool(...) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 2) # doctest: +SKIP
+            >>> print(pool.get_next_unordered()) # doctest: +SKIP
             4
-            >>> print(pool.get_next_unordered())
+            >>> print(pool.get_next_unordered()) # doctest: +SKIP
             2
         """
         if not self.has_next():
@@ -243,14 +254,17 @@ class ActorPool:
             True if there are any idle actors and no pending submits.
 
         Examples:
-            >>> a1 = Actor.remote()
-            >>> pool = ActorPool(a1)
-            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
-            >>> print(pool.has_free())
+            >>> @ray.remote # doctest: +SKIP
+            >>> class Actor: # doctest: +SKIP
+            ...     ... # doctest: +SKIP
+            >>> a1 = Actor.remote() # doctest: +SKIP
+            >>> pool = ActorPool(a1) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1) # doctest: +SKIP
+            >>> print(pool.has_free()) # doctest: +SKIP
             False
-            >>> print(pool.get_next())
+            >>> print(pool.get_next()) # doctest: +SKIP
             2
-            >>> print(pool.has_free())
+            >>> print(pool.has_free()) # doctest: +SKIP
             True
         """
         return len(self._idle_actors) > 0 and len(self._pending_submits) == 0
@@ -263,14 +277,17 @@ class ActorPool:
             None if no actor was free to be removed.
 
         Examples:
-            >>> a1 = Actor.remote()
-            >>> pool = ActorPool([a1])
-            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
-            >>> print(pool.pop_idle())
+            >>> @ray.remote # doctest: +SKIP
+            >>> class Actor: # doctest: +SKIP
+            ...     ... # doctest: +SKIP
+            >>> a1 = Actor.remote() # doctest: +SKIP
+            >>> pool = ActorPool([a1]) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1) # doctest: +SKIP
+            >>> print(pool.pop_idle()) # doctest: +SKIP
             None
-            >>> print(pool.get_next())
+            >>> print(pool.get_next()) # doctest: +SKIP
             2
-            >>> print(pool.pop_idle())
+            >>> print(pool.pop_idle()) # doctest: +SKIP
             <ptr to a1>
         """
         if self.has_free():
@@ -281,13 +298,16 @@ class ActorPool:
         """Pushes a new actor into the current list of idle actors.
 
         Examples:
-            >>> a1, b1 = Actor.remote(), Actor.remote()
-            >>> pool = ActorPool([a1])
-            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
-            >>> print(pool.get_next())
+            >>> @ray.remote # doctest: +SKIP
+            >>> class Actor: # doctest: +SKIP
+            ...     ... # doctest: +SKIP
+            >>> a1, b1 = Actor.remote(), Actor.remote() # doctest: +SKIP
+            >>> pool = ActorPool([a1]) # doctest: +SKIP
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1) # doctest: +SKIP
+            >>> print(pool.get_next()) # doctest: +SKIP
             2
-            >>> pool2 = ActorPool([b1])
-            >>> pool2.push(pool.pop_idle())
+            >>> pool2 = ActorPool([b1]) # doctest: +SKIP
+            >>> pool2.push(pool.pop_idle()) # doctest: +SKIP
         """
         busy_actors = []
         if self._future_to_actor.values():

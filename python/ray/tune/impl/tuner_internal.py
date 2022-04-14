@@ -54,13 +54,13 @@ class TunerInternal:
                 str,
                 Callable,
                 Type[Trainable],
-                Type[Trainer],
                 Trainer,
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
+        _tuner_kwargs: Optional[Dict] = None,
     ):
         # Restored from Tuner checkpoint.
         if restore_path:
@@ -84,14 +84,15 @@ class TunerInternal:
 
         self._is_restored = False
         self._trainable = trainable
-        self._tune_config = tune_config
-        self._run_config = run_config
+        self._tune_config = tune_config or TuneConfig()
+        self._run_config = run_config or RunConfig()
+        self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
             self._run_config
         )
 
         # Not used for restored Tuner.
-        self._param_space = param_space
+        self._param_space = param_space or {}
         self._process_dataset_param()
 
         # This needs to happen before `tune.run()` is kicked in.
@@ -132,7 +133,7 @@ class TunerInternal:
         return path
 
     # This has to be done through a function signature (@property won't do).
-    def experiment_checkpoint_dir(self) -> str:
+    def get_experiment_checkpoint_dir(self) -> str:
         return self._experiment_checkpoint_dir
 
     @staticmethod
@@ -151,7 +152,7 @@ class TunerInternal:
             analysis = self._fit_internal(trainable, param_space)
         else:
             analysis = self._fit_resume(trainable)
-        analysis._legacy_checkpoint = False
+
         return ResultGrid(analysis)
 
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
@@ -166,7 +167,14 @@ class TunerInternal:
             scheduler=self._tune_config.scheduler,
             name=self._run_config.name,
             callbacks=self._run_config.callbacks,
+            sync_config=self._run_config.sync_config,
+            stop=self._run_config.stop,
+            max_failures=(
+                self._run_config.failure.max_failures if self._run_config.failure else 0
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
+            raise_on_failed_trial=False,
+            **self._tuner_kwargs,
         )
         return analysis
 
@@ -178,7 +186,14 @@ class TunerInternal:
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
+            sync_config=self._run_config.sync_config,
+            stop=self._run_config.stop,
+            max_failures=(
+                self._run_config.failure.max_failures if self._run_config.failure else 0
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
+            raise_on_failed_trial=False,
+            **self._tuner_kwargs,
         )
         return analysis
 

@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Union
 import threading
+from collections import OrderedDict
 
 from ray.experimental.dag import (
     DAGNode,
@@ -9,7 +10,7 @@ from ray.experimental.dag import (
 )
 from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
-from ray.serve.api import Deployment
+from ray.serve.deployment import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
@@ -132,10 +133,10 @@ def extract_deployments_from_serve_dag(
     Args:
         serve_dag_root (DAGNode): Transformed serve dag root node.
     Returns:
-        List[Deployment]: List of deployment python objects fetched from serve
-            dag.
+        deployments (List[Deployment]): List of deployment python objects
+            fetched from serve dag.
     """
-    deployments = {}
+    deployments = OrderedDict()
 
     def extractor(dag_node):
         if isinstance(dag_node, (DeploymentNode, DeploymentFunctionNode)):
@@ -174,3 +175,41 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
     )
 
     return input_nodes[0]
+
+
+def process_ingress_deployment_in_serve_dag(
+    deployments: List[Deployment],
+) -> List[Deployment]:
+    """Mark the last fetched deployment in a serve dag as exposed with default
+    prefix.
+    """
+    if len(deployments) == 0:
+        return deployments
+
+    # Last element of the list is the root deployment if it's applicable type
+    # that wraps an deployment, given Ray DAG traversal is done bottom-up.
+    ingress_deployment = deployments[-1]
+    if ingress_deployment.route_prefix in [None, f"/{ingress_deployment.name}"]:
+        # Override default prefix to "/" on the ingress deployment, if user
+        # didn't provide anything in particular.
+        new_ingress_deployment = ingress_deployment.options(route_prefix="/")
+        deployments[-1] = new_ingress_deployment
+
+    # Erase all non ingress deployment route prefix
+    for i, deployment in enumerate(deployments[:-1]):
+        if (
+            deployment.route_prefix is not None
+            and deployment.route_prefix != f"/{deployment.name}"
+        ):
+            raise ValueError(
+                "Route prefix is only configurable on the ingress deployment. "
+                "Please do not set non-default route prefix: "
+                f"{deployment.route_prefix} on non-ingress deployment of the "
+                "serve DAG. "
+            )
+        else:
+            # Earse all default prefix to None for non-ingress deployments to
+            # disable HTTP
+            deployments[i] = deployment.options(route_prefix=None)
+
+    return deployments

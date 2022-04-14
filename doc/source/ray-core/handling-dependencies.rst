@@ -52,7 +52,7 @@ Runtime environments
 
 .. note::
 
-    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature is available starting with Ray 1.4.0 and is currently only supported on macOS and Linux.
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature is available starting with Ray 1.4.0 and is currently supported on macOS and Linux. It is experimentally supported on Windows.
 
 The second way to set up dependencies is to install them dynamically while Ray is running.
 
@@ -316,7 +316,7 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
 
 - ``pip`` (dict | List[str] | str): Either (1) a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing the path to a pip
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of pip packages,
-  (b) ``pip_check`` (optional, bool): whether to enable `pip check <https://pip.pypa.io/en/stable/cli/pip_check/>`_ at the end of pip install, defaults to ``True``.
+  (b) ``pip_check`` (optional, bool): whether to enable `pip check <https://pip.pypa.io/en/stable/cli/pip_check/>`_ at the end of pip install, defaults to ``False``.
   (c) ``pip_version`` (optional, str): the version of pip; Ray will spell the package name "pip" in front of the ``pip_version`` to form the final requirement string.
   The syntax of a requirement specifier is defined in full in `PEP 508 <https://www.python.org/dev/peps/pep-0508/>`_.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
@@ -360,6 +360,12 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   Currently, specifying this option per-actor or per-task is not supported.
 
   - Example: ``{"eager_install": False}``
+
+- ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the timeout of runtime environment creation, timeout is in seconds.
+
+  - Example: ``{"setup_timeout_seconds": 10}``
+
+  - Example: ``RuntimeEnvConfig(setup_timeout_seconds=10)``
 
 Caching and Garbage Collection
 """"""""""""""""""""""""""""""

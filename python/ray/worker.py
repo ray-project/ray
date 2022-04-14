@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import atexit
 import faulthandler
+import functools
 import hashlib
 import inspect
 import io
@@ -20,6 +21,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 # Ray modules
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
+import ray.internal.storage as storage
 import ray.node
 import ray.job_config
 import ray._private.parameter
@@ -28,7 +30,6 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-from ray.util.scheduling_strategies import SchedulingStrategyT
 from ray._private.gcs_pubsub import (
     GcsPublisher,
     GcsErrorSubscriber,
@@ -42,6 +43,7 @@ import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.util.debug import log_once
+from ray._private import ray_option_utils
 import ray
 import colorama
 import setproctitle
@@ -699,6 +701,7 @@ def init(
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
+    storage: Optional[str] = None,
     # The following are unstable parameters and their use is discouraged.
     _enable_object_reconstruction: bool = False,
     _redis_max_memory: Optional[int] = None,
@@ -796,11 +799,15 @@ def init(
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
-        log_to_driver (bool): If true, the output from all of the worker
+        log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
-        namespace (str): Namespace to use
-        runtime_env (dict, RuntimeEnv, None): The runtime environment to use
+        namespace: Namespace to use
+        runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
+        storage: [Experimental] Specify a URI for persistent cluster-wide storage.
+            This storage path must be accessible by all nodes of the cluster, otherwise
+            an error will be raised. This option can also be specified as the
+            RAY_STORAGE env var.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -994,6 +1001,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
+            storage=storage,
             # We need to disable it if runtime env is not set.
             # Uploading happens after core worker is created. And we should
             # prevent default worker being created before uploading.
@@ -1051,6 +1059,7 @@ def init(
             redis_address=redis_address,
             redis_password=_redis_password,
             object_ref_seed=None,
+            storage=storage,
             temp_dir=_temp_dir,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -1148,6 +1157,7 @@ def shutdown(_exiting_interpreter: bool = False):
             _global_node.destroy_external_storage()
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
+    storage._reset()
 
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
@@ -1576,7 +1586,8 @@ def connect(
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped
         )
-        worker.import_thread.start()
+        if ray._raylet.Config.start_python_importer_thread():
+            worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -2100,121 +2111,24 @@ def _mode(worker=global_worker):
     return worker.mode
 
 
-def make_decorator(
-    num_returns=None,
-    num_cpus=None,
-    num_gpus=None,
-    memory=None,
-    object_store_memory=None,
-    resources=None,
-    accelerator_type=None,
-    max_calls=None,
-    max_retries=None,
-    max_restarts=None,
-    max_task_retries=None,
-    runtime_env=None,
-    placement_group="default",
-    worker=None,
-    retry_exceptions=None,
-    concurrency_groups=None,
-    scheduling_strategy: SchedulingStrategyT = None,
-):
-    def decorator(function_or_class):
-        if inspect.isfunction(function_or_class) or is_cython(function_or_class):
-            # Set the remote function default resources.
-            if max_restarts is not None:
-                raise ValueError(
-                    "The keyword 'max_restarts' is not allowed for remote functions."
-                )
-            if max_task_retries is not None:
-                raise ValueError(
-                    "The keyword 'max_task_retries' is not "
-                    "allowed for remote functions."
-                )
-            if num_returns is not None and (
-                not isinstance(num_returns, int) or num_returns < 0
-            ):
-                raise ValueError(
-                    "The keyword 'num_returns' only accepts 0 or a positive integer"
-                )
-            if max_retries is not None and (
-                not isinstance(max_retries, int) or max_retries < -1
-            ):
-                raise ValueError(
-                    "The keyword 'max_retries' only accepts 0, -1 or a"
-                    " positive integer"
-                )
-            if max_calls is not None and (
-                not isinstance(max_calls, int) or max_calls < 0
-            ):
-                raise ValueError(
-                    "The keyword 'max_calls' only accepts 0 or a positive integer"
-                )
-            return ray.remote_function.RemoteFunction(
-                Language.PYTHON,
-                function_or_class,
-                None,
-                num_cpus,
-                num_gpus,
-                memory,
-                object_store_memory,
-                resources,
-                accelerator_type,
-                num_returns,
-                max_calls,
-                max_retries,
-                retry_exceptions,
-                runtime_env,
-                placement_group,
-                scheduling_strategy,
-            )
-
-        if inspect.isclass(function_or_class):
-            if num_returns is not None:
-                raise TypeError("The keyword 'num_returns' is not allowed for actors.")
-            if max_retries is not None:
-                raise TypeError("The keyword 'max_retries' is not allowed for actors.")
-            if retry_exceptions is not None:
-                raise TypeError(
-                    "The keyword 'retry_exceptions' is not allowed for actors."
-                )
-            if max_calls is not None:
-                raise TypeError("The keyword 'max_calls' is not allowed for actors.")
-            if max_restarts is not None and (
-                not isinstance(max_restarts, int) or max_restarts < -1
-            ):
-                raise ValueError(
-                    "The keyword 'max_restarts' only accepts -1, 0 or a"
-                    " positive integer"
-                )
-            if max_task_retries is not None and (
-                not isinstance(max_task_retries, int) or max_task_retries < -1
-            ):
-                raise ValueError(
-                    "The keyword 'max_task_retries' only accepts -1, 0 or a"
-                    " positive integer"
-                )
-            return ray.actor.make_actor(
-                function_or_class,
-                num_cpus,
-                num_gpus,
-                memory,
-                object_store_memory,
-                resources,
-                accelerator_type,
-                max_restarts,
-                max_task_retries,
-                runtime_env,
-                concurrency_groups,
-                scheduling_strategy,
-            )
-
-        raise TypeError(
-            "The @ray.remote decorator must be applied to "
-            "either a function or to a class."
+def _make_remote(function_or_class, options):
+    # filter out placeholders in options
+    if inspect.isfunction(function_or_class) or is_cython(function_or_class):
+        ray_option_utils.validate_task_options(options, in_options=False)
+        return ray.remote_function.RemoteFunction(
+            Language.PYTHON,
+            function_or_class,
+            None,
+            options,
         )
 
-    return decorator
+    if inspect.isclass(function_or_class):
+        ray_option_utils.validate_actor_options(options, in_options=False)
+        return ray.actor.make_actor(function_or_class, options)
+
+    raise TypeError(
+        "The @ray.remote decorator must be applied to either a function or a class."
+    )
 
 
 @PublicAPI
@@ -2284,6 +2198,8 @@ def remote(*args, **kwargs):
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
+        memory (float): The heap memory request for this task/actor.
+        object_store_memory (int): The object store memory request for this task/actor.
         max_calls (int): Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
@@ -2331,87 +2247,10 @@ def remote(*args, **kwargs):
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
     """
-    worker = global_worker
-
+    # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
-        return make_decorator(worker=worker)(args[0])
-
-    # Parse the keyword arguments from the decorator.
-    valid_kwargs = [
-        "num_returns",
-        "num_cpus",
-        "num_gpus",
-        "memory",
-        "object_store_memory",
-        "resources",
-        "accelerator_type",
-        "max_calls",
-        "max_restarts",
-        "max_task_retries",
-        "max_retries",
-        "runtime_env",
-        "retry_exceptions",
-        "placement_group",
-        "concurrency_groups",
-        "scheduling_strategy",
-    ]
-    error_string = (
-        "The @ray.remote decorator must be applied either "
-        "with no arguments and no parentheses, for example "
-        "'@ray.remote', or it must be applied using some of "
-        f"the arguments in the list {valid_kwargs}, for example "
-        "'@ray.remote(num_returns=2, "
-        'resources={"CustomResource": 1})\'.'
-    )
-    assert len(args) == 0 and len(kwargs) > 0, error_string
-    for key in kwargs:
-        assert key in valid_kwargs, error_string
-
-    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
-    num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
-    resources = kwargs.get("resources")
-    if not isinstance(resources, dict) and resources is not None:
-        raise TypeError(
-            "The 'resources' keyword argument must be a "
-            f"dictionary, but received type {type(resources)}."
-        )
-    if resources is not None:
-        assert "CPU" not in resources, "Use the 'num_cpus' argument."
-        assert "GPU" not in resources, "Use the 'num_gpus' argument."
-
-    accelerator_type = kwargs.get("accelerator_type")
-
-    # Handle other arguments.
-    num_returns = kwargs.get("num_returns")
-    max_calls = kwargs.get("max_calls")
-    max_restarts = kwargs.get("max_restarts")
-    max_task_retries = kwargs.get("max_task_retries")
-    memory = kwargs.get("memory")
-    object_store_memory = kwargs.get("object_store_memory")
-    max_retries = kwargs.get("max_retries")
-    runtime_env = kwargs.get("runtime_env")
-    placement_group = kwargs.get("placement_group", "default")
-    retry_exceptions = kwargs.get("retry_exceptions")
-    concurrency_groups = kwargs.get("concurrency_groups")
-    scheduling_strategy = kwargs.get("scheduling_strategy")
-
-    return make_decorator(
-        num_returns=num_returns,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        memory=memory,
-        object_store_memory=object_store_memory,
-        resources=resources,
-        accelerator_type=accelerator_type,
-        max_calls=max_calls,
-        max_restarts=max_restarts,
-        max_task_retries=max_task_retries,
-        max_retries=max_retries,
-        runtime_env=runtime_env,
-        placement_group=placement_group,
-        worker=worker,
-        retry_exceptions=retry_exceptions,
-        concurrency_groups=concurrency_groups or [],
-        scheduling_strategy=scheduling_strategy,
-    )
+        # "args[0]" is the class or function under the decorator.
+        return _make_remote(args[0], {})
+    assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
+    return functools.partial(_make_remote, options=kwargs)

@@ -3,6 +3,8 @@ import argparse
 import ray
 from ray import tune
 from ray.ml.train.integrations.torch import TorchTrainer
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 
 from torch_linear_dataset_example import train_func, get_datasets
 
@@ -21,21 +23,21 @@ def tune_linear(num_workers, num_samples, use_gpu):
         datasets={"train": train_dataset, "validation": val_dataset},
     )
 
-    # TODO(amog/xwjiang): Replace with Tuner.fit.
-    analysis = tune.run(
-        trainer.as_trainable(),
-        num_samples=num_samples,
-        config={
+    tuner = Tuner(
+        trainer,
+        param_space={
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
                 "batch_size": tune.choice([4, 16, 32]),
                 "epochs": 3,
             }
         },
+        tune_config=TuneConfig(num_samples=num_samples, metric="loss", mode="min"),
     )
-    results = analysis.get_best_config(metric="loss", mode="min")
-    print(results)
-    return results
+    result_grid = tuner.fit()
+    best_result = result_grid.get_best_result()
+    print(best_result)
+    return best_result
 
 
 if __name__ == "__main__":

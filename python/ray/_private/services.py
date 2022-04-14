@@ -33,6 +33,10 @@ resource = None
 if sys.platform != "win32":
     import resource
 
+    _timeout = 30
+else:
+    _timeout = 60
+
 EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 # True if processes are run in the valgrind profiler.
@@ -359,7 +363,7 @@ def wait_for_node(
     gcs_address,
     node_plasma_store_socket_name,
     redis_password=None,
-    timeout=30,
+    timeout=_timeout,
 ):
     """Wait until this node has appeared in the client table.
 
@@ -1542,6 +1546,7 @@ def start_raylet(
     plasma_store_name,
     worker_path,
     setup_worker_path,
+    storage,
     temp_dir,
     session_dir,
     resource_dir,
@@ -1586,6 +1591,7 @@ def start_raylet(
             processes will execute.
         setup_worker_path (str): The path of the Python file that will set up
             the environment for the worker process.
+        storage (str): The persistent storage URI.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1694,6 +1700,7 @@ def start_raylet(
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
         f"--redis-address={redis_address}",
+        f"--storage={storage}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",

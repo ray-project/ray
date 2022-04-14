@@ -149,6 +149,15 @@ def test_setup(ray_start_4_cpus):
     trainer.fit()
 
 
+def test_fail(ray_start_4_cpus):
+    def fail(self):
+        raise ValueError
+
+    trainer = DummyTrainer(fail)
+    with pytest.raises(ValueError):
+        trainer.fit()
+
+
 if __name__ == "__main__":
     import pytest
     import sys

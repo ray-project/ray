@@ -60,6 +60,8 @@ DOCKER_HEAD_CMD = (
     "touch {volume_dir}/.in_docker && "
     "sudo chown -R ray:users /cluster/node && "
     "sudo chmod -R 777 /cluster/node && "
+    "sudo chown -R ray:users /cluster/shared && "
+    "sudo chmod -R 777 /cluster/shared && "
     "sudo chmod 700 ~/.ssh && "
     "sudo chmod 600 ~/.ssh/authorized_keys && "
     "sudo chmod 600 ~/ray_bootstrap_key.pem && "
@@ -453,7 +455,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
         # Create shared directory
         node_dir = os.path.join(self._volume_dir, "nodes", node_id)
-        os.makedirs(node_dir, mode=0o755, exist_ok=True)
+        os.makedirs(node_dir, mode=0o777, exist_ok=True)
 
         resource_str = json.dumps(resources, indent=None)
 
@@ -471,6 +473,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
                 "RAY_OVERRIDE_RESOURCES": resource_str,
+                **self.provider_config.get("env_vars", {}),
             },
             volume_dir=self._volume_dir,
             node_state_path=self._node_state_path,

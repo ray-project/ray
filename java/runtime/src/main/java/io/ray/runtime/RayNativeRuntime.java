@@ -114,11 +114,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
         RuntimeEnvInfo.Builder runtimeEnvInfoBuilder = RuntimeEnvInfo.newBuilder();
-        if (!rayConfig.workerEnv.isEmpty()) {
-          // TODO(SongGuyang): Suppport complete runtime env interface for users.
-          // Set worker env to the serialized runtime env json.
+        if (rayConfig.runtimeEnvImpl != null && !rayConfig.runtimeEnvImpl.getEnvVars().isEmpty()) {
           RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
-          runtimeEnvBuilder.putAllEnvVars(rayConfig.workerEnv);
+          runtimeEnvBuilder.putAllEnvVars(rayConfig.runtimeEnvImpl.getEnvVars());
           Printer printer = JsonFormat.printer();
           try {
             runtimeEnvInfoBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));
