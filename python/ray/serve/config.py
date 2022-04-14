@@ -224,7 +224,7 @@ class DeploymentConfig(BaseModel):
         if ignore_none:
             kwargs = {key: val for key, val in kwargs.items() if val is not None}
 
-        for key, val in kwargs:
+        for key, val in kwargs.items():
             config.__setattr__(key, val)
 
         return config
