@@ -1,14 +1,17 @@
 import asyncio
 from asyncio.events import AbstractEventLoop
-import random
-import os
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
+import logging
+import os
+import random
 from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
 
 import ray
-from ray.serve.utils import logger
+from ray.serve.constants import SERVE_LOGGER_NAME
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Each LongPollClient will send requests to LongPollHost to poll changes
 # as blocking awaitable. This doesn't scale if we have many client instances

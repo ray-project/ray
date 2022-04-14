@@ -44,7 +44,12 @@ from ray.tune.schedulers.util import (
 # fmt: on
 
 from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
+from ray.tune.syncer import (
+    SyncConfig,
+    set_sync_periods,
+    wait_for_sync,
+    validate_upload_dir,
+)
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -418,6 +423,7 @@ def run(
 
     config = config or {}
     sync_config = sync_config or SyncConfig()
+    validate_upload_dir(sync_config)
     set_sync_periods(sync_config)
 
     if num_samples == -1:

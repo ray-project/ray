@@ -60,15 +60,14 @@ from ray.serve.generated.serve_pb2 import (
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve.logging_utils import LoggingContext
 from ray.serve.utils import (
-    LoggingContext,
     ensure_serialization_context,
     format_actor_name,
     get_current_node_resource_key,
     get_random_letters,
     get_deployment_import_path,
     in_interactive_shell,
-    logger,
     DEFAULT,
 )
 from ray.util.annotations import PublicAPI
@@ -83,6 +82,8 @@ from ray.serve.schema import (
 )
 from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.application import Application
+
+logger = logging.getLogger(__file__)
 
 
 _INTERNAL_REPLICA_CONTEXT = None

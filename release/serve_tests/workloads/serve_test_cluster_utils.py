@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-import ray
+import logging
 import requests
 
+import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.utils import logger
 from ray.serve.config import DeploymentMode
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
+
+logger = logging.getLogger(__file__)
 
 # Cluster setup configs
 NUM_CPU_PER_NODE = 10
