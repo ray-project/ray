@@ -237,11 +237,6 @@ class _VectorizedGymEnv(VectorEnv):
         obs_batch, rew_batch, done_batch, info_batch = [], [], [], []
         for i in range(self.num_envs):
             obs, r, done, info = self.envs[i].step(actions[i])
-            if not np.isscalar(r) or not np.isreal(r) or not np.isfinite(r):
-                raise ValueError(
-                    "Reward should be finite scalar, got {} ({}). "
-                    "Actions={}.".format(r, type(r), actions[i])
-                )
             if not isinstance(info, dict):
                 raise ValueError(
                     "Info should be a dict, got {} ({})".format(info, type(info))

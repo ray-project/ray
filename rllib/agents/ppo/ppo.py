@@ -12,6 +12,7 @@ Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#ppo
 import logging
 from typing import List, Optional, Type, Union
 
+from ray.util.debug import log_once
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer import Trainer
@@ -21,17 +22,30 @@ from ray.rllib.execution.rollout_ops import (
     ParallelRollouts,
     ConcatBatches,
     StandardizeFields,
+    standardize_fields,
     SelectExperiences,
 )
-from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
+from ray.rllib.execution.train_ops import (
+    TrainOneStep,
+    MultiGPUTrainOneStep,
+    train_one_step,
+    multi_gpu_train_one_step,
+)
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import TrainerConfigDict, ResultDict
 from ray.util.iter import LocalIterator
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    WORKER_UPDATE_TIMER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +109,7 @@ class PPOConfig(TrainerConfig):
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
+        self._disable_execution_plan_api = True
 
     @override(TrainerConfig)
     def training(
@@ -216,6 +231,7 @@ class _deprecated_default_config(dict):
                     "model": {
                         "vf_share_layers": False,
                     },
+                    "_disable_execution_plan_api": True,
                 }
             )
         )
@@ -335,7 +351,7 @@ class PPOTrainer(Trainer):
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
         # we subsample a batch of `sgd_minibatch_size` from the train-batch for
-        # each `sgd_num_iter`).
+        # each `num_sgd_iter`).
         # Note: Only check this if `train_batch_size` > 0 (DDPPO sets this
         # to -1 to auto-calculate the actual batch size later).
         if (
@@ -409,6 +425,83 @@ class PPOTrainer(Trainer):
             return PPOTorchPolicy
         else:
             return PPOTFPolicy
+
+    @ExperimentalAPI
+    def training_iteration(self) -> ResultDict:
+        # Collect SampleBatches from sample workers until we have a full batch.
+        if self._by_agent_steps:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+            )
+        else:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+            )
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
+        # Standardize advantages
+        train_batch = standardize_fields(train_batch, ["advantages"])
+        # Train
+        if self.config["simple_optimizer"]:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+
+        global_vars = {
+            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+        }
+
+        # Update weights - after learning on the local worker - on all remote
+        # workers.
+        if self.workers.remote_workers():
+            with self._timers[WORKER_UPDATE_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
+
+        # For each policy: update KL scale and warn about possible issues
+        for policy_id, policy_info in train_results.items():
+            # Update KL loss with dynamic scaling
+            # for each (possibly multiagent) policy we are training
+            kl_divergence = policy_info[LEARNER_STATS_KEY].get("kl")
+            self.get_policy(policy_id).update_kl(kl_divergence)
+
+            # Warn about excessively high value function loss
+            scaled_vf_loss = (
+                self.config["vf_loss_coeff"] * policy_info[LEARNER_STATS_KEY]["vf_loss"]
+            )
+            policy_loss = policy_info[LEARNER_STATS_KEY]["policy_loss"]
+            if (
+                log_once("ppo_warned_lr_ratio")
+                and self.config.get("model", {}).get("vf_share_layers")
+                and scaled_vf_loss > 100
+            ):
+                logger.warning(
+                    "The magnitude of your value function loss for policy: {} is "
+                    "extremely large ({}) compared to the policy loss ({}). This "
+                    "can prevent the policy from learning. Consider scaling down "
+                    "the VF loss by reducing vf_loss_coeff, or disabling "
+                    "vf_share_layers.".format(policy_id, scaled_vf_loss, policy_loss)
+                )
+            # Warn about bad clipping configs.
+            train_batch.policy_batches[policy_id].set_get_interceptor(None)
+            mean_reward = train_batch.policy_batches[policy_id]["rewards"].mean()
+            if (
+                log_once("ppo_warned_vf_clip")
+                and mean_reward > self.config["vf_clip_param"]
+            ):
+                self.warned_vf_clip = True
+                logger.warning(
+                    f"The mean reward returned from the environment is {mean_reward}"
+                    f" but the vf_clip_param is set to {self.config['vf_clip_param']}."
+                    f" Consider increasing it for policy: {policy_id} to improve"
+                    " value function convergence."
+                )
+
+        # Update global vars on local worker as well.
+        self.workers.local_worker().set_global_vars(global_vars)
+
+        return train_results
 
     @staticmethod
     @override(Trainer)

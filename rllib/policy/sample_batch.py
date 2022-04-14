@@ -138,13 +138,12 @@ class SampleBatch(dict):
             # value that is actually a ndarray/tensor. This would fail if
             # all values are nested dicts/tuples of more complex underlying
             # structures.
-            len_ = (
-                len(v)
-                if isinstance(v, (list, np.ndarray)) or (torch and torch.is_tensor(v))
-                else None
-            )
-            if len_:
-                lengths.append(len_)
+            try:
+                len_ = len(v) if not isinstance(v, (dict, tuple)) else None
+                if len_:
+                    lengths.append(len_)
+            except Exception:
+                pass
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None

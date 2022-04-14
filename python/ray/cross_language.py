@@ -82,20 +82,8 @@ def java_function(class_name, function_name):
         Language.JAVA,
         lambda *args, **kwargs: None,
         JavaFunctionDescriptor(class_name, function_name, ""),
-        None,  # num_cpus,
-        None,  # num_gpus,
-        None,  # memory,
-        None,  # object_store_memory,
-        None,  # resources,
-        None,  # accelerator_type,
-        None,  # num_returns,
-        None,  # max_calls,
-        None,  # max_retries,
-        None,  # retry_exceptions,
-        None,  # runtime_env,
-        None,  # placement_group,
-        None,
-    )  # scheduling_strategy,
+        {},
+    )
 
 
 @PublicAPI(stability="beta")
@@ -111,20 +99,8 @@ def cpp_function(function_name):
         Language.CPP,
         lambda *args, **kwargs: None,
         CppFunctionDescriptor(function_name, "PYTHON"),
-        None,  # num_cpus,
-        None,  # num_gpus,
-        None,  # memory,
-        None,  # object_store_memory,
-        None,  # resources,
-        None,  # accelerator_type,
-        None,  # num_returns,
-        None,  # max_calls,
-        None,  # max_retries,
-        None,  # retry_exceptions,
-        None,  # runtime_env,
-        None,  # placement_group,
-        None,
-    )  # scheduling_strategy,
+        {},
+    )
 
 
 @PublicAPI(stability="beta")
@@ -139,15 +115,7 @@ def java_actor_class(class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
-        max_restarts=0,
-        max_task_retries=0,
-        num_cpus=None,
-        num_gpus=None,
-        memory=None,
-        object_store_memory=None,
-        resources=None,
-        accelerator_type=None,
-        runtime_env=None,
+        {},
     )
 
 
@@ -165,13 +133,5 @@ def cpp_actor_class(create_function_name, class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.CPP,
         CppFunctionDescriptor(create_function_name, "PYTHON", class_name),
-        max_restarts=0,
-        max_task_retries=0,
-        num_cpus=None,
-        num_gpus=None,
-        memory=None,
-        object_store_memory=None,
-        resources=None,
-        accelerator_type=None,
-        runtime_env=None,
+        {},
     )

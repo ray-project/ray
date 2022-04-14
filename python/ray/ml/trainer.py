@@ -245,7 +245,7 @@ class Trainer(abc.ABC):
 
         if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset and not self.preprocessor.check_is_fitted():
+            if train_dataset:
                 self.preprocessor.fit(train_dataset)
 
             # Execute dataset transformations serially for now.
@@ -306,8 +306,8 @@ class Trainer(abc.ABC):
             result = result_grid[0]
             if result.error:
                 raise result.error
-        except TuneError:
-            raise TrainingFailedError
+        except TuneError as e:
+            raise TrainingFailedError from e
         return result
 
     def as_trainable(self) -> Type[Trainable]:
