@@ -437,13 +437,15 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
     });
 
     for (const auto &pair : gcs_init_data.Nodes()) {
-      rpc::Address address;
-      address.set_raylet_id(pair.second.node_id());
-      address.set_ip_address(pair.second.node_manager_address());
-      address.set_port(pair.second.node_manager_port());
+      if(pair.second.state() == rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE) {
+        rpc::Address address;
+        address.set_raylet_id(pair.second.node_id());
+        address.set_ip_address(pair.second.node_manager_address());
+        address.set_port(pair.second.node_manager_port());
 
-      auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
-      ray_syncer_->Connect(raylet_client->GetChannel());
+        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+        ray_syncer_->Connect(raylet_client->GetChannel());
+      }
     }
   } else {
     /*

@@ -352,7 +352,7 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
 
-- label: ":construction: :python: (Small & Client)"
+- label: ":construction: :python: (syncer) (Small & Client)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -360,7 +360,7 @@
       --test_tag_filters=client_tests,small_size_python_tests
       --test_env=RAY_use_ray_syncer=true
       -- python/ray/tests/...
-- label: ":construction: :python: (Large)"
+- label: ":construction: :python: (syncer) (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   parallelism: 3
   commands:
@@ -374,7 +374,7 @@
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
       --test_env=RAY_use_ray_syncer=true
       python/ray/tests/...
-- label: ":construction: :python: (Medium K-Z)"
+- label: ":construction: :python: (syncer) (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
