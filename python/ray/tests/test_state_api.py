@@ -1,3 +1,4 @@
+import sys
 import pytest
 
 import ray
@@ -20,6 +21,10 @@ def is_hex(val):
     return f"0x{val}" == hex(int_val)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
 def test_list_actors(shutdown_only):
     ray.init()
 
@@ -40,6 +45,10 @@ def test_list_actors(shutdown_only):
     print(list_actors())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
 def test_list_pgs(shutdown_only):
     ray.init()
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
@@ -55,6 +64,10 @@ def test_list_pgs(shutdown_only):
     print(list_placement_groups())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
 def test_list_nodes(shutdown_only):
     ray.init()
 
@@ -69,6 +82,10 @@ def test_list_nodes(shutdown_only):
     print(list_nodes())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
 def test_list_jobs(shutdown_only):
     ray.init()
     client = JobSubmissionClient(
@@ -90,6 +107,10 @@ def test_list_jobs(shutdown_only):
     print(list_jobs())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
 def test_list_workers(shutdown_only):
     ray.init()
 
