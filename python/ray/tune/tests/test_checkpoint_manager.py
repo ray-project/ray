@@ -130,6 +130,28 @@ class CheckpointManagerTest(unittest.TestCase):
         self.assertEqual(best_checkpoints[0].value, None)
         self.assertEqual(best_checkpoints[1].value, 3)
 
+    def testBestCheckpointsOnlyNan(self):
+        """
+        Tests that checkpoints with only nan priority are handled correctly.
+        """
+        keep_checkpoints_num = 2
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
+        checkpoints = [
+            _TuneCheckpoint(
+                _TuneCheckpoint.PERSISTENT, i, self.mock_result(float("nan"), i)
+            )
+            for i in range(4)
+        ]
+
+        for checkpoint in checkpoints:
+            checkpoint_manager.on_checkpoint(checkpoint)
+
+        best_checkpoints = checkpoint_manager.best_checkpoints()
+        # best_checkpoints is sorted from worst to best
+        self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
+        self.assertEqual(best_checkpoints[0].value, 2)
+        self.assertEqual(best_checkpoints[1].value, 3)
+
     def testOnCheckpointUnavailableAttribute(self):
         """
         Tests that an error is logged when the associated result of the
