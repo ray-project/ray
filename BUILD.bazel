@@ -839,36 +839,6 @@ cc_binary(
 )
 
 cc_test(
-    name = "core_worker_test",
-    size = "small",
-    srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
-    args = [
-        "$(location raylet)",
-        "$(location mock_worker)",
-        "$(location gcs_server)",
-        "$(location redis-cli)",
-        "$(location redis-server)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:gcs_server",
-        "//:mock_worker",
-        "//:raylet",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":core_worker_lib",
-        ":gcs",
-        "//src/ray/protobuf:runtime_env_common_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "memory_store_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],

@@ -120,7 +120,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:core_worker_test
         -//:event_test
         -//:gcs_pub_sub_test
         -//:gcs_server_test

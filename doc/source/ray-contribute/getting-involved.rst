@@ -222,13 +222,13 @@ The `CI`_ test folder contains all integration test scripts and they
 invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
 scripts. Some of the examples include:
 
-* Raylet integration tests commands:
-    * ``bazel test //:core_worker_test``
+* Ray core C++ unit test commands:
+    * ``bazel test //:reference_count_test``
 
 * Bazel test command:
     * ``bazel test --build_tests_only //:all``
 
-* Ray serving test commands:
+* Ray Serve test commands:
     * ``pytest python/ray/serve/tests``
     * ``python python/ray/serve/examples/echo_full.py``
 

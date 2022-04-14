@@ -68,7 +68,7 @@ steps:
     # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
     # with dynamic linking.
     - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --
-      //:all python/ray/serve/... python/ray/dashboard/... -rllib/... -core_worker_test
+      //:all python/ray/serve/... python/ray/dashboard/... -rllib/...
     # clang-format is needed by java/test.sh
     - pip install clang-format==12.0.1
     - ./java/test.sh
