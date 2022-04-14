@@ -877,58 +877,6 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   ASSERT_TRUE(results[1]->IsException());
 }
 
-TEST_F(SingleNodeTest, TestHandleUpdateObjectLocationBatch) {
-  auto &driver = CoreWorkerProcess::GetCoreWorker();
-  auto buffer = GenerateRandomBuffer();
-
-  ObjectID object_id;
-  RAY_CHECK_OK(driver.Put(
-      RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {}, &object_id));
-  rpc::UpdateObjectLocationBatchRequest request;
-  rpc::UpdateObjectLocationBatchReply reply;
-  request.set_intended_worker_id(driver.GetWorkerID().Binary());
-  request.set_node_id(driver.GetCurrentNodeId().Binary());
-  auto update = request.add_object_location_updates();
-  update->set_object_id(object_id.Binary());
-  update->set_spilled_url("url1");
-  update->set_spilled_node_id(driver.GetCurrentNodeId().Binary());
-  update->set_in_plasma(false);
-  driver.HandleUpdateObjectLocationBatch(
-      request,
-      &reply,
-      [](Status status, std::function<void()> success, std::function<void()> failure) {});
-
-  rpc::GetObjectLocationsOwnerRequest get_request;
-  get_request.mutable_object_location_request()->set_intended_worker_id(
-      driver.GetWorkerID().Binary());
-  get_request.mutable_object_location_request()->set_object_id(object_id.Binary());
-  rpc::GetObjectLocationsOwnerReply get_reply;
-  driver.HandleGetObjectLocationsOwner(
-      get_request,
-      &get_reply,
-      [](Status status, std::function<void()> success, std::function<void()> failure) {});
-  ASSERT_EQ(get_reply.object_location_info().node_ids().size(), 0);
-  ASSERT_EQ(get_reply.object_location_info().spilled_url(), "url1");
-  ASSERT_EQ(get_reply.object_location_info().spilled_node_id(),
-            driver.GetCurrentNodeId().Binary());
-
-  request.clear_object_location_updates();
-  update = request.add_object_location_updates();
-  update->set_object_id(object_id.Binary());
-  update->set_in_plasma(true);
-  driver.HandleUpdateObjectLocationBatch(
-      request,
-      &reply,
-      [](Status status, std::function<void()> success, std::function<void()> failure) {});
-  driver.HandleGetObjectLocationsOwner(
-      get_request,
-      &get_reply,
-      [](Status status, std::function<void()> success, std::function<void()> failure) {});
-  ASSERT_EQ(get_reply.object_location_info().node_ids().size(), 1);
-  ASSERT_EQ(get_reply.object_location_info().node_ids(0),
-            driver.GetCurrentNodeId().Binary());
-}
-
 TEST_F(SingleNodeTest, TestNormalTaskLocal) { TestNormalTask(); }
 
 TEST_F(SingleNodeTest, TestCancelTasks) {

@@ -81,7 +81,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
                            const NodeID &node_id,
                            const rpc::Address &owner_address,
                            const std::string &spilled_url,
-                           const NodeID &spilled_node_id) override;
+                           const bool spilled_to_local_storage) override;
 
   void RecordMetrics(uint64_t duration_ms) override;
 
@@ -132,8 +132,9 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed_;
 
   /// A buffer for batch object location updates.
-  /// Since absl::flat_hash_map doesn't maintain the insertion order,
-  /// we use a deque here to achieve FIFO.
+  /// owner id -> {(FIFO object queue (to avoid starvation), map for the latest update of
+  /// objects)}. Since absl::flat_hash_map doesn't maintain the insertion order, we use a
+  /// deque here to achieve FIFO.
   absl::flat_hash_map<WorkerID,
                       std::pair<std::deque<ObjectID>,
                                 absl::flat_hash_map<ObjectID, rpc::ObjectLocationUpdate>>>

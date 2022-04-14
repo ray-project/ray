@@ -132,7 +132,7 @@ void OwnershipBasedObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
   const bool existing_object = location_buffers_[worker_id].second.contains(object_id);
   rpc::ObjectLocationUpdate &update = location_buffers_[worker_id].second[object_id];
   update.set_object_id(object_id.Binary());
-  update.set_in_plasma(true);
+  update.set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::ADDED);
   if (!existing_object) {
     location_buffers_[worker_id].first.emplace_back(object_id);
   }
@@ -155,18 +155,19 @@ void OwnershipBasedObjectDirectory::ReportObjectRemoved(const ObjectID &object_i
   const bool existing_object = location_buffers_[worker_id].second.contains(object_id);
   rpc::ObjectLocationUpdate &update = location_buffers_[worker_id].second[object_id];
   update.set_object_id(object_id.Binary());
-  update.set_in_plasma(false);
+  update.set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::REMOVED);
   if (!existing_object) {
     location_buffers_[worker_id].first.emplace_back(object_id);
   }
   SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
 }
 
-void OwnershipBasedObjectDirectory::ReportObjectSpilled(const ObjectID &object_id,
-                                                        const NodeID &node_id,
-                                                        const rpc::Address &owner_address,
-                                                        const std::string &spilled_url,
-                                                        const NodeID &spilled_node_id) {
+void OwnershipBasedObjectDirectory::ReportObjectSpilled(
+    const ObjectID &object_id,
+    const NodeID &node_id,
+    const rpc::Address &owner_address,
+    const std::string &spilled_url,
+    const bool spilled_to_local_storage) {
   RAY_LOG(DEBUG) << "Sending spilled URL " << spilled_url << " for object " << object_id
                  << " to owner " << WorkerID::FromBinary(owner_address.worker_id());
 
@@ -182,8 +183,9 @@ void OwnershipBasedObjectDirectory::ReportObjectSpilled(const ObjectID &object_i
   const bool existing_object = location_buffers_[worker_id].second.contains(object_id);
   rpc::ObjectLocationUpdate &update = location_buffers_[worker_id].second[object_id];
   update.set_object_id(object_id.Binary());
-  update.set_spilled_url(spilled_url);
-  update.set_spilled_node_id(spilled_node_id.Binary());
+  update.mutable_spilled_location_update()->set_spilled_url(spilled_url);
+  update.mutable_spilled_location_update()->set_spilled_to_local_storage(
+      spilled_to_local_storage);
   if (!existing_object) {
     location_buffers_[worker_id].first.emplace_back(object_id);
   }
@@ -217,7 +219,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   while (object_queue_it != object_queue.end() &&
          batch_size < kMaxObjectReportBatchSize) {
     auto update = request.add_object_location_updates();
-    const ObjectID &object_id = *object_queue_it;
+    const auto &object_id = *object_queue_it;
     *update = std::move(object_map.at(object_id));
     object_map.erase(object_id);
     batch_size++;

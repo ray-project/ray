@@ -359,10 +359,6 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;
-    // Choose a node id to report. If an external storage type is not a filesystem, we
-    // don't need to report where this object is spilled.
-    const auto node_id_object_spilled =
-        is_external_storage_type_fs_ ? self_node_id_ : NodeID::Nil();
 
     // Update the object_id -> url_ref_count to use it for deletion later.
     // We need to track the references here because a single file can contain
@@ -397,7 +393,7 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
     }
     const auto &worker_addr = freed_it->second.first;
     object_directory_->ReportObjectSpilled(
-        object_id, self_node_id_, worker_addr, object_url, node_id_object_spilled);
+        object_id, self_node_id_, worker_addr, object_url, is_external_storage_type_fs_);
   }
 }
 

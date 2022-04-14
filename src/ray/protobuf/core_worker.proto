@@ -192,17 +192,27 @@ message UpdateObjectLocationBatchRequest {
 message UpdateObjectLocationBatchReply {
 }
 
+enum ObjectPlasmaLocationUpdate {
+  // Object is added to plasma store.
+  ADDED = 0;
+  // Object is removed from plasma store.
+  REMOVED = 1;
+}
+
+message ObjectSpilledLocationUpdate {
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 3;
+  // Whether the object is spilled to local storage or cloud storage.
+  bool spilled_to_local_storage = 4;
+}
+
 message ObjectLocationUpdate {
   bytes object_id = 1;
   // When it's set, it indicates whether the object is added or removed from plasma store.
-  optional bool in_plasma = 2;
-  // The following 2 fields are set when the object is spilled.
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  optional string spilled_url = 3;
-  // The ID of the node that spilled the object.
-  // This will be Nil if the object was spilled to distributed external storage.
-  optional bytes spilled_node_id = 4;
+  optional ObjectPlasmaLocationUpdate plasma_location_update = 2;
+  // When it's set, it contains where the object is spilled to.
+  optional ObjectSpilledLocationUpdate spilled_location_update = 3;
 }
 
 message GetObjectLocationsOwnerRequest {

@@ -2891,17 +2891,22 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
   for (const auto &object_location_update : object_location_updates) {
     const auto &object_id = ObjectID::FromBinary(object_location_update.object_id());
 
-    if (object_location_update.has_spilled_url()) {
+    if (object_location_update.has_spilled_location_update()) {
       AddSpilledObjectLocationOwner(
           object_id,
-          object_location_update.spilled_url(),
-          NodeID::FromBinary(object_location_update.spilled_node_id()));
+          object_location_update.spilled_location_update().spilled_url(),
+          object_location_update.spilled_location_update().spilled_to_local_storage()
+              ? node_id
+              : NodeID::Nil());
     }
 
-    if (object_location_update.has_in_plasma() && object_location_update.in_plasma()) {
+    if (object_location_update.has_plasma_location_update() &&
+        object_location_update.plasma_location_update() ==
+            rpc::ObjectPlasmaLocationUpdate::ADDED) {
       AddObjectLocationOwner(object_id, node_id);
-    } else if (object_location_update.has_in_plasma() &&
-               !object_location_update.in_plasma()) {
+    } else if (object_location_update.has_plasma_location_update() &&
+               object_location_update.plasma_location_update() ==
+                   rpc::ObjectPlasmaLocationUpdate::REMOVED) {
       RemoveObjectLocationOwner(object_id, node_id);
     }
   }
