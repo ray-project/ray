@@ -1,10 +1,11 @@
-from typing import Callable, List
 import logging
-
-import torch.utils.data
+from typing import TYPE_CHECKING, Callable, List
 
 from ray.data.block import Block, BlockMetadata, T
 from ray.data.datasource import Datasource, ReadTask
+
+if TYPE_CHECKING:
+    import torch.utils.data
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,8 @@ class TorchDatasource(Datasource[T]):
             parallelism: This argument isn't used.
             dataset_factory: A no-argument function that returns a Torch dataset.
         """
+        import torch.utils.data
+
         if isinstance(dataset_factory, torch.utils.data.Dataset):
             raise ValueError(
                 "Expected a function that returns a Torch dataset, but got a "
