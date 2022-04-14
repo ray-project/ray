@@ -15,7 +15,7 @@ NODE_IP_KEY = "node_ip"
 
 
 class HFIterableDataset(IterableDataset):
-    """Special Torch IterableDataset with preset length."""
+    """Special Torch IterableDataset with HF format."""
 
     def __init__(self, generator: Generator):
         self.generator = generator
