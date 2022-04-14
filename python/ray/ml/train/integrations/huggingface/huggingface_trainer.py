@@ -49,12 +49,6 @@ class _DataParallelSyncingCheckpointManager(TuneCheckpointManager):
     """Same as _DataParallelCheckpointManager, but syncs the dir instead
     of serializing it."""
 
-    def add_tune_checkpoint_id(self, path: str):
-        # Store the checkpoint_id in the file so that the Tune trial can be
-        # resumed after failure or cancellation.
-        with open(Path(path).joinpath(TUNE_CHECKPOINT_ID), "w") as f:
-            f.write(str(self._latest_checkpoint_id))
-
     def on_init(self, preprocessor: Preprocessor):
         self.preprocessor = preprocessor
         super(_DataParallelSyncingCheckpointManager, self).on_init()
@@ -81,9 +75,12 @@ class _DataParallelSyncingCheckpointManager(TuneCheckpointManager):
                     max_size_bytes=None,
                 )
                 delete_on_node(node_ip=source_ip, path=source_path)
-            with open(Path(checkpoint_dir).joinpath(PREPROCESSOR_KEY), "wb") as f:
+            checkpoint_dir = Path(checkpoint_dir)
+            with open(checkpoint_dir.joinpath(PREPROCESSOR_KEY), "wb") as f:
                 cpickle.dump(self.preprocessor, f)
-            self.add_tune_checkpoint_id(checkpoint_dir)
+            # add tune checkpoint id
+            with open(checkpoint_dir.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
+                f.write(str(self._latest_checkpoint_id))
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
