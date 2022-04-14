@@ -10,7 +10,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.rllib.utils.typing import ModelConfigDict, TensorType, TensorStructType
 
 torch, nn = try_import_torch()
 
@@ -298,7 +298,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
             TensorType: Distribution inputs for sampling actions.
         """
 
-        def concat_obs_if_necessary(obs):
+        def concat_obs_if_necessary(obs: TensorStructType):
             """Concat model outs if they come as original tuple observations."""
             if isinstance(obs, (list, tuple)):
                 obs = torch.cat(obs, dim=-1)

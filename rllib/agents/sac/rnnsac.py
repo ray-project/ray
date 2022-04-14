@@ -54,7 +54,8 @@ class RNNSACTrainer(SACTrainer):
         if config["replay_sequence_length"] not in [-1, replay_sequence_length]:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
-                "model->max_seq_len + burn_in!"
+                "config['model']['max_seq_len'] + config['burn_in']. Leave "
+                "config['replay_sequence_length'] blank to avoid this error."
             )
         # Set the replay sequence length to the max_seq_len of the model.
         config["replay_sequence_length"] = replay_sequence_length

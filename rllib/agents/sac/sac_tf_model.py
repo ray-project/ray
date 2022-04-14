@@ -10,8 +10,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.typing import ModelConfigDict, TensorType
-from ray.rllib.utils.spaces.space_utils import flatten_space
+from ray.rllib.utils.typing import ModelConfigDict, TensorType, TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -120,10 +119,6 @@ class SACTFModel(TFModelV2):
             else:
                 target_entropy = -np.prod(action_space.shape)
         self.target_entropy = target_entropy
-
-        self.flattened_action_model_space = flatten_space(
-            self.action_model.action_space
-        )
 
     @override(TFModelV2)
     def forward(
@@ -295,7 +290,7 @@ class SACTFModel(TFModelV2):
             TensorType: Distribution inputs for sampling actions.
         """
 
-        def concat_obs_if_necessary(obs):
+        def concat_obs_if_necessary(obs: TensorStructType):
             """Concat model outs if they are original tuple observations."""
             if isinstance(obs, (list, tuple)):
                 obs = tf.concat(obs, axis=-1)
