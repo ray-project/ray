@@ -1,3 +1,4 @@
+from ray.ml.preprocessors.batch_mapper import BatchMapper
 from ray.ml.preprocessors.chain import Chain
 from ray.ml.preprocessors.encoder import OrdinalEncoder, OneHotEncoder, LabelEncoder
 from ray.ml.preprocessors.imputer import SimpleImputer
@@ -11,6 +12,7 @@ from ray.ml.preprocessors.scaler import (
 from ray.ml.preprocessors.transformer import PowerTransformer
 
 __all__ = [
+    "BatchMapper",
     "Chain",
     "LabelEncoder",
     "MaxAbsScaler",
