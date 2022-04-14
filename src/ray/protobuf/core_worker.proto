@@ -212,8 +212,6 @@ message ObjectLocationStateUpdate {
   // The ID of the node that spilled the object.
   // This will be Nil if the object was spilled to distributed external storage.
   bytes spilled_node_id = 4;
-  // The size of the object in bytes.
-  int64 size = 5;
 }
 
 message GetObjectLocationsOwnerRequest {

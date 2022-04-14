@@ -999,8 +999,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SpillObjectLocationOwner(const ObjectID &object_id,
                                 const std::string &spilled_url,
-                                const NodeID &spilled_node_id,
-                                int64_t object_size);
+                                const NodeID &spilled_node_id);
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 

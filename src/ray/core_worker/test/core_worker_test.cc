@@ -893,7 +893,6 @@ TEST_F(SingleNodeTest, TestHandleUpdateObjectLocationBatch) {
   state->set_state(rpc::ObjectLocationState::SPILLED);
   state->set_spilled_url("url1");
   state->set_spilled_node_id(driver.GetCurrentNodeId().Binary());
-  state->set_size(64);
   state = request.add_object_location_states();
   state->set_object_id(object_id.Binary());
   state->set_state(rpc::ObjectLocationState::REMOVED);
@@ -912,7 +911,6 @@ TEST_F(SingleNodeTest, TestHandleUpdateObjectLocationBatch) {
       &get_reply,
       [](Status status, std::function<void()> success, std::function<void()> failure) {});
   ASSERT_EQ(get_reply.object_location_info().node_ids().size(), 0);
-  ASSERT_EQ(get_reply.object_location_info().object_size(), 64);
   ASSERT_EQ(get_reply.object_location_info().spilled_url(), "url1");
   ASSERT_EQ(get_reply.object_location_info().spilled_node_id(),
             driver.GetCurrentNodeId().Binary());

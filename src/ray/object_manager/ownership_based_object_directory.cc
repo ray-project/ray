@@ -160,8 +160,7 @@ void OwnershipBasedObjectDirectory::ReportObjectSpilled(const ObjectID &object_i
                                                         const NodeID &node_id,
                                                         const rpc::Address &owner_address,
                                                         const std::string &spilled_url,
-                                                        const NodeID &spilled_node_id,
-                                                        int64_t object_size) {
+                                                        const NodeID &spilled_node_id) {
   RAY_LOG(DEBUG) << "Sending spilled URL " << spilled_url << " for object " << object_id
                  << " to owner " << WorkerID::FromBinary(owner_address.worker_id());
 
@@ -178,7 +177,6 @@ void OwnershipBasedObjectDirectory::ReportObjectSpilled(const ObjectID &object_i
   update.set_state(rpc::ObjectLocationState::SPILLED);
   update.set_spilled_url(spilled_url);
   update.set_spilled_node_id(spilled_node_id.Binary());
-  update.set_size(object_size);
   location_buffers_[worker_id].emplace_back(std::move(update));
   SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
 }
@@ -208,7 +206,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   while (object_state_buffers_it != object_state_buffers.end() &&
          batch_size < kMaxObjectReportBatchSize) {
     auto state = request.add_object_location_states();
-    *state = *object_state_buffers_it;
+    *state = std::move(*object_state_buffers_it);
     batch_size++;
     object_state_buffers_it++;
   }

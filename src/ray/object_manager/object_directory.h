@@ -124,8 +124,7 @@ class IObjectDirectory {
                                    const NodeID &node_id,
                                    const rpc::Address &owner_address,
                                    const std::string &spilled_url,
-                                   const NodeID &spilled_node_id,
-                                   int64_t object_size) = 0;
+                                   const NodeID &spilled_node_id) = 0;
 
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;

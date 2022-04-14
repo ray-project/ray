@@ -431,12 +431,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                rpc::WorkerObjectLocationsPubMessage *object_info)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get an object's size. This will return 0 if the object is out of scope.
-  ///
-  /// \param[in] object_id The object whose size to get.
-  /// \return Object size, or 0 if the object is out of scope.
-  size_t GetObjectSize(const ObjectID &object_id) const;
-
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
@@ -444,12 +438,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_id The object that has been spilled.
   /// \param[in] spilled_url The URL to which the object has been spilled.
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
-  /// \param[in] size The size of the object.
   /// \return True if the reference exists and is in scope, false otherwise.
   bool HandleObjectSpilled(const ObjectID &object_id,
                            const std::string spilled_url,
-                           const NodeID &spilled_node_id,
-                           int64_t size);
+                           const NodeID &spilled_node_id);
 
   /// Get locality data for object. This is used by the leasing policy to implement
   /// locality-aware leasing.

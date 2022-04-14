@@ -396,12 +396,8 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
       continue;
     }
     const auto &worker_addr = freed_it->second.first;
-    object_directory_->ReportObjectSpilled(object_id,
-                                           self_node_id_,
-                                           worker_addr,
-                                           object_url,
-                                           node_id_object_spilled,
-                                           object_size);
+    object_directory_->ReportObjectSpilled(
+        object_id, self_node_id_, worker_addr, object_url, node_id_object_spilled);
   }
 }
 

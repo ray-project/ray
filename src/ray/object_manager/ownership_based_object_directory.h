@@ -81,8 +81,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
                            const NodeID &node_id,
                            const rpc::Address &owner_address,
                            const std::string &spilled_url,
-                           const NodeID &spilled_node_id,
-                           int64_t object_size) override;
+                           const NodeID &spilled_node_id) override;
 
   void RecordMetrics(uint64_t duration_ms) override;
 

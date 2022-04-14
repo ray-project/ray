@@ -231,8 +231,7 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
                               current_node_id,
                               owner_address,
                               "url1",
-                              current_node_id,
-                              128);
+                              current_node_id);
     AssertObjectIDState(object_info_spilled.owner_worker_id,
                         object_info_spilled.object_id,
                         rpc::ObjectLocationState::SPILLED);

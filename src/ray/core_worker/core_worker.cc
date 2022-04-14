@@ -2900,8 +2900,7 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
       SpillObjectLocationOwner(
           object_id,
           object_location_state.spilled_url(),
-          NodeID::FromBinary(object_location_state.spilled_node_id()),
-          object_location_state.size());
+          NodeID::FromBinary(object_location_state.spilled_node_id()));
     } else {
       RAY_LOG(FATAL) << "Invalid object location state " << state
                      << " has been received.";
@@ -2915,13 +2914,12 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
 
 void CoreWorker::SpillObjectLocationOwner(const ObjectID &object_id,
                                           const std::string &spilled_url,
-                                          const NodeID &spilled_node_id,
-                                          int64_t object_size) {
+                                          const NodeID &spilled_node_id) {
   RAY_LOG(DEBUG) << "Received object spilled location update for object " << object_id
                  << ", which has been spilled to " << spilled_url << " on node "
                  << spilled_node_id;
-  auto reference_exists = reference_counter_->HandleObjectSpilled(
-      object_id, spilled_url, spilled_node_id, object_size);
+  auto reference_exists =
+      reference_counter_->HandleObjectSpilled(object_id, spilled_url, spilled_node_id);
   if (!reference_exists) {
     RAY_LOG(DEBUG) << "Object " << object_id << " not found";
   }

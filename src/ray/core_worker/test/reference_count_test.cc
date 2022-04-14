@@ -633,7 +633,7 @@ TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
                      false,
                      /*add_local_ref=*/true,
                      absl::optional<NodeID>(node1));
-  rc->HandleObjectSpilled(obj1, "url1", node1, object_size);
+  rc->HandleObjectSpilled(obj1, "url1", node1);
   rpc::WorkerObjectLocationsPubMessage object_info;
   Status status = rc->FillObjectInformation(obj1, &object_info);
   ASSERT_TRUE(status.ok());
