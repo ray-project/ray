@@ -10,17 +10,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class TorchDatasource(Datasource[T]):
+class SimpleTorchDatasource(Datasource[T]):
     """A datasource that let's you use Torch datasets with Ray Data.
 
     .. warning::
-        ``TorchDatasource`` doesn't support parallel reads. You should only use this
-        datasource for small datasets like MNIST or CIFAR.
+        ``SimpleTorchDatasource`` doesn't support parallel reads. You should only use
+        this datasource for small datasets like MNIST or CIFAR.
 
     Example:
         >>> dataset_factory = lambda: torchvision.datasets.MNIST("data", download=True)
         >>> dataset = ray.data.read_datasource(
-                TorchDatasource(), parallelism=1, dataset_factory=dataset_factory
+                SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
             )
         >>> next(dataset.iter_batches(batch_size=2))
         [(<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)]
@@ -45,8 +45,8 @@ class TorchDatasource(Datasource[T]):
 
         if parallelism > 1:
             logger.warn(
-                "`TorchDatasource` doesn't support parallel reads. The `parallelism` "
-                "argument will be ignored."
+                "`SimpleTorchDatasource` doesn't support parallel reads. The "
+                "`parallelism` argument will be ignored."
             )
 
         def read_fn() -> List[Block]:
