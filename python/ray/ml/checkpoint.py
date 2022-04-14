@@ -1,17 +1,18 @@
+import contextlib
 import io
 import os
 import shutil
 import tarfile
 import tempfile
-from typing import Optional, Union, Tuple
+from typing import Iterator, Optional, Tuple, Union
 
 import ray
 from ray import cloudpickle as pickle
 from ray.ml.utils.remote_storage import (
-    upload_to_uri,
-    is_non_local_path_uri,
     download_from_uri,
     fs_hint,
+    is_non_local_path_uri,
+    upload_to_uri,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -337,6 +338,37 @@ class Checkpoint:
                 )
 
         return path
+
+    @contextlib.contextmanager
+    def as_directory(self) -> Iterator[str]:
+        """Return checkpoint directory path in a context.
+
+        This function makes checkpoint data available as a directory while avoiding
+        unnecessary copies and left-over temporary data.
+
+        If the checkpoint is already a directory checkpoint, it will return
+        the existing path. If it is not, it will create a temporary directory,
+        which will be deleted after the context is exited.
+
+        Users should treat the returned checkpoint directory as read-only and avoid
+        changing any data within it, as it might get deleted when exiting the context.
+
+        Example:
+
+            with checkpoint.as_directory() as checkpoint_dir:
+                # Do some read-only processing of files within checkpoint_dir
+                pass
+
+            # At this point, if a temporary directory was created, it will have
+            # been deleted.
+
+        """
+        if self._local_path:
+            yield self._local_path
+        else:
+            temp_dir = self.to_directory()
+            yield temp_dir
+            shutil.rmtree(temp_dir)
 
     @classmethod
     def from_uri(cls, uri: str) -> "Checkpoint":
