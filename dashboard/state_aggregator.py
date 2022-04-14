@@ -1,14 +1,24 @@
+import asyncio
 import logging
 
+from collections import defaultdict
+from typing import List
+
+import ray
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.datacenter import DataSource
+import ray.dashboard.memory_utils as memory_utils
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated import node_manager_pb2_grpc
+from ray.core.generated import node_manager_pb2
 from ray.experimental.state.common import (
     filter_fields,
     ActorState,
     PlacementGroupState,
     NodeState,
     WorkerState,
+    TaskState,
 )
 
 logger = logging.getLogger(__name__)
@@ -17,7 +27,7 @@ DEFAULT_RPC_TIMEOUT = 30
 
 
 # TODO(sang): Add error handling.
-class GcsStateAggregator:
+class StateAggregator:
     def __init__(self, gcs_channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             gcs_channel
@@ -31,6 +41,25 @@ class GcsStateAggregator:
         self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
             gcs_channel
         )
+        self._raylet_stub = {}
+        DataSource.nodes.signal.append(self._update_stubs)
+
+    async def _update_stubs(self, change):
+        if change.old:
+            node_id, node_info = change.old
+            self._raylet_stub.pop(node_id)
+        if change.new:
+            # TODO(fyrestone): Handle exceptions.
+            node_id, node_info = change.new
+            address = "{}:{}".format(
+                node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
+            )
+            options = (("grpc.enable_http_proxy", 0),)
+            channel = ray._private.utils.init_grpc_channel(
+                address, options, asynchronous=True
+            )
+            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+            self._raylet_stub[node_id] = stub
 
     async def get_actors(self) -> dict:
         request = gcs_service_pb2.GetAllActorInfoRequest()
@@ -87,10 +116,75 @@ class GcsStateAggregator:
             result[data["worker_id"]] = data
         return result
 
-    def _message_to_dict(self, *, message, fields_to_decode) -> dict:
+    async def get_tasks(self) -> dict:
+        # Need to wait until at least the head node stub is available.
+        await dashboard_utils.wait_for_stub(self._raylet_stub)
+
+        async def get_task_info(stub):
+            reply = await stub.GetTasksInfo(
+                node_manager_pb2.GetTasksInfoRequest(),
+                timeout=DEFAULT_RPC_TIMEOUT,
+            )
+            return reply
+
+        replies = await asyncio.gather(
+            *[get_task_info(stub) for stub in self._raylet_stub.values()]
+        )
+
+        result = defaultdict(dict)
+        for reply in replies:
+            tasks = reply.task_info_entries
+            for task in tasks:
+                data = self._message_to_dict(
+                    message=task,
+                    fields_to_decode=["task_id"],
+                )
+                logger.info(data)
+                data = filter_fields(data, TaskState)
+                result[data["task_id"]] = data
+        return result
+
+    async def get_objects(self) -> dict:
+        # Need to wait until at least the head node stub is available.
+        await dashboard_utils.wait_for_stub(self._raylet_stub)
+
+        async def get_object_info(stub):
+            reply = await stub.GetNodeStats(
+                node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
+                timeout=DEFAULT_RPC_TIMEOUT,
+            )
+            return reply
+
+        replies = await asyncio.gather(
+            *[get_object_info(stub) for stub in self._raylet_stub.values()]
+        )
+
+        worker_stats = []
+        for reply in replies:
+            for core_worker_stat in reply.core_workers_stats:
+                # `construct_memory_table` requires the names that are
+                # converted to google style (not the original protobuf field name).
+                # So we use the `message_to_dict` without
+                # including_default_value_fields here.
+                worker_stats.append(
+                    self._message_to_dict(
+                        message=core_worker_stat,
+                        fields_to_decode=["object_id"],
+                        preserving_proto_field_name=False,
+                    )
+                )
+        return memory_utils.construct_memory_table(worker_stats).get_entries_as_dict()
+
+    def _message_to_dict(
+        self,
+        *,
+        message,
+        fields_to_decode: List[str],
+        preserving_proto_field_name: bool = True
+    ) -> dict:
         return dashboard_utils.message_to_dict(
             message,
             fields_to_decode,
             including_default_value_fields=True,
-            preserving_proto_field_name=True,
+            preserving_proto_field_name=preserving_proto_field_name,
         )

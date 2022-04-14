@@ -49,3 +49,15 @@ class WorkerState:
     worker_id: str
     is_alive: str
     worker_type: str
+
+
+@dataclass(init=True)
+class TaskState:
+    task_id: str
+    name: str
+    scheduling_state: str
+
+
+@dataclass(init=True)
+class ObjectState:
+    object_id: str

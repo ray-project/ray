@@ -137,7 +137,33 @@ def test_list_tasks(shutdown_only):
 
         time.sleep(30)
 
-    out = [f.remote() for _ in range(3)]  # noqa
+    @ray.remote
+    def g(dep):
+        import time
+
+        time.sleep(30)
+
+    out = [f.remote() for _ in range(2)]  # noqa
+    g_out = g.remote(f.remote())  # noqa
+
+    def verify():
+        tasks = list(list_tasks().values())
+        correct_num_tasks = len(tasks) == 4
+        scheduled = len(
+            list(filter(lambda task: task["scheduling_state"] == "SCHEDULED", tasks))
+        )
+        waiting_for_dep = len(
+            list(
+                filter(
+                    lambda task: task["scheduling_state"] == "WAITING_FOR_DEPENDENCIES",
+                    tasks,
+                )
+            )
+        )
+
+        return correct_num_tasks and scheduled == 3 and waiting_for_dep == 1
+
+    wait_for_condition(verify)
     print(list_tasks())
 
 
@@ -152,6 +178,14 @@ def test_list_objects(shutdown_only):
         print(obj)
 
     ray.get(f.remote(plasma_obj))
+
+    def verify():
+        print(list_objects())
+        obj = list(list_objects().values())[0]
+        print(plasma_obj.hex())
+        return obj["object_ref"] == plasma_obj.hex()
+
+    wait_for_condition(verify)
     print(list_objects())
 
 
