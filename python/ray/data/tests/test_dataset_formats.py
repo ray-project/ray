@@ -1467,9 +1467,9 @@ def test_torch_datasource(ray_start_regular_shared, local_path):
     torch_dataset = torchvision.datasets.MNIST(torch_dataset_root, download=True)
     expected_data = list(torch_dataset)
 
-    dataset_factory = lambda: torchvision.datasets.MNIST(
-        ray_dataset_root, download=True
-    )
+    def dataset_factory():
+        return torchvision.datasets.MNIST(ray_dataset_root, download=True)
+
     ray_dataset = ray.data.read_datasource(
         TorchDatasource(), parallelism=1, dataset_factory=dataset_factory
     )

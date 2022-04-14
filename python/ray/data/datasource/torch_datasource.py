@@ -42,7 +42,7 @@ class TorchDatasource(Datasource[T]):
 
         if parallelism > 1:
             logger.warn(
-                f"`TorchDatasource` doesn't support parallel reads. The `parallelism` "
+                "`TorchDatasource` doesn't support parallel reads. The `parallelism` "
                 "argument will be ignored."
             )
 
