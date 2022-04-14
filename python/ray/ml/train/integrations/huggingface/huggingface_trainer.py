@@ -31,6 +31,7 @@ from ray.ml.utils.huggingface_utils import (
 from ray.train.checkpoint import TuneCheckpointManager
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
+from ray.tune.trainable import Trainable
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 
 # This trainer uses a special checkpoint syncing logic.
@@ -44,6 +45,8 @@ from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 # TODO(ml-team): Make dir syncing checkpoint logic generic.
 
 
+# The checkpoint is turned into a dict with node ip & path
+# in HuggingFaceTrainer.as_trainable
 # TODO(team-ml): Refactor checkpoint management along with Tune.
 class _DataParallelSyncingCheckpointManager(TuneCheckpointManager):
     """Same as _DataParallelCheckpointManager, but syncs the dir instead
@@ -278,41 +281,6 @@ class HuggingFaceTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    def __new__(cls, *args, **kwargs):
-        """Store the init args as attributes so this can be merged with Tune hparams."""
-        # This if will be entered in the driver-side Trainer.
-        # The Trainer inside the trainable will have a dict
-        # checkpoint created here.
-        # This is required to ensure that the dir syncing logic
-        # is used instead of serializing several gigabytes of data
-        # when a Checkpoint is sent to a Ray Actor.
-        if "resume_from_checkpoint" in kwargs:
-            resume_from_checkpoint: Checkpoint = kwargs["resume_from_checkpoint"]
-            (
-                checkpoint_type,
-                checkpoint_path,
-            ) = resume_from_checkpoint.get_internal_representation()
-            if checkpoint_type != "local_path":
-                checkpoint_path = resume_from_checkpoint.to_directory()
-            if checkpoint_path:
-                # Load checkpoint from path.
-                checkpoint_path = Path(checkpoint_path).expanduser().absolute()
-                if not checkpoint_path.exists():
-                    raise ValueError(
-                        f"Checkpoint path {checkpoint_path} does not exist."
-                    )
-                with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
-                    tune_checkpoint_id = int(f.read())
-
-                kwargs["resume_from_checkpoint"] = Checkpoint.from_dict(
-                    {
-                        NODE_IP_KEY: get_node_ip_address(),
-                        CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                        TUNE_CHECKPOINT_ID: tune_checkpoint_id,
-                    }
-                )
-        return super(HuggingFaceTrainer, cls).__new__(cls, *args, **kwargs)
-
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str
     ) -> None:
@@ -338,6 +306,38 @@ class HuggingFaceTrainer(TorchTrainer):
                 f"Got {list(self.datasets.keys())}"
             )
         return super()._validate_attributes()
+
+    def as_trainable(self) -> Type[Trainable]:
+        # Replace the directory checkpoint with a node ip & path dict checkpoint
+        # used to sync the directory. If we use a directry checkpoint directly,
+        # it will get deepcopied & serialized unnecessarily
+        original_param_dict = self._param_dict.copy()
+        resume_from_checkpoint: Optional[Checkpoint] = self._param_dict.get(
+            "resume_from_checkpoint", None
+        )
+        if resume_from_checkpoint:
+            with resume_from_checkpoint.as_directory() as checkpoint_path:
+                # Load checkpoint from path.
+                checkpoint_path = Path(checkpoint_path).expanduser().absolute()
+                if not checkpoint_path.exists():
+                    raise ValueError(
+                        f"Checkpoint path {checkpoint_path} does not exist."
+                    )
+                with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
+                    tune_checkpoint_id = int(f.read())
+
+                self._param_dict["resume_from_checkpoint"] = Checkpoint.from_dict(
+                    {
+                        NODE_IP_KEY: get_node_ip_address(),
+                        CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
+                        TUNE_CHECKPOINT_ID: tune_checkpoint_id,
+                    }
+                )
+        try:
+            ret = super().as_trainable()
+        finally:
+            self._param_dict = original_param_dict
+        return ret
 
 
 def _huggingface_train_loop_per_worker(config):
@@ -404,7 +404,6 @@ def _huggingface_train_loop_per_worker(config):
     trainer.__class__ = RayTrainer
     trainer.args.__class__ = RayTrainingArguments
     trainer.args.no_cuda = not torch.cuda.is_available()
-    trainer.args.save_on_each_node = True
 
     # ensure no HF logging callbacks are added
     # aside from doubling functionality with our callbacks,
