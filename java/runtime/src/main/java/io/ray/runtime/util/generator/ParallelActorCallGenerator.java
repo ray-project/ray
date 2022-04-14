@@ -121,12 +121,6 @@ public class ParallelActorCallGenerator extends BaseGenerator {
    */
   private void buildCalls(
       int numParameters, boolean forActor, boolean forActorCreation, boolean hasReturn) {
-    // Template of the generated function:
-    // [modifiers] [genericTypes] [returnType] [callFunc]([argsDeclaration]) {
-    //   Objects[] args = new Object[]{[args]};
-    //   return new [Caller](func, args);
-    // }
-
     String modifiers = forActor ? "default" : "public static";
 
     // 1) Construct the `genericTypes` part, e.g. `<T0, T1, T2, R>`.
