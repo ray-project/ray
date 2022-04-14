@@ -88,12 +88,14 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
-    # The following values are deprecated for Q Learning algorithms because of
-    # new ReplayBuffer API
+    # The following values have moved because of the new ReplayBuffer API
     "prioritized_replay": DEPRECATED_VALUE,
     "learning_starts": DEPRECATED_VALUE,
     "replay_batch_size": DEPRECATED_VALUE,
     "replay_sequence_length": DEPRECATED_VALUE,
+    "prioritized_replay_alpha": DEPRECATED_VALUE,
+    "prioritized_replay_beta": DEPRECATED_VALUE,
+    "prioritized_replay_eps": DEPRECATED_VALUE,
     "replay_buffer_config": {
         # Use the new ReplayBuffer API here
         "_enable_replay_buffer_api": True,
