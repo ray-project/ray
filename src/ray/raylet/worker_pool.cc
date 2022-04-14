@@ -14,6 +14,8 @@
 
 #include "ray/raylet/worker_pool.h"
 
+#include <sys/wait.h>
+
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
@@ -35,6 +37,15 @@ DEFINE_stats(worker_register_time_ms,
              (),
              ({1, 10, 100, 1000, 10000}, ),
              ray::stats::HISTOGRAM);
+
+void handle_child_exit(int signum) {
+  int status;
+  pid_t pid = waitpid(-1, &status, WNOHANG);
+  if (pid <= 0) {
+    return;
+  }
+  ray::Process::SetExitStatus(pid, status);
+}
 
 namespace {
 
@@ -105,9 +116,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // metric not existing at all).
   stats::NumWorkersStarted.Record(0);
 #ifndef _WIN32
-  // Ignore SIGCHLD signals. If we don't do this, then worker processes will
-  // become zombies instead of dying gracefully.
-  signal(SIGCHLD, SIG_IGN);
+  // Handle SIGCHLD signals and store exit code.
+  signal(SIGCHLD, handle_child_exit);
 #endif
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.

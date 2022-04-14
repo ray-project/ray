@@ -1336,7 +1336,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                       << " Node ID: " << self_node_id_
                       << " Worker IP address: " << worker->IpAddress()
                       << " Worker port: " << worker->Port()
-                      << " Worker PID: " << worker->GetProcess().GetId();
+                      << " Worker PID: " << worker->GetProcess().GetId()
+                      << " Death cause: " << worker->GetProcess().ExitReason();
         std::string error_message_str = error_message.str();
         RAY_EVENT(ERROR, EL_RAY_WORKER_FAILURE)
                 .WithField("worker_id", worker->WorkerId().Hex())
