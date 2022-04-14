@@ -1,7 +1,4 @@
-import io
 import os
-import logging
-from contextlib import redirect_stderr
 
 import requests
 import pytest
@@ -63,31 +60,6 @@ def test_serve_metrics_for_successful_connection(serve_instance):
         wait_for_condition(verify_metrics, retry_interval_ms=500)
     except RuntimeError:
         verify_metrics(do_assert=True)
-
-
-def test_deployment_logger(serve_instance):
-    # Tests that deployment tag and replica tag appear in Serve log output.
-    logger = logging.getLogger("ray")
-
-    @serve.deployment(name="counter")
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def __call__(self, request):
-            self.count += 1
-            logger.info(f"count: {self.count}")
-
-    Counter.deploy()
-    f = io.StringIO()
-    with redirect_stderr(f):
-        requests.get("http://127.0.0.1:8000/counter/")
-
-        def counter_log_success():
-            s = f.getvalue()
-            return "deployment" in s and "replica" in s and "count" in s
-
-        wait_for_condition(counter_log_success)
 
 
 def test_http_metrics(serve_instance):
