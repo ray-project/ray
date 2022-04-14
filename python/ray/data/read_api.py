@@ -790,15 +790,49 @@ def from_pandas_refs(
     )
 
 
-def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
-    """Create a dataset from a set of NumPy ndarrays.
+@PublicAPI
+def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> Dataset[ArrowRow]:
+    """Create a dataset from a list of NumPy ndarrays.
 
     Args:
-        ndarrays: A list of Ray object references to NumPy ndarrays.
+        ndarrays: A NumPy ndarray or a list of NumPy ndarrays.
 
     Returns:
         Dataset holding the given ndarrays.
     """
+    if isinstance(ndarrays, np.ndarray):
+        ndarrays = [ndarrays]
+
+    return from_numpy_refs([ray.put(ndarray) for ndarray in ndarrays])
+
+
+@DeveloperAPI
+def from_numpy_refs(
+    ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
+) -> Dataset[ArrowRow]:
+    """Create a dataset from a list of NumPy ndarray futures.
+
+    Args:
+        ndarrays: A Ray object reference to a NumPy ndarray or a list of Ray object
+            references to NumPy ndarrays.
+
+    Returns:
+        Dataset holding the given ndarrays.
+    """
+    if isinstance(ndarrays, ray.ObjectRef):
+        ndarrays = [ndarrays]
+    elif isinstance(ndarrays, list):
+        for ndarray in ndarrays:
+            if not isinstance(ndarray, ray.ObjectRef):
+                raise ValueError(
+                    "Expected list of Ray object refs, "
+                    f"got list containing {type(ndarray)}"
+                )
+    else:
+        raise ValueError(
+            f"Expected Ray object ref or list of Ray object refs, got {type(ndarray)}"
+        )
+
     ndarray_to_block = cached_remote_fn(_ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
