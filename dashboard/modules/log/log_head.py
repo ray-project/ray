@@ -214,7 +214,26 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 tasks.append(coro())
         await asyncio.gather(*tasks)
         return response
-
+        
+    @routes.get("/api/experimental/logs/list")
+    async def handle_list_logs(self, req):
+        """
+        Returns a JSON file containing, for each node in the cluster,
+        a dict mapping a category of log component to a list of filenames.
+        """
+        node_id = req.query.get("node_id", None)
+        if node_id is None:
+            ip = req.query.get("node_ip", None)
+            if ip is not None:
+                if ip not in self._ip_to_node_id:
+                    return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
+                node_id = self._ip_to_node_id[ip]
+        filters = req.query.get("filters", "").split(",")
+        err = await self.wait_until_initialized()
+        if err is not None:
+            return err
+        response = await self.list_logs(node_id, filters)
+        return aiohttp.web.json_response(response)
     async def run(self, server):
         pass
 
