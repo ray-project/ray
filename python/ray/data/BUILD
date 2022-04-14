@@ -19,3 +19,15 @@ py_test_module_list(
   tags = ["team:core", "exclusive"],
   deps = ["//:ray_lib"],
 )
+
+py_test_module_list(
+  files = [
+    "tests/test_sort.py",
+  ],
+  size = "small",
+  extra_srcs = SRCS,
+  name_suffix = "_push_based",
+  env = {"RAY_DATASET_PUSH_BASED_SHUFFLE": "1"},
+  tags = ["team:core", "exclusive"],
+  deps = ["//:ray_lib"],
+)

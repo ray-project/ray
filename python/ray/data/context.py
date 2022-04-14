@@ -1,5 +1,6 @@
 from typing import Optional
 import threading
+import os
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -27,6 +28,11 @@ DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
 
 # Whether to furthermore fuse prior map tasks with shuffle stages.
 DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
+
+# Whether to enable push-based shuffle by default.
+DEFAULT_PUSH_BASED_SHUFFLE = bool(
+    os.environ.get("RAY_DATASET_PUSH_BASED_SHUFFLE", None)
+)
 
 
 @DeveloperAPI

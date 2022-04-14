@@ -26,7 +26,8 @@ from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.shuffle import ShuffleOp
+from ray.data.impl.shuffle import ShuffleOp, PushBasedShuffleOp
+from ray.data import context
 
 T = TypeVar("T")
 
@@ -36,7 +37,7 @@ T = TypeVar("T")
 SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
-class SortOp(ShuffleOp):
+class SortOp(PushBasedShuffleOp if context.DEFAULT_PUSH_BASED_SHUFFLE else ShuffleOp):
     @staticmethod
     def map(
         idx: int,
