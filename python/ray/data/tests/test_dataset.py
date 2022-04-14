@@ -961,6 +961,16 @@ def test_schema(ray_start_regular_shared):
     )
 
 
+def test_schema_lazy(ray_start_regular_shared):
+    ds = ray.data.range(100, parallelism=10)
+    # We kick off the read task for the first block by default.
+    assert ds._plan._in_blocks._num_computed() == 1
+    schema = ds.schema()
+    assert schema == int
+    # Fetching the schema should not trigger execution of extra read tasks.
+    assert ds._plan.execute()._num_computed() == 1
+
+
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=20)
     assert ds._plan.execute()._num_computed() == 1
