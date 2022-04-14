@@ -14,12 +14,15 @@
 
 #include "ray/raylet/worker_pool.h"
 
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -38,14 +41,23 @@ DEFINE_stats(worker_register_time_ms,
              ({1, 10, 100, 1000, 10000}, ),
              ray::stats::HISTOGRAM);
 
+#ifndef _WIN32
 void handle_child_exit(int signum) {
   int status;
   pid_t pid = waitpid(-1, &status, WNOHANG);
   if (pid <= 0) {
     return;
   }
-  ray::Process::SetExitStatus(pid, status);
+  std::string reason = "unknown";
+
+  if (WIFEXITED(status)) {
+    reason = absl::StrFormat("exited with code: %d", WEXITSTATUS(status));
+  } else if (WIFSIGNALED(status)) {
+    reason = absl::StrFormat("killed with signal: %d", WTERMSIG(status));
+  }
+  RAY_LOG(INFO) << "Child Process (pid: " << pid << ") is dead, reason: " << reason;
 }
+#endif
 
 namespace {
 

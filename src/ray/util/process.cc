@@ -532,6 +532,7 @@ void Process::Kill() {
   }
 }
 
+#ifndef _WIN32
 namespace {
 /// Tracks subprocesses' exit status.
 class ProcessExitStatusTracker {
@@ -571,14 +572,21 @@ class ProcessExitStatusTracker {
   absl::flat_hash_map<pid_t, int> process_exit_status_ GUARDED_BY(mutex_);
 };
 }  // namespace
+#endif  // #ifdef _WIN32
 
 std::string Process::ExitReason() const {
+#ifndef _WIN32
   pid_t pid = p_ ? p_->GetId() : -1;
   return ProcessExitStatusTracker::GetInstance().GetExitStatus(pid);
+#else
+  return "Unknown";
+#endif  // #ifdef _WIN32
 }
 
 void Process::SetExitStatus(pid_t pid, int status) {
+#ifndef _WIN32
   ProcessExitStatusTracker::GetInstance().SetExitStatus(pid, status);
+#endif  // #ifdef _WIN32
 }
 
 #ifdef _WIN32
