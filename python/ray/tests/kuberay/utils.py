@@ -1,9 +1,11 @@
 """Utilities for e2e tests of KubeRay/Ray integration.
 For consistency, all K8s interactions use kubectl through subprocess calls.
 """
+import inspect
 import logging
 import subprocess
 import time
+from types import ModuleType
 from typing import Any, Dict, List, Optional
 import yaml
 
@@ -162,16 +164,34 @@ def get_pod(pod_name_filter: str, namespace: str) -> str:
 
 
 def kubectl_exec(
-    command: List[str], pod: str, namespace: str, container: Optional[str] = None
-) -> None:
+    command: List[str], pod: str, namespace: str, container: Optional[str] = None,
+    return_out: bool = False
+) -> Optional[str]:
     """kubectl exec the `command` in the given `pod` in the given `namespace`.
     If a `container` is specified, will specify that container for kubectl.
     """
     container_option = ["-c", container] if container else []
+    kubectl_exec_command = ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
+    if return_out:
+        return subprocess.check_output(kubectl_exec_command).decode().strip()
+    else:
+        subprocess.check_call(kubectl_exec_command)
+        return None
 
-    subprocess.check_call(
-        ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
+
+def kubectl_exec_python_script(
+    script_module: ModuleType,
+    pod: str,
+    namespace: str,
+    container: Optional[str] = None,
+    return_out: bool = False
+) -> str:
+    script_string = inspect.getsource(script_module)
+    return kubectl_exec(
+        ["python", "-c", script_string],
+        pod, namespace, container
     )
+    return kubectl_exec()
 
 
 def get_raycluster(raycluster: str, namespace: str) -> Dict[str, Any]:

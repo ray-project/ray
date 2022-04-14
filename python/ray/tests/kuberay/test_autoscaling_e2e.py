@@ -10,11 +10,14 @@ from typing import Any, Dict
 
 import yaml
 
+from ray.test.kuberay import scripts as kuberay_scripts
+
 from ray.tests.kuberay.utils import (
     get_pod,
     get_pod_names,
     get_raycluster,
     kubectl_exec,
+    kubectl_exec_python_script,
     wait_for_pods,
     wait_for_pod_to_start,
     wait_for_ray_health,
@@ -209,15 +212,10 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         # Scale-up
         logger.info("Scaling up to one worker via Ray resource request.")
-        scale_script = (
-            "import ray;"
-            'ray.init("auto");'
-            "ray.autoscaler.sdk.request_resources(num_cpus=2)"
-        )
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
         # 1-cpu worker (will await scale-up).
-        kubectl_exec(
-            command=["python", "-c", scale_script],
+        kubectl_exec_python_script(
+            script_module=kuberay_scripts.scale_up,
             pod=head_pod,
             container="ray-head",
             namespace="default",
