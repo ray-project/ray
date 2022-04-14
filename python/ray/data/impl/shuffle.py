@@ -55,7 +55,6 @@ class ShuffleOp:
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
-        raise NotImplementedError
         input_blocks_list = input_blocks.get_blocks()
         input_num_blocks = len(input_blocks_list)
 
@@ -123,22 +122,30 @@ class PushBasedShuffleOp(ShuffleOp):
     while other map tasks are executing. The merged outputs are merged again
     during a final reduce stage. This works as follows:
 
-    N rounds of concurrent map and merge tasks. In each round:
-      M map tasks
-       Each produces N outputs. Each output contains P blocks.
-      N merge tasks
-       Takes 1 output from each of M map tasks.
-       Each produces P outputs.
-    In the final reduce stage:
-      R reduce tasks
-       Takes 1 output from each merge task from every round.
+    1. Submit rounds of concurrent map and merge tasks until all map inputs
+    have been processed. In each round, we execute:
+
+       M map tasks
+         Each produces N outputs. Each output contains P blocks.
+       N merge tasks
+         Takes 1 output from each of M map tasks.
+         Each produces P outputs.
+       Where M and N are chosen to maximize parallelism across CPUs. Note that
+       this assumes that all CPUs in the cluster will be dedicated to the
+       shuffle job.
+ 
+       Map and merge tasks are pipelined so that we always merge the previous
+       round of map outputs while executing the next round of map tasks.
+
+    2. In the final reduce stage:
+       R reduce tasks
+         Takes 1 output from the i-th merge task from every round.
 
     Notes:
-        N * M = total number of input blocks
         N * P = R = total number of output blocks
         M / N = merge factor - the ratio of map : merge tasks is to improve
-            pipelined parallelism. For example, if map takes twice as long to
-            execute as merge, then we should set this to 2.
+          pipelined parallelism. For example, if map takes twice as long to
+          execute as merge, then we should set this to 2.
     """
 
     @staticmethod
@@ -268,8 +275,11 @@ class PushBasedShuffleOp(ShuffleOp):
         *,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-        merge_factor: int = 1,
+        merge_factor: int = 2,
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
+        # TODO(swang): For large jobs, we should try to choose the merge factor
+        # automatically, e.g., by running one test round of map and merge tasks
+        # and comparing their run times.
         input_blocks_list = input_blocks.get_blocks()
         input_num_blocks = len(input_blocks_list)
 
@@ -277,6 +287,13 @@ class PushBasedShuffleOp(ShuffleOp):
             map_ray_remote_args = {}
         if reduce_ray_remote_args is None:
             reduce_ray_remote_args = {}
+        # The placement strategy for reduce tasks is overwritten to colocate
+        # them with their inputs from the merge stage, so remove any
+        # pre-specified scheduling strategy here.
+        try:
+            reduce_ray_remote_args.pop("scheduling_strategy")
+        except KeyError:
+            pass
 
         def map_partition(*args, **kwargs):
             return self._map_partition(self.map, *args, **kwargs)
@@ -297,7 +314,7 @@ class PushBasedShuffleOp(ShuffleOp):
         # Number of map-merge rounds.
         num_rounds = math.ceil((input_num_blocks + num_merge_tasks) / task_parallelism)
         # M: Number of map tasks in one map-merge round.
-        num_map_tasks_per_round = math.ceil(task_parallelism / num_rounds)
+        num_map_tasks_per_round = math.ceil(input_num_blocks / num_rounds)
         # N: Number of merge tasks in one map-merge round. Each map_partition
         # task will send one output to each of these merge tasks.
         num_merge_tasks_per_round = math.ceil(num_merge_tasks / num_rounds)
@@ -327,9 +344,6 @@ class PushBasedShuffleOp(ShuffleOp):
         shuffle_map_metadata = []
         shuffle_merge_metadata = []
         map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
-        merge_bar = ProgressBar(
-            "Shuffle Merge", position=0, total=num_merge_tasks_per_round * num_rounds
-        )
         # Execute the map-merge stage. This submits tasks in rounds of M map
         # tasks and N merge tasks each. Task execution between map and merge is
         # pipelined, so that while executing merge for one round of inputs, we
@@ -367,9 +381,7 @@ class PushBasedShuffleOp(ShuffleOp):
             # Wait for previous round of merge tasks to finish before
             # submitting more merge tasks.
             if last_merge_metadata_results:
-                shuffle_merge_metadata += merge_bar.fetch_until_complete(
-                    last_merge_metadata_results
-                )
+                shuffle_merge_metadata = ray.get(last_merge_metadata_results)
             merge_results = []
             for merge_idx in range(num_merge_tasks_per_round):
                 num_merge_returns = self._get_merge_partition_size(
@@ -401,11 +413,8 @@ class PushBasedShuffleOp(ShuffleOp):
             map_bar.close()
         del map_results
         if last_merge_metadata_results:
-            shuffle_merge_metadata += merge_bar.fetch_until_complete(
-                last_merge_metadata_results
-            )
+            shuffle_merge_metadata += ray.get(last_merge_metadata_results)
             del last_merge_metadata_results
-            merge_bar.close()
 
         # Execute the final reduce stage.
         shuffle_reduce_out = []
@@ -458,7 +467,7 @@ class PushBasedShuffleOp(ShuffleOp):
         return BlockList(list(new_blocks), list(new_metadata)), stats
 
 
-class ShufflePartitionOp(ShuffleOp):
+class ShufflePartitionOp(PushBasedShuffleOp):
     """
     Operator used for `random_shuffle` and `repartition` transforms.
     """
