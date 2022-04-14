@@ -217,6 +217,25 @@ class Std(_AggregateOnKeyBase):
         )
 
 
+@PublicAPI
+class AbsMax(_AggregateOnKeyBase):
+    """Defines absolute max aggregation."""
+
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+        self._set_key_fn(on)
+        on_fn = _to_on_fn(on)
+
+        super().__init__(
+            init=_null_wrap_init(lambda k: float("-inf")),
+            accumulate=_null_wrap_accumulate(
+                ignore_nulls, on_fn, lambda a, r: max(a, abs(r))
+            ),
+            merge=_null_wrap_merge(ignore_nulls, max),
+            finalize=_null_wrap_finalize(lambda a: a),
+            name=(f"abs_max({str(on)})"),
+        )
+
+
 def _to_on_fn(on: Optional[KeyFn]):
     if on is None:
         return lambda r: r
