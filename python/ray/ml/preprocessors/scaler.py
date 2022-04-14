@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -48,7 +48,8 @@ class StandardScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Scaler columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return f"<Scaler columns={self.columns} ddof={self.ddof} stats={stats}>"
 
 
 class MinMaxScaler(Preprocessor):
@@ -93,7 +94,8 @@ class MinMaxScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Scaler columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return f"<Scaler columns={self.columns} stats={stats}>"
 
 
 class MaxAbsScaler(Preprocessor):
@@ -135,30 +137,35 @@ class MaxAbsScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Scaler columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return f"<Scaler columns={self.columns} stats={stats}>"
 
 
 class RobustScaler(Preprocessor):
     """Scale values within columns based on their quantile range.
 
     For each column, each value will be transformed to
-    ``(value - median) / (high_quartile - low_quartile)``,
-    where ``median`` , ``high_quartile``, and ``low_quartile``
+    ``(value - median) / (high_quantile - low_quantile)``,
+    where ``median`` , ``high_quantile``, and ``low_quantile``
     are calculated from the fitted dataset.
 
     Args:
         columns: The columns that will be scaled individually.
+        quantile_range: A tuple that defines the lower and upper quantile to scale to.
+                        Defaults to the 1st and 3rd quartiles: (0.25, 0.75).
     """
 
-    def __init__(self, columns: List[str]):
+    def __init__(
+        self, columns: List[str], quantile_range: Tuple[float, float] = (0.25, 0.75)
+    ):
         super().__init__()
         self.columns = columns
+        self.quantile_range = quantile_range
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        # TODO(matt): Support user-defined ranges.
-        low = 0.25
+        low = self.quantile_range[0]
         med = 0.50
-        high = 0.75
+        high = self.quantile_range[1]
 
         num_records = dataset.count()
         max_index = num_records - 1
@@ -166,11 +173,12 @@ class RobustScaler(Preprocessor):
 
         self.stats_ = {}
 
-        # TODO(matt): Handle case where quartile lands between 2 numbers.
+        # TODO(matt): Handle case where quantile lands between 2 numbers.
         # The current implementation will simply choose the closest index.
         # This will affect the results of small datasets more than large datasets.
         for col in self.columns:
-            sorted_dataset = dataset.sort(col)
+            filtered_dataset = dataset.map_batches(lambda df: df[[col]])
+            sorted_dataset = filtered_dataset.sort(col)
             split_datasets = sorted_dataset.split_at_indices(split_indices)
 
             def _get_first_value(ds: Dataset, c: str):
@@ -180,17 +188,17 @@ class RobustScaler(Preprocessor):
             med_val = _get_first_value(split_datasets[2], col)
             high_val = _get_first_value(split_datasets[3], col)
 
-            self.stats_[f"low_quartile({col})"] = low_val
+            self.stats_[f"low_quantile({col})"] = low_val
             self.stats_[f"median({col})"] = med_val
-            self.stats_[f"high_quartile({col})"] = high_val
+            self.stats_[f"high_quantile({col})"] = high_val
 
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
         def column_robust_scaler(s: pd.Series):
-            s_low_q = self.stats_[f"low_quartile({s.name})"]
+            s_low_q = self.stats_[f"low_quantile({s.name})"]
             s_median = self.stats_[f"median({s.name})"]
-            s_high_q = self.stats_[f"high_quartile({s.name})"]
+            s_high_q = self.stats_[f"high_quantile({s.name})"]
             diff = s_high_q - s_low_q
 
             # Handle division by zero.
@@ -206,4 +214,9 @@ class RobustScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Scaler columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return (
+            f"<Scaler columns={self.columns} "
+            f"quantile_range={self.quantile_range} "
+            f"stats={stats}>"
+        )

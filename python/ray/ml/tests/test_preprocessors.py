@@ -203,12 +203,12 @@ def test_robust_scaler():
     # Fit data.
     scaler.fit(ds)
     assert scaler.stats_ == {
-        "low_quartile(B)": -1,
+        "low_quantile(B)": -1,
         "median(B)": 0,
-        "high_quartile(B)": 1,
-        "low_quartile(C)": 1,
+        "high_quantile(B)": 1,
+        "low_quantile(C)": 1,
         "median(C)": 2,
-        "high_quartile(C)": 3,
+        "high_quantile(C)": 3,
     }
 
     transformed = scaler.transform(ds)
