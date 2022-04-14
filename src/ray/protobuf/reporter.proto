@@ -69,6 +69,7 @@ service ReporterService {
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
 }
+
 message StreamLogRequest {
   string log_file_name = 1;
   // Keeps stream alive perpertually if true, else terminates on EOF
@@ -76,11 +77,14 @@ message StreamLogRequest {
   optional int32 lines = 3;
   optional float interval = 4;
 }
+
 message StreamLogReply {
   bytes data = 1;
 }
+
 message ListLogsRequest {
 }
+
 message ListLogsReply {
   repeated string log_files = 1;
 }
