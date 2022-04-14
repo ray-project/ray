@@ -28,7 +28,7 @@ def prepare_data() -> Tuple[Dataset, Dataset, Dataset]:
     dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
     dataset_df["target"] = data_raw["target"]
     # add a random categorical column
-    num_samples = len(data_raw["target"])
+    num_samples = len(dataset_df)
     dataset_df["categorical_column"] = pd.Series(
         (["A", "B"] * math.ceil(num_samples / 2))[:num_samples]
     )

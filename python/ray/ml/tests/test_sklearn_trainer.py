@@ -107,7 +107,7 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
         label_column="target",
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         preprocessor=DummyPreprocessor(),
-        set_estimator_parallelism=False,
+        set_estimator_cpus=False,
     )
     result = trainer.fit()
 

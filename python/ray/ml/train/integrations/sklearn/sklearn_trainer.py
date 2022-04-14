@@ -344,9 +344,19 @@ class SklearnTrainer(Trainer):
             groups = X_train["cv_groups"]
             X_train = X_train.drop("cv_groups", axis=1)
 
-        trial_resources = tune.get_trial_resources().required_resources
-        num_cpus = int(trial_resources.get("CPU", 0))
-        has_gpus = bool(trial_resources.get("GPU", 0))
+        scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
+
+        num_workers = scaling_config_dataclass.num_workers or 0
+        has_gpus = scaling_config_dataclass.use_gpu
+
+        trainer_resources = scaling_config_dataclass.trainer_resources or {"CPU": 1}
+        worker_resources = scaling_config_dataclass.resources_per_worker or {
+            "CPU": 1,
+            "GPU": int(has_gpus),
+        }
+        num_cpus = trainer_resources.get(
+            "CPU", 1.0
+        ) + num_workers or 0 * worker_resources.get("CPU", 1.0)
 
         # see https://scikit-learn.org/stable/computing/parallelism.html
         os.environ["OMP_NUM_THREADS"] = str(num_cpus)
@@ -367,6 +377,12 @@ class SklearnTrainer(Trainer):
             with tune.checkpoint_dir(step=1) as checkpoint_dir:
                 with open(os.path.join(checkpoint_dir, MODEL_KEY), "wb") as f:
                     cpickle.dump(self.estimator, f)
+
+                if self.preprocessor:
+                    with open(
+                        os.path.join(checkpoint_dir, PREPROCESSOR_KEY), "wb"
+                    ) as f:
+                        cpickle.dump(self.preprocessor, f)
 
             if self.label_column:
                 validation_set_scores = self._score_on_validation_sets(
@@ -418,12 +434,5 @@ class SklearnTrainer(Trainer):
                     else {"CPU": 1}
                 )
                 return PlacementGroupFactory([head_resources])
-
-            def _postprocess_checkpoint(self, checkpoint_path: str):
-                preprocessor = self._merged_config.get("preprocessor", None)
-                if not checkpoint_path or preprocessor is None:
-                    return
-                with open(os.path.join(checkpoint_path, PREPROCESSOR_KEY), "wb") as f:
-                    cpickle.dump(preprocessor, f)
 
         return SklearnTrainable
