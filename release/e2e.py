@@ -1512,6 +1512,9 @@ def run_test_config(
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
+    if test_config["cluster"].get("compute_on_k8s"):
+        install_matching_ray()
+
     # Add information to results dict
     def _update_results(results: Dict):
         if "last_update" in results:
