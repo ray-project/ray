@@ -13,7 +13,6 @@ public class ParallelActorCreator<A> {
   private Object[] args;
 
   public ParallelActorCreator(RayFuncR<A> func, Object[] args) {
-    //    ObjectRef
     this.func = func;
     this.args = args;
 
@@ -22,8 +21,7 @@ public class ParallelActorCreator<A> {
     this.strategy = new RoundRobinStrategy(1);
   }
 
-  public ParallelActorCreator<A> setParallels(ParallelStrategyInterface strategy, int parallelNum) {
-    ParallelContext ctx = Ray.internal().getParallelContext();
+  public ParallelActorCreator<A> setStrategy(ParallelStrategyInterface strategy) {
     this.strategy = strategy;
     return this;
   }

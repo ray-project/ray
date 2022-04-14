@@ -2,7 +2,6 @@ package io.ray.runtime.utils.parallelactor;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.Ray;
-import io.ray.api.parallelactor.ParallelStrategyInterface;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -16,22 +15,13 @@ public class ParallelActorExecutorImpl {
 
   private static final Logger LOG = LoggerFactory.getLogger(ParallelActorExecutorImpl.class);
 
-  private ParallelStrategyInterface strategy;
-
-  private int parallelNum;
-
   private FunctionManager functionManager = null;
 
   /// This should be thread safe.
   private ConcurrentHashMap<Integer, Object> instances = new ConcurrentHashMap<>();
 
-  public ParallelActorExecutorImpl(
-      ParallelStrategyInterface strategy,
-      int parallelNum,
-      JavaFunctionDescriptor javaFunctionDescriptor)
+  public ParallelActorExecutorImpl(int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor)
       throws InvocationTargetException, IllegalAccessException {
-    this.strategy = strategy;
-    this.parallelNum = parallelNum;
 
     functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
     RayFunction init =

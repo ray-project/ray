@@ -24,4 +24,9 @@ public class RoundRobinStrategy implements ParallelStrategyInterface, Serializab
     // TODO: lastIndex = (lastIndex % parallelNum)
     return (++lastIndex) % parallelNum;
   }
+
+  @Override
+  public void reset() {
+    lastIndex = -1;
+  }
 }

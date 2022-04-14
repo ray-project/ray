@@ -33,7 +33,7 @@ public class ParallelContextImpl implements ParallelContext {
             .getFunction(Ray.getRuntimeContext().getCurrentJobId(), ctorFunc)
             .getFunctionDescriptor();
     ActorHandle<ParallelActorExecutorImpl> parallelExecutorHandle =
-        Ray.actor(ParallelActorExecutorImpl::new, strategy, parallelNum, functionDescriptor)
+        Ray.actor(ParallelActorExecutorImpl::new, parallelNum, functionDescriptor)
             .setConcurrencyGroups(concurrencyGroups)
             .remote();
 
@@ -53,6 +53,7 @@ public class ParallelContextImpl implements ParallelContext {
     ObjectRef<Object> ret =
         parallelExecutor
             .task(ParallelActorExecutorImpl::execute, instanceIndex, functionDescriptor, args)
+            .setConcurrencyGroup(String.format("PARALLEL_INSTANCE_%d", instanceIndex))
             .remote();
     return (ObjectRef<R>) ret;
   }

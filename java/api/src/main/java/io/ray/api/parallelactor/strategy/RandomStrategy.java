@@ -1,8 +1,12 @@
 package io.ray.api.parallelactor.strategy;
 
 import io.ray.api.parallelactor.ParallelStrategyInterface;
+import java.io.Serializable;
+import java.util.Random;
 
-public class RandomStrategy implements ParallelStrategyInterface {
+public class RandomStrategy implements ParallelStrategyInterface, Serializable {
+
+  private static Random random = new Random();
 
   private int parallelNum = 1;
 
@@ -17,6 +21,9 @@ public class RandomStrategy implements ParallelStrategyInterface {
 
   @Override
   public int getNextIndex() {
-    return 0;
+    return random.nextInt(parallelNum);
   }
+
+  @Override
+  public void reset() {}
 }
