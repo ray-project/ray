@@ -96,7 +96,7 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
-def check_health(address: str, timeout=2):
+def check_health(address: str, timeout=2) -> bool:
     """Checks Ray cluster health, before / without actually connecting to the
     cluster via ray.init().
 
