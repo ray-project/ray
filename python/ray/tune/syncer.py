@@ -22,6 +22,7 @@ from shlex import quote
 
 import ray
 import yaml
+from ray.ml.utils.remote_storage import get_fs_and_path, fs_hint
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.checkpoint_manager import _TuneCheckpoint
@@ -57,6 +58,22 @@ _syncers = {}
 def wait_for_sync():
     for syncer in _syncers.values():
         syncer.wait()
+
+
+def validate_upload_dir(sync_config: "SyncConfig"):
+    if sync_config.upload_dir:
+        exc = None
+        try:
+            fs, _ = get_fs_and_path(sync_config.upload_dir)
+        except ImportError as e:
+            fs = None
+            exc = e
+        if not fs:
+            raise ValueError(
+                f"Could not identify external storage filesystem for "
+                f"upload dir `{sync_config.upload_dir}`. "
+                f"Hint: {fs_hint(sync_config.upload_dir)}"
+            ) from exc
 
 
 def set_sync_periods(sync_config: "SyncConfig"):
