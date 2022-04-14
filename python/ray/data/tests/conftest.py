@@ -14,12 +14,18 @@ from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 def aws_credentials():
     import os
 
+    # Credentials dict that can be passed as kwargs to pa.fs.S3FileSystem
+    credentials = dict(
+        access_key="testing", secret_key="testing", session_token="testing"
+    )
+
     old_env = os.environ
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+    os.environ["AWS_ACCESS_KEY_ID"] = credentials["access_key"]
+    os.environ["AWS_SECRET_ACCESS_KEY"] = credentials["secret_key"]
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
-    yield
+    os.environ["AWS_SESSION_TOKEN"] = credentials["session_token"]
+
+    yield credentials
     os.environ = old_env
 
 
@@ -56,7 +62,9 @@ def s3_fs_with_space(aws_credentials, s3_server, s3_path_with_space):
 def _s3_fs(aws_credentials, s3_server, s3_path):
     import urllib.parse
 
-    fs = pa.fs.S3FileSystem(region="us-west-2", endpoint_override=s3_server)
+    fs = pa.fs.S3FileSystem(
+        region="us-west-2", endpoint_override=s3_server, **aws_credentials
+    )
     if s3_path.startswith("s3://"):
         s3_path = s3_path[len("s3://") :]
     s3_path = urllib.parse.quote(s3_path)
