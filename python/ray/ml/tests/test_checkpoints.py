@@ -270,6 +270,22 @@ class CheckpointsConversionTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             checkpoint.to_directory()
 
+    def test_fs_cp_as_directory(self):
+        checkpoint = self._prepare_fs_checkpoint()
+
+        with checkpoint.as_directory() as checkpoint_dir:
+            assert checkpoint._local_path == checkpoint_dir
+
+        assert os.path.exists(checkpoint_dir)
+
+    def test_dict_cp_as_directory(self):
+        checkpoint = self._prepare_dict_checkpoint()
+
+        with checkpoint.as_directory() as checkpoint_dir:
+            assert os.path.exists(checkpoint_dir)
+
+        assert not os.path.exists(checkpoint_dir)
+
 
 class CheckpointsSerdeTest(unittest.TestCase):
     def setUp(self) -> None:
