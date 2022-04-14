@@ -325,8 +325,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       client_factory,
       /*normal_task_resources_changed_callback=*/
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
-        gcs_resource_manager_->UpdateNodeNormalTaskAndAvailableResources(node_id,
-                                                                         resources);
+        gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
       std::move(scheduler),

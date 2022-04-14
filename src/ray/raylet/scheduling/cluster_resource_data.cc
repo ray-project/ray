@@ -58,9 +58,14 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
     if (total == 0) {
       continue;
     }
-    const auto &available = this->available.Get(ResourceID(i));
-
-    float utilization = 1 - (available.Double() / total.Double());
+    auto available = this->available.Get(ResourceID(i)).Double();
+    if (this->normal_task_resources.Has(ResourceID(i))) {
+      available -= this->normal_task_resources.Get(ResourceID(i)).Double();
+      if (available < 0) {
+        available = 0;
+      }
+    }
+    float utilization = 1 - (available / total.Double());
     if (utilization > highest) {
       highest = utilization;
     }
@@ -76,6 +81,11 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     return false;
   }
 
+  if (!this->normal_task_resources.IsEmpty()) {
+    auto available_resources = this->available;
+    available_resources -= this->normal_task_resources;
+    return resource_request <= available_resources;
+  }
   return resource_request <= this->available;
 }
 

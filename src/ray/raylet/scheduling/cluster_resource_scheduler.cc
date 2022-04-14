@@ -64,6 +64,10 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   Init(local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr);
+  // Add the Nil local node to cluster_resource_manager_, just in order to accommodate the
+  // hybrid scheduling policy. This local node would not be selected because
+  // `is_node_available_fn_` excludes it.
+  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
 }
 
 void ClusterResourceScheduler::Init(
@@ -79,7 +83,9 @@ void ClusterResourceScheduler::Init(
       [this](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
-  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
+  if (!local_node_id_.IsNil()) {
+    cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
+  }
   scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,

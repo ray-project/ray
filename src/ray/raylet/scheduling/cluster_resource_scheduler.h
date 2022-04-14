@@ -61,7 +61,8 @@ class ClusterResourceScheduler {
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
 
-  // This constructor is only used by gcs scheduler. So the
+  // This constructor is only used for the creation of GcsActorScheduler.
+  // Because Gcs node (only schedules tasks) does not execute any tasks, the
   // `local_node_id` has to be nil and `is_node_available_fn`
   // has to exclude the local node.
   ClusterResourceScheduler(scheduling::NodeID local_node_id,

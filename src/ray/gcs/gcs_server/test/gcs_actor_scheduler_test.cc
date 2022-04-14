@@ -73,8 +73,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*normal_task_resources_changed_callback=*/
         [gcs_resource_manager](const NodeID &node_id,
                                const rpc::ResourcesData &resources) {
-          gcs_resource_manager->UpdateNodeNormalTaskAndAvailableResources(node_id,
-                                                                          resources);
+          gcs_resource_manager->UpdateNodeNormalTaskResources(node_id, resources);
         });
 
     gcs_node_manager_->AddNodeAddedListener([cluster_resource_scheduler](
