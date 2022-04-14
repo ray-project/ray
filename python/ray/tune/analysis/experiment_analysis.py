@@ -47,7 +47,7 @@ DEFAULT_FILE_TYPE = "csv"
 
 @PublicAPI(stability="beta")
 class ExperimentAnalysis:
-    """Analyze results from a Tune experiment.
+    """Analyze results from a Ray Tune experiment.
 
     To use this class, the experiment must be executed with the JsonLogger.
 
