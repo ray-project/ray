@@ -2317,7 +2317,7 @@ Dict[str, List[str]]]): The names of the columns
                 elif isinstance(feature_columns, list):
                     if all(isinstance(column, str) for column in feature_columns):
                         features = batch[feature_columns].values
-                    elif all(isinstance(element, list) for element in feature_columns):
+                    elif all(isinstance(columns, list) for columns in feature_columns):
                         features = tuple(
                             batch[columns].values for columns in feature_columns
                         )
