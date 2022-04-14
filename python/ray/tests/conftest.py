@@ -687,7 +687,7 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    if rep.when == "call":  # and rep.failed:
+    if rep.when == "call" and rep.failed:
         archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
 
         if archive_dir is not None:
@@ -701,5 +701,6 @@ def pytest_runtest_makereport(item, call):
             output_file = f"{archive_dir}/{rep.nodeid.split('/')[-1]}-{time.time()}"
             tmp_dir = "/tmp" if platform.system() == "Darwin" else gettempdir()
             log_dir = f"{tmp_dir}/ray/session_latest/logs"
-            if os.path.exists(log_dir):
+            # Limit to Linux for now
+            if os.path.exists(log_dir) and platform.system() == "Linux":
                 shutil.make_archive(output_file, "zip", log_dir)
