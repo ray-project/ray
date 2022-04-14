@@ -437,7 +437,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
     });
 
     for (const auto &pair : gcs_init_data.Nodes()) {
-      if(pair.second.state() == rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE) {
+      if (pair.second.state() ==
+          rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE) {
         rpc::Address address;
         address.set_raylet_id(pair.second.node_id());
         address.set_ip_address(pair.second.node_manager_address());
