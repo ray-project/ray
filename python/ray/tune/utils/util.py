@@ -26,6 +26,10 @@ from ray.util.ml_utils.dict import (  # noqa: F401
     unflattened_lookup,
 )
 from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+from ray.util.ml_utils.util import (  # noqa: F401
+    is_nan,
+    is_nan_or_inf,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -274,14 +278,6 @@ class Tee(object):
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-
-
-def is_nan(value):
-    return np.isnan(value)
-
-
-def is_nan_or_inf(value):
-    return is_nan(value) or np.isinf(value)
 
 
 def _to_pinnable(obj):
