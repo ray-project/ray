@@ -15,4 +15,5 @@ post_build_cmds:
   # doesn't actually use tensorflow, but in the long term, but we should
   # consider upgrading to tensorflow 2.7 as a long term solution.
   - pip install -U numpy>=1.20
+  - pip3 install aiohttp==3.8.1
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

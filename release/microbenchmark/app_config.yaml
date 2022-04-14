@@ -9,4 +9,5 @@ python:
 post_build_cmds:
   - pip uninstall -y ray || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install aiohttp==3.8.1
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
