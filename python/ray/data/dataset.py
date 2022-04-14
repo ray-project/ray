@@ -2283,21 +2283,20 @@ Dict[str, List[str]]]): The names of the columns
         Time complexity: O(1)
 
         Args:
-            output_signature (Union[FeatureTypeSpec, Tuple[FeatureTypeSpec,
-                "tf.TypeSpec"]]): If ``label_column`` is specified, a two-element
-                tuple containing a ``FeatureTypeSpec`` and ``tf.TypeSpec`` object
-                corresponding to (features, label). Otherwise, a single
-                ``FeatureTypeSpec`` corresponding to features tensor. A
-                ``FeatureTypeSpec`` is a ``tf.TypeSpec``, ``List["tf.TypeSpec"]``, or
-                ``Dict[str, "tf.TypeSpec"]``.
+            output_signature (Union[TensorflowFeatureTypeSpec, \
+Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]]): If ``label_column`` is specified,
+                a two-element tuple containing a ``FeatureTypeSpec`` and
+                ``tf.TypeSpec`` object corresponding to (features, label). Otherwise, a
+                single ``TensorflowFeatureTypeSpec`` corresponding to features tensor.
+                A ``TensorflowFeatureTypeSpec`` is a ``tf.TypeSpec``,
+                ``List["tf.TypeSpec"]``, or ``Dict[str, "tf.TypeSpec"]``.
             label_column (Optional[str]): The name of the column used as the label
                 (second element of the output tuple). If not specified, output
                 will be just one tensor instead of a tuple.
-            feature_columns (Optional[Union[List[str], List[List[str]], Dict[str,
-                List[str]]]]): The names of the columns to use as the features. Can be
-                a list of lists or a dict of string-list pairs for multi-tensor output.
-                If None, then use all columns except the label columns as
-                the features.
+            feature_columns (Optional[Union[List[str], List[List[str]], Dict[str, \
+List[str]]]): The names of the columns to use as the features. Can be a list of lists
+                or a dict of string-list pairs for multi-tensor output. If None, then
+                use all columns except the label columns as the features.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
