@@ -144,7 +144,7 @@ class RobustScaler(Preprocessor):
     For each column, each value will be transformed to
     ``(value - median) / (high_quartile - low_quartile)``,
     where ``median`` , ``high_quartile``, and ``low_quartile``
-    are  calculated from the fitted dataset.
+    are calculated from the fitted dataset.
 
     Args:
         columns: The columns that will individually be scaled.
