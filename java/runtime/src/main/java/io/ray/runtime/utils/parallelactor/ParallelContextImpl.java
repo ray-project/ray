@@ -33,11 +33,7 @@ public class ParallelContextImpl implements ParallelContext {
             .getFunction(Ray.getRuntimeContext().getCurrentJobId(), ctorFunc)
             .getFunctionDescriptor();
     ActorHandle<ParallelActorExecutorImpl> parallelExecutorHandle =
-        Ray.actor(
-                ParallelActorExecutorImpl::new,
-                strategy,
-                parallelNum,
-                functionDescriptor)
+        Ray.actor(ParallelActorExecutorImpl::new, strategy, parallelNum, functionDescriptor)
             .setConcurrencyGroups(concurrencyGroups)
             .remote();
 
@@ -46,8 +42,9 @@ public class ParallelContextImpl implements ParallelContext {
 
   @Override
   public <A, R> ObjectRef<R> submitTask(
-    ParallelActor<A> parallelActor, int instanceIndex, RayFunc func, Object[] args) {
-    ActorHandle<ParallelActorExecutorImpl> parallelExecutor = ((ParallelActorImpl) parallelActor).getExecutor();
+      ParallelActor<A> parallelActor, int instanceIndex, RayFunc func, Object[] args) {
+    ActorHandle<ParallelActorExecutorImpl> parallelExecutor =
+        ((ParallelActorImpl) parallelActor).getExecutor();
     FunctionManager functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
     JavaFunctionDescriptor functionDescriptor =
         functionManager

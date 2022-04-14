@@ -10,6 +10,5 @@ public interface ParallelContext {
       ParallelStrategyInterface strategy, RayFuncR<A> ctorFunc);
 
   <A, R> ObjectRef<R> submitTask(
-    ParallelActor<A> parallelActor, int instanceIndex, RayFunc func, Object[] args);
-
+      ParallelActor<A> parallelActor, int instanceIndex, RayFunc func, Object[] args);
 }

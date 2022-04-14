@@ -1,8 +1,6 @@
 package io.ray.api.parallelactor;
 
-import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.function.RayFuncR;
 import io.ray.api.function.RayFuncVoid;
 
 // TODO: test void call.

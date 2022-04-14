@@ -26,7 +26,9 @@ public class ParallelActorExecutorImpl {
   private ConcurrentHashMap<Integer, Object> instances = new ConcurrentHashMap<>();
 
   public ParallelActorExecutorImpl(
-    ParallelStrategyInterface strategy, int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor)
+      ParallelStrategyInterface strategy,
+      int parallelNum,
+      JavaFunctionDescriptor javaFunctionDescriptor)
       throws InvocationTargetException, IllegalAccessException {
     this.strategy = strategy;
     this.parallelNum = parallelNum;

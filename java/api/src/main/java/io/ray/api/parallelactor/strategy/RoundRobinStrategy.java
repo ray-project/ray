@@ -1,7 +1,6 @@
 package io.ray.api.parallelactor.strategy;
 
 import io.ray.api.parallelactor.ParallelStrategyInterface;
-
 import java.io.*;
 
 public class RoundRobinStrategy implements ParallelStrategyInterface, Serializable {
@@ -25,5 +24,4 @@ public class RoundRobinStrategy implements ParallelStrategyInterface, Serializab
     // TODO: lastIndex = (lastIndex % parallelNum)
     return (++lastIndex) % parallelNum;
   }
-
 }
