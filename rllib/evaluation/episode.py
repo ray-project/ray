@@ -160,7 +160,7 @@ class Episode:
                             old="policy_mapping_fn(agent_id)",
                             new="policy_mapping_fn(agent_id, episode, "
                             "worker, **kwargs)",
-                            error=True
+                            error=True,
                         )
                     policy_id = self._agent_to_policy[
                         agent_id

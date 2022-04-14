@@ -2847,7 +2847,7 @@ class Trainer(Trainable):
                     help="Burn in specified at new location config["
                     "'replay_buffer_config']["
                     "'replay_burn_in'] will be overwritten.",
-                    error=True
+                    error=True,
                 )
                 config["replay_buffer_config"]["replay_burn_in"] = config["burn_in"]
 

@@ -58,9 +58,7 @@ def apply_grad_clipping(
     return info
 
 
-@Deprecated(
-    old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True
-)
+@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
 def atanh(x: TensorType) -> TensorType:
     """Atanh function for PyTorch."""
     return 0.5 * torch.log(
