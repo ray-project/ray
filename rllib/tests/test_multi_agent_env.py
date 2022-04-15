@@ -158,10 +158,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": PolicySpec(policy_class=MockPolicy),
                 "p1": PolicySpec(policy_class=MockPolicy),
             },
-            # This signature will raise a soft-deprecation warning due
-            # to the new signature we are using (agent_id, episode, **kwargs),
-            # but should not break this test.
-            policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
+            policy_mapping_fn=(lambda agent_id, **kwargs: "p{}".format(agent_id % 2)),
             rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True,

@@ -73,8 +73,7 @@ class Episode:
             policies: The PolicyMap object (mapping PolicyIDs to Policy
                 objects) to use for determining, which policy is used for
                 which agent.
-            policy_mapping_fn: The mapping function mapping AgentIDs to
-                PolicyIDs.
+            policy_mapping_fn: The mapping function mapping AgentIDs to PolicyIDs.
             batch_builder_factory:
             extra_batch_callback:
             env_id: The environment's ID in which this episode runs.
@@ -148,7 +147,7 @@ class Episode:
             # New signature should be: (agent_id, episode, worker, **kwargs)
             try:
                 policy_id = self._agent_to_policy[agent_id] = self.policy_mapping_fn(
-                    agent_id, self, worker=self.worker
+                    agent_id, self, self.worker
                 )
             except TypeError as e:
                 if (

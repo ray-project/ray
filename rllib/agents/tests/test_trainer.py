@@ -38,10 +38,10 @@ class TestTrainer(unittest.TestCase):
         trainer = pg.PGTrainer(env="CartPole-v0", config=standard_config)
 
         # When (we validate config 2 times).
-        # Try deprecated `Trainer._validate_config()` method (static).
-        trainer._validate_config(standard_config, trainer)
+        # Try `Trainer.validate_config()` once.
+        trainer.validate_config(standard_config)
         config_v1 = copy.deepcopy(standard_config)
-        # Try new method: `Trainer.validate_config()` (non-static).
+        # Twice.
         trainer.validate_config(standard_config)
         config_v2 = copy.deepcopy(standard_config)
 
