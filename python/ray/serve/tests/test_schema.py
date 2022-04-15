@@ -13,15 +13,13 @@ from ray.serve.schema import (
     DeploymentStatusSchema,
     ServeApplicationSchema,
     ServeApplicationStatusSchema,
+    status_info_to_schema,
+    serve_application_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
-from ray.serve.api import (
-    get_deployment_statuses,
-    status_info_to_schema,
-    serve_application_status_to_schema,
-)
+from ray.serve.api import get_deployment_statuses
 from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,

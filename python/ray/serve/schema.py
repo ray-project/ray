@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, Tuple, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.common import DeploymentStatus
+from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
 from ray.serve.utils import DEFAULT
 
 
@@ -310,3 +310,34 @@ class DeploymentStatusSchema(BaseModel, extra=Extra.forbid):
 
 class ServeApplicationStatusSchema(BaseModel, extra=Extra.forbid):
     statuses: List[DeploymentStatusSchema] = Field(...)
+
+
+def status_info_to_schema(
+    deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
+) -> DeploymentStatusSchema:
+    if isinstance(status_info, DeploymentStatusInfo):
+        return DeploymentStatusSchema(
+            name=deployment_name, status=status_info.status, message=status_info.message
+        )
+    elif isinstance(status_info, dict):
+        return DeploymentStatusSchema(
+            name=deployment_name,
+            status=status_info["status"],
+            message=status_info["message"],
+        )
+    else:
+        raise TypeError(
+            f"Got {type(status_info)} as status_info's "
+            "type. Expected status_info to be either a "
+            "DeploymentStatusInfo or a dictionary."
+        )
+
+
+def serve_application_status_to_schema(
+    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
+) -> ServeApplicationStatusSchema:
+    schemas = [
+        status_info_to_schema(deployment_name, status_info)
+        for deployment_name, status_info in status_infos.items()
+    ]
+    return ServeApplicationStatusSchema(statuses=schemas)
