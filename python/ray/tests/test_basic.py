@@ -228,10 +228,10 @@ def test_invalid_arguments():
         + f"must be {(dict, type(None))}, but received type {float}"
     )
     with pytest.raises(TypeError, match=re.escape(metadata_type_err)):
-        ray.remote(metadata=3.14)(A)
+        ray.remote(_metadata=3.14)(A)
 
-    ray.remote(metadata={"data": 1})(f)
-    ray.remote(metadata={"data": 1})(A)
+    ray.remote(_metadata={"data": 1})(f)
+    ray.remote(_metadata={"data": 1})(A)
 
 
 def test_options():
