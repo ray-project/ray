@@ -256,18 +256,18 @@ def unsquash_action(action, action_space_struct):
     """
 
     def map_(a, s):
-        if (
-            isinstance(s, gym.spaces.Box)
-            and (s.dtype == np.float32 or s.dtype == np.float64)
-            and np.all(s.bounded_below)
-            and np.all(s.bounded_above)
-        ):
-            # Assuming values are roughly between -1.0 and 1.0 ->
-            # unsquash them to the given bounds.
-            a = s.low + (a + 1.0) * (s.high - s.low) / 2.0
-            # Clip to given bounds, just in case the squashed values were
-            # outside [-1.0, 1.0].
-            a = np.clip(a, s.low, s.high)
+        if isinstance(s, gym.spaces.Box) and np.all(s.bounded_below) and np.all(s.bounded_above):
+            if s.dtype == np.float32 or s.dtype == np.float64:
+                # Assuming values are roughly between -1.0 and 1.0 ->
+                # unsquash them to the given bounds.
+                a = s.low + (a + 1.0) * (s.high - s.low) / 2.0
+                # Clip to given bounds, just in case the squashed values were
+                # outside [-1.0, 1.0].
+                a = np.clip(a, s.low, s.high)
+            elif s.dtype == np.int32 or s.dtype == np.int64:
+                # For Categorical and MultiCategorical actions, shift the selection
+                # into the proper range.
+                a = s.low + a
         return a
 
     return tree.map_structure(map_, action, action_space_struct)
