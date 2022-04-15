@@ -155,7 +155,7 @@ def test_global_state_actor_entry(ray_start_regular):
     )
 
 
-def test_node_table(ray_start_cluster):
+def test_node_name_cluster(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(node_name="head_node", include_dashboard=False)
     head_context = ray.init(address=cluster.address, include_dashboard=False)
@@ -179,6 +179,8 @@ def test_node_table(ray_start_cluster):
     ray.shutdown()
     cluster.shutdown()
 
+
+def test_node_name_init():
     # Test ray.init with _node_name directly
     new_head_context = ray.init(_node_name="new_head_node", include_dashboard=False)
 
@@ -186,6 +188,17 @@ def test_node_table(ray_start_cluster):
     node_data = global_state_accessor.get_node_table()[0]
     node = gcs_utils.GcsNodeInfo.FromString(node_data)
     assert node.node_name == "new_head_node"
+    ray.shutdown()
+
+
+def test_no_node_name():
+    # Test that starting ray with no node name will result in a node_name=ip_address
+    new_head_context = ray.init(include_dashboard=False)
+    global_state_accessor = make_global_state_accessor(new_head_context)
+    node_data = global_state_accessor.get_node_table()[0]
+    node = gcs_utils.GcsNodeInfo.FromString(node_data)
+    assert node.node_name == ray.util.get_node_ip_address()
+    ray.shutdown()
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])

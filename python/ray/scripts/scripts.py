@@ -277,7 +277,8 @@ def debug(address):
     required=False,
     hidden=True,
     type=str,
-    help="the user-provided identifier or name for this node",
+    help="the user-provided identifier or name for this node. "
+    "Defaults to the node's ip_address",
 )
 @click.option(
     "--redis-password",
@@ -591,7 +592,7 @@ def start(
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
-        node_name=node_name,
+        node_name=node_name if node_name else node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
         worker_port_list=worker_port_list,
