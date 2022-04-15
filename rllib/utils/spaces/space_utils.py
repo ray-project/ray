@@ -264,7 +264,7 @@ def unsquash_action(action, action_space_struct):
                 # Clip to given bounds, just in case the squashed values were
                 # outside [-1.0, 1.0].
                 a = np.clip(a, s.low, s.high)
-            elif s.dtype == np.int32 or s.dtype == np.int64:
+            elif np.issubdtype(s.dtype, np.integer):
                 # For Categorical and MultiCategorical actions, shift the selection
                 # into the proper range.
                 a = s.low + a
