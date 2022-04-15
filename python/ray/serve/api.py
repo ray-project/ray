@@ -1125,7 +1125,7 @@ def deployment(
             "Manually setting num_replicas is not allowed when "
             "_autoscaling_config is provided."
         )
-    
+
     config = DeploymentConfig.from_default(
         ignore_none=True,
         num_replicas=num_replicas,

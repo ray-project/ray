@@ -504,7 +504,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
     )
-    
+
     return Deployment(
         func_or_class=s.import_path,
         name=s.name,
