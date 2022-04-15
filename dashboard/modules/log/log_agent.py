@@ -47,6 +47,9 @@ class LogAgentV1Grpc(
         return False
 
     async def ListLogs(self, request, context):
+        """
+        Lists all files in the logs directory for the current session
+        """
         if os.path.exists(self._dashboard_agent.log_dir):
             log_files = os.listdir(self._dashboard_agent.log_dir)
         else:
