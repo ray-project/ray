@@ -82,8 +82,7 @@ message StreamLogReply {
   bytes data = 1;
 }
 
-message ListLogsRequest {
-}
+message ListLogsRequest {}
 
 message ListLogsReply {
   repeated string log_files = 1;
