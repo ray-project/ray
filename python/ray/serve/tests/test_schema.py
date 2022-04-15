@@ -19,12 +19,14 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
 from ray.serve.api import (
     get_deployment_statuses,
-    deployment_to_schema,
-    schema_to_deployment,
     serve_application_to_schema,
     schema_to_serve_application,
     status_info_to_schema,
     serve_application_status_to_schema,
+)
+from ray.serve.deployment import (
+    deployment_to_schema,
+    schema_to_deployment,
 )
 from ray import serve
 
