@@ -256,7 +256,11 @@ def unsquash_action(action, action_space_struct):
     """
 
     def map_(a, s):
-        if isinstance(s, gym.spaces.Box) and np.all(s.bounded_below) and np.all(s.bounded_above):
+        if (
+            isinstance(s, gym.spaces.Box)
+            and np.all(s.bounded_below)
+            and np.all(s.bounded_above)
+        ):
             if s.dtype == np.float32 or s.dtype == np.float64:
                 # Assuming values are roughly between -1.0 and 1.0 ->
                 # unsquash them to the given bounds.

@@ -55,7 +55,6 @@ class TestSpaceUtils(unittest.TestCase):
         )
         assert dict_space.contains(element_with_correct_types)
 
-
     def test_unsquash_action(self):
         """Test to make sure unsquash_action works for both float and int Box spaces."""
         space = Box(low=3, high=8, shape=(2,), dtype=np.float32)
@@ -69,7 +68,6 @@ class TestSpaceUtils(unittest.TestCase):
         action = unsquash_action(3, struct)
         self.assertEqual(action[0], 6)
         self.assertEqual(action[1], 6)
-
 
 
 if __name__ == "__main__":
