@@ -202,7 +202,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "data": [
             "pandas",
-            "pyarrow >= 4.0.1, < 7.0.0",
+            "pyarrow >= 6.0.1, < 7.0.0",
             "fsspec",
         ],
         "default": [
@@ -213,7 +213,7 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
-            "prometheus_client >= 0.7.1",
+            "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
         "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],

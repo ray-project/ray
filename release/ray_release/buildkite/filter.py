@@ -10,6 +10,7 @@ def filter_tests(
     test_collection: List[Test],
     frequency: Frequency,
     test_attr_regex_filters: Optional[Dict[str, str]] = None,
+    prefer_smoke_tests: bool = False,
 ) -> List[Tuple[Test, bool]]:
     if test_attr_regex_filters is None:
         test_attr_regex_filters = {}
@@ -31,7 +32,13 @@ def filter_tests(
             continue
 
         if frequency == Frequency.ANY or frequency == test_frequency:
-            tests_to_run.append((test, False))
+            if prefer_smoke_tests and "smoke_test" in test:
+                # If we prefer smoke tests and a smoke test is available for this test,
+                # then use the smoke test
+                smoke_test = True
+            else:
+                smoke_test = False
+            tests_to_run.append((test, smoke_test))
             continue
 
         elif "smoke_test" in test:

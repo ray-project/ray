@@ -41,7 +41,7 @@ class MultiAgentEnv(gym.Env):
         if not hasattr(self, "_agent_ids"):
             self._agent_ids = set()
 
-        # do the action and observation spaces map from agent ids to spaces
+        # Do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
         if not hasattr(self, "_spaces_in_preferred_format"):
             self._spaces_in_preferred_format = None
@@ -189,7 +189,6 @@ class MultiAgentEnv(gym.Env):
                 if agent_id != "__all__"
             }
         logger.warning("action_space_sample() has not been implemented")
-        del agent_ids
         return {}
 
     @ExperimentalAPI
@@ -221,7 +220,6 @@ class MultiAgentEnv(gym.Env):
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
         logger.warning("observation_space_sample() has not been implemented")
-        del agent_ids
         return {}
 
     @PublicAPI

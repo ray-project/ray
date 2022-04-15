@@ -34,31 +34,6 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
   return DoPut(GenRedisKey(table_name, key), data, callback);
 }
 
-Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
-                                           const std::string &key,
-                                           const std::string &index_key,
-                                           const std::string &data,
-                                           const StatusCallback &callback) {
-  // NOTE: To ensure the atomicity of `AsyncPutWithIndex`, we can't write data to Redis in
-  // the callback function of index writing.
-  // Write index to Redis.
-  const auto &index_table_key = GenRedisKey(table_name, key, index_key);
-  RAY_CHECK_OK(DoPut(index_table_key, key, nullptr));
-
-  // Write data to Redis.
-  // The operation of redis client is executed in order, and it can ensure that index is
-  // written first and then data is written. The index and data are decoupled, so we don't
-  // need to write data in the callback function of index writing.
-  const auto &status = DoPut(GenRedisKey(table_name, key), data, callback);
-  if (!status.ok()) {
-    // Run callback if failed.
-    if (callback != nullptr) {
-      callback(status);
-    }
-  }
-  return status;
-}
-
 Status RedisStoreClient::AsyncGet(const std::string &table_name,
                                   const std::string &key,
                                   const OptionalItemCallback<std::string> &callback) {
@@ -113,18 +88,6 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
   return shard_context->RunArgvAsync(args, delete_callback);
 }
 
-Status RedisStoreClient::AsyncDeleteWithIndex(const std::string &table_name,
-                                              const std::string &key,
-                                              const std::string &index_key,
-                                              const StatusCallback &callback) {
-  std::vector<std::string> redis_keys;
-  redis_keys.reserve(2);
-  redis_keys.push_back(GenRedisKey(table_name, key));
-  redis_keys.push_back(GenRedisKey(table_name, key, index_key));
-
-  return DeleteByKeys(redis_keys, callback);
-}
-
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           const StatusCallback &callback) {
@@ -136,75 +99,20 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
   return DeleteByKeys(redis_keys, callback);
 }
 
-Status RedisStoreClient::AsyncBatchDeleteWithIndex(
+Status RedisStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
-    const std::vector<std::string> &index_keys,
-    const StatusCallback &callback) {
-  RAY_CHECK(keys.size() == index_keys.size());
-
-  std::vector<std::string> redis_keys;
-  redis_keys.reserve(2 * keys.size());
-  for (size_t i = 0; i < keys.size(); ++i) {
-    redis_keys.push_back(GenRedisKey(table_name, keys[i]));
-    redis_keys.push_back(GenRedisKey(table_name, keys[i], index_keys[i]));
-  }
-
-  return DeleteByKeys(redis_keys, callback);
-}
-
-Status RedisStoreClient::AsyncGetByIndex(
-    const std::string &table_name,
-    const std::string &index_key,
     const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
-  std::string match_pattern = GenRedisMatchPattern(table_name, index_key);
-  auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
-  auto on_done = [this, callback, scanner, table_name, index_key](
-                     const Status &status, const std::vector<std::string> &result) {
-    if (!result.empty()) {
-      std::vector<std::string> keys;
-      keys.reserve(result.size());
-      for (auto &item : result) {
-        keys.push_back(
-            GenRedisKey(table_name, GetKeyFromRedisKey(item, table_name, index_key)));
-      }
-
-      RAY_CHECK_OK(MGetValues(redis_client_, table_name, keys, callback));
-    } else {
-      callback(absl::flat_hash_map<std::string, std::string>());
-    }
-  };
-  return scanner->ScanKeys(match_pattern, on_done);
-}
-
-Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
-                                            const std::string &index_key,
-                                            const StatusCallback &callback) {
-  std::string match_pattern = GenRedisMatchPattern(table_name, index_key);
-  auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
-  auto on_done = [this, table_name, index_key, callback, scanner](
-                     const Status &status, const std::vector<std::string> &result) {
-    if (!result.empty()) {
-      std::vector<std::string> keys;
-      keys.reserve(result.size());
-      for (auto &item : result) {
-        keys.push_back(GetKeyFromRedisKey(item, table_name, index_key));
-      }
-      auto batch_delete_callback = [this, result, callback](const Status &status) {
-        RAY_CHECK_OK(status);
-        // Delete index keys.
-        RAY_CHECK_OK(DeleteByKeys(result, callback));
-      };
-      RAY_CHECK_OK(AsyncBatchDelete(table_name, keys, batch_delete_callback));
-    } else {
-      if (callback) {
-        callback(status);
-      }
-    }
-  };
-
-  return scanner->ScanKeys(match_pattern, on_done);
+  if (keys.empty()) {
+    callback({});
+  }
+  std::vector<std::string> true_keys;
+  for (auto &key : keys) {
+    true_keys.push_back(GenRedisKey(table_name, key));
+  }
+  RAY_CHECK_OK(MGetValues(redis_client_, table_name, true_keys, callback));
+  return Status::OK();
 }
 
 Status RedisStoreClient::DoPut(const std::string &key,
