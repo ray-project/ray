@@ -25,7 +25,6 @@ import yaml
 import ray
 from ray.tune import run_experiments
 from ray.rllib import _register_all
-from ray.rllib.utils.deprecation import deprecation_warning
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

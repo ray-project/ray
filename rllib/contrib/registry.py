@@ -1,7 +1,5 @@
 """Registry of algorithm names for `rllib train --run=contrib/<alg_name>`"""
 
-from ray.rllib.utils.deprecation import Deprecated
-
 
 def _import_random_agent():
     from ray.rllib.contrib.random_agent.random_agent import RandomAgent
