@@ -467,7 +467,7 @@ class SampleBatch(dict):
 
         return slices
 
-    @Deprecated(new="SampleBatch[start:stop]", error=False)
+    @Deprecated(new="SampleBatch[start:stop]", error=True)
     def slice(
         self, start: int, end: int, state_start=None, state_end=None
     ) -> "SampleBatch":
