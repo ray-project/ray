@@ -14,10 +14,6 @@
 
 #include "ray/util/process.h"
 
-#include "absl/base/thread_annotations.h"
-#include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
-
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN 1
@@ -530,63 +526,6 @@ void Process::Kill() {
   } else {
     // (Null process case)
   }
-}
-
-#ifndef _WIN32
-namespace {
-/// Tracks subprocesses' exit status.
-class ProcessExitStatusTracker {
- public:
-  static ProcessExitStatusTracker &GetInstance() {
-    static ProcessExitStatusTracker instance;
-    return instance;
-  }
-
-  void SetExitStatus(pid_t pid, int status) {
-    if (pid <= 0) {
-      return;
-    }
-    absl::WriterMutexLock lock(&mutex_);
-    process_exit_status_[pid] = status;
-  }
-
-  std::string GetExitStatus(pid_t pid) {
-    absl::ReaderMutexLock lock(&mutex_);
-    auto it = process_exit_status_.find(pid);
-    if (it == process_exit_status_.end()) {
-      return "Unknown";
-    }
-    if (WIFEXITED(it->second)) {
-      return absl::StrFormat("Exited with code: %d", WEXITSTATUS(it->second));
-    } else if (WIFSIGNALED(it->second)) {
-      return absl::StrFormat("Killed with signal: %d", WTERMSIG(it->second));
-    }
-    return "Unknown";
-  }
-
- private:
-  ProcessExitStatusTracker() : mutex_{}, process_exit_status_{} {}
-
-  absl::Mutex mutex_;
-  // at most we have 4194304 pids, which is roughly 64MB of data.
-  absl::flat_hash_map<pid_t, int> process_exit_status_ GUARDED_BY(mutex_);
-};
-}  // namespace
-#endif  // #ifdef _WIN32
-
-std::string Process::ExitReason() const {
-#ifndef _WIN32
-  pid_t pid = p_ ? p_->GetId() : -1;
-  return ProcessExitStatusTracker::GetInstance().GetExitStatus(pid);
-#else
-  return "Unknown";
-#endif  // #ifdef _WIN32
-}
-
-void Process::SetExitStatus(pid_t pid, int status) {
-#ifndef _WIN32
-  ProcessExitStatusTracker::GetInstance().SetExitStatus(pid, status);
-#endif  // #ifdef _WIN32
 }
 
 #ifdef _WIN32

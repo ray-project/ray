@@ -103,8 +103,6 @@ class Process {
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;
-  std::string ExitReason() const;
-  static void SetExitStatus(pid_t pid, int status);
 };
 
 // Get the Process ID of the parent process. If the parent process exits, the PID
