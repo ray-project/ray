@@ -26,7 +26,6 @@ class TestR2D2(unittest.TestCase):
         """Test whether a R2D2Trainer can be built on all frameworks."""
         config = dqn.R2D2_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        config["num_gpus"] = 0
         # Wrap with an LSTM and use a very simple base-model.
         config["model"]["use_lstm"] = True
         config["model"]["max_seq_len"] = 20
@@ -43,7 +42,7 @@ class TestR2D2(unittest.TestCase):
         num_iterations = 1
 
         # Test building an R2D2 agent in all frameworks.
-        for _ in framework_iterator(config, frameworks=["torch"]):
+        for _ in framework_iterator(config):
             trainer = dqn.R2D2Trainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
