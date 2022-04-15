@@ -128,7 +128,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
   // metric not existing at all).
   stats::NumWorkersStarted.Record(0);
 #ifndef _WIN32
-  // Handle SIGCHLD signals and store exit code.
+  // Handle SIGCHLD signals and log exit code.
   signal(SIGCHLD, handle_child_exit);
 #endif
   for (const auto &entry : worker_commands) {
