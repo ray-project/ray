@@ -435,6 +435,7 @@ class ReporterAgent(
         # -- Instance count of cluster --
         # Only report cluster stats on head node
         if cluster_stats and "autoscaler_report" in cluster_stats:
+            logger.error("LOGGING CLUSTER STATS: from  is head?", self._is_head_node)
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
                 records_to_report.append(

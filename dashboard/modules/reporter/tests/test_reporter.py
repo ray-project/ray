@@ -107,55 +107,90 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
-def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
-    addresses = ray.init(include_dashboard=True, num_cpus=1)
-    metrics_export_port = addresses["metrics_export_port"]
-    addr = addresses["raylet_ip_address"]
-    prom_addresses = [f"{addr}:{metrics_export_port}"]
+def test_prometheus_physical_stats_record(
+    enable_test_module,
+    ray_start_cluster,
+    shutdown_only
+):
+    WORKER_METRICS_AGENT_PORT = 6996
+    cluster = ray_start_cluster
+    head_node = cluster.add_node(include_dashboard=True)
+    worker_node = cluster.add_node(metrics_agent_port=WORKER_METRICS_AGENT_PORT)
+    cluster.wait_for_nodes()
+    metrics_export_port = head_node._metrics_export_port
+    addr = head_node._raylet_ip_address
+    head_prom_addresses = [f"{addr}:{metrics_export_port}"]
+    worker_prom_addresses = [f"{addr}:{WORKER_METRICS_AGENT_PORT}"]
 
-    def test_case_stats_exist():
-        components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        return all(
-            [
-                "ray_node_cpu_utilization" in metric_names,
-                "ray_node_cpu_count" in metric_names,
-                "ray_node_mem_used" in metric_names,
-                "ray_node_mem_available" in metric_names,
-                "ray_node_mem_total" in metric_names,
-                "ray_raylet_cpu" in metric_names,
-                "ray_raylet_mem" in metric_names,
-                "ray_node_disk_io_read" in metric_names,
-                "ray_node_disk_io_write" in metric_names,
-                "ray_node_disk_io_read_count" in metric_names,
-                "ray_node_disk_io_write_count" in metric_names,
-                "ray_node_disk_io_read_speed" in metric_names,
-                "ray_node_disk_io_write_speed" in metric_names,
-                "ray_node_disk_read_iops" in metric_names,
-                "ray_node_disk_write_iops" in metric_names,
-                "ray_node_disk_usage" in metric_names,
-                "ray_node_disk_free" in metric_names,
-                "ray_node_disk_utilization_percentage" in metric_names,
-                "ray_node_network_sent" in metric_names,
-                "ray_node_network_received" in metric_names,
-                "ray_node_network_send_speed" in metric_names,
-                "ray_node_network_receive_speed" in metric_names,
-            ]
-        )
+    worker_metrics = [
+        "ray_node_cpu_utilization",
+        "ray_node_cpu_count",
+        "ray_node_mem_used",
+        "ray_node_mem_available",
+        "ray_node_mem_total",
+        "ray_raylet_cpu",
+        "ray_raylet_mem",
+        "ray_node_disk_io_read",
+        "ray_node_disk_io_write",
+        "ray_node_disk_io_read_count",
+        "ray_node_disk_io_write_count",
+        "ray_node_disk_io_read_speed",
+        "ray_node_disk_io_write_speed",
+        "ray_node_disk_read_iops",
+        "ray_node_disk_write_iops",
+        "ray_node_disk_usage",
+        "ray_node_disk_free",
+        "ray_node_disk_utilization_percentage",
+        "ray_node_network_sent",
+        "ray_node_network_received",
+        "ray_node_network_send_speed",
+        "ray_node_network_receive_speed",
+    ]
+
+    def test_case_stats_exist_on_head():
+        components_dict, metric_names, metric_samples = fetch_prometheus(
+            head_prom_addresses)
+        # only on head node
+        head_metrics = "ray_cluster_active_nodes" in metric_names
+        print("head metrics (head): ", head_metrics)
+        for sample in metric_samples:
+            if sample.name == "ray_cluster_active_nodes":
+                print(sample)
+        return head_metrics and all([metric in metric_names for metric in worker_metrics])
+
+    def test_case_stats_exist_on_worker():
+        components_dict, metric_names, metric_samples = fetch_prometheus(
+            worker_prom_addresses)
+        # only on head node
+        head_metrics = "ray_cluster_active_nodes" not in metric_names
+        print("head metrics (worker): ", head_metrics, metric_names)
+        for sample in metric_samples:
+            if sample.name == "ray_cluster_active_nodes":
+                print(sample)
+        return head_metrics and all([metric in metric_names for metric in worker_metrics])
 
     def test_case_ip_correct():
-        components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        raylet_proc = ray.worker._global_node.all_processes[
-            ray_constants.PROCESS_TYPE_RAYLET
-        ][0]
-        raylet_pid = None
-        # Find the raylet pid recorded in the tag.
-        for sample in metric_samples:
-            if sample.name == "ray_raylet_cpu":
-                raylet_pid = sample.labels["pid"]
-                break
-        return str(raylet_proc.process.pid) == str(raylet_pid)
+        cond = True
+        for addrs, node in [
+            (head_prom_addresses, head_node),
+            (worker_prom_addresses, worker_node)
+        ]:
+            components_dict, metric_names, metric_samples = fetch_prometheus(
+                addrs)
+            raylet_proc = node.all_processes[
+                ray_constants.PROCESS_TYPE_RAYLET
+            ][0]
+            raylet_pid = None
+            # Find the raylet pid recorded in the tag.
+            for sample in metric_samples:
+                if sample.name == "ray_raylet_cpu":
+                    raylet_pid = sample.labels["pid"]
+                    break
+            cond = cond and str(raylet_proc.process.pid) == str(raylet_pid)
+        return cond
 
-    wait_for_condition(test_case_stats_exist, retry_interval_ms=1000)
+    wait_for_condition(test_case_stats_exist_on_head, retry_interval_ms=1000)
+    wait_for_condition(test_case_stats_exist_on_worker, retry_interval_ms=1000)
     wait_for_condition(test_case_ip_correct, retry_interval_ms=1000)
 
 
