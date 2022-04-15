@@ -27,7 +27,13 @@ using raylet_scheduling_policy::SchedulingType;
 class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
-    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
+    scheduling::NodeID local_node_id(NodeID::FromRandom().Binary());
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+        local_node_id,
+        NodeResources(),
+        /*is_node_available_fn=*/
+        [local_node_id](scheduling::NodeID node_id) { return node_id != local_node_id; },
+        /*is_local_schedulable=*/false);
   }
 
   void TearDown() override { cluster_resource_scheduler_.reset(); }

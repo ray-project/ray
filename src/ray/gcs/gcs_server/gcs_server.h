@@ -185,6 +185,7 @@ class GcsServer {
   /// The gcs resource manager.
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The cluster resource scheduler.
+  NodeID local_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The cluster task manager.
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;

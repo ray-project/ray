@@ -44,15 +44,17 @@ using rpc::HeartbeatTableData;
 /// resources at those nodes.
 class ClusterResourceScheduler {
  public:
-  ClusterResourceScheduler();
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
+  /// \param is_node_available_fn: Function to determine whether a node is available.
+  /// \param is_local_schedulable: Whether the local node schedulable.
   ClusterResourceScheduler(scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
-                           std::function<bool(scheduling::NodeID)> is_node_available_fn);
+                           std::function<bool(scheduling::NodeID)> is_node_available_fn,
+                           bool is_local_schedulable = true);
 
   ClusterResourceScheduler(
       scheduling::NodeID local_node_id,
@@ -60,13 +62,6 @@ class ClusterResourceScheduler {
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
-
-  // This constructor is only used for the creation of GcsActorScheduler.
-  // Because Gcs node (only schedules tasks) does not execute any tasks, the
-  // `local_node_id` has to be nil and `is_node_available_fn`
-  // has to exclude the local node.
-  ClusterResourceScheduler(scheduling::NodeID local_node_id,
-                           std::function<bool(scheduling::NodeID)> is_node_available_fn);
 
   /// Schedule the specified resources to the cluster nodes.
   ///
@@ -212,6 +207,8 @@ class ClusterResourceScheduler {
   /// The bundle scheduling policy to use.
   std::unique_ptr<raylet_scheduling_policy::IBundleSchedulingPolicy>
       bundle_scheduling_policy_;
+  /// Whether the local node schedulable.
+  bool is_local_schedulable_ = true;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);

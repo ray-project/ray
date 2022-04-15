@@ -92,7 +92,7 @@ class GcsActorSchedulerInterface {
   /// Get the count of pending actors.
   ///
   /// \return The count of pending actors.
-  virtual size_t GetPendingActorsCount() = 0;
+  virtual size_t GetPendingActorsCount() const = 0;
 
   /// Remove a pending actor.
   ///
@@ -202,7 +202,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Get the count of pending actors, which considers both infeasible and waiting queues.
   ///
   /// \return The count of pending actors.
-  size_t GetPendingActorsCount() override;
+  size_t GetPendingActorsCount() const override;
 
   /// Remove a pending actor, which considers both infeasible and waiting queues.
   ///

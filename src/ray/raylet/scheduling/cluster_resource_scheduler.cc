@@ -23,21 +23,14 @@ namespace ray {
 
 using namespace ::ray::raylet_scheduling_policy;
 
-ClusterResourceScheduler::ClusterResourceScheduler()
-    : local_node_id_(scheduling::NodeID::Nil()),
-      is_node_available_fn_([](auto) { return true; }) {
-  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
-  NodeResources node_resources;
-  Init(node_resources,
-       /*get_used_object_store_memory=*/nullptr,
-       /*get_pull_manager_at_capacity=*/nullptr);
-}
-
 ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const NodeResources &local_node_resources,
-    std::function<bool(scheduling::NodeID)> is_node_available_fn)
-    : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
+    std::function<bool(scheduling::NodeID)> is_node_available_fn,
+    bool is_local_schedulable)
+    : local_node_id_(local_node_id),
+      is_node_available_fn_(is_node_available_fn),
+      is_local_schedulable_(is_local_schedulable) {
   Init(local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr);
@@ -55,21 +48,6 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   Init(node_resources, get_used_object_store_memory, get_pull_manager_at_capacity);
 }
 
-ClusterResourceScheduler::ClusterResourceScheduler(
-    scheduling::NodeID local_node_id,
-    std::function<bool(scheduling::NodeID)> is_node_available_fn)
-    : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
-  // The GCS itself should have no resources for running tasks.
-  NodeResources local_node_resources;
-  Init(local_node_resources,
-       /*get_used_object_store_memory=*/nullptr,
-       /*get_pull_manager_at_capacity=*/nullptr);
-  // Add the Nil local node to cluster_resource_manager_, just in order to accommodate the
-  // hybrid scheduling policy. This local node would not be selected because
-  // `is_node_available_fn_` excludes it.
-  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
-}
-
 void ClusterResourceScheduler::Init(
     const NodeResources &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
@@ -83,9 +61,8 @@ void ClusterResourceScheduler::Init(
       [this](const NodeResources &local_resource_update) {
         cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
       });
-  if (!local_node_id_.IsNil()) {
-    cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
-  }
+  RAY_CHECK(!local_node_id_.IsNil());
+  cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_node_resources);
   scheduling_policy_ =
       std::make_unique<raylet_scheduling_policy::CompositeSchedulingPolicy>(
           local_node_id_,
@@ -100,8 +77,12 @@ void ClusterResourceScheduler::Init(
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
-  if (!local_node_id_.IsNil() && node_id == local_node_id_) {
-    return true;
+  if (node_id == local_node_id_) {
+    if (is_local_schedulable_) {
+      return true;
+    } else {
+      return false;
+    }
   }
   if (node_id.IsNil()) {
     return false;

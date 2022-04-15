@@ -147,9 +147,8 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
         assert object == 1
 
 
-# This case tests whether gcs-based actor scheduler distributes actors
-# in a balanced way. By default, it uses the `SPREAD` strategy of
-# gcs resource scheduler.
+# This case tests whether gcs actor scheduler distributes actors
+# in a balanced way if using `SPREAD` policy.
 @pytest.mark.parametrize("args", [[5, 20], [5, 3]])
 def test_actor_distribution_balance(ray_start_cluster_enabled, args):
     cluster = ray_start_cluster_enabled

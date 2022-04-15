@@ -42,12 +42,15 @@ class GcsActorSchedulerTest : public Test {
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
+    auto local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-        scheduling::NodeID::Nil(),
+        scheduling::NodeID(local_node_id.Binary()),
+        NodeResources(),
         /*is_node_available_fn=*/
-        [](scheduling::NodeID node_id) { return !node_id.IsNil(); });
+        [](auto) { return true; },
+        /*is_local_schedulable=*/false);
     auto cluster_task_manager =
-        std::make_shared<ClusterTaskManager>(NodeID::Nil(),
+        std::make_shared<ClusterTaskManager>(local_node_id,
                                              cluster_resource_scheduler,
                                              /*get_node_info=*/
                                              nullptr,

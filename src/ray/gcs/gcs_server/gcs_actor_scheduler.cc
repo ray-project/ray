@@ -617,7 +617,7 @@ void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   }
 }
 
-size_t GcsActorScheduler::GetPendingActorsCount() {
+size_t GcsActorScheduler::GetPendingActorsCount() const {
   return cluster_task_manager_->GetInfeasibleQueueSize() +
          cluster_task_manager_->GetWaitingQueueSize();
 }

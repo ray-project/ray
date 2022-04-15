@@ -260,16 +260,19 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitClusterResourceScheduler() {
+  local_node_id_ = NodeID::FromRandom();
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      scheduling::NodeID::Nil(),
+      scheduling::NodeID(local_node_id_.Binary()),
+      NodeResources(),
       /*is_node_available_fn=*/
-      [](scheduling::NodeID node_id) { return !node_id.IsNil(); });
+      [](auto) { return true; },
+      /*is_local_schedulable=*/false);
 }
 
 void GcsServer::InitClusterTaskManager() {
   RAY_CHECK(cluster_resource_scheduler_);
   cluster_task_manager_ =
-      std::make_shared<ClusterTaskManager>(NodeID::Nil(),
+      std::make_shared<ClusterTaskManager>(local_node_id_,
                                            cluster_resource_scheduler_,
                                            /*get_node_info=*/
                                            nullptr,

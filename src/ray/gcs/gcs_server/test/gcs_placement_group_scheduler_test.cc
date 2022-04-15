@@ -46,7 +46,13 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>();
+    scheduling::NodeID local_node_id(NodeID::FromRandom().Binary());
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+        local_node_id,
+        NodeResources(),
+        /*is_node_available_fn=*/
+        [local_node_id](scheduling::NodeID node_id) { return node_id != local_node_id; },
+        /*is_local_schedulable=*/false);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
     ray_syncer_ = std::make_shared<ray::gcs_syncer::RaySyncer>(
