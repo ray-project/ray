@@ -10,6 +10,7 @@ from ray.core.generated import reporter_pb2_grpc
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
 from ray import ray_constants
+from typing import List
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         node_info["logUrl"] = log_url
 
     @routes.get("/log_index")
-    async def list_logs(self, req) -> aiohttp.web.Response:
+    async def get_log_index(self, req) -> aiohttp.web.Response:
         url_list = []
         agent_ips = []
         for node_id, ports in DataSource.agents.items():
@@ -135,11 +136,11 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     @staticmethod
     async def _list_logs_single_node(
-        grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: [str]
+        grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: List[str]
     ):
         """
         Returns a JSON file mapping a category of log component to a list of filenames,
-        on the given node via the gRPC connection to its agent.
+        on the given node.
         """
         reply = await grpc_stub.ListLogs(
             reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
@@ -186,7 +187,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
     async def _wait_until_initialized(self):
         """
-        Wait until connected to at least one agent stub.
+        Wait until connected to at least one node's log agent.
         """
         POLL_SLEEP_TIME = 0.5
         POLL_RETRIES = 10
@@ -199,7 +200,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds."
         )
 
-    async def _list_logs(self, node_id_query: str, filters: [str]):
+    async def _list_logs(self, node_id_query: str, filters: List[str]):
         """
         Helper function to list the logs by querying each agent
         on each cluster via gRPC.
@@ -274,7 +275,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 worker_id = actor_data["address"].get("workerId")
                 if worker_id is None:
                     return aiohttp.web.HTTPNotFound(
-                        reason=f"Worker Id for Actor ID {actor_id} not found."
+                        reason=f"Worker ID for Actor ID {actor_id} not found."
                     )
 
                 index = await self._list_logs(node_id, [worker_id])
