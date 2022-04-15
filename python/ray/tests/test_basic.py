@@ -224,7 +224,7 @@ def test_invalid_arguments():
             ray.remote(**{keyword: np.random.randint(-100, -2)})(A)
 
     metadata_type_err = (
-        "The type of keyword 'metadata' "
+        "The type of keyword '_metadata' "
         + f"must be {(dict, type(None))}, but received type {float}"
     )
     with pytest.raises(TypeError, match=re.escape(metadata_type_err)):
