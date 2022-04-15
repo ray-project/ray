@@ -367,6 +367,8 @@ service NodeManagerService {
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
   // Get gcs server address.
   rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
+  // [State API] Get the all task information of the node.
   rpc GetTasksInfo(GetTasksInfoRequest) returns (GetTasksInfoReply);
+  // [State API] Get the all object information of the node.
   rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
 }

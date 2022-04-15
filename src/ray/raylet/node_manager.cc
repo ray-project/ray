@@ -778,8 +778,6 @@ void NodeManager::QueryAllWorkerStates(
     return;
   }
 
-  RAY_LOG(ERROR) << "[Sang] Querying " << all_workers.size() << " workers";
-
   auto rpc_replied = std::make_shared<size_t>(0);
   auto num_workers = all_workers.size();
   for (const auto &worker : all_workers) {
@@ -799,7 +797,6 @@ void NodeManager::QueryAllWorkerStates(
          on_replied = std::move(on_replied)](const ray::Status &status,
                                              const rpc::GetCoreWorkerStatsReply &r) {
           *rpc_replied += 1;
-          RAY_LOG(ERROR) << "Replied, num_replied=" << rpc_replied;
           on_replied(status, r);
           if (*rpc_replied == num_workers) {
             send_reply_callback(Status::OK(), nullptr, nullptr);

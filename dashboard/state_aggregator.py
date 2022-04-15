@@ -19,6 +19,7 @@ from ray.experimental.state.common import (
     NodeState,
     WorkerState,
     TaskState,
+    ObjectState,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,6 @@ class StateAggregator:
             node_id, node_info = change.old
             self._raylet_stub.pop(node_id)
         if change.new:
-            # TODO(fyrestone): Handle exceptions.
             node_id, node_info = change.new
             address = "{}:{}".format(
                 node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
@@ -117,9 +117,6 @@ class StateAggregator:
         return result
 
     async def get_tasks(self) -> dict:
-        # Need to wait until at least the head node stub is available.
-        await dashboard_utils.wait_for_stub(self._raylet_stub)
-
         async def get_task_info(stub):
             reply = await stub.GetTasksInfo(
                 node_manager_pb2.GetTasksInfoRequest(),
@@ -145,9 +142,6 @@ class StateAggregator:
         return result
 
     async def get_objects(self) -> dict:
-        # Need to wait until at least the head node stub is available.
-        await dashboard_utils.wait_for_stub(self._raylet_stub)
-
         async def get_object_info(stub):
             reply = await stub.GetNodeStats(
                 node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
@@ -162,10 +156,10 @@ class StateAggregator:
         worker_stats = []
         for reply in replies:
             for core_worker_stat in reply.core_workers_stats:
-                # `construct_memory_table` requires the names that are
-                # converted to google style (not the original protobuf field name).
-                # So we use the `message_to_dict` without
-                # including_default_value_fields here.
+                # NOTE: Set preserving_proto_field_name=False here because
+                # `construct_memory_table` requires a dictionary that has
+                # modified protobuf name
+                # (e.g., workerId instead of worker_id) as a key.
                 worker_stats.append(
                     self._message_to_dict(
                         message=core_worker_stat,
@@ -173,7 +167,13 @@ class StateAggregator:
                         preserving_proto_field_name=False,
                     )
                 )
-        return memory_utils.construct_memory_table(worker_stats).get_entries_as_dict()
+        result = {}
+        memory_table = memory_utils.construct_memory_table(worker_stats)
+        for entry in memory_table.table:
+            data = entry.as_dict()
+            data = filter_fields(data, ObjectState)
+            result[data["object_ref"]] = data
+        return result
 
     def _message_to_dict(
         self,

@@ -316,13 +316,6 @@ class MemoryTable:
     def get_entries(self) -> List[dict]:
         return [entry.as_dict() for entry in self.table]
 
-    def get_entries_as_dict(self) -> dict:
-        result = {}
-        for entry in self.table:
-            data = entry.as_dict()
-            result[data["object_ref"]] = data
-        return result
-
     def __repr__(self):
         return str(self.as_dict())
 

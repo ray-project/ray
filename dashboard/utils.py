@@ -501,13 +501,3 @@ def async_loop_forever(interval_seconds, cancellable=False):
         return _looper
 
     return _wrapper
-
-
-async def wait_for_stub(stubs: dict, timeout_s: int = 10):
-    i = 0
-    while not stubs:
-        if i == timeout_s:
-            return False
-        i += 1
-        await asyncio.sleep(1)
-    return True

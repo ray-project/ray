@@ -60,4 +60,15 @@ class TaskState:
 
 @dataclass(init=True)
 class ObjectState:
-    object_id: str
+    object_ref: str
+    pid: int
+    node_ip_address: str
+    object_size: int
+    reference_type: str
+    call_site: str
+    task_status: str
+    local_ref_count: int
+    pinned_in_memory: int
+    submitted_task_ref_count: int
+    contained_in_owned: int
+    type: str

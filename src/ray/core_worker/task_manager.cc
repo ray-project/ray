@@ -642,7 +642,6 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
   absl::MutexLock lock(&mu_);
-  RAY_LOG(ERROR) << "Filling task info. Total tasks: " << submissible_tasks_.size();
   for (const auto &task_it : submissible_tasks_) {
     const auto &task_entry = task_it.second;
     auto entry = reply->add_task_info_entries();
