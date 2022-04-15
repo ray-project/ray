@@ -10,6 +10,7 @@ from unittest import mock
 
 import numpy as np
 import pickle
+import psutil
 import pytest
 
 import ray
@@ -899,6 +900,57 @@ def test_duplicated_arg(ray_start_cluster):
         ray.get(task_with_dup_arg_ref.remote(ref1, ref2, ref3, ref1, ref2, ref3)),
         sum([arr] * 6),
     )
+
+
+def test_get_system_memory():
+    # cgroups v1, set
+    with tempfile.NamedTemporaryFile("w") as memory_limit_file:
+        memory_limit_file.write("100")
+        memory_limit_file.flush()
+        assert (
+            ray._private.utils.get_system_memory(
+                memory_limit_filename=memory_limit_file.name,
+                memory_limit_filename_v2="__does_not_exist__",
+            )
+            == 100
+        )
+
+    # cgroups v1, high
+    with tempfile.NamedTemporaryFile("w") as memory_limit_file:
+        memory_limit_file.write(str(2 ** 64))
+        memory_limit_file.flush()
+        psutil_memory_in_bytes = psutil.virtual_memory().total
+        assert (
+            ray._private.utils.get_system_memory(
+                memory_limit_filename=memory_limit_file.name,
+                memory_limit_filename_v2="__does_not_exist__",
+            )
+            == psutil_memory_in_bytes
+        )
+    # cgroups v2, set
+    with tempfile.NamedTemporaryFile("w") as memory_max_file:
+        memory_max_file.write("100")
+        memory_max_file.flush()
+        assert (
+            ray._private.utils.get_system_memory(
+                memory_limit_filename="__does_not_exist__",
+                memory_limit_filename_v2=memory_max_file.name,
+            )
+            == 100
+        )
+
+    # cgroups v2, not set
+    with tempfile.NamedTemporaryFile("w") as memory_max_file:
+        memory_max_file.write("max")
+        memory_max_file.flush()
+        psutil_memory_in_bytes = psutil.virtual_memory().total
+        assert (
+            ray._private.utils.get_system_memory(
+                memory_limit_filename="__does_not_exist__",
+                memory_limit_filename_v2=memory_max_file.name,
+            )
+            == psutil_memory_in_bytes
+        )
 
 
 if __name__ == "__main__":

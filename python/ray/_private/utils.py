@@ -414,7 +414,12 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
-def get_system_memory():
+def get_system_memory(
+    # For cgroups v1:
+    memory_limit_filename="/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    # For cgroups v2:
+    memory_limit_filename_v2="/sys/fs/cgroup/memory.max",
+):
     """Return the total amount of system memory in bytes.
 
     Returns:
@@ -424,16 +429,17 @@ def get_system_memory():
     # container. Note that this file is not specific to Docker and its value is
     # often much larger than the actual amount of memory.
     docker_limit = None
-    # For cgroups v1:
-    memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-    # For cgroups v2:
-    memory_limit_filename_v2 = "/sys/fs/cgroup/memory.max"
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
             docker_limit = int(f.read())
     elif os.path.exists(memory_limit_filename_v2):
         with open(memory_limit_filename_v2, "r") as f:
-            docker_limit = int(f.read())
+            max_file = f.read()
+            if max_file.isnumeric():
+                docker_limit = int(max_file)
+            else:
+                # max_file is "max", i.e. is unset.
+                docker_limit = None
 
     # Use psutil if it is available.
     psutil_memory_in_bytes = psutil.virtual_memory().total
