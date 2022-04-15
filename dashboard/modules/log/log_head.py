@@ -134,7 +134,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             self._ip_to_node_id[ip] = node_id
 
     @staticmethod
-    async def get_logs_json_index(
+    async def _list_logs_single_node(
         grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: [str]
     ):
         """
@@ -184,7 +184,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         )
         return logs
 
-    async def wait_until_initialized(self):
+    async def _wait_until_initialized(self):
+        """
+        Wait until connected to at least one agent stub.
+        """
         POLL_SLEEP_TIME = 0.5
         POLL_RETRIES = 10
         for _ in range(POLL_RETRIES):
@@ -196,7 +199,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds."
         )
 
-    async def list_logs(self, node_id_query: str, filters: [str]):
+    async def _list_logs(self, node_id_query: str, filters: [str]):
         """
         Helper function to list the logs by querying each agent
         on each cluster via gRPC.
@@ -207,7 +210,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             if node_id_query is None or node_id_query == node_id:
 
                 async def coro():
-                    response[node_id] = await self.get_logs_json_index(
+                    response[node_id] = await self._list_logs_single_node(
                         grpc_stub, filters
                     )
 
@@ -229,20 +232,20 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                     return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
                 node_id = self._ip_to_node_id[ip]
         filters = req.query.get("filters", "").split(",")
-        err = await self.wait_until_initialized()
+        err = await self._wait_until_initialized()
         if err is not None:
             return err
-        response = await self.list_logs(node_id, filters)
+        response = await self._list_logs(node_id, filters)
         return aiohttp.web.json_response(response)
 
     @routes.get("/api/experimental/logs/{media_type}")
-    async def handle_log(self, req):
+    async def handle_get_log(self, req):
         """
         If `media_type = stream`, creates HTTP stream which is either kept alive while
         the HTTP connection is not closed. Else, if `media_type = file`, the stream
         ends once all the lines in the file requested are transmitted.
         """
-        err = await self.wait_until_initialized()
+        err = await self._wait_until_initialized()
         if err is not None:
             return err
         node_id = req.query.get("node_id", None)
@@ -274,7 +277,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                         reason=f"Worker Id for Actor ID {actor_id} not found."
                     )
 
-                index = await self.list_logs(node_id, [worker_id])
+                index = await self._list_logs(node_id, [worker_id])
                 for node in index:
                     for file in index[node]["worker_outs"]:
                         if file.split(".")[0].split("-")[1] == worker_id:
@@ -293,7 +296,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                     f" Available: {self._ip_to_node_id}"
                 )
             if pid is not None:
-                index = await self.list_logs(node_id, [pid])
+                index = await self._list_logs(node_id, [pid])
                 for file in index[node_id]["worker_outs"]:
                     if file.split(".")[0].split("-")[3] == pid:
                         log_file_name = file
