@@ -302,9 +302,6 @@ install_dependencies() {
   # Install modules needed in all jobs.
   alias pip="python -m pip"
 
-  # Upgrade pip
-  pip install -U pip
-
   if [ "${MINIMAL_INSTALL-}" != 1 ]; then
     pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
   fi
