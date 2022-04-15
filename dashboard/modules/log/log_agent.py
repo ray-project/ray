@@ -117,12 +117,18 @@ def tail(f, lines):
 
     total_lines_wanted = lines
 
+    # Seek to the end of the file
     f.seek(0, 2)
     block_end_byte = f.tell()
+
     last_byte_read = block_end_byte
     lines_to_go = total_lines_wanted
     block_number = -1
     blocks = []
+
+    # Read blocks into memory until we have seen at least
+    # `total_lines_wanted` number of lines. Then, return a string
+    # containing the last `total_lines_wanted` number of lines
     while lines_to_go > 0 and block_end_byte > 0:
         if block_end_byte - BLOCK_SIZE > 0:
             f.seek(block_number * BLOCK_SIZE, 2)
