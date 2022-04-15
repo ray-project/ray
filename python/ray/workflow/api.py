@@ -1,5 +1,4 @@
 import logging
-import os
 import types
 from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
@@ -14,7 +13,6 @@ from ray.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
 
 from ray.workflow import virtual_actor_class
-from ray.workflow import storage as storage_base
 from ray.workflow.common import (
     WorkflowStatus,
     ensure_ray_initialized,
@@ -28,7 +26,6 @@ from ray.workflow.common import (
 )
 from ray.workflow import serialization
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
-from ray.workflow.storage import Storage
 from ray.workflow import workflow_access
 from ray.workflow.workflow_storage import get_workflow_storage
 from ray.util.annotations import PublicAPI
@@ -40,42 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
-def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
-    """Initialize workflow.
-
-    Args:
-        storage: The external storage URL or a custom storage class. If not
-            specified, ``/tmp/ray/workflow_data`` will be used.
-    """
-    if storage is None:
-        storage = os.environ.get("RAY_WORKFLOW_STORAGE")
-
-    if storage is None:
-        # We should use get_temp_dir_path, but for ray client, we don't
-        # have this one. We need a flag to tell whether it's a client
-        # or a driver to use the right dir.
-        # For now, just use /tmp/ray/workflow_data
-        storage = "file:///tmp/ray/workflow_data"
-    if isinstance(storage, str):
-        logger.info(f"Using storage: {storage}")
-        storage = storage_base.create_storage(storage)
-    elif not isinstance(storage, Storage):
-        raise TypeError("'storage' should be None, str, or Storage type.")
-
-    try:
-        _storage = storage_base.get_global_storage()
-    except RuntimeError:
-        pass
-    else:
-        # we have to use the 'else' branch because we would raise a
-        # runtime error, but we do not want to be captured by 'except'
-        if _storage.storage_url == storage.storage_url:
-            logger.warning("Calling 'workflow.init()' again with the same storage.")
-        else:
-            raise RuntimeError(
-                "Calling 'workflow.init()' again with a different storage"
-            )
-    storage_base.set_global_storage(storage)
+def init() -> None:
+    """Initialize workflow."""
     workflow_access.init_management_actor()
     serialization.init_manager()
 
@@ -197,7 +160,7 @@ def get_actor(actor_id: str) -> "VirtualActor":
         A virtual actor.
     """
     ensure_ray_initialized()
-    return virtual_actor_class.get_actor(actor_id, storage_base.get_global_storage())
+    return virtual_actor_class.get_actor(actor_id)
 
 
 @PublicAPI(stability="beta")

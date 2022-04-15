@@ -81,7 +81,9 @@ class KVClient:
     def __init__(self, fs: "pyarrow.fs.FileSystem", prefix: str):
         """Use storage.get_client() to construct KVClient."""
         self.fs = fs
-        self.root = Path(prefix)
+        # make root path absolute, otherwise `_resolve_path` would fail
+        # when comparing root path and absolution paths.
+        self.root = Path(prefix).resolve()
 
     def put(self, path: str, value: bytes) -> None:
         """Save a blob in persistent storage at the given path, if possible.
@@ -148,6 +150,28 @@ class KVClient:
         full_path = self._resolve_path(path)
         try:
             self.fs.delete_file(full_path)
+            return True
+        except FileNotFoundError:
+            return False
+
+    def delete_prefix(self, path: str) -> bool:
+        """Delete a directory and its contents, recursively.
+
+        Examples:
+            # Deletes blob at <storage_prefix>/my_app/path/foo.txt
+            >>> client = storage.get_client("my_app")
+            >>> client.delete_prefix("path")
+            True
+
+        Args:
+            path: Relative directory of the blob.
+
+        Returns:
+            Whether the blob was deleted.
+        """
+        full_path = self._resolve_path(path)
+        try:
+            self.fs.delete_dir(full_path)
             return True
         except FileNotFoundError:
             return False

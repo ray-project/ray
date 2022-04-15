@@ -6,7 +6,7 @@ from ray.tests.conftest import *  # noqa
 import numpy as np
 from ray import workflow
 from ray.workflow.tests import utils
-from ray.workflow import storage, workflow_storage
+from ray.workflow import workflow_storage
 from ray.exceptions import RaySystemError
 
 
@@ -53,8 +53,6 @@ def _assert_step_checkpoints(wf_storage, step_id, mode):
 
 
 def test_checkpoint_dag_skip_all(workflow_start_regular):
-    global_storage = storage.get_global_storage()
-
     outputs = (
         checkpoint_dag.options(name="checkpoint_dag", checkpoint=False)
         .step(False)
@@ -64,7 +62,7 @@ def test_checkpoint_dag_skip_all(workflow_start_regular):
     recovered = ray.get(workflow.resume("checkpoint_skip"))
     assert np.isclose(recovered, 8388607.5)
 
-    wf_storage = workflow_storage.WorkflowStorage("checkpoint_skip", global_storage)
+    wf_storage = workflow_storage.WorkflowStorage("checkpoint_skip")
     _assert_step_checkpoints(wf_storage, "checkpoint_dag", mode="output_skipped")
     _assert_step_checkpoints(wf_storage, "large_input", mode="all_skipped")
     _assert_step_checkpoints(wf_storage, "identity", mode="all_skipped")
@@ -72,8 +70,6 @@ def test_checkpoint_dag_skip_all(workflow_start_regular):
 
 
 def test_checkpoint_dag_skip_partial(workflow_start_regular):
-    global_storage = storage.get_global_storage()
-
     outputs = (
         checkpoint_dag.options(name="checkpoint_dag")
         .step(False)
@@ -83,7 +79,7 @@ def test_checkpoint_dag_skip_partial(workflow_start_regular):
     recovered = ray.get(workflow.resume("checkpoint_partial"))
     assert np.isclose(recovered, 8388607.5)
 
-    wf_storage = workflow_storage.WorkflowStorage("checkpoint_partial", global_storage)
+    wf_storage = workflow_storage.WorkflowStorage("checkpoint_partial")
     _assert_step_checkpoints(wf_storage, "checkpoint_dag", mode="checkpointed")
     _assert_step_checkpoints(wf_storage, "large_input", mode="output_skipped")
     _assert_step_checkpoints(wf_storage, "identity", mode="output_skipped")
@@ -91,8 +87,6 @@ def test_checkpoint_dag_skip_partial(workflow_start_regular):
 
 
 def test_checkpoint_dag_full(workflow_start_regular):
-    global_storage = storage.get_global_storage()
-
     outputs = (
         checkpoint_dag.options(name="checkpoint_dag")
         .step(True)
@@ -102,7 +96,7 @@ def test_checkpoint_dag_full(workflow_start_regular):
     recovered = ray.get(workflow.resume("checkpoint_whole"))
     assert np.isclose(recovered, 8388607.5)
 
-    wf_storage = workflow_storage.WorkflowStorage("checkpoint_whole", global_storage)
+    wf_storage = workflow_storage.WorkflowStorage("checkpoint_whole")
     _assert_step_checkpoints(wf_storage, "checkpoint_dag", mode="checkpointed")
     _assert_step_checkpoints(wf_storage, "large_input", mode="checkpointed")
     _assert_step_checkpoints(wf_storage, "identity", mode="checkpointed")

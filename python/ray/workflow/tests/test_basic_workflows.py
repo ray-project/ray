@@ -321,7 +321,7 @@ def test_dynamic_output(workflow_start_regular_shared):
 
 def test_workflow_error_message():
     storage_url = r"c:\ray"
-    expected_error_msg = "Invalid url: {}.".format(storage_url)
+    expected_error_msg = f"Cannot parse URI: '{storage_url}'"
     if os.name == "nt":
 
         expected_error_msg += (
@@ -330,7 +330,7 @@ def test_workflow_error_message():
             )
         )
     with pytest.raises(ValueError) as e:
-        workflow.init(storage_url)
+        ray.init(storage=storage_url)
     assert str(e.value) == expected_error_msg
 
 

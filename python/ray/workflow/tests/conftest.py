@@ -64,27 +64,27 @@ def storage(storage_type):
             yield url
     else:
         with filesystem_storage() as url:
-            yield url
+            url = os.path.abspath(url)
+            yield "file://" + url
 
 
 @contextmanager
 def _workflow_start(storage_url, shared, **kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
+    init_kwargs["storage"] = storage_url
     if ray.is_initialized():
         ray.shutdown()
-        ray.workflow.storage.set_global_storage(None)
     # Sometimes pytest does not cleanup all global variables.
     # we have to manually reset the workflow storage. This
     # should not be an issue for normal use cases, because global variables
     # are freed after the driver exits.
     address_info = ray.init(**init_kwargs)
     utils.clear_marks()
-    ray.workflow.init(storage_url)
+    ray.workflow.init()
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    ray.workflow.storage.set_global_storage(None)
 
 
 @pytest.fixture(scope="function")
@@ -94,13 +94,6 @@ def workflow_start_regular(storage_type, request):
         storage_url, False, **param
     ) as res:
         yield res
-
-
-@pytest.fixture
-def reset_workflow():
-    ray.workflow.storage.set_global_storage(None)
-    yield
-    ray.workflow.storage.set_global_storage(None)
 
 
 @pytest.fixture(scope="module")
