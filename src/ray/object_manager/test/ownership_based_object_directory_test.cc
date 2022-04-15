@@ -252,7 +252,7 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateFIFOOrder) {
   obod_.ReportObjectAdded(object_info_1.object_id, current_node_id, object_info_1);
   obod_.ReportObjectAdded(object_info_3.object_id, current_node_id, object_info_3);
   obod_.ReportObjectAdded(object_info_2.object_id, current_node_id, object_info_2);
-  obod_.ReportObjectRemoved(object_info_1.object_id, current_node_id, object_info_2);
+  obod_.ReportObjectRemoved(object_info_1.object_id, current_node_id, object_info_1);
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchReplied(), 1);
   ASSERT_EQ(NumBatchRequestSent(), 2);
