@@ -527,6 +527,21 @@ time.sleep(5)
     assert actor_repr not in out
 
 
+def test_node_name_in_raylet_death():
+    NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
+    script = f"""
+import ray
+import time
+
+ray.init(_node_name=\"{NODE_NAME}\")
+# This will kill raylet without letting it exit gracefully.
+ray.worker._global_node.kill_raylet()
+time.sleep(30 + 5)
+    """
+    out = run_string_as_driver(script)
+    assert f"node name: {NODE_NAME} has been marked dead" in out
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "_ray_instance":
         # Set object store memory very low so that it won't complain
