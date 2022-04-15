@@ -176,6 +176,7 @@ def test_dag_options(shared_ray_instance):
         pass
 
     assert foo.bind().get_options() == {"num_gpus": 100}
+    assert foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
     assert foo.options(num_cpus=500).bind().get_options() == {
         "num_gpus": 100,
         "num_cpus": 500,
@@ -193,6 +194,7 @@ def test_dag_options(shared_ray_instance):
         pass
 
     assert Foo.bind().get_options() == {"num_gpus": 100}
+    assert Foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
     assert Foo.options(num_cpus=500).bind().get_options() == {
         "num_gpus": 100,
         "num_cpus": 500,
@@ -203,7 +205,6 @@ def test_dag_options(shared_ray_instance):
         pass
 
     assert Bar.bind().get_options() == {}
-    assert Foo.options(num_gpus=100).bind().get_options() == {"num_gpus": 100}
 
 
 if __name__ == "__main__":
