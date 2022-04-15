@@ -50,6 +50,12 @@ Block API
 .. autoclass:: ray.data.block.BlockAccessor
     :members:
 
+DatasetContext API
+------------------
+
+.. autoclass:: ray.data.context.DatasetContext
+    :members:
+
 DatasetPipeline API
 -------------------
 
