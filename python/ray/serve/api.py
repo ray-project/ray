@@ -50,11 +50,7 @@ from ray.serve.constants import (
     DEFAULT_HTTP_PORT,
 )
 from ray.serve.controller import ServeController
-from ray.serve.deployment import (
-    Deployment,
-    deployment_to_schema,
-    schema_to_deployment,
-)
+from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     DeploymentRoute,
@@ -76,11 +72,6 @@ from ray.serve.utils import (
 from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
-from ray.serve.schema import (
-    DeploymentStatusSchema,
-    ServeApplicationSchema,
-    ServeApplicationStatusSchema,
-)
 from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.application import Application
 

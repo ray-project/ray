@@ -25,7 +25,6 @@ from ray.serve.schema import (
 
 # TODO (shrekris-anyscale): remove following dependencies on api.py:
 # - internal_get_global_client
-# - deployment_to_schema
 
 
 @PublicAPI
