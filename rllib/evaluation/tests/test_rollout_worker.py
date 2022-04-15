@@ -24,7 +24,6 @@ from ray.rllib.examples.env.mock_env import (
 )
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
@@ -32,6 +31,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
 )
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.registry import register_env
 
@@ -159,12 +159,12 @@ class TestRolloutWorker(unittest.TestCase):
                 result = agent.train()
                 print(
                     "{}={}".format(
-                        STEPS_TRAINED_COUNTER, result["info"][STEPS_TRAINED_COUNTER]
+                        NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
                     )
                 )
                 print(
                     "{}={}".format(
-                        STEPS_SAMPLED_COUNTER, result["info"][STEPS_SAMPLED_COUNTER]
+                        NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
                     )
                 )
                 global_timesteps = (

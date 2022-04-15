@@ -20,7 +20,7 @@ from ray.rllib.execution.train_ops import (
     MultiGPUTrainOneStep,
     TrainOneStep,
 )
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
@@ -62,12 +62,15 @@ class A2CTrainer(A3CTrainer):
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
 
-        # Create a microbatch buffer for collecting gradients on microbatches'.
-        # These gradients will later be accumulated and applied at once (once train
+        # Create a microbatch variable for collecting gradients on microbatches'.
+        # These gradients will be accumulated on-the-fly and applied at once (once train
         # batch size has been collected) to the model.
-        if self.config["_disable_execution_plan_api"] is True and \
-                self.config["microbatch_size"]:
-            self._microbatches = []
+        if (
+            self.config["_disable_execution_plan_api"] is True
+            and self.config["microbatch_size"]
+        ):
+            self._microbatches_grads = None
+            self._microbatches_counts = 0
 
     @override(Trainer)
     def training_iteration(self) -> ResultDict:
@@ -82,59 +85,47 @@ class A2CTrainer(A3CTrainer):
         # apply the averaged gradient in one SGD step. This conserves GPU
         # memory, allowing for extremely large experience batches to be
         # used.
-        sample_batches = []
-        num_env_steps = 0
-        num_agent_steps = 0
-        while (
-            not self._by_agent_steps and num_env_steps < self.config["microbatch_size"]
-        ) or (
-            self._by_agent_steps and num_agent_steps < self.config["microbatch_size"]
-        ):
-            new_sample_batches = synchronous_parallel_sample(self.workers)
-            sample_batches.extend(new_sample_batches)
-            num_env_steps += sum(len(s) for s in new_sample_batches)
-            num_agent_steps += sum(
-                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-                for s in new_sample_batches
+        if self._by_agent_steps:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_agent_steps=self.config["microbatch_size"]
             )
-        self._counters[NUM_ENV_STEPS_SAMPLED] += num_env_steps
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += num_agent_steps
-
-        # Combine all batches at once
-        train_batch = SampleBatch.concat_samples(sample_batches)
+        else:
+            train_batch = synchronous_parallel_sample(
+                worker_set=self.workers, max_env_steps=self.config["microbatch_size"]
+            )
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
 
         with self._timers[COMPUTE_GRADS_TIMER]:
             grad, info = self.workers.local_worker().compute_gradients(
                 train_batch, single_agent=True
             )
-            self._microbatches.append((grad, train_batch.count))
+            # Empty microbatch variable.
+            if self._microbatches is None:
+                self._microbatches_grads = grad
+            # Existing one: Accumulate new gradients on top of existing ones.
+            else:
+                for i, g in enumerate(grad):
+                    self._microbatches_grads[i] += g
+            self._microbatches_counts += train_batch.count
 
         # If `train_batch_size` reached: Accumulate gradients and apply.
         num_microbatches = math.ceil(
             self.config["train_batch_size"] / self.config["microbatch_size"]
         )
         if len(self._microbatches) > num_microbatches:
-            # Accumulate gradients.
-            acc_gradients = None
-            sum_count = 0
-            for grad, count in self._microbatches:
-                if acc_gradients is None:
-                    acc_gradients = grad
-                else:
-                    acc_gradients = [a + b for a, b in zip(acc_gradients, grad)]
-                sum_count += count
-
-            # Empty microbatch buffer.
-            self._microbatches = []
-
             # Apply gradients.
-            self._counters[STEPS_TRAINED_COUNTER] += sum_count
-            self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = sum_count
+            self._counters[STEPS_TRAINED_COUNTER] += self._microbatches_counts
+            self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = self._microbatches_counts
 
             apply_timer = self._timers[APPLY_GRADS_TIMER]
             with apply_timer:
-                self.workers.local_worker().apply_gradients(acc_gradients)
-                apply_timer.push_units_processed(sum_count)
+                self.workers.local_worker().apply_gradients(self._microbatches_grads)
+                apply_timer.push_units_processed(self._microbatches_counts)
+
+            # Reset microbatch information.
+            self._microbatches_grads = None
+            self._microbatches_counts = 0
 
             # Also update global vars of the local worker.
             # Create current global vars.
