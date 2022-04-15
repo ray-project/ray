@@ -243,6 +243,14 @@ class Node:
         self.metrics_agent_port = self._get_cached_port(
             "metrics_agent_port", default_port=ray_params.metrics_agent_port
         )
+
+        minimal = not ray._private.utils.check_dashboard_dependencies_installed()
+        if ray_params.metrics_export_port and minimal:
+            logger.info(
+                "WARNING: `metrics_export_port` cannot be configured because your "
+                "installation of ray is missing required dependencies. "
+                "To export metrics, try installing ray with `pip install ray[default]` "
+            )
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port
         )

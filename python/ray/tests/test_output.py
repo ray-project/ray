@@ -527,6 +527,21 @@ time.sleep(5)
     assert actor_repr not in out
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test is meant to run only with minimal install.",
+)
+def test_warn_if_ray_minimal_and_metrics_export_port():
+    script = """
+import ray
+
+ray.init(_metrics_export_port=8080)
+ray.shutdown()
+"""
+    out = run_string_as_driver(script)
+    assert "WARNING: `metrics_export_port` cannot be configured" in out
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "_ray_instance":
         # Set object store memory very low so that it won't complain
