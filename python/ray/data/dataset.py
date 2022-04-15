@@ -2926,6 +2926,7 @@ Dict[str, List[str]]]): The names of the columns
                 # This should be cached from the ._dataset_format() check, so we
                 # don't fetch and we assert that the schema is not None.
                 schema = self.schema(fetch_if_missing=False)
+                assert schema is not None
                 if not skip_cols:
                     skip_cols = []
                 if len(schema.names) > 0:

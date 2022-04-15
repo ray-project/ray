@@ -175,12 +175,8 @@ class _SubscriberBase:
 class GcsPublisher(_PublisherBase):
     """Publisher to GCS."""
 
-    def __init__(self, *, address: str = None, channel: grpc.Channel = None):
-        if address:
-            assert channel is None, "address and channel cannot both be specified"
-            channel = gcs_utils.create_gcs_channel(address)
-        else:
-            assert channel is not None, "One of address and channel must be specified"
+    def __init__(self, address: str):
+        channel = gcs_utils.create_gcs_channel(address)
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
     def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
