@@ -2900,14 +2900,18 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
               : NodeID::Nil());
     }
 
-    if (object_location_update.has_plasma_location_update() &&
-        object_location_update.plasma_location_update() ==
-            rpc::ObjectPlasmaLocationUpdate::ADDED) {
-      AddObjectLocationOwner(object_id, node_id);
-    } else if (object_location_update.has_plasma_location_update() &&
-               object_location_update.plasma_location_update() ==
-                   rpc::ObjectPlasmaLocationUpdate::REMOVED) {
-      RemoveObjectLocationOwner(object_id, node_id);
+    if (object_location_update.has_plasma_location_update()) {
+      if (object_location_update.plasma_location_update() ==
+          rpc::ObjectPlasmaLocationUpdate::ADDED) {
+        AddObjectLocationOwner(object_id, node_id);
+      } else if (object_location_update.plasma_location_update() ==
+                 rpc::ObjectPlasmaLocationUpdate::REMOVED) {
+        RemoveObjectLocationOwner(object_id, node_id);
+      } else {
+        RAY_LOG(FATAL) << "Invalid object plasma location update "
+                       << object_location_update.plasma_location_update()
+                       << " has been received.";
+      }
     }
   }
 
