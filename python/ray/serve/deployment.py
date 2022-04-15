@@ -193,7 +193,6 @@ class Deployment:
         The returned bound deployment can be deployed or bound to other
         deployments to create a deployment graph.
         """
-        # from ray.serve.api import deployment_to_schema
 
         copied_self = copy(self)
         copied_self._init_args = []
