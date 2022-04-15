@@ -1,3 +1,4 @@
+import logging
 import math
 
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, A3CTrainer
@@ -37,6 +38,8 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.iter import LocalIterator
 
+logger = logging.getLogger(__name__)
+
 A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
     {
@@ -58,6 +61,26 @@ class A2CTrainer(A3CTrainer):
     def get_default_config(cls) -> TrainerConfigDict:
         return A2C_DEFAULT_CONFIG
 
+    @override(A3CTrainer)
+    def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
+        super().validate_config(config)
+
+        if config["microbatch_size"]:
+            # Train batch size needs to be significantly larger than microbatch_size.
+            if config["train_batch_size"] / config["microbatch_size"] < 3:
+                logger.warning(
+                    "`train_batch_size` should be considerably larger (at least 3x) "
+                    "than `microbatch_size` for a microbatching setup to make sense!"
+                )
+            # Train batch size needs to be significantly larger than microbatch_size.
+            if config["rollout_fragment_length"] > config["microbatch_size"]:
+                logger.warning(
+                    "`rollout_fragment_length` should not be larger than "
+                    "`microbatch_size` (try setting them to the same value)! "
+                    "Otherwise, microbatches of desired size won't be achievable."
+                )
+
     @override(Trainer)
     def setup(self, config: PartialTrainerConfigDict):
         super().setup(config)
@@ -70,9 +93,9 @@ class A2CTrainer(A3CTrainer):
             and self.config["microbatch_size"]
         ):
             self._microbatches_grads = None
-            self._microbatches_counts = 0
+            self._microbatches_counts = self._num_microbatches = 0
 
-    @override(Trainer)
+    @override(A3CTrainer)
     def training_iteration(self) -> ResultDict:
         # W/o microbatching: Identical to Trainer's default implementation.
         # Only difference to a default Trainer being the value function loss term
@@ -100,24 +123,26 @@ class A2CTrainer(A3CTrainer):
             grad, info = self.workers.local_worker().compute_gradients(
                 train_batch, single_agent=True
             )
-            # Empty microbatch variable.
-            if self._microbatches is None:
+            # New microbatch accumulation phase.
+            if self._microbatches_grads is None:
                 self._microbatches_grads = grad
-            # Existing one: Accumulate new gradients on top of existing ones.
+            # Existing gradients: Accumulate new gradients on top of existing ones.
             else:
                 for i, g in enumerate(grad):
                     self._microbatches_grads[i] += g
             self._microbatches_counts += train_batch.count
+            self._num_microbatches += 1
 
         # If `train_batch_size` reached: Accumulate gradients and apply.
         num_microbatches = math.ceil(
             self.config["train_batch_size"] / self.config["microbatch_size"]
         )
-        if len(self._microbatches) > num_microbatches:
-            # Apply gradients.
+        if self._num_microbatches >= num_microbatches:
+            # Update counters.
             self._counters[STEPS_TRAINED_COUNTER] += self._microbatches_counts
             self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = self._microbatches_counts
 
+            # Apply gradients.
             apply_timer = self._timers[APPLY_GRADS_TIMER]
             with apply_timer:
                 self.workers.local_worker().apply_gradients(self._microbatches_grads)
@@ -125,7 +150,7 @@ class A2CTrainer(A3CTrainer):
 
             # Reset microbatch information.
             self._microbatches_grads = None
-            self._microbatches_counts = 0
+            self._microbatches_counts = self._num_microbatches = 0
 
             # Also update global vars of the local worker.
             # Create current global vars.

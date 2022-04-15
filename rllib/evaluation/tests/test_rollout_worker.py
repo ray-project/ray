@@ -588,7 +588,7 @@ class TestRolloutWorker(unittest.TestCase):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
-        self.assertGreater(result["episodes_this_iter"], 7)
+        self.assertGreater(result["episodes_this_iter"], 6)
         ev.stop()
 
     def test_truncate_episodes(self):
