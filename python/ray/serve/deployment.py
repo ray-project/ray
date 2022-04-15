@@ -500,11 +500,11 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         num_replicas=s.num_replicas,
         user_config=s.user_config,
         max_concurrent_queries=s.max_concurrent_queries,
-        _autoscaling_config=s.autoscaling_config,
-        _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
-        _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
-        _health_check_period_s=s.health_check_period_s,
-        _health_check_timeout_s=s.health_check_timeout_s,
+        autoscaling_config=s.autoscaling_config,
+        graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
+        health_check_period_s=s.health_check_period_s,
+        health_check_timeout_s=s.health_check_timeout_s,
     )
     
     return Deployment(

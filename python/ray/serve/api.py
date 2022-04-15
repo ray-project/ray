@@ -1140,11 +1140,11 @@ def deployment(
         num_replicas=num_replicas,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
-        _autoscaling_config=_autoscaling_config,
-        _graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
-        _graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
-        _health_check_period_s=_health_check_period_s,
-        _health_check_timeout_s=_health_check_timeout_s,
+        autoscaling_config=_autoscaling_config,
+        graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
+        health_check_period_s=_health_check_period_s,
+        health_check_timeout_s=_health_check_timeout_s,
     )
 
     def decorator(_func_or_class):
