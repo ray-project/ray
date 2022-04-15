@@ -219,9 +219,7 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
             self.replay_buffer = self.replay_buffer.concat(new_samples)
 
         # Keep Replay Buffer Size Constant
-        self.replay_buffer = self.replay_buffer.slice(
-            start=-self.replay_buffer_max, end=None
-        )
+        self.replay_buffer = self.replay_buffer[-self.replay_buffer_max:]
 
         if self.normalize_data:
             self.normalizations = mean_std_stats(self.replay_buffer)
