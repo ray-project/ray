@@ -1414,21 +1414,28 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
-    return deployment(
-        name=s.name,
-        init_args=convert_from_json_safe_obj(s.init_args, err_key="init_args"),
-        init_kwargs=convert_from_json_safe_obj(s.init_kwargs, err_key="init_kwargs"),
+    config = DeploymentConfig.from_default(
+        ignore_none=True,
         num_replicas=s.num_replicas,
-        route_prefix=s.route_prefix,
-        max_concurrent_queries=s.max_concurrent_queries,
         user_config=s.user_config,
+        max_concurrent_queries=s.max_concurrent_queries,
         _autoscaling_config=s.autoscaling_config,
         _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
         _health_check_period_s=s.health_check_period_s,
         _health_check_timeout_s=s.health_check_timeout_s,
+    )
+    
+    return Deployment(
+        func_or_class=s.import_path,
+        name=s.name,
+        config=config,
+        init_args=convert_from_json_safe_obj(s.init_args, err_key="init_args"),
+        init_kwargs=convert_from_json_safe_obj(s.init_kwargs, err_key="init_kwargs"),
+        route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
-    )(s.import_path)
+        _internal=True,
+    )
 
 
 def serve_application_to_schema(
