@@ -1133,31 +1133,18 @@ def deployment(
             "Manually setting num_replicas is not allowed when "
             "_autoscaling_config is provided."
         )
-
-    config = DeploymentConfig()
-    if num_replicas is not None:
-        config.num_replicas = num_replicas
-
-    if user_config is not None:
-        config.user_config = user_config
-
-    if max_concurrent_queries is not None:
-        config.max_concurrent_queries = max_concurrent_queries
-
-    if _autoscaling_config is not None:
-        config.autoscaling_config = _autoscaling_config
-
-    if _graceful_shutdown_wait_loop_s is not None:
-        config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
-
-    if _graceful_shutdown_timeout_s is not None:
-        config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
-
-    if _health_check_period_s is not None:
-        config.health_check_period_s = _health_check_period_s
-
-    if _health_check_timeout_s is not None:
-        config.health_check_timeout_s = _health_check_timeout_s
+    
+    config = DeploymentConfig.from_default(
+        ignore_none=True,
+        num_replicas=num_replicas,
+        user_config=user_config,
+        max_concurrent_queries=max_concurrent_queries,
+        _autoscaling_config=_autoscaling_config,
+        _graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
+        _graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
+        _health_check_period_s=_health_check_period_s,
+        _health_check_timeout_s=_health_check_timeout_s,
+    )
 
     def decorator(_func_or_class):
         return Deployment(
