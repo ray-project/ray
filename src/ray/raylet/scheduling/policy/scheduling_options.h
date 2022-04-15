@@ -29,10 +29,11 @@ enum class SchedulingType {
   HYBRID = 0,
   SPREAD = 1,
   RANDOM = 2,
-  BUNDLE_PACK = 3,
-  BUNDLE_SPREAD = 4,
-  BUNDLE_STRICT_PACK = 5,
-  BUNDLE_STRICT_SPREAD = 6,
+  NODE_AFFINITY = 3,
+  BUNDLE_PACK = 4,
+  BUNDLE_SPREAD = 5,
+  BUNDLE_STRICT_PACK = 6,
+  BUNDLE_STRICT_SPREAD = 7,
 };
 
 // Options that controls the scheduling behavior.
@@ -61,6 +62,18 @@ struct SchedulingOptions {
                              avoid_local_node,
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes());
+  }
+
+  static SchedulingOptions NodeAffinity(bool avoid_local_node,
+                                        bool require_node_available,
+                                        std::string node_id,
+                                        bool soft) {
+    SchedulingOptions scheduling_options =
+        Hybrid(avoid_local_node, require_node_available);
+    scheduling_options.scheduling_type = SchedulingType::NODE_AFFINITY;
+    scheduling_options.node_affinity_node_id = node_id;
+    scheduling_options.node_affinity_soft = soft;
+    return scheduling_options;
   }
 
   // construct option for soft pack scheduling policy.
@@ -107,6 +120,8 @@ struct SchedulingOptions {
   bool require_node_available;
   bool avoid_gpu_nodes;
   std::shared_ptr<SchedulingContext> scheduling_context;
+  std::string node_affinity_node_id;
+  bool node_affinity_soft = false;
 
  private:
   SchedulingOptions(SchedulingType type,

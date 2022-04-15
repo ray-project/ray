@@ -201,13 +201,13 @@ In addition, there are other formatting and semantic checkers for components lik
 
 .. code-block:: shell
 
-    ./ci/travis/bazel-format.sh
+    ./ci/lint/bazel-format.sh
 
 * clang-tidy for C++ lint, requires ``clang`` and ``clang-tidy`` version 12 to be installed:
 
 .. code-block:: shell
 
-    ./ci/travis/check-git-clang-tidy-output.sh
+    ./ci/lint/check-git-clang-tidy-output.sh
 
 You can run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 
@@ -236,7 +236,7 @@ If a CI build exception doesn't appear to be related to your change,
 please visit `this link <https://flakey-tests.ray.io/>`_ to
 check recent tests known to be flaky.
 
-.. _`CI`: https://github.com/ray-project/ray/tree/master/ci/travis
+.. _`CI`: https://github.com/ray-project/ray/tree/master/ci
 
 API stability
 -------------

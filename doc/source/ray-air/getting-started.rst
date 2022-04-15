@@ -89,6 +89,9 @@ Predictors
 .. autoclass:: ray.ml.predictor.Predictor
     :members:
 
+.. autoclass:: ray.ml.batch_predictor.BatchPredictor
+    :members:
+
 .. automodule:: ray.ml.predictors.integrations.xgboost
     :members:
     :show-inheritance:

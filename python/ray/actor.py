@@ -521,7 +521,7 @@ class ActorClass:
         """
         return self._remote(args=args, kwargs=kwargs, **self._default_options)
 
-    def options(self, args=None, kwargs=None, **actor_options):
+    def options(self, **actor_options):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -704,12 +704,6 @@ class ActorClass:
         name = actor_options["name"]
         namespace = actor_options["namespace"]
         lifetime = actor_options["lifetime"]
-        num_cpus = actor_options["num_cpus"]
-        num_gpus = actor_options["num_gpus"]
-        accelerator_type = actor_options["accelerator_type"]
-        resources = actor_options["resources"]
-        memory = actor_options["memory"]
-        object_store_memory = actor_options["object_store_memory"]
         runtime_env = actor_options["runtime_env"]
         placement_group = actor_options["placement_group"]
         placement_group_bundle_index = actor_options["placement_group_bundle_index"]
@@ -762,31 +756,6 @@ class ActorClass:
                 "'non_detached' and 'None'."
             )
 
-        # Set the actor's default resources if not already set. First three
-        # conditions are to check that no resources were specified in the
-        # decorator. Last three conditions are to check that no resources were
-        # specified when _remote() was called.
-        if (
-            num_cpus is None
-            and num_gpus is None
-            and resources is None
-            and accelerator_type is None
-        ):
-            # In the default case, actors acquire no resources for
-            # their lifetime, and actor methods will require 1 CPU.
-            cpus_to_use = ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE
-            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SIMPLE
-        else:
-            # If any resources are specified (here or in decorator), then
-            # all resources are acquired for the actor's lifetime and no
-            # resources are associated with methods.
-            cpus_to_use = (
-                ray_constants.DEFAULT_ACTOR_CREATION_CPU_SPECIFIED
-                if num_cpus is None
-                else num_cpus
-            )
-            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
-
         # LOCAL_MODE cannot handle cross_language
         if worker.mode == ray.LOCAL_MODE:
             assert (
@@ -811,21 +780,27 @@ class ActorClass:
                 meta.method_meta.methods.keys(),
             )
 
-        # TODO(suquark): cleanup "resources_from_resource_arguments" later.
-        resources = ray._private.utils.resources_from_resource_arguments(
-            cpus_to_use,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            accelerator_type,
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            accelerator_type,
-        )
+        resources = ray._private.utils.resources_from_ray_options(actor_options)
+        # Set the actor's default resources if not already set. First three
+        # conditions are to check that no resources were specified in the
+        # decorator. Last three conditions are to check that no resources were
+        # specified when _remote() was called.
+        # TODO(suquark): In the original code, memory is not considered as resources,
+        # when deciding the default CPUs. It is strange, but we keep the original
+        # semantics in case that it breaks user applications & tests.
+        if not set(resources.keys()).difference({"memory", "object_store_memory"}):
+            # In the default case, actors acquire no resources for
+            # their lifetime, and actor methods will require 1 CPU.
+            resources.setdefault("CPU", ray_constants.DEFAULT_ACTOR_CREATION_CPU_SIMPLE)
+            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SIMPLE
+        else:
+            # If any resources are specified (here or in decorator), then
+            # all resources are acquired for the actor's lifetime and no
+            # resources are associated with methods.
+            resources.setdefault(
+                "CPU", ray_constants.DEFAULT_ACTOR_CREATION_CPU_SPECIFIED
+            )
+            actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
         # If the actor methods require CPU resources, then set the required
         # placement resources. If actor_placement_resources is empty, then
