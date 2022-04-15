@@ -73,7 +73,7 @@ class A2CTrainer(A3CTrainer):
                     "`train_batch_size` should be considerably larger (at least 3x) "
                     "than `microbatch_size` for a microbatching setup to make sense!"
                 )
-            # Train batch size needs to be significantly larger than microbatch_size.
+            # Rollout fragment length needs to be less than microbatch_size.
             if config["rollout_fragment_length"] > config["microbatch_size"]:
                 logger.warning(
                     "`rollout_fragment_length` should not be larger than "
