@@ -69,7 +69,6 @@ def _resource_option(name: str, default_value: Any = None):
 _common_options = {
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
-    "metadata": Option((dict, type(None))),
     "name": Option((str, type(None))),
     "num_cpus": _resource_option("num_cpus"),
     "num_gpus": _resource_option("num_gpus"),
@@ -97,6 +96,7 @@ _common_options = {
             NodeAffinitySchedulingStrategy,
         )
     ),
+    "_metadata": Option((dict, type(None))),
 }
 
 
