@@ -327,7 +327,53 @@ def test_logs_experimental_write(ray_start_with_dashboard):
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
 
-# def test_logs_client_termination_results_in_agent_loop_termination():
+def test_logs_grpc_client_termination(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = ray_start_with_dashboard["node_id"]
+
+    time.sleep(1)
+    # Get dashboard agent log
+    RAYLET_FILE_NAME = "raylet.out"
+    DASHBOARD_AGENT_FILE_NAME = "dashboard_agent.log"
+    stream_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/stream?node_id={node_id}"
+        + f"&lines=0&log_file_name={RAYLET_FILE_NAME}",
+        stream=True,
+    )
+    if stream_response.status_code != 200:
+        raise ValueError(stream_response.text)
+    # give enough time for the initiation message to be written to the log
+    time.sleep(1)
+
+    file_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/file?node_id={node_id}"
+        + f"&lines=10&log_file_name={DASHBOARD_AGENT_FILE_NAME}",
+    )
+
+    # Check that gRPC stream initiated as a result of starting the stream
+    assert f"initiated StreamLog:\nlog_file_name: \"{RAYLET_FILE_NAME}\""
+    "\nkeep_alive: true" in file_response.text
+    # Check that gRPC stream has not terminated (is kept alive)
+    assert f"terminated StreamLog:\nlog_file_name: \"{RAYLET_FILE_NAME}\""
+    "\nkeep_alive: true" not in file_response.text
+
+    del stream_response
+    # give enough time for the termination message to be written to the log
+    time.sleep(1)
+
+    file_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/file?node_id={node_id}"
+        + f"&lines=10&log_file_name={DASHBOARD_AGENT_FILE_NAME}",
+    )
+
+    # Check that gRPC terminated as a result of closing the stream
+    assert f"terminated StreamLog:\nlog_file_name: \"{RAYLET_FILE_NAME}\""
+    "\nkeep_alive: true" in file_response.text
 
 
 if __name__ == "__main__":

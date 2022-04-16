@@ -47,6 +47,11 @@ class LogAgentV1Grpc(
         return False
 
     async def ListLogs(self, request, context):
+        logger.error(f"initiated ListLogs:\n{request}")
+
+        def on_exit(self):
+            logger.info(f"terminated ListLogs:\n{request}")
+        context.add_done_callback(on_exit)
         """
         Lists all files in the active Ray logs directory.
         """
@@ -65,6 +70,11 @@ class LogAgentV1Grpc(
         the end of the file if `request.keep_alive == True`. Else, it terminates the
         stream once there are no more bytes to read from the log file.
         """
+        logger.info(f"initiated StreamLog:\n{request}")
+
+        def on_exit(self):
+            logger.info(f"terminated StreamLog:\n{request}")
+        context.add_done_callback(on_exit)
         lines = request.lines if request.lines else 1000
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
