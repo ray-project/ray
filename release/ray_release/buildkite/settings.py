@@ -5,7 +5,7 @@ from typing import Optional, Dict, Tuple
 
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.wheels import DEFAULT_BRANCH
+from ray_release.wheels import DEFAULT_BRANCH, get_buildkite_repo_branch
 
 
 class Frequency(enum.Enum):
@@ -19,6 +19,7 @@ class Frequency(enum.Enum):
 frequency_str_to_enum = {
     "disabled": Frequency.DISABLED,
     "any": Frequency.ANY,
+    "any-smoke": Frequency.ANY,
     "multi": Frequency.MULTI,
     "nightly": Frequency.NIGHTLY,
     "weekly": Frequency.WEEKLY,
@@ -123,6 +124,7 @@ def get_pipeline_settings() -> Dict:
 def get_default_settings() -> Dict:
     settings = {
         "frequency": Frequency.ANY,
+        "prefer_smoke_tests": False,
         "test_attr_regex_filters": None,
         "ray_wheels": None,
         "ray_test_repo": None,
@@ -137,12 +139,21 @@ def update_settings_from_environment(settings: Dict) -> Dict:
     if "RELEASE_FREQUENCY" in os.environ:
         settings["frequency"] = get_frequency(os.environ["RELEASE_FREQUENCY"])
 
+    if "RELEASE_PREFER_SMOKE_TESTS" in os.environ:
+        settings["prefer_smoke_tests"] = bool(
+            int(os.environ["RELEASE_PREFER_SMOKE_TESTS"])
+        )
+    elif os.environ.get("RELEASE_FREQUENCY", "").endswith("-smoke"):
+        settings["prefer_smoke_tests"] = True
+
     if "RAY_TEST_REPO" in os.environ:
         settings["ray_test_repo"] = os.environ["RAY_TEST_REPO"]
         settings["ray_test_branch"] = os.environ.get("RAY_TEST_BRANCH", DEFAULT_BRANCH)
     elif "BUILDKITE_BRANCH" in os.environ:
-        settings["ray_test_repo"] = os.environ["BUILDKITE_REPO"]
-        settings["ray_test_branch"] = os.environ["BUILDKITE_BRANCH"]
+        repo_url, branch = get_buildkite_repo_branch()
+
+        settings["ray_test_repo"] = repo_url
+        settings["ray_test_branch"] = branch
 
     if "RAY_WHEELS" in os.environ:
         settings["ray_wheels"] = os.environ["RAY_WHEELS"]
@@ -171,6 +182,8 @@ def update_settings_from_buildkite(settings: Dict):
     release_frequency = get_buildkite_prompt_value("release-frequency")
     if release_frequency:
         settings["frequency"] = get_frequency(release_frequency)
+        if release_frequency.endswith("-smoke"):
+            settings["prefer_smoke_tests"] = True
 
     ray_test_repo_branch = get_buildkite_prompt_value("release-ray-test-repo-branch")
     if ray_test_repo_branch:

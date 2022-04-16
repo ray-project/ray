@@ -190,6 +190,8 @@ train.world_size
 PyTorch Training Function Utilities
 -----------------------------------
 
+.. _train-api-torch-prepare-model:
+
 train.torch.prepare_model
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -213,6 +215,7 @@ train.torch.backward
 
 .. autofunction:: ray.train.torch.backward
 
+.. _train-api-torch-get-device:
 
 train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~

@@ -459,8 +459,10 @@ slateq-interest-evolution-recsim-env:
     stop:
         episode_reward_mean: 162.0
         timesteps_total: 300000
-    num_workers: 12
+
     config:
+        # increase num sampling workers for faster sampling.
+        num_workers: 12
         # RLlib/RecSim wrapper specific settings:
         env_config:
             # Env class specified above takes one `config` arg in its c'tor:

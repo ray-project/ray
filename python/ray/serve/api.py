@@ -6,7 +6,6 @@ import logging
 import random
 import re
 import time
-import yaml
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -14,7 +13,6 @@ from typing import (
     Callable,
     Dict,
     Optional,
-    TextIO,
     Tuple,
     Type,
     Union,
@@ -54,18 +52,22 @@ from ray.serve.constants import (
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import (
+    DeploymentRoute,
+    DeploymentRouteList,
+    DeploymentStatusInfoList,
+)
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve.logging_utils import LoggingContext
 from ray.serve.utils import (
-    LoggingContext,
     ensure_serialization_context,
     format_actor_name,
     get_current_node_resource_key,
     get_random_letters,
     get_deployment_import_path,
     in_interactive_shell,
-    logger,
     DEFAULT,
 )
 from ray.util.annotations import PublicAPI
@@ -79,6 +81,9 @@ from ray.serve.schema import (
     ServeApplicationStatusSchema,
 )
 from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
+from ray.serve.application import Application
+
+logger = logging.getLogger(__file__)
 
 
 _INTERNAL_REPLICA_CONTEXT = None
@@ -283,7 +288,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             if len(statuses) == 0:
                 break
             else:
@@ -308,7 +313,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             try:
                 status = statuses[name]
             except KeyError:
@@ -341,7 +346,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             if name not in statuses:
                 break
             else:
@@ -435,15 +440,38 @@ class Client:
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
-        return ray.get(self._controller.get_deployment_info.remote(name))
+        deployment_route = DeploymentRoute.FromString(
+            ray.get(self._controller.get_deployment_info.remote(name))
+        )
+        return (
+            DeploymentInfo.from_proto(deployment_route.deployment_info),
+            deployment_route.route if deployment_route.route != "" else None,
+        )
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        return ray.get(self._controller.list_deployments.remote())
+        deployment_route_list = DeploymentRouteList.FromString(
+            ray.get(self._controller.list_deployments.remote())
+        )
+        return {
+            deployment_route.deployment_info.name: (
+                DeploymentInfo.from_proto(deployment_route.deployment_info),
+                deployment_route.route if deployment_route.route != "" else None,
+            )
+            for deployment_route in deployment_route_list.deployment_routes
+        }
 
     @_ensure_connected
     def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        return ray.get(self._controller.get_deployment_statuses.remote())
+        proto = DeploymentStatusInfoList.FromString(
+            ray.get(self._controller.get_deployment_statuses.remote())
+        )
+        return {
+            deployment_status_info.name: DeploymentStatusInfo.from_proto(
+                deployment_status_info
+            )
+            for deployment_status_info in proto.deployment_status_infos
+        }
 
     @_ensure_connected
     def get_handle(
@@ -582,6 +610,9 @@ class Client:
         else:
             raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
+        deployment_config.version = version
+        deployment_config.prev_version = prev_version
+
         if (
             deployment_config.autoscaling_config is not None
             and deployment_config.max_concurrent_queries
@@ -596,9 +627,7 @@ class Client:
         controller_deploy_args = {
             "name": name,
             "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-            "replica_config": replica_config,
-            "version": version,
-            "prev_version": prev_version,
+            "replica_config_proto_bytes": replica_config.to_proto_bytes(),
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().job_id,
         }
@@ -1236,156 +1265,9 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     return internal_get_global_client().get_deployment_statuses()
 
 
-class ImmutableDeploymentDict(dict):
-    def __init__(self, deployments: Dict[str, Deployment]):
-        super().__init__()
-        self.update(deployments)
-
-    def __setitem__(self, *args):
-        """Not allowed. Modify deployment options using set_options instead."""
-        raise RuntimeError(
-            "Setting deployments in a built app is not allowed. Modify the "
-            'options using app.deployments["deployment"].set_options instead.'
-        )
-
-
-class Application:
-    """A static, pre-built Serve application.
-
-    An application consists of a number of Serve deployments that can send
-    requests to each other. One of the deployments acts as the "ingress,"
-    meaning that it receives external traffic and is the entrypoint to the
-    application.
-
-    The ingress deployment can be accessed via app.ingress and a dictionary of
-    all deployments can be accessed via app.deployments.
-
-    The config options of each deployment can be modified using set_options:
-    app.deployments["name"].set_options(...).
-
-    This application object can be written to a config file and later deployed
-    to production using the Serve CLI or REST API.
-    """
-
-    def __init__(self, deployments: List[Deployment]):
-        deployment_dict = {}
-        for d in deployments:
-            if not isinstance(d, Deployment):
-                raise TypeError(f"Got {type(d)}. Expected deployment.")
-            elif d.name in deployment_dict:
-                raise ValueError(f"App got multiple deployments named '{d.name}'.")
-
-            deployment_dict[d.name] = d
-
-        self._deployments = ImmutableDeploymentDict(deployment_dict)
-
-    @property
-    def deployments(self) -> ImmutableDeploymentDict:
-        return self._deployments
-
-    @property
-    def ingress(self) -> Optional[Deployment]:
-        """Gets the app's ingress, if one exists.
-
-        The ingress is the single deployment with a non-None route prefix. If more
-        or less than one deployment has a route prefix, no single ingress exists,
-        so returns None.
-        """
-
-        ingress = None
-
-        for deployment in self._deployments.values():
-            if deployment.route_prefix is not None:
-                if ingress is None:
-                    ingress = deployment
-                else:
-                    return None
-
-        return ingress
-
-    def to_dict(self) -> Dict:
-        """Returns this Application's deployments as a dictionary.
-
-        This dictionary adheres to the Serve REST API schema. It can be deployed
-        via the Serve REST API.
-
-        Returns:
-            Dict: The Application's deployments formatted in a dictionary.
-        """
-        return serve_application_to_schema(self._deployments.values()).dict()
-
-    @classmethod
-    def from_dict(cls, d: Dict) -> "Application":
-        """Converts a dictionary of deployment data to an application.
-
-        Takes in a dictionary matching the Serve REST API schema and converts
-        it to an application containing those deployments.
-
-        Args:
-            d (Dict): A dictionary containing the deployments' data that matches
-                the Serve REST API schema.
-
-        Returns:
-            Application: a new application object containing the deployments.
-        """
-
-        return cls(schema_to_serve_application(ServeApplicationSchema.parse_obj(d)))
-
-    def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
-        """Returns this application's deployments as a YAML string.
-
-        Optionally writes the YAML string to a file as well. To write to a
-        file, use this pattern:
-
-        with open("file_name.txt", "w") as f:
-            app.to_yaml(f=f)
-
-        This file is formatted as a Serve YAML config file. It can be deployed
-        via the Serve CLI.
-
-        Args:
-            f (Optional[TextIO]): A pointer to the file where the YAML should
-                be written.
-
-        Returns:
-            Optional[String]: The deployments' YAML string. The output is from
-                yaml.safe_dump(). Returned only if no file pointer is passed in.
-        """
-
-        return yaml.safe_dump(
-            self.to_dict(), stream=f, default_flow_style=False, sort_keys=False
-        )
-
-    @classmethod
-    def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """Converts YAML data to deployments for an application.
-
-        Takes in a string or a file pointer to a file containing deployment
-        definitions in YAML. These definitions are converted to a new
-        application object containing the deployments.
-
-        To read from a file, use the following pattern:
-
-        with open("file_name.txt", "w") as f:
-            app = app.from_yaml(str_or_file)
-
-        Args:
-            str_or_file (Union[String, TextIO]): Either a string containing
-                YAML deployment definitions or a pointer to a file containing
-                YAML deployment definitions. The YAML format must adhere to the
-                ServeApplicationSchema JSON Schema defined in
-                ray.serve.schema. This function works with
-                Serve YAML config files.
-
-        Returns:
-            Application: a new Application object containing the deployments.
-        """
-        return cls.from_dict(yaml.safe_load(str_or_file))
-
-
 @PublicAPI(stability="alpha")
 def run(
-    target: Union[DeploymentNode, DeploymentFunctionNode, Application],
+    target: Union[DeploymentNode, DeploymentFunctionNode],
     _blocking: bool = True,
     *,
     host: str = DEFAULT_HTTP_HOST,
