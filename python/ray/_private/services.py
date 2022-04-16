@@ -97,6 +97,7 @@ ProcessInfo = collections.namedtuple(
 def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
     return GcsClientOptions.from_gcs_address(gcs_server_address)
 
+
 def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
 

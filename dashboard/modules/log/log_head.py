@@ -218,7 +218,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 tasks.append(coro())
         await asyncio.gather(*tasks)
         return response
-        
+
     @routes.get("/api/experimental/logs/list")
     async def handle_list_logs(self, req):
         """
@@ -238,6 +238,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             return err
         response = await self._list_logs(node_id, filters)
         return aiohttp.web.json_response(response)
+
     async def run(self, server):
         pass
 
