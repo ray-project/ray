@@ -10,6 +10,7 @@ from ray.core.generated import reporter_pb2_grpc
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
 from ray import ray_constants
+from typing import List
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         node_info["logUrl"] = log_url
 
     @routes.get("/log_index")
-    async def list_logs(self, req) -> aiohttp.web.Response:
+    async def get_log_index(self, req) -> aiohttp.web.Response:
         url_list = []
         agent_ips = []
         for node_id, ports in DataSource.agents.items():
@@ -134,12 +135,12 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             self._ip_to_node_id[ip] = node_id
 
     @staticmethod
-    async def get_logs_json_index(
-        grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: [str]
+    async def _list_logs_single_node(
+        grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: List[str]
     ):
         """
         Returns a JSON file mapping a category of log component to a list of filenames,
-        on the given node via the gRPC connection to its agent.
+        on the given node.
         """
         reply = await grpc_stub.ListLogs(
             reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
@@ -184,7 +185,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         )
         return logs
 
-    async def wait_until_initialized(self):
+    async def _wait_until_initialized(self):
+        """
+        Wait until connected to at least one node's log agent.
+        """
         POLL_SLEEP_TIME = 0.5
         POLL_RETRIES = 10
         for _ in range(POLL_RETRIES):
@@ -196,7 +200,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds."
         )
 
-    async def list_logs(self, node_id_query: str, filters: [str]):
+    async def _list_logs(self, node_id_query: str, filters: List[str]):
         """
         Helper function to list the logs by querying each agent
         on each cluster via gRPC.
@@ -207,7 +211,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             if node_id_query is None or node_id_query == node_id:
 
                 async def coro():
-                    response[node_id] = await self.get_logs_json_index(
+                    response[node_id] = await self._list_logs_single_node(
                         grpc_stub, filters
                     )
 
@@ -229,10 +233,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                     return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
                 node_id = self._ip_to_node_id[ip]
         filters = req.query.get("filters", "").split(",")
-        err = await self.wait_until_initialized()
+        err = await self._wait_until_initialized()
         if err is not None:
             return err
-        response = await self.list_logs(node_id, filters)
+        response = await self._list_logs(node_id, filters)
         return aiohttp.web.json_response(response)
     async def run(self, server):
         pass

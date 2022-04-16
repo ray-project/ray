@@ -189,7 +189,8 @@ def test_logs_experimental_list(ray_start_with_dashboard):
 
             # Test that logs/list can be filtered
             response = requests.get(
-                webui_url + "/api/experimental/logs/list?filters=gcs")
+                webui_url + "/api/experimental/logs/list?filters=gcs"
+            )
             response.raise_for_status()
             logs = json.loads(response.text)
             assert len(logs) == 1
@@ -197,15 +198,21 @@ def test_logs_experimental_list(ray_start_with_dashboard):
             assert "gcs_server" in logs[node_id] and len(logs[node_id]) == 1
 
             response = requests.get(
-                webui_url + "/api/experimental/logs/list?filters=worker")
+                webui_url + "/api/experimental/logs/list?filters=worker"
+            )
             response.raise_for_status()
             logs = json.loads(response.text)
             assert len(logs) == 1
             node_id = next(iter(logs))
-            worker_log_categories = ["python_core_worker_logs",
-                                     "worker_outs", "worker_errors"]
-            assert all([cat in logs[node_id] for cat in worker_log_categories]) and len(
-                logs[node_id]) == 3
+            worker_log_categories = [
+                "python_core_worker_logs",
+                "worker_outs",
+                "worker_errors",
+            ]
+            assert (
+                all([cat in logs[node_id] for cat in worker_log_categories])
+                and len(logs[node_id]) == 3
+            )
         except Exception as ex:
             last_ex = ex
         finally:

@@ -47,6 +47,15 @@ class LogAgentV1Grpc(
         return False
 
     async def ListLogs(self, request, context):
+        logger.error(f"initiated ListLogs:\n{request}")
+
+        def on_exit(self):
+            logger.info(f"terminated ListLogs:\n{request}")
+
+        context.add_done_callback(on_exit)
+        """
+        Lists all files in the active Ray logs directory.
+        """
         if os.path.exists(self._dashboard_agent.log_dir):
             log_files = os.listdir(self._dashboard_agent.log_dir)
         else:
@@ -62,6 +71,12 @@ class LogAgentV1Grpc(
         the end of the file if `request.keep_alive == True`. Else, it terminates the
         stream once there are no more bytes to read from the log file.
         """
+        logger.info(f"initiated StreamLog:\n{request}")
+
+        def on_exit(self):
+            logger.info(f"terminated StreamLog:\n{request}")
+
+        context.add_done_callback(on_exit)
         lines = request.lines if request.lines else 1000
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
@@ -114,12 +129,18 @@ def tail(f, lines):
 
     total_lines_wanted = lines
 
+    # Seek to the end of the file
     f.seek(0, 2)
     block_end_byte = f.tell()
+
     last_byte_read = block_end_byte
     lines_to_go = total_lines_wanted
     block_number = -1
     blocks = []
+
+    # Read blocks into memory until we have seen at least
+    # `total_lines_wanted` number of lines. Then, return a string
+    # containing the last `total_lines_wanted` number of lines
     while lines_to_go > 0 and block_end_byte > 0:
         if block_end_byte - BLOCK_SIZE > 0:
             f.seek(block_number * BLOCK_SIZE, 2)
