@@ -1,17 +1,34 @@
-from unthrow import *
-def l():
-    return 20
+import os
+import sys
+import ray
 
-def f():
-    s = 0
+from multiprocessing import Process
+v = 10
+@ray.remote
+def g():
+  return "AB"
 
-    raise RuntimeError()
+def info(title, c):
+    print(title)
+    print('module name:', __name__)
+    print('parent process:', os.getppid())
+    print('process id:', os.getpid())
+    print("GETTING")
+    print('c: ', ray.get(c))
+    from time import sleep
+    sleep(1)
+    print("Info>>>", v)
+    raise Exception("ABC")
+    print("END")
 
-
-
-def t():
-    r = Resumer()
-    print("run_once", r.run_once(f,))
-
-
-t()
+if __name__ == '__main__':
+    ray.init()
+    p = g.remote()
+    from time import sleep
+    sleep(1)
+    p = Process(target=info, args=('bob', p))
+    p.start()
+    v = 20
+    print(v)
+    p.join()
+    print("AAA")

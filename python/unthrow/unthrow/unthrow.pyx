@@ -4,13 +4,83 @@ from cpython.ref cimport Py_INCREF,Py_XDECREF,Py_XINCREF,Py_CLEAR
 from libc.string cimport memcpy
 from cpython cimport array
 import array
+from multiprocessing import Process, Queue
+from multiprocessing.process import AuthenticationString
+
 import collections
 import helper
 import sys,inspect,dis
+import cloudpickle
 
 traceall=False
 
 DEF PythonVersion=3.9
+
+_q = None
+
+_f = None
+
+class QQ:
+    def __init__(self):
+        self.q = Queue()
+
+    def get(self):
+        return self.q.get(True)
+
+    def put(self, v):
+        self.q.put(v)
+    def __getstate__(self):
+        return {}
+
+    def __setstate__(self, state):
+        self.q = Queue()
+
+class P(Process):
+    def __init__(self, *args, **kwargs):
+        super(P, self).__init__(*args, **kwargs)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        conf = state['_config']
+        if 'authkey' in conf:
+            conf['authkey'] = bytes(conf['authkey'])
+        return state
+
+    def __setstate__(self, state):
+        """for unpickling"""
+        state['_config']['authkey'] = AuthenticationString(state['_config']['authkey'])
+        self.__dict__.update(state)
+
+
+def run_func(q, mainfn, args, kwargs):
+    global _skip_stop, _q
+    _q = q
+    _skip_stop = False
+    try:
+        print("RUN")
+        print(mainfn, *args, **kwargs)
+        r = mainfn(*args, **kwargs)
+        _q.put(cloudpickle.dumps((r, None)))
+    except BaseException as e:
+        _q.put(cloudpickle.dumps((None, e)))
+    sys.exit(0)
+
+
+def resume_func(q, mainfn, resume_return, resume_except, resume_stack,  args, kwargs):
+    global _resume_return, _resume_except, _skip_stop, _q
+    _q = q
+    _skip_stop=True
+    _resume_return = resume_return
+    _resume_except = resume_except
+    _do_resume(<PyObject*>resume_stack)
+    try:
+        print("RESUME")
+        r = mainfn(*args, **kwargs)
+        _q.put(cloudpickle.dumps((r, None)))
+    except BaseException as e:
+        _q.put(cloudpickle.dumps((None, e)))
+    sys.exit(0)
+
 
 class Resumer:
     def __init__(self):
@@ -29,19 +99,16 @@ class Resumer:
         set_resume(0)
 
     def run_once(self, mainfn, *args, **kwargs):
+        q = QQ()
         global interrupts_enabled, _resume_return, _resume_except, _skip_stop
         # print("RUN_ONCE: ", mainfn, args, kwargs, self.resume_ret, self.resume_except)
         if self.resume_stack:
-            _skip_stop=True
-            _resume_return = self.resume_ret
-            _resume_except = self.resume_except
-            # print("ABOUT TO RESUME")
-            _do_resume(<PyObject*>self.resume_stack)
-            # print("CLEANUP")
-            self.resume_stack=None
+            p = P(target=resume_func, args=(q, mainfn, self.resume_ret, self.resume_except, self.resume_stack, args, kwargs))
+            self.resume_stack = None
+            self.resume_ret = None
             self.resume_except = None
         else:
-            _skip_stop=False
+            p = P(target=run_func, args=(q, mainfn, args, kwargs))
 
         self.running=1
         interrupts_enabled=1
@@ -54,22 +121,20 @@ class Resumer:
         r = None
         err = None
         try:
-            if helper.setjmp():
-                r = mainfn(*args, **kwargs)
-                clearjmp()
-
-                self.finished=True
-                return r
-            else:
-                global _ret
-                re = _ret
-                _ret = None
-                r = re.parameter
-                self.resume_stack=re.saved_frames
-                re.with_traceback(None)
+            print("GET")
+            p.start()
+            (ret, err) = cloudpickle.loads(q.get())
+            print("GOT")
+            if err is not None:
+                raise err
+            if isinstance(ret, ResumableException):
+                r = ret.parameter
+                self.resume_stack=ret.saved_frames
+                ret.with_traceback(None)
                 self.finished=False
                 _truncate_frame(<PyObject*>self.resume_stack)
-                return r
+            else:
+                return ret
         finally:
             # stop interrupts
             interrupts_enabled = 0
@@ -629,7 +694,7 @@ cdef void _resume_frame(PyObject* c_saved_frames,PyFrameObject* c_frame):
 _ret = None
 # this is a c function so it doesn't get traced into
 def stop(msg):
-    global _skip_stop,interrupts_enabled, _resume_return, _resume_except, _ret
+    global _q, _skip_stop,interrupts_enabled, _resume_return, _resume_except, _ret
 
     if _skip_stop:
         #print("RESUMING - enable interrupts")
@@ -641,7 +706,6 @@ def stop(msg):
         (_resume_return, _resume_except) = (None, None)
 
         if e is not None:
-            # print("RAISE e")
             raise e
         return r
     else:
@@ -652,10 +716,8 @@ def stop(msg):
         rex=make_resumable_exception(<PyObject*>msg,NULL)
         objRex=<object>rex
         Py_XDECREF(rex)
-        global _ret
-        _ret = objRex
-
-        helper.jmp()
+        _q.put(cloudpickle.dumps((objRex, None)))
+        sys.exit(0)
 
 _jmp = None
 
@@ -673,6 +735,7 @@ def setjmp():
     else:
         _jmp = None
         return False
+
 def jmp():
     cdef PyFrameObject* source_frame
     source_frame = <PyFrameObject*>(_jmp)
