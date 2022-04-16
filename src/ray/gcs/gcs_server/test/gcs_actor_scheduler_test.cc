@@ -24,6 +24,8 @@
 // clang-format on
 
 namespace ray {
+namespace gcs {
+
 class GcsActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -1171,6 +1173,7 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkersByGcs) {
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
 
+}  // namespace gcs
 }  // namespace ray
 
 int main(int argc, char **argv) {

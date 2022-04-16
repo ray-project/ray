@@ -32,7 +32,7 @@ struct MockCallback {
   void operator()(std::shared_ptr<GcsActor> a) { return Call(a); }
 };
 
-class GcsActorSchedulerTest : public Test {
+class GcsActorSchedulerMockTest : public Test {
  public:
   void SetUp() override {
     store_client = std::make_shared<MockStoreClient>();
@@ -106,7 +106,7 @@ class GcsActorSchedulerTest : public Test {
   WorkerID worker_id;
 };
 
-TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
+TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   // Ensure worker is not leak in the following case:
   //   1. Gcs start to lease a worker
   //   2. Gcs cancel the actor
@@ -132,7 +132,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
   cb(Status::OK(), reply);
 }
 
-TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
+TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   // Ensure worker is not leak in the following case:
   //   1. Actor is in pending creation
   //   2. Gcs push creation task to run in worker

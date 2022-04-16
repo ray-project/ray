@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <gtest/gtest_prod.h>
 
 #include <queue>
 
@@ -187,18 +188,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
 
   std::string DebugString() const override;
 
-  /// Schedule the actor at GCS. The target Raylet is selected by hybrid_policy by
-  /// default.
-  ///
-  /// \param actor The actor to be scheduled.
-  void ScheduleByGcs(std::shared_ptr<GcsActor> actor);
-
-  /// Forward the actor to a Raylet for scheduling. The target Raylet is the same node for
-  /// the actor's owner, or selected randomly.
-  ///
-  /// \param actor The actor to be scheduled.
-  void ScheduleByRaylet(std::shared_ptr<GcsActor> actor);
-
   /// Get the count of pending actors, which considers both infeasible and waiting queues.
   ///
   /// \return The count of pending actors.
@@ -354,6 +343,18 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Kill the actor on a node
   bool KillActorOnWorker(const rpc::Address &worker_address, ActorID actor_id);
 
+  /// Schedule the actor at GCS. The target Raylet is selected by hybrid_policy by
+  /// default.
+  ///
+  /// \param actor The actor to be scheduled.
+  void ScheduleByGcs(std::shared_ptr<GcsActor> actor);
+
+  /// Forward the actor to a Raylet for scheduling. The target Raylet is the same node for
+  /// the actor's owner, or selected randomly.
+  ///
+  /// \param actor The actor to be scheduled.
+  void ScheduleByRaylet(std::shared_ptr<GcsActor> actor);
+
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -390,6 +391,36 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Normal task resources changed callback.
   std::function<void(const NodeID &, const rpc::ResourcesData &)>
       normal_task_resources_changed_callback_;
+
+  friend class GcsActorSchedulerTest;
+  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode);
+  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleActorSuccess);
+  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing);
+  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenCreating);
+  FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenLeasing);
+  FRIEND_TEST(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing);
+  FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenCreating);
+  FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreating);
+  FRIEND_TEST(GcsActorSchedulerTest, TestSpillback);
+  FRIEND_TEST(GcsActorSchedulerTest, TestReschedule);
+  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedWorkers);
+  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNodeByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestNotEnoughClusterResources);
+  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor);
+  FRIEND_TEST(GcsActorSchedulerTest, TestBalancedSchedule);
+  FRIEND_TEST(GcsActorSchedulerTest, TestRejectedRequestWorkerLeaseReply);
+  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestScheduleRetryWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestRescheduleByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedWorkersByGcs);
+
+  friend class GcsActorSchedulerMockTest;
+  FRIEND_TEST(GcsActorSchedulerMockTest, KillWorkerLeak1);
+  FRIEND_TEST(GcsActorSchedulerMockTest, KillWorkerLeak2);
 };
 
 }  // namespace gcs
