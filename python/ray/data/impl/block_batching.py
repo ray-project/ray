@@ -64,8 +64,8 @@ def batch_blocks(
     for block_window in _sliding_window(blocks, prefetch_blocks + 1):
         block_window = list(block_window)
         with stats.iter_wait_s.timer():
-            prefercher = get_or_create_prefetcher()
-            prefercher.prefetch.remote(*block_window)
+            prefetcher = get_or_create_prefetcher()
+            prefetcher.prefetch.remote(*block_window)
         yield from batch_block(block_window[0])
 
     # Consume remainder of final block window.
@@ -135,6 +135,7 @@ def _sliding_window(iterable: Iterable, n: int):
 class _BlockPretcher:
     def prefetch(self, *args):
         pass
+
 
 def get_or_create_prefetcher():
     ip_address = ray.util.get_node_ip_address()
