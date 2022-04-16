@@ -9,13 +9,17 @@ if TYPE_CHECKING:
 import numpy as np
 
 import ray
+from ray.actor import ActorHandle
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
+from ray.data.context import DatasetContext
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.stats import DatasetStats, DatasetPipelineStats
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
+PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 def batch_blocks(
@@ -64,8 +68,13 @@ def batch_blocks(
     for block_window in _sliding_window(blocks, prefetch_blocks + 1):
         block_window = list(block_window)
         with stats.iter_wait_s.timer():
-            prefetcher = get_or_create_prefetcher()
-            prefetcher.prefetch.remote(*block_window)
+            context = DatasetContext.get_current()
+            if context.actor_prefetcher_enabled:
+                prefetcher = get_or_create_prefetcher()
+                for block in block_window:
+                    prefetcher.prefetch.remote(block)
+            else:
+                ray.wait(block_window, num_returns=1, fetch_local=True)
         yield from batch_block(block_window[0])
 
     # Consume remainder of final block window.
@@ -133,23 +142,19 @@ def _sliding_window(iterable: Iterable, n: int):
 
 @ray.remote(num_cpus=0, placement_group=None)
 class _BlockPretcher:
-    def prefetch(self, *args):
+    """Helper actor that prefetches blocks asynchronously."""
+
+    def prefetch(self, *blocks) -> None:
         pass
 
 
-def get_or_create_prefetcher():
-    ip_address = ray.util.get_node_ip_address()
-    actor_name = f"dataset-prefetcher-{ip_address}"
-    try:
-        prefetcher = ray.get_actor(
-            actor_name,
-            namespace="dataset",
-        )
-    except ValueError:
-        prefetcher = _BlockPretcher.options(
-            resources={"node:{}".format(ip_address): 0.0001},
-            name=actor_name,
-            namespace="dataset",
-            lifetime="detached",
-        ).remote()
-    return prefetcher
+def get_or_create_prefetcher() -> "ActorHandle":
+    node_id = ray.get_runtime_context().node_id
+    actor_name = f"dataset-block-prefetcher-{node_id}"
+    return _BlockPretcher.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+        name=actor_name,
+        namespace=PREFETCHER_ACTOR_NAMESPACE,
+        lifetime="detached",
+        get_if_exists=True,
+    ).remote()
