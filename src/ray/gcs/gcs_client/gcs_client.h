@@ -173,8 +173,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Checks whether GCS at the specified address is healthy.
   bool CheckHealth(const std::string &ip, int port, int64_t timeout_ms);
 
-  /// Fire a periodic timer to check if GCS sever address has changed.
-  void PeriodicallyCheckGcsServerAddress();
+  /// Fires a periodic timer to check if the connection to GCS is healthy.
+  void PeriodicallyCheckGcsConnection();
 
   /// This function is used to redo subscription and reconnect to GCS RPC server when gcs
   /// service failure is detected.

@@ -156,9 +156,9 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   // Init gcs service address check timer.
   periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service);
   periodical_runner_->RunFnPeriodically(
-      [this] { PeriodicallyCheckGcsServerAddress(); },
+      [this] { PeriodicallyCheckGcsConnection(); },
       RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
-      "GcsClient.deadline_timer.check_gcs_service_address");
+      "GcsClient.deadline_timer.check_gcs_connection");
 
   is_connected_ = true;
 
@@ -203,20 +203,20 @@ bool GcsClient::CheckHealth(const std::string &ip, int port, int64_t timeout_ms)
   return true;
 }
 
-void GcsClient::PeriodicallyCheckGcsServerAddress() {
+void GcsClient::PeriodicallyCheckGcsConnection() {
   if (disconnected_) {
     return;
   }
+  // Check if current connection has failed.
   if (current_connection_failure_.has_value()) {
     GcsServiceFailureDetected(*current_connection_failure_);
     current_connection_failure_.reset();
     return;
   }
+  // Check if GCS address has changed because of restarting.
   std::pair<std::string, int> address;
   if (get_server_address_func_(&address)) {
     if (address != current_gcs_server_address_) {
-      // If GCS server address has changed, invoke the `GcsServiceFailureDetected`
-      // callback.
       current_gcs_server_address_ = address;
       GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART);
     }
