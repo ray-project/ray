@@ -229,8 +229,6 @@ struct SyncerServerTest {
           msg.set_component_id(static_cast<RayComponentId>(cid));
           msg.set_version(local_versions[cid]);
           msg.set_node_id(syncer->GetLocalNodeID());
-          std::string dbg_message;
-          google::protobuf::util::MessageToJsonString(msg, &dbg_message);
           snapshot_taken++;
           return std::make_optional(std::move(msg));
         }
@@ -494,9 +492,9 @@ TEST(SyncerTest, Test1To1) {
       },
       5));
   // s2 has two reporters + 3 for the ones send before the measure
-  ASSERT_LT(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), max_sends * 2 + 3);
+  ASSERT_LE(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), max_sends * 2 + 3);
   // s1 has one reporter + 1 for the one send before the measure
-  ASSERT_LT(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
+  ASSERT_LE(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
 }
 
 TEST(SyncerTest, Broadcast) {

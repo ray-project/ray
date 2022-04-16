@@ -1,14 +1,11 @@
 import asyncio
 import atexit
 import collections
-from copy import copy
 import inspect
 import logging
 import random
 import re
 import time
-import yaml
-import json
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
@@ -16,7 +13,6 @@ from typing import (
     Callable,
     Dict,
     Optional,
-    TextIO,
     Tuple,
     Type,
     Union,
@@ -27,8 +23,6 @@ from typing import (
 
 from fastapi import APIRouter, FastAPI
 from ray.exceptions import RayActorError
-from ray.experimental.dag.class_node import ClassNode
-from ray.experimental.dag.function_node import FunctionNode
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -56,19 +50,24 @@ from ray.serve.constants import (
     DEFAULT_HTTP_PORT,
 )
 from ray.serve.controller import ServeController
+from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import (
+    DeploymentRoute,
+    DeploymentRouteList,
+    DeploymentStatusInfoList,
+)
 from ray.experimental.dag import DAGNode
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve.logging_utils import LoggingContext
 from ray.serve.utils import (
-    LoggingContext,
     ensure_serialization_context,
     format_actor_name,
     get_current_node_resource_key,
     get_random_letters,
     get_deployment_import_path,
     in_interactive_shell,
-    logger,
     DEFAULT,
 )
 from ray.util.annotations import PublicAPI
@@ -81,6 +80,10 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeApplicationStatusSchema,
 )
+from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
+from ray.serve.application import Application
+
+logger = logging.getLogger(__file__)
 
 
 _INTERNAL_REPLICA_CONTEXT = None
@@ -285,7 +288,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             if len(statuses) == 0:
                 break
             else:
@@ -310,7 +313,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             try:
                 status = statuses[name]
             except KeyError:
@@ -343,7 +346,7 @@ class Client:
         """
         start = time.time()
         while time.time() - start < timeout_s:
-            statuses = ray.get(self._controller.get_deployment_statuses.remote())
+            statuses = self.get_deployment_statuses()
             if name not in statuses:
                 break
             else:
@@ -437,15 +440,38 @@ class Client:
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
-        return ray.get(self._controller.get_deployment_info.remote(name))
+        deployment_route = DeploymentRoute.FromString(
+            ray.get(self._controller.get_deployment_info.remote(name))
+        )
+        return (
+            DeploymentInfo.from_proto(deployment_route.deployment_info),
+            deployment_route.route if deployment_route.route != "" else None,
+        )
 
     @_ensure_connected
     def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
-        return ray.get(self._controller.list_deployments.remote())
+        deployment_route_list = DeploymentRouteList.FromString(
+            ray.get(self._controller.list_deployments.remote())
+        )
+        return {
+            deployment_route.deployment_info.name: (
+                DeploymentInfo.from_proto(deployment_route.deployment_info),
+                deployment_route.route if deployment_route.route != "" else None,
+            )
+            for deployment_route in deployment_route_list.deployment_routes
+        }
 
     @_ensure_connected
     def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        return ray.get(self._controller.get_deployment_statuses.remote())
+        proto = DeploymentStatusInfoList.FromString(
+            ray.get(self._controller.get_deployment_statuses.remote())
+        )
+        return {
+            deployment_status_info.name: DeploymentStatusInfo.from_proto(
+                deployment_status_info
+            )
+            for deployment_status_info in proto.deployment_status_infos
+        }
 
     @_ensure_connected
     def get_handle(
@@ -584,6 +610,9 @@ class Client:
         else:
             raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
+        deployment_config.version = version
+        deployment_config.prev_version = prev_version
+
         if (
             deployment_config.autoscaling_config is not None
             and deployment_config.max_concurrent_queries
@@ -598,9 +627,7 @@ class Client:
         controller_deploy_args = {
             "name": name,
             "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-            "replica_config": replica_config,
-            "version": version,
-            "prev_version": prev_version,
+            "replica_config_proto_bytes": replica_config.to_proto_bytes(),
             "route_prefix": route_prefix,
             "deployer_job_id": ray.get_runtime_context().job_id,
         }
@@ -998,499 +1025,6 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
     return decorator
 
 
-@PublicAPI(stability="alpha")
-class RayServeDAGHandle:
-    """Resolved from a DeploymentNode at runtime.
-
-    This can be used to call the DAG from a driver deployment to efficiently
-    orchestrate a deployment graph.
-    """
-
-    def __init__(self, dag_node_json: str) -> None:
-
-        self.dag_node_json = dag_node_json
-
-        # NOTE(simon): Making this lazy to avoid deserialization in controller for now
-        # This would otherwise hang because it's trying to get handles from within
-        # the controller.
-        self.dag_node = None
-
-    @classmethod
-    def _deserialize(cls, *args):
-        """Required for this class's __reduce__ method to be picklable."""
-        return cls(*args)
-
-    def __reduce__(self):
-        return RayServeDAGHandle._deserialize, (self.dag_node_json,)
-
-    def remote(self, *args, **kwargs):
-        from ray.serve.pipeline.json_serde import dagnode_from_json
-
-        if self.dag_node is None:
-            self.dag_node = json.loads(
-                self.dag_node_json, object_hook=dagnode_from_json
-            )
-        return self.dag_node.execute(*args, **kwargs)
-
-
-@PublicAPI(stability="alpha")
-class DeploymentMethodNode(DAGNode):
-    """Represents a method call on a bound deployment node.
-
-    These method calls can be composed into an optimized call DAG and passed
-    to a "driver" deployment that will orchestrate the calls at runtime.
-
-    This class cannot be called directly. Instead, when it is bound to a
-    deployment node, it will be resolved to a DeployedCallGraph at runtime.
-    """
-
-    # TODO (jiaodong): Later unify and refactor this with pipeline node class
-    pass
-
-
-@PublicAPI(stability="alpha")
-class DeploymentNode(ClassNode):
-    """Represents a deployment with its bound config options and arguments.
-
-    The bound deployment can be run using serve.run().
-
-    A bound deployment can be passed as an argument to other bound deployments
-    to build a deployment graph. When the graph is deployed, the
-    bound deployments passed into a constructor will be converted to
-    RayServeHandles that can be used to send requests.
-
-    Calling deployment.method.bind() will return a DeploymentMethodNode
-    that can be used to compose an optimized call graph.
-    """
-
-    # TODO (jiaodong): Later unify and refactor this with pipeline node class
-    def bind(self, *args, **kwargs):
-        """Bind the default __call__ method and return a DeploymentMethodNode"""
-        return self.__call__.bind(*args, **kwargs)
-
-
-@PublicAPI(stability="alpha")
-class DeploymentFunctionNode(FunctionNode):
-    """Represents a serve.deployment decorated function from user.
-
-    It's the counterpart of DeploymentNode that represents function as body
-    instead of class.
-    """
-
-    pass
-
-
-@PublicAPI
-class Deployment:
-    def __init__(
-        self,
-        func_or_class: Union[Callable, str],
-        name: str,
-        config: DeploymentConfig,
-        version: Optional[str] = None,
-        prev_version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Tuple[Any]] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        ray_actor_options: Optional[Dict] = None,
-        _internal=False,
-    ) -> None:
-        """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
-
-        Deployments should be created, retrieved, and updated using
-        `@serve.deployment`, `serve.get_deployment`, and `Deployment.options`,
-        respectively.
-        """
-
-        if not _internal:
-            raise RuntimeError(
-                "The Deployment constructor should not be called "
-                "directly. Use `@serve.deployment` instead."
-            )
-        if not callable(func_or_class) and not isinstance(func_or_class, str):
-            raise TypeError("@serve.deployment must be called on a class or function.")
-        if not isinstance(name, str):
-            raise TypeError("name must be a string.")
-        if not (version is None or isinstance(version, str)):
-            raise TypeError("version must be a string.")
-        if not (prev_version is None or isinstance(prev_version, str)):
-            raise TypeError("prev_version must be a string.")
-        if not (init_args is None or isinstance(init_args, (tuple, list))):
-            raise TypeError("init_args must be a tuple.")
-        if not (init_kwargs is None or isinstance(init_kwargs, dict)):
-            raise TypeError("init_kwargs must be a dict.")
-        if route_prefix is not DEFAULT.VALUE and route_prefix is not None:
-            if not isinstance(route_prefix, str):
-                raise TypeError("route_prefix must be a string.")
-            if not route_prefix.startswith("/"):
-                raise ValueError("route_prefix must start with '/'.")
-            if route_prefix != "/" and route_prefix.endswith("/"):
-                raise ValueError(
-                    "route_prefix must not end with '/' unless it's the root."
-                )
-            if "{" in route_prefix or "}" in route_prefix:
-                raise ValueError("route_prefix may not contain wildcards.")
-        if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
-            raise TypeError("ray_actor_options must be a dict.")
-
-        if init_args is None:
-            init_args = ()
-        if init_kwargs is None:
-            init_kwargs = {}
-
-        # TODO(architkulkarni): Enforce that autoscaling_config and
-        # user-provided num_replicas should be mutually exclusive.
-        if version is None and config.autoscaling_config is not None:
-            # TODO(architkulkarni): Remove this restriction.
-            raise ValueError(
-                "Currently autoscaling is only supported for "
-                "versioned deployments. Try @serve.deployment(version=...)."
-            )
-
-        self._func_or_class = func_or_class
-        self._name = name
-        self._version = version
-        self._prev_version = prev_version
-        self._config = config
-        self._init_args = init_args
-        self._init_kwargs = init_kwargs
-        self._route_prefix = route_prefix
-        self._ray_actor_options = ray_actor_options
-
-    @property
-    def name(self) -> str:
-        """Unique name of this deployment."""
-        return self._name
-
-    @property
-    def version(self) -> Optional[str]:
-        """Version of this deployment.
-
-        If None, will be redeployed every time `.deploy()` is called.
-        """
-        return self._version
-
-    @property
-    def prev_version(self) -> Optional[str]:
-        """Existing version of deployment to target.
-
-        If prev_version does not match with existing deployment
-        version, the deployment will fail to be deployed.
-        """
-        return self._prev_version
-
-    @property
-    def func_or_class(self) -> Union[Callable, str]:
-        """Underlying class or function that this deployment wraps."""
-        return self._func_or_class
-
-    @property
-    def num_replicas(self) -> int:
-        """Current target number of replicas."""
-        return self._config.num_replicas
-
-    @property
-    def user_config(self) -> Any:
-        """Current dynamic user-provided config options."""
-        return self._config.user_config
-
-    @property
-    def max_concurrent_queries(self) -> int:
-        """Current max outstanding queries from each handle."""
-        return self._config.max_concurrent_queries
-
-    @property
-    def route_prefix(self) -> Optional[str]:
-        """HTTP route prefix that this deployment is exposed under."""
-        if self._route_prefix is DEFAULT.VALUE:
-            return f"/{self._name}"
-        return self._route_prefix
-
-    @property
-    def ray_actor_options(self) -> Optional[Dict]:
-        """Actor options such as resources required for each replica."""
-        return self._ray_actor_options
-
-    @property
-    def init_args(self) -> Tuple[Any]:
-        """Positional args passed to the underlying class's constructor."""
-        return self._init_args
-
-    @property
-    def init_kwargs(self) -> Tuple[Any]:
-        """Keyword args passed to the underlying class's constructor."""
-        return self._init_kwargs
-
-    @property
-    def url(self) -> Optional[str]:
-        """Full HTTP url for this deployment."""
-        if self._route_prefix is None:
-            # this deployment is not exposed over HTTP
-            return None
-
-        return internal_get_global_client().root_url + self.route_prefix
-
-    def __call__(self):
-        raise RuntimeError(
-            "Deployments cannot be constructed directly. "
-            "Use `deployment.deploy() instead.`"
-        )
-
-    @PublicAPI(stability="alpha")
-    def bind(self, *args, **kwargs) -> Union[DeploymentNode, DeploymentFunctionNode]:
-        """Bind the provided arguments and return a DeploymentNode.
-
-        The returned bound deployment can be deployed or bound to other
-        deployments to create a deployment graph.
-        """
-        copied_self = copy(self)
-        copied_self._init_args = []
-        copied_self._init_kwargs = {}
-        copied_self._func_or_class = "dummpy.module"
-        schema_shell = deployment_to_schema(copied_self)
-
-        if inspect.isfunction(self._func_or_class):
-            return DeploymentFunctionNode(
-                self._func_or_class,
-                args,  # Used to bind and resolve DAG only, can take user input
-                kwargs,  # Used to bind and resolve DAG only, can take user input
-                self._ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_schema": schema_shell,
-                    "is_from_serve_deployment": True,
-                },
-            )
-        else:
-            return DeploymentNode(
-                self._func_or_class,
-                args,
-                kwargs,
-                cls_options=self._ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_schema": schema_shell,
-                    "is_from_serve_deployment": True,
-                },
-            )
-
-    @PublicAPI
-    def deploy(self, *init_args, _blocking=True, **init_kwargs):
-        """Deploy or update this deployment.
-
-        Args:
-            init_args (optional): args to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-            init_kwargs (optional): kwargs to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-        """
-        if len(init_args) == 0 and self._init_args is not None:
-            init_args = self._init_args
-        if len(init_kwargs) == 0 and self._init_kwargs is not None:
-            init_kwargs = self._init_kwargs
-
-        return internal_get_global_client().deploy(
-            self._name,
-            self._func_or_class,
-            init_args,
-            init_kwargs,
-            ray_actor_options=self._ray_actor_options,
-            config=self._config,
-            version=self._version,
-            prev_version=self._prev_version,
-            route_prefix=self.route_prefix,
-            url=self.url,
-            _blocking=_blocking,
-        )
-
-    @PublicAPI
-    def delete(self):
-        """Delete this deployment."""
-        return internal_get_global_client().delete_deployments([self._name])
-
-    @PublicAPI
-    def get_handle(
-        self, sync: Optional[bool] = True
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Get a ServeHandle to this deployment to invoke it from Python.
-
-        Args:
-            sync (bool): If true, then Serve will return a ServeHandle that
-                works everywhere. Otherwise, Serve will return an
-                asyncio-optimized ServeHandle that's only usable in an asyncio
-                loop.
-
-        Returns:
-            ServeHandle
-        """
-        return internal_get_global_client().get_handle(
-            self._name, missing_ok=True, sync=sync
-        )
-
-    @PublicAPI
-    def options(
-        self,
-        func_or_class: Optional[Callable] = None,
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-        prev_version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        num_replicas: Optional[int] = None,
-        ray_actor_options: Optional[Dict] = None,
-        user_config: Optional[Any] = None,
-        max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None,
-        _health_check_period_s: Optional[float] = None,
-        _health_check_timeout_s: Optional[float] = None,
-    ) -> "Deployment":
-        """Return a copy of this deployment with updated options.
-
-        Only those options passed in will be updated, all others will remain
-        unchanged from the existing deployment.
-        """
-        new_config = self._config.copy()
-        if num_replicas is not None:
-            new_config.num_replicas = num_replicas
-        if user_config is not None:
-            new_config.user_config = user_config
-        if max_concurrent_queries is not None:
-            new_config.max_concurrent_queries = max_concurrent_queries
-
-        if func_or_class is None:
-            func_or_class = self._func_or_class
-
-        if name is None:
-            name = self._name
-
-        if version is None:
-            version = self._version
-
-        if prev_version is None:
-            prev_version = self._prev_version
-
-        if init_args is None:
-            init_args = self._init_args
-
-        if init_kwargs is None:
-            init_kwargs = self._init_kwargs
-
-        if route_prefix is DEFAULT.VALUE:
-            # Default is to keep the previous value
-            route_prefix = self._route_prefix
-
-        if ray_actor_options is None:
-            ray_actor_options = self._ray_actor_options
-
-        if _autoscaling_config is not None:
-            new_config.autoscaling_config = _autoscaling_config
-
-        if _graceful_shutdown_wait_loop_s is not None:
-            new_config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
-
-        if _graceful_shutdown_timeout_s is not None:
-            new_config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
-
-        if _health_check_period_s is not None:
-            new_config.health_check_period_s = _health_check_period_s
-
-        if _health_check_timeout_s is not None:
-            new_config.health_check_timeout_s = _health_check_timeout_s
-
-        return Deployment(
-            func_or_class,
-            name,
-            new_config,
-            version=version,
-            prev_version=prev_version,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            route_prefix=route_prefix,
-            ray_actor_options=ray_actor_options,
-            _internal=True,
-        )
-
-    @PublicAPI(stability="alpha")
-    def set_options(
-        self,
-        func_or_class: Optional[Callable] = None,
-        name: Optional[str] = None,
-        version: Optional[str] = None,
-        prev_version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Dict[Any, Any]] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        num_replicas: Optional[int] = None,
-        ray_actor_options: Optional[Dict] = None,
-        user_config: Optional[Any] = None,
-        max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None,
-        _health_check_period_s: Optional[float] = None,
-        _health_check_timeout_s: Optional[float] = None,
-    ) -> None:
-        """Overwrite this deployment's options. Mutates the deployment.
-
-        Only those options passed in will be updated, all others will remain
-        unchanged.
-        """
-
-        validated = self.options(
-            func_or_class=func_or_class,
-            name=name,
-            version=version,
-            prev_version=prev_version,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            route_prefix=route_prefix,
-            num_replicas=num_replicas,
-            ray_actor_options=ray_actor_options,
-            user_config=user_config,
-            max_concurrent_queries=max_concurrent_queries,
-            _autoscaling_config=_autoscaling_config,
-            _graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
-            _graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
-            _health_check_period_s=_health_check_period_s,
-            _health_check_timeout_s=_health_check_timeout_s,
-        )
-
-        self._func_or_class = validated._func_or_class
-        self._name = validated._name
-        self._version = validated._version
-        self._prev_version = validated._prev_version
-        self._init_args = validated._init_args
-        self._init_kwargs = validated._init_kwargs
-        self._route_prefix = validated._route_prefix
-        self._ray_actor_options = validated._ray_actor_options
-        self._config = validated._config
-
-    def __eq__(self, other):
-        return all(
-            [
-                self._name == other._name,
-                self._version == other._version,
-                self._config == other._config,
-                self._init_args == other._init_args,
-                self._init_kwargs == other._init_kwargs,
-                # compare route prefix with default value resolved
-                self.route_prefix == other.route_prefix,
-                self._ray_actor_options == self._ray_actor_options,
-            ]
-        )
-
-    def __str__(self):
-        return (
-            f"Deployment(name={self._name},"
-            f"version={self._version},"
-            f"route_prefix={self.route_prefix})"
-        )
-
-    def __repr__(self):
-        return str(self)
-
-
 @overload
 def deployment(func_or_class: Callable) -> Deployment:
     pass
@@ -1731,156 +1265,9 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
     return internal_get_global_client().get_deployment_statuses()
 
 
-class ImmutableDeploymentDict(dict):
-    def __init__(self, deployments: Dict[str, Deployment]):
-        super().__init__()
-        self.update(deployments)
-
-    def __setitem__(self, *args):
-        """Not allowed. Modify deployment options using set_options instead."""
-        raise RuntimeError(
-            "Setting deployments in a built app is not allowed. Modify the "
-            'options using app.deployments["deployment"].set_options instead.'
-        )
-
-
-class Application:
-    """A static, pre-built Serve application.
-
-    An application consists of a number of Serve deployments that can send
-    requests to each other. One of the deployments acts as the "ingress,"
-    meaning that it receives external traffic and is the entrypoint to the
-    application.
-
-    The ingress deployment can be accessed via app.ingress and a dictionary of
-    all deployments can be accessed via app.deployments.
-
-    The config options of each deployment can be modified using set_options:
-    app.deployments["name"].set_options(...).
-
-    This application object can be written to a config file and later deployed
-    to production using the Serve CLI or REST API.
-    """
-
-    def __init__(self, deployments: List[Deployment]):
-        deployment_dict = {}
-        for d in deployments:
-            if not isinstance(d, Deployment):
-                raise TypeError(f"Got {type(d)}. Expected deployment.")
-            elif d.name in deployment_dict:
-                raise ValueError(f"App got multiple deployments named '{d.name}'.")
-
-            deployment_dict[d.name] = d
-
-        self._deployments = ImmutableDeploymentDict(deployment_dict)
-
-    @property
-    def deployments(self) -> ImmutableDeploymentDict:
-        return self._deployments
-
-    @property
-    def ingress(self) -> Optional[Deployment]:
-        """Gets the app's ingress, if one exists.
-
-        The ingress is the single deployment with a non-None route prefix. If more
-        or less than one deployment has a route prefix, no single ingress exists,
-        so returns None.
-        """
-
-        ingress = None
-
-        for deployment in self._deployments.values():
-            if deployment.route_prefix is not None:
-                if ingress is None:
-                    ingress = deployment
-                else:
-                    return None
-
-        return ingress
-
-    def to_dict(self) -> Dict:
-        """Returns this Application's deployments as a dictionary.
-
-        This dictionary adheres to the Serve REST API schema. It can be deployed
-        via the Serve REST API.
-
-        Returns:
-            Dict: The Application's deployments formatted in a dictionary.
-        """
-        return serve_application_to_schema(self._deployments.values()).dict()
-
-    @classmethod
-    def from_dict(cls, d: Dict) -> "Application":
-        """Converts a dictionary of deployment data to an application.
-
-        Takes in a dictionary matching the Serve REST API schema and converts
-        it to an application containing those deployments.
-
-        Args:
-            d (Dict): A dictionary containing the deployments' data that matches
-                the Serve REST API schema.
-
-        Returns:
-            Application: a new application object containing the deployments.
-        """
-
-        return cls(schema_to_serve_application(ServeApplicationSchema.parse_obj(d)))
-
-    def to_yaml(self, f: Optional[TextIO] = None) -> Optional[str]:
-        """Returns this application's deployments as a YAML string.
-
-        Optionally writes the YAML string to a file as well. To write to a
-        file, use this pattern:
-
-        with open("file_name.txt", "w") as f:
-            app.to_yaml(f=f)
-
-        This file is formatted as a Serve YAML config file. It can be deployed
-        via the Serve CLI.
-
-        Args:
-            f (Optional[TextIO]): A pointer to the file where the YAML should
-                be written.
-
-        Returns:
-            Optional[String]: The deployments' YAML string. The output is from
-                yaml.safe_dump(). Returned only if no file pointer is passed in.
-        """
-
-        return yaml.safe_dump(
-            self.to_dict(), stream=f, default_flow_style=False, sort_keys=False
-        )
-
-    @classmethod
-    def from_yaml(cls, str_or_file: Union[str, TextIO]) -> "Application":
-        """Converts YAML data to deployments for an application.
-
-        Takes in a string or a file pointer to a file containing deployment
-        definitions in YAML. These definitions are converted to a new
-        application object containing the deployments.
-
-        To read from a file, use the following pattern:
-
-        with open("file_name.txt", "w") as f:
-            app = app.from_yaml(str_or_file)
-
-        Args:
-            str_or_file (Union[String, TextIO]): Either a string containing
-                YAML deployment definitions or a pointer to a file containing
-                YAML deployment definitions. The YAML format must adhere to the
-                ServeApplicationSchema JSON Schema defined in
-                ray.serve.schema. This function works with
-                Serve YAML config files.
-
-        Returns:
-            Application: a new Application object containing the deployments.
-        """
-        return cls.from_dict(yaml.safe_load(str_or_file))
-
-
 @PublicAPI(stability="alpha")
 def run(
-    target: Union[DeploymentNode, DeploymentFunctionNode, Application],
+    target: Union[DeploymentNode, DeploymentFunctionNode],
     _blocking: bool = True,
     *,
     host: str = DEFAULT_HTTP_HOST,

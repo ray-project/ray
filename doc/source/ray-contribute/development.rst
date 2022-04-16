@@ -94,7 +94,7 @@ Ray can be built from the repository as follows.
   git clone https://github.com/ray-project/ray.git
 
   # Install Bazel.
-  ray/ci/travis/install-bazel.sh
+  ray/ci/env/install-bazel.sh
   # (Windows users: please manually place Bazel in your PATH, and point
   # BAZEL_SH to MSYS2's Bash: ``set BAZEL_SH=C:\Program Files\Git\bin\bash.exe``)
 

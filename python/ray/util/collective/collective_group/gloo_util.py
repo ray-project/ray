@@ -9,9 +9,14 @@ except ImportError:
         "Can not import pygloo. Please run 'pip install pygloo' to install pygloo."
     )
 
+import time
+
 import ray
 from ray.util.collective.types import ReduceOp, torch_available
 from ray.util.queue import _QueueActor
+
+import ray.experimental.internal_kv as internal_kv
+from ray._private.gcs_utils import GcsClient
 
 GLOO_REDUCE_OP_MAP = {
     ReduceOp.SUM: pygloo.ReduceOp.SUM,
@@ -258,3 +263,32 @@ class SignalActor:
         if should_wait:
             for i in range(self.world_size):
                 await self.ready_events[i].wait()
+
+
+# The custom store which is implementated in Ray internal kv storage, helping
+# to store the rank meta information when setting up the gloo collective group.
+class RayInternalKvStore:
+    def __init__(self):
+        gcs_address = ray.worker._global_node.gcs_address
+        self._gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
+        internal_kv._initialize_internal_kv(self._gcs_client)
+
+    def set(self, key: str, data: bytes) -> bool:
+        ret = internal_kv._internal_kv_put(key, data)
+        return ret
+
+    def get(self, key: str) -> bytes:
+        ret = internal_kv._internal_kv_get(key)
+        return ret
+
+    def wait(self, keys: list):
+        while True:
+            all_exist = True
+            for key in keys:
+                result = internal_kv._internal_kv_exists(key)
+                if not result:
+                    all_exist = False
+                    break
+            if all_exist:
+                return True
+            time.sleep(1)

@@ -513,26 +513,6 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "gcs_pub_sub_test",
-    size = "small",
-    srcs = ["src/ray/gcs/pubsub/test/gcs_pub_sub_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    tags = ["team:core"],
-    deps = [
-        ":gcs_pub_sub_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cc_library(
     name = "gcs_server_lib",
     srcs = glob(
@@ -965,7 +945,7 @@ cc_test(
 cc_test(
     name = "reference_count_test",
     size = "small",
-    srcs = ["src/ray/core_worker/reference_count_test.cc"],
+    srcs = ["src/ray/core_worker/test/reference_count_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
@@ -1094,6 +1074,20 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "cluster_resource_scheduler_2_test",
+    size = "small",
+    srcs = [
+        "src/ray/raylet/scheduling/cluster_resource_scheduler_2_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1735,6 +1729,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1768,6 +1763,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1784,6 +1780,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1801,6 +1798,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1832,6 +1830,7 @@ cc_test(
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1935,21 +1934,6 @@ cc_test(
     size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_manager_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "gcs_resource_scheduler_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_resource_scheduler_test.cc",
     ],
     copts = COPTS,
     tags = ["team:core"],
@@ -2202,7 +2186,7 @@ cc_proto_library(
 
 filegroup(
     name = "iwyu_sh",
-    srcs = ["ci/travis/iwyu.sh"],
+    srcs = ["ci/run/iwyu.sh"],
 )
 
 action_listener(
@@ -2405,6 +2389,17 @@ cc_test(
     deps = [
         ":ray_common",
         ":ray_mock",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "task_spec_test",
+    srcs = ["src/ray/common/test/task_spec_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -76,12 +76,25 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
-def test_from_numpy(ray_start_regular_shared):
+@pytest.mark.parametrize("from_ref", [False, True])
+def test_from_numpy(ray_start_regular_shared, from_ref):
     arr1 = np.expand_dims(np.arange(0, 4), axis=1)
     arr2 = np.expand_dims(np.arange(4, 8), axis=1)
-    ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
+    arrs = [arr1, arr2]
+    if from_ref:
+        ds = ray.data.from_numpy_refs([ray.put(arr) for arr in arrs])
+    else:
+        ds = ray.data.from_numpy(arrs)
     values = np.stack([x["value"] for x in ds.take(8)])
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+
+    # Test from single NumPy ndarray.
+    if from_ref:
+        ds = ray.data.from_numpy_refs(ray.put(arr1))
+    else:
+        ds = ray.data.from_numpy(arr1)
+    values = np.stack([x["value"] for x in ds.take(4)])
+    np.testing.assert_array_equal(values, arr1)
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -750,7 +763,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=None, "
+        "Dataset(num_blocks=1, num_rows=10, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"

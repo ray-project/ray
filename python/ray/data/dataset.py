@@ -57,6 +57,7 @@ from ray.data.datasource import (
     ParquetDatasource,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
+    ReadTask,
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -73,7 +74,7 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import simple_shuffle
+from ray.data.impl.shuffle import ShufflePartitionOp
 from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
@@ -84,6 +85,9 @@ logger = logging.getLogger(__name__)
 
 # Whether we have warned of Datasets containing multiple epochs of data.
 _epoch_warned = False
+
+# Whether we have warned about using slow Dataset transforms.
+_slow_warned = False
 
 
 @PublicAPI
@@ -170,13 +174,15 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The function to apply to each record, or a class type
-                that can be instantiated to create such a callable.
+                that can be instantiated to create such a callable. Callable classes are
+                only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        self._warn_slow()
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
@@ -238,7 +244,8 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The function to apply to each record batch, or a class type
-                that can be instantiated to create such a callable.
+                that can be instantiated to create such a callable. Callable classes are
+                only supported for the actor compute strategy.
             batch_size: Request a specific batch size, or None to use entire
                 blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
@@ -250,10 +257,11 @@ class Dataset(Generic[T]):
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        if batch_size is not None and batch_size < 1:
-            raise ValueError("Batch size cannot be negative or 0")
         import pyarrow as pa
         import pandas as pd
+
+        if batch_size is not None and batch_size < 1:
+            raise ValueError("Batch size cannot be negative or 0")
 
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
@@ -382,13 +390,15 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The function to apply to each record, or a class type
-                that can be instantiated to create such a callable.
+                that can be instantiated to create such a callable. Callable classes are
+                only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        self._warn_slow()
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
@@ -431,13 +441,15 @@ class Dataset(Generic[T]):
 
         Args:
             fn: The predicate to apply to each record, or a class type
-                that can be instantiated to create such a callable.
+                that can be instantiated to create such a callable. Callable classes are
+                only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        self._warn_slow()
         fn = cache_wrapper(fn, compute)
         context = DatasetContext.get_current()
 
@@ -492,10 +504,11 @@ class Dataset(Generic[T]):
                     block_list.clear()
                 else:
                     blocks = block_list
-                return simple_shuffle(
+                shuffle_op = ShufflePartitionOp(block_udf, random_shuffle=False)
+                return shuffle_op.execute(
                     blocks,
-                    block_udf,
                     num_blocks,
+                    clear_input_blocks,
                     map_ray_remote_args=remote_args,
                     reduce_ray_remote_args=remote_args,
                 )
@@ -561,16 +574,16 @@ class Dataset(Generic[T]):
                 block_list.clear()
             else:
                 blocks = block_list
-            new_blocks, stage_info = simple_shuffle(
+            random_shuffle_op = ShufflePartitionOp(
+                block_udf, random_shuffle=True, random_seed=seed
+            )
+            return random_shuffle_op.execute(
                 blocks,
-                block_udf,
                 num_blocks,
-                random_shuffle=True,
-                random_seed=seed,
+                clear_input_blocks,
                 map_ray_remote_args=remote_args,
                 reduce_ray_remote_args=remote_args,
             )
-            return new_blocks, stage_info
 
         plan = self._plan.with_stage(
             AllToAllStage(
@@ -976,26 +989,28 @@ class Dataset(Generic[T]):
 
         start_time = time.perf_counter()
         context = DatasetContext.get_current()
-        calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
-        metadata: List[BlockPartitionMetadata] = []
-        block_partitions: List[ObjectRef[BlockPartition]] = []
+        tasks: List[ReadTask] = []
+        block_partition_refs: List[ObjectRef[BlockPartition]] = []
+        block_partition_meta_refs: List[ObjectRef[BlockPartitionMetadata]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
             bl = ds._plan.execute()
             if isinstance(bl, LazyBlockList):
-                calls.extend(bl._calls)
-                metadata.extend(bl._metadata)
-                block_partitions.extend(bl._block_partitions)
+                tasks.extend(bl._tasks)
+                block_partition_refs.extend(bl._block_partition_refs)
+                block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             else:
-                calls.extend([None] * bl.initial_num_blocks())
-                metadata.extend(bl._metadata)
+                tasks.extend([ReadTask(lambda: None, meta) for meta in bl._metadata])
                 if context.block_splitting_enabled:
-                    block_partitions.extend(
+                    block_partition_refs.extend(
                         [ray.put([(b, m)]) for b, m in bl.get_blocks_with_metadata()]
                     )
                 else:
-                    block_partitions.extend(bl.get_blocks())
+                    block_partition_refs.extend(bl.get_blocks())
+                block_partition_meta_refs.extend(
+                    [ray.put(meta) for meta in bl._metadata]
+                )
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1016,7 +1031,8 @@ class Dataset(Generic[T]):
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             ExecutionPlan(
-                LazyBlockList(calls, metadata, block_partitions), dataset_stats
+                LazyBlockList(tasks, block_partition_refs, block_partition_meta_refs),
+                dataset_stats,
             ),
             max_epoch,
             self._lazy,
@@ -1444,7 +1460,7 @@ class Dataset(Generic[T]):
                     _validate_key_fn(self, subkey)
             else:
                 _validate_key_fn(self, key)
-            return sort_impl(blocks, key, descending)
+            return sort_impl(blocks, clear_input_blocks, key, descending)
 
         plan = self._plan.with_stage(AllToAllStage("sort", None, do_sort))
         return Dataset(plan, self._epoch, self._lazy)
@@ -2536,6 +2552,7 @@ Dict[str, List[str]]]): The names of the columns
         # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
         if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            self._plan._in_blocks.clear()
             blocks, read_stage = self._plan._rewrite_read_stage()
             outer_stats = DatasetStats(stages={}, parent=None)
         else:
@@ -2654,6 +2671,7 @@ Dict[str, List[str]]]): The names of the columns
         # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
         if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            self._plan._in_blocks.clear()
             blocks, read_stage = self._plan._rewrite_read_stage()
             outer_stats = DatasetStats(stages={}, parent=None)
         else:
@@ -2737,12 +2755,13 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        blocks = self.get_internal_block_refs()
-        bar = ProgressBar("Force reads", len(blocks))
-        bar.block_until_complete(blocks)
+        blocks, metadata = [], []
+        for b, m in self._plan.execute().get_blocks_with_metadata():
+            blocks.append(b)
+            metadata.append(m)
         ds = Dataset(
             ExecutionPlan(
-                BlockList(blocks, self._plan.execute().get_metadata()),
+                BlockList(blocks, metadata),
                 self._plan.stats(),
                 dataset_uuid=self._get_uuid(),
             ),
@@ -2974,6 +2993,15 @@ Dict[str, List[str]]]): The names of the columns
 
     def _set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
+
+    def _warn_slow(self):
+        global _slow_warned
+        if not _slow_warned:
+            _slow_warned = True
+            logger.warning(
+                "The `map`, `flat_map`, and `filter` operations are unvectorized and "
+                "can be very slow. Consider using `.map_batches()` instead."
+            )
 
 
 def _get_num_rows(block: Block) -> int:

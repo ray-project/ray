@@ -20,7 +20,7 @@ when you really expect an incremental (or no-op) build for an option (say `pip i
 
 ### Invocation
 
-The CI system (such as Travis) must _source_ (_not_ execute) `ci/travis/ci.sh` and pass the action(s) to execute.
+The CI system (such as Travis) must _source_ (_not_ execute) `ci/ci.sh` and pass the action(s) to execute.
 The script either handles the work or dispatches it to other script(s) as it deems appropriate.
 This helps ensure any environment setup/teardown is handled appropriately.
 

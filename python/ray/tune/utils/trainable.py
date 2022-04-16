@@ -201,6 +201,11 @@ class TrainableUtil:
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
+
+            # Skip temporary checkpoints
+            if os.path.basename(chkpt_dir).startswith("checkpoint_tmp"):
+                continue
+
             metadata_file = glob.glob(
                 os.path.join(glob.escape(chkpt_dir), "*.tune_metadata")
             )
@@ -215,8 +220,17 @@ class TrainableUtil:
                     "{} has zero or more than one tune_metadata.".format(chkpt_dir)
                 )
 
-            chkpt_path = metadata_file[0][: -len(".tune_metadata")]
-            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1 :])
+            metadata_file = metadata_file[0]
+
+            try:
+                with open(metadata_file, "rb") as f:
+                    metadata = pickle.load(f)
+            except Exception as e:
+                logger.warning(f"Could not read metadata from checkpoint: {e}")
+                metadata = {}
+
+            chkpt_path = metadata_file[: -len(".tune_metadata")]
+            chkpt_iter = metadata.get("iteration", -1)
             iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 
         chkpt_df = pd.DataFrame(

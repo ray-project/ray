@@ -61,7 +61,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       config_.redis_address = "";
     }
 
-    config_.grpc_pubsub_enabled = true;
     config_.grpc_server_port = 5397;
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
@@ -101,6 +100,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     client_io_service_->stop();
     client_io_service_thread_->join();
     gcs_client_->Disconnect();
+    gcs_client_.reset();
 
     server_io_service_->stop();
     server_io_service_thread_->join();
@@ -692,9 +692,7 @@ TEST_P(GcsClientTest, TestErrorInfo) {
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    return;
-  }
+  GTEST_SKIP();
 
   // Test that subscription of the job table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
@@ -721,9 +719,7 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
 
 TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    return;
-  }
+  GTEST_SKIP();
 
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
@@ -780,9 +776,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
 
 TEST_P(GcsClientTest, TestNodeTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    return;
-  }
+  GTEST_SKIP();
 
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
@@ -816,9 +810,7 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
   // TODO: Support resubscribing with GCS pubsub.
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    return;
-  }
+  GTEST_SKIP();
 
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
@@ -916,7 +908,6 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
   }
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
-    actor_table_data->mutable_task_spec()->CopyFrom(task_spec);
     RegisterActor(actor_table_data, false, true);
   }
 
