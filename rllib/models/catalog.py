@@ -810,19 +810,10 @@ class ModelCatalog:
         return prep
 
     @staticmethod
-    @Deprecated(error=True)
+    @Deprecated(new="gym.[Observation|Reward|Action]Wrapper", error=False)
     def register_custom_preprocessor(
         preprocessor_name: str, preprocessor_class: type
     ) -> None:
-        """Register a custom preprocessor class by name.
-
-        The preprocessor can be later used by specifying
-        {"custom_preprocessor": preprocesor_name} in the model config.
-
-        Args:
-            preprocessor_name (str): Name to register the preprocessor under.
-            preprocessor_class (type): Python class of the preprocessor.
-        """
         _global_registry.register(
             RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class
         )
