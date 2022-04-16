@@ -687,7 +687,7 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    if rep.when == "call":  # and rep.failed:
+    if rep.when == "call" and rep.failed:
         archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
 
         if archive_dir is not None:
