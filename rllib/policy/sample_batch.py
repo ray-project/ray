@@ -975,7 +975,7 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
             )
 
-    @Deprecated(error=False)#TODO: True
+    @Deprecated(error=True)
     def _get_slice_indices(self, slice_size):
         data_slices = []
         data_slices_states = []
