@@ -189,7 +189,8 @@ def test_logs_experimental_list(ray_start_with_dashboard):
 
             # Test that logs/list can be filtered
             response = requests.get(
-                webui_url + "/api/experimental/logs/list?filters=gcs")
+                webui_url + "/api/experimental/logs/list?filters=gcs"
+            )
             response.raise_for_status()
             logs = json.loads(response.text)
             assert len(logs) == 1
@@ -197,15 +198,21 @@ def test_logs_experimental_list(ray_start_with_dashboard):
             assert "gcs_server" in logs[node_id] and len(logs[node_id]) == 1
 
             response = requests.get(
-                webui_url + "/api/experimental/logs/list?filters=worker")
+                webui_url + "/api/experimental/logs/list?filters=worker"
+            )
             response.raise_for_status()
             logs = json.loads(response.text)
             assert len(logs) == 1
             node_id = next(iter(logs))
-            worker_log_categories = ["python_core_worker_logs",
-                                     "worker_outs", "worker_errors"]
-            assert all([cat in logs[node_id] for cat in worker_log_categories]) and len(
-                logs[node_id]) == 3
+            worker_log_categories = [
+                "python_core_worker_logs",
+                "worker_outs",
+                "worker_errors",
+            ]
+            assert (
+                all([cat in logs[node_id] for cat in worker_log_categories])
+                and len(logs[node_id]) == 3
+            )
         except Exception as ex:
             last_ex = ex
         finally:
@@ -251,6 +258,7 @@ def test_logs_experimental_write(ray_start_with_dashboard):
         def write_log(self, strings):
             for s in strings:
                 print(s)
+
     test_log_text = "test_log_text{}"
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -284,8 +292,10 @@ def test_logs_experimental_write(ray_start_with_dashboard):
             if stream_response.status_code != 200:
                 raise ValueError(stream_response.text)
             stream_iterator = stream_response.iter_content(chunk_size=None)
-            assert next(stream_iterator).decode("utf-8") == ":actor_name:Actor\n" + \
-                test_log_text.format("XXXXXX") + "\n"
+            assert (
+                next(stream_iterator).decode("utf-8")
+                == ":actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
+            )
 
             streamed_string = ""
             for i in range(5):
@@ -310,7 +320,9 @@ def test_logs_experimental_write(ray_start_with_dashboard):
                 + "&actor_id="
                 + actor._ray_actor_id.hex(),
             ).text
-            assert file_response == "\n".join(streamed_string.split("\n")[-(LINES+1):])
+            assert file_response == "\n".join(
+                streamed_string.split("\n")[-(LINES + 1) :]
+            )
             break
         except Exception as ex:
             last_ex = ex
@@ -355,10 +367,10 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
     )
 
     # Check that gRPC stream initiated as a result of starting the stream
-    assert f"initiated StreamLog:\nlog_file_name: \"{RAYLET_FILE_NAME}\""
+    assert f'initiated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
     "\nkeep_alive: true" in file_response.text
     # Check that gRPC stream has not terminated (is kept alive)
-    assert f"terminated StreamLog:\nlog_file_name: \"{RAYLET_FILE_NAME}\""
+    assert f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
     "\nkeep_alive: true" not in file_response.text
 
     del stream_response
@@ -372,7 +384,7 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
     )
 
     # Check that gRPC terminated as a result of closing the stream
-    assert f"terminated StreamLog:\nlog_file_name: \"{RAYLET_FILE_NAME}\""
+    assert f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
     "\nkeep_alive: true" in file_response.text
 
 

@@ -51,6 +51,7 @@ class LogAgentV1Grpc(
 
         def on_exit(self):
             logger.info(f"terminated ListLogs:\n{request}")
+
         context.add_done_callback(on_exit)
         """
         Lists all files in the active Ray logs directory.
@@ -74,6 +75,7 @@ class LogAgentV1Grpc(
 
         def on_exit(self):
             logger.info(f"terminated StreamLog:\n{request}")
+
         context.add_done_callback(on_exit)
         lines = request.lines if request.lines else 1000
 
