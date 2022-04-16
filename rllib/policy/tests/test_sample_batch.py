@@ -263,6 +263,157 @@ class TestSampleBatch(unittest.TestCase):
             },
         )
 
+        # Test on zero-padded seq-len batch.
+        s2 = SampleBatch(
+            {
+                "a": np.array([1, 2, 0, 3, 2, 3, 4, 0, 0]),
+                "b": {"c": np.array([4, 5, 0, 6, 5, 6, 7, 0, 0])},
+                SampleBatch.SEQ_LENS: [2, 3, 1],
+                "state_in_0": [1.0, 3.0, 4.0],
+            },
+            _zero_padded=True,
+            _max_seq_len=3,
+        )
+        # We would expect a=[1, 2, 3] now, but due to the sequence
+        # boundary, we stop earlier.
+        check(
+            s2[:3],
+            {
+                "a": [1, 2],
+                "b": {"c": [4, 5]},
+                SampleBatch.SEQ_LENS: [2],
+                "state_in_0": [1.0],
+            },
+        )
+        # Split exactly at a seq-len boundary.
+        check(
+            s2[:5],
+            {
+                "a": [1, 2, 3, 2, 3],
+                "b": {"c": [4, 5, 6, 5, 6]},
+                SampleBatch.SEQ_LENS: [2, 3],
+                "state_in_0": [1.0, 3.0],
+            },
+        )
+        # Split above seq-len boundary.
+        check(
+            s2[:50],
+            {
+                "a": [1, 2, 3, 2, 3, 4],
+                "b": {"c": [4, 5, 6, 5, 6, 7]},
+                SampleBatch.SEQ_LENS: [2, 3, 1],
+                "state_in_0": [1.0, 3.0, 4.0],
+            },
+        )
+        check(
+            s2[:],
+            {
+                "a": [1, 2, 3, 2, 3, 4],
+                "b": {"c": [4, 5, 6, 5, 6, 7]},
+                SampleBatch.SEQ_LENS: [2, 3, 1],
+                "state_in_0": [1.0, 3.0, 4.0],
+            },
+        )
+
+    def test_deprecated_slice_method(self):
+        s1 = SampleBatch(
+            {
+                "a": np.array([1, 2, 3, 2, 3, 4]),
+                "b": {"c": np.array([4, 5, 6, 5, 6, 7])},
+            }
+        )
+        check(
+            s1.slice(0, 3),
+            {
+                "a": [1, 2, 3],
+                "b": {"c": [4, 5, 6]},
+            },
+        )
+        check(
+            s1.slice(1, 4),
+            {
+                "a": [2, 3, 2],
+                "b": {"c": [5, 6, 5]},
+            },
+        )
+        check(
+            s1.slice(1, None),
+            {
+                "a": [2, 3, 2, 3, 4],
+                "b": {"c": [5, 6, 5, 6, 7]},
+            },
+        )
+        check(
+            s1.slice(3, 4),
+            {
+                "a": [2],
+                "b": {"c": [5]},
+            },
+        )
+
+        # When we change the slice, the original SampleBatch should also
+        # change (shared underlying data).
+        #s1[:3]["a"][0] = 100
+        #s1[1:2]["a"][0] = 200
+        #check(s1["a"][0], 100)
+        #check(s1["a"][1], 200)
+
+        ## Seq-len batches should be auto-sliced along sequences,
+        ## no matter what.
+        s2 = SampleBatch(
+            {
+                "a": np.array([1, 2, 3, 2, 3, 4]),
+                "b": {"c": np.array([4, 5, 6, 5, 6, 7])},
+                SampleBatch.SEQ_LENS: [2, 3, 1],
+                "state_in_0": [1.0, 3.0, 4.0],
+            }
+        )
+
+        all_slices = s2._get_slice_indices(4)
+        data_slices, state_slices = all_slices
+
+
+        # We would expect a=[1, 2, 3] now, but due to the sequence
+        # boundary, we stop earlier.
+        check(
+            s2.slice(0, 3),
+            {
+                "a": [1, 2],
+                "b": {"c": [4, 5]},
+                SampleBatch.SEQ_LENS: [2],
+                "state_in_0": [1.0],
+            },
+        )
+        ## Split exactly at a seq-len boundary.
+        #check(
+        #    s2[:5],
+        #    {
+        #        "a": [1, 2, 3, 2, 3],
+        #        "b": {"c": [4, 5, 6, 5, 6]},
+        #        SampleBatch.SEQ_LENS: [2, 3],
+        #        "state_in_0": [1.0, 3.0],
+        #    },
+        #)
+        ## Split above seq-len boundary.
+        #check(
+        #    s2[:50],
+        #    {
+        #        "a": [1, 2, 3, 2, 3, 4],
+        #        "b": {"c": [4, 5, 6, 5, 6, 7]},
+        #        SampleBatch.SEQ_LENS: [2, 3, 1],
+        #        "state_in_0": [1.0, 3.0, 4.0],
+        #    },
+        #)
+        #check(
+        #    s2[:],
+        #    {
+        #        "a": [1, 2, 3, 2, 3, 4],
+        #        "b": {"c": [4, 5, 6, 5, 6, 7]},
+        #        SampleBatch.SEQ_LENS: [2, 3, 1],
+        #        "state_in_0": [1.0, 3.0, 4.0],
+        #    },
+        #)
+
     def test_copy(self):
         s = SampleBatch(
             {

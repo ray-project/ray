@@ -467,7 +467,7 @@ class SampleBatch(dict):
 
         return slices
 
-    @Deprecated(new="SampleBatch[start:stop]", error=True)
+    @Deprecated(new="SampleBatch[start:stop]", error=False)#TODO: error=True
     def slice(
         self, start: int, end: int, state_start=None, state_end=None
     ) -> "SampleBatch":
@@ -975,7 +975,7 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
             )
 
-    @Deprecated(error=True)
+    @Deprecated(error=False)#TODO: True
     def _get_slice_indices(self, slice_size):
         data_slices = []
         data_slices_states = []
