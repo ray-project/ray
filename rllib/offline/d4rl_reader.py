@@ -36,7 +36,7 @@ class D4RLReader(InputReader):
             self.counter = 0
 
         self.counter += 1
-        return self.dataset[self.counter:self.counter+1]
+        return self.dataset[self.counter : self.counter + 1]
 
 
 def convert_to_batch(dataset: Dict) -> SampleBatchType:

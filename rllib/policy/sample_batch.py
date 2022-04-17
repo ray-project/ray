@@ -467,7 +467,7 @@ class SampleBatch(dict):
 
         return slices
 
-    @Deprecated(new="SampleBatch[start:stop]", error=False)#TODO: error=True
+    @Deprecated(new="SampleBatch[start:stop]", error=True)
     def slice(
         self, start: int, end: int, state_start=None, state_end=None
     ) -> "SampleBatch":
@@ -965,8 +965,9 @@ class SampleBatch(dict):
             >>> s2[0:5]["state_in_0"]
             ... [1.0, 3.0]
 
-            >>> # `start` 1 (inside sequence); `stop` at sequence boundary: Move `start` and
-            >>> # `stop` left by 1 (such that final len remains at expected 4 items).
+            >>> # `start` 1 (inside sequence); `stop` at sequence boundary: Move `start`
+            >>> # and `stop` left by 1 (such that final len remains at expected 4
+            >>> # items).
             >>> s2[1:5]["a"]
             ... [1, 2, 3, 2]
             >>> s2[1:5]["seq_lens"]
@@ -1008,13 +1009,11 @@ class SampleBatch(dict):
                     # Step through the current sequence and map all positions therein
                     # on that sequence's start index.
                     for j in range(l):
-                        #self._slice_map.append(sum_)
                         self._slice_map.append((i, sum_, j + 1))
                     sum_ += l
                 # In case `stop` points to the very end (lengths of this
                 # batch), return the last sequence (the -1 here makes sure we
                 # never go beyond it; would result in an index error below).
-                #self._slice_map.append(sum_)
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_, 0))
 
             start_seq_len, actual_start, _ = self._slice_map[start]
@@ -1024,9 +1023,9 @@ class SampleBatch(dict):
             stop_seq_len, _, last_seq_len = self._slice_map[actual_stop - 1]
             stop_seq_len += 1
             if self.zero_padded:
-                raise NotImplementedError #TODO
-                #start = start_seq_len * self.max_seq_len
-                #stop = stop_seq_len * self.max_seq_len
+                raise NotImplementedError  # TODO
+                # start = start_seq_len * self.max_seq_len
+                # stop = stop_seq_len * self.max_seq_len
 
             def map_(path, value):
                 if path[0] == SampleBatch.SEQ_LENS:

@@ -48,9 +48,6 @@ def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = T
     if "state_in_0" not in samples and "state_out_0" not in samples:
         samples.shuffle()
 
-    #all_slices = samples._get_slice_indices(sgd_minibatch_size)
-    #data_slices, state_slices = all_slices
-
     data_slices = []
     i = 0
     while i < samples.count:
@@ -59,16 +56,8 @@ def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = T
     if shuffle:
         random.shuffle(data_slices)
 
-    #if not has_sequences:
     for i, j in data_slices:
         yield samples[i:j]
-    #else:
-    #    #all_slices = list(zip(data_slices, state_slices))
-    #    #if shuffle:
-    #    #    # Make sure to shuffle data and states while linked together.
-    #    #    random.shuffle(all_slices)
-    #    for (i, j), (si, sj) in all_slices:
-    #        yield samples.slice(i, j, si, sj)
 
 
 def do_minibatch_sgd(

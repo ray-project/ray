@@ -1,12 +1,11 @@
 from functools import partial
-import gym
 from gym.spaces import Box, Dict, Discrete
 import numpy as np
 import unittest
 
 import ray
 from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
-from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.models.tf.tf_action_dist import (
     MultiActionDistribution,
     TFActionDistribution,
