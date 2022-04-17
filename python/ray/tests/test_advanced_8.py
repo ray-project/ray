@@ -274,6 +274,7 @@ def test_accelerator_type_api(shutdown_only):
     wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
 def test_get_system_memory():
     # cgroups v1, set
     with tempfile.NamedTemporaryFile("w") as memory_limit_file:
