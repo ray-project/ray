@@ -600,8 +600,10 @@ class DynamicTFPolicy(TFPolicy):
             batch_size = self.config.get(
                 "sgd_minibatch_size", self.config["train_batch_size"]
             )
+            # Use the entire loaded batch.
             if batch_size >= len(self._loaded_single_cpu_batch):
                 sliced_batch = self._loaded_single_cpu_batch
+            # Use a slice of the loaded batch.
             else:
                 sliced_batch = self._loaded_single_cpu_batch[
                     offset : offset + batch_size

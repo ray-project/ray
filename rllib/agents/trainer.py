@@ -2378,8 +2378,9 @@ class Trainer(Trainable):
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
-        if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning(old="simple_optimizer", error=True)
+        # Cannot deprecate yet: Used by multi-agent as well as tf2.
+        # if simple_optim_setting != DEPRECATED_VALUE:
+        #    deprecation_warning(old="simple_optimizer", error=False)
 
         # Validate "multiagent" sub-dict and convert policy 4-tuples to
         # PolicySpec objects.
