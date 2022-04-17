@@ -902,6 +902,7 @@ def test_duplicated_arg(ray_start_cluster):
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
 def test_get_system_memory():
     # cgroups v1, set
     with tempfile.NamedTemporaryFile("w") as memory_limit_file:
