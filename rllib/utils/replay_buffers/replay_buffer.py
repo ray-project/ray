@@ -22,6 +22,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
 )
+from ray.rllib.utils.from_config import from_config
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
@@ -51,23 +52,6 @@ def validate_buffer_config(config: dict):
             error=False,
         )
         config["replay_buffer_config"]["prioritized_replay"] = prioritized_replay
-
-    if config["replay_buffer_config"].get("prioritized_replay"):
-        if config["multiagent"]["replay_mode"] == "lockstep":
-            raise ValueError(
-                "Prioritized replay is not supported when replay_mode=lockstep."
-            )
-        elif config["replay_buffer_config"].get("replay_sequence_length", 0) > 1:
-            raise ValueError(
-                "Prioritized replay is not supported when "
-                "replay_sequence_length > 1."
-            )
-    else:
-        if config.get("worker_side_prioritization"):
-            raise ValueError(
-                "Worker side prioritization is not supported when "
-                "prioritized_replay=False."
-            )
 
     capacity = config.get("buffer_size", DEPRECATED_VALUE)
     if capacity != DEPRECATED_VALUE:
@@ -222,20 +206,40 @@ def validate_buffer_config(config: dict):
                 error=False,
             )
 
-        # If no prioritized replay, old-style replay buffer should
-        # not be handed the following parameters:
-        if (
-            config.get("prioritized_replay", False) is False
-            or config["replay_buffer_config"].get("prioritized_replay") is False
-        ):
+        # TODO (Artur): Move this logic into config objects
+        if config["replay_buffer_config"].get("prioritized_replay", False):
+            is_prioritized_buffer = True
+        else:
+            is_prioritized_buffer = False
             # This triggers non-prioritization in old-style replay buffer
             config["replay_buffer_config"]["prioritized_replay_alpha"] = 0.0
-
     else:
         if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
             # Create valid full [module].[class] string for from_config
             config["replay_buffer_config"]["type"] = (
                 "ray.rllib.utils.replay_buffers." + buffer_type
+            )
+        test_buffer = from_config(buffer_type, config["replay_buffer_config"])
+        if hasattr(test_buffer, "update_priorities"):
+            is_prioritized_buffer = True
+        else:
+            is_prioritized_buffer = False
+
+    if is_prioritized_buffer:
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError(
+                "Prioritized replay is not supported when replay_mode=lockstep."
+            )
+        elif config["replay_buffer_config"].get("replay_sequence_length", 0) > 1:
+            raise ValueError(
+                "Prioritized replay is not supported when "
+                "replay_sequence_length > 1."
+            )
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False."
             )
 
     if config["replay_buffer_config"].get("replay_batch_size", None) is None:
