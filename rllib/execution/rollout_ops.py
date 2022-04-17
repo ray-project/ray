@@ -114,7 +114,7 @@ def synchronous_parallel_sample(
         #    last_complete_ep_idx = len(full_batch) - full_batch[
         #        SampleBatch.DONES
         #    ].reverse().index(1)
-        #    full_batch = full_batch.slice(0, last_complete_ep_idx)
+        #    full_batch = full_batch[:last_complete_ep_idx]
         return full_batch
     else:
         return all_sample_batches

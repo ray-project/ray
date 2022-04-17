@@ -908,10 +908,20 @@ class SampleBatch(dict):
 
         The returned SampleBatch uses the same underlying data object as
         `self`, so changing the slice will also change `self`.
-
         Note that only zero or positive bounds are allowed for both start
         and stop values. The slice step must be 1 (or None, which is the
         same).
+
+        For regular (non sequences) SampleBatches, the given start and stop indices
+        are used for slicing the underlying data as expected.
+        For SampleBatches based on sequences ("seq_lens" is present in batch), the
+        following special slicing rules apply:
+        - Given a `start` index, if inside a sequence S (not at a sequence boundary),
+        `start` should be moved left back to beginning of S. The given `stop` index
+        is moved left by the same amount to make the final chunk of the expected size.
+        - Given a `start` index at a sequence boundary and a `stop` index inside a
+        sequence S (not at a sequence boundary): Do not change `stop`, but truncate S
+        to match `end`.
 
         Args:
             slice_: The python slice object to slice by.
@@ -919,6 +929,60 @@ class SampleBatch(dict):
         Returns:
             A new SampleBatch, however "linking" into the same data
             (sliced) as self.
+
+        Examples:
+            >>> 3 sequences: lengths 2, 3, and 1, each with its initial state value.
+            >>> s2 = SampleBatch({
+            ...     "a": np.array([1, 2, 3, 2, 3, 4]),
+            ...     "b": {"c": np.array([4, 5, 6, 5, 6, 7])},
+            ...     SampleBatch.SEQ_LENS: [2, 3, 1],
+            ...     "state_in_0": [1.0, 3.0, 4.0],
+            ...})
+            >>> # `start` None (default=0); `stop` at sequence boundary: Normal behavior
+            >>> # expected.
+            >>> s2[:2]["a"]
+            ... [1, 2]
+            >>> s2[:2]["seq_lens"]
+            ... [2]
+            >>> s2[:2]["state_in_0"]
+            ... [1.0]
+
+            >>> # `start` None (default=0); `stop` within sequence: Truncate second
+            >>> # sequence to match `stop` index.
+            >>> s2[:3]["a"]
+            ... [1, 2, 3],
+            >>> s2[:3]["seq_lens"]
+            ... [2, 1]
+            >>> s2[:3]["state_in_0"]
+            ... [1.0, 3.0]
+
+            >>> # `start` 0; `stop` within sequence: Truncate second sequence to match
+            >>> # `stop` index.
+            >>> s2[0:5]["a"]
+            ... [1, 2, 3, 2, 3]
+            >>> s2[0:5]["seq_lens"]
+            ... [2, 3]
+            >>> s2[0:5]["state_in_0"]
+            ... [1.0, 3.0]
+
+            >>> # `start` 1 (inside sequence); `stop` at sequence boundary: Move `start` and
+            >>> # `stop` left by 1 (such that final len remains at expected 4 items).
+            >>> s2[1:5]["a"]
+            ... [1, 2, 3, 2]
+            >>> s2[1:5]["seq_lens"]
+            ... [2, 2]
+            >>> s2[1:5]["state_in_0"]
+            ... [1.0, 3.0]
+
+            >>> # `start` 4 (inside sequence); `stop` 5 (within sequence): Move
+            >>> # `start` and `stop` left by 2 (such that final len remains at expected
+            >>> # 1 item).
+            >>> s2[4:5]["a"]
+            ... [3]
+            >>> s2[4:5]["seq_lens"]
+            ... [1]
+            >>> s2[4:5]["state_in_0"]
+            ... [3.0]
         """
         start = slice_.start or 0
         stop = slice_.stop or len(self)
@@ -929,33 +993,48 @@ class SampleBatch(dict):
             stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
+        # SampleBatch with sequences.
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
             and len(self[SampleBatch.SEQ_LENS]) > 0
         ):
-            # Build our slice-map, if not done already.
+            # Build our slice-map, if not done already. Maps `start` positions to:
+            # - themselves, iff `start` lies exactly on a sequence boundary.
+            # - n steps to left, iff `start` lies n steps inside a sequence.
             if not self._slice_map:
                 sum_ = 0
+                # Loop through all seq_lens.
                 for i, l in enumerate(self[SampleBatch.SEQ_LENS]):
-                    for _ in range(l):
-                        self._slice_map.append((i, sum_))
+                    # Step through the current sequence and map all positions therein
+                    # on that sequence's start index.
+                    for j in range(l):
+                        #self._slice_map.append(sum_)
+                        self._slice_map.append((i, sum_, j + 1))
                     sum_ += l
                 # In case `stop` points to the very end (lengths of this
                 # batch), return the last sequence (the -1 here makes sure we
                 # never go beyond it; would result in an index error below).
-                self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
+                #self._slice_map.append(sum_)
+                self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_, 0))
 
-            start_seq_len, start = self._slice_map[start]
-            stop_seq_len, stop = self._slice_map[stop]
+            start_seq_len, actual_start, _ = self._slice_map[start]
+            actual_stop = stop
+            if actual_start != start:
+                actual_stop -= start - actual_start
+            stop_seq_len, _, last_seq_len = self._slice_map[actual_stop - 1]
+            stop_seq_len += 1
             if self.zero_padded:
-                start = start_seq_len * self.max_seq_len
-                stop = stop_seq_len * self.max_seq_len
+                raise NotImplementedError #TODO
+                #start = start_seq_len * self.max_seq_len
+                #stop = stop_seq_len * self.max_seq_len
 
             def map_(path, value):
-                if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
-                    "state_in_"
-                ):
-                    return value[start:stop]
+                if path[0] == SampleBatch.SEQ_LENS:
+                    seq_lens = value[start_seq_len:stop_seq_len]
+                    seq_lens[-1] = last_seq_len
+                    return seq_lens
+                elif not path[0].startswith("state_in_"):
+                    return value[actual_start:actual_stop]
                 else:
                     return value[start_seq_len:stop_seq_len]
 
@@ -967,6 +1046,8 @@ class SampleBatch(dict):
                 _zero_padded=self.zero_padded,
                 _max_seq_len=self.max_seq_len if self.zero_padded else None,
             )
+
+        # Normal (non-sequence) slicing. Use `start` and `stop` as-is.
         else:
             data = tree.map_structure(lambda value: value[start:stop], self)
             return SampleBatch(
