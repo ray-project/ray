@@ -13,7 +13,7 @@ pendulum-td3-fake-gpus:
         exploration_config:
             random_timesteps: 5000
         evaluation_interval: 1
-        evaluation_num_episodes: 5
+        evaluation_duration: 5
 
         # Fake 2 GPUs.
         num_gpus: 2

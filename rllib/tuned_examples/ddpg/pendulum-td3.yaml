@@ -17,4 +17,4 @@ pendulum-td3:
             random_timesteps: 5000
         # === Evaluation ===
         evaluation_interval: 1
-        evaluation_num_episodes: 5
+        evaluation_duration: 5
