@@ -1030,7 +1030,7 @@ class SampleBatch(dict):
 
             def map_(path, value):
                 if path[0] == SampleBatch.SEQ_LENS:
-                    seq_lens = value[start_seq_len:stop_seq_len]
+                    seq_lens = value[start_seq_len:stop_seq_len].copy()
                     seq_lens[-1] = last_seq_len
                     return seq_lens
                 elif not path[0].startswith("state_in_"):
