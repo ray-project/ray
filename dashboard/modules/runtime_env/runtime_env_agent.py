@@ -30,6 +30,9 @@ from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.uri_cache import URICache
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray.core.generated.runtime_env_common_pb2 import (
+    RuntimeEnvState as ProtoRuntimeEnvState,
+)
 
 default_logger = logging.getLogger(__name__)
 
@@ -59,6 +62,10 @@ class CreatedEnvResult:
     # If success is True, will be a serialized RuntimeEnvContext
     # If success is False, will be an error message.
     result: str
+    # Creation time in milliseconds.
+    creation_time_ms: float
+    # Total number of retries before it is created.
+    retry_cnt: int
 
 
 class UriType(Enum):
@@ -155,6 +162,11 @@ class ReferenceTable:
         self._decrease_reference_for_runtime_env(serialized_env)
         uris = self._uris_parser(runtime_env)
         self._decrease_reference_for_uris(uris)
+
+    @property
+    def runtime_env_refs(self) -> dict:
+        """Return the runtime_env -> ref count mapping."""
+        return self._runtime_env_reference
 
 
 class RuntimeEnvAgent(
@@ -362,8 +374,8 @@ class RuntimeEnvAgent(
                 setup_timeout_seconds(int): The timeout of runtime environment creation.
 
             Returns:
-                a tuple which contains result(bool), runtime env context(str), and error
-                message(str).
+                a tuple which contains result(bool), runtime env context(str), error
+                message(str), and total retry count(int).
 
             """
             self._logger.info(
@@ -372,6 +384,7 @@ class RuntimeEnvAgent(
             )
             serialized_context = None
             error_message = None
+            retry_cnt = 0
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
                     # python 3.6 requires the type of input is `Future`,
@@ -391,6 +404,7 @@ class RuntimeEnvAgent(
                     error_message = None
                     break
                 except Exception as e:
+                    retry_cnt += 1
                     err_msg = f"Failed to create runtime env {serialized_env}."
                     self._logger.exception(err_msg)
                     error_message = "".join(
@@ -405,14 +419,14 @@ class RuntimeEnvAgent(
                     "don't retry any more.",
                     runtime_env_consts.RUNTIME_ENV_RETRY_TIMES,
                 )
-                return False, None, error_message
+                return False, None, error_message, retry_cnt
             else:
                 self._logger.info(
                     "Successfully created runtime env: %s, the context: %s",
                     serialized_env,
                     serialized_context,
                 )
-                return True, serialized_context, None
+                return True, serialized_context, None, retry_cnt
 
         try:
             serialized_env = request.serialized_runtime_env
@@ -481,16 +495,19 @@ class RuntimeEnvAgent(
                 else runtime_env_config["setup_timeout_seconds"]
             )
 
+            start = time.perf_counter()
             (
                 successful,
                 serialized_context,
                 error_message,
+                retry_cnt,
             ) = await _create_runtime_env_with_retry(
                 runtime_env,
                 serialized_env,
                 request.serialized_allocated_resource_instances,
                 setup_timeout_seconds,
             )
+            creation_time_ms = (time.perf_counter() - start) * 1000
             if not successful:
                 # Recover the reference.
                 self._reference_table.decrease_reference(
@@ -498,7 +515,10 @@ class RuntimeEnvAgent(
                 )
             # Add the result to env cache.
             self._env_cache[serialized_env] = CreatedEnvResult(
-                successful, serialized_context if successful else error_message
+                successful,
+                serialized_context if successful else error_message,
+                creation_time_ms,
+                retry_cnt,
             )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
@@ -537,6 +557,36 @@ class RuntimeEnvAgent(
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK
         )
+
+    async def GetRuntimeEnvsInfo(self, request, context):
+        """Return the runtime env information of the node."""
+        # TODO(sang): Currently, it only includes runtime_env information.
+        # We should include the URI information which includes,
+        # URIs
+        # Caller
+        # Ref counts
+        # Cache information
+        # Metrics (creation time & success)
+        # Deleted URIs
+        runtime_env_states = defaultdict(ProtoRuntimeEnvState)
+        runtime_env_refs = self._reference_table.runtime_env_refs
+        for runtime_env, ref_cnt in runtime_env_refs.items():
+            runtime_env_states[runtime_env].runtime_env = runtime_env
+            runtime_env_states[runtime_env].ref_cnt = ref_cnt
+        for runtime_env, result in self._env_cache.items():
+            runtime_env_states[runtime_env].success = result.success
+            if result.success:
+                runtime_env_states[runtime_env].context = result.result
+            else:
+                runtime_env_states[runtime_env].error = result.result
+            runtime_env_states[runtime_env].created_time_ms = result.creation_time_ms
+            runtime_env_states[runtime_env].retry_cnt = result.retry_cnt
+
+        reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()
+        for runtime_env_state in runtime_env_states.values():
+            reply.runtime_env_states.append(runtime_env_state)
+
+        return reply
 
     async def run(self, server):
         if server:
