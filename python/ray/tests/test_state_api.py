@@ -43,6 +43,7 @@ from ray.experimental.state.api import (
     list_workers,
     list_tasks,
     list_objects,
+    list_runtime_envs,
 )
 from ray.experimental.state.common import (
     ActorState,
@@ -666,6 +667,23 @@ def test_list_objects(shutdown_only):
 
     wait_for_condition(verify)
     print(list_objects())
+
+
+def test_list_runtime_envs(shutdown_only):
+    ray.init(runtime_env={"pip": ["requests"]})
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            pass
+
+    a = Actor.remote()  # noqa
+    ray.get(a.ready.remote())
+
+    import time
+
+    time.sleep(3)
+    print(list_runtime_envs())
 
 
 def test_limit(shutdown_only):

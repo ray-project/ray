@@ -16,9 +16,12 @@ from ray.experimental.state.common import (
     WorkerState,
     TaskState,
     ObjectState,
+    RuntimeEnvState,
     ListApiOptions,
 )
 from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.runtime_env import RuntimeEnv
+from ray._private.runtime_env.context import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +197,34 @@ class StateAPIManager:
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         return {d["object_id"]: d for d in islice(result, option.limit)}
+
+    async def get_runtime_envs(self) -> dict:
+        async def get_runtime_envs_info(stub):
+            reply = await stub.GetRuntimeEnvsInfo(
+                runtime_env_agent_pb2.GetRuntimeEnvsInfoRequest(),
+                timeout=DEFAULT_RPC_TIMEOUT,
+            )
+            return reply
+
+        replies = await asyncio.gather(
+            *[get_runtime_envs_info(stub) for stub in self._agent_stub.values()]
+        )
+        result = []
+        for reply in replies:
+            states = reply.runtime_env_states
+            for state in states:
+                data = self._message_to_dict(message=state, fields_to_decode=[])
+                data["runtime_env"] = RuntimeEnv.deserialize(
+                    data["runtime_env"]
+                ).to_dict()
+                success = data["success"]
+                if success:
+                    data["context"] = RuntimeEnvContext.deserialize(
+                        data["context"]
+                    ).__dict__
+                data = filter_fields(data, RuntimeEnvState)
+                result.append(data)
+        return result
 
     def _message_to_dict(
         self,
