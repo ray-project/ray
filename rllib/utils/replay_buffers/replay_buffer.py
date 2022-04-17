@@ -42,7 +42,7 @@ def validate_buffer_config(config: dict):
         config["replay_buffer_config"] = {}
 
     prioritized_replay = config.get("prioritized_replay")
-    if prioritized_replay:
+    if prioritized_replay != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['prioritized_replay']",
             help="Replay prioritization specified at new location config["
