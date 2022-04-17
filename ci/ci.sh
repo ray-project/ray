@@ -438,10 +438,10 @@ build_wheels() {
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-      rm -rf /tmp/artifacts || true
-      cp -r .whl /tmp/artifacts/
-      chmod -R 777 /tmp/artifacts/
-      ls -a /tmp/artifacts
+      mkdir -p /tmp/artifacts/.whl
+      rm -rf /tmp/artifacts/.whl || true
+      cp -r .whl /tmp/artifacts/.whl
+      chmod -R 777 /tmp/artifacts/.whl
 
       validate_wheels_commit_str
       ;;
