@@ -2486,16 +2486,12 @@ class Trainer(Trainable):
                 new="metrics_num_episodes_for_smoothing",
                 error=True,
             )
-            config["metrics_num_episodes_for_smoothing"] = config[
-                "metrics_smoothing_episodes"
-            ]
         if config["min_iter_time_s"] != DEPRECATED_VALUE:
             deprecation_warning(
                 old="min_iter_time_s",
                 new="min_time_s_per_reporting",
                 error=True,
             )
-            config["min_time_s_per_reporting"] = config["min_iter_time_s"]
 
         if config["collect_metrics_timeout"] != DEPRECATED_VALUE:
             # TODO: Warn once all algos use the `training_iteration` method.
@@ -2821,11 +2817,13 @@ class Trainer(Trainable):
             config["replay_buffer_config"]["replay_mode"] = config["multiagent"][
                 "replay_mode"
             ]
-            deprecation_warning(
-                old="config['multiagent']['replay_mode']",
-                new="config['replay_buffer_config']['replay_mode']",
-                error=True,
-            )
+            # TODO warn once all algorithms support new replay buffer API and
+            #  configs.
+            # deprecation_warning(
+            #    old="config['multiagent']['replay_mode']",
+            #    new="config['replay_buffer_config']['replay_mode']",
+            #    error=True,
+            #)
 
             config["replay_buffer_config"]["replay_sequence_length"] = config.get(
                 "replay_sequence_length", 1
