@@ -182,7 +182,9 @@ class ApexTrainer(DQNTrainer):
             ]
 
         num_replay_buffer_shards = self.config["optimizer"]["num_replay_buffer_shards"]
-        buffer_size = self.config["buffer_size"] // num_replay_buffer_shards
+        buffer_size = (
+            self.config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
+        )
         replay_actor_args = [
             num_replay_buffer_shards,
             self.config["learning_starts"],
@@ -192,7 +194,7 @@ class ApexTrainer(DQNTrainer):
             self.config["replay_buffer_config"]["prioritized_replay_beta"],
             self.config["replay_buffer_config"]["prioritized_replay_eps"],
             self.config["multiagent"]["replay_mode"],
-            self.config.get("replay_sequence_length", 1),
+            self.config["replay_buffer_config"].get("replay_sequence_length", 1),
         ]
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).
@@ -276,8 +278,9 @@ class ApexTrainer(DQNTrainer):
 
         # Create a number of replay buffer actors.
         num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
-        buffer_size = \
+        buffer_size = (
             config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
+        )
         replay_actor_args = [
             num_replay_buffer_shards,
             config["learning_starts"],
