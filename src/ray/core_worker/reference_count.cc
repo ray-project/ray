@@ -1216,19 +1216,9 @@ absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations
   return it->second.locations;
 }
 
-size_t ReferenceCounter::GetObjectSize(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  if (it == object_id_refs_.end()) {
-    return 0;
-  }
-  return it->second.object_size;
-}
-
 bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
                                            const std::string spilled_url,
-                                           const NodeID &spilled_node_id,
-                                           int64_t size) {
+                                           const NodeID &spilled_node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1252,9 +1242,6 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     }
     if (!spilled_node_id.IsNil()) {
       it->second.spilled_node_id = spilled_node_id;
-    }
-    if (size > 0) {
-      it->second.object_size = size;
     }
     PushToLocationSubscribers(it);
   } else {

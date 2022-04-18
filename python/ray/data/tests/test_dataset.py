@@ -1594,44 +1594,141 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     assert np.array_equal(df.values, combined_iterations)
 
 
-@pytest.mark.parametrize("label_column", [None, "label"])
-def test_to_tf_feature_columns(ray_start_regular_shared, label_column):
+def test_to_tf_feature_columns_list(ray_start_regular_shared):
     import tensorflow as tf
 
-    df1 = pd.DataFrame(
-        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
-    )
-    df2 = pd.DataFrame(
-        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
-    )
-    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    df = pd.concat([df1, df2, df3]).drop("two", axis=1)
-    ds = ray.data.from_pandas([df1, df2, df3])
+    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "X3": [7, 8, 9]})
+    ds = ray.data.from_pandas([df])
 
-    if label_column:
-        output_signature = (
-            tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-            tf.TensorSpec(shape=(None), dtype=tf.float32),
-        )
-    else:
-        output_signature = tf.TensorSpec(shape=(None, 1), dtype=tf.float32)
-        df = df.drop("label", axis=1)
+    feature_columns = ["X1", "X3"]
+    batch_size = 2
+    dataset = ds.to_tf(
+        feature_columns=feature_columns,
+        output_signature=tf.TensorSpec(shape=(None, len(feature_columns))),
+        batch_size=batch_size,
+    )
 
-    tfd = ds.to_tf(
-        label_column=label_column,
-        feature_columns=["one"],
+    batches = list(dataset.as_numpy_iterator())
+    assert len(batches) == math.ceil(len(df) / batch_size)
+    assert np.array_equal(batches[0], np.array([[1, 7], [2, 8]]))
+    assert np.array_equal(batches[1], np.array([[3, 9]]))
+
+
+def test_to_tf_feature_columns_list_with_label(ray_start_regular_shared):
+    import tensorflow as tf
+
+    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "Y": [7, 8, 9]})
+    ds = ray.data.from_pandas([df])
+
+    feature_columns = ["X1", "X2"]
+    output_signature = [
+        tf.TensorSpec(shape=(None, len(feature_columns))),
+        tf.TensorSpec(shape=(None)),
+    ]
+    batch_size = 2
+    dataset = ds.to_tf(
+        feature_columns=feature_columns,
+        label_column="Y",
         output_signature=output_signature,
+        batch_size=batch_size,
     )
-    iterations = []
-    for batch in tfd.as_numpy_iterator():
-        if label_column:
-            iterations.append(
-                np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1)
-            )
-        else:
-            iterations.append(batch)
-    combined_iterations = np.concatenate(iterations)
-    assert np.array_equal(df.values, combined_iterations)
+
+    batches = list(dataset.as_numpy_iterator())
+    assert len(batches) == math.ceil(len(df) / batch_size)
+    # Each batch should be a two-tuple corresponding to (features, labels).
+    assert all(len(batch) == 2 for batch in batches)
+    assert np.array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
+    assert np.array_equal(batches[0][1], np.array([7, 8]))
+    assert np.array_equal(batches[1][0], np.array([[3, 6]]))
+    assert np.array_equal(batches[1][1], np.array([9]))
+
+
+def test_to_tf_feature_columns_nested_list(ray_start_regular_shared):
+    import tensorflow as tf
+
+    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "X3": [7, 8, 9]})
+    ds = ray.data.from_pandas([df])
+
+    feature_columns = [["X1", "X2"], ["X3"]]
+    output_signature = [
+        tf.TensorSpec(shape=(None, len(feature_columns[0]))),
+        tf.TensorSpec(shape=(None, len(feature_columns[1]))),
+    ]
+    batch_size = 2
+    dataset = ds.to_tf(
+        feature_columns=feature_columns,
+        output_signature=output_signature,
+        batch_size=batch_size,
+    )
+
+    batches = list(dataset.as_numpy_iterator())
+    assert len(batches) == math.ceil(len(df) / batch_size)
+    assert all(len(batch) == len(feature_columns) for batch in batches)
+    assert np.array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
+    assert np.array_equal(batches[0][1], np.array([[7], [8]]))
+    assert np.array_equal(batches[1][0], np.array([[3, 6]]))
+    assert np.array_equal(batches[1][1], np.array([[9]]))
+
+
+def test_to_tf_feature_columns_dict(ray_start_regular_shared):
+    import tensorflow as tf
+
+    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "X3": [7, 8, 9]})
+    ds = ray.data.from_pandas([df])
+
+    feature_columns = {"A": ["X1", "X2"], "B": ["X3"]}
+    output_signature = {
+        "A": tf.TensorSpec(shape=(None, len(feature_columns["A"]))),
+        "B": tf.TensorSpec(shape=(None, len(feature_columns["B"]))),
+    }
+    batch_size = 2
+    dataset = ds.to_tf(
+        feature_columns=feature_columns, output_signature=output_signature, batch_size=2
+    )
+
+    batches = list(dataset.as_numpy_iterator())
+    assert len(batches) == math.ceil(len(df) / batch_size)
+    assert all(batch.keys() == feature_columns.keys() for batch in batches)
+    assert np.array_equal(batches[0]["A"], np.array([[1, 4], [2, 5]]))
+    assert np.array_equal(batches[0]["B"], np.array([[7], [8]]))
+    assert np.array_equal(batches[1]["A"], np.array([[3, 6]]))
+    assert np.array_equal(batches[1]["B"], np.array([[9]]))
+
+
+def test_to_tf_feature_columns_dict_with_label(ray_start_regular_shared):
+    import tensorflow as tf
+
+    df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6], "Y": [7, 8, 9]})
+    ds = ray.data.from_pandas([df])
+
+    feature_columns = {"A": ["X1", "X2"]}
+    output_signature = (
+        {
+            "A": tf.TensorSpec(shape=(None, len(feature_columns["A"]))),
+        },
+        tf.TensorSpec(shape=(None)),
+    )
+    batch_size = 2
+    dataset = ds.to_tf(
+        feature_columns=feature_columns,
+        label_column="Y",
+        output_signature=output_signature,
+        batch_size=2,
+    )
+
+    batches = list(dataset.as_numpy_iterator())
+    assert len(batches) == math.ceil(len(df) / batch_size)
+    # Each batch should be a two-tuple corresponding to (features, labels).
+    assert all(len(batch) == 2 for batch in batches)
+    assert all(features.keys() == feature_columns.keys() for features, _ in batches)
+
+    features0, labels0 = batches[0]
+    assert np.array_equal(features0["A"], np.array([[1, 4], [2, 5]]))
+    assert np.array_equal(labels0, np.array([7, 8]))
+
+    features1, labels1 = batches[1]
+    assert np.array_equal(features1["A"], np.array([[3, 6]]))
+    assert np.array_equal(labels1, np.array([9]))
 
 
 @pytest.mark.parametrize("pipelined", [False, True])

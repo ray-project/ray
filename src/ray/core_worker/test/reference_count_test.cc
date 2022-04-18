@@ -618,6 +618,31 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
   rc->RemoveLocalReference(id2, nullptr);
 }
 
+TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
+  ObjectID obj1 = ObjectID::FromRandom();
+  NodeID node1 = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  int64_t object_size = 100;
+  rc->AddOwnedObject(obj1,
+                     {},
+                     address,
+                     "file1.py:42",
+                     object_size,
+                     false,
+                     /*add_local_ref=*/true,
+                     absl::optional<NodeID>(node1));
+  rc->HandleObjectSpilled(obj1, "url1", node1);
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  Status status = rc->FillObjectInformation(obj1, &object_info);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(object_info.object_size(), object_size);
+  ASSERT_EQ(object_info.spilled_url(), "url1");
+  ASSERT_EQ(object_info.spilled_node_id(), node1.Binary());
+  rc->RemoveLocalReference(obj1, nullptr);
+}
+
 // Tests fetching of locality data from reference table.
 TEST_F(ReferenceCountTest, TestGetLocalityData) {
   ObjectID obj1 = ObjectID::FromRandom();
