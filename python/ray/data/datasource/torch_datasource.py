@@ -27,7 +27,9 @@ class SimpleTorchDatasource(Datasource[T]):
     """
 
     def prepare_read(
-        self, parallelism: int, dataset_factory: Callable[[], torch.utils.data.Dataset]
+        self,
+        parallelism: int,
+        dataset_factory: Callable[[], "torch.utils.data.Dataset"],
     ) -> List[ReadTask]:
         """Return a read task that loads a Torch dataset.
 
