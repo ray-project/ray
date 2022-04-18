@@ -82,13 +82,11 @@ class LogAgentV1Grpc(
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
         if "/" in request.log_file_name or not os.path.isfile(filepath):
             await context.send_initial_metadata(
-                [[log_consts.LOG_STREAM_STATUS, log_consts.FILE_NOT_FOUND]]
+                [[log_consts.LOG_GRPC_ERROR, log_consts.FILE_NOT_FOUND]]
             )
         else:
             with open(filepath, "rb") as f:
-                await context.send_initial_metadata(
-                    [[log_consts.LOG_STREAM_STATUS, log_consts.OK]]
-                )
+                await context.send_initial_metadata([])
                 # If requesting the whole file, we stream it since it may be large.
                 if lines == -1:
                     while True:
