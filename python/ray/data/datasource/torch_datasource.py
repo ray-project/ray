@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Callable, List
+from typing import TYPE_CHECKING, Callable, Iterator, List
 
 from ray.data.block import Block, BlockMetadata, T
 from ray.data.datasource import Datasource, ReadTask
@@ -51,11 +51,11 @@ class SimpleTorchDatasource(Datasource[T]):
                 "`parallelism` argument will be ignored."
             )
 
-        def read_fn() -> List[Block]:
+        def read_fn() -> Iterator[Block]:
             # Load the entire dataset into memory.
             block = list(dataset_factory())
             # Store the data in a single block.
-            return [block]
+            yield block
 
         metadata = BlockMetadata(
             num_rows=None,
