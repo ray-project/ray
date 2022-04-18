@@ -84,10 +84,10 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
         "capacity": 100000,
+        # The number of contiguous environment steps to replay at once. This may
+        # be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
     },
-    # The number of contiguous environment steps to replay at once. This may
-    # be set to greater than 1 to support recurrent models.
-    "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
     "compress_observations": False,
     # If set, this will fix the ratio of replayed from a buffer and learned on
