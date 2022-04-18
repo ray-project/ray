@@ -47,14 +47,14 @@ class RNNSACTrainer(SACTrainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["replay_sequence_length"] != -1:
+        if config["replay_buffer_config"]["replay_sequence_length"] != -1:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
                 "model->max_seq_len + burn_in!"
             )
         # Add the `burn_in` to the Model's max_seq_len.
         # Set the replay sequence length to the max_seq_len of the model.
-        config["replay_sequence_length"] = (
+        config["replay_buffer_config"]["replay_sequence_length"] = (
             config["burn_in"] + config["model"]["max_seq_len"]
         )
 
