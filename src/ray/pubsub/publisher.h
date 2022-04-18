@@ -43,9 +43,11 @@ class SubscriberState;
 /// State for an entity / topic in a pub/sub channel.
 class EntityState {
  public:
+  virtual ~EntityState() = default;
+
   /// Publishes the message to subscribers of the entity.
   /// Returns true if there are subscribers, returns false otherwise.
-  bool Publish(const rpc::PubMessage &pub_message);
+  virtual bool Publish(const rpc::PubMessage &pub_message) = 0;
 
   /// Manages the set of subscribers of this entity.
   bool AddSubscriber(SubscriberState *subscriber);
@@ -53,6 +55,27 @@ class EntityState {
 
   /// Gets the current set of subscribers, keyed by subscriber IDs.
   const absl::flat_hash_map<SubscriberID, SubscriberState *> &Subscribers() const;
+
+ protected:
+  // Subscribers of this entity.
+  // The underlying SubscriberState is owned by Publisher.
+  absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
+};
+
+/// State for an entity does not have total size cap on published messages.
+class BasicEntityState : public EntityState {
+ public:
+  bool Publish(const rpc::PubMessage &pub_message) override;
+
+ private:
+  std::weak_ptr<rpc::PubMessage> message_;
+};
+
+/// State for an entity that streams published messages to subscribers, with total size
+/// cap.
+class StreamEntityState : public EntityState {
+ public:
+  bool Publish(const rpc::PubMessage &pub_message) override;
 
  private:
   // Tracks inflight messages. The messages have shared ownership by
@@ -63,18 +86,17 @@ class EntityState {
   std::queue<int64_t> message_sizes_;
   // Total size of inflight messages.
   int64_t total_size_ = 0;
-
-  // Subscribers of this entity.
-  // The underlying SubscriberState is owned by Publisher.
-  absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
 };
 
 /// Per-channel two-way index for subscribers and the keys they subscribe to.
 /// Also supports subscribers to all keys in the channel.
 class SubscriptionIndex {
  public:
-  SubscriptionIndex() = default;
+  SubscriptionIndex(rpc::ChannelType channel_type);
   ~SubscriptionIndex() = default;
+
+  SubscriptionIndex(SubscriptionIndex &&) noexcept = default;
+  SubscriptionIndex &operator=(SubscriptionIndex &&) noexcept = default;
 
   /// Publishes the message to relevant subscribers.
   /// Returns true if there are subscribers listening on the entity key of the message,
@@ -112,10 +134,14 @@ class SubscriptionIndex {
   bool CheckNoLeaks() const;
 
  private:
+  std::unique_ptr<EntityState> CreateEntityState();
+
+  // Type of channel this index is for.
+  rpc::ChannelType channel_type_;
   // Collection of subscribers that subscribe to all entities of the channel.
-  EntityState subscribers_to_all_;
+  std::unique_ptr<EntityState> subscribers_to_all_;
   // Mapping from subscribed entity id -> entity state.
-  absl::flat_hash_map<std::string, EntityState> entities_;
+  absl::flat_hash_map<std::string, std::unique_ptr<EntityState>> entities_;
   // Mapping from subscriber IDs -> subscribed key ids.
   // Reverse index of key_id_to_subscribers_.
   absl::flat_hash_map<SubscriberID, absl::flat_hash_set<std::string>>
@@ -283,7 +309,7 @@ class Publisher : public PublisherInterface {
         publish_batch_size_(publish_batch_size) {
     // Insert index map for each channel.
     for (auto type : channels) {
-      subscription_index_map_.emplace(type, pub_internal::SubscriptionIndex());
+      subscription_index_map_.emplace(type, type);
     }
 
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
