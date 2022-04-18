@@ -2751,7 +2751,7 @@ class Trainer(Trainable):
                     "you are not using a Q-Learning algorithm and still "
                     "provide {}."
                     "".format(k, k),
-                    error=True,
+                    error=False,
                 )
                 # Copy values over to new location in config to support new
                 # and old configuration style
