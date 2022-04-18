@@ -2,17 +2,18 @@ import gym
 from typing import Dict
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import ValueNetworkMixin
+from ray.rllib.agents.a3c.a3c_torch_policy import
 from ray.rllib.agents.marwil.marwil_tf_policy import postprocess_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_policy import ValueNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import apply_grad_clipping, explained_variance
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType
-from ray.rllib.policy.policy import Policy
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
 
 torch, _ = try_import_torch()
 
@@ -97,7 +98,7 @@ def setup_mixins(
     config: TrainerConfigDict,
 ) -> None:
     # Setup Value branch of our NN.
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy, config)
 
     # Not needed for pure BC.
     if policy.config["beta"] != 0.0:

@@ -1246,6 +1246,102 @@ class EntropyCoeffSchedule:
             )
 
 
+class KLCoeffMixin:
+    """Assigns the `update_kl()` method to the PPOPolicy.
+
+    This is used in PPO's execution plan (see ppo.py) for updating the KL
+    coefficient after each learning step based on `config.kl_target` and
+    the measured KL value (from the train_batch).
+    """
+
+    def __init__(self, config):
+        # The current KL value (as python float).
+        self.kl_coeff = config["kl_coeff"]
+        # Constant target value.
+        self.kl_target = config["kl_target"]
+
+    def update_kl(self, sampled_kl):
+        # Update the current KL value based on the recently measured value.
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff *= 0.5
+        # Return the current KL value.
+        return self.kl_coeff
+
+    @override(TorchPolicy)
+    def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
+        state = super().get_state()
+        # Add current kl-coeff value.
+        state["current_kl_coeff"] = self.kl_coeff
+        return state
+
+    @override(TorchPolicy)
+    def set_state(self, state: dict) -> None:
+        # Set current kl-coeff value first.
+        self.kl_coeff = state.pop("current_kl_coeff", self.config["kl_coeff"])
+        # Call super's set_state with rest of the state dict.
+        super().set_state(state)
+
+
+class ValueNetworkMixin:
+    """Assigns the `_value()` method to the PPOPolicy.
+
+    This way, Policy can call `_value()` to get the current VF estimate on a
+    single(!) observation (as done in `postprocess_trajectory_fn`).
+    Note: When doing this, an actual forward pass is being performed.
+    This is different from only calling `model.value_function()`, where
+    the result of the most recent forward pass is being used to return an
+    already calculated tensor.
+    """
+    def __init__(self, config):
+        # When doing GAE, we need the value function estimate on the
+        # observation.
+        if config["use_gae"]:
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+
+            def value(**input_dict):
+                input_dict = SampleBatch(input_dict)
+                input_dict = self._lazy_tensor_dict(input_dict)
+                model_out, _ = self.model(input_dict)
+                # [0] = remove the batch dim.
+                return self.model.value_function()[0].item()
+
+        # When not doing GAE, we do not require the value function's output.
+        else:
+
+            def value(*args, **kwargs):
+                return 0.0
+
+        self._value = value
+
+    def extra_action_out(self, input_dict, state_batches, model, action_dist):
+        """Defines extra fetches per action computation.
+
+        Args:
+            input_dict (Dict[str, TensorType]): The input dict used for the action
+                computing forward pass.
+            state_batches (List[TensorType]): List of state tensors (empty for
+                non-RNNs).
+            model (ModelV2): The Model object of the Policy.
+            action_dist (TorchDistributionWrapper): The instantiated distribution
+                object, resulting from the model's outputs and the given
+                distribution class.
+
+        Returns:
+            Dict[str, TensorType]: Dict with extra tf fetches to perform per
+                action computation.
+        """
+        # Return value function outputs. VF estimates will hence be added to
+        # the SampleBatches produced by the sampler(s) to generate the train
+        # batches going into the loss function.
+        return {
+            SampleBatch.VF_PREDS: model.value_function(),
+        }
+
+
 @DeveloperAPI
 class DirectStepOptimizer:
     """Typesafe method for indicating `apply_gradients` can directly step the

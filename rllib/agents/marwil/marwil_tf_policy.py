@@ -10,6 +10,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tf_policy import ValueNetworkMixin
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, PolicyID
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -17,26 +18,6 @@ from ray.rllib.models.modelv2 import ModelV2
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
-
-
-class ValueNetworkMixin:
-    def __init__(
-        self,
-        obs_space: gym.spaces.Space,
-        action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
-    ):
-
-        # Input dict is provided to us automatically via the Model's
-        # requirements. It's a single-timestep (last one in trajectory)
-        # input_dict.
-        @make_tf_callable(self.get_session())
-        def value(**input_dict):
-            model_out, _ = self.model(input_dict)
-            # [0] = remove the batch dim.
-            return self.model.value_function()[0]
-
-        self._value = value
 
 
 def postprocess_advantages(
@@ -216,7 +197,7 @@ def setup_mixins(
     config: TrainerConfigDict,
 ) -> None:
     # Setup Value branch of our NN.
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
+    ValueNetworkMixin.__init__(policy)
 
     # Not needed for pure BC.
     if policy.config["beta"] != 0.0:
