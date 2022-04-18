@@ -9,6 +9,7 @@ from unittest import mock
 
 import numpy as np
 import pytest
+import psutil
 
 import ray
 from ray.dashboard import k8s_utils
@@ -271,6 +272,58 @@ def test_accelerator_type_api(shutdown_only):
     with_options = ray.remote(ActorWithOptions).options(accelerator_type=v100).remote()
     ray.get(with_options.initialized.remote())
     wait_for_condition(lambda: ray.available_resources()[resource_name] < quantity)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")
+def test_get_system_memory():
+    # cgroups v1, set
+    with tempfile.NamedTemporaryFile("w") as memory_limit_file:
+        memory_limit_file.write("100")
+        memory_limit_file.flush()
+        assert (
+            ray._private.utils.get_system_memory(
+                memory_limit_filename=memory_limit_file.name,
+                memory_limit_filename_v2="__does_not_exist__",
+            )
+            == 100
+        )
+
+    # cgroups v1, high
+    with tempfile.NamedTemporaryFile("w") as memory_limit_file:
+        memory_limit_file.write(str(2 ** 64))
+        memory_limit_file.flush()
+        psutil_memory_in_bytes = psutil.virtual_memory().total
+        assert (
+            ray._private.utils.get_system_memory(
+                memory_limit_filename=memory_limit_file.name,
+                memory_limit_filename_v2="__does_not_exist__",
+            )
+            == psutil_memory_in_bytes
+        )
+    # cgroups v2, set
+    with tempfile.NamedTemporaryFile("w") as memory_max_file:
+        memory_max_file.write("100")
+        memory_max_file.flush()
+        assert (
+            ray._private.utils.get_system_memory(
+                memory_limit_filename="__does_not_exist__",
+                memory_limit_filename_v2=memory_max_file.name,
+            )
+            == 100
+        )
+
+    # cgroups v2, not set
+    with tempfile.NamedTemporaryFile("w") as memory_max_file:
+        memory_max_file.write("max")
+        memory_max_file.flush()
+        psutil_memory_in_bytes = psutil.virtual_memory().total
+        assert (
+            ray._private.utils.get_system_memory(
+                memory_limit_filename="__does_not_exist__",
+                memory_limit_filename_v2=memory_max_file.name,
+            )
+            == psutil_memory_in_bytes
+        )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="not relevant for windows")

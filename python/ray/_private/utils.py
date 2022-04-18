@@ -28,8 +28,8 @@ from pathlib import Path
 import numpy as np
 
 import ray
+from ray.core.generated.gcs_pb2 import ErrorTableData
 import ray.ray_constants as ray_constants
-from ray._private.gcs_pubsub import construct_error_message
 from ray._private.tls_utils import load_certs_from_env
 
 # Import psutil after ray so the packaged version is used.
@@ -114,6 +114,27 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
     worker.core_worker.push_error(job_id, error_type, message, time.time())
+
+
+def construct_error_message(job_id, error_type, message, timestamp):
+    """Construct an ErrorTableData object.
+
+    Args:
+        job_id: The ID of the job that the error should go to. If this is
+            nil, then the error will go to all drivers.
+        error_type: The type of the error.
+        message: The error message.
+        timestamp: The time of the error.
+
+    Returns:
+        The ErrorTableData object.
+    """
+    data = ErrorTableData()
+    data.job_id = job_id.binary()
+    data.type = error_type
+    data.error_message = message
+    data.timestamp = timestamp
+    return data
 
 
 def publish_error_to_driver(
@@ -370,7 +391,12 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
-def get_system_memory():
+def get_system_memory(
+    # For cgroups v1:
+    memory_limit_filename="/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    # For cgroups v2:
+    memory_limit_filename_v2="/sys/fs/cgroup/memory.max",
+):
     """Return the total amount of system memory in bytes.
 
     Returns:
@@ -380,16 +406,17 @@ def get_system_memory():
     # container. Note that this file is not specific to Docker and its value is
     # often much larger than the actual amount of memory.
     docker_limit = None
-    # For cgroups v1:
-    memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-    # For cgroups v2:
-    memory_limit_filename_v2 = "/sys/fs/cgroup/memory.max"
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
             docker_limit = int(f.read())
     elif os.path.exists(memory_limit_filename_v2):
         with open(memory_limit_filename_v2, "r") as f:
-            docker_limit = int(f.read())
+            max_file = f.read()
+            if max_file.isnumeric():
+                docker_limit = int(max_file)
+            else:
+                # max_file is "max", i.e. is unset.
+                docker_limit = None
 
     # Use psutil if it is available.
     psutil_memory_in_bytes = psutil.virtual_memory().total
@@ -1248,3 +1275,29 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
                 total_size_bytes += os.path.getsize(fp)
 
     return total_size_bytes
+
+
+def check_version_info(cluster_metadata):
+    """Check if the Python and Ray versions stored in GCS matches this process.
+    Args:
+        cluster_metadata: Ray cluster metadata from GCS.
+
+    Raises:
+        Exception: An exception is raised if there is a version mismatch.
+    """
+    cluster_version_info = (
+        cluster_metadata["ray_version"],
+        cluster_metadata["python_version"],
+    )
+    version_info = compute_version_info()
+    if version_info != cluster_version_info:
+        node_ip_address = ray._private.services.get_node_ip_address()
+        error_message = (
+            "Version mismatch: The cluster was started with:\n"
+            "    Ray: " + cluster_version_info[0] + "\n"
+            "    Python: " + cluster_version_info[1] + "\n"
+            "This process on node " + node_ip_address + " was started with:" + "\n"
+            "    Ray: " + version_info[0] + "\n"
+            "    Python: " + version_info[1] + "\n"
+        )
+        raise RuntimeError(error_message)
