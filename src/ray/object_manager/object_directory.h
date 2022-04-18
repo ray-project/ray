@@ -120,6 +120,20 @@ class IObjectDirectory {
                                    const NodeID &node_id,
                                    const ObjectInfo &object_info) = 0;
 
+  /// Report object spilled to external storage.
+  ///
+  /// \param object_id The object id that was spilled.
+  /// \param node_id The node id corresponding to this node.
+  /// \param owner_address The address of the owner of this node.
+  /// \param spilled_url The url of the spilled location.
+  /// \param spilled_to_local_storage Whether the object is spilled to
+  /// local storage or cloud storage.
+  virtual void ReportObjectSpilled(const ObjectID &object_id,
+                                   const NodeID &node_id,
+                                   const rpc::Address &owner_address,
+                                   const std::string &spilled_url,
+                                   const bool spilled_to_local_storage) = 0;
+
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;
 
