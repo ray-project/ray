@@ -364,10 +364,10 @@ class SklearnTrainer(Trainer):
 
         num_workers = scaling_config_dataclass.num_workers or 0
         assert num_workers == 0  # num_workers is not in scaling config allowed_keys
-        has_gpus = scaling_config_dataclass.use_gpu
 
         trainer_resources = scaling_config_dataclass.trainer_resources or {"CPU": 1}
-        num_cpus = int(trainer_resources.get("CPU", 1)) 
+        has_gpus = bool(trainer_resources.get("GPU", 0))
+        num_cpus = int(trainer_resources.get("CPU", 1))
 
         # see https://scikit-learn.org/stable/computing/parallelism.html
         os.environ["OMP_NUM_THREADS"] = str(num_cpus)
