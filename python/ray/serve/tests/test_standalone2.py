@@ -1,9 +1,12 @@
 import sys
+import os
+import subprocess
+from tempfile import NamedTemporaryFile
+import requests
 
 import pytest
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
-import requests
 
 import ray
 import ray.state
@@ -20,6 +23,13 @@ def shutdown_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
+
+
+@pytest.fixture
+def start_and_shutdown_ray_cli():
+    subprocess.check_output(["ray", "start", "--head"])
+    yield
+    subprocess.check_output(["ray", "stop", "--force"])
 
 
 def test_standalone_actor_outside_serve():
@@ -40,6 +50,20 @@ def test_standalone_actor_outside_serve():
 
     ray.get(a.ready.remote())
     ray.shutdown()
+
+
+def test_memory_omitted_option(ray_shutdown):
+    """Ensure that omitting memory doesn't break the deployment."""
+
+    @serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
+    def hello(*args, **kwargs):
+        return "world"
+
+    ray.init(num_gpus=3, namespace="serve")
+    serve.start()
+    hello.deploy()
+
+    assert ray.get(hello.get_handle().remote()) == "world"
 
 
 @pytest.mark.parametrize("detached", [True, False])
@@ -81,6 +105,39 @@ def test_deploy_with_overriden_namespace(shutdown_ray, detached):
 
 
 @pytest.mark.parametrize("detached", [True, False])
+def test_update_num_replicas_with_overriden_namespace(shutdown_ray, detached):
+    """Test updating num_replicas with overriden namespace."""
+
+    ray_namespace = "ray_namespace"
+    controller_namespace = "controller_namespace"
+
+    ray.init(namespace=ray_namespace)
+    serve.start(detached=detached, _override_controller_namespace=controller_namespace)
+
+    @serve.deployment(num_replicas=2)
+    def f(*args):
+        return "got f"
+
+    f.deploy()
+
+    actors = ray.util.list_named_actors(all_namespaces=True)
+
+    f.options(num_replicas=4).deploy()
+    updated_actors = ray.util.list_named_actors(all_namespaces=True)
+
+    # Check that only 2 new replicas were created
+    assert len(updated_actors) == len(actors) + 2
+
+    f.options(num_replicas=1).deploy()
+    updated_actors = ray.util.list_named_actors(all_namespaces=True)
+
+    # Check that all but 1 replica has spun down
+    assert len(updated_actors) == len(actors) - 1
+
+    serve.shutdown()
+
+
+@pytest.mark.parametrize("detached", [True, False])
 def test_refresh_controller_after_death(shutdown_ray, detached):
     """Check if serve.start() refreshes the controller handle if it's dead."""
 
@@ -114,6 +171,55 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
 
     serve.shutdown()
     ray.shutdown()
+
+
+def test_shutdown_remote(start_and_shutdown_ray_cli):
+    """Check that serve.shutdown() works on a remote Ray cluster."""
+
+    deploy_serve_script = (
+        "import ray\n"
+        "from ray import serve\n"
+        "\n"
+        'ray.init(address="auto", namespace="x")\n'
+        "serve.start(detached=True)\n"
+        "\n"
+        "@serve.deployment\n"
+        "def f(*args):\n"
+        '   return "got f"\n'
+        "\n"
+        "f.deploy()\n"
+    )
+
+    shutdown_serve_script = (
+        "import ray\n"
+        "from ray import serve\n"
+        "\n"
+        'ray.init(address="auto", namespace="x")\n'
+        "serve.shutdown()\n"
+    )
+
+    # Cannot use context manager due to tmp file's delete flag issue in Windows
+    # https://stackoverflow.com/a/15590253
+    deploy_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
+    shutdown_file = NamedTemporaryFile(mode="w+", delete=False, suffix=".py")
+
+    try:
+        deploy_file.write(deploy_serve_script)
+        deploy_file.close()
+
+        shutdown_file.write(shutdown_serve_script)
+        shutdown_file.close()
+
+        # Ensure Serve can be restarted and shutdown with for loop
+        for _ in range(2):
+            subprocess.check_output(["python", deploy_file.name])
+            assert requests.get("http://localhost:8000/f").text == "got f"
+            subprocess.check_output(["python", shutdown_file.name])
+            with pytest.raises(requests.exceptions.ConnectionError):
+                requests.get("http://localhost:8000/f")
+    finally:
+        os.unlink(deploy_file.name)
+        os.unlink(shutdown_file.name)
 
 
 def test_autoscaler_shutdown_node_http_everynode(

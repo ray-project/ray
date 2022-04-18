@@ -2,7 +2,6 @@ from functools import wraps
 import importlib
 from itertools import groupby
 import json
-import logging
 import pickle
 import random
 import string
@@ -45,43 +44,6 @@ def parse_request_item(request_item):
             return (build_starlette_request(arg.scope, arg.body),), {}
 
     return request_item.args, request_item.kwargs
-
-
-class LoggingContext:
-    """
-    Context manager to manage logging behaviors within a particular block, such as:
-    1) Overriding logging level
-
-    Source (python3 official documentation)
-    https://docs.python.org/3/howto/logging-cookbook.html#using-a-context-manager-for-selective-logging # noqa: E501
-    """
-
-    def __init__(self, logger, level=None):
-        self.logger = logger
-        self.level = level
-
-    def __enter__(self):
-        if self.level is not None:
-            self.old_level = self.logger.level
-            self.logger.setLevel(self.level)
-
-    def __exit__(self, et, ev, tb):
-        if self.level is not None:
-            self.logger.setLevel(self.old_level)
-
-
-def _get_logger():
-    logger = logging.getLogger("ray.serve")
-    # TODO(simon): Make logging level configurable.
-    log_level = os.environ.get("SERVE_LOG_DEBUG")
-    if log_level and int(log_level):
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-    return logger
-
-
-logger = _get_logger()
 
 
 class ServeEncoder(json.JSONEncoder):
@@ -171,6 +133,17 @@ def get_all_node_ids():
     return node_ids
 
 
+def node_id_to_ip_addr(node_id: str):
+    """Recovers the IP address for an entry from get_all_node_ids."""
+    if ":" in node_id:
+        node_id = node_id.split(":")[1]
+
+    if "-" in node_id:
+        node_id = node_id.split("-")[0]
+
+    return node_id
+
+
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
@@ -255,7 +228,9 @@ def msgpack_serialize(obj):
     return serialized
 
 
-def get_deployment_import_path(deployment, replace_main=False):
+def get_deployment_import_path(
+    deployment, replace_main=False, enforce_importable=False
+):
     """
     Gets the import path for deployment's func_or_class.
 
@@ -275,8 +250,15 @@ def get_deployment_import_path(deployment, replace_main=False):
 
     import_path = f"{body.__module__}.{body.__qualname__}"
 
-    if replace_main:
+    if enforce_importable and "<locals>" in body.__qualname__:
+        raise RuntimeError(
+            "Deployment definitions must be importable to build the Serve app, "
+            f"but deployment '{deployment.name}' is inline defined or returned "
+            "from another function. Please restructure your code so that "
+            f"'{import_path}' can be imported (i.e., put it in a module)."
+        )
 
+    if replace_main:
         # Replaces __main__ with its file name. E.g. suppose the import path
         # is __main__.classname and classname is defined in filename.py.
         # Its import path becomes filename.classname.
@@ -365,3 +347,11 @@ def require_packages(packages: List[str]):
         return wrapped
 
     return decorator
+
+
+def in_interactive_shell():
+    # Taken from:
+    # https://stackoverflow.com/questions/15411967/how-can-i-check-if-code-is-executed-in-the-ipython-notebook
+    import __main__ as main
+
+    return not hasattr(main, "__file__")

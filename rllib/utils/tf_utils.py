@@ -4,7 +4,6 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
@@ -20,30 +19,6 @@ if TYPE_CHECKING:
     from ray.rllib.policy.tf_policy import TFPolicy
 
 tf1, tf, tfv = try_import_tf()
-
-
-@Deprecated(new="ray.rllib.utils.numpy.convert_to_numpy()", error=True)
-def convert_to_non_tf_type(x: TensorStructType) -> TensorStructType:
-    """Converts values in `stats` to non-Tensor numpy or python types.
-
-    Args:
-        x: Any (possibly nested) struct, the values in which will be
-            converted and returned as a new struct with all tf (eager) tensors
-            being converted to numpy types.
-
-    Returns:
-        A new struct with the same structure as `x`, but with all
-        values converted to non-tf Tensor types.
-    """
-
-    # The mapping function used to numpyize torch Tensors.
-    def mapping(item):
-        if isinstance(item, (tf.Tensor, tf.Variable)):
-            return item.numpy()
-        else:
-            return item
-
-    return tree.map_structure(mapping, x)
 
 
 def explained_variance(y: TensorType, pred: TensorType) -> TensorType:

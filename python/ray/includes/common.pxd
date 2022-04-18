@@ -161,12 +161,17 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         void set_placement_group_id(const c_string& placement_group_id)
         void set_placement_group_bundle_index(int64_t placement_group_bundle_index)  # noqa: E501
         void set_placement_group_capture_child_tasks(c_bool placement_group_capture_child_tasks)  # noqa: E501
+    cdef cppclass CNodeAffinitySchedulingStrategy "ray::rpc::NodeAffinitySchedulingStrategy":  # noqa: E501
+        CNodeAffinitySchedulingStrategy()
+        void set_node_id(const c_string& node_id)
+        void set_soft(c_bool soft)
     cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
         CSchedulingStrategy()
         void clear_scheduling_strategy()
         CSpreadSchedulingStrategy* mutable_spread_scheduling_strategy()
         CDefaultSchedulingStrategy* mutable_default_scheduling_strategy()
         CPlacementGroupSchedulingStrategy* mutable_placement_group_scheduling_strategy()  # noqa: E501
+        CNodeAffinitySchedulingStrategy* mutable_node_affinity_scheduling_strategy()
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
         const c_string &SerializeAsString() const
@@ -295,11 +300,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &ip, int port,
-                          const c_string &password,
-                          c_bool enable_sync_conn,
-                          c_bool enable_async_conn,
-                          c_bool enable_subscribe_conn)
         CGcsClientOptions(const c_string &gcs_address)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:

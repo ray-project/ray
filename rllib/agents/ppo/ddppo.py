@@ -17,7 +17,6 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
-import sys
 import time
 from typing import Callable, Optional, Union
 
@@ -89,7 +88,10 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # for it to be used as a penalty, we would have to un-decentralize
         # DDPPO
         "kl_coeff": 0.0,
-        "kl_target": 0.0
+        "kl_target": 0.0,
+
+        # Keep using execution_plan API (training_iteration fn not defined yet).
+        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )
@@ -155,12 +157,6 @@ class DDPPOTrainer(PPOTrainer):
         # setting.
         super().validate_config(config)
 
-        # Error if run on Win.
-        if sys.platform in ["win32", "cygwin"]:
-            raise ValueError(
-                "DD-PPO not supported on Win yet! Due to usage of torch.distributed."
-            )
-
         # Only supported for PyTorch so far.
         if config["framework"] != "torch":
             raise ValueError("Distributed data parallel is only supported for PyTorch")
@@ -204,7 +200,7 @@ class DDPPOTrainer(PPOTrainer):
 
         Returns:
             LocalIterator[dict]: The Policy class to use with PGTrainer.
-                If None, use `default_policy` provided in build_trainer().
+                If None, use `get_default_policy_class()` provided by Trainer.
         """
         assert (
             len(kwargs) == 0

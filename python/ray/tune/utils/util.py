@@ -1,22 +1,22 @@
-from typing import Dict, List, Union, Callable, Type
 import copy
 import glob
+import inspect
 import logging
 import os
-import inspect
 import threading
 import time
 import uuid
 from collections import defaultdict
 from datetime import datetime
 from threading import Thread
+from typing import Dict, List, Union, Type, Callable, Any
 from typing import Optional
 
 import numpy as np
-import ray
 import psutil
-
-from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+import ray
+from ray.ml.checkpoint import Checkpoint
+from ray.ml.utils.remote_storage import delete_at_uri
 from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
@@ -24,6 +24,11 @@ from ray.util.ml_utils.dict import (  # noqa: F401
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
+)
+from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
+from ray.util.ml_utils.util import (  # noqa: F401
+    is_nan,
+    is_nan_or_inf,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,6 +135,56 @@ def get_pinned_object(pinned_id):
     return ray.get(pinned_id)
 
 
+def retry_fn(
+    fn: Callable[[], Any],
+    exception_type: Type[Exception],
+    num_retries: int = 3,
+    sleep_time: int = 1,
+):
+    for i in range(num_retries):
+        try:
+            fn()
+        except exception_type as e:
+            logger.warning(e)
+            time.sleep(sleep_time)
+        else:
+            break
+
+
+@ray.remote
+def _serialize_checkpoint(checkpoint_path) -> bytes:
+    checkpoint = Checkpoint.from_directory(checkpoint_path)
+    return checkpoint.to_bytes()
+
+
+def get_checkpoint_from_remote_node(
+    checkpoint_path: str, node_ip: str, timeout: float = 300.0
+) -> Optional[Checkpoint]:
+    if not any(node["NodeManagerAddress"] == node_ip for node in ray.nodes()):
+        logger.warning(
+            f"Could not fetch checkpoint with path {checkpoint_path} from "
+            f"node with IP {node_ip} because the node is not available "
+            f"anymore."
+        )
+        return None
+    fut = _serialize_checkpoint.options(
+        resources={f"node:{node_ip}": 0.01}, num_cpus=0
+    ).remote(checkpoint_path)
+    try:
+        checkpoint_data = ray.get(fut, timeout=timeout)
+    except Exception as e:
+        logger.warning(
+            f"Could not fetch checkpoint with path {checkpoint_path} from "
+            f"node with IP {node_ip} because serialization failed: {e}"
+        )
+        return None
+    return Checkpoint.from_bytes(checkpoint_data)
+
+
+def delete_external_checkpoint(checkpoint_uri: str):
+    delete_at_uri(checkpoint_uri)
+
+
 class warn_if_slow:
     """Prints a warning if a given operation is slower than 500ms.
 
@@ -223,10 +278,6 @@ class Tee(object):
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-
-
-def is_nan_or_inf(value):
-    return np.isnan(value) or np.isinf(value)
 
 
 def _to_pinnable(obj):

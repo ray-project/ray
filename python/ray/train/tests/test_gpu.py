@@ -38,6 +38,32 @@ def ray_start_1_cpu_1_gpu():
     ray.shutdown()
 
 
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1])
+def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
+    def train_fn():
+        return train.torch.get_device().index
+
+    trainer = Trainer(
+        "torch",
+        num_workers=2,
+        use_gpu=True,
+        resources_per_worker={"GPU": num_gpus_per_worker},
+    )
+    trainer.start()
+    devices = trainer.run(train_fn)
+    trainer.shutdown()
+
+    if num_gpus_per_worker == 0.5:
+        assert devices == [0, 0]
+    elif num_gpus_per_worker == 1:
+        assert devices == [0, 1]
+    else:
+        raise RuntimeError(
+            "New parameter for this test has been added without checking that the "
+            "correct devices have been returned."
+        )
+
+
 def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     """Tests if ``prepare_model`` correctly wraps in DDP."""
 

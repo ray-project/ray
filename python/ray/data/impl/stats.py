@@ -112,22 +112,23 @@ class _StatsActor:
 _stats_actor = [None, None]
 
 
-def get_or_create_stats_actor():
+def _get_or_create_stats_actor():
     # Need to re-create it if Ray restarts (mostly for unit tests).
     if (
         not _stats_actor[0]
         or not ray.is_initialized()
         or _stats_actor[1] != ray.get_runtime_context().job_id.hex()
     ):
-        _stats_actor[0] = _StatsActor.remote()
+        _stats_actor[0] = _StatsActor.options(
+            name="datasets_stats_actor", get_if_exists=True
+        ).remote()
         _stats_actor[1] = ray.get_runtime_context().job_id.hex()
 
-    # Clear the actor handle after Ray reinits since it's no longer
-    # valid.
-    def clear_actor():
-        _stats_actor[0] = None
+        # Clear the actor handle after Ray reinits since it's no longer valid.
+        def clear_actor():
+            _stats_actor[0] = None
 
-    ray.worker._post_init_hooks.append(clear_actor)
+        ray.worker._post_init_hooks.append(clear_actor)
     return _stats_actor[0]
 
 
@@ -143,7 +144,7 @@ class DatasetStats:
         *,
         stages: Dict[str, List[BlockMetadata]],
         parent: Union[Optional["DatasetStats"], List["DatasetStats"]],
-        stats_actor=None,
+        needs_stats_actor=False,
         stats_uuid=None
     ):
         """Create dataset stats.
@@ -153,8 +154,9 @@ class DatasetStats:
                 previous one. Typically one entry, e.g., {"map": [...]}.
             parent: Reference to parent Dataset's stats, or a list of parents
                 if there are multiple.
-            stats_actor: Reference to actor where stats should be pulled
-                from. This is only used for Datasets using LazyBlockList.
+            needs_stats_actor: Whether this Dataset's stats needs a stats actor for
+                stats collection. This is currently only used for Datasets using a lazy
+                datasource (i.e. a LazyBlockList).
             stats_uuid: The uuid for the stats, used to fetch the right stats
                 from the stats actor.
         """
@@ -171,7 +173,7 @@ class DatasetStats:
         )
         self.dataset_uuid: str = None
         self.time_total_s: float = 0
-        self.stats_actor = stats_actor
+        self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
 
         # Iteration stats, filled out if the user iterates over the dataset.
@@ -180,6 +182,10 @@ class DatasetStats:
         self.iter_format_batch_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
+
+    @property
+    def stats_actor(self):
+        return _get_or_create_stats_actor()
 
     def child_builder(self, name: str) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
@@ -199,7 +205,7 @@ class DatasetStats:
         if already_printed is None:
             already_printed = set()
 
-        if self.stats_actor:
+        if self.needs_stats_actor:
             # XXX this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(
                 self.stats_actor.get.remote(self.stats_uuid)
@@ -249,8 +255,12 @@ class DatasetStats:
 
     def _summarize_blocks(self, blocks: List[BlockMetadata]) -> str:
         exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
+        rounded_total = round(self.time_total_s, 2)
+        if rounded_total <= 0:
+            # Handle -0.0 case.
+            rounded_total = 0
         out = "{}/{} blocks executed in {}s\n".format(
-            len(exec_stats), len(blocks), round(self.time_total_s, 2)
+            len(exec_stats), len(blocks), rounded_total
         )
 
         if exec_stats:

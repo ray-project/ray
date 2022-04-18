@@ -14,11 +14,14 @@
 
 #include <memory>
 
+// clang-format off
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "mock/ray/pubsub/publisher.h"
+// clang-format on
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
@@ -28,11 +31,10 @@ class GcsNodeManagerTest : public ::testing::Test {
     client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
-        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
+        std::make_unique<ray::pubsub::MockPublisher>());
   }
 
  protected:
-  std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
