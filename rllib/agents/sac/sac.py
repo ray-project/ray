@@ -93,6 +93,7 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer (in time steps).
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
+        "_enable_replay_buffer_api": False,
         "type": "MultiAgentReplayBuffer",
         "capacity": int(1e6),
     },
@@ -169,6 +170,11 @@ DEFAULT_CONFIG = with_common_config({
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
     # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
+    # Experimental flag.
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration` method will be called as-is each
+    # training iteration.
+    "_disable_execution_plan_api": False,
 })
 # __sphinx_doc_end__
 # fmt: on
