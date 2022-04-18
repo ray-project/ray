@@ -11,6 +11,9 @@ import json
 import time
 from pathlib import Path
 from unittest import mock
+import shutil
+import platform
+from tempfile import gettempdir
 
 import ray
 import ray.ray_constants as ray_constants
@@ -687,21 +690,32 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
-    if rep.when == "call" and rep.failed:
-        archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
+    # We temporarily restrict to Linux until we have artifact dirs
+    # for Windows and Mac
+    if platform.system() != "Linux":
+        return
 
-        if archive_dir is not None:
-            import shutil
-            import time
-            import platform
-            from tempfile import gettempdir
+    # Only archive failed tests after the "call" phase of the test
+    if rep.when != "call" or not rep.failed:
+        return
 
-            # Limit to Linux for now
-            if platform.system() == "Linux":
-                if not os.path.exists(archive_dir):
-                    os.makedirs(archive_dir)
-                output_file = f"{archive_dir}/{rep.nodeid.split('/')[-1]}-{time.time()}"
-                tmp_dir = "/tmp" if platform.system() == "Darwin" else gettempdir()
-                log_dir = f"{tmp_dir}/ray/session_latest/logs"
-                if os.path.exists(log_dir):
-                    shutil.make_archive(output_file, "zip", log_dir)
+    # Get dir to write zipped logs to
+    archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
+
+    if not archive_dir:
+        return
+
+    if not os.path.exists(archive_dir):
+        os.makedirs(archive_dir)
+
+    # Get logs dir from the latest ray session
+    tmp_dir = gettempdir()
+    logs_dir = os.path.join(tmp_dir, "ray", "session_latest", "logs")
+
+    if not os.path.exists(logs_dir):
+        return
+
+    # Write zipped logs to logs archive dir
+    test_name = rep.nodeid.replace(os.sep, "::")
+    output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
+    shutil.make_archive(output_file, "zip", logs_dir)
