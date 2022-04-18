@@ -227,6 +227,10 @@ class BlockAccessor(Generic[T]):
         """Convert this block into an Arrow table."""
         raise NotImplementedError
 
+    def to_block(self) -> Block:
+        """Return the base block that this accessor wraps."""
+        raise NotImplementedError
+
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
         raise NotImplementedError

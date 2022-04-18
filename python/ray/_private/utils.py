@@ -12,7 +12,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional, Sequence, Tuple, Any, Union
+from typing import Optional, Sequence, Tuple, Any, Union, Dict
 import uuid
 import grpc
 import warnings
@@ -283,52 +283,16 @@ def set_cuda_visible_devices(gpu_ids):
     last_set_gpu_ids = gpu_ids
 
 
-def resources_from_resource_arguments(
-    default_num_cpus,
-    default_num_gpus,
-    default_memory,
-    default_object_store_memory,
-    default_resources,
-    default_accelerator_type,
-    runtime_num_cpus,
-    runtime_num_gpus,
-    runtime_memory,
-    runtime_object_store_memory,
-    runtime_resources,
-    runtime_accelerator_type,
-):
+def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     """Determine a task's resource requirements.
 
     Args:
-        default_num_cpus: The default number of CPUs required by this function
-            or actor method.
-        default_num_gpus: The default number of GPUs required by this function
-            or actor method.
-        default_memory: The default heap memory required by this function
-            or actor method.
-        default_object_store_memory: The default object store memory required
-            by this function or actor method.
-        default_resources: The default custom resources required by this
-            function or actor method.
-        runtime_num_cpus: The number of CPUs requested when the task was
-            invoked.
-        runtime_num_gpus: The number of GPUs requested when the task was
-            invoked.
-        runtime_memory: The heap memory requested when the task was invoked.
-        runtime_object_store_memory: The object store memory requested when
-            the task was invoked.
-        runtime_resources: The custom resources requested when the task was
-            invoked.
+        options_dict: The dictionary that contains resources requirements.
 
     Returns:
         A dictionary of the resource requirements for the task.
     """
-    if runtime_resources is not None:
-        resources = runtime_resources.copy()
-    elif default_resources is not None:
-        resources = default_resources.copy()
-    else:
-        resources = {}
+    resources = (options_dict.get("resources") or {}).copy()
 
     if "CPU" in resources or "GPU" in resources:
         raise ValueError(
@@ -340,33 +304,25 @@ def resources_from_resource_arguments(
             "contain the key 'memory' or 'object_store_memory'"
         )
 
-    assert default_num_cpus is not None
-    resources["CPU"] = (
-        default_num_cpus if runtime_num_cpus is None else runtime_num_cpus
-    )
+    num_cpus = options_dict.get("num_cpus")
+    num_gpus = options_dict.get("num_gpus")
+    memory = options_dict.get("memory")
+    object_store_memory = options_dict.get("object_store_memory")
+    accelerator_type = options_dict.get("accelerator_type")
 
-    if runtime_num_gpus is not None:
-        resources["GPU"] = runtime_num_gpus
-    elif default_num_gpus is not None:
-        resources["GPU"] = default_num_gpus
-
-    # Order of arguments matter for short circuiting.
-    memory = runtime_memory or default_memory
-    object_store_memory = runtime_object_store_memory or default_object_store_memory
+    if num_cpus is not None:
+        resources["CPU"] = num_cpus
+    if num_gpus is not None:
+        resources["GPU"] = num_gpus
     if memory is not None:
         resources["memory"] = ray_constants.to_memory_units(memory, round_up=True)
     if object_store_memory is not None:
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True
         )
-
-    if runtime_accelerator_type is not None:
+    if accelerator_type is not None:
         resources[
-            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{runtime_accelerator_type}"
-        ] = 0.001
-    elif default_accelerator_type is not None:
-        resources[
-            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{default_accelerator_type}"
+            f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
         ] = 0.001
 
     return resources
@@ -414,7 +370,12 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
-def get_system_memory():
+def get_system_memory(
+    # For cgroups v1:
+    memory_limit_filename="/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    # For cgroups v2:
+    memory_limit_filename_v2="/sys/fs/cgroup/memory.max",
+):
     """Return the total amount of system memory in bytes.
 
     Returns:
@@ -424,16 +385,17 @@ def get_system_memory():
     # container. Note that this file is not specific to Docker and its value is
     # often much larger than the actual amount of memory.
     docker_limit = None
-    # For cgroups v1:
-    memory_limit_filename = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-    # For cgroups v2:
-    memory_limit_filename_v2 = "/sys/fs/cgroup/memory.max"
     if os.path.exists(memory_limit_filename):
         with open(memory_limit_filename, "r") as f:
             docker_limit = int(f.read())
     elif os.path.exists(memory_limit_filename_v2):
         with open(memory_limit_filename_v2, "r") as f:
-            docker_limit = int(f.read())
+            max_file = f.read()
+            if max_file.isnumeric():
+                docker_limit = int(max_file)
+            else:
+                # max_file is "max", i.e. is unset.
+                docker_limit = None
 
     # Use psutil if it is available.
     psutil_memory_in_bytes = psutil.virtual_memory().total

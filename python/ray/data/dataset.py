@@ -57,6 +57,7 @@ from ray.data.datasource import (
     ParquetDatasource,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
+    ReadTask,
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -87,6 +88,10 @@ _epoch_warned = False
 
 # Whether we have warned about using slow Dataset transforms.
 _slow_warned = False
+
+TensorflowFeatureTypeSpec = Union[
+    "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
+]
 
 
 @PublicAPI
@@ -988,26 +993,28 @@ class Dataset(Generic[T]):
 
         start_time = time.perf_counter()
         context = DatasetContext.get_current()
-        calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
-        metadata: List[BlockPartitionMetadata] = []
-        block_partitions: List[ObjectRef[BlockPartition]] = []
+        tasks: List[ReadTask] = []
+        block_partition_refs: List[ObjectRef[BlockPartition]] = []
+        block_partition_meta_refs: List[ObjectRef[BlockPartitionMetadata]] = []
 
         datasets = [self] + list(other)
         for ds in datasets:
             bl = ds._plan.execute()
             if isinstance(bl, LazyBlockList):
-                calls.extend(bl._calls)
-                metadata.extend(bl._metadata)
-                block_partitions.extend(bl._block_partitions)
+                tasks.extend(bl._tasks)
+                block_partition_refs.extend(bl._block_partition_refs)
+                block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             else:
-                calls.extend([None] * bl.initial_num_blocks())
-                metadata.extend(bl._metadata)
+                tasks.extend([ReadTask(lambda: None, meta) for meta in bl._metadata])
                 if context.block_splitting_enabled:
-                    block_partitions.extend(
+                    block_partition_refs.extend(
                         [ray.put([(b, m)]) for b, m in bl.get_blocks_with_metadata()]
                     )
                 else:
-                    block_partitions.extend(bl.get_blocks())
+                    block_partition_refs.extend(bl.get_blocks())
+                block_partition_meta_refs.extend(
+                    [ray.put(meta) for meta in bl._metadata]
+                )
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1028,7 +1035,8 @@ class Dataset(Generic[T]):
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
             ExecutionPlan(
-                LazyBlockList(calls, metadata, block_partitions), dataset_stats
+                LazyBlockList(tasks, block_partition_refs, block_partition_meta_refs),
+                dataset_stats,
             ),
             max_epoch,
             self._lazy,
@@ -2122,7 +2130,7 @@ class Dataset(Generic[T]):
 Dict[str, List[str]]]): The names of the columns
                 to use as the features. Can be a list of lists or
                 a dict of string-list pairs for multi-tensor output.
-                If None, then use all columns except the label columns as
+                If None, then use all columns except the label column as
                 the features.
             label_column_dtype (Optional[torch.dtype]): The torch dtype to
                 use for the label column. If None, then automatically infer
@@ -2228,9 +2236,13 @@ Dict[str, List[str]]]): The names of the columns
     def to_tf(
         self,
         *,
-        output_signature: Union["tf.TypeSpec", Tuple["tf.TypeSpec", "tf.TypeSpec"]],
+        output_signature: Union[
+            TensorflowFeatureTypeSpec, Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]
+        ],
         label_column: Optional[str] = None,
-        feature_columns: Optional[List[str]] = None,
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], Dict[str, List[str]]]
+        ] = None,
         prefetch_blocks: int = 0,
         batch_size: int = 1,
     ) -> "tf.data.Dataset":
@@ -2239,6 +2251,23 @@ Dict[str, List[str]]]): The names of the columns
         The TF Dataset will be created from the generator returned by the
         ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
         arguments will be passed to that method.
+
+        For the features tensor (N is the ``batch_size`` and n1, ..., nk
+        are the number of features per tensor):
+
+        * If ``feature_columns`` is a ``List[str]``, the features will be
+          a tensor of shape (N, n), with columns corresponding to
+          ``feature_columns``
+
+        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
+          a list of tensors of shape [(N, n1),...,(N, nk)], with columns of each
+          tensor corresponding to the elements of ``feature_columns``
+
+        * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
+          will be a dict of key-tensor pairs of shape
+          {key1: (N, n1),..., keyN: (N, nk)}, with columns of each
+          tensor corresponding to the value of ``feature_columns`` under the
+          key.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -2254,16 +2283,20 @@ Dict[str, List[str]]]): The names of the columns
         Time complexity: O(1)
 
         Args:
-            output_signature (Union[tf.TypeSpec, Tuple[tf.TypeSpec, tf.TypeSpec]]):
-                If ``label_column`` is specified, a 2-element
-                tuple of ``tf.TypeSpec`` objects corresponding to
-                (features, label). Otherwise, a single ``tf.TypeSpec``
-                corresponding to features tensor.
+            output_signature (Union[TensorflowFeatureTypeSpec, \
+Tuple[TensorflowFeatureTypeSpec, "tf.TypeSpec"]]): If ``label_column`` is specified,
+                a two-element tuple containing a ``FeatureTypeSpec`` and
+                ``tf.TypeSpec`` object corresponding to (features, label). Otherwise, a
+                single ``TensorflowFeatureTypeSpec`` corresponding to features tensor.
+                A ``TensorflowFeatureTypeSpec`` is a ``tf.TypeSpec``,
+                ``List["tf.TypeSpec"]``, or ``Dict[str, "tf.TypeSpec"]``.
             label_column (Optional[str]): The name of the column used as the label
                 (second element of the output tuple). If not specified, output
                 will be just one tensor instead of a tuple.
-            feature_columns (Optional[List[str]]): List of columns in datasets
-                to use. If None, all columns will be used.
+            feature_columns (Optional[Union[List[str], List[List[str]], Dict[str, \
+List[str]]]): The names of the columns to use as the features. Can be a list of lists
+                or a dict of string-list pairs for multi-tensor output. If None, then
+                use all columns except the label columns as the features.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
@@ -2279,6 +2312,11 @@ Dict[str, List[str]]]): The names of the columns
         except ImportError:
             raise ValueError("tensorflow must be installed!")
 
+        # `output_signature` can be a tuple but not a list. See
+        # https://stackoverflow.com/questions/59092423/what-is-a-nested-structure-in-tensorflow.
+        if isinstance(output_signature, list):
+            output_signature = tuple(output_signature)
+
         def make_generator():
             for batch in self.iter_batches(
                 prefetch_blocks=prefetch_blocks,
@@ -2286,15 +2324,40 @@ Dict[str, List[str]]]): The names of the columns
                 batch_format="pandas",
             ):
                 if label_column:
-                    target_col = batch.pop(label_column)
-                if feature_columns:
-                    batch = batch[feature_columns]
+                    targets = batch.pop(label_column).values
+
+                features = None
+                if feature_columns is None:
+                    features = batch.values
+                elif isinstance(feature_columns, list):
+                    if all(isinstance(column, str) for column in feature_columns):
+                        features = batch[feature_columns].values
+                    elif all(isinstance(columns, list) for columns in feature_columns):
+                        features = tuple(
+                            batch[columns].values for columns in feature_columns
+                        )
+                    else:
+                        raise ValueError(
+                            "Expected `feature_columns` to be a list of strings or a "
+                            "list of lists."
+                        )
+                elif isinstance(feature_columns, dict):
+                    features = {
+                        key: batch[columns].values
+                        for key, columns in feature_columns.items()
+                    }
+                else:
+                    raise ValueError(
+                        "Expected `feature_columns` to be a list or a dictionary, "
+                        f"but got a `{type(feature_columns).__name__}` instead."
+                    )
+
                 # TODO(Clark): Support batches containing our extension array
                 # TensorArray.
                 if label_column:
-                    yield batch.values, target_col.values
+                    yield features, targets
                 else:
-                    yield batch.values
+                    yield features
 
         dataset = tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature
@@ -2548,6 +2611,7 @@ Dict[str, List[str]]]): The names of the columns
         # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
         if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            self._plan._in_blocks.clear()
             blocks, read_stage = self._plan._rewrite_read_stage()
             outer_stats = DatasetStats(stages={}, parent=None)
         else:
@@ -2666,6 +2730,7 @@ Dict[str, List[str]]]): The names of the columns
         # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
         if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
+            self._plan._in_blocks.clear()
             blocks, read_stage = self._plan._rewrite_read_stage()
             outer_stats = DatasetStats(stages={}, parent=None)
         else:
@@ -2749,12 +2814,13 @@ Dict[str, List[str]]]): The names of the columns
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        blocks = self.get_internal_block_refs()
-        bar = ProgressBar("Force reads", len(blocks))
-        bar.block_until_complete(blocks)
+        blocks, metadata = [], []
+        for b, m in self._plan.execute().get_blocks_with_metadata():
+            blocks.append(b)
+            metadata.append(m)
         ds = Dataset(
             ExecutionPlan(
-                BlockList(blocks, self._plan.execute().get_metadata()),
+                BlockList(blocks, metadata),
                 self._plan.stats(),
                 dataset_uuid=self._get_uuid(),
             ),
@@ -2919,6 +2985,7 @@ Dict[str, List[str]]]): The names of the columns
                 # This should be cached from the ._dataset_format() check, so we
                 # don't fetch and we assert that the schema is not None.
                 schema = self.schema(fetch_if_missing=False)
+                assert schema is not None
                 if not skip_cols:
                     skip_cols = []
                 if len(schema.names) > 0:

@@ -2719,11 +2719,6 @@ class Trainer(Trainable):
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
 
-    @staticmethod
-    @Deprecated(error=True)
-    def with_updates(*args, **kwargs):
-        pass
-
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
         self, config: PartialTrainerConfigDict
@@ -3077,10 +3072,6 @@ class Trainer(Trainable):
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
-
-    @Deprecated(new="Trainer.evaluate()", error=True)
-    def _evaluate(self) -> dict:
-        return self.evaluate()
 
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(
