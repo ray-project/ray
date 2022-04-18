@@ -37,12 +37,6 @@ def ensure_only_allowed_dataclass_keys_updated(
         allowed_keys: dataclass attribute keys that can have a value different than
         the default one.
     """
-    if not dataclasses.is_dataclass(dataclass):
-        raise ValueError(
-            f"Can only perform allowed keys check on dataclass objects, got "
-            f"{type(dataclass)}"
-        )
-
     default_data = dataclass.__class__()
 
     allowed_keys = set(allowed_keys)
