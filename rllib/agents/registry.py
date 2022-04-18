@@ -3,7 +3,6 @@
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
-from ray.rllib.utils.deprecation import Deprecated
 
 
 def _import_a2c():
@@ -226,11 +225,6 @@ def get_trainer_class(alg: str, return_config=False) -> type:
         if return_config:
             return class_, config
         return class_
-
-
-@Deprecated(new="ray.rllib.agents.registry::get_trainer_class()", error=True)
-def get_agent_class(alg: str) -> type:
-    return get_trainer_class(alg)
 
 
 def _get_trainer_class(alg: str, return_config=False) -> type:

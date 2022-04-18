@@ -77,6 +77,11 @@ void ClusterResourceScheduler::Init(
           *cluster_resource_manager_,
           /*is_node_available_fn*/
           [this](auto node_id) { return this->NodeAlive(node_id); });
+  bundle_scheduling_policy_ =
+      std::make_unique<raylet_scheduling_policy::CompositeBundleSchedulingPolicy>(
+          *cluster_resource_manager_,
+          /*is_node_available_fn*/
+          [this](auto node_id) { return this->NodeAlive(node_id); });
 }
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
@@ -122,6 +127,16 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                                      SchedulingOptions::Spread(
                                          /*avoid_local_node*/ force_spillback,
                                          /*require_node_available*/ force_spillback));
+  } else if (scheduling_strategy.scheduling_strategy_case() ==
+             rpc::SchedulingStrategy::SchedulingStrategyCase::
+                 kNodeAffinitySchedulingStrategy) {
+    best_node_id = scheduling_policy_->Schedule(
+        resource_request,
+        SchedulingOptions::NodeAffinity(
+            force_spillback,
+            force_spillback,
+            scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
+            scheduling_strategy.node_affinity_scheduling_strategy().soft()));
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.
@@ -245,9 +260,8 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
 SchedulingResult ClusterResourceScheduler::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options,
-    SchedulingContext *context /* = nullptr*/) {
-  return scheduling_policy_->Schedule(resource_request_list, options, context);
+    SchedulingOptions options) {
+  return bundle_scheduling_policy_->Schedule(resource_request_list, options);
 }
 
 }  // namespace ray

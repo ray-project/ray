@@ -8,8 +8,9 @@ with remote checkpoint.
 """
 
 import click
-import time
+import logging
 import requests
+import time
 import uuid
 
 from pathlib import Path
@@ -23,7 +24,8 @@ from serve_test_utils import (
 
 import ray
 from ray import serve
-from ray.serve.utils import logger
+
+logger = logging.getLogger(__file__)
 
 # Deployment configs
 DEFAULT_NUM_REPLICAS = 2

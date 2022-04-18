@@ -101,7 +101,7 @@ def register_env(name: str, env_creator: Callable):
 
 
 def register_input(name: str, input_creator: Callable):
-    """Register a custom input api for RLLib.
+    """Register a custom input api for RLlib.
 
     Args:
         name: Name to register.

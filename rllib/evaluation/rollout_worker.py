@@ -42,9 +42,9 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts, check_env
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -233,6 +233,7 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_config: Optional[PartialTrainerConfigDict] = None,
         worker_index: int = 0,
         num_workers: int = 0,
+        recreated_worker: bool = False,
         record_env: Union[bool, str] = False,
         log_dir: Optional[str] = None,
         log_level: Optional[str] = None,
@@ -327,6 +328,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 through EnvContext so that envs can be configured per worker.
             num_workers: For remote workers, how many workers altogether
                 have been created?
+            recreated_worker: Whether this worker is a recreated one. Workers are
+                recreated by a Trainer (via WorkerSet) in case
+                `recreate_failed_workers=True` and one of the original workers (or an
+                already recreated one) has failed. They don't differ from original
+                workers other than the value of this flag (`self.recreated_worker`).
             record_env: Write out episode stats and videos
                 using gym.wrappers.Monitor to this directory if specified. If
                 True, use the default output dir in ~/ray_results/.... If
@@ -434,6 +440,7 @@ class RolloutWorker(ParallelIteratorWorker):
             vector_index=0,
             num_workers=num_workers,
             remote=remote_worker_envs,
+            recreated_worker=recreated_worker,
         )
         self.env_context = env_context
         self.policy_config: PartialTrainerConfigDict = policy_config
@@ -445,6 +452,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
+        self.recreated_worker: bool = recreated_worker
         model_config: ModelConfigDict = (
             model_config or self.policy_config.get("model") or {}
         )
@@ -500,15 +508,6 @@ class RolloutWorker(ParallelIteratorWorker):
         if self.env is not None:
             # Validate environment (general validation function).
             if not self._disable_env_checking:
-                logger.warning(
-                    "We've added a module for checking environments that "
-                    "are used in experiments. It will cause your "
-                    "environment to fail if your environment is not set up"
-                    "correctly. You can disable check env by setting "
-                    "`disable_env_checking` to True in your experiment config "
-                    "dictionary. You can run the environment checking module "
-                    "standalone by calling ray.rllib.utils.check_env(env)."
-                )
                 check_env(self.env)
             # Custom validation function given, typically a function attribute of the
             # algorithm trainer.
@@ -942,11 +941,13 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
-                info_out = {
-                    DEFAULT_POLICY_ID: self.policy_map[
-                        DEFAULT_POLICY_ID
-                    ].learn_on_batch(samples)
-                }
+                info_out.update(
+                    {
+                        DEFAULT_POLICY_ID: self.policy_map[
+                            DEFAULT_POLICY_ID
+                        ].learn_on_batch(samples)
+                    }
+                )
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
