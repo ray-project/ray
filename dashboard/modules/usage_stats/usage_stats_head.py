@@ -79,7 +79,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         await self._report_usage_async()
 
     async def run(self, server):
-        if not ray_usage_lib.usage_stats_enabled():
+        if ray_usage_lib.usage_stats_disabled():
             logger.info("Usage reporting is disabled.")
             return
         else:

@@ -493,11 +493,12 @@ class NodeUpdater:
             with LogTimer(self.log_prefix + "Ray start commands", show_status=True):
                 for cmd in self.ray_start_commands:
 
-                    # We have already shown the prompt locally.
-                    env_vars = {"RAY_USAGE_STATS_PROMPT_ENABLED": "0"}
-                    if not usage_lib.usage_stats_enabled():
+                    env_vars = {}
+                    if usage_lib.usage_stats_disabled():
                         # Disable usage stats collection in the cluster.
-                        env_vars["RAY_USAGE_STATS_ENABLED"] = "0"
+                        env_vars["RAY_USAGE_STATS_ENABLED"] = 0
+                    else:
+                        env_vars["RAY_USAGE_STATS_ENABLED"] = 1
                     # Add a resource override env variable if needed:
                     if self.provider_type == "local":
                         # Local NodeProvider doesn't need resource override.

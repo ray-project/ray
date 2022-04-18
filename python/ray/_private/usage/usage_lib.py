@@ -142,28 +142,38 @@ def _usage_stats_config_path():
     return os.path.expanduser("~/.ray/config.json")
 
 
-def usage_stats_enabled():
+def usage_stats_disabled() -> Optional[bool]:
     """
-    NOTE: This is the private API, and it is not a reliable
-    way to know if usage stats are enabled from the cluster.
+    Check whether usage stats is explicitly disabled or enabled by the user.
+    Return True if it's explicitly disabled.
+    Return False if it's explicitly enabled.
+    Return None if it's enabled by default.
     """
-    usage_stats_disabled_via_env_var = (
-        int(os.getenv("RAY_USAGE_STATS_ENABLED", "1")) == 0
-    )
-    usage_stats_disabled_via_config = False
+    # Env var has higher priority than config file.
+    usage_stats_enabled_env_var = os.getenv("RAY_USAGE_STATS_ENABLED")
+    if usage_stats_enabled_env_var == "0":
+        return True
+    elif usage_stats_enabled_env_var == "1":
+        return False
+
     try:
         with open(_usage_stats_config_path()) as f:
             config = json.load(f)
-            usage_stats_disabled_via_config = not config.get("usage_stats", True)
+            if config.get("usage_stats") is False:
+                return True
+            elif config.get("usage_stats") is True:
+                return False
     except FileNotFoundError:
         pass
     except Exception as e:
         logger.debug(f"Failed to load usage stats config {e}")
-    return not (usage_stats_disabled_via_env_var or usage_stats_disabled_via_config)
+
+    # Usage stats is enabled by default.
+    return None
 
 
-def _usage_stats_prompt_enabled():
-    return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 1
+def _usage_stats_prompt_disabled():
+    return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 0
 
 
 def _generate_cluster_metadata():
@@ -176,7 +186,7 @@ def _generate_cluster_metadata():
         "python_version": python_version,
     }
     # Additional metadata is recorded only when usage stats are enabled.
-    if usage_stats_enabled():
+    if not usage_stats_disabled():
         metadata.update(
             {
                 "schema_version": usage_constant.SCHEMA_VERSION,
@@ -192,46 +202,39 @@ def _generate_cluster_metadata():
 
 def show_usage_stats_prompt() -> None:
     try:
-        if (not _usage_stats_prompt_enabled()) or (not usage_stats_enabled()):
+        if _usage_stats_prompt_disabled():
             return
 
-        print(usage_constant.USAGE_STATS_PROMPT_MESSAGE, file=sys.stderr)
-        if not _usage_stats_prompt_shown():
-            time.sleep(10)
-            _set_usage_stats_prompt_shown()
+        is_usage_stats_disabled = usage_stats_disabled()
+        if is_usage_stats_disabled:
+            return
+        elif is_usage_stats_disabled is None:
+            from ray.autoscaler._private.cli_logger import cli_logger
+
+            if cli_logger.interactive:
+                enabled = cli_logger.confirm(
+                    False,
+                    usage_constant.USAGE_STATS_CONFIRMATION_MESSAGE,
+                    _default=True,
+                )
+                set_usage_stats_enabled_via_env_var(enabled)
+                set_usage_stats_enabled_via_config(enabled)
+                if enabled:
+                    print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
+            else:
+                print(
+                    usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE,
+                    file=sys.stderr,
+                )
+        else:
+            print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
+
     except Exception:
         # Silently ignore the exception since it doesn't affect the use of ray.
         pass
 
 
-def _usage_stats_prompt_shown() -> bool:
-    try:
-        with open(_usage_stats_config_path()) as f:
-            config = json.load(f)
-            return config.get("usage_stats_prompt_shown", False)
-    except Exception:
-        return False
-
-
-def _set_usage_stats_prompt_shown() -> None:
-    config = {}
-    try:
-        with open(_usage_stats_config_path()) as f:
-            config = json.load(f)
-    except Exception:
-        pass
-
-    config["usage_stats_prompt_shown"] = True
-
-    try:
-        os.makedirs(os.path.dirname(_usage_stats_config_path()), exist_ok=True)
-        with open(_usage_stats_config_path(), "w") as f:
-            json.dump(config, f)
-    except Exception:
-        pass
-
-
-def disable_usage_stats_via_config() -> None:
+def set_usage_stats_enabled_via_config(enabled) -> None:
     config = {}
     try:
         with open(_usage_stats_config_path()) as f:
@@ -246,7 +249,7 @@ def disable_usage_stats_via_config() -> None:
     except Exception as e:
         logger.debug(f"Failed to load ray config file {e}")
 
-    config["usage_stats"] = False
+    config["usage_stats"] = enabled
 
     try:
         os.makedirs(os.path.dirname(_usage_stats_config_path()), exist_ok=True)
@@ -254,13 +257,17 @@ def disable_usage_stats_via_config() -> None:
             json.dump(config, f)
     except Exception:
         logger.exception(
-            'Failed to disable usage stats by writing {"usage_stats": false} to '
+            "Failed to "
+            f'{"enable" if enabled else "disable"}'
+            ' usage stats by writing {"usage_stats": '
+            f'{"true" if enabled else "false"}'
+            "} to "
             f"{_usage_stats_config_path()}"
         )
 
 
-def disable_usage_stats_via_env_var() -> None:
-    os.environ["RAY_USAGE_STATS_ENABLED"] = "0"
+def set_usage_stats_enabled_via_env_var(enabled) -> None:
+    os.environ["RAY_USAGE_STATS_ENABLED"] = "1" if enabled else "0"
 
 
 def put_cluster_metadata(gcs_client, num_retries) -> None:

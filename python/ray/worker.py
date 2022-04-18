@@ -981,7 +981,7 @@ def init(
         # In this case, we need to start a new cluster.
 
         # Don't collect usage stats in ray.init().
-        usage_lib.disable_usage_stats_via_env_var()
+        usage_lib.set_usage_stats_enabled_via_env_var(False)
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(

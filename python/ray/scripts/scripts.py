@@ -627,7 +627,7 @@ def start(
         # Start head node.
 
         if disable_usage_stats:
-            usage_lib.disable_usage_stats_via_env_var()
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
         else:
             usage_lib.show_usage_stats_prompt()
 
@@ -1149,7 +1149,7 @@ def up(
 ):
     """Create or update a Ray cluster."""
     if disable_usage_stats:
-        usage_lib.disable_usage_stats_via_env_var()
+        usage_lib.set_usage_stats_enabled_via_env_var(False)
     else:
         usage_lib.show_usage_stats_prompt()
 
@@ -1481,7 +1481,7 @@ def submit(
 
     if start:
         if disable_usage_stats:
-            usage_lib.disable_usage_stats_via_env_var()
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
         else:
             usage_lib.show_usage_stats_prompt()
 
@@ -1599,7 +1599,7 @@ def exec(
 
     if start:
         if disable_usage_stats:
-            usage_lib.disable_usage_stats_via_env_var()
+            usage_lib.set_usage_stats_enabled_via_env_var(False)
         else:
             usage_lib.show_usage_stats_prompt()
 
@@ -1650,7 +1650,7 @@ def get_worker_ips(cluster_config_file, cluster_name):
 @cli.command()
 def disable_usage_stats():
     """Disable usage stats collection."""
-    usage_lib.disable_usage_stats_via_config()
+    usage_lib.set_usage_stats_enabled_via_config(enabled=False)
 
 
 @cli.command()
