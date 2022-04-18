@@ -1,6 +1,7 @@
 import importlib
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -156,10 +157,10 @@ def get_buildkite_repo_branch() -> Tuple[str, str]:
 
     branch_str = os.environ["BUILDKITE_BRANCH"]
 
-    if "BUILDKITE_PULL_REQUEST_REPO" in os.environ:
-        repo_url = os.environ["BUILDKITE_PULL_REQUEST_REPO"]
-    else:
-        repo_url = os.environ.get("BUILDKITE_REPO", DEFAULT_REPO)
+    # BUILDKITE_PULL_REQUEST_REPO can be empty string, use `or` to catch this
+    repo_url = os.environ.get("BUILDKITE_PULL_REQUEST_REPO", None) or os.environ.get(
+        "BUILDKITE_REPO", DEFAULT_REPO
+    )
 
     if ":" in branch_str:
         # If the branch is user:branch, we split into user, branch
@@ -289,7 +290,10 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
         "pip uninstall -y ray", shell=True, env=os.environ, text=True
     )
     subprocess.check_output(
-        f"pip install -U {ray_wheels}", shell=True, env=os.environ, text=True
+        f"pip install -U {shlex.quote(ray_wheels)}",
+        shell=True,
+        env=os.environ,
+        text=True,
     )
     for module_name in RELOAD_MODULES:
         if module_name in sys.modules:

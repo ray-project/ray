@@ -22,6 +22,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/object_manager/common.h"
+#include "ray/object_manager/object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -50,7 +51,8 @@ class LocalObjectManager {
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      pubsub::SubscriberInterface *core_worker_subscriber)
+      pubsub::SubscriberInterface *core_worker_subscriber,
+      IObjectDirectory *object_directory)
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
@@ -67,7 +69,8 @@ class LocalObjectManager {
         is_external_storage_type_fs_(is_external_storage_type_fs),
         max_fused_object_count_(max_fused_object_count),
         next_spill_error_log_bytes_(RayConfig::instance().verbose_spill_logs()),
-        core_worker_subscriber_(core_worker_subscriber) {}
+        core_worker_subscriber_(core_worker_subscriber),
+        object_directory_(object_directory) {}
 
   /// Pin objects.
   ///
@@ -304,6 +307,9 @@ class LocalObjectManager {
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
   pubsub::SubscriberInterface *core_worker_subscriber_;
+
+  /// The object directory interface to access object information.
+  IObjectDirectory *object_directory_;
 
   ///
   /// Stats

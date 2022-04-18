@@ -4,7 +4,7 @@ from typing import Tuple
 import pandas as pd
 
 import ray
-from ray.ml.checkpoint import Checkpoint
+from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.data.dataset import Dataset
@@ -58,31 +58,21 @@ def train_xgboost(num_workers: int, use_gpu: bool = False) -> Result:
 
 def predict_xgboost(result: Result):
     _, _, test_dataset = prepare_data()
-    checkpoint_object_ref = result.checkpoint.to_object_ref()
 
-    class XGBoostScorer:
-        def __init__(self):
-            self.predictor = XGBoostPredictor.from_checkpoint(
-                Checkpoint.from_object_ref(checkpoint_object_ref)
-            )
-
-        def __call__(self, batch) -> pd.DataFrame:
-            return self.predictor.predict(batch)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        result.checkpoint, XGBoostPredictor
+    )
 
     predicted_labels = (
-        test_dataset.map_batches(XGBoostScorer, compute="actors", batch_format="pandas")
+        batch_predictor.predict(test_dataset)
         .map_batches(lambda df: (df > 0.5).astype(int), batch_format="pandas")
         .to_pandas(limit=float("inf"))
     )
     print(f"PREDICTED LABELS\n{predicted_labels}")
 
-    class XGBoostScorerSHAP(XGBoostScorer):
-        def __call__(self, batch) -> pd.DataFrame:
-            return self.predictor.predict(batch, pred_contribs=True)
-
-    shap_values = test_dataset.map_batches(
-        XGBoostScorerSHAP, compute="actors", batch_format="pandas"
-    ).to_pandas(limit=float("inf"))
+    shap_values = batch_predictor.predict(test_dataset, pred_contribs=True).to_pandas(
+        limit=float("inf")
+    )
     print(f"SHAP VALUES\n{shap_values}")
 
 

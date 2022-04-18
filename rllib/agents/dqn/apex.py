@@ -86,10 +86,21 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "num_gpus": 1,
         "num_workers": 32,
 
-        "buffer_size": 2000000,
         # TODO(jungong) : add proper replay_buffer_config after
         #     DistributedReplayBuffer type is supported.
-        "no_local_replay_buffer": True,
+        "replay_buffer_config": {
+            # For now we don't use the new ReplayBuffer API here
+            "_enable_replay_buffer_api": False,
+            "no_local_replay_buffer": True,
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 2000000,
+            "replay_batch_size": 32,
+            "prioritized_replay_alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
+            "prioritized_replay_beta": 0.4,
+            # Epsilon to add to the TD errors when updating priorities.
+            "prioritized_replay_eps": 1e-6,
+        },
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
         # This is preferred b/c the learner process should have quick
@@ -111,8 +122,10 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # This will set the ratio of replayed from a buffer and learned
         # on timesteps to sampled from an environment and stored in the replay
         # buffer timesteps. Must be greater than 0.
+        # TODO: Find a way to support None again as a means to replay
+        #  proceeding as fast as possible.
         "training_intensity": 1,
-        # use the training iteration function instead of the execution plan
+        # Use `training_iteration` instead of `execution_plan` by default.
         "_disable_execution_plan_api": True,
     },
 )
@@ -263,7 +276,8 @@ class ApexTrainer(DQNTrainer):
 
         # Create a number of replay buffer actors.
         num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
-        buffer_size = config["buffer_size"] // num_replay_buffer_shards
+        buffer_size = \
+            config["replay_buffer_config"]["capacity"] // num_replay_buffer_shards
         replay_actor_args = [
             num_replay_buffer_shards,
             config["learning_starts"],
@@ -273,7 +287,7 @@ class ApexTrainer(DQNTrainer):
             config["replay_buffer_config"]["prioritized_replay_beta"],
             config["replay_buffer_config"]["prioritized_replay_eps"],
             config["multiagent"]["replay_mode"],
-            config.get("replay_sequence_length", 1),
+            config["replay_buffer_config"].get("replay_sequence_length", 1),
         ]
         # Place all replay buffer shards on the same node as the learner
         # (driver process that runs this execution plan).
