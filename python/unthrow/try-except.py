@@ -17,6 +17,7 @@ p = 10
 #     def __exit__(self, exc_type, exc_value, exc_traceback):
 #         global p
 #         p = 15
+import traceback
 
 def g():
     global p
@@ -35,8 +36,8 @@ def f(i):
         print("except ValueError", p, flush=True)
     except Exception as e:
         print("except Exception", e, p, flush=True)
-    except:
-        print("unknown?", flush=True)
+    except BaseException as e:
+        print("unknown?", e, type(e), flush=True)
     else:
         print("No exception", flush=True)
     finally:

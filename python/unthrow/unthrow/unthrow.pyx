@@ -16,6 +16,8 @@ traceall=False
 
 DEF PythonVersion=3.9
 
+_f = None
+
 _q = None
 
 _f = None
@@ -29,6 +31,7 @@ class QQ:
 
     def put(self, v):
         self.q.put(v)
+
     def __getstate__(self):
         return {}
 
@@ -53,25 +56,24 @@ class P(Process):
 
 
 def run_func(q, mainfn, args, kwargs):
-    global _skip_stop, _q
+    global _skip_stop, _q, _f
     _q = q
     _skip_stop = False
+    _f = inspect.currentframe()
     try:
-        print("RUN")
-        print(mainfn, *args, **kwargs)
         r = mainfn(*args, **kwargs)
         _q.put(cloudpickle.dumps((r, None)))
     except BaseException as e:
         _q.put(cloudpickle.dumps((None, e)))
-    sys.exit(0)
 
 
 def resume_func(q, mainfn, resume_return, resume_except, resume_stack,  args, kwargs):
-    global _resume_return, _resume_except, _skip_stop, _q
+    global _resume_return, _resume_except, _skip_stop, _q, _f
     _q = q
     _skip_stop=True
     _resume_return = resume_return
     _resume_except = resume_except
+    _f = inspect.currentframe()
     _do_resume(<PyObject*>resume_stack)
     try:
         print("RESUME")
@@ -79,7 +81,6 @@ def resume_func(q, mainfn, resume_return, resume_except, resume_stack,  args, kw
         _q.put(cloudpickle.dumps((r, None)))
     except BaseException as e:
         _q.put(cloudpickle.dumps((None, e)))
-    sys.exit(0)
 
 
 class Resumer:
@@ -121,18 +122,17 @@ class Resumer:
         r = None
         err = None
         try:
-            print("GET")
             p.start()
             (ret, err) = cloudpickle.loads(q.get())
-            print("GOT")
+            p.terminate()
             if err is not None:
                 raise err
             if isinstance(ret, ResumableException):
                 r = ret.parameter
-                self.resume_stack=ret.saved_frames
+                self.resume_stack = ret.saved_frames
                 ret.with_traceback(None)
                 self.finished=False
-                _truncate_frame(<PyObject*>self.resume_stack)
+                # _truncate_frame(<PyObject*>self.resume_stack)
             else:
                 return ret
         finally:
@@ -630,15 +630,18 @@ cdef _save_stack(object saved_frames,PyFrameObject* cFrame):
     else:
         from_interrupt=True
     while cFrame!=NULL:
+        if cFrame == <PyFrameObject*>_f:
+            break
         saved_frames.append(save_frame(cFrame,from_interrupt=from_interrupt))
+
         from_interrupt=False # only the top frame of an interrupt is different
         cFrame=cFrame.f_back
 
-cdef void _truncate_frame(PyObject* c_saved_frames):
+cdef void _truncate_frame(PyObject* c_saved_frames, PyFrameObject* cFrame):
     Py_XINCREF(c_saved_frames)
     saved_frames=<object>c_saved_frames
-    cdef PyFrameObject* cFrame;
-    cFrame=PyEval_GetFrame()
+    # cdef PyFrameObject* cFrame;
+    # cFrame=PyEval_GetFrame()
     allStack=[]
     while cFrame!=NULL:
         allStack.append(<object>cFrame)
@@ -717,7 +720,10 @@ def stop(msg):
         objRex=<object>rex
         Py_XDECREF(rex)
         _q.put(cloudpickle.dumps((objRex, None)))
-        sys.exit(0)
+        # global _f
+        # _truncate_frame(<PyObject*>objRex.resume_stack, <PyFrameObject*>_f)
+        from time import sleep
+        sleep(10000)
 
 _jmp = None
 
