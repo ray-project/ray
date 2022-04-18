@@ -147,7 +147,7 @@ class Episode:
             # New signature should be: (agent_id, episode, worker, **kwargs)
             try:
                 policy_id = self._agent_to_policy[agent_id] = self.policy_mapping_fn(
-                    agent_id, self, self.worker
+                    agent_id, episode=self, worker=self.worker
                 )
             except TypeError as e:
                 if (
