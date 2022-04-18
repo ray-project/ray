@@ -1,7 +1,7 @@
 import abc
 import inspect
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type
+from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type, Any
 
 import ray
 
@@ -133,6 +133,8 @@ class Trainer(abc.ABC):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
+    _scaling_config_allowed_keys = ["trainer_resources"]
+
     def __init__(
         self,
         *,
@@ -209,6 +211,19 @@ class Trainer(abc.ABC):
                 f"`ray.ml.Checkpoint`, found {type(self.resume_from_checkpoint)} "
                 f"with value `{self.resume_from_checkpoint}`."
             )
+
+    @classmethod
+    def _validate_and_get_scaling_config_data_class(
+        cls, config_dict: Dict[str, Any]
+    ) -> ScalingConfigDataClass:
+        scaling_config_dataclass = ScalingConfigDataClass(**config_dict)
+        scaling_config_dataclass.validate_config(
+            config=config_dict,
+            allowed_keys=cls._scaling_config_allowed_keys,
+            scaling_config_arg_name="scaling_config",
+            caller_name=cls.__name__,
+        )
+        return scaling_config_dataclass
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -359,8 +374,10 @@ class Trainer(abc.ABC):
             @classmethod
             def default_resource_request(cls, config):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = ScalingConfigDataClass(
-                    **updated_scaling_config
+                scaling_config_dataclass = (
+                    trainer_cls._validate_and_get_scaling_config_data_class(
+                        updated_scaling_config
+                    )
                 )
                 return scaling_config_dataclass.as_placement_group_factory()
 

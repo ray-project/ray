@@ -2,7 +2,7 @@ import logging
 import os
 from collections import defaultdict
 from time import time
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -15,8 +15,6 @@ from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import GenDataset, Trainer
 from ray.ml.utils.sklearn_utils import has_cpu_params, score, set_cpu_params
-from ray.tune import Trainable
-from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util import PublicAPI
 from ray.util.joblib import register_ray
 
@@ -150,6 +148,8 @@ class SklearnTrainer(Trainer):
         **fit_params: Additional kwargs passed to ``estimator.fit()``
             method.
     """
+
+    _scaling_config_allowed_keys = ["trainer_resources"]
 
     def __init__(
         self,
@@ -344,19 +344,16 @@ class SklearnTrainer(Trainer):
             groups = X_train["cv_groups"]
             X_train = X_train.drop("cv_groups", axis=1)
 
-        scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
+        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
+            **self.scaling_config
+        )
 
         num_workers = scaling_config_dataclass.num_workers or 0
+        assert num_workers == 0  # num_workers is not in scaling config allowed_keys
         has_gpus = scaling_config_dataclass.use_gpu
 
         trainer_resources = scaling_config_dataclass.trainer_resources or {"CPU": 1}
-        worker_resources = scaling_config_dataclass.resources_per_worker or {
-            "CPU": 1,
-            "GPU": int(has_gpus),
-        }
-        num_cpus = trainer_resources.get(
-            "CPU", 1.0
-        ) + num_workers or 0 * worker_resources.get("CPU", 1.0)
+        num_cpus = trainer_resources.get("CPU", 1.0)
 
         # see https://scikit-learn.org/stable/computing/parallelism.html
         os.environ["OMP_NUM_THREADS"] = str(num_cpus)
@@ -409,30 +406,3 @@ class SklearnTrainer(Trainer):
             "fit_time": fit_time,
         }
         tune.report(**results)
-
-    def as_trainable(self) -> Type[Trainable]:
-        trainable_cls = super().as_trainable()
-        scaling_config = self.scaling_config
-
-        class SklearnTrainable(trainable_cls):
-            @classmethod
-            def default_resource_request(cls, config):
-                updated_scaling_config = config.get("scaling_config", scaling_config)
-                updated_scaling_config = ScalingConfigDataClass(
-                    **updated_scaling_config
-                )
-                ScalingConfigDataClass.validate_config(
-                    config=updated_scaling_config,
-                    allowed_keys=["trainer_resources"],
-                    scaling_config_arg_name="scaling_config",
-                    caller_name=self.__class__.__name__,
-                )
-
-                head_resources = (
-                    updated_scaling_config.trainer_resources
-                    if updated_scaling_config.trainer_resources
-                    else {"CPU": 1}
-                )
-                return PlacementGroupFactory([head_resources])
-
-        return SklearnTrainable
