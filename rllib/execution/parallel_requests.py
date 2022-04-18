@@ -60,7 +60,7 @@ def asynchronous_parallel_requests(
             E.g.: actors=[A, B],
             remote_kwargs=[{...} <- **kwargs for A, {...} <- **kwargs for B].
         return_result_obj_ref_ids: If True, return the object ref IDs of the ready
-        results, otherwise return the actual results.
+            results, otherwise return the actual results.
         num_requests_to_launch: Number of remote requests to launch on each of the
             actors.
 
@@ -134,6 +134,11 @@ def asynchronous_parallel_requests(
                 args = remote_args[actor_idx] if remote_args else []
                 kwargs = remote_kwargs[actor_idx] if remote_kwargs else {}
                 for _ in range(num_requests_to_launch):
+                    if (
+                        len(remote_requests_in_flight[actor])
+                        >= max_remote_requests_in_flight_per_actor
+                    ):
+                        break
                     req = actor.apply.remote(remote_fn, *args, **kwargs)
                     # Add to our set to send to ray.wait().
                     pending_remotes.add(req)
@@ -181,3 +186,17 @@ def asynchronous_parallel_requests(
         ret[remote_to_actor[obj_ref]].append(result)
 
     return ret
+
+
+def wait_asynchronous_requests(
+    remote_requests_in_flight: DefaultDict[ActorHandle, Set[ray.ObjectRef]],
+    ray_wait_timeout_s: Optional[float] = None,
+) -> Dict[ActorHandle, Any]:
+    ready_requests = asynchronous_parallel_requests(
+        remote_requests_in_flight=remote_requests_in_flight,
+        actors=list(remote_requests_in_flight.keys()),
+        ray_wait_timeout_s=ray_wait_timeout_s,
+        max_remote_requests_in_flight_per_actor=float("inf"),
+        remote_fn=None,
+    )
+    return ready_requests
