@@ -10,7 +10,7 @@ from joblib import parallel_backend
 
 from ray import tune
 import ray.cloudpickle as cpickle
-from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.ml.config import RunConfig, ScalingConfig
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import GenDataset, Trainer
@@ -193,6 +193,24 @@ class SklearnTrainer(Trainer):
 
     def _validate_attributes(self):
         super()._validate_attributes()
+
+        if self.label_column is not None and not isinstance(self.label_column, str):
+            raise ValueError(
+                f"`label_column` must be a string or None, got '{self.label_column}'"
+            )
+
+        if self.params is not None and not isinstance(self.params, dict):
+            raise ValueError(f"`params` must be a dict or None, got '{self.params}'")
+
+        # Don't validate self.scoring for now as many types are supported
+        # Don't validate self.cv for now as many types are supported
+
+        if not isinstance(self.return_train_score_cv, bool):
+            raise ValueError(
+                f"`return_train_score_cv` must be a boolean, got "
+                f"'{self.return_train_score_cv}'"
+            )
+
         if TRAIN_DATASET_KEY not in self.datasets:
             raise KeyError(
                 f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
@@ -211,12 +229,8 @@ class SklearnTrainer(Trainer):
                 "`parallelize_cv` must be a bool or None, got "
                 f"'{self.parallelize_cv}'"
             )
-        scaling_config = ScalingConfigDataClass(**self.scaling_config)
-        ScalingConfigDataClass.validate_config(
-            config=scaling_config,
-            allowed_keys=["trainer_resources"],
-            scaling_config_arg_name="scaling_config",
-            caller_name=self.__class__.__name__,
+        scaling_config = self._validate_and_get_scaling_config_data_class(
+            self.scaling_config
         )
         if (
             self.cv
@@ -345,7 +359,7 @@ class SklearnTrainer(Trainer):
             X_train = X_train.drop("cv_groups", axis=1)
 
         scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            **self.scaling_config
+            self.scaling_config
         )
 
         num_workers = scaling_config_dataclass.num_workers or 0
