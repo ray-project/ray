@@ -251,7 +251,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # 3. Confirm new pod number and presence of GPU
         wait_for_pods(goal_num_pods=4, namespace="default")
         gpu_workers = [
-            pod_name for pod_name in get_pod_names(namespace="default")
+            pod_name
+            for pod_name in get_pod_names(namespace="default")
             if "gpu" in pod_name
         ]
         assert len(gpu_workers) == 1
@@ -261,7 +262,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             pod=head_pod,
             container="ray-head",
             namespace="default",
-            return_out=True
+            return_out=True,
         )
         # Confirms the actor was placed on a GPU-annotated node.
         # (See gpu_actor_validation.py for details.)
@@ -274,7 +275,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             pod=head_pod,
             container="ray-head",
             namespace="default",
-            return_out=True
+            return_out=True,
         )
         logger.info("Scaling down all workers by editing maxReplicas.")
         # TODO (Dmitri) Expose worker idleTimeout in KubeRay CRD, set it low,

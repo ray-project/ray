@@ -51,14 +51,11 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
 
 
 def _get_num_pods(namespace: str) -> int:
-    return len(
-        get_pod_names(namespace)
-    )
+    return len(get_pod_names(namespace))
 
 
 def get_pod_names(namespace: str) -> List[str]:
-    """Get the list of pod names in the namespace.
-    """
+    """Get the list of pod names in the namespace."""
     get_pod_output = (
         subprocess.check_output(
             ["kubectl", "-n", namespace, "get", "pods", "--no-headers"]
@@ -163,8 +160,11 @@ def get_pod(pod_name_filter: str, namespace: str) -> str:
 
 
 def kubectl_exec(
-    command: List[str], pod: str, namespace: str, container: Optional[str] = None,
-    return_out: bool = False
+    command: List[str],
+    pod: str,
+    namespace: str,
+    container: Optional[str] = None,
+    return_out: bool = False,
 ) -> Optional[str]:
     """kubectl exec the `command` in the given `pod` in the given `namespace`.
     If a `container` is specified, will specify that container for kubectl.
@@ -174,7 +174,9 @@ def kubectl_exec(
             Otherwise, stdout will not be redirected and None will be returned.
     """
     container_option = ["-c", container] if container else []
-    kubectl_exec_command = ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
+    kubectl_exec_command = (
+        ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
+    )
     if return_out:
         return subprocess.check_output(kubectl_exec_command).decode().strip()
     else:
@@ -187,7 +189,7 @@ def kubectl_exec_python_script(
     pod: str,
     namespace: str,
     container: Optional[str] = None,
-    return_out: bool = False
+    return_out: bool = False,
 ) -> Optional[str]:
     """
     Runs a python script in a container via `kubectl exec`.
@@ -200,10 +202,7 @@ def kubectl_exec_python_script(
     """
     script_path = Path(__file__).resolve().parent / "scripts" / script_name
     script_string = open(script_path).read()
-    return kubectl_exec(
-        ["python", "-c", script_string],
-        pod, namespace, container
-    )
+    return kubectl_exec(["python", "-c", script_string], pod, namespace, container)
     return kubectl_exec()
 
 
