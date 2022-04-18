@@ -1,8 +1,5 @@
-import errno
 import io
 import platform
-import socket
-import sys
 
 
 def patch_psutil():
