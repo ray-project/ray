@@ -242,7 +242,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
         except Exception as e:
             logger.error(e)
-            return aiohttp.web.HTTPNotFound(reason=e)
+            return aiohttp.web.HTTPInternalServerError(reason=e)
 
     @routes.get("/api/experimental/logs/{media_type}")
     async def handle_get_log(self, req):
@@ -371,7 +371,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 return response
         except Exception as e:
             logger.error(e)
-            return aiohttp.web.HTTPNotFound(reason=e)
+            return aiohttp.web.HTTPInternalServerError(reason=e)
 
     async def run(self, server):
         pass
