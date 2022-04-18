@@ -7,6 +7,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 import asyncio
+import io
 import os
 
 logger = logging.getLogger(__name__)
@@ -108,7 +109,7 @@ class LogAgentV1Grpc(
                             yield reporter_pb2.StreamLogReply(data=bytes)
 
 
-def tail(f, lines):
+def tail(f: io.TextIOBase, lines: int):
     """Tails the given file (in 'rb' mode)
 
     We assume that any "lines" parameter is not significant (<100,000 lines)
