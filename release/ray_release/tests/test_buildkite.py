@@ -158,6 +158,23 @@ class BuildkiteSettingsTest(unittest.TestCase):
             updated_settings,
             {
                 "frequency": Frequency.NIGHTLY,
+                "prefer_smoke_tests": False,
+                "test_attr_regex_filters": {"name": "name_filter"},
+                "ray_wheels": "custom-wheels",
+                "ray_test_repo": "https://github.com/user/ray.git",
+                "ray_test_branch": "sub/branch",
+                "priority": Priority.MANUAL,
+                "no_concurrency_limit": False,
+            },
+        )
+
+        os.environ["RELEASE_FREQUENCY"] = "any-smoke"
+        update_settings_from_environment(updated_settings)
+        self.assertDictEqual(
+            updated_settings,
+            {
+                "frequency": Frequency.ANY,
+                "prefer_smoke_tests": True,
                 "test_attr_regex_filters": {"name": "name_filter"},
                 "ray_wheels": "custom-wheels",
                 "ray_test_repo": "https://github.com/user/ray.git",
@@ -307,6 +324,24 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 updated_settings,
                 {
                     "frequency": Frequency.NIGHTLY,
+                    "prefer_smoke_tests": False,
+                    "test_attr_regex_filters": {"name": "name_filter"},
+                    "ray_wheels": "custom-wheels",
+                    "ray_test_repo": "https://github.com/user/ray.git",
+                    "ray_test_branch": "sub/branch",
+                    "priority": Priority.MANUAL,
+                    "no_concurrency_limit": False,
+                },
+            )
+
+            self.buildkite["release-frequency"] = "any-smoke"
+            update_settings_from_buildkite(updated_settings)
+
+            self.assertDictEqual(
+                updated_settings,
+                {
+                    "frequency": Frequency.ANY,
+                    "prefer_smoke_tests": True,
                     "test_attr_regex_filters": {"name": "name_filter"},
                     "ray_wheels": "custom-wheels",
                     "ray_test_repo": "https://github.com/user/ray.git",
@@ -363,6 +398,22 @@ class BuildkiteSettingsTest(unittest.TestCase):
             ],
         )
 
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.ANY,
+            prefer_smoke_tests=True,
+        )
+        self.assertSequenceEqual(
+            filtered,
+            [
+                ("test_1", True),
+                ("test_2", True),
+                ("other_1", False),
+                ("other_2", True),
+                ("test_3", False),
+            ],
+        )
+
         filtered = self._filter_names_smoke(tests, frequency=Frequency.NIGHTLY)
         self.assertSequenceEqual(
             filtered,
@@ -370,6 +421,21 @@ class BuildkiteSettingsTest(unittest.TestCase):
                 ("test_1", False),
                 ("test_2", True),
                 ("other_2", False),
+                ("test_3", False),
+            ],
+        )
+
+        filtered = self._filter_names_smoke(
+            tests,
+            frequency=Frequency.NIGHTLY,
+            prefer_smoke_tests=True,
+        )
+        self.assertSequenceEqual(
+            filtered,
+            [
+                ("test_1", True),
+                ("test_2", True),
+                ("other_2", True),
                 ("test_3", False),
             ],
         )

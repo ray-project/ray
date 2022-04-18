@@ -10,6 +10,10 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.utils.config import (
+    ensure_only_allowed_dataclass_keys_updated,
+    ensure_only_allowed_dict_keys_set,
+)
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
@@ -214,16 +218,22 @@ class Trainer(abc.ABC):
 
     @classmethod
     def _validate_and_get_scaling_config_data_class(
-        cls, config_dict: Dict[str, Any]
+        cls, dataclass_or_dict: Union[ScalingConfigDataClass, Dict[str, Any]]
     ) -> ScalingConfigDataClass:
-        scaling_config_dataclass = ScalingConfigDataClass(**config_dict)
-        scaling_config_dataclass.validate_config(
-            config=config_dict,
+        """Return scaling config dataclass after validating updated keys."""
+        if isinstance(dataclass_or_dict, dict):
+            ensure_only_allowed_dict_keys_set(
+                dataclass_or_dict, cls._scaling_config_allowed_keys
+            )
+            scaling_config_dataclass = ScalingConfigDataClass(**dataclass_or_dict)
+
+            return scaling_config_dataclass
+
+        ensure_only_allowed_dataclass_keys_updated(
+            dataclass=dataclass_or_dict,
             allowed_keys=cls._scaling_config_allowed_keys,
-            scaling_config_arg_name="scaling_config",
-            caller_name=cls.__name__,
         )
-        return scaling_config_dataclass
+        return dataclass_or_dict
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
@@ -260,7 +270,7 @@ class Trainer(abc.ABC):
 
         if self.preprocessor:
             train_dataset = self.datasets.get(TRAIN_DATASET_KEY, None)
-            if train_dataset and not self.preprocessor.check_is_fitted():
+            if train_dataset:
                 self.preprocessor.fit(train_dataset)
 
             # Execute dataset transformations serially for now.

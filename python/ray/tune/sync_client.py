@@ -19,7 +19,7 @@ from ray.tune.error import TuneError
 from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
 from ray.util.annotations import PublicAPI
 from ray.util.debug import log_once
-from ray.util.ml_utils.cloud import (
+from ray.ml.utils.remote_storage import (
     S3_PREFIX,
     GS_PREFIX,
     HDFS_PREFIX,
