@@ -257,7 +257,6 @@ class SimpleQTrainer(Trainer):
         Returns:
             The results dict from executing the training iteration.
         """
-        batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()
 
         # (1) Sample (MultiAgentBatches) from workers
@@ -275,7 +274,7 @@ class SimpleQTrainer(Trainer):
             self.local_replay_buffer.add(s)
 
         # (3) Sample training batch (MultiAgentBatch) from replay buffer.
-        train_batch = self.local_replay_buffer.sample(batch_size)
+        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
 
         # (4) Learn on training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other

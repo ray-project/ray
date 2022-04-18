@@ -332,11 +332,12 @@ class DQNTrainer(SimpleQTrainer):
             self._counters[NUM_ENV_STEPS_SAMPLED] += new_sample_batch.env_steps()
 
             # (2) Store new samples in replay buffer
-            self.local_replay_buffer.add_batch(new_sample_batch)
+            self.local_replay_buffer.add(new_sample_batch)
 
         for _ in range(sample_and_train_weight):
             # (3) Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.replay()
+            train_batch = self.local_replay_buffer.sample(
+                num_items=self.config["train_batch_size"])
 
             # Old-style replay buffers return None if learning has not started
             if not train_batch:
