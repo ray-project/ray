@@ -532,14 +532,23 @@ def test_node_name_in_raylet_death():
     script = f"""
 import ray
 import time
+import os
+
+NUM_HEARTBEATS=10
+HEARTBEAT_PERIOD=500
+WAIT_BUFFER_SECONDS=5
+
+os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
+os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
 
 ray.init(_node_name=\"{NODE_NAME}\")
 # This will kill raylet without letting it exit gracefully.
 ray.worker._global_node.kill_raylet()
-time.sleep(30 + 5)
+time.sleep(NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS)
+ray.shutdown()
     """
     out = run_string_as_driver(script)
-    assert f"node name: {NODE_NAME} has been marked dead" in out
+    assert out.count(f"node name: {NODE_NAME} has been marked dead") == 1
 
 
 if __name__ == "__main__":
