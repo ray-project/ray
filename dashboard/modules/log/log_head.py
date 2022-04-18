@@ -135,22 +135,17 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             self._ip_to_node_id[ip] = node_id
 
     @staticmethod
-    async def _list_logs_single_node(
-        grpc_stub: reporter_pb2_grpc.LogServiceStub, filters: List[str]
-    ):
+    def _list_logs_single_node(log_files: List[str], filters: List[str]):
         """
         Returns a JSON file mapping a category of log component to a list of filenames,
         on the given node.
         """
-        reply = await grpc_stub.ListLogs(
-            reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
-        )
         filters = [] if filters == [""] else filters
 
         def contains_all_filters(log_file_name):
             return all(f in log_file_name for f in filters)
 
-        filtered = list(filter(contains_all_filters, reply.log_files))
+        filtered = list(filter(contains_all_filters, log_files))
         logs = {}
         logs["worker_errors"] = list(
             filter(lambda s: "worker" in s and s.endswith(".err"), filtered)
@@ -211,8 +206,11 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             if node_id_query is None or node_id_query == node_id:
 
                 async def coro():
-                    response[node_id] = await self._list_logs_single_node(
-                        grpc_stub, filters
+                    reply = await grpc_stub.ListLogs(
+                        reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
+                    )
+                    response[node_id] = self._list_logs_single_node(
+                        reply.log_files, filters
                     )
 
                 tasks.append(coro())
@@ -225,19 +223,26 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         Returns a JSON file containing, for each node in the cluster,
         a dict mapping a category of log component to a list of filenames.
         """
-        node_id = req.query.get("node_id", None)
-        if node_id is None:
-            ip = req.query.get("node_ip", None)
-            if ip is not None:
-                if ip not in self._ip_to_node_id:
-                    return aiohttp.web.HTTPNotFound(reason=f"node_ip: {ip} not found")
-                node_id = self._ip_to_node_id[ip]
-        filters = req.query.get("filters", "").split(",")
-        err = await self._wait_until_initialized()
-        if err is not None:
-            return err
-        response = await self._list_logs(node_id, filters)
-        return aiohttp.web.json_response(response)
+        try:
+            node_id = req.query.get("node_id", None)
+            if node_id is None:
+                ip = req.query.get("node_ip", None)
+                if ip is not None:
+                    if ip not in self._ip_to_node_id:
+                        return aiohttp.web.HTTPNotFound(
+                            reason=f"node_ip: {ip} not found"
+                        )
+                    node_id = self._ip_to_node_id[ip]
+            filters = req.query.get("filters", "").split(",")
+            err = await self._wait_until_initialized()
+            if err is not None:
+                return err
+            response = await self._list_logs(node_id, filters)
+            return aiohttp.web.json_response(response)
+
+        except Exception as e:
+            logger.error(e)
+            return aiohttp.web.HTTPNotFound(reason=e)
 
     async def run(self, server):
         pass
