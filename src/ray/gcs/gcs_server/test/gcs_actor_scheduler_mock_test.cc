@@ -42,7 +42,7 @@ class GcsActorSchedulerMockTest : public Test {
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
-    auto local_node_id = NodeID::FromRandom();
+    local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
         scheduling::NodeID(local_node_id.Binary()),
         NodeResources(),
@@ -104,6 +104,7 @@ class GcsActorSchedulerMockTest : public Test {
   MockCallback schedule_success_handler;
   NodeID node_id;
   WorkerID worker_id;
+  NodeID local_node_id;
 };
 
 TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
