@@ -25,12 +25,12 @@ public class VoidParallelActorTaskCaller {
     this.args = args;
   }
 
-  public void remote() {
-    ParallelContext ctx = Ray.internal().getParallelContext();
-    if (instance != null) {
-      ctx.submitTask(instance.getActor(), instance.getIndex(), func, args);
-    } else {
-      ctx.submitTask(parallelActor, parallelActor.getStrategy().getNextIndex(), func, args);
-    }
-  }
+//  public void remote() {
+//    ParallelContext ctx = Ray.internal().getParallelContext();
+//    if (instance != null) {
+//      ctx.submitTask(instance.getActor(), instance.getIndex(), func, args);
+//    } else {
+//      ctx.submitTask(parallelActor, parallelActor.getParallelNum().getNextIndex(), func, args);
+//    }
+//  }
 }

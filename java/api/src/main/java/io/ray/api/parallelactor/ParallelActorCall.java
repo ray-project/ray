@@ -27,21 +27,25 @@ import io.ray.api.function.RayFuncVoid6;
 interface ParallelActorCall<A> {
 
   default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {
-   if (this instanceof ParallelActor) {
-     return new VoidParallelActorTaskCaller((ParallelActor) this, func, args);
-   } else if (this instanceof ParallelInstance) {
-     return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);
-   }
-   return null;
+    return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);
+
+//   if (this instanceof ParallelActor) {
+//     return new VoidParallelActorTaskCaller((ParallelActor) this, func, args);
+//   } else if (this instanceof ParallelInstance) {
+//     return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);
+//   }
+//   return null;
  }
 
   default <R> ParallelActorTaskCaller<R> buildCaller(RayFuncR<R> func, Object[] args) {
-    if (this instanceof ParallelActor) {
-      return new ParallelActorTaskCaller<R>((ParallelActor) this, func, args);
-    } else if (this instanceof ParallelInstance) {
-      return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);
-    }
-    return null;
+    return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);
+
+//    if (this instanceof ParallelActor) {
+//      return new ParallelActorTaskCaller<R>((ParallelActor) this, func, args);
+//    } else if (this instanceof ParallelInstance) {
+//      return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);
+//    }
+//    return null;
   }
 
   default <R> ParallelActorTaskCaller<R> task(RayFunc1<A, R> f) {

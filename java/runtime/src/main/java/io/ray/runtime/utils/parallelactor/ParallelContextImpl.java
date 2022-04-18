@@ -16,8 +16,7 @@ public class ParallelContextImpl implements ParallelContext {
 
   @Override
   public <A> ParallelActor<A> createParallelActorExecutor(
-      ParallelStrategyInterface strategy, RayFuncR<A> ctorFunc) {
-    int parallelNum = strategy.getParallelNum();
+      int parallelNum, RayFuncR<A> ctorFunc) {
     ConcurrencyGroup[] concurrencyGroups = new ConcurrencyGroup[parallelNum];
     for (int i = 0; i < parallelNum; ++i) {
       concurrencyGroups[i] =
@@ -37,7 +36,7 @@ public class ParallelContextImpl implements ParallelContext {
             .setConcurrencyGroups(concurrencyGroups)
             .remote();
 
-    return new ParallelActorImpl<>(strategy, parallelExecutorHandle);
+    return new ParallelActorImpl<>(parallelNum, parallelExecutorHandle);
   }
 
   @Override

@@ -12,13 +12,13 @@ import io.ray.api.ActorHandle;
  * <p>The parallel strategy are only working on the caller side, which means it doesn't be
  * coordinated when 2 callers to invoke 1 parallel actor.
  */
-public interface ParallelActor<A> extends ParallelActorCall<A> {
+public interface ParallelActor<A> {
 
   /** Get an execution instance of the parallel actor by the given index. */
   ParallelInstance<A> getInstance(int index);
 
-  /** Get the parallel strategy of this parallel actor. */
-  ParallelStrategyInterface getStrategy();
+  /** Get the parallel number of this parallel actor. */
+  int getParallelNum();
 
   /** Get the real actor handle to use. */
   ActorHandle<?> getHandle();
