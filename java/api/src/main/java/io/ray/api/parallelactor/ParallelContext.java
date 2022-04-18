@@ -9,5 +9,5 @@ public interface ParallelContext {
   <A> ParallelActorHandle<A> createParallelActorExecutor(int parallelNum, RayFuncR<A> ctorFunc);
 
   <A, R> ObjectRef<R> submitTask(
-    ParallelActorHandle<A> parallelActorHandle, int instanceIndex, RayFunc func, Object[] args);
+      ParallelActorHandle<A> parallelActorHandle, int instanceIndex, RayFunc func, Object[] args);
 }
