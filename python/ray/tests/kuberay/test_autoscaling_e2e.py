@@ -10,13 +10,10 @@ from typing import Any, Dict
 
 import yaml
 
-from ray.test.kuberay import scripts as kuberay_scripts
-
 from ray.tests.kuberay.utils import (
     get_pod,
     get_pod_names,
     get_raycluster,
-    kubectl_exec,
     kubectl_exec_python_script,
     wait_for_pods,
     wait_for_pod_to_start,
@@ -132,7 +129,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         gpu_group["replicas"] = 0
         gpu_group["minReplicas"] = 0
         gpu_group["maxReplicas"] = 1
-        config["spec"]["workerGroupSpecs"][1] = gpu_group
+        gpu_group["groupName"] = "fake-gpu-group"
+        config["spec"]["workerGroupSpecs"].append(gpu_group)
 
         return config
 
@@ -143,7 +141,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         replicas=0,
         validate_replicas: bool = False,
     ) -> None:
-        """Apply Ray CR config yaml, with configurable replica fields for the single
+        """Apply Ray CR config yaml, with configurable replica fields for the cpu
         workerGroup.
 
         If the CR does not yet exist, `replicas` can be set as desired.
@@ -215,7 +213,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
         # 1-cpu worker (will await scale-up).
         kubectl_exec_python_script(
-            script_module=kuberay_scripts.scale_up,
+            script_name="scale_up.py",
             pod=head_pod,
             container="ray-head",
             namespace="default",
@@ -244,10 +242,11 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             "gpu" in pod_name for pod_name in get_pod_names(namespace="default")
         )
         # 2. Trigger GPU upscaling with a resource request.
-        gpu_actor_placement_script = (
-            "import ray;"
-            'ray.init("auto");'
-            "class"
+        kubectl_exec_python_script(
+            script_name="gpu_actor_placement.py",
+            pod=head_pod,
+            container="ray-head",
+            namespace="default",
         )
         # 3. Confirm new pod number and presence of GPU
         wait_for_pods(goal_num_pods=4, namespace="default")
@@ -257,38 +256,29 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         ]
         assert len(gpu_workers) == 1
         # 4. Confirm that the GPU actor is up and running.
-        gpu_worker = gpu_workers.pop()
-        gpu_validation_script = (
-            "import ray;"
-            'ray.init("auto");'
-            'gpu_actor = ray.get("gpu_actor");'
-            "actor_response = ray.get(gpu_actor.where_am_i.remote());"
-            "print(actor_response);"
-        )
-        out = kubectl_exec(
-            command=["python", "-c", gpu_validation_script],
-            pod=gpu_worker,
-            container="ray-head",
-            namespace="default",
-        )
-        assert out == "on-a-gpu-node"
-
-        # Scale-down
-        logger.info("Removing resource request.")
-        scale_down_script = (
-            "import ray;"
-            'ray.init("auto");'
-            "ray.autoscaler.sdk.request_resources(num_cpus=0)"
-        )
-        kubectl_exec(
-            command=["python", "-c", scale_down_script],
+        out = kubectl_exec_python_script(
+            script_name="gpu_actor_validation.py",
             pod=head_pod,
             container="ray-head",
             namespace="default",
+            return_out=True
+        )
+        # Confirms the actor was placed on a GPU-annotated node.
+        # (See gpu_actor_validation.py for details.)
+        assert "on-a-gpu-node" in out
+
+        # Scale-down
+        logger.info("Removing resource request.")
+        kubectl_exec_python_script(
+            script_name="scale_down.py",
+            pod=head_pod,
+            container="ray-head",
+            namespace="default",
+            return_out=True
         )
         logger.info("Scaling down all workers by editing maxReplicas.")
         # TODO (Dmitri) Expose worker idleTimeout in KubeRay CRD, set it low,
-        # and validate autoscaler-initiated idle timeout, instead of modifying CR.
+        # and validate autoscaler-initiated idle timeout, instead of modifying the CR.
         # (replicas=2 reflects the current number of workers)
         self._apply_ray_cr(
             min_replicas=0,

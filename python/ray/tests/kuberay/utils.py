@@ -1,11 +1,10 @@
 """Utilities for e2e tests of KubeRay/Ray integration.
 For consistency, all K8s interactions use kubectl through subprocess calls.
 """
-import inspect
 import logging
+from pathlib import Path
 import subprocess
 import time
-from types import ModuleType
 from typing import Any, Dict, List, Optional
 import yaml
 
@@ -169,6 +168,10 @@ def kubectl_exec(
 ) -> Optional[str]:
     """kubectl exec the `command` in the given `pod` in the given `namespace`.
     If a `container` is specified, will specify that container for kubectl.
+
+    Args:
+        return_out: If True, stdout will be redirected to the function's output.
+            Otherwise, stdout will not be redirected and None will be returned.
     """
     container_option = ["-c", container] if container else []
     kubectl_exec_command = ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
@@ -180,13 +183,23 @@ def kubectl_exec(
 
 
 def kubectl_exec_python_script(
-    script_module: ModuleType,
+    script_name: str,
     pod: str,
     namespace: str,
     container: Optional[str] = None,
     return_out: bool = False
-) -> str:
-    script_string = inspect.getsource(script_module)
+) -> Optional[str]:
+    """
+    Runs a python script in a container via `kubectl exec`.
+    Scripts live in `tests/kuberay/scripts`.
+
+    Args:
+        script_name: The name of a script in tests/kuberay/scripts.
+        return_out: If True, stdout will be redirected to the function's output.
+            Otherwise, stdout will not be redirected and `None` will be returned.
+    """
+    script_path = Path(__file__).resolve().parent / "scripts" / script_name
+    script_string = open(script_path).read()
     return kubectl_exec(
         ["python", "-c", script_string],
         pod, namespace, container

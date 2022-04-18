@@ -1,10 +1,9 @@
-import test_script
-import inspect
 import subprocess
 
-import pdb; pdb.set_trace()
-script_string = inspect.getsource(test_script)
+TEST_FILE = "test_script.py"
+
+script_string = open(TEST_FILE).read()
 out = subprocess.check_output(["python", "-c", script_string]).decode().strip()
 print(out)
-assert out == "Hello world."
+assert "Hello world." in out
 print("ok")
