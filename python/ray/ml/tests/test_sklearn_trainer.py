@@ -192,7 +192,7 @@ def test_validation(ray_start_4_cpus):
             label_column="target",
             datasets={TRAIN_DATASET_KEY: train_dataset, "cv": valid_dataset},
         )
-    with pytest.raises(ValueError, match="cannot be used with"):
+    with pytest.raises(ValueError, match="are not allowed to be set"):
         SklearnTrainer(
             estimator=RandomForestClassifier(),
             scaling_config={"num_workers": 2},
