@@ -367,7 +367,7 @@ class SklearnTrainer(Trainer):
         has_gpus = scaling_config_dataclass.use_gpu
 
         trainer_resources = scaling_config_dataclass.trainer_resources or {"CPU": 1}
-        num_cpus = trainer_resources.get("CPU", 1.0)
+        num_cpus = int(trainer_resources.get("CPU", 1)) 
 
         # see https://scikit-learn.org/stable/computing/parallelism.html
         os.environ["OMP_NUM_THREADS"] = str(num_cpus)
