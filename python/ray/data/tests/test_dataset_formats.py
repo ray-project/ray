@@ -1478,6 +1478,20 @@ def test_torch_datasource(ray_start_regular_shared, local_path):
     assert actual_data == expected_data
 
 
+def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
+    import torchvision
+
+    dataset = torchvision.datasets.MNIST(local_path, download=True)
+
+    with pytest.raises(ValueError):
+        # `dataset_factory` should be a function, not a Torch dataset.
+        ray.data.read_datasource(
+            SimpleTorchDatasource,
+            parallelism=1,
+            dataset_factory=dataset,
+        )
+
+
 if __name__ == "__main__":
     import sys
 
