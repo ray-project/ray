@@ -178,8 +178,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       infeasible_tasks_;
 
-  std::shared_ptr<SchedulerResourceReporter> scheduler_resource_reporter_;
-  mutable SchedulerStats internal_stats_;
+  std::unique_ptr<SchedulerResourceReporter> scheduler_resource_reporter_;
+  mutable std::unique_ptr<SchedulerStats> internal_stats_;
 
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;

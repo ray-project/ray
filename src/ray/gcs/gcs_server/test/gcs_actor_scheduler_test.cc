@@ -81,24 +81,15 @@ class GcsActorSchedulerTest : public ::testing::Test {
           gcs_resource_manager->UpdateNodeNormalTaskResources(node_id, resources);
         });
 
-    gcs_node_manager_->AddNodeAddedListener([cluster_resource_scheduler](
-                                                std::shared_ptr<rpc::GcsNodeInfo> node) {
-      scheduling::NodeID node_id(node->node_id());
-      auto &cluster_resource_manager =
-          cluster_resource_scheduler->GetClusterResourceManager();
-      // Give the node's total resources a place holder. Otherwise, it would not be added
-      // to the `cluster_resource_manager_`.
-      if (node->resources_total().empty()) {
-        const std::string cpu_resource = "CPU";
-        absl::flat_hash_map<std::string, double> resource_map;
-        resource_map[cpu_resource] = 0;
-        node->mutable_resources_total()->insert(resource_map.begin(), resource_map.end());
-      }
-      for (const auto &entry : node->resources_total()) {
-        cluster_resource_manager.UpdateResourceCapacity(
-            node_id, scheduling::ResourceID(entry.first), entry.second);
-      }
-    });
+    gcs_node_manager_->AddNodeAddedListener(
+        [cluster_resource_scheduler](std::shared_ptr<rpc::GcsNodeInfo> node) {
+          scheduling::NodeID node_id(node->node_id());
+          auto &cluster_resource_manager =
+              cluster_resource_scheduler->GetClusterResourceManager();
+          auto resource_map = MapFromProtobuf(node->resources_total());
+          auto node_resources = ResourceMapToNodeResources(resource_map, resource_map);
+          cluster_resource_manager.AddOrUpdateNode(node_id, node_resources);
+        });
   }
 
   std::shared_ptr<gcs::GcsActor> NewGcsActor(
