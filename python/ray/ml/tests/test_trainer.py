@@ -27,6 +27,10 @@ class DummyPreprocessor(Preprocessor):
 
 
 class DummyTrainer(Trainer):
+    _scaling_config_allowed_keys = Trainer._scaling_config_allowed_keys + [
+        "trainer_resources"
+    ]
+
     def __init__(self, train_loop, custom_arg=None, **kwargs):
         self.custom_arg = custom_arg
         self.train_loop = train_loop
