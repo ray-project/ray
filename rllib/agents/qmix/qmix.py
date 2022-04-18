@@ -69,6 +69,9 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer in batches (not timesteps!).
     "buffer_size": 1000,
+    "replay_buffer_config": {
+        "no_local_replay_buffer": True,
+    },
     # === Optimization ===
     # Learning rate for RMSProp optimizer
     "lr": 0.0005,
@@ -105,6 +108,11 @@ DEFAULT_CONFIG = with_common_config({
     },
     # Only torch supported so far.
     "framework": "torch",
+    # Experimental flag.
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration` method will be called as-is each
+    # training iteration.
+    "_disable_execution_plan_api": False,
 })
 # __sphinx_doc_end__
 # fmt: on
