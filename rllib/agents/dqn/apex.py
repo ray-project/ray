@@ -38,7 +38,10 @@ from ray.rllib.execution.common import (
 from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import ReplayActor
-from ray.rllib.execution.parallel_requests import asynchronous_parallel_requests
+from ray.rllib.execution.parallel_requests import (
+    asynchronous_parallel_requests,
+    wait_asynchronous_requests,
+)
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
@@ -437,7 +440,7 @@ class ApexTrainer(DQNTrainer):
             ] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_sampling_requests_in_flight,
                 actors=self.workers.remote_workers(),
-                 ray_wait_timeout_s=0.02,
+                ray_wait_timeout_s=0.003,
                 max_remote_requests_in_flight_per_actor=4,
                 remote_fn=remote_worker_sample_and_store,
                 remote_kwargs=[{"replay_actors": self.replay_actors}]
@@ -491,38 +494,45 @@ class ApexTrainer(DQNTrainer):
                 been collected since the last time that training was triggered.
 
         """
+
+        def wait_on_replay_actors(timeout: float) -> None:
+            """Wait for the replay actors to finish sampling for timeout seconds.
+            If the timeout is None, then block on the actors indefinitely.
+            """
+            replay_samples_ready: Dict[ActorHandle, T] = wait_asynchronous_requests(
+                remote_requests_in_flight=self.remote_replay_requests_in_flight,
+                ray_wait_timeout_s=timeout)
+
+            for replay_actor, sample_batches in replay_samples_ready.items():
+                for sample_batch in sample_batches:
+                    self.replay_sample_batches.append((replay_actor, sample_batch))
+
         num_samples_collected = sum(num_samples_collected.values())
         self.curr_num_samples_collected += num_samples_collected
         if self.curr_num_samples_collected >= self.config["train_batch_size"]:
+            wait_on_replay_actors(None)
             training_intensity = int(self.config["training_intensity"] or 1)
             num_requests_to_launch = (
                 self.curr_num_samples_collected / self.config["train_batch_size"]
             ) * training_intensity
             num_requests_to_launch = max(1, round(num_requests_to_launch))
             self.curr_num_samples_collected = 0
-            rand_actor = random.choice(self.replay_actors)
-            replay_samples_ready: Dict[ActorHandle, T] = asynchronous_parallel_requests(
-                remote_requests_in_flight=self.remote_replay_requests_in_flight,
-                actors=[rand_actor],
-                ray_wait_timeout_s=0.02,
-                num_requests_to_launch=num_requests_to_launch,
-                max_remote_requests_in_flight_per_actor=100,
-                remote_fn=lambda actor: actor.replay(),
-            )
+            for _ in range(num_requests_to_launch):
+                rand_actor = random.choice(self.replay_actors)
+                replay_samples_ready: Dict[
+                    ActorHandle, T
+                ] = asynchronous_parallel_requests(
+                    remote_requests_in_flight=self.remote_replay_requests_in_flight,
+                    actors=[rand_actor],
+                    ray_wait_timeout_s=0.003,
+                    max_remote_requests_in_flight_per_actor=num_requests_to_launch,
+                    remote_fn=lambda actor: actor.replay(),
+                )
             for replay_actor, sample_batches in replay_samples_ready.items():
                 for sample_batch in sample_batches:
                     self.replay_sample_batches.append((replay_actor, sample_batch))
 
-        replay_samples_ready: Dict[ActorHandle, T] = asynchronous_parallel_requests(
-            remote_requests_in_flight=self.remote_replay_requests_in_flight,
-            actors=self.replay_actors,
-            ray_wait_timeout_s=0.02,
-            max_remote_requests_in_flight_per_actor=float("inf"),
-            remote_fn=None,
-        )
-        for replay_actor, sample_batches in replay_samples_ready.items():
-            for sample_batch in sample_batches:
-                self.replay_sample_batches.append((replay_actor, sample_batch))
+        wait_on_replay_actors(0.003)
 
         # add the sample batches to the learner queue
         while self.replay_sample_batches:

@@ -171,3 +171,17 @@ def asynchronous_parallel_requests(
         ret[remote_to_actor[obj_ref]].append(result)
 
     return ret
+
+
+def wait_asynchronous_requests(
+    remote_requests_in_flight: DefaultDict[ActorHandle, Set[ray.ObjectRef]],
+    ray_wait_timeout_s: Optional[float] = None,
+) -> Dict[ActorHandle, Any]:
+    ready_requests = asynchronous_parallel_requests(
+        remote_requests_in_flight=remote_requests_in_flight,
+        actors=list(remote_requests_in_flight.keys()),
+        ray_wait_timeout_s=ray_wait_timeout_s,
+        max_remote_requests_in_flight_per_actor=float("inf"),
+        remote_fn=None,
+    )
+    return ready_requests
