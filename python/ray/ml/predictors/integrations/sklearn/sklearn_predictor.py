@@ -1,6 +1,5 @@
 from typing import Optional, List, Union
 import os
-import shutil
 
 import pandas as pd
 import numpy as np
