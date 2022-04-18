@@ -133,7 +133,6 @@ class Dataset(Generic[T]):
         self._lazy = lazy
 
         if not lazy:
-            # TODO(ekl) we should clear inputs once we have full lineage recorded.
             self._plan.execute(clear_input_blocks=False)
 
     @staticmethod
@@ -2667,7 +2666,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _ = self._plan._get_source_blocks()
+            blocks, _, _ = self._plan._get_source_blocks_and_stages()
             blocks.clear()
             blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
@@ -2786,7 +2785,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
         ctx = DatasetContext.get_current()
         if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
-            blocks, _ = self._plan._get_source_blocks()
+            blocks, _, _ = self._plan._get_source_blocks_and_stages()
             blocks.clear()
             blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
@@ -2861,17 +2860,30 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
             )
         return pipe
 
-    def fully_executed(self) -> "Dataset[T]":
+    def fully_executed(
+        self,
+        preserve_input_blocks: bool = True,
+    ) -> "Dataset[T]":
         """Force full evaluation of the blocks of this dataset.
 
         This can be used to read all blocks into memory. By default, Datasets
         doesn't read blocks from the datasource until the first transform.
 
+        Args:
+            preserve_input_blocks: Whether the input blocks of the dataset should not be
+                eagerly released. If this is False, the input blocks will be destroyed,
+                which means that reusing the base dataset ``ds`` in
+                ``ds.fully_executed()`` will recompute the input blocks if they're lazy,
+                and will fail if they're non-lazy.
+
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
         plan = self._plan.deep_copy(preserve_uuid=True)
-        plan.execute(force_read=True)
+        plan.execute(
+            force_read=True,
+            destroy_unrecoverable_input_blocks=not preserve_input_blocks,
+        )
         ds = Dataset(plan, self._epoch, lazy=False)
         ds._set_uuid(self._get_uuid())
         return ds

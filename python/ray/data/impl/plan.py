@@ -224,13 +224,17 @@ class ExecutionPlan:
             return None
 
     def execute(
-        self, clear_input_blocks: bool = True, force_read: bool = False
+        self,
+        clear_input_blocks: bool = True,
+        destroy_unrecoverable_input_blocks: bool = False,
+        force_read: bool = False,
     ) -> BlockList:
         """Execute this plan.
 
         Args:
-            clear_input_blocks: Whether to assume ownership of the input blocks,
-                allowing them to be dropped from memory during execution.
+            destroy_unrecoverable_input_blocks: Whether to clear the non-lazy input
+                blocks for this plan. This will destroy the blocks, meaning that this
+                dataset will not be executable after this run.
             force_read: Whether to force the read stage to fully execute.
 
         Returns:
@@ -238,9 +242,15 @@ class ExecutionPlan:
         """
         if not self.has_computed_output():
             blocks, stats, stages = self._optimize()
-            for stage in stages:
+            for stage_idx, stage in enumerate(stages):
+                should_clear_input_blocks = self._should_clear_input_blocks(
+                    blocks,
+                    stage_idx,
+                    clear_input_blocks,
+                    destroy_unrecoverable_input_blocks,
+                )
                 stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks, clear_input_blocks)
+                blocks, stage_info = stage(blocks, should_clear_input_blocks)
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -275,13 +285,45 @@ class ExecutionPlan:
         self.execute()
         return self._snapshot_stats
 
+    def _should_clear_input_blocks(
+        self,
+        blocks: BlockList,
+        stage_idx: int,
+        clear_input_blocks: bool,
+        destroy_unrecoverable_input_blocks: bool,
+    ):
+        """Whether the provided blocks should be cleared when passed into the stage.
+
+        Args:
+            blocks: The blocks that we may want to clear.
+            stage_idx: The position of the stage in the optimized after-snapshot chain.
+            clear_input_blocks: Whether we want to clear input blocks at all. If this is
+                False, this function returns False.
+            destroy_unrecoverable_input_blocks: Whether we want to clear unrecoverable
+                (non-lazy) input blocks.
+        """
+        if not clear_input_blocks:
+            return False
+        if stage_idx != 0 or self._stages_before_snapshot:
+            # Not the first stage, always clear stage input blocks.
+            return True
+        elif isinstance(blocks, LazyBlockList):
+            # Always clear lazy input blocks since they can be recomputed.
+            return True
+        elif destroy_unrecoverable_input_blocks:
+            # Only clear non-lazy input blocks if directed.
+            return True
+        else:
+            # Otherwise, we have non-lazy input blocks that's the source of this
+            # execution plan, and we've indicated that we don't want to clear these.
+            return False
+
     def _optimize(self) -> Tuple[BlockList, DatasetStats, List[Stage]]:
         """Apply stage fusion optimizations, returning an updated source block list and
         associated stats, and a set of optimized stages.
         """
         context = DatasetContext.get_current()
-        blocks, stats = self._get_source_blocks()
-        stages = self._stages_after_snapshot.copy()
+        blocks, stats, stages = self._get_source_blocks_and_stages()
         if context.optimize_fuse_stages:
             if context.optimize_fuse_read_stages:
                 # If using a lazy datasource, rewrite read stage into one-to-one stage
@@ -293,20 +335,32 @@ class ExecutionPlan:
             self._last_optimized_stages = stages
         return blocks, stats, stages
 
-    def _get_source_blocks(self) -> Tuple[BlockList, DatasetStats]:
-        """Get the source blocks (and corresponding stats) for plan execution.
+    def _get_source_blocks_and_stages(
+        self,
+    ) -> Tuple[BlockList, DatasetStats, List[Stage]]:
+        """Get the source blocks, corresponding stats, and the stages for plan
+        execution.
 
-        If a computed snapshot exists, return the snapshot blocks and stats; otherwise,
-        return the input blocks and stats that the plan was created with.
+        If a computed snapshot exists and has not been cleared, return the snapshot
+        blocks and stats; otherwise, return the input blocks and stats that the plan was
+        created with.
         """
+        stages = self._stages_after_snapshot.copy()
         if self._snapshot_blocks is not None:
-            # If snapshot exists, we only have to execute the plan from the
-            # snapshot.
-            blocks = self._snapshot_blocks
-            stats = self._snapshot_stats
-            # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
-            # snapshot block memory after the first stage is done executing.
-            self._snapshot_blocks = None
+            if not self._snapshot_blocks.is_cleared():
+                # If snapshot exists, we only have to execute the plan from the
+                # snapshot.
+                blocks = self._snapshot_blocks
+                stats = self._snapshot_stats
+                # Unlink the snapshot blocks from the plan so we can eagerly reclaim the
+                # snapshot block memory after the first stage is done executing.
+                self._snapshot_blocks = None
+            else:
+                # Snapshot exists but has been cleared, so we need to recompute from the
+                # source (input blocks).
+                blocks = self._in_blocks
+                stats = self._in_stats
+                stages = self._stages_before_snapshot + self._stages_after_snapshot
         else:
             # If no snapshot exists, we have to execute the full plan from the
             # beginning.
@@ -317,7 +371,7 @@ class ExecutionPlan:
                 # can eagerly reclaim the input block memory after the first stage is
                 # done executing.
                 self._in_blocks = None
-        return blocks, stats
+        return blocks, stats, stages
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
@@ -335,7 +389,11 @@ class ExecutionPlan:
         """Whether this plan has a computed snapshot for the final stage, i.e. for the
         output of this plan.
         """
-        return self._snapshot_blocks is not None and not self._stages_after_snapshot
+        return (
+            self._snapshot_blocks is not None
+            and not self._stages_after_snapshot
+            and not self._snapshot_blocks.is_cleared()
+        )
 
 
 class OneToOneStage(Stage):

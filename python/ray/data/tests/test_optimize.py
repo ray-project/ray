@@ -11,6 +11,33 @@ from ray.internal.internal_api import memory_summary
 from ray.tests.conftest import *  # noqa
 
 
+@ray.remote
+class Counter:
+    def __init__(self):
+        self.value = 0
+
+    def increment(self):
+        self.value += 1
+        return self.value
+
+    def get(self):
+        return self.value
+
+    def reset(self):
+        self.value = 0
+
+
+class MySource(CSVDatasource):
+    def __init__(self, counter):
+        self.counter = counter
+
+    def _read_stream(self, f, path: str, **reader_args):
+        count = self.counter.increment.remote()
+        ray.get(count)
+        for block in super()._read_stream(f, path, **reader_args):
+            yield block
+
+
 def expect_stages(pipe, num_stages_expected, stage_names):
     stats = pipe.stats()
     for name in stage_names:
@@ -27,22 +54,6 @@ def test_memory_sanity(shutdown_only):
 
     # Sanity check spilling is happening as expected.
     assert "Spilled" in meminfo, meminfo
-
-
-def test_memory_release_eager(shutdown_only):
-    info = ray.init(num_cpus=1, object_store_memory=1500e6)
-    ds = ray.data.range(10)
-
-    # Round 1.
-    ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-    meminfo = memory_summary(info.address_info["address"], stats_only=True)
-    assert "Spilled" not in meminfo, meminfo
-
-    # Round 2.
-    ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
-    meminfo = memory_summary(info["address"], stats_only=True)
-    # TODO(ekl) we can add this back once we clear inputs on eager exec as well.
-    # assert "Spilled" not in meminfo, meminfo
 
 
 def test_memory_release_lazy(shutdown_only):
@@ -83,6 +94,67 @@ def test_memory_release_lazy_shuffle(shutdown_only):
     raise error
 
 
+def test_lazy_fanout(shutdown_only, local_path):
+    ray.init(num_cpus=1)
+    map_counter = Counter.remote()
+
+    def inc(row):
+        map_counter.increment.remote()
+        row = row.as_pydict()
+        row["one"] += 1
+        return row
+
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path = os.path.join(local_path, "test.csv")
+    df.to_csv(path, index=False, storage_options={})
+    read_counter = Counter.remote()
+    source = MySource(read_counter)
+
+    # Test that fan-out of a lazy dataset results in re-execution up to the datasource,
+    # due to block move semantics.
+    ds = ray.data.read_datasource(source, parallelism=1, paths=path)
+    ds = ds._experimental_lazy()
+    ds1 = ds.map(inc)
+    ds2 = ds1.map(inc)
+    ds3 = ds1.map(inc)
+    # Test content.
+    assert ds2.fully_executed().take() == [
+        {"one": 3, "two": "a"},
+        {"one": 4, "two": "b"},
+        {"one": 5, "two": "c"},
+    ]
+    assert ds3.fully_executed().take() == [
+        {"one": 3, "two": "a"},
+        {"one": 4, "two": "b"},
+        {"one": 5, "two": "c"},
+    ]
+    # Test that data is read twice (+ 1 extra for ramp-up read before converting to a
+    # lazy dataset).
+    assert ray.get(read_counter.get.remote()) == 3
+    # Test that first map is executed twice.
+    assert ray.get(map_counter.get.remote()) == 2 * 3 + 3 + 3
+
+    # Test that fan-out of a lazy dataset with a non-lazy datasource results in
+    # re-execution up to the datasource, due to block move semantics.
+    ray.get(map_counter.reset.remote())
+
+    def inc(x):
+        map_counter.increment.remote()
+        return x + 1
+
+    # The source data shouldn't be cleared since it's non-lazy.
+    ds = ray.data.from_items(list(range(10)))
+    ds = ds._experimental_lazy()
+    ds1 = ds.map(inc)
+    ds2 = ds1.map(inc)
+    ds3 = ds1.map(inc)
+    # Test content.
+    assert ds2.fully_executed().take() == list(range(2, 12))
+    assert ds3.fully_executed().take() == list(range(2, 12))
+    # Test that first map is executed twice.
+    assert ray.get(map_counter.get.remote()) == 2 * 10 + 10 + 10
+
+
 def test_spread_hint_inherit(ray_start_regular_shared):
     ds = ray.data.range(10).experimental_lazy()
     ds = ds.map(lambda x: x + 1)
@@ -112,8 +184,7 @@ def test_execution_preserves_original(ray_start_regular_shared):
     # Check original lazy dataset content.
     assert ds1.take() == list(range(2, 12))
     # Check source lazy dataset content.
-    # TODO(Clark): Uncomment this when we add new block clearing semantics.
-    # assert ds.take() == list(range(1, 11))
+    assert ds.take() == list(range(1, 11))
 
 
 def _assert_has_stages(stages, stage_names):
@@ -251,33 +322,6 @@ def test_optimize_incompatible_stages(ray_start_regular_shared):
             "random_shuffle_reduce",
         ],
     )
-
-
-@ray.remote
-class Counter:
-    def __init__(self):
-        self.value = 0
-
-    def increment(self):
-        self.value += 1
-        return self.value
-
-    def get(self):
-        return self.value
-
-    def reset(self):
-        self.value = 0
-
-
-class MySource(CSVDatasource):
-    def __init__(self, counter):
-        self.counter = counter
-
-    def _read_stream(self, f, path: str, **reader_args):
-        count = self.counter.increment.remote()
-        ray.get(count)
-        for block in super()._read_stream(f, path, **reader_args):
-            yield block
 
 
 def test_optimize_reread_base_data(ray_start_regular_shared, local_path):
