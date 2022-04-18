@@ -501,7 +501,8 @@ class ApexTrainer(DQNTrainer):
             """
             replay_samples_ready: Dict[ActorHandle, T] = wait_asynchronous_requests(
                 remote_requests_in_flight=self.remote_replay_requests_in_flight,
-                ray_wait_timeout_s=timeout)
+                ray_wait_timeout_s=timeout,
+            )
 
             for replay_actor, sample_batches in replay_samples_ready.items():
                 for sample_batch in sample_batches:
