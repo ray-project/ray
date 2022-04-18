@@ -297,7 +297,7 @@ class ReplicaConfig:
 
         # TODO(suquark): reuse options validation of remote function/actor.
         # Ray defaults to zero CPUs for placement, we default to one here.
-        if self.ray_actor_options.get("num_cpus", None) is None:
+        if self.ray_actor_options.get("num_cpus") is None:
             self.ray_actor_options["num_cpus"] = 1
         num_cpus = self.ray_actor_options["num_cpus"]
         if not isinstance(num_cpus, (int, float)):
@@ -306,7 +306,7 @@ class ReplicaConfig:
             raise ValueError("num_cpus in ray_actor_options must be >= 0.")
         self.resource_dict["CPU"] = num_cpus
 
-        if self.ray_actor_options.get("num_gpus", None) is None:
+        if self.ray_actor_options.get("num_gpus") is None:
             self.ray_actor_options["num_gpus"] = 0
         num_gpus = self.ray_actor_options["num_gpus"]
         if not isinstance(num_gpus, (int, float)):
@@ -315,6 +315,7 @@ class ReplicaConfig:
             raise ValueError("num_gpus in ray_actor_options must be >= 0.")
         self.resource_dict["GPU"] = num_gpus
 
+        # Serve deployments use Ray's default for actor memory.
         self.ray_actor_options.setdefault("memory", None)
         memory = self.ray_actor_options["memory"]
         if memory is not None and not isinstance(memory, (int, float)):
@@ -335,7 +336,7 @@ class ReplicaConfig:
             raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
         self.resource_dict["object_store_memory"] = object_store_memory
 
-        if self.ray_actor_options.get("resources", None) is None:
+        if self.ray_actor_options.get("resources") is None:
             self.ray_actor_options["resources"] = {}
         custom_resources = self.ray_actor_options["resources"]
         if not isinstance(custom_resources, dict):
