@@ -47,7 +47,7 @@ class LogAgentV1Grpc(
         return False
 
     async def ListLogs(self, request, context):
-        logger.error(f"initiated ListLogs:\n{request}")
+        logger.info(f"initiated ListLogs:\n{request}")
 
         def on_exit(self):
             logger.info(f"terminated ListLogs:\n{request}")
