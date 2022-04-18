@@ -25,13 +25,15 @@ def ensure_only_allowed_keys_updated(
 
     allowed_keys = set(allowed_keys)
 
-    bad_allowed_keys = [key for key in allowed_keys if key not in dataclass.__dict__]
-    if bad_allowed_keys:
-        raise KeyError(
-            f"Allowed key(s) {bad_allowed_keys} are not valid. "
+    # allowed_keys must be valid attributes of dataclass.__dict__
+    invalid_keys = [key for key in allowed_keys if key not in dataclass.__dict__]
+    if invalid_keys:
+        raise ValueError(
+            f"Allowed key(s) {invalid_keys} are not valid. "
             f"Valid keys: {list(dataclass.__dict__.keys())}"
         )
 
+    # These keys should not have been updated in the `dataclass` object
     prohibited_keys = set(default_data.__dict__) - allowed_keys
 
     bad_keys = [
@@ -41,6 +43,6 @@ def ensure_only_allowed_keys_updated(
     ]
     if bad_keys:
         raise ValueError(
-            f"Key(s) {bad_keys} are not allowed in the current context. "
+            f"Key(s) {bad_keys} are not allowed to be updated in the current context. "
             "Remove them from the dataclass."
         )
