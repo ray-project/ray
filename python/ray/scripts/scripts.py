@@ -1669,13 +1669,6 @@ def timeline(address):
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "--group-by",
     type=click.Choice(["NODE_ADDRESS", "STACK_TRACE"]),
     default="NODE_ADDRESS",
@@ -1716,7 +1709,6 @@ terminal width is less than 137 characters.",
 )
 def memory(
     address,
-    redis_password,
     group_by,
     sort_by,
     units,
@@ -1733,7 +1725,6 @@ def memory(
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(
         address,
-        redis_password,
         group_by,
         sort_by,
         units,
@@ -2036,20 +2027,13 @@ def kuberay_autoscaler(
     "--address", required=False, type=str, help="Override the address to connect to."
 )
 @click.option(
-    "--redis_password",
-    required=False,
-    type=str,
-    default=ray_constants.REDIS_DEFAULT_PASSWORD,
-    help="Connect to ray with redis_password.",
-)
-@click.option(
     "--component",
     required=False,
     type=str,
     help="Health check for a specific component. Currently supports: "
     "[ray_client_server]",
 )
-def healthcheck(address, redis_password, component):
+def healthcheck(address, component):
     """
     This is NOT a public api.
 

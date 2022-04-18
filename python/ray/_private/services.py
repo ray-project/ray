@@ -94,10 +94,6 @@ ProcessInfo = collections.namedtuple(
 )
 
 
-def _get_gcs_client_options(redis_address, redis_password, gcs_server_address):
-    return GcsClientOptions.from_gcs_address(gcs_server_address)
-
-
 def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
 
@@ -397,11 +393,11 @@ def wait_for_node(
 
 
 def get_node_to_connect_for_driver(
-    redis_address, gcs_address, node_ip_address, redis_password=None
+    gcs_address, node_ip_address
 ):
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
-    gcs_options = _get_gcs_client_options(redis_address, redis_password, gcs_address)
+    gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 

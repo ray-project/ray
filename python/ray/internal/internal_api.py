@@ -3,7 +3,6 @@ import ray._private.services as services
 import ray.worker
 import ray._private.profiling as profiling
 import ray._private.utils as utils
-from ray import ray_constants
 from ray.state import GlobalState
 from ray._raylet import GcsClientOptions
 
@@ -20,7 +19,6 @@ def global_gc():
 
 def memory_summary(
     address=None,
-    redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
     group_by="NODE_ADDRESS",
     sort_by="OBJECT_SIZE",
     units="B",

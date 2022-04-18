@@ -223,10 +223,8 @@ class Node:
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
                 node_info = ray._private.services.get_node_to_connect_for_driver(
-                    self.redis_address,
                     self.gcs_address,
                     self._raylet_ip_address,
-                    redis_password=self.redis_password,
                 )
                 self._plasma_store_socket_name = node_info.object_store_socket_name
                 self._raylet_socket_name = node_info.raylet_socket_name
@@ -314,10 +312,8 @@ class Node:
                     "the Ray processes failed to startup."
                 )
             node_info = ray._private.services.get_node_to_connect_for_driver(
-                self.redis_address,
                 self.gcs_address,
                 self._raylet_ip_address,
-                redis_password=self.redis_password,
             )
             self._ray_params.node_manager_port = node_info.node_manager_port
 
@@ -977,7 +973,6 @@ class Node:
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,
             object_manager_port=self._ray_params.object_manager_port,
-            redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
@@ -1017,7 +1012,6 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
-            redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
@@ -1037,7 +1031,6 @@ class Node:
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             metrics_agent_port=self._ray_params.metrics_agent_port,
         )
