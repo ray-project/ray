@@ -2,17 +2,17 @@ package io.ray.api.parallelactor;
 
 public class ParallelInstance<A> implements ParallelActorCall<A> {
 
-  private ParallelActor<A> parallelActor;
+  private ParallelActorHandle<A> parallelActorHandle;
 
   private int currentIndex;
 
-  public ParallelInstance(ParallelActor<A> parallelActor, int index) {
-    this.parallelActor = parallelActor;
+  public ParallelInstance(ParallelActorHandle<A> parallelActorHandle, int index) {
+    this.parallelActorHandle = parallelActorHandle;
     this.currentIndex = index;
   }
 
-  ParallelActor<A> getActor() {
-    return parallelActor;
+  ParallelActorHandle<A> getActor() {
+    return parallelActorHandle;
   }
 
   int getIndex() {

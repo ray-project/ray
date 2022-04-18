@@ -6,8 +6,8 @@ import io.ray.api.function.RayFuncR;
 
 public interface ParallelContext {
 
-  <A> ParallelActor<A> createParallelActorExecutor(int parallelNum, RayFuncR<A> ctorFunc);
+  <A> ParallelActorHandle<A> createParallelActorExecutor(int parallelNum, RayFuncR<A> ctorFunc);
 
   <A, R> ObjectRef<R> submitTask(
-      ParallelActor<A> parallelActor, int instanceIndex, RayFunc func, Object[] args);
+    ParallelActorHandle<A> parallelActorHandle, int instanceIndex, RayFunc func, Object[] args);
 }

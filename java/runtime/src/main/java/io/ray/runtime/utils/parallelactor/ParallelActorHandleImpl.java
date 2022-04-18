@@ -1,23 +1,23 @@
 package io.ray.runtime.utils.parallelactor;
 
 import io.ray.api.ActorHandle;
-import io.ray.api.parallelactor.ParallelActor;
+import io.ray.api.parallelactor.ParallelActorHandle;
 import io.ray.api.parallelactor.ParallelInstance;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
-public class ParallelActorImpl<A> implements ParallelActor<A>, Externalizable {
+public class ParallelActorHandleImpl<A> implements ParallelActorHandle<A>, Externalizable {
 
   private int parallelNum = 1;
 
   private ActorHandle<ParallelActorExecutorImpl> parallelExecutorHandle = null;
 
   // An empty ctor for FST serializing need.
-  public ParallelActorImpl() {}
+  public ParallelActorHandleImpl() {}
 
-  public ParallelActorImpl(int parallelNum, ActorHandle<ParallelActorExecutorImpl> handle) {
+  public ParallelActorHandleImpl(int parallelNum, ActorHandle<ParallelActorExecutorImpl> handle) {
     this.parallelNum = parallelNum;
     parallelExecutorHandle = handle;
   }

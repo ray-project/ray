@@ -3,9 +3,6 @@
 package io.ray.api.parallelactor;
 
 import io.ray.api.ObjectRef;
-import io.ray.api.parallelactor.ParallelActor;
-import io.ray.api.parallelactor.ParallelActorTaskCaller;
-import io.ray.api.parallelactor.VoidParallelActorTaskCaller;
 import io.ray.api.function.RayFuncVoid;
 import io.ray.api.function.RayFuncR;
 import io.ray.api.function.RayFunc1;

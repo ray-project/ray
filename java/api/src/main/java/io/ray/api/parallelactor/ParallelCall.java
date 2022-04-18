@@ -2,8 +2,6 @@
 
 package io.ray.api.parallelactor;
 
-import io.ray.api.parallelactor.ParallelActor;
-import io.ray.api.parallelactor.ParallelActorCreator;
 import io.ray.api.ObjectRef;
 import io.ray.api.function.RayFunc0;
 import io.ray.api.function.RayFunc1;
@@ -12,13 +10,6 @@ import io.ray.api.function.RayFunc3;
 import io.ray.api.function.RayFunc4;
 import io.ray.api.function.RayFunc5;
 import io.ray.api.function.RayFunc6;
-import io.ray.api.function.RayFuncVoid0;
-import io.ray.api.function.RayFuncVoid1;
-import io.ray.api.function.RayFuncVoid2;
-import io.ray.api.function.RayFuncVoid3;
-import io.ray.api.function.RayFuncVoid4;
-import io.ray.api.function.RayFuncVoid5;
-import io.ray.api.function.RayFuncVoid6;
 
 /**
  * This class provides type-safe interfaces for `Ray.call` and `Ray.createActor`.

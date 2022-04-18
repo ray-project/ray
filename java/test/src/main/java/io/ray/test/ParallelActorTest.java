@@ -44,8 +44,7 @@ public class ParallelActorTest extends BaseTest {
   }
 
   public void testBasic() {
-    ParallelActor<A> actor = Parallel.actor(A::new).setParallels(10).remote();
-
+    ParallelActorHandle<A> actor = ParallelActor.actor(A::new).setParallels(10).remote();
     {
       // stateless tests
       ParallelInstance<A> instance = actor.getInstance(/*index=*/ 2);
@@ -99,16 +98,16 @@ public class ParallelActorTest extends BaseTest {
     }
   }
 
-  private static boolean passParallelActor(ParallelActor<A> parallelActor) {
-    ObjectRef<Integer> obj0 = parallelActor.getInstance(0).task(A::incr, 1000000).remote();
-    ObjectRef<Integer> obj1 = parallelActor.getInstance(1).task(A::incr, 2000000).remote();
+  private static boolean passParallelActor(ParallelActorHandle<A> parallelActorHandle) {
+    ObjectRef<Integer> obj0 = parallelActorHandle.getInstance(0).task(A::incr, 1000000).remote();
+    ObjectRef<Integer> obj1 = parallelActorHandle.getInstance(1).task(A::incr, 2000000).remote();
     Assert.assertEquals(2000000, (int) obj0.get());
     Assert.assertEquals(4000000, (int) obj1.get());
     return true;
   }
 
   public void testPassParallelActorHandle() {
-    ParallelActor<A> actor = Parallel.actor(A::new).setParallels(10).remote();
+    ParallelActorHandle<A> actor = ParallelActor.actor(A::new).setParallels(10).remote();
     ObjectRef<Integer> obj0 = actor.getInstance(0).task(A::incr, 1000000).remote();
     ObjectRef<Integer> obj1 = actor.getInstance(1).task(A::incr, 2000000).remote();
     Assert.assertEquals(1000000, (int) obj0.get());
@@ -117,7 +116,7 @@ public class ParallelActorTest extends BaseTest {
   }
 
   public void testKillParallelActor() {
-    ParallelActor<A> actor = Parallel.actor(A::new).setParallels(10).remote();
+    ParallelActorHandle<A> actor = ParallelActor.actor(A::new).setParallels(10).remote();
     ObjectRef<Integer> obj0 = actor.getInstance(0).task(A::incr, 1000000).remote();
     Assert.assertEquals(1000000, (int) obj0.get());
 

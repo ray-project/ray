@@ -15,7 +15,7 @@ import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 public class ParallelContextImpl implements ParallelContext {
 
   @Override
-  public <A> ParallelActor<A> createParallelActorExecutor(int parallelNum, RayFuncR<A> ctorFunc) {
+  public <A> ParallelActorHandle<A> createParallelActorExecutor(int parallelNum, RayFuncR<A> ctorFunc) {
     ConcurrencyGroup[] concurrencyGroups = new ConcurrencyGroup[parallelNum];
     for (int i = 0; i < parallelNum; ++i) {
       concurrencyGroups[i] =
@@ -35,14 +35,14 @@ public class ParallelContextImpl implements ParallelContext {
             .setConcurrencyGroups(concurrencyGroups)
             .remote();
 
-    return new ParallelActorImpl<>(parallelNum, parallelExecutorHandle);
+    return new ParallelActorHandleImpl<>(parallelNum, parallelExecutorHandle);
   }
 
   @Override
   public <A, R> ObjectRef<R> submitTask(
-      ParallelActor<A> parallelActor, int instanceIndex, RayFunc func, Object[] args) {
+    ParallelActorHandle<A> parallelActorHandle, int instanceIndex, RayFunc func, Object[] args) {
     ActorHandle<ParallelActorExecutorImpl> parallelExecutor =
-        ((ParallelActorImpl) parallelActor).getExecutor();
+        ((ParallelActorHandleImpl) parallelActorHandle).getExecutor();
     FunctionManager functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
     JavaFunctionDescriptor functionDescriptor =
         functionManager
