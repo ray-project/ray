@@ -17,8 +17,10 @@ from ray.ml.preprocessors import (
     SimpleImputer,
     Chain,
 )
+from ray.ml.preprocessors.hasher import FeatureHasher
 from ray.ml.preprocessors.normalizer import Normalizer
 from ray.ml.preprocessors.scaler import MaxAbsScaler, RobustScaler
+from ray.ml.preprocessors.tokenizer import Tokenizer
 from ray.ml.preprocessors.transformer import PowerTransformer
 
 
@@ -850,6 +852,59 @@ def test_power_transformer():
     processed_col_a = [0, 1.5]
     processed_col_b = [4, 7.5]
     expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+
+    assert out_df.equals(expected_df)
+
+
+def test_tokenizer():
+    """Tests basic Tokenizer functionality."""
+
+    col_a = ["this is a test", "apple"]
+    col_b = ["the quick brown fox jumps over the lazy dog", "banana banana"]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df)
+
+    tokenizer = Tokenizer(["A", "B"])
+    transformed = tokenizer.transform(ds)
+    out_df = transformed.to_pandas()
+
+    processed_col_a = [["this", "is", "a", "test"], ["apple"]]
+    processed_col_b = [
+        ["the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"],
+        ["banana", "banana"],
+    ]
+    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+
+    assert out_df.equals(expected_df)
+
+
+def test_feature_hasher():
+    """Tests basic FeatureHasher functionality."""
+
+    col_a = [0, "a", "b"]
+    col_b = [0, "a", "c"]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b})
+    ds = ray.data.from_pandas(in_df)
+
+    hasher = FeatureHasher(["A", "B"], num_features=5)
+    transformed = hasher.transform(ds)
+    out_df = transformed.to_pandas()
+
+    processed_col_0 = [0, 0, 1]
+    processed_col_1 = [0, 0, 1]
+    processed_col_2 = [0, 2, 0]
+    processed_col_3 = [2, 0, 0]
+    processed_col_4 = [0, 0, 0]
+
+    expected_df = pd.DataFrame.from_dict(
+        {
+            "hash_A_B_0": processed_col_0,
+            "hash_A_B_1": processed_col_1,
+            "hash_A_B_2": processed_col_2,
+            "hash_A_B_3": processed_col_3,
+            "hash_A_B_4": processed_col_4,
+        }
+    )
 
     assert out_df.equals(expected_df)
 
