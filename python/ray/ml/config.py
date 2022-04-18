@@ -115,47 +115,6 @@ class ScalingConfigDataClass:
         bundles = trainer_bundle + worker_bundles
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
-    @classmethod
-    def validate_config(
-        cls,
-        config: Union[ScalingConfig, "ScalingConfigDataClass"],
-        allowed_keys: Iterable[str],
-    ):
-        """
-        Validate config by raising an exception if any of allowed_keys
-        differs from the default value.
-
-        Args:
-            config: Config to check.
-            allowed_keys: ScalingConfigDataClass attribute keys that
-                can have a value different than the default one.
-        """
-        default_config = ScalingConfigDataClass()
-        if not isinstance(config, ScalingConfigDataClass):
-            config = ScalingConfigDataClass(**config)
-
-        allowed_keys = set(allowed_keys)
-
-        bad_allowed_keys = [key for key in allowed_keys if key not in config.__dict__]
-        if bad_allowed_keys:
-            raise KeyError(
-                f"Allowed key(s) {bad_allowed_keys} are not valid. "
-                f"Valid keys: {list(config.__dict__.keys())}"
-            )
-
-        prohibited_keys = set(default_config.__dict__) - allowed_keys
-
-        bad_keys = [
-            key
-            for key in prohibited_keys
-            if config.__dict__[key] != default_config.__dict__[key]
-        ]
-        if bad_keys:
-            raise ValueError(
-                f"Key(s) {bad_keys} are not allowed in the current context. "
-                "Remove them from the ScalingConfig."
-            )
-
 
 @PublicAPI(stability="alpha")
 class FailureConfig:

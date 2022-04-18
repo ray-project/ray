@@ -5,6 +5,7 @@ from ray.ml import Checkpoint
 from ray.ml.config import ScalingConfigDataClass
 from ray.ml.trainer import Trainer
 from ray.ml.preprocessor import Preprocessor
+from ray.ml.utils.config import ensure_only_allowed_keys_updated
 
 
 class DummyTrainer(Trainer):
@@ -56,26 +57,16 @@ def test_scaling_config():
 
 def test_scaling_config_validate_config_valid():
     scaling_config = {"num_workers": 2}
-    ScalingConfigDataClass.validate_config(
-        scaling_config,
-        ["num_workers"],
+    ensure_only_allowed_keys_updated(
+        ScalingConfigDataClass(**scaling_config), ["num_workers"]
     )
 
 
-def test_scaling_config_validate_config_prohibited_dict():
+def test_scaling_config_validate_config_prohibited():
     # Check for prohibited keys
     scaling_config = {"num_workers": 2}
     with pytest.raises(ValueError):
-        ScalingConfigDataClass.validate_config(
-            scaling_config,
-            ["trainer_resources"],
-        )
-
-
-def test_scaling_config_validate_config_prohibited_class():
-    scaling_config = {"num_workers": 2}
-    with pytest.raises(ValueError):
-        ScalingConfigDataClass.validate_config(
+        ensure_only_allowed_keys_updated(
             ScalingConfigDataClass(**scaling_config),
             ["trainer_resources"],
         )
@@ -85,8 +76,8 @@ def test_scaling_config_validate_config_bad_allowed():
     # Check for bad allowed keys
     scaling_config = {"num_workers": 2}
     with pytest.raises(KeyError):
-        ScalingConfigDataClass.validate_config(
-            scaling_config,
+        ensure_only_allowed_keys_updated(
+            ScalingConfigDataClass(**scaling_config),
             ["invalid"],
         )
 

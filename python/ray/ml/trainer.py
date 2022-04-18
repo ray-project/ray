@@ -10,6 +10,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.utils.config import ensure_only_allowed_keys_updated
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
@@ -217,8 +218,8 @@ class Trainer(abc.ABC):
         cls, config_dict: Dict[str, Any]
     ) -> ScalingConfigDataClass:
         scaling_config_dataclass = ScalingConfigDataClass(**config_dict)
-        scaling_config_dataclass.validate_config(
-            config=config_dict,
+        ensure_only_allowed_keys_updated(
+            dataclass=ScalingConfigDataClass(**config_dict),
             allowed_keys=cls._scaling_config_allowed_keys,
         )
         return scaling_config_dataclass
