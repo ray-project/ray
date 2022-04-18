@@ -203,6 +203,7 @@ bool GcsClient::CheckHealth(const std::string &ip, int port, int64_t timeout_ms)
   return true;
 }
 
+// TODO(iycheng, mwtian): rework the reconnection logic for GCS HA.
 void GcsClient::PeriodicallyCheckGcsConnection() {
   if (disconnected_) {
     return;
