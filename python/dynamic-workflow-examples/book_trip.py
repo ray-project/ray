@@ -41,11 +41,11 @@ def book_trip():
 
 try:
     print(">>>> Book successfully", book_trip.step().run())
-except Exception:
-    print(">>>> FAILED to book")
+except Exception as e:
+    print(">>>> FAILED to book", e)
 
 book_flight_ok = True
 try:
     print(">>>> Book successfully", book_trip.step().run())
-except Exception:
-    print(">>>> FAILED")
+except Exception as e:
+    print(">>>> FAILED", e)

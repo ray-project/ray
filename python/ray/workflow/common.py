@@ -364,6 +364,10 @@ class Workflow(Generic[T]):
         # step id will be generated during runtime
         self._step_id: StepID = None
         self._ref: Optional[WorkflowStaticRef] = None
+        self.__old_reduce = self.__reduce__
+
+        self.__reduce__ = self.rrr
+
 
     @property
     def _workflow_id(self):
@@ -444,7 +448,7 @@ class Workflow(Generic[T]):
         wf._ref = workflow_ref
         return wf
 
-    def __reduce__(self):
+    def rrr(self):
         """Serialization helper for workflow.
 
         By default Workflow[T] objects are not serializable, except
@@ -454,11 +458,7 @@ class Workflow(Generic[T]):
         checkpoint its inputs properly.
         """
         if self._ref is None:
-            raise ValueError(
-                "Workflow[T] objects are not serializable. "
-                "This means they cannot be passed or returned from Ray "
-                "remote, or stored in Ray objects."
-            )
+            return self._old_reduce()
         return Workflow.from_ref, (self._ref,)
 
     @PublicAPI(stability="beta")

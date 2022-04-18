@@ -23,7 +23,7 @@ def g():
     global p
     print("before stop", p, flush=True)
     a = 20
-    unthrow.stop(None)
+    print("stop", unthrow.stop(30))
     print("after stop", p, flush=True)
     raise BaseException()
 
@@ -44,15 +44,16 @@ def f(i):
         print("finally", flush=True)
 
     print("f", i, "finished")
+    return "ABC"
 
 r = unthrow.Resumer()
-r.run_once(f, 10)
+print("run_once", r.run_once(f, 10))
 print("---- resuming ---")
 p = 17
 
 # pickle.loads(pickle.dumps(r)).run_once(f, 10)
 
 
-r.run_once(f, 10)
+print("run_once", r.run_once(f, 10))
 
 print("DONE")

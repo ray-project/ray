@@ -132,9 +132,9 @@ class Resumer:
                 self.resume_stack = ret.saved_frames
                 ret.with_traceback(None)
                 self.finished=False
-                # _truncate_frame(<PyObject*>self.resume_stack)
             else:
-                return ret
+                r = ret
+            return r
         finally:
             # stop interrupts
             interrupts_enabled = 0
