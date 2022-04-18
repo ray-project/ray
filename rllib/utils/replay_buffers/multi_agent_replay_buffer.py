@@ -83,7 +83,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 are stored in episodes, replay_sequence_length is ignored.
             learning_starts: Number of timesteps after which a call to
                 `sample()` will yield samples (before that, `sample()` will
-                return None).
+                return an empty batch).
             capacity: Max number of total timesteps in all policy buffers.
                 After reaching this number, older samples will be
                 dropped to make space for new ones.

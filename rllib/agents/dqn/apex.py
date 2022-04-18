@@ -87,7 +87,7 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # replay shards to be created on node(s) other than the one
         # on which the learner is located.
         "replay_buffer_shards_colocated_with_driver": True,
-
+        # Size of the replay buffer to reach before replay starts.
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,

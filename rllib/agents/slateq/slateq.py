@@ -110,7 +110,7 @@ DEFAULT_CONFIG = with_common_config({
     "rmsprop_epsilon": 1e-5,
     # If not None, clip gradients during optimization at this value
     "grad_clip": None,
-    # How many steps of the model to sample before learning starts.
+    # Size of the replay buffer to reach before replay starts.
     "learning_starts": 20000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.

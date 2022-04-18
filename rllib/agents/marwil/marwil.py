@@ -83,6 +83,7 @@ DEFAULT_CONFIG = with_common_config({
     # each training step.
     "replay_buffer_size": 10000,
     # Number of steps to read before learning starts.
+    # This is the size of the replay buffer to reach before replay starts.
     "learning_starts": 0,
 
     # A coeff to encourage higher action distribution entropy for exploration.

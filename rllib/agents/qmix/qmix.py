@@ -81,7 +81,7 @@ DEFAULT_CONFIG = with_common_config({
     "optim_eps": 0.00001,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 10,
-    # How many steps of the model to sample before learning starts.
+    # Size of the replay buffer to reach before replay starts.
     "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.

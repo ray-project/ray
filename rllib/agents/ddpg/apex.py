@@ -29,6 +29,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         # replay shards to be created on node(s) other than the one
         # on which the learner is located.
         "replay_buffer_shards_colocated_with_driver": True,
+        # Size of a replay buffer to reach before replay starts.
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
