@@ -236,7 +236,7 @@ class DDPPOTrainer(PPOTrainer):
         sample_and_update_results = asynchronous_parallel_requests(
             remote_requests_in_flight=self.remote_requests_in_flight,
             actors=self.workers.remote_workers(),
-            ray_wait_timeout_s=1000.0,  # 0.0
+            ray_wait_timeout_s=0.0,
             max_remote_requests_in_flight_per_actor=1,  # 2
             remote_fn=self._sample_and_train_torch_distributed,
         )
