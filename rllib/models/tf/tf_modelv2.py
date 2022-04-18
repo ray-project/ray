@@ -70,7 +70,7 @@ class TFModelV2(ModelV2):
     def register_variables(self, variables: List[TensorType]) -> None:
         """Register the given list of variables with this model."""
         if log_once("deprecated_tfmodelv2_register_variables"):
-            deprecation_warning(old="TFModelV2.register_variables", error=True)
+            deprecation_warning(old="TFModelV2.register_variables", error=False)
         self.var_list.extend(variables)
 
     @override(ModelV2)
