@@ -28,7 +28,14 @@ class DummyPreprocessor(Preprocessor):
 
 
 class DummyTrainer(Trainer):
-    _scaling_config_allowed_keys = ["trainer_resources", "num_workers"]
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+        "trainer_resources",
+    ]
 
     def __init__(self, train_loop, custom_arg=None, **kwargs):
         self.custom_arg = custom_arg
