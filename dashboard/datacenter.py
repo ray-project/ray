@@ -262,7 +262,9 @@ class DataOrganizer:
                     break
 
             for gpu_stats in node_physical_stats.get("gpus", []):
-                for process in gpu_stats.get("processes", []):
+                # gpu_stats.get("processes") can be None, an empty list or a
+                # list of dictionaries.
+                for process in gpu_stats.get("processes") or []:
                     if process["pid"] == pid:
                         actor_process_gpu_stats.append(gpu_stats)
                         break

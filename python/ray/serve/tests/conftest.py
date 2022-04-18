@@ -59,8 +59,8 @@ def _shared_serve_instance():
     # This line should be not turned on on master because it leads to very
     # spammy and not useful log in case of a failure in CI.
     # To run locally, please use this instead.
-    # SERVE_LOG_DEBUG=1 pytest -v -s test_api.py
-    # os.environ["SERVE_LOG_DEBUG"] = "1" <- Do not uncomment this.
+    # SERVE_DEBUG_LOG=1 pytest -v -s test_api.py
+    # os.environ["SERVE_DEBUG_LOG"] = "1" <- Do not uncomment this.
 
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(

@@ -414,7 +414,7 @@ class WandbLogger(Logger):
     the ``config`` parameter of ``tune.run()`` (see example below).
 
     The ``wandb`` config key can be optionally included in the
-    ``logger_config`` subkey of ``config`` to be compatible with RLLib
+    ``logger_config`` subkey of ``config`` to be compatible with RLlib
     trainables (see second example below).
 
     The content of the ``wandb`` config entry is passed to ``wandb.init()``
@@ -461,7 +461,7 @@ class WandbLogger(Logger):
             },
             loggers=DEFAULT_LOGGERS + (WandbLogger, ))
 
-    Example for RLLib:
+    Example for RLlib:
 
     .. code-block :: python
 

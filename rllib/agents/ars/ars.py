@@ -16,7 +16,6 @@ from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.torch_utils import set_torch_seed
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils import FilterManager
@@ -404,10 +403,6 @@ class ARSTrainer(Trainer):
         if kwargs.get("full_fetch"):
             return action[0], [], {}
         return action[0]
-
-    @Deprecated(new="compute_single_action", error=True)
-    def compute_action(self, observation, *args, **kwargs):
-        return self.compute_single_action(observation, *args, **kwargs)
 
     @override(Trainer)
     def _sync_weights_to_workers(self, *, worker_set=None, workers=None):

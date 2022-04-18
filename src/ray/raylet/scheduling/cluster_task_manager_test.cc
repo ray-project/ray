@@ -971,6 +971,35 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterTaskManagerTest, TaskUnschedulableTest) {
+  TaskSpecification task_spec =
+      CreateTask({{ray::kCPU_ResourceLabel, 1}}).GetTaskSpecification();
+  task_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_node_id(NodeID::FromRandom().Binary());
+  task_spec.GetMutableMessage()
+      .mutable_scheduling_strategy()
+      ->mutable_node_affinity_scheduling_strategy()
+      ->set_soft(false);
+  rpc::RequestWorkerLeaseReply reply;
+
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_called_ptr = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(RayTask(task_spec), false, false, &reply, callback);
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -1544,8 +1573,8 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
   const NodeResources &node_resources =
       scheduler_->GetClusterResourceManager().GetNodeResources(
           scheduling::NodeID(id_.Binary()));
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 4);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 4);
 
   auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
 
@@ -1564,37 +1593,37 @@ TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) 
   worker->SetAllocatedInstances(allocated_instances);
 
   // Check that the resoruces are allocated successfully.
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 7);
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 3);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
 
   // Check that the cpu resources are released successfully.
   ASSERT_TRUE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker));
 
   // Check that only cpu resources are released.
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 3);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
 
   // Mark worker as blocked.
   worker->MarkBlocked();
   // Check failed as the worker is blocked.
   ASSERT_FALSE(local_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker));
   // Check nothing will be changed.
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 3);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 8);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
 
   // Check that the cpu resources are returned back to worker successfully.
   ASSERT_TRUE(local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker));
 
   // Check that only cpu resources are returned back to the worker.
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 7);
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 3);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
 
   // Mark worker as unblocked.
   worker->MarkUnblocked();
   ASSERT_FALSE(local_task_manager_->ReturnCpuResourcesToBlockedWorker(worker));
   // Check nothing will be changed.
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 7);
-  ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 3);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::CPU()), 7);
+  ASSERT_EQ(node_resources.available.Get(ResourceID::GPU()), 3);
 }
 
 TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {

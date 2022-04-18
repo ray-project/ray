@@ -152,6 +152,60 @@ To try it out, save a code snippet in a local python file (i.e. main.py) and in 
     ray start --head
     python main.py
 
+.. _serve-http-adapters:
+
+HTTP Adapters
+^^^^^^^^^^^^^
+
+Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
+You can just use it with :ref:`Ray AI Runtime (AIR) model wrapper<air-serve-integration>` feature
+to one click deploy pre-trained models.
+Alternatively, you can directly import them and put them into your FastAPI app.
+
+For example, we provide a simple adapter for n-dimensional array.
+
+With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``input_schema`` field.
+
+.. code-block:: python
+
+    from ray import serve
+    from ray.serve.http_adapters import json_to_ndarray
+    from ray.serve.model_wrappers import ModelWrapperDeployment
+
+    ModelWrapperDeployment.options(name="my_model").deploy(
+        my_ray_air_predictor,
+        my_ray_air_checkpoint,
+        input_schema=json_to_ndarray
+    )
+
+You can also bring the adapter to your own FastAPI app using
+`Depends <https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends>`_.
+The input schema will automatically be part of the generated OpenAPI schema with FastAPI.
+
+.. code-block:: python
+
+    from fastapi import FastAPI, Depends
+    from ray.serve.http_adapters import json_to_ndarray
+
+    app = FastAPI()
+
+    @app.post("/endpoint")
+    async def endpoint(np_array = Depends(json_to_ndarray)):
+        ...
+
+It has the following schema for input:
+
+.. _serve-ndarray-schema:
+
+.. autopydantic_model:: ray.serve.http_adapters.NdArray
+
+
+Here is a list of adapters and please feel free to `contribute more <https://github.com/ray-project/ray/issues/new/choose>`_!
+
+.. automodule:: ray.serve.http_adapters
+    :members: json_to_ndarray, image_to_ndarray
+
+
 Configuring HTTP Server Locations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

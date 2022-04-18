@@ -479,16 +479,11 @@ def test_serializing_exceptions(ray_start_regular_shared):
 def test_invalid_task(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
-        @ray.remote(runtime_env="invalid value")
-        def f():
-            return 1
+        with pytest.raises(TypeError):
 
-        # No exception on making the remote call.
-        ref = f.remote()
-
-        # Exception during scheduling will be raised on ray.get()
-        with pytest.raises(Exception):
-            ray.get(ref)
+            @ray.remote(runtime_env="invalid value")
+            def f():
+                return 1
 
 
 def test_create_remote_before_start(ray_start_regular_shared):

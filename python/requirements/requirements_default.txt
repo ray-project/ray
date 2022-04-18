@@ -1,7 +1,7 @@
-aiohttp>=3.7
+aiohttp >= 3.7
 aiosignal
 aiohttp_cors
 colorful
 opencensus
-prometheus_client>=0.7.1
+prometheus_client >= 0.7.1, < 0.14.0
 smart_open

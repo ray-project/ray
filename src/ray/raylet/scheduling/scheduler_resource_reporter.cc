@@ -171,7 +171,8 @@ void SchedulerResourceReporter::FillPendingActorInfo(
   }
   // Report actors blocked on resources.
   num_reported = 0;
-  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
+  for (const auto &shapes_it :
+       boost::range::join(tasks_to_dispatch_, tasks_to_schedule_)) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
       const RayTask &task = work_it->task;
