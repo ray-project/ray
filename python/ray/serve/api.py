@@ -74,6 +74,7 @@ import ray
 from ray import cloudpickle
 from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.application import Application
+from ray.serve.pipeline.generate import DeploymentNameGenerator
 
 logger = logging.getLogger(__file__)
 
@@ -245,6 +246,9 @@ class Client:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
+        # Clean up class level deployment name states upon shutting down
+        DeploymentNameGenerator.reset()
+
         if ray.is_initialized() and not self._shutdown:
             ray.get(self._controller.shutdown.remote())
             self._wait_for_deployments_shutdown()
