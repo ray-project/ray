@@ -15,8 +15,7 @@ import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 public class ParallelContextImpl implements ParallelContext {
 
   @Override
-  public <A> ParallelActor<A> createParallelActorExecutor(
-      int parallelNum, RayFuncR<A> ctorFunc) {
+  public <A> ParallelActor<A> createParallelActorExecutor(int parallelNum, RayFuncR<A> ctorFunc) {
     ConcurrencyGroup[] concurrencyGroups = new ConcurrencyGroup[parallelNum];
     for (int i = 0; i < parallelNum; ++i) {
       concurrencyGroups[i] =

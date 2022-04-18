@@ -6,6 +6,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.parallelactor.*;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.util.SystemUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -32,19 +33,17 @@ public class ParallelActorTest extends BaseTest {
       return a + b;
     }
 
+    public int getPid() {
+      // TODO(qwang): We should fix this once Serialization2.0 finished.
+      return 1000000 + SystemUtil.pid();
+    }
+
     public int getThreadId() {
       return 1000000 + (int) Thread.currentThread().getId();
     }
   }
 
-  /// 1. How to support concurrency group on parallel actor?
-  /// 2. how to align all functionalities of ActorCaller/ActorTaskCaller, we need to extends from
-  // ActorHandle?
-  /// 3. How do we reuse APIs ActorCreator for parallelActorCreator, like setRuntimeEnv
-  /// 4. The router is in the caller, to decide which index we should route. How to solve? Move to
-  // callee?
-  /// 5. We used function manager.
-  public void testRoundRobinStrategy() {
+  public void testBasic() {
     ParallelActor<A> actor = Parallel.actor(A::new).setParallels(10).remote();
 
     {
@@ -74,37 +73,57 @@ public class ParallelActorTest extends BaseTest {
       res = instance.task(A::incr, 2000000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 3000000);
     }
+
+    {
+      // Test they are in the same process.
+      ParallelInstance<A> instance = actor.getInstance(/*index=*/ 0);
+      Preconditions.checkNotNull(instance);
+      int pid1 = instance.task(A::getPid).remote().get();
+
+      instance = actor.getInstance(/*index=*/ 1);
+      Preconditions.checkNotNull(instance);
+      int pid2 = instance.task(A::getPid).remote().get();
+      Assert.assertEquals(pid1, pid2);
+    }
+
+    {
+      // Test they are in different threads.
+      ParallelInstance<A> instance = actor.getInstance(/*index=*/ 4);
+      Preconditions.checkNotNull(instance);
+      int thread1 = instance.task(A::getThreadId).remote().get();
+
+      instance = actor.getInstance(/*index=*/ 5);
+      Preconditions.checkNotNull(instance);
+      int thread2 = instance.task(A::getThreadId).remote().get();
+      Assert.assertNotEquals(thread1, thread2);
+    }
   }
 
-//  private static boolean passParallelActor(ParallelActor<A> parallelActor) {
-//    ObjectRef<Integer> obj0 = parallelActor.task(A::incr, 1000000).remote();
-//    ObjectRef<Integer> obj1 = parallelActor.task(A::incr, 2000000).remote();
-//    // When parallel actor is passed in to a worker, the strategy should be erased
-//    // because parallel actor strategy is work on caller side.
-//    Assert.assertEquals(2000000, (int) obj0.get());
-//    Assert.assertEquals(4000000, (int) obj1.get());
-//    return true;
-//  }
-//
-//  public void testPassParallelActorHandle() {
-//    ParallelActor<A> actor =
-//        Parallel.actor(A::new).setParallels(10).remote();
-//    ObjectRef<Integer> obj0 = actor.task(A::incr, 1000000).remote();
-//    ObjectRef<Integer> obj1 = actor.task(A::incr, 2000000).remote();
-//    Assert.assertEquals(1000000, (int) obj0.get());
-//    Assert.assertEquals(2000000, (int) obj1.get());
-//    Assert.assertTrue(Ray.task(ParallelActorTest::passParallelActor, actor).remote().get());
-//  }
-//
-//  public void testKillParallelActor() {
-//    ParallelActor<A> actor =
-//        Parallel.actor(A::new).setParallels(10).remote();
-//    ObjectRef<Integer> obj0 = actor.task(A::incr, 1000000).remote();
-//    Assert.assertEquals(1000000, (int) obj0.get());
-//
-//    ActorHandle<?> handle = actor.getHandle();
-//    handle.kill(true);
-//    final ObjectRef<Integer> obj1 = actor.task(A::incr, 1000000).remote();
-//    Assert.expectThrows(RayActorException.class, obj1::get);
-//  }
+  private static boolean passParallelActor(ParallelActor<A> parallelActor) {
+    ObjectRef<Integer> obj0 = parallelActor.getInstance(0).task(A::incr, 1000000).remote();
+    ObjectRef<Integer> obj1 = parallelActor.getInstance(1).task(A::incr, 2000000).remote();
+    Assert.assertEquals(2000000, (int) obj0.get());
+    Assert.assertEquals(4000000, (int) obj1.get());
+    return true;
+  }
+
+  public void testPassParallelActorHandle() {
+    ParallelActor<A> actor = Parallel.actor(A::new).setParallels(10).remote();
+    ObjectRef<Integer> obj0 = actor.getInstance(0).task(A::incr, 1000000).remote();
+    ObjectRef<Integer> obj1 = actor.getInstance(1).task(A::incr, 2000000).remote();
+    Assert.assertEquals(1000000, (int) obj0.get());
+    Assert.assertEquals(2000000, (int) obj1.get());
+    Assert.assertTrue(Ray.task(ParallelActorTest::passParallelActor, actor).remote().get());
+  }
+
+  public void testKillParallelActor() {
+    ParallelActor<A> actor = Parallel.actor(A::new).setParallels(10).remote();
+    ObjectRef<Integer> obj0 = actor.getInstance(0).task(A::incr, 1000000).remote();
+    Assert.assertEquals(1000000, (int) obj0.get());
+
+    ActorHandle<?> handle = actor.getHandle();
+    handle.kill(true);
+    final ObjectRef<Integer> obj1 = actor.getInstance(0).task(A::incr, 1000000).remote();
+    Assert.expectThrows(RayActorException.class, obj1::get);
+  }
 }
