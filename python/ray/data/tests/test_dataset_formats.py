@@ -1473,7 +1473,7 @@ def test_torch_datasource(ray_start_regular_shared, local_path):
     ray_dataset = ray.data.read_datasource(
         SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
     )
-    actual_data = list(next(ray_dataset.iter_batches(batch_size=ray_dataset.count())))
+    actual_data = list(next(ray_dataset.iter_batches(batch_size=None)))
 
     assert actual_data == expected_data
 
