@@ -2744,15 +2744,17 @@ class Trainer(Trainable):
         ]
         for k in deprecated_replay_buffer_keys:
             if config.get(k) is not None:
-                deprecation_warning(
-                    old="config[{}]".format(k),
-                    help="config['replay_buffer_config'][{}] should be used "
-                    "for Q-Learning algorithms. Ignore this warning if "
-                    "you are not using a Q-Learning algorithm and still "
-                    "provide {}."
-                    "".format(k, k),
-                    error=False,
-                )
+                # No warning yet, due to some algos still not offering an alternative
+                # to this setting.
+                # deprecation_warning(
+                #    old="config[{}]".format(k),
+                #    help="config['replay_buffer_config'][{}] should be used "
+                #    "for Q-Learning algorithms. Ignore this warning if "
+                #    "you are not using a Q-Learning algorithm and still "
+                #    "provide {}."
+                #    "".format(k, k),
+                #    error=False,
+                # )
                 # Copy values over to new location in config to support new
                 # and old configuration style
                 if config.get("replay_buffer_config") is not None:
@@ -2771,13 +2773,15 @@ class Trainer(Trainable):
 
         capacity = config.get("buffer_size", DEPRECATED_VALUE)
         if capacity != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['buffer_size']",
-                help="Buffer size specified at new location config["
-                "'replay_buffer_config']["
-                "'capacity'] will be overwritten.",
-                error=True,
-            )
+            # No warning yet, due to some algos still not offering an alternative
+            # to this setting.
+            # deprecation_warning(
+            #    old="config['buffer_size']",
+            #    help="Buffer size specified at new location config["
+            #    "'replay_buffer_config']["
+            #    "'capacity'] will be overwritten.",
+            #    error=True,
+            # )
             config["replay_buffer_config"]["capacity"] = capacity
 
         # Check if old replay buffer should be instantiated
