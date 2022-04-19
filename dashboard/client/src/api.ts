@@ -36,6 +36,12 @@ export type RayConfigResponse = {
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
+export type UsageStatsEnabledResponse = {
+  enabled: boolean;
+}
+
+export const getUsageStatsEnabled = () => get<UsageStatsEnabledResponse>("/usage_stats_enabled", {});
+
 type ProcessStats = {
   pid: number;
   memoryInfo: {

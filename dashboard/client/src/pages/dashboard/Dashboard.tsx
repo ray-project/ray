@@ -11,7 +11,7 @@ import { Alert } from "@material-ui/lab";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useHistory } from "react-router-dom";
-import { getActorGroups, getNodeInfo, getTuneAvailability } from "../../api";
+import { getActorGroups, getNodeInfo, getTuneAvailability, getUsageStatsEnabled } from "../../api";
 import { StoreState } from "../../store";
 import LastUpdated from "./LastUpdated";
 import LogicalView from "./logical-view/LogicalView";
@@ -100,7 +100,14 @@ const Dashboard: React.FC = () => {
   }
 
   const SelectedComponent = tabs[tab].component;
-  const [showUsageStatsPrompt, setShowUsageStatsPrompt] = useState(true);
+  const [showUsageStatsPrompt, setShowUsageStatsPrompt] = useState(false);
+  useEffect(() => {
+    getUsageStatsEnabled().then((res) => {
+      if (res.enabled) {
+        setShowUsageStatsPrompt(true);
+      }
+    });
+  }, []);
   return (
     <div className={classes.root}>
       <Typography variant="h5">Ray Dashboard</Typography>
@@ -113,17 +120,6 @@ const Dashboard: React.FC = () => {
       >
         Try Experimental Dashboard
       </Button>
-      {showUsageStatsPrompt ?
-      <Alert
-        style={{ marginTop: 48 }}
-        severity="info"
-        onClose={() => setShowUsageStatsPrompt(false)}
-      >
-        Usage stats collection is enabled. To disable this, add {'{"usage_stats": false}'} to ~/.ray/config.json, or run the following command:<br/><br/>
-        &emsp;ray disable-usage-stats<br/><br/>
-        See <a href="https://github.com/ray-project/ray/issues/20857" target="_blank" rel="noreferrer">https://github.com/ray-project/ray/issues/20857</a> for more details.
-      </Alert>
-      : null}
       <Tabs
         className={classes.tabs}
         indicatorColor="primary"
@@ -136,6 +132,16 @@ const Dashboard: React.FC = () => {
         ))}
       </Tabs>
       <SelectedComponent />
+      {showUsageStatsPrompt ?
+      <Alert
+        style={{ marginTop: 30 }}
+        severity="info"
+      >
+        Usage stats collection is enabled. To disable this, add `--disable-usage-stats` to the command that starts the cluster, or run the following command:
+        `ray disable-usage-stats`.
+        See <a href="https://github.com/ray-project/ray/issues/20857" target="_blank" rel="noreferrer">https://github.com/ray-project/ray/issues/20857</a> for more details.
+      </Alert>
+      : null}
       <LastUpdated />
     </div>
   );

@@ -34,17 +34,18 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
 
-        if not dashboard_head.minimal:
-            import ray.dashboard.optional_utils as dashboard_optional_utils
-            import aiohttp.web
-            routes = dashboard_optional_utils.ClassMethodRouteTable
-            usage_stats_enabled = self.usage_stats_enabled
-            @routes.get("/usage_stats")
-            async def get_usage_stats_enabled(self, req) -> aiohttp.web.Response:
-                return dashboard_optional_utils.rest_response(
-                    success=True, message="Fetched usage stats enabled", enabled=usage_stats_enabled
-                )
-            setattr(self, "get_usage_stats_enabled", get_usage_stats_enabled)
+    if ray._private.utils.check_dashboard_dependencies_installed():
+        import aiohttp
+
+        routes = ray.dashboard.optional_utils.ClassMethodRouteTable
+
+        @routes.get("/usage_stats_enabled")
+        async def get_usage_stats_enabled(self, req) -> aiohttp.web.Response:
+            return ray.dashboard.optional_utils.rest_response(
+                success=True,
+                message="Fetched usage stats enabled",
+                enabled=self.usage_stats_enabled,
+            )
 
     def _report_usage_sync(self):
         """
