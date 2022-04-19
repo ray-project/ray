@@ -215,7 +215,8 @@ class PushBasedShuffleOp(ShuffleOp):
         ), "Received different number of map inputs"
         stats = BlockExecStats.builder()
         merged_outputs = []
-        reduce_args = reduce_args or []
+        if not reduce_args:
+            reduce_args = []
         for mapper_outputs in zip(*all_mapper_outputs):
             block, meta = reduce_fn(*reduce_args, *mapper_outputs)
             merged_outputs.append(block)
