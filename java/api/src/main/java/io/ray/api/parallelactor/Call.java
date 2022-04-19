@@ -14,7 +14,7 @@ import io.ray.api.function.RayFunc6;
 /**
  * This class provides type-safe interfaces for `Ray.call` and `Ray.createActor`.
  **/
-class ParallelCall {
+class Call {
   // ===========================
   // Methods for actor creation.
   // ===========================

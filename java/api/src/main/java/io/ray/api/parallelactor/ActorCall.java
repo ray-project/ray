@@ -21,14 +21,14 @@ import io.ray.api.function.RayFuncVoid6;
 /**
  * This class provides type-safe interfaces for remote actor calls.
  **/
-interface ParallelActorCall<A> {
+interface ActorCall<A> {
 
   default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {
-    return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);
+    return new VoidParallelActorTaskCaller((ParallelActorInstance) this, func, args);
  }
 
   default <R> ParallelActorTaskCaller<R> buildCaller(RayFuncR<R> func, Object[] args) {
-    return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);
+    return new ParallelActorTaskCaller<R>((ParallelActorInstance) this, func, args);
   }
 
   default <R> ParallelActorTaskCaller<R> task(RayFunc1<A, R> f) {

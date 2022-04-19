@@ -47,7 +47,7 @@ public class ParallelActorTest extends BaseTest {
     ParallelActorHandle<A> actor = ParallelActor.actor(A::new).setParallelism(10).remote();
     {
       // stateless tests
-      ParallelInstance<A> instance = actor.getInstance(/*index=*/ 2);
+      ParallelActorInstance<A> instance = actor.getInstance(/*index=*/ 2);
 
       Preconditions.checkNotNull(instance);
       int res = instance.task(A::add, 100000, 200000).remote().get(); // Executed in instance 2
@@ -61,7 +61,7 @@ public class ParallelActorTest extends BaseTest {
 
     {
       // stateful tests
-      ParallelInstance<A> instance = actor.getInstance(/*index=*/ 2);
+      ParallelActorInstance<A> instance = actor.getInstance(/*index=*/ 2);
 
       Preconditions.checkNotNull(instance);
       int res = instance.task(A::incr, 1000000).remote().get(); // Executed in instance 2
@@ -75,7 +75,7 @@ public class ParallelActorTest extends BaseTest {
 
     {
       // Test they are in the same process.
-      ParallelInstance<A> instance = actor.getInstance(/*index=*/ 0);
+      ParallelActorInstance<A> instance = actor.getInstance(/*index=*/ 0);
       Preconditions.checkNotNull(instance);
       int pid1 = instance.task(A::getPid).remote().get();
 
@@ -87,7 +87,7 @@ public class ParallelActorTest extends BaseTest {
 
     {
       // Test they are in different threads.
-      ParallelInstance<A> instance = actor.getInstance(/*index=*/ 4);
+      ParallelActorInstance<A> instance = actor.getInstance(/*index=*/ 4);
       Preconditions.checkNotNull(instance);
       int thread1 = instance.task(A::getThreadId).remote().get();
 

@@ -6,20 +6,20 @@ import io.ray.api.function.RayFuncR;
 
 public class ParallelActorTaskCaller<R> {
 
-  private ParallelInstance instance;
+  private ParallelActorInstance instance;
 
   private RayFuncR<R> func;
 
   private Object[] args;
 
-  public ParallelActorTaskCaller(ParallelInstance instance, RayFuncR<R> func, Object[] args) {
+  public ParallelActorTaskCaller(ParallelActorInstance instance, RayFuncR<R> func, Object[] args) {
     this.instance = instance;
     this.func = func;
     this.args = args;
   }
 
   public ObjectRef<R> remote() {
-    ParallelContext ctx = Ray.internal().getParallelContext();
+    ParallelActorContext ctx = Ray.internal().getParallelContext();
     return ctx.submitTask(instance.getActor(), instance.getIndex(), func, args);
   }
 }

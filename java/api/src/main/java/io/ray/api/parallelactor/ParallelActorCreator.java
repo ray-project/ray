@@ -5,7 +5,7 @@ import io.ray.api.function.RayFuncR;
 
 public class ParallelActorCreator<A> {
 
-  private int parallelNum = 1;
+  private int parallelism = 1;
 
   private RayFuncR<A> func;
 
@@ -16,13 +16,13 @@ public class ParallelActorCreator<A> {
     this.args = args;
   }
 
-  public ParallelActorCreator<A> setParallelism(int parallelNum) {
-    this.parallelNum = parallelNum;
+  public ParallelActorCreator<A> setParallelism(int parallelism) {
+    this.parallelism = parallelism;
     return this;
   }
 
   public ParallelActorHandle<A> remote() {
-    ParallelContext ctx = Ray.internal().getParallelContext();
-    return ctx.createParallelActorExecutor(parallelNum, this.func);
+    ParallelActorContext ctx = Ray.internal().getParallelContext();
+    return ctx.createParallelActorExecutor(parallelism, this.func);
   }
 }

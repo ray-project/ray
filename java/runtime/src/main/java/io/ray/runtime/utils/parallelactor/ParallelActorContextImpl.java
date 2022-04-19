@@ -12,13 +12,13 @@ import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 
-public class ParallelContextImpl implements ParallelContext {
+public class ParallelActorContextImpl implements ParallelActorContext {
 
   @Override
   public <A> ParallelActorHandle<A> createParallelActorExecutor(
-      int parallelNum, RayFuncR<A> ctorFunc) {
-    ConcurrencyGroup[] concurrencyGroups = new ConcurrencyGroup[parallelNum];
-    for (int i = 0; i < parallelNum; ++i) {
+      int parallelism, RayFuncR<A> ctorFunc) {
+    ConcurrencyGroup[] concurrencyGroups = new ConcurrencyGroup[parallelism];
+    for (int i = 0; i < parallelism; ++i) {
       concurrencyGroups[i] =
           new ConcurrencyGroupBuilder<ParallelActorExecutorImpl>()
               .setName(String.format("PARALLEL_INSTANCE_%d", i))
@@ -32,11 +32,11 @@ public class ParallelContextImpl implements ParallelContext {
             .getFunction(Ray.getRuntimeContext().getCurrentJobId(), ctorFunc)
             .getFunctionDescriptor();
     ActorHandle<ParallelActorExecutorImpl> parallelExecutorHandle =
-        Ray.actor(ParallelActorExecutorImpl::new, parallelNum, functionDescriptor)
+        Ray.actor(ParallelActorExecutorImpl::new, parallelism, functionDescriptor)
             .setConcurrencyGroups(concurrencyGroups)
             .remote();
 
-    return new ParallelActorHandleImpl<>(parallelNum, parallelExecutorHandle);
+    return new ParallelActorHandleImpl<>(parallelism, parallelExecutorHandle);
   }
 
   @Override

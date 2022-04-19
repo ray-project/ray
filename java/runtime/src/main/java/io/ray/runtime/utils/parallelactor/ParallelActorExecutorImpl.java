@@ -19,7 +19,7 @@ public class ParallelActorExecutorImpl {
 
   private ConcurrentHashMap<Integer, Object> instances = new ConcurrentHashMap<>();
 
-  public ParallelActorExecutorImpl(int parallelNum, JavaFunctionDescriptor javaFunctionDescriptor)
+  public ParallelActorExecutorImpl(int parallelism, JavaFunctionDescriptor javaFunctionDescriptor)
       throws InvocationTargetException, IllegalAccessException {
 
     functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
@@ -27,7 +27,7 @@ public class ParallelActorExecutorImpl {
         functionManager.getFunction(
             Ray.getRuntimeContext().getCurrentJobId(), javaFunctionDescriptor);
     Thread.currentThread().setContextClassLoader(init.classLoader);
-    for (int i = 0; i < parallelNum; ++i) {
+    for (int i = 0; i < parallelism; ++i) {
       Object instance = init.getMethod().invoke(null, null);
       instances.put(i, instance);
     }

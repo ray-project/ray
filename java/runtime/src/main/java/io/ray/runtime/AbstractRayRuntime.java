@@ -19,7 +19,7 @@ import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
-import io.ray.api.parallelactor.ParallelContext;
+import io.ray.api.parallelactor.ParallelActorContext;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.api.runtimeenv.RuntimeEnv;
@@ -41,7 +41,7 @@ import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
 import io.ray.runtime.util.ConcurrencyGroupUtils;
-import io.ray.runtime.utils.parallelactor.ParallelContextImpl;
+import io.ray.runtime.utils.parallelactor.ParallelActorContextImpl;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -65,7 +65,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
-  private static ParallelContextImpl parallelContextImpl = new ParallelContextImpl();
+  private static ParallelActorContextImpl parallelContextImpl = new ParallelActorContextImpl();
 
   /** Whether the required thread context is set on the current thread. */
   final ThreadLocal<Boolean> isContextSet = ThreadLocal.withInitial(() -> false);
@@ -293,7 +293,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ParallelContext getParallelContext() {
+  public ParallelActorContext getParallelContext() {
     return parallelContextImpl;
   }
 

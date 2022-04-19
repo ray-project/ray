@@ -2,7 +2,7 @@ package io.ray.runtime.utils.parallelactor;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.parallelactor.ParallelActorHandle;
-import io.ray.api.parallelactor.ParallelInstance;
+import io.ray.api.parallelactor.ParallelActorInstance;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -10,21 +10,21 @@ import java.io.ObjectOutput;
 
 public class ParallelActorHandleImpl<A> implements ParallelActorHandle<A>, Externalizable {
 
-  private int parallelNum = 1;
+  private int parallelism = 1;
 
   private ActorHandle<ParallelActorExecutorImpl> parallelExecutorHandle = null;
 
   // An empty ctor for FST serializing need.
   public ParallelActorHandleImpl() {}
 
-  public ParallelActorHandleImpl(int parallelNum, ActorHandle<ParallelActorExecutorImpl> handle) {
-    this.parallelNum = parallelNum;
+  public ParallelActorHandleImpl(int parallelism, ActorHandle<ParallelActorExecutorImpl> handle) {
+    this.parallelism = parallelism;
     parallelExecutorHandle = handle;
   }
 
   @Override
-  public ParallelInstance<A> getInstance(int index) {
-    return new ParallelInstance<A>(this, index);
+  public ParallelActorInstance<A> getInstance(int index) {
+    return new ParallelActorInstance<A>(this, index);
   }
 
   public ActorHandle<? extends ParallelActorExecutorImpl> getExecutor() {
@@ -32,8 +32,8 @@ public class ParallelActorHandleImpl<A> implements ParallelActorHandle<A>, Exter
   }
 
   @Override
-  public int getParallelNum() {
-    return parallelNum;
+  public int getParallelism() {
+    return parallelism;
   }
 
   @Override
@@ -44,12 +44,12 @@ public class ParallelActorHandleImpl<A> implements ParallelActorHandle<A>, Exter
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(parallelExecutorHandle);
-    out.writeInt(parallelNum);
+    out.writeInt(parallelism);
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.parallelExecutorHandle = (ActorHandle<ParallelActorExecutorImpl>) in.readObject();
-    this.parallelNum = in.readInt();
+    this.parallelism = in.readInt();
   }
 }
