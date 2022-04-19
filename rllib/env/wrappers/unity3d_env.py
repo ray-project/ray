@@ -256,6 +256,11 @@ class Unity3DEnv(MultiAgentEnv):
                     Box(float("-inf"), float("inf"), (4,)),
                 ]
             ),
+            # SoccerTwos.
+            "SoccerPlayer": TupleSpace([
+                Box(-1.0, 1.0, (264,)),
+                Box(-1.0, 1.0, (72,)),
+            ]),
             # SoccerStrikersVsGoalie.
             "Goalie": Box(float("-inf"), float("inf"), (738,)),
             "Striker": TupleSpace(
@@ -306,8 +311,7 @@ class Unity3DEnv(MultiAgentEnv):
             "Goalie": MultiDiscrete([3, 3, 3]),
             "Striker": MultiDiscrete([3, 3, 3]),
             # SoccerTwos.
-            "PurplePlayer": MultiDiscrete([3, 3, 3]),
-            "BluePlayer": MultiDiscrete([3, 3, 3]),
+            "SoccerPlayer": MultiDiscrete([3, 3, 3]),
             # Sorter.
             "Sorter": MultiDiscrete([3, 3, 3]),
             # Tennis.
@@ -339,11 +343,11 @@ class Unity3DEnv(MultiAgentEnv):
         elif game_name == "SoccerTwos":
             policies = {
                 "PurplePlayer": PolicySpec(
-                    observation_space=obs_spaces["PurplePlayer"],
-                    action_space=action_spaces["PurplePlayer"]),
+                    observation_space=obs_spaces["SoccerPlayer"],
+                    action_space=action_spaces["SoccerPlayer"]),
                 "BluePlayer": PolicySpec(
-                    observation_space=obs_spaces["BluePlayer"],
-                    action_space=action_spaces["BluePlayer"]),
+                    observation_space=obs_spaces["SoccerPlayer"],
+                    action_space=action_spaces["SoccerPlayer"]),
             }
 
             def policy_mapping_fn(agent_id, episode, worker, **kwargs):
