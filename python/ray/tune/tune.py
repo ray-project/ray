@@ -667,13 +667,16 @@ def run(
     # We should only install the handler when it is safe to do so.
     # When tune.run() is called from worker thread, signal.signal will
     # fail.
+    allow_signal_catching = False
     if threading.current_thread() != threading.main_thread():
-        os.environ["TUNE_DISABLE_SIGINT_HANDLER"] = "1"
+        allow_signal_catching = False
 
-    if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
-        signal.signal(signal.SIGINT, signal_interrupt_tune_run)
+    if allow_signal_catching:
+        if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
+            signal.signal(signal.SIGINT, signal_interrupt_tune_run)
 
-    signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
+        # Always register SIGUSR1
+        signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
     tune_start = time.time()
 
