@@ -11,7 +11,8 @@ public class VoidParallelActorTaskCaller {
 
   private Object[] args;
 
-  public VoidParallelActorTaskCaller(ParallelActorInstance instance, RayFuncVoid func, Object[] args) {
+  public VoidParallelActorTaskCaller(
+      ParallelActorInstance instance, RayFuncVoid func, Object[] args) {
     this.instance = instance;
     this.func = func;
     this.args = args;
