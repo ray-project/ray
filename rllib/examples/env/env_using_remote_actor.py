@@ -51,7 +51,7 @@ class CartPoleWithRemoteParamServer(CartPoleEnv):
         # Seed the RNG with a deterministic seed if set, otherwise, create
         # a random one.
         new_seed = (
-            self.np_random.integers(0, 1000000) if not self.rng_seed else self.rng_seed
+            self.np_random.randint(0, 1000000) if not self.rng_seed else self.rng_seed
         )
         self.np_random, _ = seeding.np_random(new_seed)
 

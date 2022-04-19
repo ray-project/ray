@@ -91,16 +91,16 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 
     def _randomize_color_and_player_positions(self):
         # Reset coin color and the players and coin positions
-        self.red_coin = self.np_random.integers(low=0, high=2)
-        self.red_pos = self.np_random.integers(low=0, high=self.grid_size, size=(2,))
-        self.blue_pos = self.np_random.integers(low=0, high=self.grid_size, size=(2,))
+        self.red_coin = self.np_random.randint(low=0, high=2)
+        self.red_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
+        self.blue_pos = self.np_random.randint(low=0, high=self.grid_size, size=(2,))
         self.coin_pos = np.zeros(shape=(2,), dtype=np.int8)
 
         self._players_do_not_overlap_at_start()
 
     def _players_do_not_overlap_at_start(self):
         while self._same_pos(self.red_pos, self.blue_pos):
-            self.blue_pos = self.np_random.integers(self.grid_size, size=2)
+            self.blue_pos = self.np_random.randint(self.grid_size, size=2)
 
     def _generate_coin(self):
         self._switch_between_coin_color_at_each_generation()
@@ -112,7 +112,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
     def _coin_position_different_from_players_positions(self):
         success = 0
         while success < self.NUM_AGENTS:
-            self.coin_pos = self.np_random.integers(self.grid_size, size=2)
+            self.coin_pos = self.np_random.randint(self.grid_size, size=2)
             success = 1 - self._same_pos(self.red_pos, self.coin_pos)
             success += 1 - self._same_pos(self.blue_pos, self.coin_pos)
 
@@ -170,7 +170,7 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
             if self._same_pos(self.red_pos, self.coin_pos) and self._same_pos(
                 self.blue_pos, self.coin_pos
             ):
-                red_first_if_both = bool(self.np_random.integers(low=0, high=2))
+                red_first_if_both = bool(self.np_random.randint(low=0, high=2))
 
         if self.red_coin:
             if self._same_pos(self.red_pos, self.coin_pos) and (
