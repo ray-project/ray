@@ -69,7 +69,7 @@ def batch_blocks(
         block_window = list(block_window)
         with stats.iter_wait_s.timer():
             context = DatasetContext.get_current()
-            if context.actor_prefetcher_enabled:
+            if len(block_window) > 1 and context.actor_prefetcher_enabled:
                 prefetcher = get_or_create_prefetcher()
                 prefetcher.prefetch.remote(*block_window)
             else:
