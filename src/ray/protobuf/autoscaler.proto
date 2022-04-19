@@ -1,0 +1,139 @@
+syntax = "proto3";
+option cc_enable_arenas = true;
+package ray.rpc;
+
+
+
+// A workload (task/actor/placement group) unfulfilled by the the cluster's internal scheduler(s).
+message QueuedResources {
+
+  // Type of placement group strategy.
+  enum PlacementStrategy {
+    // Packs Bundles into as few nodes as possible.
+    PACK = 0;
+
+    // Places Bundles across distinct nodes or processes as even as possible.
+    SPREAD = 1;
+
+    // Packs Bundles within one node. The group is not allowed to span multiple nodes.
+    STRICT_PACK = 2;
+
+    // Places Bundles across distinct nodes.
+    // The group is not allowed to deploy more than one bundle on a node.
+    STRICT_SPREAD = 3;
+  }
+
+  // The number of resources of this quantity. This should be
+  // functionally equivalent to setting quantity=1 and repeating the
+  // field many times.
+  uint64 quantity = 1;
+
+  // How badly the cluster needs the resource 0-20. 20 means the
+  // cluster cannot complete the workload without satisfying the
+  // resource (e.g. a "hard" demand). 0 means the resource is only
+  // needed for convenience.
+  int32 necessity = 2;
+
+  // Each individual resource bundle in the queued resources. For
+  // tasks or actors this is length 1.
+  repeated map<string, int64> bundles = 3;
+
+  // The placement strategy of bundles within this queued resources.
+  PlacementStrategy = 4;
+}
+
+message GetAllQueuedResourcesRequest {
+}
+
+message GetAllQueuedResourcesResponse {
+  // The set of all queued resources.
+  repeated QueuedResourcesResponse = 1;
+}
+
+message NodeInfo {
+  // State of a node.
+  enum NodeState {
+    // The node has not joined the cluster yet.
+    PENDING = 0;
+
+    // The node has joined the cluser and is healthy.
+    ALIVE = 1;
+
+    // The node is marked for removal, but it may not be safe to remove it yet.
+    DRAINING = 2;
+
+    // The node is no longer active in the cluster it is safe to remove it.
+    DEAD = 3;
+  }
+
+  // The state of the node.
+  NodeState node_state = 1;
+
+  // TODO: Ideally we unify GCS's node id with the autoscaler's here.
+  // The ID of node.
+  bytes node_id = 2;
+
+  // The address of the node manager service for the node.
+  int32 node_manager_port = 3;
+  string node_manager_address = 4;
+
+  // The total resources of this node.
+  map<string, int64> resources_available = 5;
+  // The total resources of this node.
+  map<string, int64> resources_total = 6;
+
+  // The underlying host type (e.g. instance type or machine type).
+  string host_type = 7;
+}
+
+message GetAllNodeStatusesRequest {
+}
+
+message GetAllNodeStatusesResponse {
+  // The set of all nodes that ever were or ever will be in the cluster.
+  repeated NodeInfo all_nodes = 1;
+}
+
+message SetNodeStateRequest {
+  // Set a batch of node states.
+  repeated NodeInfo batch_to_update = 1;
+}
+
+message SetNodeStateResponse {
+  // Whether or not setting the node state succeeded.
+  bool success = 1;
+}
+
+message PublishAutoscalerEventRequest {
+  enum AutoscalerEventLevel {
+    INFO = 0;
+    WARNING = 1;
+    ERROR = 2;
+  }
+
+  // The event level of the autoscaler event.
+  AutoscalerEventLevel level = 1;
+
+  // Autoscaler event type.
+  string event_type = 2;
+
+  // The autoscaler event message.
+  string message = 3;
+}
+
+message PublishAutoscalerEventResponse {
+  // True if GCS now claims respnsibility for communicating this event.
+  bool success = 1;
+}
+
+service AutoscalerService {
+
+  // Get the aggregated state of the cluster's resource queues.
+  rpc GetAllQueuedResources(GetAllQueuedResourcesRequest) returns (GetAllQueuedResourcesResponse);
+
+  // Get the aggregated state of the cluster's nodes.
+  rpc GetAllNodeStatuses(GetAllNodeStatusesRequest) returns (GetAllNodeStatusesResponse);
+
+  // Set the node state for a batch of nodes. Nodes not included will retain their existing state.
+  rpc SetNodeState(SetNodeStateRequest) returns (SetNodeStateResponse);
+}
