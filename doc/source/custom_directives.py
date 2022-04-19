@@ -89,7 +89,6 @@ def update_context(app, pagename, templatename, context, doctree):
 MOCK_MODULES = [
     "ax",
     "ax.service.ax_client",
-    "blist",
     "ConfigSpace",
     "dask.distributed",
     "datasets",
