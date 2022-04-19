@@ -34,10 +34,11 @@ class TestDDPPO(unittest.TestCase):
                 results = trainer.train()
                 check_train_results(results)
                 print(results)
-                # Make sure, weights on all workers are the same.
+                # Make sure, weights on all workers are the same (including
+                # local one).
                 weights = trainer.workers.foreach_worker(lambda w: w.get_weights())
                 for w in weights[1:]:
-                    check(w, weights[1])
+                    check(w, weights[0])
 
             check_compute_single_action(trainer)
             trainer.stop()

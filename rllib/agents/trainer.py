@@ -958,8 +958,10 @@ class Trainer(Trainable):
 
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
-                # Ensure remote workers are initially in sync with the local worker.
-                self.workers.sync_weights()
+                # TODO: Ensure remote workers are initially in sync with the
+                # local worker.
+                # self.workers.sync_weights()
+                pass  # TODO: Uncommenting line above breaks tf2+eager_tracing for A3C.
             # LocalIterator-creating "execution plan".
             # Only call this once here to create `self.train_exec_impl`,
             # which is a ray.util.iter.LocalIterator that will be `next`'d
