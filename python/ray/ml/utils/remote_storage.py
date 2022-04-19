@@ -112,7 +112,7 @@ def get_fs_and_path(
         return None, None
 
     fsspec_handler = pyarrow.fs.FSSpecHandler
-    if parsed.scheme == "gs":
+    if parsed.scheme in ["gs", "gcs"]:
         # GS doesn't support `create_parents` arg in `create_dir()`
         fsspec_handler = _CustomFSSpecHandler
 
