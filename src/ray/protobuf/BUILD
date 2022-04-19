@@ -5,6 +5,23 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "c
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 
 proto_library(
+    name = "autoscaler_proto",
+    srcs = ["autoscaler.proto"],
+    # WARNING: Be VERY careful about adding depedencies here. Dependencies need to be vetted carefully for backwards compatibility.
+    deps = [],
+)
+
+cc_proto_library(
+    name = "autoscaler_cc_proto",
+    deps = [":autoscaler_proto"],
+)
+
+python_grpc_compile(
+    name = "autoscaler_py_proto",
+    deps = [":autoscaler_proto"],
+)
+
+proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
     deps = [":runtime_env_common_proto"],

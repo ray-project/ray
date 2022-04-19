@@ -2,7 +2,10 @@ syntax = "proto3";
 option cc_enable_arenas = true;
 package ray.rpc;
 
-
+message ResourceBundle {
+  // The fixed point resource size of the resource (granularity: 1/10000).
+  map<string, int64> resources = 1;
+}
 
 // A workload (task/actor/placement group) unfulfilled by the the cluster's internal scheduler(s).
 message QueuedResources {
@@ -36,10 +39,10 @@ message QueuedResources {
 
   // Each individual resource bundle in the queued resources. For
   // tasks or actors this is length 1.
-  repeated map<string, int64> bundles = 3;
+  repeated ResourceBundle bundles = 3;
 
   // The placement strategy of bundles within this queued resources.
-  PlacementStrategy = 4;
+  PlacementStrategy placement_strategy = 4;
 }
 
 message GetAllQueuedResourcesRequest {
@@ -47,7 +50,7 @@ message GetAllQueuedResourcesRequest {
 
 message GetAllQueuedResourcesResponse {
   // The set of all queued resources.
-  repeated QueuedResourcesResponse = 1;
+  repeated QueuedResources queued_resources = 1;
 }
 
 message NodeInfo {
@@ -77,9 +80,9 @@ message NodeInfo {
   int32 node_manager_port = 3;
   string node_manager_address = 4;
 
-  // The total resources of this node.
+  // The total fixed point resources (granularity 1/10000) of this node.
   map<string, int64> resources_available = 5;
-  // The total resources of this node.
+  // The total fixed point resources (granularity 1/10000) of this node.
   map<string, int64> resources_total = 6;
 
   // The underlying host type (e.g. instance type or machine type).
@@ -126,6 +129,18 @@ message PublishAutoscalerEventResponse {
   bool success = 1;
 }
 
+message ExplicitResourceRequest {
+// A fixed point resources (granularity 1/10000) set of resources requested by autoscaler.sdk.request_resources().
+  map<string, int64> request = 1;
+}
+
+message GetAllExplicitResourceRequestsRequest {
+}
+
+message GetAllExplicitResourceRequestsResponse {
+  repeated ExplicitResourceRequest requested_resources = 1;
+}
+
 service AutoscalerService {
 
   // Get the aggregated state of the cluster's resource queues.
@@ -136,4 +151,10 @@ service AutoscalerService {
 
   // Set the node state for a batch of nodes. Nodes not included will retain their existing state.
   rpc SetNodeState(SetNodeStateRequest) returns (SetNodeStateResponse);
+
+
+  // TODO: Do we need this? do we not? the world may never know.
+  rpc GetAllExplicitResourceRequests(GetAllExplicitResourceRequestsRequest) returns (GetAllExplicitResourceRequestsResponse);
+
+
 }
