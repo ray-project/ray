@@ -9,6 +9,7 @@ from ray.serve.pipeline.generate import (
     extract_deployments_from_serve_dag,
     get_pipeline_input_node,
 )
+from ray.serve.pipeline.api import build
 from ray.serve.pipeline.tests.resources.test_modules import (
     Model,
     NESTED_HANDLE_KEY,
@@ -204,33 +205,13 @@ def test_get_pipeline_input_node():
         get_pipeline_input_node(serve_dag)
 
 
-def test_unique_name_reset_upon_shutdown():
+def test_unique_name_reset_upon_build():
     ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
-    # Manually start ray cluster with serve
-    if not ray.is_initialized():
-        ray.init(
-            num_cpus=16,
-            namespace="default_test_namespace",
-        )
-    serve.start(detached=True)
-
-    serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments = extract_deployments_from_serve_dag(serve_dag)
+    deployments = build(ray_dag)
     assert deployments[0].name == "Model"
     assert deployments[1].name == "Model_1"
-    serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments = extract_deployments_from_serve_dag(serve_dag)
-    # Assert different names within same serve instance for same class
-    assert deployments[0].name == "Model_2"
-    assert deployments[1].name == "Model_3"
-
-    # Shutdown serve but keep ray cluster running
-    serve.shutdown()
-    serve.start(detached=True)
-
-    # Restart serve in same ray cluster and re-generate deployment nodes
-    serve_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
-    deployments = extract_deployments_from_serve_dag(serve_dag)
+    deployments = build(ray_dag)
+    # Assert we don't keep increasing suffix id between build() calls
     assert deployments[0].name == "Model"
     assert deployments[1].name == "Model_1"
 

@@ -73,7 +73,7 @@ def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
 def transform_ray_dag_to_serve_dag(dag_node):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
-    ray decorated body passed in, ans ClassMethodNode to DeploymentMethodNode.
+    ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
     """
     if isinstance(dag_node, ClassNode):
         deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
