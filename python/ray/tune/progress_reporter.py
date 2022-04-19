@@ -85,6 +85,9 @@ class ProgressReporter:
     def set_total_samples(self, total_samples: int):
         pass
 
+    def set_start_time(self, timestamp: Optional[float] = None):
+        pass
+
 
 @DeveloperAPI
 class TuneReporterBase(ProgressReporter):
