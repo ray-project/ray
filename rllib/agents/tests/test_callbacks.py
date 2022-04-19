@@ -42,7 +42,7 @@ class TestCallbacks(unittest.TestCase):
 
         for callbacks in (
             OnSubEnvironmentCreatedCallback,
-            MultiCallbacks([OnSubEnvironmentCreatedCallback])
+            MultiCallbacks([OnSubEnvironmentCreatedCallback]),
         ):
             config = dict(base_config, callbacks=callbacks)
 
@@ -79,7 +79,7 @@ class TestCallbacks(unittest.TestCase):
 
         for callbacks in (
             OnSubEnvironmentCreatedCallback,
-            MultiCallbacks([OnSubEnvironmentCreatedCallback])
+            MultiCallbacks([OnSubEnvironmentCreatedCallback]),
         ):
             config = dict(base_config, callbacks=callbacks)
 

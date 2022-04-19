@@ -394,7 +394,7 @@ class MultiCallbacks(DefaultCallbacks):
                 worker=worker,
                 sub_environment=sub_environment,
                 env_context=env_context,
-                **kwargs
+                **kwargs,
             )
 
     def on_trainer_init(
