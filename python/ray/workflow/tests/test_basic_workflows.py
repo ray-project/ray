@@ -64,16 +64,16 @@ def test_basic_workflows(workflow_start_regular_shared):
         z = append2.bind(x)
         return workflow.continuation(join.bind(y, z))
 
-    @workflow.step
+    @ray.remote
     def mul(a, b):
         return a * b
 
-    @workflow.step
+    @ray.remote
     def factorial(n):
         if n == 1:
             return 1
         else:
-            return mul.step(n, factorial.step(n - 1))
+            return workflow.continuation(mul.bind(n, factorial.bind(n - 1)))
 
     # This test also shows different "style" of running workflows.
     assert (
@@ -92,7 +92,7 @@ def test_basic_workflows(workflow_start_regular_shared):
     wf = fork_join.bind()
     assert workflow.create(wf).run() == "join([source1][append1], [source1][append2])"
 
-    assert factorial.step(10).run() == 3628800
+    assert workflow.create(factorial.bind(10)).run() == 3628800
 
 
 def test_async_execution(workflow_start_regular_shared):
@@ -269,13 +269,13 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
 
 
 def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
-    @workflow.step
+    @ray.remote
     def f2():
         return 10
 
     @workflow.step
     def f1():
-        return f2.step()
+        return workflow.continuation(f2.bind())
 
     assert (10, None) == f1.options(catch_exceptions=True).step().run()
 
@@ -332,6 +332,30 @@ def test_workflow_error_message():
     with pytest.raises(ValueError) as e:
         workflow.init(storage_url)
     assert str(e.value) == expected_error_msg
+
+
+def test_options_update(workflow_start_regular_shared):
+    # Options are given in decorator first, then in the first .options()
+    # and finally in the second .options()
+    @workflow.step(name="old_name", metadata={"k": "v"}, max_retries=1, num_cpus=2)
+    def f():
+        return
+
+    new_f = f.options(name="new_name", metadata={"extra_k1": "extra_v1"}).options(
+        num_returns=2, metadata={"extra_k2": "extra_v2"}
+    )
+    # name is updated from the old name in the decorator to the new
+    # name in the first .options(), then preserved in the second options.
+    assert new_f._name == "new_name"
+    # metadata and ray_options are "updated"
+    assert new_f._user_metadata == {
+        "k": "v",
+        "extra_k1": "extra_v1",
+        "extra_k2": "extra_v2",
+    }
+    assert new_f._step_options.ray_options == {"num_cpus": 2, "num_returns": 2}
+    # max_retries only defined in the decorator and it got preserved all the way
+    assert new_f._step_options.max_retries == 1
 
 
 if __name__ == "__main__":

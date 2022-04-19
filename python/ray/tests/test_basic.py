@@ -177,82 +177,112 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-def test_invalid_arguments(shutdown_only):
-    ray.init(num_cpus=2)
+def test_invalid_arguments():
+    import re
 
-    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'num_returns' only accepts 0 or a positive integer",
-        ):
+    def f():
+        return 1
 
-            @ray.remote(num_returns=opt)
-            def g1():
-                return 1
+    class A:
+        x = 1
 
-    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'max_retries' only accepts 0, -1 or a"
-            " positive integer",
-        ):
+    template1 = (
+        "The type of keyword '{}' "
+        + f"must be {(int, type(None))}, but received type {float}"
+    )
 
-            @ray.remote(max_retries=opt)
-            def g2():
-                return 1
+    # Type check
+    for keyword in ("num_returns", "max_retries", "max_calls"):
+        with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
+            ray.remote(**{keyword: np.random.uniform(0, 1)})(f)
 
-    for opt in [np.random.randint(-100, -1), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'max_calls' only accepts 0 or a positive integer",
-        ):
+    for keyword in ("max_restarts", "max_task_retries"):
+        with pytest.raises(TypeError, match=re.escape(template1.format(keyword))):
+            ray.remote(**{keyword: np.random.uniform(0, 1)})(A)
 
-            @ray.remote(max_calls=opt)
-            def g3():
-                return 1
+    # Value check for non-negative finite values
+    for keyword in ("num_returns", "max_calls"):
+        for v in (np.random.randint(-100, -2), -1):
+            with pytest.raises(
+                ValueError,
+                match=f"The keyword '{keyword}' only accepts None, "
+                f"0 or a positive integer",
+            ):
+                ray.remote(**{keyword: v})(f)
 
-    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'max_restarts' only accepts -1, 0 or a"
-            " positive integer",
-        ):
+    # Value check for non-negative and infinite values
+    template2 = (
+        "The keyword '{}' only accepts None, 0, -1 or a positive integer, "
+        "where -1 represents infinity."
+    )
 
-            @ray.remote(max_restarts=opt)
-            class A1:
-                x = 1
+    with pytest.raises(ValueError, match=template2.format("max_retries")):
+        ray.remote(max_retries=np.random.randint(-100, -2))(f)
 
-    for opt in [np.random.randint(-100, -2), np.random.uniform(0, 1)]:
-        with pytest.raises(
-            ValueError,
-            match="The keyword 'max_task_retries' only accepts -1, 0 or a"
-            " positive integer",
-        ):
+    for keyword in ("max_restarts", "max_task_retries"):
+        with pytest.raises(ValueError, match=template2.format(keyword)):
+            ray.remote(**{keyword: np.random.randint(-100, -2)})(A)
 
-            @ray.remote(max_task_retries=opt)
-            class A2:
-                x = 1
+    metadata_type_err = (
+        "The type of keyword '_metadata' "
+        + f"must be {(dict, type(None))}, but received type {float}"
+    )
+    with pytest.raises(TypeError, match=re.escape(metadata_type_err)):
+        ray.remote(_metadata=3.14)(A)
 
-
-def test_user_setup_function():
-    script = """
-import ray
-ray.init()
-@ray.remote
-def get_pkg_dir():
-    return ray._private.runtime_env.VAR
-
-print("remote", ray.get(get_pkg_dir.remote()))
-print("local", ray._private.runtime_env.VAR)
+    ray.remote(_metadata={"data": 1})(f)
+    ray.remote(_metadata={"data": 1})(A)
 
 
-"""
+def test_options():
+    """General test of option keywords in Ray."""
+    import re
+    from ray._private import ray_option_utils
 
-    env = {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"}
-    out = run_string_as_driver(script, dict(os.environ, **env))
-    (remote_out, local_out) = out.strip().splitlines()[-2:]
-    assert remote_out == "remote hello world"
-    assert local_out == "local hello world"
+    def f():
+        return 1
+
+    class A:
+        x = 1
+
+    task_defaults = {
+        k: v.default_value for k, v in ray_option_utils.task_options.items()
+    }
+    task_defaults_for_options = task_defaults.copy()
+    task_defaults_for_options.pop("max_calls")
+    ray.remote(f).options(**task_defaults_for_options)
+    ray.remote(**task_defaults)(f).options(**task_defaults_for_options)
+    with pytest.raises(
+        ValueError,
+        match=re.escape("Setting 'max_calls' is not supported in '.options()'."),
+    ):
+        ray.remote(f).options(max_calls=1)
+
+    actor_defaults = {
+        k: v.default_value for k, v in ray_option_utils.actor_options.items()
+    }
+    actor_defaults_for_options = actor_defaults.copy()
+    actor_defaults_for_options.pop("concurrency_groups")
+    ray.remote(A).options(**actor_defaults_for_options)
+    ray.remote(**actor_defaults)(A).options(**actor_defaults_for_options)
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Setting 'concurrency_groups' is not supported in '.options()'."
+        ),
+    ):
+        ray.remote(A).options(concurrency_groups=[])
+
+    unique_object = type("###", (), {})()
+    for k, v in ray_option_utils.task_options.items():
+        v.validate(k, v.default_value)
+        with pytest.raises(TypeError):
+            v.validate(k, unique_object)
+
+    for k, v in ray_option_utils.actor_options.items():
+        v.validate(k, v.default_value)
+        with pytest.raises(TypeError):
+            v.validate(k, unique_object)
 
 
 # https://github.com/ray-project/ray/issues/17842

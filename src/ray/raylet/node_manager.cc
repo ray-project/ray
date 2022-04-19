@@ -230,10 +230,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           object_manager_config,
           object_directory_.get(),
           [this](const ObjectID &object_id,
+                 int64_t object_size,
                  const std::string &object_url,
                  std::function<void(const ray::Status &)> callback) {
             GetLocalObjectManager().AsyncRestoreSpilledObject(
-                object_id, object_url, callback);
+                object_id, object_size, object_url, callback);
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
@@ -318,7 +319,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           [this](const ObjectID &object_id) {
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
-          /*core_worker_subscriber_=*/core_worker_subscriber_.get()),
+          /*core_worker_subscriber_=*/core_worker_subscriber_.get(),
+          object_directory_.get()),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -473,14 +475,6 @@ ray::Status NodeManager::RegisterGcs() {
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
-
-  // Subscribe to resource usage batches from the monitor.
-  const auto &resource_usage_batch_added =
-      [this](const ResourceUsageBatchData &resource_usage_batch) {
-        ResourceUsageBatchReceived(resource_usage_batch);
-      };
-  RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
-      resource_usage_batch_added, /*done*/ nullptr));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
