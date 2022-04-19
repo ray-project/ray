@@ -140,7 +140,7 @@ class PushBasedShuffleOp(ShuffleOp):
 
     2. In the final reduce stage:
        R reduce tasks
-         Takes 1 output from the i-th merge task from every round.
+         Takes 1 output from one of the merge tasks from every round.
 
     Notes:
         N * P = R = total number of output blocks
