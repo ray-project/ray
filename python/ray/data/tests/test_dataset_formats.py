@@ -1458,6 +1458,7 @@ def test_csv_write_block_path_provider(
 
 
 def test_tensorflow_datasource(ray_start_regular_shared):
+    import tensorflow as tf
     import tensorflow_datasets as tfds
 
     tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
@@ -1471,21 +1472,13 @@ def test_tensorflow_datasource(ray_start_regular_shared):
     ).fully_executed()
 
     assert ray_dataset.num_blocks() == 1
-    assert ray_dataset.take_all() == expected_data
 
-
-def test_tensorflow_datasource_value_error(ray_start_regular_shared, local_path):
-    import tensorflow_datasets as tfds
-
-    dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
-
-    with pytest.raises(ValueError):
-        # `dataset_factory` should be a function, not a TensorFlow dataset.
-        ray.data.read_datasource(
-            SimpleTensorFlowDatasource(),
-            parallelism=1,
-            dataset_factory=dataset,
-        )
+    actual_data = ray_dataset.take_all()
+    for (expected_features, expected_label), (actual_features, actual_label) in zip(
+        expected_data, actual_data
+    ):
+        tf.debugging.assert_equal(expected_features, actual_features)
+        tf.debugging.assert_equal(expected_label, actual_label)
 
 
 if __name__ == "__main__":

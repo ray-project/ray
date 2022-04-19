@@ -26,8 +26,11 @@ class SimpleTensorFlowDatasource(Datasource[T]):
         ...     parallelism=1,
         ...     dataset_factory=dataset_factory
         ... )
-        >>> dataset.take(1)
-        # TODO
+        >>> features, label = dataset.take(1)[0]
+        >>> features.shape
+        TensorShape([32, 32, 3])
+        >>> label
+        <tf.Tensor: shape=(), dtype=int64, numpy=7>
     """
 
     def prepare_read(
@@ -42,14 +45,6 @@ class SimpleTensorFlowDatasource(Datasource[T]):
             dataset_factory: A no-argument function that returns the TensorFlow dataset
                 to be read.
         """
-        import tensorflow as tf
-
-        if isinstance(dataset_factory, tf.data.Dataset):
-            raise ValueError(
-                "Expected a function that returns a TensorFlow dataset, but got a "
-                "`tf.data.Dataset` instead."
-            )
-
         if parallelism > 1:
             logger.warn(
                 "`SimpleTensorFlowDatasource` doesn't support parallel reads. The "
