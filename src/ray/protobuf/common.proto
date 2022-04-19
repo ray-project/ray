@@ -320,7 +320,7 @@ message TaskSpec {
   uint64 attempt_number = 28;
 }
 
-message TaskInfoEntry {  
+message TaskInfoEntry {
   // Type of this task.
   TaskType type = 1;
   // Name of this task.

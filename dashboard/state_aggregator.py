@@ -6,12 +6,14 @@ from typing import List
 
 import ray
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.datacenter import DataSource
 import ray.dashboard.memory_utils as memory_utils
+
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated import node_manager_pb2_grpc
+from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
 from ray.core.generated import node_manager_pb2
+from ray.dashboard.datacenter import DataSource
+from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
     filter_fields,
     ActorState,
@@ -43,23 +45,37 @@ class StateAggregator:
             gcs_channel
         )
         self._raylet_stub = {}
-        DataSource.nodes.signal.append(self._update_stubs)
+        DataSource.nodes.signal.append(self._update_raylet_stubs)
 
-    async def _update_stubs(self, change):
+    async def _update_raylet_stubs(self, change: Change):
+        """Callback that's called new raylet is added to Datasource.
+
+        Args:
+            change: The change object. Whenever a new node is added
+                or removed, this callback is invoked.
+                When new node is added: information is in `change.new`.
+                When a node is removed: information is in `change.old`.
+                When a node is overwritten: `change.old` contains the
+                    old node info, and `change.new` contains the
+                    new node info.
+        """
         if change.old:
+            # When a node is deleted from the DataSource or it is overwritten.
             node_id, node_info = change.old
-            self._raylet_stub.pop(node_id)
+            self.unregister_raylet_stub(node_id)
         if change.new:
+            # When a new node information is written to DataSource.
             node_id, node_info = change.new
-            address = "{}:{}".format(
+            stub = self._make_raylet_stub(
                 node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
             )
-            options = (("grpc.enable_http_proxy", 0),)
-            channel = ray._private.utils.init_grpc_channel(
-                address, options, asynchronous=True
-            )
-            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            self._raylet_stub[node_id] = stub
+            self.register_raylet_stub(node_id, stub)
+
+    def register_raylet_stub(self, node_id: str, stub: NodeManagerServiceStub):
+        self._raylet_stub[node_id] = stub
+
+    def unregister_raylet_stub(self, node_id):
+        self._raylet_stub.pop(node_id)
 
     async def get_actors(self) -> dict:
         request = gcs_service_pb2.GetAllActorInfoRequest()
@@ -117,15 +133,13 @@ class StateAggregator:
         return result
 
     async def get_tasks(self) -> dict:
-        async def get_task_info(stub):
-            reply = await stub.GetTasksInfo(
-                node_manager_pb2.GetTasksInfoRequest(),
-                timeout=DEFAULT_RPC_TIMEOUT,
-            )
-            return reply
-
         replies = await asyncio.gather(
-            *[get_task_info(stub) for stub in self._raylet_stub.values()]
+            *[
+                stub.GetTasksInfo(
+                    node_manager_pb2.GetTasksInfoRequest(), timeout=DEFAULT_RPC_TIMEOUT
+                )
+                for stub in self._raylet_stub.values()
+            ]
         )
 
         result = defaultdict(dict)
@@ -180,7 +194,7 @@ class StateAggregator:
         *,
         message,
         fields_to_decode: List[str],
-        preserving_proto_field_name: bool = True
+        preserving_proto_field_name: bool = True,
     ) -> dict:
         return dashboard_utils.message_to_dict(
             message,
@@ -188,3 +202,11 @@ class StateAggregator:
             including_default_value_fields=True,
             preserving_proto_field_name=preserving_proto_field_name,
         )
+
+    def _make_raylet_stub(self, addr: str, port):
+        full_addr = f"{addr}:{port}"
+        options = (("grpc.enable_http_proxy", 0),)
+        channel = ray._private.utils.init_grpc_channel(
+            full_addr, options, asynchronous=True
+        )
+        return NodeManagerServiceStub(channel)

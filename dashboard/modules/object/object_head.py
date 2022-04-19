@@ -12,11 +12,12 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 
 class ObjectHead(dashboard_utils.DashboardHeadModule):
+    """Module to obtain object information of the ray cluster."""
+
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
 
     @routes.get("/api/v0/objects")
-    @dashboard_optional_utils.aiohttp_cache
     async def get_objects(self, req) -> aiohttp.web.Response:
         data = await self._dashboard_head.state_aggregator.get_objects()
         return rest_response(
@@ -24,6 +25,9 @@ class ObjectHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
+        # Run method is required to implement for subclass of DashboardHead.
+        # Since object module only includes the state api, we don't need to
+        # do anything.
         pass
 
     @staticmethod
