@@ -1,7 +1,12 @@
 import sys
 import pytest
 
+from typing import List
+
 import ray
+
+from click.testing import CliRunner
+from ray.cluster_utils import cluster_not_supported
 from ray.experimental.state.api import (
     list_actors,
     list_placement_groups,
@@ -13,6 +18,7 @@ from ray.experimental.state.api import (
 )
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
+from ray.experimental.state.state_cli import list_state_cli_group
 
 
 def is_hex(val):
@@ -21,6 +27,54 @@ def is_hex(val):
     except ValueError:
         return False
     return f"0x{val}" == hex(int_val)
+
+
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")
+def test_cli_apis_sanity_check(ray_start_cluster):
+    """Test all of CLI APIs work as expected."""
+    cluster = ray_start_cluster
+    for _ in range(4):
+        cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    runner = CliRunner()
+
+    client = JobSubmissionClient(
+        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+    )
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    @ray.remote
+    class Actor:
+        pass
+
+    obj = ray.put(3)  # noqa
+    task = f.remote()  # noqa
+    actor = Actor.remote()  # noqa
+    job_id = client.submit_job(  # noqa
+        # Entrypoint shell command to execute
+        entrypoint="ls",
+    )
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
+
+    def verify_output(resource_name, necessary_substrings: List[str]):
+        result = runner.invoke(list_state_cli_group, [resource_name])
+        exit_code_correct = result.exit_code == 0
+        substring_matched = all(
+            substr in result.output for substr in necessary_substrings
+        )
+        print(result.output)
+        return exit_code_correct and substring_matched
+
+    assert verify_output("actors", ["actor_id"])
+    assert verify_output("workers", ["worker_id"])
+    assert verify_output("nodes", ["node_id"])
+    assert verify_output("placement-groups", ["placement_group_id"])
+    assert verify_output("jobs", ["raysubmit"])
 
 
 @pytest.mark.skipif(

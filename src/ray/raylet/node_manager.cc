@@ -319,7 +319,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           [this](const ObjectID &object_id) {
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
-          /*core_worker_subscriber_=*/core_worker_subscriber_.get()),
+          /*core_worker_subscriber_=*/core_worker_subscriber_.get(),
+          object_directory_.get()),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),

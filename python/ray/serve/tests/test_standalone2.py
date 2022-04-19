@@ -52,6 +52,20 @@ def test_standalone_actor_outside_serve():
     ray.shutdown()
 
 
+def test_memory_omitted_option(ray_shutdown):
+    """Ensure that omitting memory doesn't break the deployment."""
+
+    @serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
+    def hello(*args, **kwargs):
+        return "world"
+
+    ray.init(num_gpus=3, namespace="serve")
+    serve.start()
+    hello.deploy()
+
+    assert ray.get(hello.get_handle().remote()) == "world"
+
+
 @pytest.mark.parametrize("detached", [True, False])
 def test_override_namespace(shutdown_ray, detached):
     """Test the _override_controller_namespace flag in serve.start()."""
