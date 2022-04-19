@@ -22,7 +22,7 @@ from ray.ml.constants import EVALUATION_DATASET_KEY, PREPROCESSOR_KEY, TRAIN_DAT
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.trainer import GenDataset
-from ray.ml.utils.huggingface_utils import (
+from ray.ml.train.integrations.huggingface.huggingface_utils import (
     CHECKPOINT_PATH_ON_NODE_KEY,
     NODE_IP_KEY,
     process_dataset_for_hf,
