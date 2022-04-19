@@ -320,9 +320,8 @@ CALL_STACK_LINE_DELIMITER = " | "
 GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024
 
 # GRPC options
-GLOBAL_GRPC_OPTIONS = (("grpc.enable_http_proxy",
-                        os.environ.get("RAY_grpc_enable_http_proxy",
-                                       "0").lower() in ("1", "true")), )
+GLOBAL_GRPC_OPTIONS = (("grpc.enable_http_proxy", 1 if os.environ.get(
+    "RAY_grpc_enable_http_proxy", "0").lower() in ("1", "true") else 0))
 
 # Internal kv namespaces
 KV_NAMESPACE_DASHBOARD = b"dashboard"
