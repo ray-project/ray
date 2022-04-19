@@ -81,10 +81,10 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
 
             # Test range request.
             response = requests.get(
-                webui_url + "/logs/dashboard.log", headers={"Range": "bytes=40-55"}
+                webui_url + "/logs/dashboard.log", headers={"Range": "bytes=44-52"}
             )
             response.raise_for_status()
-            assert "Dashboard" in response.text
+            assert response.text == "Dashboard"
 
             # Test logUrl in node info.
             response = requests.get(webui_url + f"/nodes/{node_id}")
@@ -124,10 +124,10 @@ def test_log_proxy(ray_start_with_dashboard):
             # Test range request.
             response = requests.get(
                 f"{webui_url}/log_proxy?url={webui_url}/logs/dashboard.log",
-                headers={"Range": "bytes=40-55"},
+                headers={"Range": "bytes=44-52"},
             )
             response.raise_for_status()
-            assert "Dashboard" in response.text
+            assert response.text == "Dashboard"
             # Test 404.
             response = requests.get(
                 f"{webui_url}/log_proxy?" f"url={webui_url}/logs/not_exist_file.log"
