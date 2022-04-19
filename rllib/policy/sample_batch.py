@@ -999,6 +999,10 @@ class SampleBatch(dict):
             self.get(SampleBatch.SEQ_LENS) is not None
             and len(self[SampleBatch.SEQ_LENS]) > 0
         ):
+            # Make sure, we are creating a new SampleBatch from the original data.
+            interceptor_ = self.get_interceptor
+            self.set_get_interceptor(None)
+
             # Build our slice-map, if not done already. Maps `start` positions to:
             # - themselves, iff `start` lies exactly on a sequence boundary.
             # - n steps to left, iff `start` lies n steps inside a sequence.
@@ -1023,21 +1027,29 @@ class SampleBatch(dict):
             stop_seq_len, _, last_seq_len = self._slice_map[actual_stop - 1]
             stop_seq_len += 1
             if self.zero_padded:
-                raise NotImplementedError  # TODO
-                # start = start_seq_len * self.max_seq_len
-                # stop = stop_seq_len * self.max_seq_len
+                actual_start = start_seq_len * self.max_seq_len
+                actual_stop = (stop_seq_len - 1) * self.max_seq_len + last_seq_len
 
             def map_(path, value):
                 if path[0] == SampleBatch.SEQ_LENS:
                     seq_lens = value[start_seq_len:stop_seq_len].copy()
                     seq_lens[-1] = last_seq_len
                     return seq_lens
-                elif not path[0].startswith("state_in_"):
-                    return value[actual_start:actual_stop]
-                else:
+                elif path[0].startswith("state_in_"):
                     return value[start_seq_len:stop_seq_len]
+                else:
+                    ret = value[actual_start:actual_stop]
+                    if self.zero_padded:
+                        shape = (self.max_seq_len - last_seq_len,) + ret.shape[1:]
+                        ret = np.concatenate(
+                            [ret, np.zeros(shape=shape, dtype=ret.dtype)]
+                        )
+                    return ret
 
             data = tree.map_structure_with_path(map_, self)
+            # Restore `self.get_interceptor`.
+            self.set_get_interceptor(interceptor_)
+
             return SampleBatch(
                 data,
                 _is_training=self.is_training,
