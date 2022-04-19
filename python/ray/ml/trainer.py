@@ -1,7 +1,7 @@
 import abc
 import inspect
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type, Any
+from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type, Any, List
 
 import ray
 
