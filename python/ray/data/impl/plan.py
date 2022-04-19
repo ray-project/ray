@@ -420,6 +420,10 @@ class OneToOneStage(Stage):
         return True
 
     def fuse(self, prev: Stage):
+        if not self.can_fuse(prev):
+            raise ValueError(
+                f"Tried to fuse {prev} with {self}, but these are not fusable."
+            )
         name = prev.name + "->" + self.name
         fn1 = prev.block_fn
         fn2 = self.block_fn
@@ -476,6 +480,10 @@ class AllToAllStage(Stage):
         return True
 
     def fuse(self, prev: Stage):
+        if not self.can_fuse(prev):
+            raise ValueError(
+                f"Tried to fuse {prev} with {self}, but these are not fusable."
+            )
         assert self.supports_block_udf
         name = prev.name + "->" + self.name
         return AllToAllStage(
