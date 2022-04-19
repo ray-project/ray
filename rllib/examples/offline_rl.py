@@ -7,7 +7,7 @@ the buffer.
 Generate the offline json file by running an SAC algo until it reaches expert
 level on your command line. For example:
 $ cd ray
-$ rllib train -f rllib/tuned_examples/sac/pendulum-sac.yaml --no-ray-ui
+$ rllib train -f rllib/tuned_examples/sac/pendulum-sac.yaml
 
 Also make sure that in the above SAC yaml file (pendulum-sac.yaml),
 you specify an additional "output" key with any path on your local

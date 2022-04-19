@@ -275,7 +275,7 @@ class TestRNNSequencing(unittest.TestCase):
         if batch0["sequences"][0][0][0] > batch1["sequences"][0][0][0]:
             batch0, batch1 = batch1, batch0  # sort minibatches
         self.assertEqual(batch0[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
-        self.assertEqual(batch1[SampleBatch.SEQ_LENS].tolist(), [2, 3, 4, 1])
+        self.assertEqual(batch1[SampleBatch.SEQ_LENS].tolist(), [4, 3, 3])
         check(
             batch0["sequences"],
             [
@@ -287,10 +287,9 @@ class TestRNNSequencing(unittest.TestCase):
         check(
             batch1["sequences"],
             [
-                [[10], [11], [0], [0]],
+                [[8], [9], [10], [11]],
                 [[12], [13], [14], [0]],
-                [[0], [1], [2], [3]],
-                [[4], [0], [0], [0]],
+                [[0], [1], [2], [0]],
             ],
         )
 

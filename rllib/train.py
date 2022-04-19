@@ -195,7 +195,6 @@ def run(args, parser):
     # Ray UI.
     if args.no_ray_ui:
         deprecation_warning(old="--no-ray-ui", new="--ray-ui", error=True)
-        args.ray_ui = False
 
     verbose = 1
     for exp in experiments.values():
