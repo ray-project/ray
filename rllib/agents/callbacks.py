@@ -381,6 +381,31 @@ class MultiCallbacks(DefaultCallbacks):
 
         return self
 
+    def on_sub_environment_created(
+        self,
+        *,
+        worker: "RolloutWorker",
+        sub_environment: EnvType,
+        env_context: EnvContext,
+        **kwargs,
+    ) -> None:
+        for callback in self._callback_list:
+            callback.on_sub_environment_created(
+                worker=worker,
+                sub_environment=sub_environment,
+                env_context=env_context,
+                **kwargs
+            )
+
+    def on_trainer_init(
+        self,
+        *,
+        trainer: "Trainer",
+        **kwargs,
+    ) -> None:
+        for callback in self._callback_list:
+            callback.on_trainer_init(trainer=trainer, **kwargs)
+
     def on_episode_start(
         self,
         *,
