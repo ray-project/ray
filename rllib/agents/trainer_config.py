@@ -714,9 +714,9 @@ class TrainerConfig:
         """Sets the config's exploration settings.
 
         Args:
-            explore: Default exploration behavior, iff `explore`=None is passed into
-                compute_action(s). Set to False for no exploration behavior (e.g.,
-                for evaluation).
+            explore: Default exploration behavior, iff `explore=None` is passed into
+                compute_single_action/compute_actions. Set to False for no exploration
+                behavior (e.g., for evaluation).
             exploration_config: A dict specifying the Exploration object's config.
 
         Returns:

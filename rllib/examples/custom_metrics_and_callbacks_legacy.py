@@ -5,57 +5,8 @@ import numpy as np
 import os
 
 import ray
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray import tune
-
-
-def on_episode_start(info):
-    episode = info["episode"]
-    print("episode {} started".format(episode.episode_id))
-    episode.user_data["pole_angles"] = []
-    episode.hist_data["pole_angles"] = []
-
-
-def on_episode_step(info):
-    episode = info["episode"]
-    pole_angle = abs(episode.last_observation_for()[2])
-    raw_angle = abs(episode.last_raw_obs_for()[2])
-    assert pole_angle == raw_angle
-    episode.user_data["pole_angles"].append(pole_angle)
-
-
-def on_episode_end(info):
-    episode = info["episode"]
-    pole_angle = np.mean(episode.user_data["pole_angles"])
-    print(
-        "episode {} ended with length {} and pole angles {}".format(
-            episode.episode_id, episode.length, pole_angle
-        )
-    )
-    episode.custom_metrics["pole_angle"] = pole_angle
-    episode.hist_data["pole_angles"] = episode.user_data["pole_angles"]
-
-
-def on_sample_end(info):
-    print("returned sample batch of size {}".format(info["samples"].count))
-
-
-def on_train_result(info):
-    print(
-        "trainer.train() result: {} -> {} episodes".format(
-            info["trainer"], info["result"]["episodes_this_iter"]
-        )
-    )
-    # you can mutate the result dict to add new fields to return
-    info["result"]["callback_ok"] = True
-
-
-def on_postprocess_traj(info):
-    episode = info["episode"]
-    batch = info["post_batch"]
-    print("postprocessed {} steps".format(batch.count))
-    if "num_batches" not in episode.custom_metrics:
-        episode.custom_metrics["num_batches"] = 0
-    episode.custom_metrics["num_batches"] += 1
 
 
 if __name__ == "__main__":
@@ -64,6 +15,60 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init()
+
+    class MyCallbacks(DefaultCallbacks):
+        def on_episode_start(self, *, worker, base_env, policies, episode, **kwargs):
+            print("episode {} started".format(episode.episode_id))
+            episode.user_data["pole_angles"] = []
+            episode.hist_data["pole_angles"] = []
+
+        def on_episode_step(
+            self, *, worker, base_env, policies, episode=None, **kwargs
+        ):
+            pole_angle = abs(episode.last_observation_for()[2])
+            raw_angle = abs(episode.last_raw_obs_for()[2])
+            assert pole_angle == raw_angle
+            episode.user_data["pole_angles"].append(pole_angle)
+
+        def on_episode_end(self, *, worker, base_env, policies, episode, **kwargs):
+            pole_angle = np.mean(episode.user_data["pole_angles"])
+            print(
+                "episode {} ended with length {} and pole angles {}".format(
+                    episode.episode_id, episode.length, pole_angle
+                )
+            )
+            episode.custom_metrics["pole_angle"] = pole_angle
+            episode.hist_data["pole_angles"] = episode.user_data["pole_angles"]
+
+        def on_sample_end(self, *, worker, samples, **kwargs):
+            print("returned sample batch of size {}".format(samples.count))
+
+        def on_postprocess_trajectory(
+            self,
+            *,
+            worker,
+            episode,
+            agent_id,
+            policy_id,
+            policies,
+            postprocessed_batch,
+            original_batches,
+            **kwargs
+        ):
+            print("postprocessed {} steps".format(postprocessed_batch.count))
+            if "num_batches" not in episode.custom_metrics:
+                episode.custom_metrics["num_batches"] = 0
+            episode.custom_metrics["num_batches"] += 1
+
+        def on_train_result(self, *, trainer, result, **kwargs):
+            print(
+                "trainer.train() result: {} -> {} episodes".format(
+                    trainer, result["episodes_this_iter"]
+                )
+            )
+            # you can mutate the result dict to add new fields to return
+            result["callback_ok"] = True
+
     trials = tune.run(
         "PG",
         stop={
@@ -71,14 +76,7 @@ if __name__ == "__main__":
         },
         config={
             "env": "CartPole-v0",
-            "callbacks": {
-                "on_episode_start": on_episode_start,
-                "on_episode_step": on_episode_step,
-                "on_episode_end": on_episode_end,
-                "on_sample_end": on_sample_end,
-                "on_train_result": on_train_result,
-                "on_postprocess_traj": on_postprocess_traj,
-            },
+            "callbacks": MyCallbacks,
             "framework": "tf",
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),

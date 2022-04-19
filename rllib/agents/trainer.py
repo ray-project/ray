@@ -319,7 +319,7 @@ COMMON_CONFIG: TrainerConfigDict = {
 
     # === Exploration Settings ===
     # Default exploration behavior, iff `explore`=None is passed into
-    # compute_action(s).
+    # compute_single_action/compute_actions.
     # Set to False for no exploration behavior (e.g., for evaluation).
     "explore": True,
     # Provide a dict specifying the Exploration object's config.

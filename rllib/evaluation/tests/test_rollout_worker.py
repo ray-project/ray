@@ -9,8 +9,9 @@ import time
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import VideoMonitor
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -198,6 +199,19 @@ class TestRolloutWorker(unittest.TestCase):
             )
 
     def test_callbacks(self):
+        class MyCallbacks(DefaultCallbacks):
+            def on_episode_start(self, *args, **kwargs):
+                return counts.update({"start": 1})
+
+            def on_episode_step(self, *args, **kwargs):
+                return counts.update({"step": 1})
+
+            def on_episode_end(self, *args, **kwargs):
+                return counts.update({"end": 1})
+
+            def on_sample_end(self, *args, **kwargs):
+                return counts.update({"sample": 1})
+
         for fw in framework_iterator(frameworks=("torch", "tf")):
             counts = Counter()
             pg = PGTrainer(
@@ -206,12 +220,7 @@ class TestRolloutWorker(unittest.TestCase):
                     "num_workers": 0,
                     "rollout_fragment_length": 50,
                     "train_batch_size": 50,
-                    "callbacks": {
-                        "on_episode_start": lambda x: counts.update({"start": 1}),
-                        "on_episode_step": lambda x: counts.update({"step": 1}),
-                        "on_episode_end": lambda x: counts.update({"end": 1}),
-                        "on_sample_end": lambda x: counts.update({"sample": 1}),
-                    },
+                    "callbacks": MyCallbacks,
                     "framework": fw,
                 },
             )

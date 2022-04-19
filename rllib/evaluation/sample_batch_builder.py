@@ -27,7 +27,7 @@ def to_float_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
-@Deprecated(new="a child class of `SampleCollector`", error=True)
+@Deprecated(new="a child class of `SampleCollector`", error=False)
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
 

@@ -128,7 +128,7 @@ class TestEpisodeLastValues(unittest.TestCase):
                 )
                 for agent_id in range(NUM_AGENTS)
             },
-            policy_mapping_fn=lambda aid, eps, **kwargs: str(aid),
+            policy_mapping_fn=lambda aid, **kwargs: str(aid),
             callbacks=LastInfoCallback,
         )
         ev.sample()
