@@ -67,6 +67,7 @@ def main(test_collection_file: Optional[str] = None):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     frequency = settings["frequency"]
+    prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_attr_regex_filters = settings["test_attr_regex_filters"]
     ray_wheels = settings["ray_wheels"]
     priority = settings["priority"]
@@ -74,6 +75,7 @@ def main(test_collection_file: Optional[str] = None):
     logger.info(
         f"Found the following buildkite pipeline settings:\n\n"
         f"  frequency =               {settings['frequency']}\n"
+        f"  prefer_smoke_tests =      {settings['prefer_smoke_tests']}\n"
         f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
         f"  ray_wheels =              {settings['ray_wheels']}\n"
         f"  ray_test_repo =           {settings['ray_test_repo']}\n"
@@ -86,6 +88,7 @@ def main(test_collection_file: Optional[str] = None):
         test_collection,
         frequency=frequency,
         test_attr_regex_filters=test_attr_regex_filters,
+        prefer_smoke_tests=prefer_smoke_tests,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:

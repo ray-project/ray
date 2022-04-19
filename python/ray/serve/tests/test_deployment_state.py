@@ -21,6 +21,7 @@ from ray.serve.deployment_state import (
     DeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
+    DeploymentReplica,
     ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
@@ -2084,6 +2085,22 @@ def test_stopping_replicas_ranking():
         [3, 3, 3, 2, 2, 1], [1, 2, 2, 3, 3, 3]
     )  # prefer to stop dangling replicas first
     compare([2, 2, 3, 3], [2, 2, 3, 3])  # if equal, ordering should be kept
+
+
+def test_resource_requirements_none(mock_deployment_state):
+    """Ensure resource_requirements doesn't break if a requirement is None"""
+
+    class FakeActor:
+
+        actor_resources = {"num_cpus": 2, "fake": None}
+        available_resources = {}
+
+    # Make a DeploymentReplica just to accesss its resource_requirement function
+    replica = DeploymentReplica(None, None, None, None, None)
+    replica._actor = FakeActor()
+
+    # resource_requirements() should not error
+    replica.resource_requirements()
 
 
 if __name__ == "__main__":
