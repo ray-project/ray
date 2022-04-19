@@ -155,6 +155,5 @@ def get_or_create_prefetcher() -> "ActorHandle":
         scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
         name=actor_name,
         namespace=PREFETCHER_ACTOR_NAMESPACE,
-        lifetime="detached",
         get_if_exists=True,
     ).remote()
