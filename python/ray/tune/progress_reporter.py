@@ -63,7 +63,7 @@ class ProgressReporter:
     def setup(
         self,
         start_time: Optional[float] = None,
-        num_samples: Optional[int] = None,
+        total_samples: Optional[int] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         **kwargs,
@@ -71,10 +71,11 @@ class ProgressReporter:
         """Setup progress reporter for a new Ray Tune run.
 
         This function is used to initialize parameters that are set on runtime.
+        Defaults to no-op.
 
         Args:
             start_time: Timestamp when the Ray Tune run is started.
-            num_samples: Number of samples the Ray Tune run will run.
+            total_samples: Number of samples the Ray Tune run will run.
             metric: Metric to optimize.
             mode: Must be one of [min, max]. Determines whether objective is
                 minimizing or maximizing the metric attribute.
@@ -208,13 +209,13 @@ class TuneReporterBase(ProgressReporter):
     def setup(
         self,
         start_time: Optional[float] = None,
-        num_samples: Optional[int] = None,
+        total_samples: Optional[int] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         **kwargs,
     ):
         self.set_start_time(start_time)
-        self.set_total_samples(num_samples)
+        self.set_total_samples(total_samples)
         self.set_search_properties(metric=metric, mode=mode)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str]):
