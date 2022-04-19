@@ -186,9 +186,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         - One Ray head pod
             - Autoscaler: .25 CPU, .5 Gi memory
             - Ray node: .5 CPU, .5 Gi memeory
-        - Two Worker pods
+        - Three Worker pods
             - Ray node: .5 CPU, .5 Gi memory
-        Total: 1.75 CPU, 2 Gi memory.
+        Total: 2.25 CPU, 2.5 Gi memory.
 
         Including operator and system pods, the total CPU requested is around 3.
 
@@ -240,18 +240,18 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         wait_for_pods(goal_num_pods=3, namespace="default")
 
         # GPU upscaling.
-        # 1. Check we haven't spuriously already started a GPU node.
+        # 1. Check we haven't spuriously already started a fake GPU node.
         assert not any(
             "gpu" in pod_name for pod_name in get_pod_names(namespace="default")
         )
-        # 2. Trigger GPU upscaling with a resource request.
+        # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
         kubectl_exec_python_script(
             script_name="gpu_actor_placement.py",
             pod=head_pod,
             container="ray-head",
             namespace="default",
         )
-        # 3. Confirm new pod number and presence of GPU
+        # 3. Confirm new pod number and presence of fake GPU worker.
         wait_for_pods(goal_num_pods=4, namespace="default")
         gpu_workers = [
             pod_name
@@ -259,7 +259,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             if "gpu" in pod_name
         ]
         assert len(gpu_workers) == 1
-        # 4. Confirm that the GPU actor is up and running.
+        # 4. Confirm that the GPU actor is up and that Ray believes
+        # the node the actor is on has a GPU.
         out = kubectl_exec_python_script(
             script_name="gpu_actor_validation.py",
             pod=head_pod,
@@ -272,7 +273,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         assert "on-a-gpu-node" in out
 
         # Scale-down
-        logger.info("Removing resource request.")
+        logger.info("Removing resource demands.")
         kubectl_exec_python_script(
             script_name="scale_down.py",
             pod=head_pod,

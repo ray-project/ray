@@ -170,7 +170,7 @@ def kubectl_exec(
     If a `container` is specified, will specify that container for kubectl.
 
     Args:
-        return_out: If True, stdout will be redirected to the function's output.
+        return_out: If True, stdout will be captured, printed, and returned as a string.
             Otherwise, stdout will not be redirected and None will be returned.
     """
     container_option = ["-c", container] if container else []
@@ -178,7 +178,10 @@ def kubectl_exec(
         ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
     )
     if return_out:
-        return subprocess.check_output(kubectl_exec_command).decode().strip()
+        out = subprocess.check_output(kubectl_exec_command).decode().strip()
+        # Print for debugging convenience.
+        print(out)
+        return out
     else:
         subprocess.check_call(kubectl_exec_command)
         return None
