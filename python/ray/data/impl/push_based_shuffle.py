@@ -44,6 +44,7 @@ class PushBasedShufflePlan(ShuffleOp):
         M / N = merge factor - the ratio of map : merge tasks is to improve
           pipelined parallelism. For example, if map takes twice as long to
           execute as merge, then we should set this to 2.
+        See paper at https://arxiv.org/abs/2203.05072 for more details.
     """
 
     @staticmethod
@@ -127,15 +128,33 @@ class PushBasedShufflePlan(ShuffleOp):
         return cpu_map
 
     @staticmethod
-    def _compute_merge_task_args(
-        num_merge_tasks_per_round: int, merge_factor: int, cpu_map
+    def _compute_merge_task_options(
+        num_merge_tasks_per_round: int, merge_factor: int, cpu_map: Dict[str, int]
     ):
+        """
+        Compute the task options needed to schedule merge tasks.
+
+        Each merge task should be grouped with `merge_factor` map tasks for
+        pipelining. These groups should then be spread across nodes according
+        to CPU availability for load-balancing. Across the rounds of merge
+        tasks, we also want to make sure that the i-th task from each round is
+        colocated on the same node to reduce data movement during the final
+        reduce stage.
+
+        Args:
+            num_merge_tasks_per_round: The total number of merge tasks in each
+                round.
+            merge_factor: The ratio of map : merge tasks.
+            cpu_map: A map from node ID to the number of CPUs available on that
+                node.
+        """
         merge_to_node_map = []
         merge_tasks_assigned = 0
         node_ids = list(cpu_map)
         leftover_cpu_map = {}
         while merge_tasks_assigned < num_merge_tasks_per_round and cpu_map:
             node_id = node_ids[merge_tasks_assigned % len(node_ids)]
+            # We group `merge_factor` map tasks with 1 merge task.
             if cpu_map[node_id] >= merge_factor + 1:
                 cpu_map[node_id] -= merge_factor + 1
                 merge_to_node_map.append(node_id)
@@ -169,9 +188,14 @@ class PushBasedShufflePlan(ShuffleOp):
         merge_factor: int = 2,
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
         logger.info("Using experimental push-based shuffle.")
+        # TODO(swang): For jobs whose reduce work is heavier than the map work,
+        # we should support fractional merge factors.
         # TODO(swang): For large jobs, we should try to choose the merge factor
         # automatically, e.g., by running one test round of map and merge tasks
         # and comparing their run times.
+        # TODO(swang): Add option to automatically reduce write amplification
+        # during map-merge stage, by limiting how many partitions can be
+        # processed concurrently.
         input_blocks_list = input_blocks.get_blocks()
         input_num_blocks = len(input_blocks_list)
 
@@ -213,7 +237,7 @@ class PushBasedShufflePlan(ShuffleOp):
         # Scheduling args for assigning merge tasks to nodes. We use node-affinity
         # scheduling here to colocate merge tasks that output to the same
         # reducer.
-        merge_task_args = self._compute_merge_task_args(
+        merge_task_args = self._compute_merge_task_options(
             num_merge_tasks_per_round, merge_factor, cpu_map
         )
 
@@ -251,7 +275,6 @@ class PushBasedShufflePlan(ShuffleOp):
                 shuffle_map_metadata += map_bar.fetch_until_complete(
                     last_map_metadata_results
                 )
-            map_results = []
             for block in round_input_blocks:
                 map_results.append(
                     shuffle_map.options(
@@ -290,6 +313,9 @@ class PushBasedShufflePlan(ShuffleOp):
                         reduce_args=self._reduce_args,
                     )
                 )
+            # Now that we've submitted the merge tasks, clear their inputs so
+            # we can free the memory ASAP.
+            map_results = []
             # The first item returned by each merge task is the BlockMetadata.
             last_merge_metadata_results = [
                 merge_result.pop(0) for merge_result in merge_results
@@ -305,7 +331,6 @@ class PushBasedShufflePlan(ShuffleOp):
             )
             del last_map_metadata_results
             map_bar.close()
-        del map_results
         if last_merge_metadata_results:
             shuffle_merge_metadata += ray.get(last_merge_metadata_results)
             del last_merge_metadata_results
