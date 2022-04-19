@@ -476,6 +476,8 @@ class Pool:
             Ray cluster will be started on this machine. Otherwise, this will
             be passed to `ray.init()` to connect to a running cluster. This may
             also be specified using the `RAY_ADDRESS` environment variable.
+        ray_remote_args: arguments used to configure the Ray Actors making up
+            the pool.
     """
 
     def __init__(
@@ -486,6 +488,7 @@ class Pool:
         maxtasksperchild=None,
         context=None,
         ray_address=None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         self._closed = False
         self._initializer = initializer
@@ -495,6 +498,8 @@ class Pool:
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []
         self._registry_hashable: Dict[Hashable, ray.ObjectRef] = {}
         self._current_index = 0
+        self._ray_remote_args = ray_remote_args or {}
+        self._pool_actor = None
 
         if context and log_once("context_argument_warning"):
             logger.warning(
@@ -542,6 +547,7 @@ class Pool:
         return processes
 
     def _start_actor_pool(self, processes):
+        self._pool_actor = None
         self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
         ray.get([actor.ping.remote() for actor, _ in self._actor_pool])
 
@@ -569,7 +575,10 @@ class Pool:
         # NOTE(edoakes): The initializer function can't currently be used to
         # modify the global namespace (e.g., import packages or set globals)
         # due to a limitation in cloudpickle.
-        return (PoolActor.remote(self._initializer, self._initargs), 0)
+        # Cache the PoolActor with options
+        if not self._pool_actor:
+            self._pool_actor = PoolActor.options(**self._ray_remote_args)
+        return (self._pool_actor.remote(self._initializer, self._initargs), 0)
 
     def _next_actor_index(self):
         if self._current_index == len(self._actor_pool) - 1:
