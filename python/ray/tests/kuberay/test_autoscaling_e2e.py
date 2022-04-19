@@ -296,6 +296,17 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Confirming workers are gone.")
         wait_for_pods(goal_num_pods=1, namespace="default")
 
+        # Check custom resource upscaling.
+        # First, restore max replicas to 1.
+        self._apply_ray_cr(
+            min_replicas=0,
+            max_replicas=1,
+            replicas=0,
+            # Check that the replicas set on the Ray CR by the
+            # autoscaler is indeed 2:
+            validate_replicas=True,
+        )
+
         # Cluster deletion
         logger.info("Deleting Ray cluster.")
         subprocess.check_call(
