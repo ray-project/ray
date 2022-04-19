@@ -8,5 +8,5 @@ class GPUActor:
         return "on-a-gpu-node"
 
 
-ray.init("auto")
+ray.init("auto", namespace="gpu-test")
 GPUActor.options(name="gpu_actor", lifetime="detached").remote()

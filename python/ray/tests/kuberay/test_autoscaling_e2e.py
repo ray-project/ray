@@ -30,7 +30,10 @@ logging.basicConfig(
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
 RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:413fe0")
-logger.info(f"Using image {RAY_IMAGE} for autoscaler and Ray nodes.")
+# Set to IfNotPresent in CI. Stick with default for locally-triggered tests.
+PULL_POLICY = os.environ.get("PULL_POLICY", "Always")
+logger.info(f"Using image `{RAY_IMAGE}` for autoscaler and Ray nodes.")
+logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 # The default "rayproject/ray:413fe0" is the currently pinned autoscaler image
 # (to be replaced with rayproject/ray:1.12.0 upon 1.12.0 release).
 
@@ -97,9 +100,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         for ray_image in ray_images:
             ray_cr_config_str = ray_cr_config_str.replace(ray_image, RAY_IMAGE)
 
-        # Set pull policies to IfNotPresent to ensure no issues using a local test
+        # CI should set pull policies to IfNotPresent to ensure no issues using a local test
         # image on kind.
-        ray_cr_config_str = ray_cr_config_str.replace("Always", "IfNotPresent")
+        ray_cr_config_str = ray_cr_config_str.replace("Always", PULL_POLICY)
 
         raycluster_cr_file = tempfile.NamedTemporaryFile(delete=False)
         raycluster_cr_file.write(ray_cr_config_str.encode())
