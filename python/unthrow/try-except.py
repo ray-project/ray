@@ -56,3 +56,20 @@ print("---- resuming ---")
 print("run_once", cloudpickle.loads(cloudpickle.dumps(r)).run_once(f, 10))
 
 print("DONE")
+"""
+(base) yic@ip-172-31-58-40:~/upstream-ray/ray/python/unthrow (dynamic-checkpoint) $ python try-except.py
+init
+context updating p= 20
+before stop p= 20
+run_once 30
+---- resuming ---
+RESUME
+stop None
+after stop p= 20
+unknown?  <class 'BaseException'>
+finally
+f 10 finished
+context updating p= 15
+run_once ABC
+DONE
+"""
