@@ -271,6 +271,9 @@ class PushBasedShufflePlan(ShuffleOp):
             input_blocks_list = input_blocks_list[num_map_tasks_per_round:]
             # Wait for previous round of map tasks to finish before submitting
             # more map tasks.
+            # TODO(swang): Straggler map tasks can cause pipeline bubbles
+            # during this phase. Instead of waiting for all previous tasks, we
+            # should wait for some tasks on each node to finish.
             if last_map_metadata_results:
                 shuffle_map_metadata += map_bar.fetch_until_complete(
                     last_map_metadata_results
