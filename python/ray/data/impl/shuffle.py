@@ -457,8 +457,7 @@ class PushBasedShuffleOp(ShuffleOp):
 
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
         new_blocks, new_metadata = zip(*shuffle_reduce_out)
-        reduce_bar.block_until_complete(list(new_blocks))
-        new_metadata = ray.get(list(new_metadata))
+        new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
         reduce_bar.close()
 
         stats = {
