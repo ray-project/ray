@@ -1,7 +1,9 @@
 import logging
 import os
+import warnings
 from collections import defaultdict
 from time import time
+from traceback import format_exc
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union
 
 import numpy as np
@@ -14,7 +16,7 @@ from ray.ml.config import RunConfig, ScalingConfig
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import GenDataset, Trainer
-from ray.ml.utils.sklearn_utils import has_cpu_params, score, set_cpu_params
+from ray.ml.utils.sklearn_utils import has_cpu_params, set_cpu_params
 from ray.util import PublicAPI
 from ray.util.joblib import register_ray
 
@@ -23,7 +25,7 @@ from sklearn.metrics import check_scoring
 from sklearn.model_selection import BaseCrossValidator, cross_validate
 
 # we are using a private API here, but it's consistent across versions
-from sklearn.model_selection._validation import _check_multimetric_scoring
+from sklearn.model_selection._validation import _check_multimetric_scoring, _score
 
 
 logger = logging.getLogger(__name__)
@@ -274,7 +276,19 @@ class SklearnTrainer(Trainer):
         for key, X_y_tuple in datasets.items():
             X_test, y_test = X_y_tuple
             start_time = time()
-            test_scores = score(estimator, X_test, y_test, scorers, np.nan)
+            try:
+                test_scores = _score(estimator, X_test, y_test, scorers)
+            except Exception:
+                if isinstance(scorers, dict):
+                    test_scores = {k: np.nan for k in scorers}
+                else:
+                    test_scores = np.nan
+                warnings.warn(
+                    f"Scoring on validation set {key} failed. The score(s) for "
+                    f"this set will be set to nan. Details: \n"
+                    f"{format_exc()}",
+                    UserWarning,
+                )
             score_time = time() - start_time
             results[key]["score_time"] = score_time
             if not isinstance(test_scores, dict):
