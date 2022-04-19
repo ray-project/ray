@@ -205,7 +205,7 @@ class PushBasedShuffleOp(ShuffleOp):
     def _merge(
         reduce_fn,
         *all_mapper_outputs: List[List[Block]],
-        reduce_args=Optional[List[Any]],
+        reduce_args: Optional[List[Any]] = None,
     ) -> List[Union[BlockMetadata, Block]]:
         """
         Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks].
