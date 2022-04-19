@@ -28,10 +28,8 @@ class SpreadSchedulingPolicy : public ISchedulingPolicy {
  public:
   SpreadSchedulingPolicy(scheduling::NodeID local_node_id,
                          const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                         std::function<bool(scheduling::NodeID)> is_node_available)
-      : local_node_id_(local_node_id),
-        nodes_(nodes),
-        is_node_available_(is_node_available) {}
+                         std::function<bool(scheduling::NodeID)> is_node_alive)
+      : local_node_id_(local_node_id), nodes_(nodes), is_node_alive_(is_node_alive) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -46,7 +44,7 @@ class SpreadSchedulingPolicy : public ISchedulingPolicy {
   // but it should still be better than always scanning from 0 for spread scheduling.
   size_t spread_scheduling_next_index_ = 0;
   /// Function Checks if node is alive.
-  std::function<bool(scheduling::NodeID)> is_node_available_;
+  std::function<bool(scheduling::NodeID)> is_node_alive_;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

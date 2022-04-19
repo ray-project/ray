@@ -183,8 +183,9 @@ RayTask CreateTask(
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
  public:
-  MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects)
-      : missing_objects_(missing_objects) {}
+  MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects,
+                            std::unordered_set<TaskID> &blocked_tasks)
+      : missing_objects_(missing_objects), blocked_tasks_(blocked_tasks) {}
 
   bool RequestTaskDependencies(
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
@@ -202,14 +203,14 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
   }
 
   bool TaskDependenciesBlocked(const TaskID &task_id) const {
-    return blocked_tasks.count(task_id);
+    return blocked_tasks_.count(task_id);
   }
 
   bool CheckObjectLocal(const ObjectID &object_id) const { return true; }
 
   std::unordered_set<ObjectID> &missing_objects_;
+  std::unordered_set<TaskID> &blocked_tasks_;
   std::unordered_set<TaskID> subscribed_tasks;
-  std::unordered_set<TaskID> blocked_tasks;
 };
 
 class FeatureFlagEnvironment : public ::testing::Environment {
@@ -238,7 +239,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
-        dependency_manager_(missing_objects_),
+        dependency_manager_(missing_objects_, blocked_tasks_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
             scheduler_,
@@ -366,6 +367,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   MockWorkerPool pool_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
+  std::unordered_set<TaskID> blocked_tasks_;
 
   bool is_owner_alive_;
   int default_arg_size_ = 10;
@@ -1646,6 +1648,12 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
       auto missing_arg = task.GetTaskSpecification().GetDependencyIds()[0];
       missing_objects_.insert(missing_arg);
     }
+    if (i == 0) {
+      const_cast<TaskSpecification &>(task.GetTaskSpecification())
+          .GetMutableMessage()
+          .mutable_scheduling_strategy()
+          ->mutable_spread_scheduling_strategy();
+    }
     task_manager_.QueueAndScheduleTask(task, false, false, replies[i].get(), callback);
     pool_.TriggerCallbacks();
   }
@@ -1695,6 +1703,12 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
   // One task dispatched.
   ASSERT_EQ(replies[4]->worker_address().port(), 1234);
+
+  // Spread task won't be spilled due to waiting for dependencies.
+  AddNode(remote_node_id, 8);
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 4);
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
