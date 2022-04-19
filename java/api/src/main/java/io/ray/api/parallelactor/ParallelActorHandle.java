@@ -6,8 +6,8 @@ import io.ray.api.ActorHandle;
  * A `ParallelActorHandle` could be used for creating multiple execution instances in different
  * threads, to execute the methods.
  *
- * <p>Every thread holds an instance to `A`, and the methods will be invoked on the instance in
- * different threads.
+ * <p>Every thread holds an instance to `A`, and the methods will be invoked on the instance
+ * in different threads.
  */
 public interface ParallelActorHandle<A> {
 
