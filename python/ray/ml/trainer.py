@@ -1,15 +1,15 @@
 import abc
 import inspect
 import logging
-from typing import Dict, Union, Callable, Optional, TYPE_CHECKING, Type, Any, List
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
-
-from ray.ml.preprocessor import Preprocessor
+from ray.util import PublicAPI
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.result import Result
 from ray.ml.config import RunConfig, ScalingConfig, ScalingConfigDataClass
 from ray.ml.constants import TRAIN_DATASET_KEY
+from ray.ml.preprocessor import Preprocessor
+from ray.ml.result import Result
 from ray.ml.utils.config import (
     ensure_only_allowed_dataclass_keys_updated,
     ensure_only_allowed_dict_keys_set,
@@ -17,7 +17,6 @@ from ray.ml.utils.config import (
 from ray.tune import Trainable
 from ray.tune.error import TuneError
 from ray.tune.function_runner import wrap_function
-from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.dict import merge_dicts
 
