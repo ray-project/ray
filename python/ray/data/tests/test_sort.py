@@ -12,7 +12,11 @@ from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 
 
-def test_sort_simple(ray_start_regular):
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_sort_simple(ray_start_regular, use_push_based_shuffle):
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.use_push_based_shuffle = use_push_based_shuffle
+
     num_items = 100
     parallelism = 4
     xs = list(range(num_items))
@@ -33,7 +37,13 @@ def test_sort_simple(ray_start_regular):
     assert ds.count() == 0
 
 
-def test_sort_partition_same_key_to_same_block(ray_start_regular):
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_sort_partition_same_key_to_same_block(
+    ray_start_regular, use_push_based_shuffle
+):
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.use_push_based_shuffle = use_push_based_shuffle
+
     num_items = 100
     xs = [1] * num_items
     ds = ray.data.from_items(xs)
@@ -50,7 +60,11 @@ def test_sort_partition_same_key_to_same_block(ray_start_regular):
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
-def test_sort_arrow(ray_start_regular, num_items, parallelism):
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_sort_arrow(ray_start_regular, num_items, parallelism, use_push_based_shuffle):
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.use_push_based_shuffle = use_push_based_shuffle
+
     a = list(reversed(range(num_items)))
     b = [f"{x:03}" for x in range(num_items)]
     shard = int(np.ceil(num_items / parallelism))
@@ -79,7 +93,11 @@ def test_sort_arrow(ray_start_regular, num_items, parallelism):
     assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
 
 
-def test_sort_arrow_with_empty_blocks(ray_start_regular):
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle):
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.use_push_based_shuffle = use_push_based_shuffle
+
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows == 0
     )

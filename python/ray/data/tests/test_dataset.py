@@ -3299,7 +3299,11 @@ def test_column_name_type_check(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
-def test_random_shuffle(shutdown_only, pipelined):
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.use_push_based_shuffle = use_push_based_shuffle
+
     def range(n, parallelism=200):
         ds = ray.data.range(n, parallelism=parallelism)
         if pipelined:

@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import List, Optional, Dict, Any, Tuple, Union
 from collections import defaultdict
@@ -9,6 +10,8 @@ from ray.data.impl.shuffle import ShuffleOp
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
+
+logger = logging.getLogger(__name__)
 
 
 class PushBasedShufflePlan(ShuffleOp):
@@ -165,6 +168,7 @@ class PushBasedShufflePlan(ShuffleOp):
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
     ) -> Tuple[BlockList, Dict[str, List[BlockMetadata]]]:
+        logger.info("Using experimental push-based shuffle.")
         # TODO(swang): For large jobs, we should try to choose the merge factor
         # automatically, e.g., by running one test round of map and merge tasks
         # and comparing their run times.
