@@ -65,14 +65,36 @@ class BaguaAccelerator(TorchAccelerator):
         # we need the optimizer when preparing the model
         # with_bagua() returns a BaguaModule not torch.nn.Module
         model = model.with_bagua([optimizer], algorithm)
-
         return model
 
 
 @PublicAPI(stability="beta")
 @dataclass
 class BaguaConfig(BackendConfig):
+    """
+    Bagua Backend Configurations (excluding training script args).
+    reference: https://github.com/BaguaSys/bagua/blob/master/bagua/distributed/launch.py#L29-L154 # noqa: E501
+    """
 
+    nnodes: int = 1
+    node_rank: int = 0
+    nproc_per_node: int = 1
+    master_addr: str = "127.0.0.1"
+    master_port: int = 29500
+    bagua_service_port: int = 29501
+    set_additional_flag: bool = False
+    no_python: bool = False
+    logdir: Optional[str] = None
+    autotune_level: int = 0
+    is_output_autotune_log: bool = False
+    report_metrics: bool = False
+    autotune_max_samples: int = 60
+    autotune_sampling_confidence_time: float = 5.0
+    autotune_warmup_time: float = 30.0
+    default_bucket_size: int = 10 * 1024 ** 2
+    enable_bagua_net: bool = False
+    host_list: str = ""
+    ssh_port: str = 0
     store: Optional[torch.distributed.Store] = None
 
     @property
@@ -80,7 +102,7 @@ class BaguaConfig(BackendConfig):
         return BaguaBackend
 
 
-def setup_torch_process_group(store: Optional[torch.distributed.Store] = None):
+def setup_bagua_process_group(store: Optional[torch.distributed.Store] = None):
     torch.cuda.set_device(bagua.torch_api.get_local_rank())
     # init_process_group() is different from ray.train.torch approach
     # https://github.com/BaguaSys/bagua/blob/master/bagua/torch_api/communication.py#L524-L529
@@ -91,35 +113,85 @@ def setup_torch_process_group(store: Optional[torch.distributed.Store] = None):
 
 
 class BaguaBackend(TorchBackend):
+
     share_cuda_visible_devices: bool = True
 
     def on_start(self, worker_group: WorkerGroup, backend_config: BaguaConfig):
 
         if dist.is_available():
 
-            store = backend_config.store
+            import copy
 
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port
             )
+            backend_config.master_addr = master_addr
+            backend_config.master_port = str(master_port)
 
-            def set_env_vars(addr, port):
-                os.environ["MASTER_ADDR"] = addr
-                os.environ["MASTER_PORT"] = str(port)
+            def set_env_vars(world_size, config):
+                # reference: https://github.com/BaguaSys/bagua/blob/master/bagua/distributed/launch.py#L183-L229 # noqa: E501
+                # Follow the env setup of bagua.distributed.launch.
+                current_env = os.environ.copy()
+                current_env["MASTER_ADDR"] = config.master_addr
+                current_env["MASTER_PORT"] = config.master_port
+                current_env["WORLD_SIZE"] = str(world_size)
+                current_env["FLASK_ENV"] = "development"
 
-            # Bagua uses ``env://`` as the init method.
-            worker_group.execute(set_env_vars, addr=master_addr, port=master_port)
+                from bagua.distributed.launch import set_bagua_env
+
+                set_bagua_env(config, current_env)
+
+                if "OMP_NUM_THREADS" not in os.environ and config.nproc_per_node > 1:
+                    current_env["OMP_NUM_THREADS"] = str(1)
+                    print(
+                        "*****************************************\n"
+                        "Setting OMP_NUM_THREADS environment variable for each process "
+                        "to be {} in default, to avoid your system being overloaded, "
+                        "please further tune the variable for optimal performance in "
+                        "your application as needed. \n"
+                        "*****************************************".format(
+                            current_env["OMP_NUM_THREADS"]
+                        )
+                    )
+
+                if config.logdir:
+                    if os.path.exists(config.logdir):
+                        if not os.path.isdir(config.logdir):
+                            raise ValueError(
+                                "argument --logdir must be a path to a directory."
+                            )
+                    else:
+                        os.mkdir(os.path.join(os.getcwd(), config.logdir))
+
+                # Following the current ray.train design, each worker uses only
+                # 1 GPU by default. To allow Bagua to use multiple GPUs per worker,
+                # override rank configurations for each spawned training process.
+                # reference: https://github.com/BaguaSys/bagua/blob/master/bagua/distributed/launch.py#L231-L237 # noqa: E501
+                dist_rank = config.nproc_per_node * config.node_rank
+                current_env["RANK"] = str(dist_rank)
+                current_env["LOCAL_RANK"] = str(0)
+                current_env["NODE_RANK"] = str(config.node_rank)
+                current_env["LOCAL_WORLD_SIZE"] = str(config.nproc_per_node)
+
+                os.environ.update(current_env)
+
+            dist_world_size = backend_config.nproc_per_node * backend_config.nnodes
 
             setup_futures = []
             for i in range(len(worker_group)):
+                bagua_local_config = copy.deepcopy(backend_config)
+                bagua_local_config.node_rank = i
                 setup_futures.append(
                     worker_group.execute_single_async(
                         i,
-                        setup_torch_process_group,
-                        store=store,
+                        set_env_vars,
+                        world_size=dist_world_size,
+                        config=bagua_local_config,
                     )
                 )
             ray.get(setup_futures)
+
+            worker_group.execute(setup_bagua_process_group, store=backend_config.store)
         else:
             raise RuntimeError("Distributed torch is not available.")
 
