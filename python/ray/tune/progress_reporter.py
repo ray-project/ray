@@ -78,6 +78,7 @@ class ProgressReporter:
             metric: Metric to optimize.
             mode: Must be one of [min, max]. Determines whether objective is
                 minimizing or maximizing the metric attribute.
+            **kwargs: Keyword arguments for forward-compatibility.
         """
         pass
 
@@ -204,7 +205,7 @@ class TuneReporterBase(ProgressReporter):
         else:
             self._sort_by_metric = sort_by_metric
 
-    def setup_run(
+    def setup(
         self,
         start_time: Optional[float] = None,
         num_samples: Optional[int] = None,
