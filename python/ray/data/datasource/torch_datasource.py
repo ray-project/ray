@@ -35,7 +35,7 @@ class SimpleTorchDatasource(Datasource[T]):
 
         Arguments:
             parallelism: This argument isn't used.
-            dataset_factory: A no-argument function that returns a Torch dataset.
+            dataset_factory: A no-argument function that returns the Torch dataset to be read.
         """
         import torch.utils.data
 
