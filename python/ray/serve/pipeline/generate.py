@@ -23,32 +23,37 @@ class DeploymentNameGenerator(object):
     monotonic increasing id to it.
     """
 
-    __lock = threading.Lock()
-    __shared_state = dict()
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.shared_state = dict()
 
-    @classmethod
-    def get_deployment_name(cls, dag_node: Union[ClassNode, FunctionNode]):
+    def get_deployment_name(self, dag_node: Union[ClassNode, FunctionNode]):
         assert isinstance(dag_node, (ClassNode, FunctionNode)), (
             "get_deployment_name() should only be called on ClassNode or "
             "FunctionNode instances."
         )
-        with cls.__lock:
+        with self.lock:
             deployment_name = (
                 dag_node.get_options().get("name", None) or dag_node._body.__name__
             )
-            if deployment_name not in cls.__shared_state:
-                cls.__shared_state[deployment_name] = 0
+            if deployment_name not in self.shared_state:
+                self.shared_state[deployment_name] = 0
                 return deployment_name
             else:
-                cls.__shared_state[deployment_name] += 1
-                suffix_num = cls.__shared_state[deployment_name]
+                self.shared_state[deployment_name] += 1
+                suffix_num = self.shared_state[deployment_name]
 
                 return f"{deployment_name}_{suffix_num}"
 
-    @classmethod
-    def reset(cls):
-        with cls.__lock:
-            cls.__shared_state = dict()
+    def reset(self):
+        with self.lock:
+            self.shared_state = dict()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.reset()
 
 
 def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
@@ -70,13 +75,15 @@ def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
     return ray_actor_options
 
 
-def transform_ray_dag_to_serve_dag(dag_node):
+def transform_ray_dag_to_serve_dag(
+    dag_node: DAGNode, deployment_name_generator: DeploymentNameGenerator
+):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
     ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
     """
     if isinstance(dag_node, ClassNode):
-        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
+        deployment_name = deployment_name_generator.get_deployment_name(dag_node)
         ray_actor_options = _remove_non_default_ray_actor_options(
             dag_node.get_options()
         )
@@ -109,7 +116,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
         # TODO (jiaodong): We do not convert ray function to deployment function
         # yet, revisit this later
     ) and dag_node.get_other_args_to_resolve().get("is_from_serve_deployment"):
-        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
+        deployment_name = deployment_name_generator.get_deployment_name(dag_node)
         return DeploymentFunctionNode(
             dag_node._body,
             deployment_name,

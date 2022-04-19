@@ -61,16 +61,19 @@ def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
         >>> deployments = build_app(ray_dag) # it can be method node
         >>> deployments = build_app(m1) # or just a regular node.
     """
-    serve_root_dag = ray_dag_root_node.apply_recursive(transform_ray_dag_to_serve_dag)
+    with DeploymentNameGenerator() as deployment_name_generator:
+        serve_root_dag = ray_dag_root_node.apply_recursive(
+            lambda node: transform_ray_dag_to_serve_dag(node, deployment_name_generator)
+        )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     deployments_with_http = process_ingress_deployment_in_serve_dag(deployments)
-    # Clean up class level deployment name states between build() calls
-    DeploymentNameGenerator.reset()
 
     return deployments_with_http
 
 
-def get_and_validate_ingress_deployment(deployments: List[Deployment]) -> Deployment:
+def get_and_validate_ingress_deployment(
+    deployments: List[Deployment],
+) -> Deployment:
     """Validation for http route prefixes for a list of deployments in pipeline.
 
     Ensures:
