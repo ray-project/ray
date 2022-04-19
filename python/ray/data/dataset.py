@@ -34,6 +34,7 @@ import itertools
 import numpy as np
 
 import ray
+from ray.actor import ActorHandle
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import (
@@ -84,8 +85,11 @@ BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
 
 logger = logging.getLogger(__name__)
 
+PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
+
 # Whether we have warned of Datasets containing multiple epochs of data.
 _epoch_warned = False
+
 
 
 @PublicAPI(stability="beta")
@@ -1971,7 +1975,12 @@ class Dataset(Generic[T]):
         for block_window in _sliding_window(blocks.iter_blocks(), prefetch_blocks + 1):
             block_window = list(block_window)
             with stats.iter_wait_s.timer():
-                ray.wait(block_window, num_returns=1, fetch_local=True)
+                context = DatasetContext.get_current()
+                if len(block_window) > 1 and context.actor_prefetcher_enabled:
+                    prefetcher = get_or_create_prefetcher()
+                    prefetcher.prefetch.remote(*block_window)
+                else:
+                    ray.wait(block_window, num_returns=1, fetch_local=True)
             yield from batch_block(block_window[0])
 
         # Consume remainder of final block window.
@@ -3020,3 +3029,26 @@ def _do_write(
 def _get_sum(block: Block) -> int:
     block = BlockAccessor.for_block(block)
     return sum(block.iter_rows())
+
+
+@ray.remote(num_cpus=0, placement_group=None)
+class _BlockPretcher:
+    def prefetch(self, *args):
+        pass
+
+
+def get_or_create_prefetcher() -> "ActorHandle":
+    ip_address = ray.util.get_node_ip_address()
+    actor_name = f"dataset-prefetcher-{ip_address}"
+    try:
+        prefetcher = ray.get_actor(
+            actor_name,
+            namespace=PREFETCHER_ACTOR_NAMESPACE,
+        )
+    except ValueError:
+        prefetcher = _BlockPretcher.options(
+            resources={"node:{}".format(ip_address): 0.0001},
+            name=actor_name,
+            namespace=PREFETCHER_ACTOR_NAMESPACE,
+        ).remote()
+    return prefetcher
