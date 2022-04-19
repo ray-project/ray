@@ -14,6 +14,7 @@ from ray.train.backend import (
     TrainingWorkerError,
 )
 from ray.train.backend import BackendConfig, BackendExecutor
+from ray.train.bagua import BaguaConfig
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.train.constants import (
@@ -246,6 +247,28 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
         return (
             torch.distributed.is_initialized()
             and torch.distributed.get_world_size() == 2
+        )
+
+    e.start_training(check_process_group)
+    assert all(e.finish_training())
+
+    e._backend.on_shutdown(e.worker_group, e._backend_config)
+
+    e.start_training(check_process_group)
+    assert not any(e.finish_training())
+
+
+def test_bagua_start_shutdown(ray_2_node_2_gpu):
+    bagua_config = BaguaConfig(nnodes=2, nproc_per_node=1)
+    e = BackendExecutor(bagua_config, num_workers=2)
+    e.start()
+
+    def check_process_group():
+        import bagua
+
+        return (
+            bagua.torch_api.communication.is_initialized()
+            and bagua.torch_api.get_world_size() == 2
         )
 
     e.start_training(check_process_group)

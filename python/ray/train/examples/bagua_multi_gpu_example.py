@@ -10,6 +10,8 @@ import ray.train as train
 from ray.train import Trainer
 from ray.train.bagua import BaguaBackend
 
+import bagua
+
 
 class LinearDataset(torch.utils.data.Dataset):
     """y = a * x + b"""
@@ -51,7 +53,6 @@ def validate_epoch(dataloader, model, loss_fn):
 
 
 def train_func(config):
-
     def train_local_per_worker(local_rank, config):
         import os
 
@@ -83,9 +84,7 @@ def train_func(config):
         # when creating a Trainer using a Bagua backend
         # prepare data loaders for Bagua training
         train_sampler = DistributedSampler(
-            train_dataset,
-            num_replicas=bagua.get_world_size(),
-            rank=bagua.get_rank()
+            train_dataset, num_replicas=bagua.get_world_size(), rank=bagua.get_rank()
         )
         train_loader = DataLoader(
             train_dataset,
@@ -95,9 +94,7 @@ def train_func(config):
         )
 
         validation_sampler = DistributedSampler(
-            val_dataset,
-            num_replicas=bagua.get_world_size(),
-            rank=bagua.get_rank()
+            val_dataset, num_replicas=bagua.get_world_size(), rank=bagua.get_rank()
         )
         validation_loader = DataLoader(
             val_dataset,
@@ -108,17 +105,20 @@ def train_func(config):
 
         # prepare torch model for bagua training
         from bagua.torch_api.algorithms import gradient_allreduce
+
         model = model.with_bagua(
             [optimizer], gradient_allreduce.GradientAllReduceAlgorithm()
         )
 
         loss_fn = nn.MSELoss()
 
+        results = []
         for _ in range(epochs):
             train_epoch(train_loader, model, loss_fn, optimizer)
             result = validate_epoch(validation_loader, model, loss_fn)
+            results.append(result.get("loss"))
 
-        print(f"Worker {world_rank}, process {local_rank}:")
+        print(f"Worker {world_rank}, process {local_rank}: loss = {np.mean(results)}")
 
     # get the worker's (node) world rank
     config["world_rank"] = train.world_rank()
@@ -135,7 +135,7 @@ def train_linear(num_workers=2, nproc_per_worker=1, epochs=3):
         backend=bagua_backend,
         num_workers=num_workers,
         use_gpu=True,
-        resources_per_worker={"GPU": nproc_per_worker}
+        resources_per_worker={"GPU": nproc_per_worker},
     )
 
     batch_size_per_gpu = 16 // (num_workers * nproc_per_worker)

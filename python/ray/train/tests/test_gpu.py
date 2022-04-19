@@ -10,6 +10,12 @@ import torchvision
 import ray
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
+from ray.train.examples.bagua_simple_example import (
+    train_func as bagua_simple_train_func,
+)
+from ray.train.examples.bagua_multi_gpu_example import (
+    train_func as bagua_multi_gpu_train_func,
+)
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
@@ -34,6 +40,13 @@ def ray_start_4_cpus_2_gpus():
 @pytest.fixture
 def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
+    yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_2_cpus_4_gpus():
+    address_info = ray.init(num_cpus=2, num_gpus=4)
     yield address_info
     ray.shutdown()
 
@@ -414,6 +427,38 @@ def test_auto_transfer_data_from_host_to_device(
 
     if device_choice == "cuda" and auto_transfer:
         assert compute_average_runtime(host_to_device) >= with_auto_transfer
+
+
+def test_bagua_simple_example(ray_start_2_cpus_4_gpus):
+
+    num_workers = 2
+    use_gpu = True
+
+    trainer = Trainer(backend="bagua", num_workers=num_workers, use_gpu=use_gpu)
+    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
+    trainer.start()
+    results = trainer.run(bagua_simple_train_func, config)
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+
+
+def test_bagua_multi_gpus_example(ray_start_2_cpus_4_gpus):
+    from ray.train.bagua import BaguaBackend
+
+    bagua_backend = BaguaBackend(nnodes=2, nproc_per_node=2)
+
+    trainer = Trainer(
+        backend=bagua_backend,
+        num_workers=2,
+        use_gpu=True,
+        resources_per_worker={"GPU": 2},
+    )
+
+    config = {"nproc_per_worker": 2, "batch_size": 4}
+    trainer.start()
+    trainer.run(bagua_multi_gpu_train_func, config)
+    trainer.shutdown()
 
 
 if __name__ == "__main__":
