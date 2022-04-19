@@ -321,7 +321,7 @@ class PushBasedShuffleOp(ShuffleOp):
         # N: Number of merge tasks in one map-merge round. Each map_partition
         # task will send one output to each of these merge tasks.
         num_merge_tasks_per_round = math.ceil(num_merge_tasks / num_rounds)
-        # Scheduling args for assign merge tasks to nodes. We use node-affinity
+        # Scheduling args for assigning merge tasks to nodes. We use node-affinity
         # scheduling here to colocate merge tasks that output to the same
         # reducer.
         merge_task_args = self._compute_merge_task_args(
