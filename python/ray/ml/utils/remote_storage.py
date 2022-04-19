@@ -3,14 +3,27 @@ from typing import Optional, Tuple
 
 try:
     import fsspec
+
 except ImportError:
     fsspec = None
 
 try:
     import pyarrow
     import pyarrow.fs
+
+    class _CustomFSSpecHandler(pyarrow.fs.FSSpecHandler):
+        """Custom FSSpecHandler that avoids bugs in some fsspec implementations."""
+
+        def create_dir(self, path, recursive):
+            try:
+                # No `create_parents` argument
+                self.fs.mkdir(path)
+            except FileExistsError:
+                pass
+
 except (ImportError, ModuleNotFoundError):
     pyarrow = None
+    _CustomFSSpecHandler = None
 
 from ray import logger
 
@@ -66,17 +79,6 @@ def is_non_local_path_uri(uri: str) -> bool:
 
 # Cache fs objects
 _cached_fs = {}
-
-
-class _CustomFSSpecHandler(pyarrow.fs.FSSpecHandler):
-    """Custom FSSpecHandler that avoids bugs in some fsspec implementations."""
-
-    def create_dir(self, path, recursive):
-        try:
-            # No `create_parents` argument
-            self.fs.mkdir(path)
-        except FileExistsError:
-            pass
 
 
 def get_fs_and_path(
