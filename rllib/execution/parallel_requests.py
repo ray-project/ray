@@ -58,13 +58,10 @@ def asynchronous_parallel_requests(
         None, if no samples are ready.
 
     Examples:
-        >>> import time
-        >>> from ray.rllib.execution.parallel_requests
-        ...     import asynchronous_parallel_sample
         >>> # Define an RLlib Trainer.
         >>> trainer = ... # doctest: +SKIP
         >>> # 2 remote rollout workers (num_workers=2):
-        >>> batches = asynchronous_parallel_sample( # doctest: +SKIP
+        >>> batches = asynchronous_parallel_requests( # doctest: +SKIP
         ...     trainer.remote_requests_in_flight, # doctest: +SKIP
         ...     actors=trainer.workers.remote_workers(), # doctest: +SKIP
         ...     ray_wait_timeout_s=0.1, # doctest: +SKIP

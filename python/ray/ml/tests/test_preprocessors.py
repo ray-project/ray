@@ -1,3 +1,6 @@
+import warnings
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -5,6 +8,7 @@ import pytest
 import ray
 from ray.ml.preprocessor import PreprocessorNotFittedException
 from ray.ml.preprocessors import (
+    BatchMapper,
     StandardScaler,
     MinMaxScaler,
     OrdinalEncoder,
@@ -73,6 +77,34 @@ def test_standard_scaler():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+@patch.object(warnings, "warn")
+def test_fit_twice(mocked_warn):
+    """Tests that a warning msg should be printed."""
+    col_a = [-1, 0, 1]
+    col_b = [1, 3, 5]
+    col_c = [1, 1, None]
+    in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
+    ds = ray.data.from_pandas(in_df)
+
+    scaler = MinMaxScaler(["B", "C"])
+
+    # Fit data.
+    scaler.fit(ds)
+    assert scaler.stats_ == {"min(B)": 1, "max(B)": 5, "min(C)": 1, "max(C)": 1}
+
+    ds = ds.map_batches(lambda x: x * 2)
+    # Fit again
+    scaler.fit(ds)
+    # Assert that the fitted state is corresponding to the second ds.
+    assert scaler.stats_ == {"min(B)": 2, "max(B)": 10, "min(C)": 2, "max(C)": 2}
+    msg = (
+        "`fit` has already been called on the preprocessor (or at least one "
+        "contained preprocessors if this is a chain). "
+        "All previously fitted state will be overwritten!"
+    )
+    mocked_warn.assert_called_once_with(msg)
 
 
 def test_min_max_scaler():
@@ -452,20 +484,20 @@ def test_simple_imputer():
     most_frequent_df = pd.DataFrame.from_dict(
         {"A": most_frequent_col_a, "B": most_frequent_col_b}
     )
-    most_frequent_ds = ray.data.from_pandas(most_frequent_df)
+    most_frequent_ds = ray.data.from_pandas(most_frequent_df).repartition(3)
 
     most_frequent_imputer = SimpleImputer(["A", "B"], strategy="most_frequent")
     most_frequent_imputer.fit(most_frequent_ds)
     assert most_frequent_imputer.stats_ == {
         "most_frequent(A)": 2.0,
-        "most_frequent(B)": "b",
+        "most_frequent(B)": "c",
     }
 
     most_frequent_transformed = most_frequent_imputer.transform(most_frequent_ds)
     most_frequent_out_df = most_frequent_transformed.to_pandas()
 
     most_frequent_processed_col_a = [1.0, 2.0, 2.0, 2.0, 2.0, 2.0]
-    most_frequent_processed_col_b = ["b", "c", "c", "b", "b", "a"]
+    most_frequent_processed_col_b = ["c", "c", "c", "b", "b", "a"]
     most_frequent_expected_df = pd.DataFrame.from_dict(
         {"A": most_frequent_processed_col_a, "B": most_frequent_processed_col_b}
     )
@@ -500,10 +532,15 @@ def test_chain():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
+    def udf(df):
+        df["A"] *= 2
+        return df
+
+    batch_mapper = BatchMapper(fn=udf)
     imputer = SimpleImputer(["B"])
     scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
-    chain = Chain(scaler, imputer, encoder)
+    chain = Chain(scaler, imputer, encoder, batch_mapper)
 
     # Fit data.
     chain.fit(ds)
@@ -524,7 +561,7 @@ def test_chain():
     transformed = chain.transform(ds)
     out_df = transformed.to_pandas()
 
-    processed_col_a = [-1.0, -1.0, 1.0, 1.0]
+    processed_col_a = [-2.0, -2.0, 2.0, 2.0]
     processed_col_b = [0.0, 0.0, 0.0, 0.0]
     processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
@@ -543,7 +580,7 @@ def test_chain():
 
     pred_out_df = chain.transform_batch(pred_in_df)
 
-    pred_processed_col_a = [1, 2, None]
+    pred_processed_col_a = [2, 4, None]
     pred_processed_col_b = [-1.0, 0.0, 1.0]
     pred_processed_col_c = [0, 2, None]
     pred_expected_df = pd.DataFrame.from_dict(
@@ -555,6 +592,36 @@ def test_chain():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+def test_batch_mapper():
+    """Tests batch mapper functionality."""
+    old_column = [1, 2, 3, 4]
+    to_be_modified = [1, -1, 1, -1]
+    in_df = pd.DataFrame.from_dict(
+        {"old_column": old_column, "to_be_modified": to_be_modified}
+    )
+    ds = ray.data.from_pandas(in_df)
+
+    def add_and_modify_udf(df: "pd.DataFrame"):
+        df["new_col"] = df["old_column"] + 1
+        df["to_be_modified"] *= 2
+        return df
+
+    batch_mapper = BatchMapper(fn=add_and_modify_udf)
+    batch_mapper.fit(ds)
+    transformed = batch_mapper.transform(ds)
+    out_df = transformed.to_pandas()
+
+    expected_df = pd.DataFrame.from_dict(
+        {
+            "old_column": old_column,
+            "to_be_modified": [2, -2, 2, -2],
+            "new_col": [2, 3, 4, 5],
+        }
+    )
+
+    assert out_df.equals(expected_df)
 
 
 if __name__ == "__main__":
