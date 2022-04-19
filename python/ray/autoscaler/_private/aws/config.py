@@ -492,7 +492,7 @@ def _usable_subnet_ids(
         )
 
     if azs is not None:
-        azs = azs.split(",")
+        azs = [az.strip() for az in azs.split(",")]
         subnets = [
             s
             for az in azs  # Iterate over AZs first to maintain the ordering
@@ -513,7 +513,7 @@ def _usable_subnet_ids(
                 "The following Availability Zones were specified in the "
                 f"`provider section`: {azs}.\n The following subnets for node "
                 f"type `{node_type_key}` have no matching availability zone: "
-                f"{_get_pruned_subnets(subnets)}. "
+                f"{list(_get_pruned_subnets(subnets))}."
             )
 
     # Use subnets in only one VPC, so that _configure_security_groups only
