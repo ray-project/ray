@@ -1,14 +1,12 @@
 import os
 from typing import Optional, Type, Union, List
 
-import numpy as np
 import pandas as pd
 import torch
 from transformers.modeling_utils import PreTrainedModel
 from transformers.trainer import WEIGHTS_NAME
 
 import ray.cloudpickle as cpickle
-from ray.ml.predictor import DataBatchType
 from ray.ml.predictors.integrations.torch import TorchPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint

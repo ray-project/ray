@@ -22,13 +22,13 @@ from ray.ml.constants import EVALUATION_DATASET_KEY, PREPROCESSOR_KEY, TRAIN_DAT
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.trainer import GenDataset
+from ray.ml.train.data_parallel_trainer import _DataParallelCheckpointManager
 from ray.ml.train.integrations.huggingface.huggingface_utils import (
     CHECKPOINT_PATH_ON_NODE_KEY,
     NODE_IP_KEY,
     process_dataset_for_hf,
     TrainReportCallback,
 )
-from ray.train.checkpoint import TuneCheckpointManager
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
 from ray.tune.trainable import Trainable
@@ -48,13 +48,9 @@ from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 # The checkpoint is turned into a dict with node ip & path
 # in HuggingFaceTrainer.as_trainable
 # TODO(team-ml): Refactor checkpoint management along with Tune.
-class _DataParallelSyncingCheckpointManager(TuneCheckpointManager):
+class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
     """Same as _DataParallelCheckpointManager, but syncs the dir instead
     of serializing it."""
-
-    def on_init(self, preprocessor: Preprocessor):
-        self.preprocessor = preprocessor
-        super(_DataParallelSyncingCheckpointManager, self).on_init()
 
     def write_checkpoint(self, checkpoint: Dict):
         # If inside a Tune Trainable, then checkpoint with Tune.
@@ -84,10 +80,6 @@ class _DataParallelSyncingCheckpointManager(TuneCheckpointManager):
             # add tune checkpoint id
             with open(checkpoint_dir.joinpath(TUNE_CHECKPOINT_ID), "w") as f:
                 f.write(str(self._latest_checkpoint_id))
-
-    @property
-    def latest_checkpoint_dir(self) -> Optional[Path]:
-        raise NotImplementedError
 
 
 @PublicAPI(stability="alpha")
@@ -231,9 +223,7 @@ class HuggingFaceTrainer(TorchTrainer):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
-    _checkpoint_manager_cls: Type[
-        TuneCheckpointManager
-    ] = _DataParallelSyncingCheckpointManager
+    _checkpoint_manager_cls = _DataParallelSyncingCheckpointManager
 
     def __init__(
         self,
