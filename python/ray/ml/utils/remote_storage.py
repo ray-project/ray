@@ -68,6 +68,17 @@ def is_non_local_path_uri(uri: str) -> bool:
 _cached_fs = {}
 
 
+class _CustomFSSpecHandler(pyarrow.fs.FSSpecHandler):
+    """Custom FSSpecHandler that avoids bugs in some fsspec implementations."""
+
+    def create_dir(self, path, recursive):
+        try:
+            # No `create_parents` argument
+            self.fs.mkdir(path)
+        except FileExistsError:
+            pass
+
+
 def get_fs_and_path(
     uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
@@ -100,7 +111,12 @@ def get_fs_and_path(
         # Raised when protocol not known
         return None, None
 
-    fs = pyarrow.fs.PyFileSystem(pyarrow.fs.FSSpecHandler(fsspec_fs))
+    fsspec_handler = pyarrow.fs.FSSpecHandler
+    if parsed.scheme == "gs":
+        # GS doesn't support `create_parents` arg in `create_dir()`
+        fsspec_handler = _CustomFSSpecHandler
+
+    fs = pyarrow.fs.PyFileSystem(fsspec_handler(fsspec_fs))
     _cached_fs[cache_key] = fs
 
     return fs, path
