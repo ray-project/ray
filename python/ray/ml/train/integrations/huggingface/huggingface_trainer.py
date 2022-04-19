@@ -26,7 +26,7 @@ from ray.ml.train.data_parallel_trainer import _DataParallelCheckpointManager
 from ray.ml.train.integrations.huggingface.huggingface_utils import (
     CHECKPOINT_PATH_ON_NODE_KEY,
     NODE_IP_KEY,
-    process_dataset_for_hf,
+    process_datasets,
     TrainReportCallback,
 )
 from ray.train.constants import TUNE_CHECKPOINT_ID
@@ -100,6 +100,10 @@ class HuggingFaceTrainer(TorchTrainer):
     the "train" key), then it will be split into multiple dataset
     shards, with each Actor training on a single shard.
     All the other datasets will not be split.
+
+    The datasets will NOT be shuffled by default. Call ``Dataset.random_shuffle()``
+    on the "train" dataset you are passing in ``datasets`` if you wish for the
+    training data to be shuffled.
 
     Please note that if you use a custom ``transformers.Trainer`` subclass,
     the ``get_train_dataloader`` method will be overriden to disable distributed
@@ -341,22 +345,9 @@ def _huggingface_train_loop_per_worker(config):
 
     train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
-    train_columns = set(train_dataset.schema(fetch_if_missing=True).names)
-
-    # HF-specific format. See transformers.Trainer._prepare_inputs
-    feature_columns = {column: [column] for column in train_columns}
-
-    batch_size = 1
-    train_torch_dataset = process_dataset_for_hf(
-        train_dataset, feature_columns, batch_size=batch_size
+    train_torch_dataset, eval_torch_dataset = process_datasets(
+        train_dataset, eval_dataset
     )
-
-    if eval_dataset:
-        eval_torch_dataset = process_dataset_for_hf(
-            eval_dataset, feature_columns, batch_size=batch_size
-        )
-    else:
-        eval_torch_dataset = None
 
     # TODO(yard1): Automatically set `no_cuda` somehow
     trainer: transformers.trainer.Trainer = trainer_init_per_worker(

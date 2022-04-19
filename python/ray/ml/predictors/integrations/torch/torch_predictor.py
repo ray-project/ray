@@ -55,19 +55,39 @@ class TorchPredictor(Predictor):
         )
         return TorchPredictor(model=model, preprocessor=preprocessor)
 
+    # parity with Datset.to_torch
     def _convert_to_tensor(
         self,
         data: pd.DataFrame,
         feature_columns: Optional[
             Union[List[str], List[List[str]], List[int], List[List[int]]]
-        ],
-        dtype: Optional[torch.dtype],
-    ):
+        ] = None,
+        dtypes: Optional[torch.dtype] = None,
+        unsqueeze: bool = True,
+    ) -> torch.Tensor:
         # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
         # Reduce conversion cost if input is in Numpy
-        return convert_pandas_to_torch_tensor(
-            data, columns=feature_columns, column_dtypes=dtype
-        )
+        if isinstance(feature_columns, dict):
+            features_tensor = {
+                key: convert_pandas_to_torch_tensor(
+                    data,
+                    feature_columns[key],
+                    dtypes[key] if isinstance(dtypes, dict) else dtypes,
+                    unsqueeze=unsqueeze,
+                )
+                for key in feature_columns
+            }
+        else:
+            features_tensor = convert_pandas_to_torch_tensor(
+                data,
+                columns=feature_columns,
+                column_dtypes=dtypes,
+                unsqueeze=unsqueeze,
+            )
+        return features_tensor
+
+    def _predict(self, tensor: torch.Tensor) -> np.ndarray:
+        return self.model(tensor).cpu().detach().numpy()
 
     def predict(
         self,
@@ -76,6 +96,7 @@ class TorchPredictor(Predictor):
             Union[List[str], List[List[str]], List[int], List[List[int]]]
         ] = None,
         dtype: Optional[torch.dtype] = None,
+        unsqueeze: bool = True,
     ) -> DataBatchType:
         """Run inference on data batch.
 
@@ -87,12 +108,19 @@ class TorchPredictor(Predictor):
                 array.
             feature_columns: The names or indices of the columns in the
                 data to use as features to predict on. If this arg is a
-                list of lists, then the data batch will be converted into a
+                list of lists or a dict of  string-list pairs, then the
+                data batch will be converted into a
                 multiple tensors which are then concatenated before feeding
                 into the model. This is useful for multi-input models. If
                 None, then use all columns in ``data``.
-            dtype: The torch dtype to use when creating the torch tensor.
-                If set to None, then automatically infer the dtype.
+            dtype: The dtypes to use for the tensors. This should match the
+                format of ``feature_columns``, or be a single dtype, in which
+                case it will be applied to all tensors.
+                If None, then automatically infer the dtype.
+            unsqueeze_feature_tensors (bool): If set to True, the features tensors
+                will be unsqueezed (reshaped to (N, 1)) before being concatenated into
+                the final features tensor. Otherwise, they will be left as is, that is
+                (N, ). Defaults to True.
 
         Examples:
 
@@ -142,7 +170,7 @@ class TorchPredictor(Predictor):
             data = pd.DataFrame(data)
 
         tensor = self._convert_to_tensor(
-            data, columns=feature_columns, column_dtypes=dtype
+            data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
         )
-        prediction = self.model(tensor).cpu().detach().numpy()
+        prediction = self._predict(tensor)
         return pd.DataFrame(prediction, columns=["predictions"])

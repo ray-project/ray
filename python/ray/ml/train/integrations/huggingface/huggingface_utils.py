@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Generator, Iterator, List
+from typing import Dict, Generator, Iterator, List, Tuple
 
 import torch
 import transformers.trainer
@@ -24,7 +24,12 @@ class HFIterableDataset(IterableDataset):
         it = self.generator
         for x in it:
             # HF-specific format. See transformers.Trainer._prepare_inputs
-            yield {**x[0]}
+            if isinstance(x, dict):
+                # Just features
+                yield x
+            else:
+                # Features and labels
+                yield x[0]
 
 
 class HFIterableDatasetWithLen(HFIterableDataset):
@@ -64,6 +69,37 @@ def process_dataset_for_hf(
     return torch_dataset
 
 
+def process_datasets(
+    train_dataset: Dataset, eval_dataset: Dataset
+) -> Tuple[IterableDataset, IterableDataset]:
+    """Convert Ray train and validation to HF-friendly IterableDatasets."""
+    train_columns = set(train_dataset.schema(fetch_if_missing=True).names)
+
+    # HF-specific format. See transformers.Trainer._prepare_inputs
+    feature_columns = {column: [column] for column in train_columns}
+
+    # This is set to 1 to ensure that the model input format
+    # is the same as with HF's Dataset. If we were to pass
+    # an n>1 batch obtained from to_torch to HF Trainer,
+    # the format will differ, and the example count calculation
+    # will be messed up (as it assumes that it will always get
+    # just one row per output of the IterableDataset).
+    # TODO (yard1): Investigate if we can work around this.
+    batch_size = 1
+    train_torch_dataset = process_dataset_for_hf(
+        train_dataset, feature_columns, batch_size=batch_size
+    )
+
+    if eval_dataset:
+        eval_torch_dataset = process_dataset_for_hf(
+            eval_dataset, feature_columns, batch_size=batch_size
+        )
+    else:
+        eval_torch_dataset = None
+
+    return train_torch_dataset, eval_torch_dataset
+
+
 class TrainReportCallback(TrainerCallback):
     """HF TrainerCallback for Ray Train metric reporting & checkpointing."""
 
@@ -79,6 +115,12 @@ class TrainReportCallback(TrainerCallback):
         # steps/epochs to match the training iteration.
         self.last_step = None
         super().__init__()
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if control.should_training_stop:
+            # always save at end
+            control.should_save = True
+        return control
 
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
         if state.global_step == self.last_step:
