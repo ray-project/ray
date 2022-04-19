@@ -18,12 +18,17 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "train_gpu_connect")
 
-    runtime_env = {"env_vars": {"RXGB_PLACEMENT_GROUP_TIMEOUT_S": "1200"}}
+    runtime_env = {
+        "env_vars": {
+            "RXGB_PLACEMENT_GROUP_TIMEOUT_S": "1200",
+            "NCCL_SOCKET_IFNAME": "ens3",
+        }
+    }
 
     if addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name, runtime_env=runtime_env)
     else:
-        ray.init(address="auto")
+        ray.init(address="auto", runtime_env=runtime_env)
 
     from xgboost_ray import RayParams
     from ray.util.xgboost.release_test_util import train_ray, get_parquet_files
