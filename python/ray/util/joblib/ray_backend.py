@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+from joblib import Parallel
 from joblib._parallel_backends import MultiprocessingBackend
 from joblib.pool import PicklingPool
 import logging
@@ -16,8 +17,8 @@ class RayBackend(MultiprocessingBackend):
 
     def __init__(
         self,
-        nesting_level=None,
-        inner_max_num_threads=None,
+        nesting_level: Optional[int] = None,
+        inner_max_num_threads: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
@@ -35,10 +36,10 @@ class RayBackend(MultiprocessingBackend):
 
     def configure(
         self,
-        n_jobs=1,
-        parallel=None,
-        prefer=None,
-        require=None,
+        n_jobs: int = 1,
+        parallel: Optional[Parallel] = None,
+        prefer: Optional[str] = None,
+        require: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **memmappingpool_args
     ):

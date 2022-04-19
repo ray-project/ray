@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple, Optional, Any, Dict, Hashable
+from typing import Callable, Iterable, List, Tuple, Optional, Any, Dict, Hashable
 import logging
 from multiprocessing import TimeoutError
 import os
@@ -482,12 +482,12 @@ class Pool:
 
     def __init__(
         self,
-        processes=None,
-        initializer=None,
-        initargs=None,
-        maxtasksperchild=None,
-        context=None,
-        ray_address=None,
+        processes: Optional[int] = None,
+        initializer: Optional[Callable] = None,
+        initargs: Optional[Iterable] = None,
+        maxtasksperchild: Optional[int] = None,
+        context: Any = None,
+        ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         self._closed = False
@@ -599,7 +599,12 @@ class Pool:
         self._actor_pool[actor_index] = (actor, count)
         return object_ref
 
-    def apply(self, func, args=None, kwargs=None):
+    def apply(
+        self,
+        func: Callable,
+        args: Optional[Tuple] = None,
+        kwargs: Optional[Dict] = None,
+    ):
         """Run the given function on a random actor process and return the
         result synchronously.
 
@@ -616,9 +621,9 @@ class Pool:
 
     def apply_async(
         self,
-        func,
-        args=None,
-        kwargs=None,
+        func: Callable,
+        args: Optional[Tuple] = None,
+        kwargs: Optional[Dict] = None,
         callback: Callable[[Any], None] = None,
         error_callback: Callable[[Exception], None] = None,
     ):
@@ -736,7 +741,7 @@ class Pool:
         )
         return AsyncResult(object_refs, callback, error_callback)
 
-    def map(self, func, iterable, chunksize=None):
+    def map(self, func: Callable, iterable: Iterable, chunksize: Optional[int] = None):
         """Run the given function on each element in the iterable round-robin
         on the actor processes and return the results synchronously.
 
@@ -757,9 +762,9 @@ class Pool:
 
     def map_async(
         self,
-        func,
-        iterable,
-        chunksize=None,
+        func: Callable,
+        iterable: Iterable,
+        chunksize: Optional[int] = None,
         callback: Callable[[List], None] = None,
         error_callback: Callable[[Exception], None] = None,
     ):
@@ -804,8 +809,8 @@ class Pool:
 
     def starmap_async(
         self,
-        func,
-        iterable,
+        func: Callable,
+        iterable: Iterable,
         callback: Callable[[List], None] = None,
         error_callback: Callable[[Exception], None] = None,
     ):
@@ -821,7 +826,7 @@ class Pool:
             error_callback=error_callback,
         )
 
-    def imap(self, func, iterable, chunksize=1):
+    def imap(self, func: Callable, iterable: Iterable, chunksize: Optional[int] = 1):
         """Same as `map`, but only submits one batch of tasks to each actor
         process at a time.
 
@@ -838,7 +843,9 @@ class Pool:
         self._check_running()
         return OrderedIMapIterator(self, func, iterable, chunksize=chunksize)
 
-    def imap_unordered(self, func, iterable, chunksize=1):
+    def imap_unordered(
+        self, func: Callable, iterable: Iterable, chunksize: Optional[int] = 1
+    ):
         """Same as `map`, but only submits one batch of tasks to each actor
         process at a time.
 
