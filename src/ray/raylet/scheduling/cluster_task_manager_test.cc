@@ -183,9 +183,8 @@ RayTask CreateTask(
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
  public:
-  MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects,
-                            std::unordered_set<TaskID> &blocked_tasks)
-      : missing_objects_(missing_objects), blocked_tasks_(blocked_tasks) {}
+  MockTaskDependencyManager(std::unordered_set<ObjectID> &missing_objects)
+      : missing_objects_(missing_objects) {}
 
   bool RequestTaskDependencies(
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
@@ -203,14 +202,14 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
   }
 
   bool TaskDependenciesBlocked(const TaskID &task_id) const {
-    return blocked_tasks_.count(task_id);
+    return blocked_tasks.count(task_id);
   }
 
   bool CheckObjectLocal(const ObjectID &object_id) const { return true; }
 
   std::unordered_set<ObjectID> &missing_objects_;
-  std::unordered_set<TaskID> &blocked_tasks_;
   std::unordered_set<TaskID> subscribed_tasks;
+  std::unordered_set<TaskID> blocked_tasks;
 };
 
 class FeatureFlagEnvironment : public ::testing::Environment {
@@ -239,7 +238,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
-        dependency_manager_(missing_objects_, blocked_tasks_),
+        dependency_manager_(missing_objects_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
             scheduler_,
@@ -367,7 +366,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
   MockWorkerPool pool_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
-  std::unordered_set<TaskID> blocked_tasks_;
 
   bool is_owner_alive_;
   int default_arg_size_ = 10;
