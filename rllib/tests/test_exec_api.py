@@ -25,6 +25,7 @@ class TestDistributedExecution(unittest.TestCase):
                 config={
                     "min_time_s_per_reporting": 0,
                     "framework": fw,
+                    "_disable_execution_plan_api": False,
                 },
             )
             result = trainer.train()
@@ -47,6 +48,7 @@ class TestDistributedExecution(unittest.TestCase):
                 config={
                     "min_time_s_per_reporting": 0,
                     "framework": fw,
+                    "_disable_execution_plan_api": False,
                 },
             )
             res1 = trainer.train()
