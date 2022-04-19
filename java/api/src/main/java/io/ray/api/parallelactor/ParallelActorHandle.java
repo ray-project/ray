@@ -3,8 +3,8 @@ package io.ray.api.parallelactor;
 import io.ray.api.ActorHandle;
 
 /**
- * A `ParallelActor` could be used for creating multiple execution instances in different threads,
- * to execute the methods.
+ * A `ParallelActorHandle` could be used for creating multiple execution instances in different
+ * threads, to execute the methods.
  *
  * <p>Every thread holds an instance to `A`, and the methods will be invoked on the instance which
  * is calculated according to the parallel strategy.

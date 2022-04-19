@@ -16,7 +16,7 @@ public class ParallelActorCreator<A> {
     this.args = args;
   }
 
-  public ParallelActorCreator<A> setParallels(int parallelNum) {
+  public ParallelActorCreator<A> setParallelism(int parallelNum) {
     this.parallelNum = parallelNum;
     return this;
   }
