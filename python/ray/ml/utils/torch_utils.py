@@ -53,10 +53,15 @@ def convert_pandas_to_torch_tensor(
     def tensorize(vals, dtype):
         """This recursive function allows to convert pyarrow List dtypes
         to multi-dimensional tensors."""
-        if vals.dtype == np.object:
+        try:
+            return torch.as_tensor(vals, dtype=dtype)
+        except TypeError:
+            # This exception will be raised if vals is of object dtype
+            # or otherwise cannot be made into a tensor directly.
+            # We assume it's a sequence in that case.
+            # This is more robust than checking for dtype.
             # TODO(yard1): clarify if this should be cat or stack
-            return torch.stack([tensorize(x, dtype) for x in vals])
-        return torch.as_tensor(vals, dtype=dtype)
+            return torch.cat([tensorize(x, dtype) for x in vals])
 
     def get_tensor_for_columns(columns, dtype):
         feature_tensors = []
