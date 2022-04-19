@@ -414,7 +414,9 @@ class SampleBatch(dict):
         self_as_dict = {k: v for k, v in self.items()}
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
         self.update(shuffled)
-
+        # Flush cache such that intercepted values are recalculated after the
+        # shuffling.
+        self.intercepted_values = {}
         return self
 
     @PublicAPI
