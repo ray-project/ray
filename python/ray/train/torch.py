@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_torch_distributed_sampler(dataset, shuffle):
+    # Returns a torch DistributedSampler
     return DistributedSampler(dataset, shuffle=shuffle)
 
 
@@ -116,7 +117,8 @@ class TorchAccelerator(Accelerator):
 
         return model
 
-    def _patch_model_forward_and_state(self, model):
+    @staticmethod
+    def _patch_model_forward_and_state(model):
         def wrap_forward(forward):
             @functools.wraps(forward)
             def wrapper(*args, **kwargs):
