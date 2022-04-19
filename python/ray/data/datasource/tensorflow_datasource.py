@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class SimpleTensorFlowDataset(Datasource[T]):
+class SimpleTensorFlowDatasource(Datasource[T]):
     """A datasource that let's you use TensorFlow datasets with Ray Data.
 
     .. warning::
@@ -18,11 +18,15 @@ class SimpleTensorFlowDataset(Datasource[T]):
         this datasource for small datasets like MNIST or CIFAR.
 
     Example:
-        >>> dataset_factory = lambda: tfds.load("cifar10", split=["train"], as_supervised=True)[0]
+        >>> def dataset_factory():
+        ...     return tfds.load("cifar10", split=["train"], as_supervised=True)[0]
+        ...
         >>> dataset = ray.data.read_datasource(
-                SimpleTensorFlowDatasource(), parallelism=1, dataset_factory=dataset_factory
-            )
-        >>> next(dataset.iter_batches(batch_size=1))
+        ...     SimpleTensorFlowDatasource(),
+        ...     parallelism=1,
+        ...     dataset_factory=dataset_factory
+        ... )
+        >>> dataset.take(1)
         # TODO
     """
 
@@ -35,7 +39,8 @@ class SimpleTensorFlowDataset(Datasource[T]):
 
         Arguments:
             parallelism: This argument isn't used.
-            dataset_factory: A no-argument function that returns a Torch dataset.
+            dataset_factory: A no-argument function that returns the TensorFlow dataset
+                to be read.
         """
         import tensorflow as tf
 

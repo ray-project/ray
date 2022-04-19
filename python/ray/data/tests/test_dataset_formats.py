@@ -14,7 +14,7 @@ from io import BytesIO
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.datasource import DummyOutputDatasource
+from ray.data.datasource import DummyOutputDatasource, SimpleTensorFlowDatasource
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
@@ -1455,6 +1455,37 @@ def test_csv_write_block_path_provider(
         ]
     )
     assert df.equals(ds_df)
+
+
+def test_tensorflow_datasource(ray_start_regular_shared):
+    import tensorflow_datasets as tfds
+
+    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+    expected_data = list(tf_dataset)
+
+    def dataset_factory():
+        return tfds.load("mnist", split=["train"], as_supervised=True)[0]
+
+    ray_dataset = ray.data.read_datasource(
+        SimpleTensorFlowDatasource(), parallelism=1, dataset_factory=dataset_factory
+    ).fully_executed()
+
+    assert ray_dataset.num_blocks() == 1
+    assert ray_dataset.take_all() == expected_data
+
+
+def test_tensorflow_datasource_value_error(ray_start_regular_shared, local_path):
+    import tensorflow_datasets as tfds
+
+    dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
+
+    with pytest.raises(ValueError):
+        # `dataset_factory` should be a function, not a TensorFlow dataset.
+        ray.data.read_datasource(
+            SimpleTensorFlowDatasource(),
+            parallelism=1,
+            dataset_factory=dataset,
+        )
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ from ray.data.datasource.file_based_datasource import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
-from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDataset
+from ray.data.datasource.tensorflow_datasource import SimpleTensorFlowDatasource
 
 __all__ = [
     "JSONDatasource",
