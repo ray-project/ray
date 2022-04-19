@@ -1,6 +1,5 @@
 import ray
 from ray.experimental.dag.py_obj_scanner import _PyObjScanner
-from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 
 from typing import (
     Optional,
@@ -14,7 +13,6 @@ from typing import (
     Set,
 )
 import uuid
-import json
 
 T = TypeVar("T")
 
@@ -291,55 +289,3 @@ class DAGNode:
             )
         else:
             return self.__getattribute__(attr)
-
-    def to_json_base(
-        self, encoder_cls: json.JSONEncoder, dag_node_type: str
-    ) -> Dict[str, Any]:
-        """
-        Base JSON serializer for DAGNode types with base info. Each DAGNode
-        subclass needs to update with its own fields.
-
-        JSON serialization is not hard requirement for functionalities of a
-        DAG authored at Ray level, therefore implementations here meant to
-        facilitate JSON encoder implemenation in other libraries such as Ray
-        Serve.
-
-        Args:
-            encoder_cls (json.JSONEncoder): JSON encoder class used to handle
-                DAGNode nested in any args or options, created and passed from
-                caller, and is expected to be the same across all DAGNode types.
-
-        Returns:
-            json_dict (Dict[str, Any]): JSON serialized DAGNode.
-        """
-        return {
-            DAGNODE_TYPE_KEY: dag_node_type,
-            # Will be overriden by build()
-            "import_path": "",
-            "args": self.get_args(),
-            "kwargs": self.get_kwargs(),
-            # .options() should not contain any DAGNode type
-            "options": self.get_options(),
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
-            "uuid": self.get_stable_uuid(),
-        }
-
-    @staticmethod
-    def from_json_base(input_json, object_hook=None):
-        # Post-order JSON deserialization
-        # args = json.loads(input_json["args"], object_hook=object_hook)
-        # kwargs = json.loads(input_json["kwargs"], object_hook=object_hook)
-        # # .options() should not contain any DAGNode type
-        # options = json.loads(input_json["options"])
-        # other_args_to_resolve = json.loads(
-        #     input_json["other_args_to_resolve"], object_hook=object_hook
-        # )
-        # uuid = input_json["uuid"]
-
-        return {
-            "args": input_json["args"],
-            "kwargs": input_json["kwargs"],
-            "options": input_json["options"],
-            "other_args_to_resolve": input_json["other_args_to_resolve"],
-            "uuid": input_json["uuid"],
-        }

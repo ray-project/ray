@@ -1,4 +1,3 @@
-import pprint
 import pytest
 import json
 from typing import TypeVar
@@ -350,7 +349,7 @@ class TestHandleJSON:
         assert await call(handle, "hi") == "hi"
 
 
-def test_playground():
+def test_chain_of_values():
     with InputNode() as dag_input:
         out = fn.bind(1)
         out_2 = fn.bind(out, incr=2)
@@ -359,13 +358,9 @@ def test_playground():
         ray_dag = model.forward.bind(dag_input)
 
     json_serialized = json.dumps(ray_dag, cls=DAGNodeEncoder)
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(json.loads(json_serialized))
+    deserialized_dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
 
-    dag_node = json.loads(json_serialized, object_hook=dagnode_from_json)
-    print(dag_node)
-
-    print(ray.get(dag_node.execute(2)))
+    assert ray.get(deserialized_dag_node.execute(2)) == ray.get(ray_dag.execute(2))
 
 
 if __name__ == "__main__":
