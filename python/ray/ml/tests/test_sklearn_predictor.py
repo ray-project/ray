@@ -12,6 +12,7 @@ from ray.ml.predictors.integrations.sklearn import SklearnPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.ml.batch_predictor import BatchPredictor
 
 
 @pytest.fixture
@@ -41,11 +42,6 @@ def test_init():
     predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # This somewhat convoluted procedure is the same as in the
-        # Trainers. The reason for saving model to disk instead
-        # of directly to the dict as bytes is due to all callbacks
-        # following save to disk logic. Sklearn models are small
-        # enough that IO should not be an issue.
         with open(os.path.join(tmpdir, MODEL_KEY), "wb") as f:
             cpickle.dump(model, f)
         with open(os.path.join(tmpdir, PREPROCESSOR_KEY), "wb") as f:
@@ -81,6 +77,7 @@ def test_predict_set_cpus(ray_start_4_cpus):
 
     assert len(predictions) == 3
     assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert predictor.estimator.n_jobs == 2
 
 
 def test_predict_feature_columns():
@@ -113,11 +110,6 @@ def test_predict_feature_columns_pandas():
 
 def test_predict_no_preprocessor():
     with tempfile.TemporaryDirectory() as tmpdir:
-        # This somewhat convoluted procedure is the same as in the
-        # Trainers. The reason for saving model to disk instead
-        # of directly to the dict as bytes is due to all callbacks
-        # following save to disk logic. Sklearn models are small
-        # enough that IO should not be an issue.
         with open(os.path.join(tmpdir, MODEL_KEY), "wb") as f:
             cpickle.dump(model, f)
 
@@ -128,3 +120,20 @@ def test_predict_no_preprocessor():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
+
+
+def test_batch_prediction_with_set_cpus(ray_start_4_cpus):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, MODEL_KEY), "wb") as f:
+            cpickle.dump(model, f)
+
+        checkpoint = Checkpoint.from_directory(tmpdir)
+
+        batch_predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
+
+        test_dataset = ray.data.from_pandas(
+            pd.DataFrame(dummy_data, columns=["A", "B"])
+        )
+        batch_predictor.predict(
+            test_dataset, num_cpus_per_worker=2, num_estimator_cpus=2
+        )
