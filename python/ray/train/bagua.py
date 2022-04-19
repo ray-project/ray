@@ -35,8 +35,8 @@ def _get_torch_distributed_sampler(dataset, shuffle):
     # Return a torch DistributedSampler with Bagua configurations
     return DistributedSampler(
         dataset,
-        num_replicas=bagua.torch_api.get_world_size(),  # equivalent to ray.train.size()
-        rank=bagua.torch_api.get_rank(),  # equivalent to ray.train.world_rank()
+        num_replicas=bagua.torch_api.get_world_size(),
+        rank=bagua.torch_api.get_rank(),
         shuffle=shuffle,
     )
 
@@ -238,7 +238,7 @@ class BaguaBackend(TorchBackend):
                 # Following the current ray.train design, each worker uses only
                 # 1 GPU by default. To allow Bagua to use multiple GPUs per worker,
                 # override rank configurations for each spawned training process.
-                # reference: https://github.com/BaguaSys/bagua/blob/master/bagua/distributed/launch.py#L231-L237 # noqa: E501
+                # See https://github.com/BaguaSys/bagua/blob/master/bagua/distributed/launch.py#L231-L237 # noqa: E501
                 dist_rank = config.nproc_per_node * config.node_rank
                 current_env["RANK"] = str(dist_rank)
                 current_env["LOCAL_RANK"] = str(0)
