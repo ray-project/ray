@@ -21,4 +21,4 @@ post_build_cmds:
   - echo {{ env["TIMESTAMP"] }}
   - pip install -U xgboost # Upgrade to latest xgboost version so cached version is not used.
   - pip uninstall xgboost_ray -y # Uninstall first so pip does a reinstall.
-  - pip3 install -U --no-cache-dir git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
+  - pip install -U --no-cache-dir git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
