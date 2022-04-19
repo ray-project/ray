@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
+        self.usage_stats_enabled = not ray_usage_lib.usage_stats_disabled()
         self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(),
             num_retries=20,
@@ -32,6 +33,18 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self.total_failed = 0
         # The seq number of report. It increments whenever a new report is sent.
         self.seq_no = 0
+
+        if not dashboard_head.minimal:
+            import ray.dashboard.optional_utils as dashboard_optional_utils
+            import aiohttp.web
+            routes = dashboard_optional_utils.ClassMethodRouteTable
+            usage_stats_enabled = self.usage_stats_enabled
+            @routes.get("/usage_stats")
+            async def get_usage_stats_enabled(self, req) -> aiohttp.web.Response:
+                return dashboard_optional_utils.rest_response(
+                    success=True, message="Fetched usage stats enabled", enabled=usage_stats_enabled
+                )
+            setattr(self, "get_usage_stats_enabled", get_usage_stats_enabled)
 
     def _report_usage_sync(self):
         """
@@ -79,7 +92,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         await self._report_usage_async()
 
     async def run(self, server):
-        if ray_usage_lib.usage_stats_disabled():
+        if not self.usage_stats_enabled:
             logger.info("Usage reporting is disabled.")
             return
         else:
