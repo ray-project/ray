@@ -22,8 +22,8 @@ class SimpleTorchDatasource(Datasource[T]):
         >>> dataset = ray.data.read_datasource(
                 SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
             )
-        >>> next(dataset.iter_batches(batch_size=1))
-        [(<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)]
+        >>> dataset.take(1)
+        (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
     """
 
     def prepare_read(
