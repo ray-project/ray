@@ -42,6 +42,7 @@ from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_r
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.cli import job_cli_group
+from ray.experimental.state.state_cli import list_state_cli_group
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -2251,6 +2252,7 @@ cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
 add_command_alias(job_cli_group, name="job", hidden=True)
+add_command_alias(list_state_cli_group, name="list", hidden=True)
 
 try:
     from ray.serve.scripts import serve_cli
