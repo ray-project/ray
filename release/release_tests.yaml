@@ -828,7 +828,7 @@
 
   run:
     timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --bucket s3://data-test-ilr/durable_upload
+    script: python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
 
     wait_for_nodes:
       num_nodes: 4
@@ -860,7 +860,7 @@
     timeout: 600
 
     script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-      --bucket s3://data-test-ilr/durable_upload_rllib_str
+      --bucket s3://tune-cloud-tests/durable_upload_rllib_str
 
     wait_for_nodes:
       num_nodes: 4
@@ -891,7 +891,7 @@
   run:
     timeout: 600
     script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
-      --bucket s3://data-test-ilr/durable_upload_rllib_trainer
+      --bucket s3://tune-cloud-tests/durable_upload_rllib_trainer
 
     wait_for_nodes:
       num_nodes: 4
@@ -925,6 +925,10 @@
     script: python workloads/run_cloud_test.py no_sync_down --cpus-per-trial 8
     type: client
 
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 1200
+
   alert: tune_tests
 
 - name: tune_cloud_gcp_k8s_ssh_sync
@@ -950,6 +954,10 @@
     script: python workloads/run_cloud_test.py ssh_sync --cpus-per-trial 8
     type: client
 
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 1200
+
   alert: tune_tests
 
 - name: tune_cloud_gcp_k8s_durable_upload
@@ -972,8 +980,12 @@
 
   run:
     timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://jun-riot-test/durable_upload
+    script: python workloads/run_cloud_test.py durable_upload --cpus-per-trial 8 --bucket gs://tune-cloud-tests/durable_upload
     type: client
+
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 1200
 
   alert: tune_tests
 
@@ -1022,7 +1034,7 @@
 
   run:
     timeout: 900
-    script: python workloads/test_durable_trainable.py --bucket data-test-ilr
+    script: python workloads/test_durable_trainable.py --bucket tune-cloud-tests
     wait_for_nodes:
       num_nodes: 16
       timeout: 600
@@ -1315,7 +1327,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1343,7 +1355,7 @@
     script: python workloads/impala.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1433,7 +1445,7 @@
       timeout: 600
 
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1462,7 +1474,7 @@
     script: python workloads/many_tasks.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1491,7 +1503,7 @@
     script: python workloads/many_tasks_serialized_ids.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1520,7 +1532,7 @@
     script: python workloads/node_failures.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1549,7 +1561,7 @@
     script: python workloads/pbt.py
     long_running: true
     type: sdk_command
-    file_manager: job
+    file_manager: sdk
 
   smoke_test:
     frequency: disabled
@@ -1647,6 +1659,64 @@
       timeout: 3600
 
   alert: long_running_tests
+
+########################
+# Jobs tests
+########################
+
+- name: jobs_basic_local_working_dir
+  group: Jobs tests
+  working_dir: jobs_tests
+
+  legacy:
+    test_name: jobs_basic_local_working_dir
+    test_suite: jobs_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_basic.py --working-dir "workloads"
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default  
+
+- name: jobs_basic_remote_working_dir
+  group: Jobs tests
+  working_dir: jobs_tests
+
+  legacy:
+    test_name: jobs_basic_remote_working_dir
+    test_suite: jobs_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_4_xlarge.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/jobs_basic.py --working-dir "https://github.com/anyscale/job-services-cuj-examples/archive/refs/heads/main.zip"
+    wait_for_nodes:
+      num_nodes: 4
+      timeout: 600
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default 
 
 ########################
 # Runtime env tests
@@ -1965,11 +2035,11 @@
   alert: default
 
 ########################
-# RLLib tests
+# RLlib tests
 ########################
 
 - name: rllib_learning_tests
-  group: RLLib tests
+  group: RLlib tests
   working_dir: rllib_tests
 
   legacy:
@@ -1998,7 +2068,7 @@
   alert: default
 
 - name: rllib_multi_gpu_learning_tests
-  group: RLLib tests
+  group: RLlib tests
   working_dir: rllib_tests
 
   legacy:
@@ -2021,7 +2091,7 @@
   alert: default
 
 - name: rllib_multi_gpu_with_lstm_learning_tests
-  group: RLLib tests
+  group: RLlib tests
   working_dir: rllib_tests
 
   legacy:
@@ -2044,7 +2114,7 @@
   alert: default
 
 - name: rllib_multi_gpu_with_attention_learning_tests
-  group: RLLib tests
+  group: RLlib tests
   working_dir: rllib_tests
 
   legacy:
@@ -2067,7 +2137,7 @@
   alert: default
 
 - name: rllib_stress_tests
-  group: RLLib tests
+  group: RLlib tests
   working_dir: rllib_tests
 
   legacy:
@@ -3338,6 +3408,58 @@
   run:
     timeout: 7200
     script: python ray_sgd_runner.py --address auto --use-gpu --num-epochs 1
+    type: sdk_command
+    file_manager: sdk
+
+- name: dataset_shuffle_random_shuffle_1tb
+  group: core-multi-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: dataset_shuffle_random_shuffle_1tb
+    test_suite: dataset_test
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
+
+  run:
+    timeout: 7200
+    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
+
+    wait_for_nodes:
+      num_nodes: 20
+      timeout: 900
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: dataset_shuffle_sort_1tb
+  group: core-multi-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: dataset_shuffle_sort_1tb
+    test_suite: dataset_test
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
+
+  run:
+    timeout: 7200
+    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
+
+    wait_for_nodes:
+      num_nodes: 20
+      timeout: 900
+
     type: sdk_command
     file_manager: sdk
 

@@ -48,7 +48,6 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     RayConfig::instance().gcs_max_active_rpcs_per_handler() = -1;
 
     config.grpc_server_port = 6379;
-    config.grpc_pubsub_enabled = true;
 
     config.node_ip_address = "127.0.0.1";
     config.grpc_server_name = "MockedGcsServer";
@@ -132,7 +131,9 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
   // It's useful to check if index value will be marked as address suffix.
   for (int index = 0; index < node_count; ++index) {
     auto node_table_data =
-        Mocker::GenNodeInfo(index, std::string("127.0.0.") + std::to_string(index));
+        Mocker::GenNodeInfo(index,
+                            std::string("127.0.0.") + std::to_string(index),
+                            "Mocker_node_" + std::to_string(index * 10));
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
         *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -145,6 +146,9 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
     node_data.ParseFromString(node_table[index]);
     ASSERT_EQ(node_data.node_manager_address(),
               std::string("127.0.0.") + std::to_string(node_data.node_manager_port()));
+    ASSERT_EQ(
+        node_data.node_name(),
+        std::string("Mocker_node_") + std::to_string(node_data.node_manager_port() * 10));
   }
 }
 

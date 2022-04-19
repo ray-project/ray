@@ -23,7 +23,7 @@ DEFAULT_CONFIG = with_common_config({
 
     # Bandits cant afford to do one timestep per iteration as it is extremely
     # slow because of metrics collection overhead. This setting means that the
-    # agent will be trained for 100 times in one iteration of Rllib
+    # agent will be trained for 100 times in one iteration of RLlib
     "timesteps_per_iteration": 100,
 })
 # __sphinx_doc_end__

@@ -2,32 +2,35 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+import logging
 import os
+import socket
 import subprocess
 import sys
-import socket
-from typing import Optional
 from tempfile import mkstemp
+from typing import Optional
 
 import pytest
 import pydantic
 import requests
 
 import ray
-from ray import serve
-from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
-from ray.serve.exceptions import RayServeException
-from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
-from ray.serve.config import HTTPOptions
-from ray.serve.api import internal_get_global_client
+import ray._private.gcs_utils as gcs_utils
+from ray._private.services import new_port
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     convert_actor_state,
 )
-from ray._private.services import new_port
-import ray._private.gcs_utils as gcs_utils
+from ray.cluster_utils import Cluster, cluster_not_supported
+
+from ray import serve
+from ray.serve.api import internal_get_global_client
+from ray.serve.config import HTTPOptions
+from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
+from ray.serve.exceptions import RayServeException
+from ray.serve.generated.serve_pb2 import ActorNameList
+from ray.serve.utils import block_until_http_ready, get_all_node_ids, format_actor_name
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -447,6 +450,10 @@ def test_fixed_number_proxies(ray_cluster):
     node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
     assert len(node_to_http_actors) == 2
 
+    proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
+    proxy_names = ActorNameList.FromString(proxy_names_bytes)
+    assert len(proxy_names.names) == 2
+
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
@@ -641,11 +648,7 @@ def test_snapshot_always_written_to_internal_kv(
 
 
 def test_serve_start_different_http_checkpoint_options_warning(caplog):
-    import logging
-    from tempfile import mkstemp
-    from ray.serve.utils import logger
-    from ray._private.services import new_port
-
+    logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
     warning_msg = []

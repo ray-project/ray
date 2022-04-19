@@ -4,7 +4,7 @@ import ray
 from ray import tune
 
 from ray.ml.preprocessor import Preprocessor
-from ray.ml.trainer import Trainer, TrainingFailedError
+from ray.ml.trainer import Trainer
 
 
 @pytest.fixture
@@ -27,6 +27,15 @@ class DummyPreprocessor(Preprocessor):
 
 
 class DummyTrainer(Trainer):
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+        "trainer_resources",
+    ]
+
     def __init__(self, train_loop, custom_arg=None, **kwargs):
         self.custom_arg = custom_arg
         self.train_loop = train_loop
@@ -154,7 +163,7 @@ def test_fail(ray_start_4_cpus):
         raise ValueError
 
     trainer = DummyTrainer(fail)
-    with pytest.raises(TrainingFailedError):
+    with pytest.raises(ValueError):
         trainer.fit()
 
 

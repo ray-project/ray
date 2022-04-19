@@ -74,8 +74,11 @@ Configuration
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
-Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__. See the
-`algorithms documentation <rllib-algorithms.html>`__ for more information.
+Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of
+`common hyperparameters <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__
+(soon to be replaced by `TrainerConfig objects <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer_config.py>`__).
+
+See the `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
 In an example below, we train A2C by specifying 8 workers through the config flag.
 
@@ -143,8 +146,25 @@ Here are some rules of thumb for scaling training with RLlib.
 
 4. Finally, if both model and environment are compute intensive, then enable `remote worker envs <rllib-env.html#vectorized>`__ with `async batching <rllib-env.html#vectorized>`__ by setting ``remote_worker_envs: True`` and optionally ``remote_env_batch_wait_ms``. This batches inference on GPUs in the rollout workers while letting envs run asynchronously in separate actors, similar to the `SEED <https://ai.googleblog.com/2020/03/massively-scaling-reinforcement.html>`__ architecture. The number of workers and number of envs per worker should be tuned to maximize GPU utilization. If your env requires GPUs to function, or if multi-node SGD is needed, then also consider :ref:`DD-PPO <ddppo>`.
 
+
+In case you are using lots of workers (``num_workers >> 10``) and you observe worker failures for whatever reasons, which normally interrupt your RLlib training runs, consider using
+the config settings ``ignore_worker_failures=True`` or ``recreate_failed_workers=True``:
+
+``ignore_worker_failures=True`` allows your Trainer to not crash due to a single worker error, but to continue for as long as there is at least one functional worker remaining.
+``recreate_failed_workers=True`` will have your Trainer attempt to replace/recreate any failed worker(s) with a new one.
+
+Both these settings will make your training runs much more stable and more robust against occasional OOM or other similar "once in a while" errors.
+
+
 Common Parameters
 ~~~~~~~~~~~~~~~~~
+
+.. tip::
+    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.agents.trainer_config.TrainerConfig`
+    objects, which have the advantage of being type safe, allowing users to set different config settings within
+    meaningful sub-categories (e.g. ``my_config.training(lr=0.0003)``), and offer the ability to
+    construct a Trainer instance from these config objects (via their ``build()`` method).
+    So far, this is only supported for the :py:class:`~ray.rllib.agents.ppo.ppo.PPOTrainer`.
 
 The following is a list of the common algorithm hyperparameters:
 

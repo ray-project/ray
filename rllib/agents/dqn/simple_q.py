@@ -19,6 +19,7 @@ from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.utils.replay_buffers.replay_buffer import validate_buffer_config
 from ray.rllib.execution.rollout_ops import (
     ParallelRollouts,
     synchronous_parallel_sample,
@@ -36,7 +37,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
@@ -48,6 +48,9 @@ from ray.rllib.utils.typing import (
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_TARGET_UPDATES,
+)
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,12 +88,19 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
-    # Deprecated for Simple Q because of new ReplayBuffer API
-    # Use MultiAgentPrioritizedReplayBuffer for prioritization.
+    # The following values have moved because of the new ReplayBuffer API
     "prioritized_replay": DEPRECATED_VALUE,
+    "learning_starts": DEPRECATED_VALUE,
+    "replay_batch_size": DEPRECATED_VALUE,
+    "replay_sequence_length": DEPRECATED_VALUE,
+    "prioritized_replay_alpha": DEPRECATED_VALUE,
+    "prioritized_replay_beta": DEPRECATED_VALUE,
+    "prioritized_replay_eps": DEPRECATED_VALUE,
     "replay_buffer_config": {
         # Use the new ReplayBuffer API here
         "_enable_replay_buffer_api": True,
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": 1000,
         "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
         "replay_batch_size": 32,
@@ -110,7 +120,7 @@ DEFAULT_CONFIG = with_common_config({
     # === Optimization ===
     # Learning rate for adam optimizer
     "lr": 5e-4,
-    # Learning rate schedule
+    # Learning rate schedule.
     # In the format of [[timestep, value], [timestep, value], ...]
     # A schedule should normally start from timestep 0.
     "lr_schedule": None,
@@ -118,8 +128,6 @@ DEFAULT_CONFIG = with_common_config({
     "adam_epsilon": 1e-8,
     # If not None, clip gradients during optimization at this value
     "grad_clip": 40,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
@@ -172,24 +180,7 @@ class SimpleQTrainer(Trainer):
                     " used at the same time!"
                 )
 
-        if config.get("prioritized_replay") or config.get(
-            "replay_buffer_config", {}
-        ).get("prioritized_replay"):
-            if config["multiagent"]["replay_mode"] == "lockstep":
-                raise ValueError(
-                    "Prioritized replay is not supported when replay_mode=lockstep."
-                )
-            elif config.get("replay_sequence_length", 0) > 1:
-                raise ValueError(
-                    "Prioritized replay is not supported when "
-                    "replay_sequence_length > 1."
-                )
-        else:
-            if config.get("worker_side_prioritization"):
-                raise ValueError(
-                    "Worker side prioritization is not supported when "
-                    "prioritized_replay=False."
-                )
+        validate_buffer_config(config)
 
         # Multi-agent mode and multi-GPU optimizer.
         if config["multiagent"]["policies"] and not config["simple_optimizer"]:
@@ -269,8 +260,10 @@ class SimpleQTrainer(Trainer):
         batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()
 
-        # (1) Sample (MultiAgentBatch) from workers
-        new_sample_batches = synchronous_parallel_sample(self.workers)
+        # (1) Sample (MultiAgentBatches) from workers
+        new_sample_batches = synchronous_parallel_sample(
+            worker_set=self.workers, concat=False
+        )
 
         for s in new_sample_batches:
             # Update counters

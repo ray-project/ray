@@ -104,12 +104,12 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
     i++;
   }
 
-  resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
-    job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    node_resource_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
-    worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+  resubscribe_func_ = [this]() {
+    job_accessor_->AsyncResubscribe();
+    actor_accessor_->AsyncResubscribe();
+    node_accessor_->AsyncResubscribe();
+    node_resource_accessor_->AsyncResubscribe();
+    worker_accessor_->AsyncResubscribe();
   };
 
   // Connect to gcs service.
@@ -118,7 +118,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
       current_gcs_server_address_.first,
       current_gcs_server_address_.second,
       *client_call_manager_,
-      [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); });
+      [this](rpc::GcsServiceFailureType type) { current_connection_failure_ = type; });
 
   rpc::Address gcs_address;
   gcs_address.set_ip_address(current_gcs_server_address_.first);
@@ -126,27 +126,23 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   /// TODO(mwtian): refactor pubsub::Subscriber to avoid faking worker ID.
   gcs_address.set_worker_id(UniqueID::FromRandom().Binary());
 
-  std::unique_ptr<pubsub::Subscriber> subscriber;
-  if (RayConfig::instance().gcs_grpc_based_pubsub()) {
-    subscriber = std::make_unique<pubsub::Subscriber>(
-        /*subscriber_id=*/gcs_client_id_,
-        /*channels=*/
-        std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
-                                      rpc::ChannelType::GCS_JOB_CHANNEL,
-                                      rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                                      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-                                      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
-        /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
-        /*get_client=*/
-        [this](const rpc::Address &) {
-          return std::make_shared<GcsSubscriberClient>(gcs_rpc_client_);
-        },
-        /*callback_service*/ &io_service);
-  }
+  auto subscriber = std::make_unique<pubsub::Subscriber>(
+      /*subscriber_id=*/gcs_client_id_,
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                                    rpc::ChannelType::GCS_JOB_CHANNEL,
+                                    rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+                                    rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+                                    rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+      /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
+      /*get_client=*/
+      [this](const rpc::Address &) {
+        return std::make_shared<GcsSubscriberClient>(gcs_rpc_client_);
+      },
+      /*callback_service*/ &io_service);
 
   // Init GCS subscriber instance.
-  gcs_subscriber_ =
-      std::make_unique<GcsSubscriber>(nullptr, gcs_address, std::move(subscriber));
+  gcs_subscriber_ = std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
 
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
@@ -160,9 +156,9 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   // Init gcs service address check timer.
   periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service);
   periodical_runner_->RunFnPeriodically(
-      [this] { PeriodicallyCheckGcsServerAddress(); },
+      [this] { PeriodicallyCheckGcsConnection(); },
       RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
-      "GcsClient.deadline_timer.check_gcs_service_address");
+      "GcsClient.deadline_timer.check_gcs_connection");
 
   is_connected_ = true;
 
@@ -184,15 +180,44 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() {
   return current_gcs_server_address_;
 }
 
-void GcsClient::PeriodicallyCheckGcsServerAddress() {
+/// Checks whether GCS at the specified address is healthy.
+bool GcsClient::CheckHealth(const std::string &ip, int port, int64_t timeout_ms) {
+  // Health checking currently needs to be blocking. So it cannot use the event loop
+  // in the GcsClient. Otherwise there can be deadlocks.
+  auto channel = grpc::CreateChannel(absl::StrCat(ip, ":", port),
+                                     grpc::InsecureChannelCredentials());
+  std::unique_ptr<rpc::HeartbeatInfoGcsService::Stub> stub =
+      rpc::HeartbeatInfoGcsService::NewStub(std::move(channel));
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::milliseconds(timeout_ms));
+  const rpc::CheckAliveRequest request;
+  rpc::CheckAliveReply reply;
+  auto status = stub->CheckAlive(&context, request, &reply);
+  if (!status.ok()) {
+    RAY_LOG(WARNING) << "Unable to reach GCS at " << ip << ":" << port
+                     << ". Failure: " << status.error_code() << " "
+                     << status.error_message();
+    return false;
+  }
+  return true;
+}
+
+// TODO(iycheng, mwtian): rework the reconnection logic for GCS HA.
+void GcsClient::PeriodicallyCheckGcsConnection() {
   if (disconnected_) {
     return;
   }
+  // Check if current connection has failed.
+  if (current_connection_failure_.has_value()) {
+    GcsServiceFailureDetected(*current_connection_failure_);
+    current_connection_failure_.reset();
+    return;
+  }
+  // Check if GCS address has changed because of restarting.
   std::pair<std::string, int> address;
   if (get_server_address_func_(&address)) {
     if (address != current_gcs_server_address_) {
-      // If GCS server address has changed, invoke the `GcsServiceFailureDetected`
-      // callback.
       current_gcs_server_address_ = address;
       GcsServiceFailureDetected(rpc::GcsServiceFailureType::GCS_SERVER_RESTART);
     }
@@ -213,7 +238,7 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
     // subscription.
     ReconnectGcsServer();
     // If using GCS server for pubsub, resubscribe to GCS publishers.
-    resubscribe_func_(RayConfig::instance().gcs_grpc_based_pubsub());
+    resubscribe_func_();
     // Resend resource usage after reconnected, needed by resource view in GCS.
     node_resource_accessor_->AsyncReReportResourceUsage();
     break;
@@ -252,7 +277,7 @@ void GcsClient::ReconnectGcsServer() {
 
       RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
                      << address.second;
-      if (Ping(address.first, address.second, 100)) {
+      if (CheckHealth(address.first, address.second, /*timeout_ms=*/2000)) {
         // If `last_reconnect_address_` port is -1, it means that this is the first
         // connection and no log will be printed.
         if (last_reconnect_address_.second != -1) {

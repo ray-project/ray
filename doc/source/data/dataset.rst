@@ -58,7 +58,7 @@ Advanced users can utilize the Ray Datasets API reference for their projects.
     ^^^
 
     Start with our quick start tutorials for :ref:`working with Datasets<ray_datasets_quick_start>`
-    and :ref:`Dataset Pipelines<dataset_pipelines_quick_start>`.
+    and :ref:`Dataset Pipelines<pipelining_datasets>`.
     These concrete examples will give you an idea of how to use Ray Datasets.
 
     +++

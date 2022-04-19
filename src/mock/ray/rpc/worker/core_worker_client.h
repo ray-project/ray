@@ -116,11 +116,6 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
                const ClientCallback<DeleteSpilledObjectsReply> &callback),
               (override));
   MOCK_METHOD(void,
-              AddSpilledUrl,
-              (const AddSpilledUrlRequest &request,
-               const ClientCallback<AddSpilledUrlReply> &callback),
-              (override));
-  MOCK_METHOD(void,
               PlasmaObjectReady,
               (const PlasmaObjectReadyRequest &request,
                const ClientCallback<PlasmaObjectReadyReply> &callback),
