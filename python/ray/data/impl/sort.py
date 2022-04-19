@@ -91,10 +91,9 @@ def sample_boundaries(
 
     sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
     sample_bar = ProgressBar("Sort Sample", len(sample_results))
-    sample_bar.block_until_complete(sample_results)
+    samples = sample_bar.fetch_until_complete(sample_results)
     sample_bar.close()
-
-    samples = ray.get(sample_results)
+    del sample_results
     samples = [s for s in samples if len(s) > 0]
     # The dataset is empty
     if len(samples) == 0:
