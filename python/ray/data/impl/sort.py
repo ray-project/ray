@@ -26,8 +26,9 @@ from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.shuffle import ShuffleOp, PushBasedShuffleOp
-from ray.data import context
+from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
+from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
+from ray.data.context import DatasetContext
 
 T = TypeVar("T")
 
@@ -37,7 +38,7 @@ T = TypeVar("T")
 SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
-class SortOp(PushBasedShuffleOp if context.DEFAULT_PUSH_BASED_SHUFFLE else ShuffleOp):
+class _SortOp(ShuffleOp):
     @staticmethod
     def map(
         idx: int,
@@ -63,6 +64,14 @@ class SortOp(PushBasedShuffleOp if context.DEFAULT_PUSH_BASED_SHUFFLE else Shuff
         return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
             mapper_outputs, key, descending
         )
+
+
+class SimpleSortOp(_SortOp, SimpleShufflePlan):
+    pass
+
+
+class PushBasedSortOp(_SortOp, PushBasedShufflePlan):
+    pass
 
 
 def sample_boundaries(
@@ -128,10 +137,15 @@ def sort_impl(
     if descending:
         boundaries.reverse()
 
-    shuffle_op = SortOp(
+    context = DatasetContext.get_current()
+    if context.use_push_based_shuffle:
+        sort_op_cls = PushBasedSortOp
+    else:
+        sort_op_cls = SimpleSortOp
+    sort_op = sort_op_cls(
         map_args=[boundaries, key, descending], reduce_args=[key, descending]
     )
-    return shuffle_op.execute(
+    return sort_op.execute(
         blocks,
         num_reducers,
         clear_input_blocks,

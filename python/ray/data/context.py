@@ -29,8 +29,8 @@ DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
 # Whether to furthermore fuse prior map tasks with shuffle stages.
 DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 
-# Whether to enable push-based shuffle by default.
-DEFAULT_PUSH_BASED_SHUFFLE = bool(
+# Whether to use push-based shuffle by default.
+DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATASET_PUSH_BASED_SHUFFLE", None)
 )
 
@@ -52,6 +52,7 @@ class DatasetContext:
         optimize_fuse_stages: bool,
         optimize_fuse_read_stages: bool,
         optimize_fuse_shuffle_stages: bool,
+        use_push_based_shuffle: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
@@ -61,6 +62,7 @@ class DatasetContext:
         self.optimize_fuse_stages = optimize_fuse_stages
         self.optimize_fuse_read_stages = optimize_fuse_read_stages
         self.optimize_fuse_shuffle_stages = optimize_fuse_shuffle_stages
+        self.use_push_based_shuffle = use_push_based_shuffle
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -82,6 +84,7 @@ class DatasetContext:
                     optimize_fuse_stages=DEFAULT_OPTIMIZE_FUSE_STAGES,
                     optimize_fuse_read_stages=DEFAULT_OPTIMIZE_FUSE_READ_STAGES,
                     optimize_fuse_shuffle_stages=DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES,
+                    use_push_based_shuffle=DEFAULT_USE_PUSH_BASED_SHUFFLE,
                 )
 
             if (
