@@ -71,8 +71,7 @@ def batch_blocks(
             context = DatasetContext.get_current()
             if context.actor_prefetcher_enabled:
                 prefetcher = get_or_create_prefetcher()
-                for block in block_window:
-                    prefetcher.prefetch.remote(block)
+                prefetcher.prefetch.remote(*block_window)
             else:
                 ray.wait(block_window, num_returns=1, fetch_local=True)
         yield from batch_block(block_window[0])
