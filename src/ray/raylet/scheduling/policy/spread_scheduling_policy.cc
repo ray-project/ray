@@ -37,7 +37,9 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
 
   // Spread among available nodes first.
   // If there is no available nodes, we spread among feasible nodes.
-  for (bool available_nodes_only : {true, false}) {
+  for (bool available_nodes_only :
+       (options.require_node_available ? std::vector<bool>{true}
+                                       : std::vector<bool>{true, false})) {
     size_t round_index = spread_scheduling_next_index_;
     for (size_t i = 0; i < round.size(); ++i, ++round_index) {
       const auto &node_id = round[round_index % round.size()];
