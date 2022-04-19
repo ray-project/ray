@@ -245,6 +245,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             "gpu" in pod_name for pod_name in get_pod_names(namespace="default")
         )
         # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
+        logger.info("Scheduling an Actor with GPU demands.")
         kubectl_exec_python_script(
             script_name="gpu_actor_placement.py",
             pod=head_pod,
@@ -252,6 +253,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             namespace="default",
         )
         # 3. Confirm new pod number and presence of fake GPU worker.
+        logger.info("Confirming fake GPU worker up-scaling.")
         wait_for_pods(goal_num_pods=4, namespace="default")
         gpu_workers = [
             pod_name
@@ -261,6 +263,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         assert len(gpu_workers) == 1
         # 4. Confirm that the GPU actor is up and that Ray believes
         # the node the actor is on has a GPU.
+        logger.info("Confirming GPU actor placement.")
         out = kubectl_exec_python_script(
             script_name="gpu_actor_validation.py",
             pod=head_pod,
@@ -297,15 +300,27 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         wait_for_pods(goal_num_pods=1, namespace="default")
 
         # Check custom resource upscaling.
-        # First, restore max replicas to 1.
+        # First, restore max replicas to allow worker upscaling.
         self._apply_ray_cr(
             min_replicas=0,
-            max_replicas=1,
+            max_replicas=10,
             replicas=0,
             # Check that the replicas set on the Ray CR by the
             # autoscaler is indeed 2:
             validate_replicas=True,
         )
+
+        # Submit two {"Custom2": 3} bundles to upscale two workers with 5
+        # Custom2 capacity each.
+        logger.info("Scaling up workers with request for custom resources.")
+        kubectl_exec_python_script(
+            script_name="scale_up_custom.py",
+            pod=head_pod,
+            container="ray-head",
+            namespace="default",
+        )
+        logger.info("Confirming two workers have scaled up.")
+        wait_for_pods(goal_num_pods=3, namespace="default")
 
         # Cluster deletion
         logger.info("Deleting Ray cluster.")
