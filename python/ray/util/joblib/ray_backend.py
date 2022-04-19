@@ -48,6 +48,7 @@ class RayBackend(MultiprocessingBackend):
         ray.util.multiprocessing.pool.
 
         ``ray_remote_args`` will be used to configure Ray Actors making up the pool.
+        This will override ``ray_remote_args`` set during initialization.
         """
         PicklingPool.__bases__ = (Pool,)
         """Use all available resources when n_jobs == -1. Must set RAY_ADDRESS
@@ -75,7 +76,9 @@ class RayBackend(MultiprocessingBackend):
             parallel,
             prefer,
             require,
-            ray_remote_args=ray_remote_args or self.ray_remote_args,
+            ray_remote_args=ray_remote_args
+            if ray_remote_args is not None
+            else self.ray_remote_args,
             **memmappingpool_args
         )
         return eff_n_jobs
