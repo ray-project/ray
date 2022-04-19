@@ -198,21 +198,20 @@ class _WandbLoggingProcess(Process):
 
     def run(self):
         # Since we're running in a separate process already, use threads.
-        os.environ["WANDB_START_METHOD"] = "thread"
-        wandb.init(*self.args, **self.kwargs)
+        run = wandb.init(*self.args, **self.kwargs)
         while True:
             result = self.queue.get()
             if result == _WANDB_QUEUE_END:
                 break
             log, config_update = self._handle_result(result)
             try:
-                wandb.config.update(config_update, allow_val_change=True)
-                wandb.log(log)
+                run.config.update(config_update, allow_val_change=True)
+                run.log(log)
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
                 logger.warn("Failed to log result to w&b: {}".format(str(e)))
-        wandb.join()
+        run.finish()
 
     def _handle_result(self, result: Dict) -> Tuple[Dict, Dict]:
         config_update = result.get("config", {}).copy()
