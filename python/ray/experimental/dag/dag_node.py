@@ -316,32 +316,30 @@ class DAGNode:
             DAGNODE_TYPE_KEY: dag_node_type,
             # Will be overriden by build()
             "import_path": "",
-            "args": json.dumps(self.get_args(), cls=encoder_cls),
-            "kwargs": json.dumps(self.get_kwargs(), cls=encoder_cls),
+            "args": self.get_args(),
+            "kwargs": self.get_kwargs(),
             # .options() should not contain any DAGNode type
-            "options": json.dumps(self.get_options()),
-            "other_args_to_resolve": json.dumps(
-                self.get_other_args_to_resolve(), cls=encoder_cls
-            ),
+            "options": self.get_options(),
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
             "uuid": self.get_stable_uuid(),
         }
 
     @staticmethod
     def from_json_base(input_json, object_hook=None):
         # Post-order JSON deserialization
-        args = json.loads(input_json["args"], object_hook=object_hook)
-        kwargs = json.loads(input_json["kwargs"], object_hook=object_hook)
-        # .options() should not contain any DAGNode type
-        options = json.loads(input_json["options"])
-        other_args_to_resolve = json.loads(
-            input_json["other_args_to_resolve"], object_hook=object_hook
-        )
-        uuid = input_json["uuid"]
+        # args = json.loads(input_json["args"], object_hook=object_hook)
+        # kwargs = json.loads(input_json["kwargs"], object_hook=object_hook)
+        # # .options() should not contain any DAGNode type
+        # options = json.loads(input_json["options"])
+        # other_args_to_resolve = json.loads(
+        #     input_json["other_args_to_resolve"], object_hook=object_hook
+        # )
+        # uuid = input_json["uuid"]
 
         return {
-            "args": args,
-            "kwargs": kwargs,
-            "options": options,
-            "other_args_to_resolve": other_args_to_resolve,
-            "uuid": uuid,
+            "args": input_json["args"],
+            "kwargs": input_json["kwargs"],
+            "options": input_json["options"],
+            "other_args_to_resolve": input_json["other_args_to_resolve"],
+            "uuid": input_json["uuid"],
         }
