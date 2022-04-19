@@ -55,6 +55,20 @@ class TorchPredictor(Predictor):
         )
         return TorchPredictor(model=model, preprocessor=preprocessor)
 
+    def _convert_to_tensor(
+        self,
+        data: pd.DataFrame,
+        feature_columns: Optional[
+            Union[List[str], List[List[str]], List[int], List[List[int]]]
+        ],
+        dtype: Optional[torch.dtype],
+    ):
+        # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
+        # Reduce conversion cost if input is in Numpy
+        return convert_pandas_to_torch_tensor(
+            data, columns=feature_columns, column_dtypes=dtype
+        )
+
     def predict(
         self,
         data: DataBatchType,
@@ -127,9 +141,7 @@ class TorchPredictor(Predictor):
             # If numpy array, then convert to pandas dataframe.
             data = pd.DataFrame(data)
 
-        # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
-        # Reduce conversion cost if input is in Numpy
-        tensor = convert_pandas_to_torch_tensor(
+        tensor = self._convert_to_tensor(
             data, columns=feature_columns, column_dtypes=dtype
         )
         prediction = self.model(tensor).cpu().detach().numpy()
