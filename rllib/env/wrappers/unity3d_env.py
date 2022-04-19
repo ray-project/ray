@@ -305,6 +305,9 @@ class Unity3DEnv(MultiAgentEnv):
             # SoccerStrikersVsGoalie.
             "Goalie": MultiDiscrete([3, 3, 3]),
             "Striker": MultiDiscrete([3, 3, 3]),
+            # SoccerTwos.
+            "PurplePlayer": MultiDiscrete([3, 3, 3]),
+            "BluePlayer": MultiDiscrete([3, 3, 3]),
             # Sorter.
             "Sorter": MultiDiscrete([3, 3, 3]),
             # Tennis.
@@ -332,6 +335,19 @@ class Unity3DEnv(MultiAgentEnv):
 
             def policy_mapping_fn(agent_id, episode, worker, **kwargs):
                 return "Striker" if "Striker" in agent_id else "Goalie"
+
+        elif game_name == "SoccerTwos":
+            policies = {
+                "PurplePlayer": PolicySpec(
+                    observation_space=obs_spaces["PurplePlayer"],
+                    action_space=action_spaces["PurplePlayer"]),
+                "BluePlayer": PolicySpec(
+                    observation_space=obs_spaces["BluePlayer"],
+                    action_space=action_spaces["BluePlayer"]),
+            }
+
+            def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+                return "BluePlayer" if "1_" in agent_id else "PurplePlayer"
 
         else:
             policies = {
