@@ -62,18 +62,27 @@ class EntityState {
   absl::flat_hash_map<SubscriberID, SubscriberState *> subscribers_;
 };
 
-/// State for an entity does not have total size cap on published messages.
+/// The two implementations of EntityState are BasicEntityState and CappedEntityState.
+///
+/// BasicEntityState is the simplest. It is used by default.
+///
+/// CappedEntityState implements a total size cap on the buffered messages. It helps
+/// protect certain channels from using too much memory, e.g. channels for logs and
+/// error infos. However each CappedEntityState takes up more space than the
+/// BasicEntityState, so it is unsuitable when there can be a large number of entities.
+/// i.e. CappedEntityState is not suitable for the WORKER_OBJECT_* channels. It is
+/// not very benefitial for actor and node info channels either, since only GCS publishes
+/// to these channels with small, bounded-size messages.
+
+/// Publishes the message to all subscribers, without size cap on buffered messages.
 class BasicEntityState : public EntityState {
  public:
   bool Publish(const rpc::PubMessage &pub_message) override;
-
- private:
-  std::weak_ptr<rpc::PubMessage> message_;
 };
 
-/// State for an entity that streams published messages to subscribers, with total size
-/// cap.
-class StreamEntityState : public EntityState {
+/// Publishes the message to all subscribers, and enforce a total size cap on buffered
+/// messages.
+class CappedEntityState : public EntityState {
  public:
   bool Publish(const rpc::PubMessage &pub_message) override;
 

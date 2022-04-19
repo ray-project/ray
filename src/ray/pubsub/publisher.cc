@@ -33,7 +33,7 @@ bool BasicEntityState::Publish(const rpc::PubMessage &pub_message) {
   return true;
 }
 
-bool StreamEntityState::Publish(const rpc::PubMessage &pub_message) {
+bool CappedEntityState::Publish(const rpc::PubMessage &pub_message) {
   if (subscribers_.empty()) {
     return false;
   }
@@ -233,11 +233,14 @@ bool SubscriptionIndex::CheckNoLeaks() const {
 }
 
 std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
-  if (channel_type_ == rpc::ChannelType::RAY_ERROR_INFO_CHANNEL ||
-      channel_type_ == rpc::ChannelType::RAY_LOG_CHANNEL) {
-    return std::make_unique<StreamEntityState>();
+  switch (channel_type_) {
+  case rpc::ChannelType::RAY_ERROR_INFO_CHANNEL:
+  case rpc::ChannelType::RAY_LOG_CHANNEL: {
+    return std::make_unique<CappedEntityState>();
   }
-  return std::make_unique<BasicEntityState>();
+  default:
+    return std::make_unique<BasicEntityState>();
+  }
 }
 
 void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
