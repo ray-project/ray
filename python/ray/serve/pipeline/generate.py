@@ -1,5 +1,4 @@
 from typing import Any, Dict, List, Union
-import threading
 from collections import OrderedDict
 
 from ray.experimental.dag import (
@@ -24,30 +23,28 @@ class DeploymentNameGenerator(object):
     """
 
     def __init__(self):
-        self.lock = threading.Lock()
-        self.shared_state = dict()
+        self.name_to_suffix: Dict[str, int] = dict()
 
     def get_deployment_name(self, dag_node: Union[ClassNode, FunctionNode]):
         assert isinstance(dag_node, (ClassNode, FunctionNode)), (
             "get_deployment_name() should only be called on ClassNode or "
             "FunctionNode instances."
         )
-        with self.lock:
-            deployment_name = (
-                dag_node.get_options().get("name", None) or dag_node._body.__name__
-            )
-            if deployment_name not in self.shared_state:
-                self.shared_state[deployment_name] = 0
-                return deployment_name
-            else:
-                self.shared_state[deployment_name] += 1
-                suffix_num = self.shared_state[deployment_name]
 
-                return f"{deployment_name}_{suffix_num}"
+        deployment_name = (
+            dag_node.get_options().get("name", None) or dag_node._body.__name__
+        )
+        if deployment_name not in self.name_to_suffix:
+            self.name_to_suffix[deployment_name] = 0
+            return deployment_name
+        else:
+            self.name_to_suffix[deployment_name] += 1
+            suffix_num = self.name_to_suffix[deployment_name]
+
+            return f"{deployment_name}_{suffix_num}"
 
     def reset(self):
-        with self.lock:
-            self.shared_state = dict()
+        self.name_to_suffix = dict()
 
     def __enter__(self):
         return self
