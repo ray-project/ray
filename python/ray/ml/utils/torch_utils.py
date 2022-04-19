@@ -61,7 +61,7 @@ def convert_pandas_to_torch_tensor(
             # We assume it's a sequence in that case.
             # This is more robust than checking for dtype.
             # TODO(yard1): clarify if this should be cat or stack
-            return torch.cat([tensorize(x, dtype) for x in vals])
+            return torch.stack([tensorize(x, dtype) for x in vals])
 
     def get_tensor_for_columns(columns, dtype):
         feature_tensors = []
