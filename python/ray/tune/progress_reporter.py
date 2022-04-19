@@ -60,6 +60,27 @@ class ProgressReporter:
     receiving training results, and so on.
     """
 
+    def setup(
+        self,
+        start_time: Optional[float] = None,
+        num_samples: Optional[int] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        **kwargs,
+    ):
+        """Setup progress reporter for a new Ray Tune run.
+
+        This function is used to initialize parameters that are set on runtime.
+
+        Args:
+            start_time: Timestamp when the Ray Tune run is started.
+            num_samples: Number of samples the Ray Tune run will run.
+            metric: Metric to optimize.
+            mode: Must be one of [min, max]. Determines whether objective is
+                minimizing or maximizing the metric attribute.
+        """
+        pass
+
     def should_report(self, trials: List[Trial], done: bool = False):
         """Returns whether or not progress should be reported.
 
@@ -78,15 +99,6 @@ class ProgressReporter:
             sys_info: System info.
         """
         raise NotImplementedError
-
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str]):
-        return True
-
-    def set_total_samples(self, total_samples: int):
-        pass
-
-    def set_start_time(self, timestamp: Optional[float] = None):
-        pass
 
 
 @DeveloperAPI
@@ -192,11 +204,26 @@ class TuneReporterBase(ProgressReporter):
         else:
             self._sort_by_metric = sort_by_metric
 
+    def setup_run(
+        self,
+        start_time: Optional[float] = None,
+        num_samples: Optional[int] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        **kwargs,
+    ):
+        self.set_start_time(start_time)
+        self.set_total_samples(num_samples)
+        self.set_search_properties(metric=metric, mode=mode)
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str]):
-        if self._metric and metric:
-            return False
-        if self._mode and mode:
-            return False
+        if (self._metric and metric) or (self._mode and mode):
+            raise ValueError(
+                "You passed a `metric` or `mode` argument to `tune.run()`, but "
+                "the reporter you are using was already instantiated with their "
+                "own `metric` and `mode` parameters. Either remove the arguments "
+                "from your reporter or from your call to `tune.run()`"
+            )
 
         if metric:
             self._metric = metric
