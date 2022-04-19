@@ -2,8 +2,6 @@
 # Black + Clang formatter (if installed). This script formats all changed files from the last mergebase.
 # You are encouraged to run this locally before pushing changes for review.
 
-# In CI, the formatter also checks
-
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
