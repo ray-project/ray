@@ -294,10 +294,7 @@ class PushBasedShuffleOp(ShuffleOp):
         # The placement strategy for reduce tasks is overwritten to colocate
         # them with their inputs from the merge stage, so remove any
         # pre-specified scheduling strategy here.
-        try:
-            reduce_ray_remote_args.pop("scheduling_strategy")
-        except KeyError:
-            pass
+        reduce_ray_remote_args.pop("scheduling_strategy", None)
 
         def map_partition(*args, **kwargs):
             return self._map_partition(self.map, *args, **kwargs)
