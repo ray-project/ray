@@ -116,6 +116,10 @@ Predictors
     :members:
     :show-inheritance:
 
+.. automodule:: ray.ml.predictors.integrations.huggingface
+    :members:
+    :show-inheritance:
+
 .. _air-serve-integration:
 
 Serving
