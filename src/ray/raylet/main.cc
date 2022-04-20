@@ -169,11 +169,10 @@ int main(int argc, char *argv[]) {
                            : 0;
 
         node_manager_config.raylet_config = stored_raylet_config.get();
-        node_manager_config.resource_config = std::move(static_resource_conf);
+        node_manager_config.resource_config =
+            ray::ResourceMapToResourceRequest(std::move(static_resource_conf), false);
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
-                       << ray::ResourceMapToResourceRequest(
-                              node_manager_config.resource_config, false)
-                              .DebugString();
+                       << node_manager_config.resource_config.DebugString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
         auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();

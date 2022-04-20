@@ -120,6 +120,15 @@ class ResourceRequest {
     return res;
   }
 
+  /// Return a map from resource names (string) to values (double).
+  absl::flat_hash_map<std::string, double> ToResourceMap() const {
+    absl::flat_hash_map<std::string, double> resource_map;
+    for (auto entry : resources_) {
+      resource_map.emplace(entry.first.Binary(), entry.second.Double());
+    }
+    return resource_map;
+  }
+
   ResourceRequest operator+(const ResourceRequest &other) {
     ResourceRequest res = *this;
     res += other;
@@ -417,6 +426,8 @@ class NodeResources {
         object_pulls_queued(other.object_pulls_queued) {}
   ResourceRequest total;
   ResourceRequest available;
+  /// Only used by light resource report.
+  ResourceRequest load;
   /// Resources owned by normal tasks.
   ResourceRequest normal_task_resources;
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)

@@ -160,7 +160,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
   /// resource manager.
   /// Calculate normal task resources.
-  absl::flat_hash_map<std::string, double> CalcNormalTaskResources() const;
+  ResourceRequest CalcNormalTaskResources() const;
 
   void SetWorkerBacklog(SchedulingClass scheduling_class,
                         const WorkerID &worker_id,
