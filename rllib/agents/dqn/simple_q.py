@@ -171,7 +171,7 @@ class SimpleQConfig(TrainerConfig):
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
         >>> config.environment(env="CartPole-v1")
         >>> tune.run(
-        >>>     "SimpleDQN",
+        >>>     "SimpleQ",
         >>>     stop={"episode_reward_mean": 200},
         >>>     config=config.to_dict()
         >>> )
@@ -196,10 +196,10 @@ class SimpleQConfig(TrainerConfig):
     """
 
     def __init__(self):
-        """Initializes a SimpleDQNConfig instance."""
-        super().__init__(trainer_class=SimpleDQNTrainer)
+        """Initializes a SimpleQConfig instance."""
+        super().__init__(trainer_class=SimpleQTrainer)
 
-        # Simple DQN specific
+        # Simple Q specific
         # fmt: off
         # __sphinx_doc_begin__
         #
@@ -258,7 +258,7 @@ class SimpleQConfig(TrainerConfig):
         adam_epsilon: Optional[float] = None,
         grad_clip: Optional[int] = None,
         learning_starts: Optional[int] = None,
-    ) -> "SimpleDQNConfig":
+    ) -> "SimpleQConfig":
         """Sets the training related configuration.
 
         Args:
@@ -296,7 +296,7 @@ class SimpleQConfig(TrainerConfig):
         if learning_starts is not None:
             self.learning_starts = learning_starts
 
-# Deprecated: Use ray.rllib.agents.dqn.SimpleDQNConfig instead!
+# Deprecated: Use ray.rllib.agents.dqn.SimpleQConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(
