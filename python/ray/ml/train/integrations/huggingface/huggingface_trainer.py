@@ -301,15 +301,16 @@ class HuggingFaceTrainer(TorchTrainer):
                 "keys can be preset in `datasets`. "
                 f"Got {list(self.datasets.keys())}"
             )
-        super()._validate_attributes()
         gpus_per_worker = self.scaling_config.get("num_gpus_per_worker", 0)
         if gpus_per_worker > 1:
-            warnings.warn(
+            raise ValueError(
                 f"You have assigned {gpus_per_worker} GPUs per worker. "
                 "This is not supported by HuggingFace, which expects "
-                "one GPU per worker in DDP mode and will not be "
-                "able to make use of more GPUs."
+                "one GPU per worker in DDP mode and will fail "
+                "if more are assigned."
             )
+
+        super()._validate_attributes()
 
     def as_trainable(self) -> Type[Trainable]:
         # Replace the directory checkpoint with a node ip & path dict checkpoint
