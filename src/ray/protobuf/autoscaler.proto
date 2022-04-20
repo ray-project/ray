@@ -32,30 +32,21 @@ enum PlacementStrategy {
   STRICT_SPREAD = 3;
 }
 
-enum QueueType {
+enum SourceType {
   // A task that (assuming no deadlock can eventually be scheduled on the cluster.
-  FEASIBLE_TASK = 0;
-
-  // A task that the cluster does not have the correct resources to fulfill.
-  INFEASIBLE_TASK = 1;
+  TASK = 0;
 
   // A actor that (assuming no deadlock can eventually be scheduled on the cluster.
-  FEASIBLE_ACTOR = 2;
-
-  // A actor that the cluster does not have the correct resources to fulfill.
-  INFEASIBLE_ACTOR = 3;
+  ACTOR = 1;
 
   // A placement group that (assuming no deadlock can eventually be scheduled on the cluster.
-  FEASIBLE_PLACEMENT_GROUP = 4;
-
-  // A placement group that the cluster does not have the correct resources to fulfill.
-  INFEASIBLE_PLACEMENT_GROUP = 5;
+  PLACEMENT_GROUP = 2;
 
   // Represents a job's call to
   // `ray.autoscaler.sdk.request_resources()`. This type requests
   // resources to be available on the cluster but won't actually
   // utilize them.
-  SDK_RESOURCE_REQUEST = 6;
+  SDK_RESOURCE_REQUEST = 3;
 }
 
 // A workload (task/actor/placement group) unfulfilled by the the cluster's internal scheduler(s).
@@ -65,16 +56,20 @@ message QueuedResources {
   // field many times.
   uint32 quantity = 1;
 
-  // The queue type this resource comes from.
-  QueueType type = 2;
+  // Whether the queued resources can eventually be scheduled on the cluster
+  // (neglecting deadlock).
+  bool is_feasible = 2;
+
+  // The source of this queued resource.
+  SourceType type = 3;
 
   // If the queued resource represents an actor or task, there is
   // 1 entry in `bundles`. In a placement group, each bundle
   // receives its own entry.
-  repeated ResourceBundle bundles = 3;
+  repeated ResourceBundle bundles = 4;
 
   // The placement strategy of bundles within this queued resources.
-  PlacementStrategy placement_strategy = 4;
+  PlacementStrategy placement_strategy = 5;
 }
 
 message GetAllQueuedResourcesRequest {
