@@ -208,6 +208,7 @@ class DDPPOTrainer(PPOTrainer):
 
         # Initialize torch process group for
         if self.config["_disable_execution_plan_api"] is True:
+            self._curr_learner_info = {}
             ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
             port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
@@ -278,7 +279,10 @@ class DDPPOTrainer(PPOTrainer):
                 ray.get(first_worker.get_weights.remote())
             )
         # Return merged laarner into results.
-        return learner_info_builder.finalize()
+        new_learner_info = learner_info_builder.finalize()
+        if new_learner_info:
+            self._curr_learner_info = new_learner_info
+        return self._curr_learner_info
 
     @staticmethod
     def _sample_and_train_torch_distributed(worker: RolloutWorker):
