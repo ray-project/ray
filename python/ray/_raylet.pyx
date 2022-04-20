@@ -615,7 +615,7 @@ cdef execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    with core_worker.profile_event(b"task", extra_data=extra_data):
+    with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         try:
             task_exception = False
             if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
