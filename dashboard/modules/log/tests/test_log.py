@@ -243,7 +243,7 @@ def test_logs_tail():
             os.remove(FILE_NAME)
 
 
-def test_logs_experimental_write(ray_start_with_dashboard):
+def test_logs_experimental_stream_and_tail(ray_start_with_dashboard):
     @ray.remote
     class Actor:
         def write_log(self, strings):
