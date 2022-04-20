@@ -201,8 +201,10 @@ def create_replica_wrapper(
             return ray.get_runtime_context().node_id
 
         async def reconfigure(
-            self, user_config: Optional[Any] = None
+            self, user_config: Optional[Any] = None, _after: Optional[Any] = None
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            # unused `_after` argument is for scheduling: passing an ObjectRef
+            # allows delaying reconfiguration until after the object is ready.
             if self.replica is None:
                 await self._initialize_replica()
             if user_config is not None:

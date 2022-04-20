@@ -336,7 +336,10 @@ class ActorReplicaWrapper:
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            deployment_info.deployment_config.user_config
+            deployment_info.deployment_config.user_config,
+            # ensure that `reconfigure` will only be called after a response
+            # has been received from `is_allocated`.
+            _after=self._allocated_obj_ref,
         )
 
     def update_user_config(self, user_config: Any):
