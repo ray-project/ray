@@ -492,9 +492,9 @@ TEST(SyncerTest, Test1To1) {
       },
       5));
   // s2 has two reporters + 3 for the ones send before the measure
-  ASSERT_LT(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), max_sends * 2 + 3);
+  ASSERT_LE(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), max_sends * 2 + 3);
   // s1 has one reporter + 1 for the one send before the measure
-  ASSERT_LT(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
+  ASSERT_LE(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
 }
 
 TEST(SyncerTest, Broadcast) {

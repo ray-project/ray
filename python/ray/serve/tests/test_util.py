@@ -8,7 +8,14 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.utils import ServeEncoder, get_deployment_import_path
+from ray.serve.utils import ServeEncoder, get_deployment_import_path, node_id_to_ip_addr
+
+
+def test_node_id_to_ip_addr():
+    assert node_id_to_ip_addr("node:127.0.0.1-0") == "127.0.0.1"
+    assert node_id_to_ip_addr("127.0.0.1-0") == "127.0.0.1"
+    assert node_id_to_ip_addr("127.0.0.1") == "127.0.0.1"
+    assert node_id_to_ip_addr("node:127.0.0.1") == "127.0.0.1"
 
 
 def test_bytes_encoder():

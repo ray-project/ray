@@ -21,16 +21,12 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.api import (
-    Application,
-    get_deployment_statuses,
-    serve_application_status_to_schema,
-)
+from ray.serve.api import build as build_app
+from ray.serve.api import Application
 from ray.serve.deployment_graph import (
     DeploymentFunctionNode,
     DeploymentNode,
 )
-from ray.serve.api import build as build_app
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -286,12 +282,12 @@ def run(
     app_or_node = None
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
-        cli_logger.print(f"Loading app from config file: '{config_path}'.")
+        cli_logger.print(f"Deploying from config file: '{config_path}'.")
         with open(config_path, "r") as config_file:
             app_or_node = Application.from_yaml(config_file)
     else:
         import_path = config_or_import_path
-        cli_logger.print(f"Loading app from import path: '{import_path}'.")
+        cli_logger.print(f"Deploying from import path: '{import_path}'.")
         app_or_node = import_attr(import_path)
 
     # Setting the runtime_env here will set defaults for the deployments.
@@ -299,14 +295,11 @@ def run(
 
     try:
         serve.run(app_or_node, host=host, port=port)
-        cli_logger.success("Deployed successfully!\n")
+        cli_logger.success("Deployed successfully.")
 
         if blocking:
             while True:
-                statuses = serve_application_status_to_schema(
-                    get_deployment_statuses()
-                ).json(indent=4)
-                cli_logger.info(f"{statuses}")
+                # Block, letting Ray print logs to the terminal.
                 time.sleep(10)
 
     except KeyboardInterrupt:
@@ -357,7 +350,7 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(json.dumps(app_status, indent=4))
+        print(json.dumps(app_status["statuses"], indent=4))
 
 
 @cli.command(

@@ -1,0 +1,1 @@
+../ci/env/install-strace.sh

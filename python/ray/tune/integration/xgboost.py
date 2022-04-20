@@ -70,7 +70,7 @@ class TuneReportCallback(TuneCallback):
 
     def __init__(
         self,
-        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
@@ -195,7 +195,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     def __init__(
         self,
-        metrics: Union[None, str, List[str], Dict[str, str]] = None,
+        metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         filename: str = "checkpoint",
         frequency: int = 5,
         results_postprocessing_fn: Optional[

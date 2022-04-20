@@ -7,20 +7,22 @@ import numpy as np
 from ray.rllib import Policy
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.rollout_ops import ParallelRollouts, SelectExperiences
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.examples.env.parametric_actions_cartpole import ParametricActionsCartPole
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.utils import override
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.iter import LocalIterator
+from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import register_env
 
-DEFAULT_CONFIG = with_common_config({})
+DEFAULT_CONFIG = with_common_config(
+    {
+        # Run with new `training_iteration` API.
+        "_disable_execution_plan_api": True,
+    }
+)
 
 
-class RandomParametriclPolicy(Policy, ABC):
+class RandomParametricPolicy(Policy, ABC):
     """
     Just pick a random legal action
     The outputted state of the environment needs to be a dictionary with an
@@ -64,29 +66,27 @@ class RandomParametriclPolicy(Policy, ABC):
         pass
 
 
-# Create a new Trainer using the Policy and config defined above and a new
-# execution plan.
 class RandomParametricTrainer(Trainer):
+    """Trainer with Policy and config defined above and overriding `training_iteration`.
+
+    Overrides the `training_iteration` method, which only runs a (dummy)
+    rollout and performs no learning.
+    """
+
     @classmethod
     def get_default_config(cls):
         return DEFAULT_CONFIG
 
     def get_default_policy_class(self, config):
-        return RandomParametriclPolicy
+        return RandomParametricPolicy
 
-    @staticmethod
-    def execution_plan(
-        workers: WorkerSet, config: TrainerConfigDict, **kwargs
-    ) -> LocalIterator[dict]:
-        rollouts = ParallelRollouts(workers, mode="async")
+    @override(Trainer)
+    def training_iteration(self) -> ResultDict:
+        # Perform rollouts (only for collecting metrics later).
+        synchronous_parallel_sample(worker_set=self.workers)
 
-        # Collect batches for the trainable policies.
-        rollouts = rollouts.for_each(
-            SelectExperiences(local_worker=workers.local_worker())
-        )
-
-        # Return training metrics.
-        return StandardMetricsReporting(rollouts, workers, config)
+        # Return (empty) training metrics.
+        return {}
 
 
 def main():
