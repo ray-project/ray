@@ -241,7 +241,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.json_response(response)
 
         except Exception as e:
-            logger.error(e)
+            logger.exception(e)
             return aiohttp.web.HTTPInternalServerError(reason=e)
 
     @routes.get("/api/experimental/logs/{media_type}")
@@ -356,13 +356,15 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             response = aiohttp.web.StreamResponse()
             response.content_type = "text/plain"
             await response.prepare(req)
+
+            # try-except here in order to properly handle ongoing HTTP stream
             try:
                 async for log_response in stream:
                     await response.write(log_response.data)
                 await response.write_eof()
                 return response
             except Exception as e:
-                logger.error(str(e))
+                logger.exception(str(e))
                 await response.write(
                     b"Closing HTTP stream due to internal server error:\n"
                 )
@@ -370,7 +372,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
                 await response.write_eof()
                 return response
         except Exception as e:
-            logger.error(e)
+            logger.exception(e)
             return aiohttp.web.HTTPInternalServerError(reason=e)
 
     async def run(self, server):
