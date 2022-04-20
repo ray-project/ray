@@ -5,6 +5,7 @@ from ray import tune
 
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer
+from ray.util.placement_group import get_current_placement_group
 
 
 @pytest.fixture
@@ -128,9 +129,12 @@ def test_arg_override(ray_start_4_cpus):
         # Should merge with base config.
         assert self.preprocessor.original
 
+        pg = get_current_placement_group()
+        assert len(pg.bundle_specs) == 2  # 1 trainer, 1 worker
+
     preprocessor = DummyPreprocessor()
     preprocessor.original = True
-    scale_config = {"num_workers": 2}
+    scale_config = {"num_workers": 4}
     trainer = DummyTrainer(
         check_override,
         custom_arg={"outer": {"inner": True, "fixed": 1}},

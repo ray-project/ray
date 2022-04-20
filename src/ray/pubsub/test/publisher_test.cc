@@ -115,7 +115,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
   /// Test single node id & object id
   ///
   /// oid1 -> [nid1]
-  SubscriptionIndex subscription_index;
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   subscription_index.AddEntry(oid.Binary(), subscriber);
   const auto &subscribers_from_index =
       subscription_index.GetSubscriberIdsByKeyId(oid.Binary());
@@ -127,7 +127,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
   /// Test single object id & multi nodes
   ///
   /// oid1 -> [nid1~nid5]
-  SubscriptionIndex subscription_index;
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   const auto oid = ObjectID::FromRandom();
   absl::flat_hash_set<NodeID> empty_set;
   subscribers_map_.emplace(oid, empty_set);
@@ -177,7 +177,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
   ///
   /// oid1 -> [nid1~nid5]
   /// oid2 -> [nid1~nid5]
-  SubscriptionIndex subscription_index;
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   int total_entries = 6;
   int entries_to_delete_at_each_time = 3;
   auto oid = ObjectID::FromRandom();
@@ -226,7 +226,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseMultiSubscribers) {
   ///
   /// Test erase the duplicated entries with multi subscribers.
   ///
-  SubscriptionIndex subscription_index;
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto oid = ObjectID::FromRandom();
   auto oid2 = ObjectID::FromRandom();
   absl::flat_hash_set<NodeID> empty_set;
@@ -250,7 +250,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ///
   /// Test erase subscriber.
   ///
-  SubscriptionIndex subscription_index;
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto oid = ObjectID::FromRandom();
   auto &subscribers = subscribers_map_[oid];
   std::vector<SubscriberID> subscriber_ids;
@@ -282,7 +282,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
   auto *subscriber = CreateSubscriber();
   auto subscriber_id = subscriber->id();
   auto oid = ObjectID::FromRandom();
-  SubscriptionIndex subscription_index;
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
 
   // Add the same entry many times.
   for (int i = 0; i < 5; i++) {
@@ -1040,7 +1040,7 @@ class ScopedEntityBufferMaxBytes {
 TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
   ScopedEntityBufferMaxBytes max_bytes(10000);
 
-  SubscriptionIndex subscription_index;
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto job_id = JobID::FromInt(1234);
   auto *subscriber = CreateSubscriber();
   // Subscribe to job_id.
@@ -1082,7 +1082,7 @@ TEST_F(PublisherTest, TestMaxBufferSizePerEntity) {
 TEST_F(PublisherTest, TestMaxBufferSizeAllEntities) {
   ScopedEntityBufferMaxBytes max_bytes(10000);
 
-  SubscriptionIndex subscription_index;
+  SubscriptionIndex subscription_index(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   auto *subscriber = CreateSubscriber();
   // Subscribe to all entities.
   subscription_index.AddEntry("", subscriber);
