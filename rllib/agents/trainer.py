@@ -1385,7 +1385,7 @@ class Trainer(Trainable):
         # Save evaluation metrics on trainer, so it can be attached to
         # subsequent step results as latest evaluation result.
         self.evaluation_metrics = {"evaluation": metrics}
-        # UNTESTED
+        # Run any callbacks after evaluation is done.
         self.callbacks.on_evaluate_end(trainer=self, result=self.evaluation_metrics)
         # Also return the results here for convenience.
         return self.evaluation_metrics

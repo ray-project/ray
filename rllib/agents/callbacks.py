@@ -296,14 +296,15 @@ class DefaultCallbacks:
     def on_evaluate_end(self, *, trainer: "Trainer", result: dict,
                         **kwargs) -> None:
         """Called at the end of Trainer.evaluate().
-        UNTESTED
         Args:
             trainer: Current trainer instance.
             result: Dict of results returned from trainer.evaluate() call.
-                UNTESTED You can mutate this object to add additional metrics.
+                You can mutate this object to add additional metrics.
             kwargs: Forward compatibility placeholder.
         """
+
         pass
+
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
     """MemoryTrackingCallbacks can be used to trace and track memory usage
