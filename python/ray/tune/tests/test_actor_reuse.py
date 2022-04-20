@@ -117,6 +117,14 @@ class ActorReuseTest(unittest.TestCase):
         self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
         self.assertEqual([t.last_result["num_resets"] for t in trials], [0, 0, 0, 0])
 
+    def testTrialReuseDisabledPerDefault(self):
+        trials = self._run_trials_with_frequent_pauses(
+            create_resettable_class(), reuse=None
+        )
+        self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
+        self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
+        self.assertEqual([t.last_result["num_resets"] for t in trials], [0, 0, 0, 0])
+
     def testTrialReuseDisabledFunction(self):
         num_resets = defaultdict(lambda: 0)
         trials = self._run_trials_with_frequent_pauses(
@@ -138,6 +146,15 @@ class ActorReuseTest(unittest.TestCase):
         num_resets = defaultdict(lambda: 0)
         trials = self._run_trials_with_frequent_pauses(
             create_resettable_function(num_resets), reuse=True
+        )
+        self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
+        self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])
+        self.assertEqual([num_resets[t.trial_id] for t in trials], [0, 0, 0, 0])
+
+    def testTrialReuseEnabledPerDefaultFunction(self):
+        num_resets = defaultdict(lambda: 0)
+        trials = self._run_trials_with_frequent_pauses(
+            create_resettable_function(num_resets), reuse=None
         )
         self.assertEqual([t.last_result["id"] for t in trials], [0, 1, 2, 3])
         self.assertEqual([t.last_result["iter"] for t in trials], [2, 2, 2, 2])

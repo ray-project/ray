@@ -123,7 +123,7 @@ def run(
     restore: Optional[str] = None,
     server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
-    reuse_actors: bool = False,
+    reuse_actors: Optional[bool] = None,
     trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
@@ -292,6 +292,7 @@ def run(
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
+            Defaults to ``True`` for function trainables.
         trial_executor: Manage the execution of trials.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
@@ -454,6 +455,11 @@ def run(
                 f"to 1 instead."
             )
         result_buffer_length = 1
+
+    # If reuse_actors is unset, default to False for string and class trainables,
+    # and default to True for everything else (i.e. function trainables)
+    if reuse_actors is None:
+        reuse_actors = isinstance(run_or_experiment, (str, Trainable))
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -735,7 +741,7 @@ def run_experiments(
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
-    reuse_actors: bool = False,
+    reuse_actors: Optional[bool] = None,
     trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
