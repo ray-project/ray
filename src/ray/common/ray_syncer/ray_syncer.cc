@@ -146,7 +146,7 @@ void ClientSyncConnection::StartLongPolling() {
       [this, client_context](grpc::Status status) {
         if (status.ok()) {
           RAY_CHECK(in_message_.GetArena() == nullptr);
-          io_context_.post(
+          io_context_.dispatch(
               [this, messages = std::move(in_message_)]() mutable {
                 ReceiveUpdate(std::move(messages));
               },
@@ -278,7 +278,7 @@ void RaySyncer::Connect(std::shared_ptr<grpc::Channel> channel) {
           return;
         }
         if (status.ok()) {
-          io_context_.post(
+          io_context_.dispatch(
               [this, channel, response]() {
                 auto connection = std::make_unique<ClientSyncConnection>(
                     io_context_,
@@ -322,7 +322,7 @@ void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  io_context_.post(
+  io_context_.dispatch(
       [this, node_id]() {
         auto iter = sync_connections_.find(node_id);
         if (iter != sync_connections_.end()) {
@@ -397,7 +397,7 @@ grpc::ServerUnaryReactor *RaySyncerService::StartSync(
   }
   remote_node_id_ = request->node_id();
   RAY_LOG(DEBUG) << "Get connect from: " << NodeID::FromBinary(remote_node_id_);
-  syncer_.GetIOContext().post(
+  syncer_.GetIOContext().dispatch(
       [this, response, reactor, context]() {
         if (context->IsCancelled()) {
           reactor->Finish(grpc::Status::CANCELLED);
@@ -421,7 +421,7 @@ grpc::ServerUnaryReactor *RaySyncerService::Update(grpc::CallbackServerContext *
   auto *reactor = context->DefaultReactor();
   // Make sure request is allocated from heap so that it can be moved safely.
   RAY_CHECK(request->GetArena() == nullptr);
-  syncer_.GetIOContext().post(
+  syncer_.GetIOContext().dispatch(
       [this, request = std::move(*const_cast<RaySyncMessages *>(request))]() mutable {
         auto *sync_connection = dynamic_cast<ServerSyncConnection *>(
             syncer_.GetSyncConnection(remote_node_id_));
@@ -441,7 +441,7 @@ grpc::ServerUnaryReactor *RaySyncerService::LongPolling(
     const DummyRequest *,
     RaySyncMessages *response) {
   auto *reactor = context->DefaultReactor();
-  syncer_.GetIOContext().post(
+  syncer_.GetIOContext().dispatch(
       [this, reactor, response]() mutable {
         auto *sync_connection = dynamic_cast<ServerSyncConnection *>(
             syncer_.GetSyncConnection(remote_node_id_));
