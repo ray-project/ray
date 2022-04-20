@@ -6,7 +6,6 @@ from collections import defaultdict
 
 import queue
 from typing import Optional, Type, List, Dict, Union, DefaultDict, Set, Callable, Any
-import tree
 
 import ray
 from ray.actor import ActorHandle
