@@ -106,40 +106,7 @@ def _set_internal_replica_context(
     )
 
 
-def _check_http_and_checkpoint_options(
-    client: Client,
-    http_options: Union[dict, HTTPOptions],
-    checkpoint_path: str,
-) -> None:
-    if checkpoint_path and checkpoint_path != client.checkpoint_path:
-        logger.warning(
-            f"The new client checkpoint path '{checkpoint_path}' "
-            f"is different from the existing one '{client.checkpoint_path}'. "
-            "The new checkpoint path is ignored."
-        )
-
-    if http_options:
-        client_http_options = client.http_config
-        new_http_options = (
-            http_options
-            if isinstance(http_options, HTTPOptions)
-            else HTTPOptions.parse_obj(http_options)
-        )
-        different_fields = []
-        all_http_option_fields = new_http_options.__dict__
-        for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
-                different_fields.append(field)
-
-        if len(different_fields):
-            logger.warning(
-                "The new client HTTP config differs from the existing one "
-                f"in the following fields: {different_fields}. "
-                "The new HTTP config is ignored."
-            )
-
-
-def _connect(_override_controller_namespace: Optional[str] = None) -> Client:
+def _connect(_override_controller_namespace: Optional[str] = None) -> ServeControllerClient:
     """Connect to an existing Serve instance on this Ray cluster.
 
     If calling from the driver program, the Serve instance on this Ray cluster
@@ -185,7 +152,7 @@ def _connect(_override_controller_namespace: Optional[str] = None) -> Client:
             "one."
         )
 
-    client = Client(
+    client = ServeControllerClient(
         controller,
         controller_name,
         detached=True,
