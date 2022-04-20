@@ -292,7 +292,8 @@ def run(
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
-            Defaults to ``True`` for function trainables.
+            Defaults to ``True`` for function trainables and ``False`` for
+            class and registered trainables.
         trial_executor: Manage the execution of trials.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
