@@ -181,9 +181,7 @@ def test_logs_experimental_list(ray_start_with_dashboard):
     return True
 
     # Test that logs/list can be filtered
-    response = requests.get(
-        webui_url + "/api/experimental/logs/list?filters=gcs"
-    )
+    response = requests.get(webui_url + "/api/experimental/logs/list?filters=gcs")
     response.raise_for_status()
     logs = json.loads(response.text)
     assert len(logs) == 1
@@ -193,9 +191,7 @@ def test_logs_experimental_list(ray_start_with_dashboard):
         if category != "gcs_server":
             assert len(logs[node_id][category]) == 0
 
-    response = requests.get(
-        webui_url + "/api/experimental/logs/list?filters=worker"
-    )
+    response = requests.get(webui_url + "/api/experimental/logs/list?filters=worker")
     response.raise_for_status()
     logs = json.loads(response.text)
     assert len(logs) == 1
@@ -205,9 +201,7 @@ def test_logs_experimental_list(ray_start_with_dashboard):
         "worker_outs",
         "worker_errors",
     ]
-    assert (
-        all([cat in logs[node_id] for cat in worker_log_categories])
-    )
+    assert all([cat in logs[node_id] for cat in worker_log_categories])
     for category in logs[node_id]:
         if category not in worker_log_categories:
             assert len(logs[node_id][category]) == 0
