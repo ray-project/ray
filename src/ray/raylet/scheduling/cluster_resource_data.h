@@ -420,6 +420,7 @@ class NodeResources {
   NodeResources(const NodeResources &other)
       : total(other.total),
         available(other.available),
+        load(other.load),
         normal_task_resources(other.normal_task_resources),
         latest_resources_normal_task_timestamp(
             other.latest_resources_normal_task_timestamp),

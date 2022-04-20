@@ -143,7 +143,7 @@ void SchedulerResourceReporter::FillResourceUsage(
     absl::flat_hash_map<std::string, double> local_resource_map(
         data.resource_load().begin(), data.resource_load().end());
     ray::ResourceRequest local_resource =
-        ResourceMapToResourceRequest(local_resource_map);
+        ResourceMapToResourceRequest(local_resource_map, false);
     if (last_reported_resources == nullptr ||
         last_reported_resources->load != local_resource) {
       data.set_resource_load_changed(true);

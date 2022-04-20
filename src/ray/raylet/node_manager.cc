@@ -332,7 +332,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
-  cluster_resource_scheduler_ = std::shared_ptr<ClusterResourceScheduler>(
+  cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID(self_node_id_.Binary()),
       config.resource_config.ToResourceMap(),
       /*is_node_available_fn*/
@@ -596,13 +596,13 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
   auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
   auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
   if (last_heartbeat_resources->normal_task_resources != normal_task_resources) {
-    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.ToString();
+    RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.DebugString();
     resources_data.set_resources_normal_task_changed(true);
     auto resource_map = normal_task_resources.ToResourceMap();
     resources_data.mutable_resources_normal_task()->insert(resource_map.begin(),
                                                            resource_map.end());
     resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-    last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
+    last_heartbeat_resources->normal_task_resources = normal_task_resources;
   }
 }
 
@@ -832,7 +832,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
           ResourceRequest resources;
           for (auto &resource_entry : *data) {
             resources.Set(scheduling::ResourceID(resource_entry.first),
-                          resource_entry.second->resource_capacity());
+                          FixedPoint(resource_entry.second->resource_capacity()));
           }
           ResourceCreateUpdated(node_id, resources);
         }
@@ -948,7 +948,6 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
     return;
   }
 
-  // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_id : createUpdatedResources.ResourceIds()) {
     cluster_resource_scheduler_->GetClusterResourceManager().UpdateResourceCapacity(
         scheduling::NodeID(node_id.Binary()),
@@ -978,7 +977,6 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     return;
   }
 
-  // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_label : resource_names) {
     cluster_resource_scheduler_->GetClusterResourceManager().DeleteResource(
         scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label));

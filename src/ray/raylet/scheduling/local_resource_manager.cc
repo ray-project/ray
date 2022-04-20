@@ -388,9 +388,7 @@ void LocalResourceManager::OnResourceChanged() {
 
 void LocalResourceManager::ResetLastReportResourceUsage(
     const NodeResources &replacement) {
-  last_report_resources_ = std::make_unique<NodeResources>(
-      ResourceMapToNodeResources(replacement.GetTotalResources().GetResourceMap(),
-                                 replacement.GetAvailableResources().GetResourceMap()));
+  last_report_resources_.reset(new NodeResources(replacement));
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {

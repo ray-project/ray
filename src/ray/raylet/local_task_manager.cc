@@ -983,7 +983,7 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
 }
 
 ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
-  absl::flat_hash_map<std::string, double> total_normal_task_resources;
+  ResourceRequest total_normal_task_resources;
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
@@ -999,13 +999,10 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_request = allocated_instances->ToResourceRequest();
-      for (auto entry : resource_request.ToMap()) {
-        total_normal_task_resources.emplace(entry.first.Binary(), entry.second);
-      }
+      total_normal_task_resources += allocated_instances->ToResourceRequest();
     }
   }
-  return ResourceMapToResourceRequest(total_normal_task_resources, false);
+  return total_normal_task_resources;
 }
 
 uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(

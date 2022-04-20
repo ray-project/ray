@@ -708,7 +708,7 @@ Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
       ResourceMapToNodeResources(MapFromProtobuf(data_ptr->resources_total()),
                                  MapFromProtobuf(data_ptr->resources_available())));
   last_resource_usage_->load =
-      ResourceMapToResourceRequest(MapFromProtobuf(data_ptr->resource_load()));
+      ResourceMapToResourceRequest(MapFromProtobuf(data_ptr->resource_load()), false);
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,
@@ -737,23 +737,21 @@ void NodeResourceInfoAccessor::FillResourceUsageRequest(
 
   auto resources_data = resources.mutable_resources();
   resources_data->clear_resources_total();
-  for (const auto &resource_pair :
-       cached_resources.GetTotalResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.total.ToResourceMap()) {
     (*resources_data->mutable_resources_total())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resources_available();
   resources_data->set_resources_available_changed(true);
-  for (const auto &resource_pair :
-       cached_resources.GetAvailableResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.available.ToResourceMap()) {
     (*resources_data->mutable_resources_available())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resource_load();
   resources_data->set_resource_load_changed(true);
-  for (const auto &resource_pair : cached_resources.GetLoadResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.load.ToResourceMap()) {
     (*resources_data->mutable_resource_load())[resource_pair.first] =
         resource_pair.second;
   }
