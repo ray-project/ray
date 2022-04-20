@@ -18,6 +18,11 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "train_gpu_connect")
 
+    # Manually set NCCL_SOCKET_IFNAME to "ens3" so NCCL training works on
+    # anyscale_default_cloud.
+    # See https://github.com/pytorch/pytorch/issues/68893 for more details.
+    # Passing in runtime_env to ray.init() will also set it for all the
+    # workers.
     runtime_env = {
         "env_vars": {
             "RXGB_PLACEMENT_GROUP_TIMEOUT_S": "1200",
