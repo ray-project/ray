@@ -50,7 +50,7 @@ import ray
 from ray import cloudpickle
 from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient
+from ray.serve.client import ServeControllerClient, get_controller_namespace
 
 logger = logging.getLogger(__file__)
 
@@ -113,7 +113,7 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    controller_namespace = _get_controller_namespace(
+    controller_namespace = get_controller_namespace(
         detached, _override_controller_namespace=_override_controller_namespace
     )
 
