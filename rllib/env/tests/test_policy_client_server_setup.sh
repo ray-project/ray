@@ -38,6 +38,12 @@ else
   trainer_cls="PPO"
 fi
 
+port=$3
+worker_1_port=$((port))
+# This is hardcoded in the server/client scripts, that per-worker
+# port is base_port + worker_idx
+worker_2_port=$((port + 1))
+
 pkill -f $server_script
 sleep 1
 
@@ -47,37 +53,36 @@ else
     basedir="rllib/examples/serving"  # In bazel.
 fi
 
-
-# Start server with 2 workers (will listen on ports 9900 and 9901 for client
+# Start server with 2 workers (will listen on ports worker_1_port and worker_2_port for client
 # connections).
 # Do not attempt to restore from checkpoint; leads to errors on travis.
-(python $basedir/$server_script --run=$trainer_cls --num-workers=2 --no-restore 2>&1 | grep -v 200) &
+(python $basedir/$server_script --run=$trainer_cls --num-workers=2 --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
 server_pid=$!
 
 echo "Waiting for server to start ..."
-while ! curl localhost:9900; do
+while ! curl localhost:$worker_1_port; do
   sleep 1
 done
-echo "Remote worker #1 on port 9900 is up!"
-while ! curl localhost:9901; do
+echo "Remote worker #1 on port $worker_1_port is up!"
+while ! curl localhost:$worker_2_port; do
   sleep 1
 done
-echo "Remote worker #2 on port 9901 is up!"
+echo "Remote worker #2 on port $worker_2_port is up!"
 
-# Start client 1 (connect to port 9900).
+# Start client 1 (connect to port $worker_1_port).
 sleep 2
-(python $basedir/$client_script --inference-mode=$inference_mode --port=9900) &
+(python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_1_port) &
 client1_pid=$!
 
-# Start client 2 (connect to port 9901).
+# Start client 2 (connect to port $worker_2_port).
 sleep 2
-(python $basedir/$client_script --inference-mode=$inference_mode --port=9901) &
+(python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port) &
 client2_pid=$!
 
-# Start client 3 (also connecting to port 9901) and run it until it reaches
+# Start client 3 (also connecting to port $worker_2_port) and run it until it reaches
 # x reward (CartPole) or n episodes (dummy Unity3D).
 # Then stop everything.
 sleep 2
-python $basedir/$client_script --inference-mode=$inference_mode --port=9901 "$stop_criterion"
+python $basedir/$client_script --inference-mode=$inference_mode --port=$worker_2_port "$stop_criterion"
 
 kill $server_pid $client1_pid $client2_pid || true

@@ -5,7 +5,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
-from ray.rllib.agents.trainer import Trainer as RLLibTrainer
+from ray.rllib.agents.trainer import Trainer as RLlibTrainer
 from ray.rllib.utils.typing import PartialTrainerConfigDict, EnvType
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.logger import Logger
@@ -19,7 +19,7 @@ from ray.util.ml_utils.dict import merge_dicts
 class RLTrainer(Trainer):
     """Reinforcement learning trainer.
 
-    This trainer provides an interface to RLLib trainables.
+    This trainer provides an interface to RLlib trainables.
 
     If datasets and preprocessors are used, they can be utilized for
     offline training, e.g. using behavior cloning. Otherwise, this trainer
@@ -27,7 +27,7 @@ class RLTrainer(Trainer):
 
     Args:
         algorithm: Algorithm to train on. Can be a string reference,
-            (e.g. ``"PPO"``) or a RLLib trainer class.
+            (e.g. ``"PPO"``) or a RLlib trainer class.
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
         datasets: Any Ray Datasets to use for training. Use the key "train"
@@ -36,7 +36,7 @@ class RLTrainer(Trainer):
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
             If specified, datasets will be used for offline training. Will be
-            configured as an RLLib ``input`` config item.
+            configured as an RLlib ``input`` config item.
         preprocessor: A preprocessor to preprocess the provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
 
@@ -102,7 +102,7 @@ class RLTrainer(Trainer):
 
     def __init__(
         self,
-        algorithm: Union[str, Type[RLLibTrainer]],
+        algorithm: Union[str, Type[RLlibTrainer]],
         config: Optional[Dict[str, Any]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
@@ -126,10 +126,10 @@ class RLTrainer(Trainer):
 
         if not isinstance(self._algorithm, str) and not (
             inspect.isclass(self._algorithm)
-            and issubclass(self._algorithm, RLLibTrainer)
+            and issubclass(self._algorithm, RLlibTrainer)
         ):
             raise ValueError(
-                f"`algorithm` should be either a string or a RLLib trainer class, "
+                f"`algorithm` should be either a string or a RLlib trainer class, "
                 f"found {type(self._algorithm)} with value `{self._algorithm}`."
             )
 
