@@ -157,7 +157,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         """Adds a batch to the appropriate policy's replay buffer.
 
         Turns the batch into a MultiAgentBatch of the DEFAULT_POLICY_ID if
-        it is not a MultiAgentBatch. Subsequently adds the batch to
+        it is not a MultiAgentBatch.
 
         Args:
             batch (SampleBatchType): The batch to be added.

@@ -41,7 +41,10 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
+)
+from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
     ConcatBatches,
@@ -2717,7 +2720,7 @@ class Trainer(Trainable):
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
         self, config: PartialTrainerConfigDict
-    ) -> Optional[MultiAgentReplayBuffer]:
+    ) -> Optional[Union[MultiAgentReplayBuffer, Legacy_MultiAgentReplayBuffer]]:
         """Create a MultiAgentReplayBuffer instance if necessary.
 
         Args:
