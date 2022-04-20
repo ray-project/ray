@@ -51,6 +51,7 @@ from ray import cloudpickle
 from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient, get_controller_namespace
+from ray.serve.context import set_global_client
 
 logger = logging.getLogger(__file__)
 
@@ -178,7 +179,7 @@ def start(
         detached=detached,
         _override_controller_namespace=_override_controller_namespace,
     )
-    _set_global_client(client)
+    set_global_client(client)
     logger.info(
         f"Started{' detached ' if detached else ' '}Serve instance in "
         f"namespace '{controller_namespace}'."
@@ -204,7 +205,7 @@ def shutdown() -> None:
         return
 
     client.shutdown()
-    _set_global_client(None)
+    set_global_client(None)
 
 
 @PublicAPI

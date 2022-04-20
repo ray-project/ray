@@ -57,12 +57,12 @@ def internal_get_global_client(
             return _global_client
     except RayActorError:
         logger.info("The cached controller has died. Reconnecting.")
-        _set_global_client(None)
+        set_global_client(None)
 
     return _connect(_override_controller_namespace=_override_controller_namespace)
 
 
-def _set_global_client(client):
+def set_global_client(client):
     global _global_client
     _global_client = client
 
@@ -132,5 +132,5 @@ def _connect(_override_controller_namespace: Optional[str] = None) -> ServeContr
         detached=True,
         _override_controller_namespace=_override_controller_namespace,
     )
-    _set_global_client(client)
+    set_global_client(client)
     return client
