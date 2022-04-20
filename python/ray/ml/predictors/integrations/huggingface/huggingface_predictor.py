@@ -107,11 +107,18 @@ class HuggingFacePredictor(TorchPredictor):
             data, feature_columns=feature_columns, dtypes=dtypes, unsqueeze=unsqueeze
         )
 
-    def _predict(self, tensor: Dict[str, torch.Tensor]) -> np.ndarray:
+    def _predict(self, tensor: Dict[str, torch.Tensor]) -> pd.DataFrame:
         self.training_args.local_rank = -1
         trainer = HFTrainer(model=self.model, args=self.training_args)
         dataset = HFIterableDatasetWithLen([tensor], 1)
-        return trainer.predict(dataset).predictions
+        # squeeze out the extra dimension added by torch.stack
+        # inside the HF data collator
+        ret = trainer.predict(dataset).predictions.squeeze()
+        # TODO(yard1): Return just a numpy array once that's supported
+        # by Ray Datasets
+        df = pd.DataFrame([ret.tolist()]).T
+        df.columns = ["predictions"]
+        return df
 
     def predict(
         self,

@@ -118,7 +118,10 @@ def test_same_data_format(ray_start_4_cpus):
                 f"\n{a}\n{b}\n"
             )
 
+    # We squeeze to get rid of the extra dimension added by the HF
+    # torch_default_data_collator. The models seem to train and predict
+    # fine with that extra dimension.
     [
-        [equal_or_exception(a[k], b[k]) for k in a]
+        [equal_or_exception(a[k], b[k].squeeze()) for k in a]
         for a, b in zip(hf_train_dataloader_inputs, ray_train_dataloader_inputs)
     ]

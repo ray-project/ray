@@ -86,8 +86,9 @@ class TorchPredictor(Predictor):
             )
         return features_tensor
 
-    def _predict(self, tensor: torch.Tensor) -> np.ndarray:
-        return self.model(tensor).cpu().detach().numpy()
+    def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
+        prediction = self.model(tensor).cpu().detach().numpy()
+        return pd.DataFrame(prediction, columns=["predictions"])
 
     def predict(
         self,
@@ -172,5 +173,4 @@ class TorchPredictor(Predictor):
         tensor = self._convert_to_tensor(
             data, feature_columns=feature_columns, dtypes=dtype, unsqueeze=unsqueeze
         )
-        prediction = self._predict(tensor)
-        return pd.DataFrame(prediction, columns=["predictions"])
+        return self._predict(tensor)
