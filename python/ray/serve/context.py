@@ -67,7 +67,7 @@ def set_global_client(client):
     _global_client = client
 
 
-def _set_internal_replica_context(
+def set_internal_replica_context(
     deployment: str,
     replica_tag: ReplicaTag,
     controller_name: str,

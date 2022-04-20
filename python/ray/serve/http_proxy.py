@@ -197,7 +197,7 @@ class HTTPProxy:
     ):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(
+        ray.serve.context.set_internal_replica_context(
             None, None, controller_name, controller_namespace, None
         )
 
