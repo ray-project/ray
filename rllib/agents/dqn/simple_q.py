@@ -10,7 +10,7 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 """
 
 import logging
-from typing import Optional, Type
+from typing import List, Optional, Type, Union
 
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
@@ -37,6 +37,10 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -56,101 +60,6 @@ from ray.rllib.utils.deprecation import (
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-# fmt: off
-# __sphinx_doc_begin__
-DEFAULT_CONFIG = with_common_config({
-    # === Exploration Settings ===
-    "exploration_config": {
-        # The Exploration class to use.
-        "type": "EpsilonGreedy",
-        # Config for the Exploration class' constructor:
-        "initial_epsilon": 1.0,
-        "final_epsilon": 0.02,
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
-
-        # For soft_q, use:
-        # "exploration_config" = {
-        #   "type": "SoftQ"
-        #   "temperature": [float, e.g. 1.0]
-        # }
-    },
-    # Switch to greedy actions in evaluation workers.
-    "evaluation_config": {
-        "explore": False,
-    },
-
-    # Minimum env sampling timesteps to accumulate within a single `train()` call. This
-    # value does not affect learning, only the number of times `Trainer.step_attempt()`
-    # is called by `Trauber.train()`. If - after one `step_attempt()`, the env sampling
-    # timestep count has not been reached, will perform n more `step_attempt()` calls
-    # until the minimum timesteps have been executed. Set to 0 for no minimum timesteps.
-    "min_sample_timesteps_per_reporting": 1000,
-    # Update the target network every `target_network_update_freq` steps.
-    "target_network_update_freq": 500,
-
-    # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": DEPRECATED_VALUE,
-    # The following values have moved because of the new ReplayBuffer API
-    "prioritized_replay": DEPRECATED_VALUE,
-    "learning_starts": DEPRECATED_VALUE,
-    "replay_batch_size": DEPRECATED_VALUE,
-    "replay_sequence_length": DEPRECATED_VALUE,
-    "prioritized_replay_alpha": DEPRECATED_VALUE,
-    "prioritized_replay_beta": DEPRECATED_VALUE,
-    "prioritized_replay_eps": DEPRECATED_VALUE,
-    "replay_buffer_config": {
-        # Use the new ReplayBuffer API here
-        "_enable_replay_buffer_api": True,
-        # How many steps of the model to sample before learning starts.
-        "learning_starts": 1000,
-        "type": "MultiAgentReplayBuffer",
-        "capacity": 50000,
-        "replay_batch_size": 32,
-        # The number of contiguous environment steps to replay at once. This
-        # may be set to greater than 1 to support recurrent models.
-        "replay_sequence_length": 1,
-    },
-    # Set this to True, if you want the contents of your buffer(s) to be
-    # stored in any saved checkpoints as well.
-    # Warnings will be created if:
-    # - This is True AND restoring from a checkpoint that contains no buffer
-    #   data.
-    # - This is False AND restoring from a checkpoint that does contain
-    #   buffer data.
-    "store_buffer_in_checkpoints": False,
-
-    # === Optimization ===
-    # Learning rate for adam optimizer
-    "lr": 5e-4,
-    # Learning rate schedule.
-    # In the format of [[timestep, value], [timestep, value], ...]
-    # A schedule should normally start from timestep 0.
-    "lr_schedule": None,
-    # Adam epsilon hyper parameter
-    "adam_epsilon": 1e-8,
-    # If not None, clip gradients during optimization at this value
-    "grad_clip": 40,
-    # Update the replay buffer with this many samples at once. Note that
-    # this setting applies per-worker if num_workers > 1.
-    "rollout_fragment_length": 4,
-    # Size of a batch sampled from replay buffer for training. Note that
-    # if async_updates is set, then each worker returns gradients for a
-    # batch of this size.
-    "train_batch_size": 32,
-
-    # === Parallelism ===
-    # Number of workers for collecting samples with. This only makes sense
-    # to increase if your environment is particularly slow to sample, or if
-    # you"re using the Async or Ape-X optimizers.
-    "num_workers": 0,
-    # Prevent reporting frequency from going lower than this time span.
-    "min_time_s_per_reporting": 1,
-})
-# __sphinx_doc_end__
-# fmt: on
 
 class SimpleQConfig(TrainerConfig):
     """Defines a SimpleQTrainer configuration class from which a SimpleQTrainer can be built.
@@ -347,7 +256,7 @@ class _deprecated_default_config(dict):
     def __getitem__(self, item):
         return super().__getitem__(item)
 
-DEFAULT_CONFIG = _deprecated_default config()
+DEFAULT_CONFIG = _deprecated_default_config()
 
 class SimpleQTrainer(Trainer):
     # TODO: Change the return value of this method to return a TrainerConfig object
