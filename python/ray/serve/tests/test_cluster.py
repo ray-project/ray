@@ -130,8 +130,8 @@ def test_replica_startup_status_transitions(ray_cluster):
 
     @serve.deployment(version="1", ray_actor_options={"num_cpus": 2})
     class E:
-        def __init__(self):
-            ray.get(signal.wait.remote())
+        async def __init__(self):
+            await signal.wait.remote()
 
     E.deploy(_blocking=False)
 

@@ -1,13 +1,22 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List, Mapping, Callable, Union, TYPE_CHECKING
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Union,
+)
 
 from ray.tune.syncer import SyncConfig
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.tune.trainable import PlacementGroupFactory
     from ray.tune.callback import Callback
     from ray.tune.stopper import Stopper
+    from ray.tune.trainable import PlacementGroupFactory
 
 ScalingConfig = Dict[str, Any]
 
