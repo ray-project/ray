@@ -22,6 +22,7 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 
+
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
@@ -226,6 +227,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             pass
 
         return rest_response(success=True, message=f"Killed actor with id {actor_id}")
+
+    @routes.get("/api/v0/actors")
+    async def get_actors(self, req) -> aiohttp.web.Response:
+        data = await self._dashboard_head.gcs_state_aggregator.get_actors()
+        return rest_response(
+            success=True, message="", result=data, convert_google_style=False
+        )
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
