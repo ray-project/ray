@@ -138,13 +138,12 @@ class SampleBatch(dict):
             # value that is actually a ndarray/tensor. This would fail if
             # all values are nested dicts/tuples of more complex underlying
             # structures.
-            len_ = (
-                len(v)
-                if isinstance(v, (list, np.ndarray)) or (torch and torch.is_tensor(v))
-                else None
-            )
-            if len_:
-                lengths.append(len_)
+            try:
+                len_ = len(v) if not isinstance(v, (dict, tuple)) else None
+                if len_:
+                    lengths.append(len_)
+            except Exception:
+                pass
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
@@ -210,21 +209,34 @@ class SampleBatch(dict):
             return MultiAgentBatch.concat_samples(samples)
         concatd_seq_lens = []
         concat_samples = []
-        zero_padded = samples[0].zero_padded
-        max_seq_len = samples[0].max_seq_len
-        time_major = samples[0].time_major
+        # Make sure these settings are consistent amongst all batches.
+        zero_padded = max_seq_len = time_major = None
         for s in samples:
             if s.count > 0:
-                assert s.zero_padded == zero_padded
-                assert s.time_major == time_major
+                if max_seq_len is None:
+                    zero_padded = s.zero_padded
+                    max_seq_len = s.max_seq_len
+                    time_major = s.time_major
+
+                # Make sure these settings are consistent amongst all batches.
+                if s.zero_padded != zero_padded or s.time_major != time_major:
+                    raise ValueError(
+                        "All SampleBatches' `zero_padded` and `time_major` settings "
+                        "must be consistent!"
+                    )
                 if (
                     s.max_seq_len is None or max_seq_len is None
                 ) and s.max_seq_len != max_seq_len:
                     raise ValueError(
-                        "Samples must consistently provide or omit max_seq_len"
+                        "Samples must consistently either provide or omit "
+                        "`max_seq_len`!"
                     )
-                if zero_padded:
-                    assert s.max_seq_len == max_seq_len
+                elif zero_padded and s.max_seq_len != max_seq_len:
+                    raise ValueError(
+                        "For `zero_padded` SampleBatches, the values of `max_seq_len` "
+                        "must be consistent!"
+                    )
+
                 if max_seq_len is not None:
                     max_seq_len = max(max_seq_len, s.max_seq_len)
                 concat_samples.append(s)
@@ -402,7 +414,9 @@ class SampleBatch(dict):
         self_as_dict = {k: v for k, v in self.items()}
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
         self.update(shuffled)
-
+        # Flush cache such that intercepted values are recalculated after the
+        # shuffling.
+        self.intercepted_values = {}
         return self
 
     @PublicAPI

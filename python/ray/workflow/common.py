@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import json
 
 from ray import cloudpickle
 from collections import deque
@@ -45,6 +46,19 @@ def get_qualname(f):
 def ensure_ray_initialized():
     if not ray.is_initialized():
         ray.init()
+
+
+def validate_user_metadata(metadata):
+    if metadata is not None:
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict.")
+        try:
+            json.dumps(metadata)
+        except TypeError as e:
+            raise ValueError(
+                "metadata must be JSON serializable, instead, "
+                "we got 'TypeError: {}'".format(e)
+            )
 
 
 @dataclass
@@ -106,6 +120,15 @@ class WorkflowStaticRef:
     # This tag indicates we should resolve the workflow like an ObjectRef, when
     # included in the arguments of another workflow.
     _resolve_like_object_ref_in_args: bool = False
+
+    @classmethod
+    def from_output(cls, step_id: str, output: Any):
+        """Create static ref from given output."""
+        if not isinstance(output, cls):
+            if not isinstance(output, ray.ObjectRef):
+                output = ray.put(output)
+            output = cls(step_id=step_id, ref=output)
+        return output
 
     def __hash__(self):
         return hash(self.step_id + self.ref.hex())
@@ -298,12 +321,9 @@ class WorkflowExecutionResult:
     """Dataclass for holding workflow execution result."""
 
     # Part of result to persist in a storage and pass to the next step.
-    persisted_output: "ObjectRef"
+    persisted_output: "WorkflowStaticRef"
     # Part of result to return to the user but does not require persistence.
-    volatile_output: "ObjectRef"
-
-    def __reduce__(self):
-        return WorkflowExecutionResult, (self.persisted_output, self.volatile_output)
+    volatile_output: "WorkflowStaticRef"
 
 
 @dataclass

@@ -33,6 +33,10 @@ resource = None
 if sys.platform != "win32":
     import resource
 
+    _timeout = 30
+else:
+    _timeout = 60
+
 EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 # True if processes are run in the valgrind profiler.
@@ -359,7 +363,7 @@ def wait_for_node(
     gcs_address,
     node_plasma_store_socket_name,
     redis_password=None,
-    timeout=30,
+    timeout=_timeout,
 ):
     """Wait until this node has appeared in the client table.
 
@@ -1571,6 +1575,7 @@ def start_raylet(
     backup_count=0,
     ray_debugger_external=False,
     env_updates=None,
+    node_name=None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1795,6 +1800,10 @@ def start_raylet(
         command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
+    if node_name is not None:
+        command.append(
+            f"--node-name={node_name}",
+        )
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,

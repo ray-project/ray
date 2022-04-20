@@ -118,9 +118,8 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert len(actors) == 3
             one_entry = list(actors.values())[0]
             assert "jobId" in one_entry
-            assert "taskSpec" in one_entry
-            assert "functionDescriptor" in one_entry["taskSpec"]
-            assert type(one_entry["taskSpec"]["functionDescriptor"]) is dict
+            assert "functionDescriptor" in one_entry
+            assert type(one_entry["functionDescriptor"]) is dict
             assert "address" in one_entry
             assert type(one_entry["address"]) is dict
             assert "state" in one_entry
@@ -264,7 +263,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
             including_default_value_fields=False,
         )
 
-    non_state_keys = ("actorId", "jobId", "taskSpec")
+    non_state_keys = ("actorId", "jobId")
 
     for msg in msgs:
         actor_data_dict = actor_table_data_to_dict(msg)
@@ -292,9 +291,9 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
                 "actorCreationDummyObjectId",
                 "jobId",
                 "ownerAddress",
-                "taskSpec",
                 "className",
                 "serializedRuntimeEnv",
+                "functionDescriptor",
                 "rayNamespace",
             }
         else:

@@ -15,13 +15,14 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.modules.actor import actor_consts
-from ray.dashboard.modules.actor.actor_utils import actor_classname_from_task_spec
+from ray.dashboard.modules.actor.actor_utils import actor_classname_from_func_descriptor
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.datacenter import DataSource, DataOrganizer
+
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -57,20 +58,17 @@ def actor_table_data_to_dict(message):
         "state",
         "name",
         "numRestarts",
-        "taskSpec",
+        "functionDescriptor",
         "timestamp",
         "numExecutedTasks",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
-    if "taskSpec" in light_message:
-        actor_class = actor_classname_from_task_spec(light_message["taskSpec"])
+    logger.info(light_message)
+    if "functionDescriptor" in light_message:
+        actor_class = actor_classname_from_func_descriptor(
+            light_message["functionDescriptor"]
+        )
         light_message["actorClass"] = actor_class
-        if "functionDescriptor" in light_message["taskSpec"]:
-            light_message["taskSpec"] = {
-                "functionDescriptor": light_message["taskSpec"]["functionDescriptor"]
-            }
-        else:
-            light_message.pop("taskSpec")
     return light_message
 
 
@@ -230,6 +228,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             pass
 
         return rest_response(success=True, message=f"Killed actor with id {actor_id}")
+
+    @routes.get("/api/v0/actors")
+    async def get_actors(self, req) -> aiohttp.web.Response:
+        data = await self._dashboard_head.gcs_state_aggregator.get_actors()
+        return rest_response(
+            success=True, message="", result=data, convert_google_style=False
+        )
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

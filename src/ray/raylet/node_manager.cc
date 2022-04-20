@@ -174,10 +174,12 @@ void HeartbeatSender::Heartbeat() {
 
 NodeManager::NodeManager(instrumented_io_context &io_service,
                          const NodeID &self_node_id,
+                         const std::string &self_node_name,
                          const NodeManagerConfig &config,
                          const ObjectManagerConfig &object_manager_config,
                          std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(self_node_id),
+      self_node_name_(self_node_name),
       io_service_(io_service),
       gcs_client_(gcs_client),
       worker_pool_(
@@ -230,10 +232,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           object_manager_config,
           object_directory_.get(),
           [this](const ObjectID &object_id,
+                 int64_t object_size,
                  const std::string &object_url,
                  std::function<void(const ray::Status &)> callback) {
             GetLocalObjectManager().AsyncRestoreSpilledObject(
-                object_id, object_url, callback);
+                object_id, object_size, object_url, callback);
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
@@ -318,7 +321,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           [this](const ObjectID &object_id) {
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
-          /*core_worker_subscriber_=*/core_worker_subscriber_.get()),
+          /*core_worker_subscriber_=*/core_worker_subscriber_.get(),
+          object_directory_.get()),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -473,14 +477,6 @@ ray::Status NodeManager::RegisterGcs() {
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
-
-  // Subscribe to resource usage batches from the monitor.
-  const auto &resource_usage_batch_added =
-      [this](const ResourceUsageBatchData &resource_usage_batch) {
-        ResourceUsageBatchReceived(resource_usage_batch);
-      };
-  RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
-      resource_usage_batch_added, /*done*/ nullptr));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -2163,6 +2159,8 @@ std::string NodeManager::DebugString() const {
   std::stringstream result;
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
+  result << "\nNode ID: " << self_node_id_;
+  result << "\nNode name: " << self_node_name_;
   result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
   if (cluster_task_manager_ != nullptr) {
     result << "\nClusterTaskManager:\n";

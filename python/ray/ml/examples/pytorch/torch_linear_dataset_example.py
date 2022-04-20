@@ -8,7 +8,7 @@ import torch.nn as nn
 import ray
 import ray.train as train
 from ray.data import Dataset
-from ray.ml.checkpoint import Checkpoint
+from ray.ml.batch_predictor import BatchPredictor
 from ray.ml.predictors.integrations.torch import TorchPredictor
 from ray.ml.result import Result
 from ray.ml.train.integrations.torch import TorchTrainer
@@ -130,20 +130,12 @@ def train_linear(num_workers=2, use_gpu=False):
 
 
 def predict_linear(result: Result):
-    checkpoint_object_ref = result.checkpoint.to_object_ref()
-
-    class TorchScorer:
-        def __init__(self):
-            checkpoint = Checkpoint.from_object_ref(checkpoint_object_ref)
-            self.predictor = TorchPredictor.from_checkpoint(checkpoint)
-
-        def __call__(self, batch):
-            return self.predictor.predict(batch, dtype=torch.float)
+    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
 
     items = [{"x": random.uniform(0, 1) for _ in range(10)}]
     prediction_dataset = ray.data.from_items(items)
 
-    predictions = prediction_dataset.map_batches(TorchScorer, compute="actors")
+    predictions = batch_predictor.predict(prediction_dataset, dtype=torch.float)
 
     return predictions
 
