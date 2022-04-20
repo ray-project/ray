@@ -1,6 +1,4 @@
 from typing import Any, Union, Generic, Tuple, List, Callable
-import numpy as np
-import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.dataset import BatchType
@@ -8,11 +6,45 @@ from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, Mean, Std
 from ray.data.block import BlockExecStats, KeyFn
 from ray.data.impl.plan import AllToAllStage
-from ray.data.impl.block_list import BlockList
 from ray.data.impl.compute import CallableClass, ComputeStrategy
-from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.progress_bar import ProgressBar
+from ray.data.impl.shuffle import ShuffleOp
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, KeyType
+
+
+class GroupbyOp(ShuffleOp):
+    @staticmethod
+    def map(
+        idx: int,
+        block: Block,
+        output_num_blocks: int,
+        boundaries: List[KeyType],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+    ) -> List[Union[BlockMetadata, Block]]:
+        """Partition the block and combine rows with the same key."""
+        stats = BlockExecStats.builder()
+        if key is None:
+            partitions = [block]
+        else:
+            partitions = BlockAccessor.for_block(block).sort_and_partition(
+                boundaries,
+                [(key, "ascending")] if isinstance(key, str) else key,
+                descending=False,
+            )
+        parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
+        meta = BlockAccessor.for_block(block).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        )
+        return [meta] + parts
+
+    @staticmethod
+    def reduce(
+        key: KeyFn, aggs: Tuple[AggregateFn], *mapper_outputs: List[Block]
+    ) -> (Block, BlockMetadata):
+        """Aggregate sorted and partially combined blocks."""
+        return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
+            list(mapper_outputs), key, aggs
+        )
 
 
 @PublicAPI
@@ -37,12 +69,16 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> grouped_ds.aggregate(AggregateFn(
-            ...     init=lambda k: [],
-            ...     accumulate=lambda a, r: a + [r],
-            ...     merge=lambda a1, a2: a1 + a2,
-            ...     finalize=lambda a: a
-            ... ))
+            >>> import ray
+            >>> from ray.data.aggregate import AggregateFn
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> grouped_ds = ds.groupby(lambda x: x % 3) # doctest: +SKIP
+            >>> grouped_ds.aggregate(AggregateFn( # doctest: +SKIP
+            ...     init=lambda k: [], # doctest: +SKIP
+            ...     accumulate=lambda a, r: a + [r], # doctest: +SKIP
+            ...     merge=lambda a1, a2: a1 + a2, # doctest: +SKIP
+            ...     finalize=lambda a: a # doctest: +SKIP
+            ... )) # doctest: +SKIP
 
         Args:
             aggs: Aggregations to do.
@@ -82,42 +118,14 @@ class GroupedDataset(Generic[T]):
                     else self._key,
                     num_reducers,
                 )
-
-            partition_and_combine_block = cached_remote_fn(
-                _partition_and_combine_block
-            ).options(num_returns=num_reducers + 1)
-            aggregate_combined_blocks = cached_remote_fn(
-                _aggregate_combined_blocks, num_returns=2
+            shuffle_op = GroupbyOp(
+                map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
             )
-
-            map_results = np.empty((num_mappers, num_reducers), dtype=object)
-            map_meta = []
-            for i, block in enumerate(blocks.get_blocks()):
-                results = partition_and_combine_block.remote(
-                    block, boundaries, self._key, aggs
-                )
-                map_results[i, :] = results[:-1]
-                map_meta.append(results[-1])
-            map_bar = ProgressBar("GroupBy Map", len(map_results))
-            map_bar.block_until_complete(map_meta)
-            stage_info["map"] = ray.get(map_meta)
-            map_bar.close()
-
-            blocks = []
-            metadata = []
-            for j in range(num_reducers):
-                block, meta = aggregate_combined_blocks.remote(
-                    num_reducers, self._key, aggs, *map_results[:, j].tolist()
-                )
-                blocks.append(block)
-                metadata.append(meta)
-            reduce_bar = ProgressBar("GroupBy Reduce", len(blocks))
-            reduce_bar.block_until_complete(blocks)
-            reduce_bar.close()
-
-            metadata = ray.get(metadata)
-            stage_info["reduce"] = metadata
-            return BlockList(blocks, metadata), stage_info
+            return shuffle_op.execute(
+                blocks,
+                num_reducers,
+                clear_input_blocks,
+            )
 
         plan = self._dataset._plan.with_stage(AllToAllStage("aggregate", None, do_agg))
         return Dataset(
@@ -154,6 +162,8 @@ class GroupedDataset(Generic[T]):
         batch_format: str = "native",
         **ray_remote_args,
     ) -> "Dataset[Any]":
+        # TODO AttributeError: 'GroupedDataset' object has no attribute 'map_groups'
+        #  in the example below.
         """Apply the given function to each group of records of this dataset.
 
         While map_groups() is very flexible, note that it comes with downsides:
@@ -168,19 +178,24 @@ class GroupedDataset(Generic[T]):
             >>> # Return a single record per group (list of multiple records in,
             >>> # list of a single record out). Note that median is not an
             >>> # associative function so cannot be computed with aggregate().
-            >>> ray.data.range(100).groupby(lambda x: x % 3).map_groups(
-            ...     lambda x: [median(x)])
+            >>> import ray
+            >>> import pandas as pd
+            >>> import numpy as np
+            >>> ds = ray.data.range(100) # doctest: +SKIP
+            >>> ds.groupby(lambda x: x % 3).map_groups( # doctest: +SKIP
+            ...     lambda x: [np.median(x)])
 
             >>> # Return multiple records per group (dataframe in, dataframe out).
             >>> df = pd.DataFrame(
             ...     {"A": ["a", "a", "b"], "B": [1, 1, 3], "C": [4, 6, 5]}
             ... )
-            >>> grouped = ray.data.from_pandas(df).groupby("A")
-            >>> grouped.map_groups(
+            >>> ds = ray.data.from_pandas(df) # doctest: +SKIP
+            >>> grouped = ds.groupby("A") # doctest: +SKIP
+            >>> grouped.map_groups( # doctest: +SKIP
             ...     lambda g: g.apply(
             ...         lambda c: c / g[c.name].sum() if c.name in ["B", "C"] else c
             ...     )
-            ... )
+            ... ) # doctest: +SKIP
 
         Args:
             fn: The function to apply to each group of records, or a class type
@@ -260,10 +275,11 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).count()
-            >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").count()
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).count() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby( # doctest: +SKIP
+            ...     "A").count() # doctest: +SKIP
 
         Returns:
             A simple dataset of ``(k, v)`` pairs or an Arrow dataset of
@@ -281,18 +297,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).sum()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .sum(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").sum()
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .sum(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).sum() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .sum(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").sum() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .sum(["B", "C"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the sum.
@@ -341,18 +358,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).min()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .min(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").min()
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .min(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).min() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .min(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").min() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the min.
@@ -401,18 +419,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).max()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .max(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").max()
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .max(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).max() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .max(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").max() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the max.
@@ -461,18 +480,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).mean()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .mean(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").mean()
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .mean(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).mean() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .mean(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").mean() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
             on: The data subset on which to compute the mean.
@@ -525,18 +545,19 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).groupby(lambda x: x % 3).std()
-            >>> ray.data.from_items([
-            ...     (i % 3, i, i**2)
-            ...     for i in range(100)]) \
-            ...     .groupby(lambda x: x[0] % 3) \
-            ...     .std(lambda x: x[2])
-            >>> ray.data.range_arrow(100).groupby("value").std(ddof=0)
-            >>> ray.data.from_items([
-            ...     {"A": i % 3, "B": i, "C": i**2}
-            ...     for i in range(100)]) \
-            ...     .groupby("A") \
-            ...     .std(["B", "C"])
+            >>> import ray
+            >>> ray.data.range(100).groupby(lambda x: x % 3).std() # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     (i % 3, i, i**2) # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
+            ...     .std(lambda x: x[2]) # doctest: +SKIP
+            >>> ray.data.range_arrow(100).groupby("value").std(ddof=0) # doctest: +SKIP
+            >>> ray.data.from_items([ # doctest: +SKIP
+            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
+            ...     for i in range(100)]) \ # doctest: +SKIP
+            ...     .groupby("A") \ # doctest: +SKIP
+            ...     .std(["B", "C"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to
@@ -586,32 +607,3 @@ class GroupedDataset(Generic[T]):
             If groupby key is ``None`` then the key part of return is omitted.
         """
         return self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
-
-
-def _partition_and_combine_block(
-    block: Block[T], boundaries: List[KeyType], key: KeyFn, aggs: Tuple[AggregateFn]
-) -> List[Union[Block, BlockMetadata]]:
-    """Partition the block and combine rows with the same key."""
-    stats = BlockExecStats.builder()
-    if key is None:
-        partitions = [block]
-    else:
-        partitions = BlockAccessor.for_block(block).sort_and_partition(
-            boundaries,
-            [(key, "ascending")] if isinstance(key, str) else key,
-            descending=False,
-        )
-    parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
-    meta = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
-    return parts + [meta]
-
-
-def _aggregate_combined_blocks(
-    num_reducers: int, key: KeyFn, aggs: Tuple[AggregateFn], *blocks: Tuple[Block, ...]
-) -> Tuple[Block[U], BlockMetadata]:
-    """Aggregate sorted and partially combined blocks."""
-    return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
-        list(blocks), key, aggs
-    )

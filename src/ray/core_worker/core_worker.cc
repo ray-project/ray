@@ -700,7 +700,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number
 }
 
 void CoreWorker::RegisterToGcs() {
-  std::unordered_map<std::string, std::string> worker_info;
+  absl::flat_hash_map<std::string, std::string> worker_info;
   const auto &worker_id = GetWorkerID();
   worker_info.emplace("node_ip_address", options_.node_ip_address);
   worker_info.emplace("plasma_store_socket", options_.store_socket);
@@ -1880,7 +1880,7 @@ Status CoreWorker::CreatePlacementGroup(
       }
     }
   }
-  const PlacementGroupID placement_group_id = PlacementGroupID::FromRandom();
+  const PlacementGroupID placement_group_id = PlacementGroupID::Of(GetCurrentJobId());
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(placement_group_id,
                                 placement_group_creation_options.name,
@@ -2886,25 +2886,51 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
     return;
   }
   const auto &node_id = NodeID::FromBinary(request.node_id());
-  const auto &object_location_states = request.object_location_states();
+  const auto &object_location_updates = request.object_location_updates();
 
-  for (const auto &object_location_state : object_location_states) {
-    const auto &object_id = ObjectID::FromBinary(object_location_state.object_id());
-    const auto &state = object_location_state.state();
+  for (const auto &object_location_update : object_location_updates) {
+    const auto &object_id = ObjectID::FromBinary(object_location_update.object_id());
 
-    if (state == rpc::ObjectLocationState::ADDED) {
-      AddObjectLocationOwner(object_id, node_id);
-    } else if (state == rpc::ObjectLocationState::REMOVED) {
-      RemoveObjectLocationOwner(object_id, node_id);
-    } else {
-      RAY_LOG(FATAL) << "Invalid object location state " << state
-                     << " has been received.";
+    if (object_location_update.has_spilled_location_update()) {
+      AddSpilledObjectLocationOwner(
+          object_id,
+          object_location_update.spilled_location_update().spilled_url(),
+          object_location_update.spilled_location_update().spilled_to_local_storage()
+              ? node_id
+              : NodeID::Nil());
+    }
+
+    if (object_location_update.has_plasma_location_update()) {
+      if (object_location_update.plasma_location_update() ==
+          rpc::ObjectPlasmaLocationUpdate::ADDED) {
+        AddObjectLocationOwner(object_id, node_id);
+      } else if (object_location_update.plasma_location_update() ==
+                 rpc::ObjectPlasmaLocationUpdate::REMOVED) {
+        RemoveObjectLocationOwner(object_id, node_id);
+      } else {
+        RAY_LOG(FATAL) << "Invalid object plasma location update "
+                       << object_location_update.plasma_location_update()
+                       << " has been received.";
+      }
     }
   }
 
   send_reply_callback(Status::OK(),
                       /*success_callback_on_reply*/ nullptr,
                       /*failure_callback_on_reply*/ nullptr);
+}
+
+void CoreWorker::AddSpilledObjectLocationOwner(const ObjectID &object_id,
+                                               const std::string &spilled_url,
+                                               const NodeID &spilled_node_id) {
+  RAY_LOG(DEBUG) << "Received object spilled location update for object " << object_id
+                 << ", which has been spilled to " << spilled_url << " on node "
+                 << spilled_node_id;
+  auto reference_exists =
+      reference_counter_->HandleObjectSpilled(object_id, spilled_url, spilled_node_id);
+  if (!reference_exists) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " not found";
+  }
 }
 
 void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
@@ -3133,7 +3159,7 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
   if (options_.gc_collect != nullptr) {
-    options_.gc_collect();
+    options_.gc_collect(request.triggered_by_global_gc());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(
@@ -3156,24 +3182,6 @@ void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
     send_reply_callback(
         Status::NotImplemented("Spill objects callback not defined"), nullptr, nullptr);
   }
-}
-
-void CoreWorker::HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
-                                     rpc::AddSpilledUrlReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
-  const ObjectID object_id = ObjectID::FromBinary(request.object_id());
-  const std::string &spilled_url = request.spilled_url();
-  const NodeID node_id = NodeID::FromBinary(request.spilled_node_id());
-  RAY_LOG(DEBUG) << "Received AddSpilledUrl request for object " << object_id
-                 << ", which has been spilled to " << spilled_url << " on node "
-                 << node_id;
-  auto reference_exists = reference_counter_->HandleObjectSpilled(
-      object_id, spilled_url, node_id, request.size());
-  Status status =
-      reference_exists
-          ? Status::OK()
-          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
-  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleRestoreSpilledObjects(
@@ -3441,6 +3449,29 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
     }
   }
   return Status::OK();
+}
+
+std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
+                                                      const ActorID &callee_actor_id) {
+  std::vector<ObjectID> return_ids(num_returns);
+  const auto next_task_index = worker_context_.GetTaskIndex() + 1;
+  TaskID task_id;
+  if (callee_actor_id.IsNil()) {
+    /// Return ids for normal task call.
+    task_id = TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
+                                    worker_context_.GetCurrentInternalTaskId(),
+                                    next_task_index);
+  } else {
+    /// Return ids for actor task call.
+    task_id = TaskID::ForActorTask(worker_context_.GetCurrentJobID(),
+                                   worker_context_.GetCurrentInternalTaskId(),
+                                   next_task_index,
+                                   callee_actor_id);
+  }
+  for (int i = 0; i < num_returns; i++) {
+    return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
+  }
+  return return_ids;
 }
 
 }  // namespace core

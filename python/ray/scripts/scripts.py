@@ -41,9 +41,8 @@ from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_r
 
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.cli import job_cli_group
+from ray.experimental.state.state_cli import list_state_cli_group
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -273,6 +272,14 @@ def debug(address):
     f" allocate an available port.",
 )
 @click.option(
+    "--node-name",
+    required=False,
+    hidden=True,
+    type=str,
+    help="the user-provided identifier or name for this node. "
+    "Defaults to the node's ip_address",
+)
+@click.option(
     "--redis-password",
     required=False,
     hidden=True,
@@ -285,7 +292,7 @@ def debug(address):
     required=False,
     hidden=True,
     type=str,
-    help="the port to use for the Redis shards other than the " "primary Redis shard",
+    help="the port to use for the Redis shards other than the primary Redis shard",
 )
 @click.option(
     "--object-manager-port",
@@ -372,7 +379,7 @@ def debug(address):
     required=False,
     default="{}",
     type=str,
-    help="a JSON serialized dictionary mapping resource name to " "resource quantity",
+    help="a JSON serialized dictionary mapping resource name to resource quantity",
 )
 @click.option(
     "--head",
@@ -458,6 +465,11 @@ def debug(address):
     help="manually specify the root temporary dir of the Ray process",
 )
 @click.option(
+    "--storage",
+    default=None,
+    help="the persistent storage URI for the cluster. Experimental.",
+)
+@click.option(
     "--system-config",
     default=None,
     hidden=True,
@@ -476,14 +488,14 @@ def debug(address):
     type=int,
     hidden=True,
     default=None,
-    help="the port to use to expose Ray metrics through a " "Prometheus endpoint.",
+    help="the port to use to expose Ray metrics through a Prometheus endpoint.",
 )
 @click.option(
     "--no-monitor",
     is_flag=True,
     hidden=True,
     default=False,
-    help="If True, the ray autoscaler monitor for this cluster will not be " "started.",
+    help="If True, the ray autoscaler monitor for this cluster will not be started.",
 )
 @click.option(
     "--tracing-startup-hook",
@@ -507,6 +519,7 @@ def start(
     node_ip_address,
     address,
     port,
+    node_name,
     redis_password,
     redis_shard_ports,
     object_manager_port,
@@ -535,6 +548,7 @@ def start(
     plasma_store_socket_name,
     raylet_socket_name,
     temp_dir,
+    storage,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -543,6 +557,7 @@ def start(
     ray_debugger_external,
 ):
     """Start Ray processes manually on the local machine."""
+
     if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
@@ -576,6 +591,7 @@ def start(
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
+        node_name=node_name if node_name else node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
         worker_port_list=worker_port_list,
@@ -595,6 +611,7 @@ def start(
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
+        storage=storage,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
@@ -737,9 +754,8 @@ def start(
             # NOTE(kfstorm): Java driver rely on this line to get the address
             # of the cluster. Please be careful when updating this line.
             cli_logger.print(
-                cf.bold("  ray start --address='{}'{}"),
+                cf.bold("  ray start --address='{}'"),
                 bootstrap_addresses,
-                f" --redis-password='{redis_password}'" if redis_password else "",
             )
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
@@ -749,15 +765,10 @@ def start(
                 # `address="auto"`, the _node_ip_address parameter is
                 # unnecessary.
                 cli_logger.print(
-                    "ray{}init(address{}{}{}{})",
+                    "ray{}init(address{}{}{})",
                     cf.magenta("."),
                     cf.magenta("="),
                     cf.yellow("'auto'"),
-                    ", _redis_password{}{}".format(
-                        cf.magenta("="), cf.yellow("'" + redis_password + "'")
-                    )
-                    if redis_password
-                    else "",
                     ", _node_ip_address{}{}".format(
                         cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
                     )
@@ -801,7 +812,7 @@ def start(
         # Ensure `--address` flag is specified.
         if address is None:
             cli_logger.abort(
-                "`{}` is a required flag unless starting a head " "node with `{}`.",
+                "`{}` is a required flag unless starting a head node with `{}`.",
                 cf.bold("--address"),
                 cf.bold("--head"),
             )
@@ -820,7 +831,7 @@ def start(
             if val is None:
                 continue
             cli_logger.abort(
-                "`{}` should only be specified when starting head " "node with `{}`.",
+                "`{}` should only be specified when starting head node with `{}`.",
                 cf.bold(flag),
                 cf.bold("--head"),
             )
@@ -1138,9 +1149,9 @@ def up(
             cf.bold("--restart-only"),
             cf.bold("--no-restart"),
         )
-        assert restart_only != no_restart, (
-            "Cannot set both 'restart_only' " "and 'no_restart' at the same time!"
-        )
+        assert (
+            restart_only != no_restart
+        ), "Cannot set both 'restart_only' and 'no_restart' at the same time!"
 
     if urllib.parse.urlparse(cluster_config_file).scheme in ("http", "https"):
         try:
@@ -1420,7 +1431,7 @@ def submit(
         os.path.join("~", os.path.basename(script))
 
     Example:
-        >>> ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
+        ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
     """
     cli_logger.doassert(
         not (screen and tmux),
@@ -1430,7 +1441,7 @@ def submit(
     )
     cli_logger.doassert(
         not (script_args and args),
-        "`{0}` and `{1}` are incompatible. Use only `{1}`.\n" "Example: `{2}`",
+        "`{0}` and `{1}` are incompatible. Use only `{1}`.\nExample: `{2}`",
         cf.bold("--args"),
         cf.bold("-- <args ...>"),
         cf.bold("ray submit script.py -- --arg=123 --flag"),
@@ -1647,7 +1658,7 @@ def microbenchmark():
     "--address",
     required=False,
     type=str,
-    help="Override the redis address to connect to.",
+    help="Override the Ray address to connect to.",
 )
 def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
@@ -1726,6 +1737,9 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address(address)
+    if not ray._private.gcs_utils.check_health(address):
+        print(f"Ray cluster is not found at {address}")
+        sys.exit(1)
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(
@@ -1756,6 +1770,9 @@ def memory(
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
+    if not ray._private.gcs_utils.check_health(address):
+        print(f"Ray cluster is not found at {address}")
+        sys.exit(1)
     gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
@@ -2052,24 +2069,15 @@ def healthcheck(address, redis_password, component):
 
     address = services.canonicalize_bootstrap_address(address)
 
-    gcs_address = address
-
     if not component:
         try:
-            options = (("grpc.enable_http_proxy", 0),)
-            channel = ray._private.utils.init_grpc_channel(gcs_address, options)
-            stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
-            request = gcs_service_pb2.CheckAliveRequest()
-            reply = stub.CheckAlive(
-                request, timeout=ray.ray_constants.HEALTHCHECK_EXPIRATION_S
-            )
-            if reply.status.code == 0:
+            if ray._private.gcs_utils.check_health(address):
                 sys.exit(0)
         except Exception:
             pass
         sys.exit(1)
 
-    gcs_client = ray._private.gcs_utils.GcsClient(address=gcs_address)
+    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
         component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK
@@ -2166,11 +2174,14 @@ def install_nightly(verbose, dryrun):
     "-gen",
     required=False,
     type=str,
-    help="The directory to generate the bazel project template to," " if provided.",
+    help="The directory to generate the bazel project template to, if provided.",
 )
 @add_click_logging_options
 def cpp(show_library_path, generate_bazel_project_template_to):
     """Show the cpp library path and generate the bazel project template."""
+    if sys.platform == "win32":
+        cli_logger.error("Ray C++ API is not supported on Windows currently.")
+        sys.exit(1)
     if not show_library_path and not generate_bazel_project_template_to:
         raise ValueError(
             "Please input at least one option of '--show-library-path'"
@@ -2251,6 +2262,7 @@ cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
 add_command_alias(job_cli_group, name="job", hidden=True)
+add_command_alias(list_state_cli_group, name="list", hidden=True)
 
 try:
     from ray.serve.scripts import serve_cli

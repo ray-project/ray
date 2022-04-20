@@ -23,6 +23,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+from ray.internal import storage
 from ray._private.gcs_utils import GcsClient
 from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import try_to_create_directory, try_to_symlink, open_log
@@ -76,7 +77,7 @@ class Node:
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(
-                    "'shutdown_at_exit' and 'connect_only' " "cannot both be true."
+                    "'shutdown_at_exit' and 'connect_only' cannot both be true."
                 )
             self._register_shutdown_hooks()
 
@@ -199,6 +200,9 @@ class Node:
             self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
 
         self._init_temp()
+
+        # Validate and initialize the persistent storage API.
+        storage._init_storage(ray_params.storage, is_head=head)
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -325,14 +329,21 @@ class Node:
     def validate_ip_port(ip_port):
         """Validates the address is in the ip:port format"""
         _, _, port = ip_port.rpartition(":")
-        _ = int(port)
+        if port == ip_port:
+            raise ValueError(f"Port is not specified for address {ip_port}")
+        try:
+            _ = int(port)
+        except ValueError:
+            raise ValueError(
+                f"Unable to parse port number from {port} (full address = {ip_port})"
+            )
 
     def check_version_info(self):
-        """Check if various Python and Ray version of this process is correct.
+        """Check if the Python and Ray version of this process matches that in GCS.
 
         This will be used to detect if workers or drivers are started using
-        different versions of Python, or Ray. If the version information
-        is not present in KV store, then no check is done.
+        different versions of Python, or Ray.
+
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
@@ -341,25 +352,7 @@ class Node:
         )
         if cluster_metadata is None:
             return
-        true_version_info = (
-            cluster_metadata["ray_version"],
-            cluster_metadata["python_version"],
-        )
-        version_info = ray._private.utils.compute_version_info()
-        if version_info != true_version_info:
-            node_ip_address = ray._private.services.get_node_ip_address()
-            error_message = (
-                "Version mismatch: The cluster was started with:\n"
-                "    Ray: " + true_version_info[0] + "\n"
-                "    Python: " + true_version_info[1] + "\n"
-                "This process on node " + node_ip_address + " was started with:" + "\n"
-                "    Ray: " + version_info[0] + "\n"
-                "    Python: " + version_info[1] + "\n"
-            )
-            if version_info[:2] != true_version_info[:2]:
-                raise RuntimeError(error_message)
-            else:
-                logger.warning(error_message)
+        ray._private.utils.check_version_info(cluster_metadata)
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -444,7 +437,7 @@ class Node:
                 if params_dict[key] != env_dict[key]:
                     logger.warning(
                         "Autoscaler is overriding your resource:"
-                        "{}: {} with {}.".format(key, params_dict[key], env_dict[key])
+                        f"{key}: {params_dict[key]} with {env_dict[key]}."
                     )
             return num_cpus, num_gpus, memory, object_store_memory, result
 
@@ -455,7 +448,7 @@ class Node:
                 try:
                     env_resources = json.loads(env_string)
                 except Exception:
-                    logger.exception("Failed to load {}".format(env_string))
+                    logger.exception(f"Failed to load {env_string}")
                     raise
                 logger.debug(f"Autoscaler overriding resources: {env_resources}.")
             (
@@ -547,14 +540,6 @@ class Node:
         return self._metrics_export_port
 
     @property
-    def socket(self):
-        """Get the socket reserving the node manager's port"""
-        try:
-            return self._socket
-        except AttributeError:
-            return None
-
-    @property
     def logging_config(self):
         """Get the logging config of the current node."""
         return {
@@ -627,7 +612,7 @@ class Node:
         return self._sockets_dir
 
     def _make_inc_temp(self, suffix="", prefix="", directory_name=None):
-        """Return a incremental temporary file name. The file is not created.
+        """Return an incremental temporary file name. The file is not created.
 
         Args:
             suffix (str): The suffix of the temp file.
@@ -774,8 +759,7 @@ class Node:
             maxlen = (104 if is_mac else 108) - 1  # sockaddr_un->sun_path
             if len(result.split("://", 1)[-1].encode("utf-8")) > maxlen:
                 raise OSError(
-                    "AF_UNIX path length cannot exceed "
-                    "{} bytes: {!r}".format(maxlen, result)
+                    f"AF_UNIX path length cannot exceed {maxlen} bytes: {result!r}"
                 )
         return result
 
@@ -879,10 +863,8 @@ class Node:
     def start_log_monitor(self):
         """Start the log monitor."""
         process_info = ray._private.services.start_log_monitor(
-            self.redis_address,
-            self.gcs_address,
             self._logs_dir,
-            redis_password=self._ray_params.redis_password,
+            self.gcs_address,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
@@ -983,6 +965,7 @@ class Node:
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
+            self._ray_params.storage,
             self._temp_dir,
             self._session_dir,
             self._runtime_env_dir,
@@ -1005,12 +988,13 @@ class Node:
             config=self._config,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
-            socket_to_use=self.socket,
+            socket_to_use=None,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.start_initial_python_workers_for_first_job,  # noqa: E501
             ray_debugger_external=self._ray_params.ray_debugger_external,
             env_updates=self._ray_params.env_vars,
+            node_name=self._ray_params.node_name,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -1199,7 +1183,7 @@ class Node:
                 if check_alive:
                     raise RuntimeError(
                         "Attempting to kill a process of type "
-                        "'{}', but this process is already dead.".format(process_type)
+                        f"'{process_type}', but this process is already dead."
                     )
                 else:
                     continue
@@ -1210,9 +1194,7 @@ class Node:
                 if process.returncode != 0:
                     message = (
                         "Valgrind detected some errors in process of "
-                        "type {}. Error code {}.".format(
-                            process_type, process.returncode
-                        )
+                        f"type {process_type}. Error code {process.returncode}."
                     )
                     if process_info.stdout_file is not None:
                         with open(process_info.stdout_file, "r") as f:
@@ -1439,7 +1421,9 @@ class Node:
             object_spilling_config = json.loads(object_spilling_config)
             from ray import external_storage
 
-            storage = external_storage.setup_external_storage(object_spilling_config)
+            storage = external_storage.setup_external_storage(
+                object_spilling_config, self.session_name
+            )
             storage.destroy_external_storage()
 
     def validate_external_storage(self):
@@ -1479,5 +1463,5 @@ class Node:
         # Validate external storage usage.
         from ray import external_storage
 
-        external_storage.setup_external_storage(deserialized_config)
+        external_storage.setup_external_storage(deserialized_config, self.session_name)
         external_storage.reset_external_storage()

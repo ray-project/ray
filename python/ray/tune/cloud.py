@@ -10,15 +10,14 @@ from ray.ml.checkpoint import (
     _get_local_path,
     _get_external_path,
 )
-from ray.util import log_once
-
-from ray.util.annotations import Deprecated
-from ray.util.ml_utils.cloud import (
-    download_from_bucket,
-    clear_bucket,
-    upload_to_bucket,
-    is_cloud_target,
+from ray.ml.utils.remote_storage import (
+    download_from_uri,
+    delete_at_uri,
+    upload_to_uri,
+    is_non_local_path_uri,
 )
+from ray.util import log_once
+from ray.util.annotations import Deprecated
 
 
 @Deprecated
@@ -95,11 +94,11 @@ class _TrialCheckpoint(os.PathLike):
         is unset, it will be set to ``local_path``.
 
         Args:
-            cloud_path (Optional[str]): Cloud path to load checkpoint from.
+            cloud_path: Cloud path to load checkpoint from.
                 Defaults to ``self.cloud_path``.
-            local_path (Optional[str]): Local path to save checkpoint at.
+            local_path: Local path to save checkpoint at.
                 Defaults to ``self.local_path``.
-            overwrite (bool): If True, overwrites potential existing local
+            overwrite: If True, overwrites potential existing local
                 checkpoint. If False, exits if ``self.local_dir`` already
                 exists and has files in it.
 
@@ -146,7 +145,7 @@ class _TrialCheckpoint(os.PathLike):
         os.makedirs(local_path, 0o755, exist_ok=True)
 
         # Here we trigger the actual download
-        download_from_bucket(cloud_path, local_path)
+        download_from_uri(uri=cloud_path, local_path=local_path)
 
         # Local dir exists and is not empty
         return local_path
@@ -166,11 +165,11 @@ class _TrialCheckpoint(os.PathLike):
         is unset, it will be set to ``cloud_path``.
 
         Args:
-            cloud_path (Optional[str]): Cloud path to load checkpoint from.
+            cloud_path: Cloud path to load checkpoint from.
                 Defaults to ``self.cloud_path``.
-            local_path (Optional[str]): Local path to save checkpoint at.
+            local_path: Local path to save checkpoint at.
                 Defaults to ``self.local_path``.
-            clean_before (bool): If True, deletes potentially existing
+            clean_before: If True, deletes potentially existing
                 cloud bucket before storing new data.
 
         """
@@ -199,10 +198,10 @@ class _TrialCheckpoint(os.PathLike):
 
         if clean_before:
             logger.info(f"Clearing bucket contents before upload: {cloud_path}")
-            clear_bucket(cloud_path)
+            delete_at_uri(cloud_path)
 
         # Actually upload
-        upload_to_bucket(cloud_path, local_path)
+        upload_to_uri(local_path, cloud_path)
 
         return cloud_path
 
@@ -218,10 +217,10 @@ class _TrialCheckpoint(os.PathLike):
         That way checkpoints can be transferred across cloud storage providers.
 
         Args:
-            path (Optional[str]): Path to save checkpoint at. If empty,
+            path: Path to save checkpoint at. If empty,
                 the default cloud storage path is saved to the default
                 local directory.
-            force_download (bool): If ``True``, forces (re-)download of
+            force_download: If ``True``, forces (re-)download of
                 the checkpoint. Defaults to ``False``.
         """
         temp_dirs = set()
@@ -251,7 +250,7 @@ class _TrialCheckpoint(os.PathLike):
                 f"the checkpoints. Please report this issue."
             )
 
-        if is_cloud_target(path):
+        if is_non_local_path_uri(path):
             # Storing on cloud
             if not self.local_path:
                 # No local copy, yet. Download to temp dir

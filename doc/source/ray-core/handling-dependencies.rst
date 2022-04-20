@@ -1,25 +1,13 @@
 .. _handling_dependencies:
 
-Handling Dependencies
-=====================
-
-This page might be useful for you if you're trying to:
-
-
-* Run a distributed Ray library or application.
-* Run a distributed Ray script which imports some local files.
-* Quickly iterate on a project with changing dependencies and files while running on a Ray cluster.
-
-
-What problem does this page solve?
-----------------------------------
+Environment Dependencies
+========================
 
 Your Ray application may have dependencies that exist outside of your Ray script. For example:
 
 * Your Ray script may import/depend on some Python packages.
 * Your Ray script may be looking for some specific environment variables to be available.
 * Your Ray script may import some files outside of the script.
-
 
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
@@ -64,7 +52,7 @@ Runtime environments
 
 .. note::
 
-    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature is available starting with Ray 1.4.0 and is currently only supported on macOS and Linux.
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature is available starting with Ray 1.4.0 and is currently supported on macOS and Linux. It is experimentally supported on Windows.
 
 The second way to set up dependencies is to install them dynamically while Ray is running.
 
@@ -272,6 +260,8 @@ To ensure your local changes show up across all Ray workers and can be imported 
 
   ray.get(f.remote())
 
+Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
+
 .. _runtime-environments-api-ref:
 
 API Reference
@@ -297,7 +287,7 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   Note: If your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
-  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), or (3) a Python module object.
+  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
 
   - Examples of entries in the list:
 
@@ -309,11 +299,15 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
 
     - ``my_module # Assumes my_module has already been imported, e.g. via 'import my_module'``
 
+    - ``my_module.whl``
+
   The modules will be downloaded to each node on the cluster.
 
   Note: Setting options (1) and (3) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
   Note: For option (1), if your local directory contains a ``.gitignore`` file, the files and paths specified therein will not be uploaded to the cluster.
+
+  Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
 
 - ``excludes`` (List[str]): When used with ``working_dir`` or ``py_modules``, specifies a list of files or paths to exclude from being uploaded to the cluster.
   This field also supports the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
@@ -322,7 +316,7 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
 
 - ``pip`` (dict | List[str] | str): Either (1) a list of pip `requirements specifiers <https://pip.pypa.io/en/stable/cli/pip_install/#requirement-specifiers>`_, (2) a string containing the path to a pip
   `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of pip packages,
-  (b) ``pip_check`` (optional, bool): whether to enable `pip check <https://pip.pypa.io/en/stable/cli/pip_check/>`_ at the end of pip install, defaults to ``True``.
+  (b) ``pip_check`` (optional, bool): whether to enable `pip check <https://pip.pypa.io/en/stable/cli/pip_check/>`_ at the end of pip install, defaults to ``False``.
   (c) ``pip_version`` (optional, str): the version of pip; Ray will spell the package name "pip" in front of the ``pip_version`` to form the final requirement string.
   The syntax of a requirement specifier is defined in full in `PEP 508 <https://www.python.org/dev/peps/pep-0508/>`_.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
@@ -366,6 +360,12 @@ The ``runtime_env`` is a Python dictionary or a python class :class:`ray.runtime
   Currently, specifying this option per-actor or per-task is not supported.
 
   - Example: ``{"eager_install": False}``
+
+- ``config`` (dict | :class:`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): config for runtime environment. Either a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the timeout of runtime environment creation, timeout is in seconds.
+
+  - Example: ``{"setup_timeout_seconds": 10}``
+
+  - Example: ``RuntimeEnvConfig(setup_timeout_seconds=10)``
 
 Caching and Garbage Collection
 """"""""""""""""""""""""""""""

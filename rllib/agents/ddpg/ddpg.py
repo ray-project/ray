@@ -111,10 +111,6 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
-    # Time steps over which the beta parameter is annealed.
-    "prioritized_replay_beta_annealing_timesteps": 20000,
-    # Final value of beta
-    "final_prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
@@ -173,6 +169,11 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent reporting frequency from going lower than this time span.
     "min_time_s_per_reporting": 1,
+    # Experimental flag.
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration` method will be called as-is each
+    # training iteration.
+    "_disable_execution_plan_api": False,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -220,7 +221,7 @@ class DDPGTrainer(SimpleQTrainer):
         if config.get("prioritized_replay"):
             if config["multiagent"]["replay_mode"] == "lockstep":
                 raise ValueError(
-                    "Prioritized replay is not supported when " "replay_mode=lockstep."
+                    "Prioritized replay is not supported when replay_mode=lockstep."
                 )
         else:
             if config.get("worker_side_prioritization"):

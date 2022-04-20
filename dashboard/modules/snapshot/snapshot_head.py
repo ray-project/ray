@@ -144,6 +144,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     "end_time": job_info.end_time,
                     "metadata": job_info.metadata,
                     "runtime_env": job_info.runtime_env,
+                    "entrypoint": job_info.entrypoint,
                 }
                 jobs[job_submission_id] = entry
         return jobs
@@ -168,7 +169,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "start_time": actor_table_entry.start_time,
                 "end_time": actor_table_entry.end_time,
                 "is_detached": actor_table_entry.is_detached,
-                "resources": dict(actor_table_entry.task_spec.required_resources),
+                "resources": dict(actor_table_entry.required_resources),
                 "actor_class": actor_table_entry.class_name,
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),

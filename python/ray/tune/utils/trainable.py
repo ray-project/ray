@@ -5,7 +5,7 @@ import logging
 import os
 import pandas as pd
 import shutil
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, Optional
 
 import ray
 import ray.cloudpickle as pickle
@@ -65,7 +65,20 @@ class TrainableUtil:
         return checkpoint_path
 
     @staticmethod
-    def pickle_checkpoint(checkpoint_path):
+    def load_checkpoint_metadata(checkpoint_path: str) -> Optional[Dict]:
+        metadata_path = os.path.join(checkpoint_path, ".tune_metadata")
+        if not os.path.exists(metadata_path):
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+            metadatas = glob.glob(f"{checkpoint_dir}/**/.tune_metadata", recursive=True)
+            if not metadatas:
+                return None
+            metadata_path = metadatas[0]
+
+        with open(metadata_path, "rb") as f:
+            return pickle.load(f)
+
+    @staticmethod
+    def pickle_checkpoint(checkpoint_path: str):
         """Pickles checkpoint data."""
         checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         data = {}
@@ -133,14 +146,16 @@ class TrainableUtil:
         return os.path.join(tokens[0], "")
 
     @staticmethod
-    def make_checkpoint_dir(checkpoint_dir, index, override=False):
+    def make_checkpoint_dir(
+        checkpoint_dir: str, index: Union[int, str], override=False
+    ):
         """Creates a checkpoint directory within the provided path.
 
         Args:
-            checkpoint_dir (str): Path to checkpoint directory.
-            index (int|str): A subdirectory will be created
+            checkpoint_dir: Path to checkpoint directory.
+            index: A subdirectory will be created
                 at the checkpoint directory named 'checkpoint_{index}'.
-            override (bool): Deletes checkpoint_dir before creating
+            override: Deletes checkpoint_dir before creating
                 a new one.
         """
         suffix = "checkpoint"
@@ -186,6 +201,11 @@ class TrainableUtil:
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
+
+            # Skip temporary checkpoints
+            if os.path.basename(chkpt_dir).startswith("checkpoint_tmp"):
+                continue
+
             metadata_file = glob.glob(
                 os.path.join(glob.escape(chkpt_dir), "*.tune_metadata")
             )
@@ -200,8 +220,17 @@ class TrainableUtil:
                     "{} has zero or more than one tune_metadata.".format(chkpt_dir)
                 )
 
-            chkpt_path = metadata_file[0][: -len(".tune_metadata")]
-            chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1 :])
+            metadata_file = metadata_file[0]
+
+            try:
+                with open(metadata_file, "rb") as f:
+                    metadata = pickle.load(f)
+            except Exception as e:
+                logger.warning(f"Could not read metadata from checkpoint: {e}")
+                metadata = {}
+
+            chkpt_path = metadata_file[: -len(".tune_metadata")]
+            chkpt_iter = metadata.get("iteration", -1)
             iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 
         chkpt_df = pd.DataFrame(
@@ -213,33 +242,33 @@ class TrainableUtil:
 class PlacementGroupUtil:
     @staticmethod
     def get_remote_worker_options(
-        num_workers,
-        num_cpus_per_worker,
-        num_gpus_per_worker,
-        num_workers_per_host,
-        timeout_s,
+        num_workers: int,
+        num_cpus_per_worker: int,
+        num_gpus_per_worker: int,
+        num_workers_per_host: Optional[int],
+        timeout_s: Optional[int],
     ) -> (Dict[str, Any], placement_group):
         """Returns the option for remote workers.
 
         Args:
-            num_workers (int): Number of training workers to include in
+            num_workers: Number of training workers to include in
                 world.
-            num_cpus_per_worker (int): Number of CPU resources to reserve
+            num_cpus_per_worker: Number of CPU resources to reserve
                 per training worker.
-            num_gpus_per_worker (int): Number of GPU resources to reserve
+            num_gpus_per_worker: Number of GPU resources to reserve
                 per training worker.
             num_workers_per_host: Optional[int]: Number of workers to
                 colocate per host.
-            timeout_s (Optional[int]): Seconds before the torch process group
+            timeout_s: Seconds before the torch process group
                 times out. Useful when machines are unreliable. Defaults
                 to 60 seconds. This value is also reused for triggering
                 placement timeouts if forcing colocation.
 
 
         Returns:
-            type(Dict[Str, Any]): option that contains CPU/GPU count of
+            type: option that contains CPU/GPU count of
                 the remote worker and the placement group information.
-            pg(placement_group): return a reference to the placement group
+            pg: return a reference to the placement group
         """
         pg = None
         options = dict(num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)

@@ -34,6 +34,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/dependency_manager.h"
+#include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -145,6 +146,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_manager A reference to the local object manager.
   NodeManager(instrumented_io_context &io_service,
               const NodeID &self_node_id,
+              const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client);
@@ -562,7 +564,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Trigger local GC on each worker of this raylet.
-  void DoLocalGC();
+  void DoLocalGC(bool triggered_by_global_gc = false);
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
@@ -617,6 +619,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// ID of this node.
   NodeID self_node_id_;
+  /// The user-given identifier or name of this node.
+  std::string self_node_name_;
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;

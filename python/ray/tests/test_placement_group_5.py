@@ -39,7 +39,7 @@ def test_placement_group_bin_packing_priority(
         cluster.add_node(num_cpus=1)
         cluster.add_node(num_cpus=2)
         cluster.add_node(num_gpus=1)
-        cluster.add_node(object_store_memory=1024 * 1024 * 200)
+        cluster.add_node(object_store_memory=1024 * 1024 * 250)
 
     default_bundles = [
         {"CPU": 1},

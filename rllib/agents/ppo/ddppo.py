@@ -17,7 +17,6 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
-import sys
 import time
 from typing import Callable, Optional, Union
 
@@ -89,7 +88,10 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # for it to be used as a penalty, we would have to un-decentralize
         # DDPPO
         "kl_coeff": 0.0,
-        "kl_target": 0.0
+        "kl_target": 0.0,
+
+        # Keep using execution_plan API (training_iteration fn not defined yet).
+        "_disable_execution_plan_api": False,
     },
     _allow_unknown_configs=True,
 )
@@ -126,7 +128,7 @@ class DDPPOTrainer(PPOTrainer):
         if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
             # Users should not define `train_batch_size` directly (always -1).
             raise ValueError(
-                "Set rollout_fragment_length instead of train_batch_size " "for DDPPO."
+                "Set rollout_fragment_length instead of train_batch_size for DDPPO."
             )
 
         # Auto-train_batch_size: Calculate from rollout len and
@@ -155,12 +157,6 @@ class DDPPOTrainer(PPOTrainer):
         # setting.
         super().validate_config(config)
 
-        # Error if run on Win.
-        if sys.platform in ["win32", "cygwin"]:
-            raise ValueError(
-                "DD-PPO not supported on Win yet! " "Due to usage of torch.distributed."
-            )
-
         # Only supported for PyTorch so far.
         if config["framework"] != "torch":
             raise ValueError("Distributed data parallel is only supported for PyTorch")
@@ -180,7 +176,7 @@ class DDPPOTrainer(PPOTrainer):
         # `batch_mode` must be "truncate_episodes".
         if config["batch_mode"] != "truncate_episodes":
             raise ValueError(
-                "Distributed data parallel requires truncate_episodes " "batch mode."
+                "Distributed data parallel requires truncate_episodes batch mode."
             )
         # DDPPO doesn't support KL penalties like PPO-1.
         # In order to support KL penalties, DDPPO would need to become
@@ -204,7 +200,7 @@ class DDPPOTrainer(PPOTrainer):
 
         Returns:
             LocalIterator[dict]: The Policy class to use with PGTrainer.
-                If None, use `default_policy` provided in build_trainer().
+                If None, use `get_default_policy_class()` provided by Trainer.
         """
         assert (
             len(kwargs) == 0

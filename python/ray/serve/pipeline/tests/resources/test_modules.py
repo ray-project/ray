@@ -3,8 +3,6 @@ Ray decorated classes and functions defined at top of file, importable with
 fully qualified name as import_path to test DAG building, artifact generation
 and structured deployment.
 """
-import starlette
-import json
 from typing import TypeVar
 
 import ray
@@ -84,13 +82,3 @@ def class_factory():
             return self.val
 
     return MyInlineClass
-
-
-async def request_to_data_int(request: starlette.requests.Request):
-    data = await request.body()
-    return int(data)
-
-
-async def request_to_data_obj(request: starlette.requests.Request):
-    data = await request.body()
-    return json.loads(data)

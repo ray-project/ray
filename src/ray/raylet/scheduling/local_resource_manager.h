@@ -133,13 +133,6 @@ class LocalResourceManager {
   /// Get the number of cpus on this node.
   uint64_t GetNumCpus() const;
 
-  /// Serialize task resource instances to json string.
-  ///
-  /// \param task_allocation Allocated resource instances for a task.
-  /// \return The task resource instances json string
-  std::string SerializedTaskResourceInstances(
-      std::shared_ptr<TaskResourceInstances> task_allocation) const;
-
   /// Replace the local resources by the provided value.
   ///
   /// \param replacement: the new value.
@@ -153,54 +146,35 @@ class LocalResourceManager {
   bool ResourcesExist(scheduling::ResourceID resource_id) const;
 
  private:
-  /// Create instances for each resource associated with the local node, given
-  /// the node's resources.
-  ///
-  /// \param local_resources: Total resources of the node.
-  void InitLocalResources(const NodeResources &local_resources);
-
-  /// Initialize the instances of a given resource given the resource's total capacity.
-  /// If unit_instances is true we split the resources in unit-size instances. For
-  /// example, if total = 10, then we create 10 instances, each with caoacity 1.
-  /// Otherwise, we create a single instance of capacity equal to the resource's capacity.
-  ///
-  /// \param total: Total resource capacity.
-  /// \param unit_instances: If true, we split the resource in unit-size instances.
-  /// If false, we create a single instance of capacity "total".
-  /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(FixedPoint total,
-                             bool unit_instances,
-                             ResourceInstanceCapacities *instance_list);
-
-  /// Init the information about which resources are unit_instance.
-  void InitResourceUnitInstanceInfo();
-
   /// Notify the subscriber that the local resouces has changed.
   void OnResourceChanged();
 
   /// Increase the available capacities of the instances of a given resource.
   ///
   /// \param available A list of available capacities for resource's instances.
-  /// \param resource_instances List of the resource instances being updated.
+  /// \param local_total Local total resource instances.
+  /// \param local_available Local available resource instances being updated.
   ///
-  /// \return Overflow capacities of "resource_instances" after adding instance
+  /// \return Overflow capacities of "local_available" after adding instance
   /// capacities in "available", i.e.,
-  /// min(available + resource_instances.available, resource_instances.total)
+  /// min(available + local_available, local_total)
   std::vector<FixedPoint> AddAvailableResourceInstances(
-      std::vector<FixedPoint> available,
-      ResourceInstanceCapacities *resource_instances) const;
+      const std::vector<FixedPoint> &available,
+      const std::vector<FixedPoint> &local_total,
+      std::vector<FixedPoint> &local_available) const;
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
   /// \param free A list of capacities for resource's instances to be freed.
-  /// \param resource_instances List of the resource instances being updated.
+  /// \param local_available Local available resource instances being updated.
   /// \param allow_going_negative Allow the values to go negative (disable underflow).
-  /// \return Underflow of "resource_instances" after subtracting instance
+  ///
+  /// \return Underflow of "local_available" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available,
-      ResourceInstanceCapacities *resource_instances,
+      const std::vector<FixedPoint> &available,
+      std::vector<FixedPoint> &local_available,
       bool allow_going_negative = false) const;
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
@@ -286,7 +260,5 @@ class LocalResourceManager {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
 };
-
-int GetPredefinedResourceIndex(scheduling::ResourceID resource_id);
 
 }  // end namespace ray

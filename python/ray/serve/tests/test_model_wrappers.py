@@ -1,16 +1,19 @@
 import json
 import tempfile
+from fastapi import Depends, FastAPI
 
 import numpy as np
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 from ray._private.test_utils import wait_for_condition
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import DataBatchType, Predictor
-from ray.serve.model_wrappers import ModelWrapper
+from ray.serve.model_wrappers import ModelWrapperDeployment
 from ray.serve.pipeline.api import build
-from ray.serve.pipeline.pipeline_input_node import PipelineInputNode
-from requests.adapters import HTTPAdapter, Retry
+from ray.experimental.dag.input_node import InputNode
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.http_adapters import json_to_ndarray
 import ray
 from ray import serve
 
@@ -21,7 +24,12 @@ class AdderPredictor(Predictor):
 
     @classmethod
     def from_checkpoint(cls, checkpoint: "AdderCheckpoint") -> "Predictor":
-        return cls(checkpoint.increment)
+        if checkpoint._data_dict:
+            return cls(checkpoint._data_dict["increment"])
+        elif checkpoint._local_path:  # uri case
+            with open(checkpoint._local_path) as f:
+                return cls(json.load(f))
+        raise Exception("Unreachable")
 
     def predict(self, data: DataBatchType) -> DataBatchType:
         return [
@@ -31,17 +39,7 @@ class AdderPredictor(Predictor):
 
 
 class AdderCheckpoint(Checkpoint):
-    def __init__(self, increment: int):
-        self.increment = increment
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "Checkpoint":
-        return cls(data["increment"])
-
-    @classmethod
-    def from_uri(cls, uri: str) -> "Checkpoint":
-        with open(uri) as f:
-            return cls(json.load(f))
+    pass
 
 
 def adder_schema(query_param_arg: int) -> DataBatchType:
@@ -54,7 +52,7 @@ def send_request(**requests_kargs):
 
 
 def test_simple_adder(serve_instance):
-    serve.deployment(name="Adder")(ModelWrapper).deploy(
+    ModelWrapperDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
     )
@@ -63,7 +61,7 @@ def test_simple_adder(serve_instance):
 
 
 def test_batching(serve_instance):
-    serve.deployment(name="Adder")(ModelWrapper).deploy(
+    ModelWrapperDeployment.options(name="Adder").deploy(
         predictor_cls=AdderPredictor,
         checkpoint=AdderCheckpoint.from_dict({"increment": 2}),
         batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
@@ -74,6 +72,20 @@ def test_batching(serve_instance):
         assert resp == {"value": [42], "batch_size": 2}
 
 
+app = FastAPI()
+
+
+@serve.deployment(route_prefix="/ingress")
+@serve.ingress(app)
+class Ingress:
+    def __init__(self, dag: RayServeDAGHandle) -> None:
+        self.dag = dag
+
+    @app.post("/")
+    async def predict(self, data=Depends(json_to_ndarray)):
+        return await self.dag.remote(data)
+
+
 def test_model_wrappers_in_pipeline(serve_instance):
     _, path = tempfile.mkstemp()
     with open(path, "w") as f:
@@ -81,10 +93,9 @@ def test_model_wrappers_in_pipeline(serve_instance):
 
     predictor_cls = "ray.serve.tests.test_model_wrappers.AdderPredictor"
     checkpoint_cls = "ray.serve.tests.test_model_wrappers.AdderCheckpoint"
-    schema_cls = "ray.serve.http_adapters.array_to_databatch"
 
-    with PipelineInputNode(preprocessor=schema_cls) as dag_input:
-        m1 = ray.remote(ModelWrapper).bind(
+    with InputNode() as dag_input:
+        m1 = ModelWrapperDeployment.bind(
             predictor_cls=predictor_cls,  # TODO: can't be the raw class right now?
             checkpoint={  # TODO: can't be the raw object right now?
                 "checkpoint_cls": checkpoint_cls,
@@ -92,11 +103,12 @@ def test_model_wrappers_in_pipeline(serve_instance):
             },
         )
         dag = m1.predict.bind(dag_input)
-    deployments = build(dag)
+    deployments = build(Ingress.bind(dag))
     for d in deployments:
         d.deploy()
 
     resp = requests.post("http://127.0.0.1:8000/ingress", json={"array": [40]})
+    print(resp.text)
     resp.raise_for_status()
     return resp.json() == {"value": [42], "batch_size": 1}
 
@@ -123,7 +135,7 @@ def test_yaml_compatibility(serve_instance):
             "deployments": [
                 {
                     "name": "Adder",
-                    "import_path": "ray.serve.model_wrappers.ModelWrapper",
+                    "import_path": "ray.serve.model_wrappers.ModelWrapperDeployment",
                     "init_kwargs": {
                         "predictor_cls": predictor_cls,
                         "checkpoint": {

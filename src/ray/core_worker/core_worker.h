@@ -667,7 +667,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListNamedActors(
       bool all_namespaces);
 
-  ///
+  /// Get the expected return ids of the next task.
+  std::vector<ObjectID> GetCurrentReturnIds(int num_returns,
+                                            const ActorID &callee_actor_id);
+
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
   /// post work to the appropriate event loop.
@@ -749,11 +752,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
-
-  // Add spilled URL to owned reference.
-  void HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
-                           rpc::AddSpilledUrlReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
 
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
@@ -998,6 +996,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
   /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+
+  void AddSpilledObjectLocationOwner(const ObjectID &object_id,
+                                     const std::string &spilled_url,
+                                     const NodeID &spilled_node_id);
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 

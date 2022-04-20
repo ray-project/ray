@@ -29,7 +29,7 @@ ClusterTaskManager::ClusterTaskManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
-    std::shared_ptr<LocalTaskManager> local_task_manager,
+    std::shared_ptr<ILocalTaskManager> local_task_manager,
     std::function<int64_t(void)> get_time_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -64,6 +64,19 @@ void ClusterTaskManager::QueueAndScheduleTask(
   ScheduleAndDispatchTasks();
 }
 
+namespace {
+void ReplyCancelled(const internal::Work &work,
+                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                    const std::string &scheduling_failure_message) {
+  auto reply = work.reply;
+  auto callback = work.callback;
+  reply->set_canceled(true);
+  reply->set_failure_type(failure_type);
+  reply->set_scheduling_failure_message(scheduling_failure_message);
+  callback();
+}
+}  // namespace
+
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryScheduleInfeasibleTask();
@@ -94,6 +107,23 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
         RAY_LOG(DEBUG) << "No node found to schedule a task "
                        << task.GetTaskSpecification().TaskId() << " is infeasible?"
                        << is_infeasible;
+
+        if (task.GetTaskSpecification().IsNodeAffinitySchedulingStrategy() &&
+            !task.GetTaskSpecification().GetNodeAffinitySchedulingStrategySoft()) {
+          // This can only happen if the target node doesn't exist or is infeasible.
+          // The task will never be schedulable in either case so we should fail it.
+          ReplyCancelled(
+              *work,
+              rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
+              "The node specified via NodeAffinitySchedulingStrategy doesn't exist "
+              "any more or is infeasible, and soft=False was specified.");
+          // We don't want to trigger the normal infeasible task logic (i.e. waiting),
+          // but rather we want to fail the task immediately.
+          work_it = work_queue.erase(work_it);
+          is_infeasible = false;
+          continue;
+        }
+
         break;
       }
 
@@ -119,6 +149,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       shapes_it++;
     }
   }
+
   local_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -158,19 +189,6 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
   }
 }
 
-namespace {
-void ReplyCancelled(std::shared_ptr<internal::Work> &work,
-                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-                    const std::string &scheduling_failure_message) {
-  auto reply = work->reply;
-  auto callback = work->callback;
-  reply->set_canceled(true);
-  reply->set_failure_type(failure_type);
-  reply->set_scheduling_failure_message(scheduling_failure_message);
-  callback();
-}
-}  // namespace
-
 bool ClusterTaskManager::CancelTask(
     const TaskID &task_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -184,7 +202,7 @@ bool ClusterTaskManager::CancelTask(
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from schedule queue.";
-        ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
+        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -201,7 +219,7 @@ bool ClusterTaskManager::CancelTask(
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from infeasible queue.";
-        ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
+        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           infeasible_tasks_.erase(shapes_it);

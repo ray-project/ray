@@ -59,7 +59,6 @@ JobStatus
 
 .. autoclass:: ray.job_submission.JobStatus
     :members:
-    :undoc-members:
 
 .. _job-info-ref:
 
@@ -68,4 +67,3 @@ JobInfo
 
 .. autoclass:: ray.job_submission.JobInfo
     :members:
-    :undoc-members:

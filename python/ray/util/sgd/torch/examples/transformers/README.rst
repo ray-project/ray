@@ -87,3 +87,5 @@ To run an example tuning MNLI on AWS with 16 GPUs and apex, just run:
 
 Note that with Apex, you can increase ``per_gpu_train_batch_size`` to 32, which
 should make each epoch take 10 minutes or less.
+
+The example can also be run using :ref:`Ray Job Submission <jobs-overview>`, which is in beta starting with Ray 1.12.

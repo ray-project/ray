@@ -7,9 +7,10 @@ If you have issues running them, bug the code owner(s) for OSS Kubernetes suppor
 1. Configure kubectl and Helm 3 to access a K8s cluster.
 2. `git checkout releases/<release version>`
 3. You might have to locally pip install the Ray wheel for the relevant commit (or pip install -e) in a conda env, see Ray client note below.
-4. cd to this directory
-5. `IMAGE=rayproject/ray:<release version> bash k8s_release_tests.sh`
-6. Test outcomes will be reported at the end of the output.
+4. You might have to temporarily delete the file `ray/python/ray/tests/conftest.py`.
+5. cd to this directory
+6. `IMAGE=rayproject/ray:<release version> bash k8s_release_tests.sh`
+7. Test outcomes will be reported at the end of the output.
 
 This runs three tests and does the necessary resource creation/teardown. The tests typically take about 15 minutes to finish.
 

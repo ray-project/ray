@@ -2,15 +2,15 @@ from functools import wraps
 import importlib
 from itertools import groupby
 import json
-import logging
 import pickle
 import random
 import string
 import time
-from typing import Iterable, List, Tuple, Dict, Any
+from typing import Iterable, List, Tuple
 import os
 import traceback
 from enum import Enum
+import __main__
 from ray.actor import ActorHandle
 
 import requests
@@ -24,10 +24,7 @@ from ray.util.serialization import StandaloneSerializationContext
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 from ray.serve.constants import (
     HTTP_PROXY_TIMEOUT,
-    SERVE_HANDLE_JSON_KEY,
-    ServeHandleType,
 )
-from ray import serve
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -47,43 +44,6 @@ def parse_request_item(request_item):
             return (build_starlette_request(arg.scope, arg.body),), {}
 
     return request_item.args, request_item.kwargs
-
-
-class LoggingContext:
-    """
-    Context manager to manage logging behaviors within a particular block, such as:
-    1) Overriding logging level
-
-    Source (python3 official documentation)
-    https://docs.python.org/3/howto/logging-cookbook.html#using-a-context-manager-for-selective-logging # noqa: E501
-    """
-
-    def __init__(self, logger, level=None):
-        self.logger = logger
-        self.level = level
-
-    def __enter__(self):
-        if self.level is not None:
-            self.old_level = self.logger.level
-            self.logger.setLevel(self.level)
-
-    def __exit__(self, et, ev, tb):
-        if self.level is not None:
-            self.logger.setLevel(self.old_level)
-
-
-def _get_logger():
-    logger = logging.getLogger("ray.serve")
-    # TODO(simon): Make logging level configurable.
-    log_level = os.environ.get("SERVE_LOG_DEBUG")
-    if log_level and int(log_level):
-        logger.setLevel(logging.DEBUG)
-    else:
-        logger.setLevel(logging.INFO)
-    return logger
-
-
-logger = _get_logger()
 
 
 class ServeEncoder(json.JSONEncoder):
@@ -108,61 +68,6 @@ class ServeEncoder(json.JSONEncoder):
                 o = o.astype(int)
             return o.tolist()
         return super().default(o)
-
-
-class ServeHandleEncoder(json.JSONEncoder):
-    """JSON encoder for RayServeHandle and RayServeSyncHandle. Use to enforce
-    JSON serialization of deployment init args & kwargs to faciliate serve
-    pipeline deployment as well as operationaling serve.
-    """
-
-    def default(self, obj):
-        # Import RayServeHandle in utils file lead to import errors
-        if type(obj).__name__ == "RayServeSyncHandle":
-            return {
-                SERVE_HANDLE_JSON_KEY: ServeHandleType.SYNC,
-                "deployment_name": obj.deployment_name,
-                "_internal_pickled_http_request": obj._pickled_http_request,
-            }
-        elif type(obj).__name__ == "RayServeHandle":
-            return {
-                SERVE_HANDLE_JSON_KEY: ServeHandleType.ASYNC,
-                "deployment_name": obj.deployment_name,
-                "_internal_pickled_http_request": obj._pickled_http_request,
-            }
-        else:
-            return super().default(obj)
-
-
-def serve_handle_object_hook(ray_serve_handle_json: Dict[str, Any]):
-    """Return RayServeHandle given a JSON serialized dict. Re-constructs the
-    object by fullfilling the following fieds that matches our signature of
-    `get_handle()`:
-        - controller handle
-        - deployment name
-        - _internal_pickled_http_request
-    """
-
-    if SERVE_HANDLE_JSON_KEY in ray_serve_handle_json:
-        is_sync = (
-            True
-            if ray_serve_handle_json[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC
-            else False
-        )
-        return serve.api.internal_get_global_client().get_handle(
-            ray_serve_handle_json["deployment_name"],
-            sync=is_sync,
-            missing_ok=True,
-            _internal_pickled_http_request=ray_serve_handle_json[
-                "_internal_pickled_http_request"
-            ],
-        )
-    else:
-        # Not RayServeHandle type.
-        try:
-            return json.loads(ray_serve_handle_json)
-        except Exception:
-            return ray_serve_handle_json
 
 
 @ray.remote(num_cpus=0)
@@ -228,6 +133,17 @@ def get_all_node_ids():
     return node_ids
 
 
+def node_id_to_ip_addr(node_id: str):
+    """Recovers the IP address for an entry from get_all_node_ids."""
+    if ":" in node_id:
+        node_id = node_id.split(":")[1]
+
+    if "-" in node_id:
+        node_id = node_id.split("-")[0]
+
+    return node_id
+
+
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
@@ -238,6 +154,7 @@ def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_iterable_delta
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
         >>> compute_iterable_delta(old, new)
@@ -254,6 +171,7 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     """Given two dicts, return the entries that's (added, removed, updated).
 
     Usage:
+        >>> from ray.serve.utils import compute_dict_delta
         >>> old = {"a": 1, "b": 2}
         >>> new = {"a": 3, "d": 4}
         >>> compute_dict_delta(old, new)
@@ -310,6 +228,50 @@ def msgpack_serialize(obj):
     return serialized
 
 
+def get_deployment_import_path(
+    deployment, replace_main=False, enforce_importable=False
+):
+    """
+    Gets the import path for deployment's func_or_class.
+
+    deployment: A deployment object whose import path should be returned
+    replace_main: If this is True, the function will try to replace __main__
+        with __main__'s file name if the deployment's module is __main__
+    """
+
+    body = deployment._func_or_class
+
+    if isinstance(body, str):
+        # deployment's func_or_class is already an import path
+        return body
+    elif hasattr(body, "__ray_actor_class__"):
+        # If ActorClass, get the class or function inside
+        body = body.__ray_actor_class__
+
+    import_path = f"{body.__module__}.{body.__qualname__}"
+
+    if enforce_importable and "<locals>" in body.__qualname__:
+        raise RuntimeError(
+            "Deployment definitions must be importable to build the Serve app, "
+            f"but deployment '{deployment.name}' is inline defined or returned "
+            "from another function. Please restructure your code so that "
+            f"'{import_path}' can be imported (i.e., put it in a module)."
+        )
+
+    if replace_main:
+        # Replaces __main__ with its file name. E.g. suppose the import path
+        # is __main__.classname and classname is defined in filename.py.
+        # Its import path becomes filename.classname.
+
+        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
+            file_name = os.path.basename(__main__.__file__)
+            extensionless_file_name = file_name.split(".")[0]
+            attribute_name = import_path.split(".")[-1]
+            import_path = f"{extensionless_file_name}.{attribute_name}"
+
+    return import_path
+
+
 def parse_import_path(import_path: str):
     """
     Takes in an import_path of form:
@@ -352,12 +314,14 @@ def require_packages(packages: List[str]):
     """Decorator making sure function run in specified environments
 
     Examples:
-        >>> @require_packages(["numpy", "package_a"])
-            def func():
-                import numpy as np
-        >>> func()
-            ImportError: func requires ["numpy", "package_a"] but
-            ["package_a"] are not available, please pip install them.
+        >>> from ray.serve.utils import require_packages
+        >>> @require_packages(["numpy", "package_a"]) # doctest: +SKIP
+        ... def func(): # doctest: +SKIP
+        ...     import numpy as np # doctest: +SKIP
+        ...     ... # doctest: +SKIP
+        >>> func() # doctest: +SKIP
+        ImportError: func requires ["numpy", "package_a"] but
+        ["package_a"] are not available, please pip install them.
     """
 
     def decorator(func):
@@ -383,3 +347,11 @@ def require_packages(packages: List[str]):
         return wrapped
 
     return decorator
+
+
+def in_interactive_shell():
+    # Taken from:
+    # https://stackoverflow.com/questions/15411967/how-can-i-check-if-code-is-executed-in-the-ipython-notebook
+    import __main__ as main
+
+    return not hasattr(main, "__file__")

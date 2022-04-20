@@ -1,18 +1,19 @@
+import yaml
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import signal
 import pytest
 import requests
+from tempfile import NamedTemporaryFile
 
 import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
-from ray.dashboard.optional_utils import RAY_INTERNAL_DASHBOARD_NAMESPACE
-from ray.serve.scripts import _process_args_and_kwargs, _configure_runtime_env
+from ray.serve.application import Application
+from ray.serve.deployment_graph import RayServeDAGHandle
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -27,192 +28,6 @@ def ray_start_stop():
     subprocess.check_output(["ray", "start", "--head"])
     yield
     subprocess.check_output(["ray", "stop", "--force"])
-
-
-class TestProcessArgsAndKwargs:
-    def test_valid_args_and_kwargs(self):
-        args_and_kwargs = (
-            "argval1",
-            "argval2",
-            "--kwarg1",
-            "kwval1",
-            "--kwarg2",
-            "kwval2",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["argval1", "argval2"]
-        assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2"}
-
-    def test_mixed_args_and_kwargs(self):
-        args_and_kwargs = (
-            "argval1",
-            "--kwarg1",
-            "kwval1",
-            "argval2",
-            "--kwarg2",
-            "kwval2",
-        )
-        with pytest.raises(ValueError):
-            _process_args_and_kwargs(args_and_kwargs)
-
-    def test_mixed_kwargs(self):
-        args_and_kwargs = (
-            "argval1",
-            "argval2",
-            "--kwarg1==kw==val1",
-            "--kwarg2",
-            "kwval2",
-            "--kwarg3",
-            "=kwval=3",
-            "--kwarg4=",
-            "--kwarg5",
-            "kwval5",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["argval1", "argval2"]
-        assert kwargs == {
-            "kwarg1": "=kw==val1",
-            "kwarg2": "kwval2",
-            "kwarg3": "=kwval=3",
-            "kwarg4": "",
-            "kwarg5": "kwval5",
-        }
-
-    def test_empty_kwarg(self):
-        args_and_kwargs = (
-            "argval1",
-            "--kwarg1",
-            "--kwarg2",
-            "kwval2",
-        )
-        with pytest.raises(ValueError):
-            _process_args_and_kwargs(args_and_kwargs)
-
-        args_and_kwargs = ("--empty_kwarg_only",)
-        with pytest.raises(ValueError):
-            _process_args_and_kwargs(args_and_kwargs)
-
-    def test_empty_equals_kwarg(self):
-        args_and_kwargs = (
-            "argval1",
-            "--kwarg1=--hello",
-            "--kwarg2=",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["argval1"]
-        assert kwargs == {
-            "kwarg1": "--hello",
-            "kwarg2": "",
-        }
-
-        args_and_kwargs = ("--empty_kwarg_only=",)
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == []
-        assert kwargs == {"empty_kwarg_only": ""}
-
-    def test_only_args(self):
-        args_and_kwargs = ("argval1", "argval2", "argval3")
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["argval1", "argval2", "argval3"]
-        assert kwargs == {}
-
-        args_and_kwargs = ("single_arg",)
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == ["single_arg"]
-        assert kwargs == {}
-
-    def test_only_kwargs(self):
-        args_and_kwargs = (
-            "--kwarg1",
-            "kwval1",
-            "--kwarg2",
-            "kwval2",
-            "--kwarg3",
-            "kwval3",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == []
-        assert kwargs == {"kwarg1": "kwval1", "kwarg2": "kwval2", "kwarg3": "kwval3"}
-
-        args_and_kwargs = (
-            "--single_kwarg",
-            "single_kwval",
-        )
-        args, kwargs = _process_args_and_kwargs(args_and_kwargs)
-        assert args == []
-        assert kwargs == {"single_kwarg": "single_kwval"}
-
-    def test_empty_args_and_kwargs(self):
-        for empty_val in [None, ()]:
-            args, kwargs = _process_args_and_kwargs(empty_val)
-            assert args == []
-            assert kwargs == {}
-
-
-class TestConfigureRuntimeEnv:
-    @serve.deployment
-    def f():
-        pass
-
-    @pytest.mark.parametrize("ray_actor_options", [None, {}])
-    def test_empty_ray_actor_options(self, ray_actor_options):
-        runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options=ray_actor_options
-        )
-        _configure_runtime_env(deployment, runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == runtime_env
-
-    def test_no_overwrite_all_options(self):
-        old_runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        new_runtime_env = {
-            "working_dir": "http://new.com",
-            "pip": [],
-            "env_vars": {"test_var": "test"},
-        }
-        updated_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-            "env_vars": {"test_var": "test"},
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": old_runtime_env}
-        )
-        _configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == updated_env
-
-    def test_no_overwrite_some_options(self):
-        old_runtime_env = {
-            "working_dir": "http://new.com",
-            "pip": [],
-            "env_vars": {"test_var": "test"},
-        }
-        new_runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": old_runtime_env}
-        )
-        _configure_runtime_env(deployment, new_runtime_env)
-        assert deployment.ray_actor_options["runtime_env"] == old_runtime_env
-
-    def test_overwrite_no_options(self):
-        runtime_env = {
-            "working_dir": "http://test.com",
-            "pip": ["requests", "pendulum==2.1.2"],
-        }
-        deployment = TestConfigureRuntimeEnv.f.options(
-            ray_actor_options={"runtime_env": runtime_env}
-        )
-        _configure_runtime_env(deployment, {})
-        assert deployment.ray_actor_options["runtime_env"] == runtime_env
 
 
 def test_start_shutdown(ray_start_stop):
@@ -231,31 +46,12 @@ def test_start_shutdown_in_namespace(ray_start_stop):
     subprocess.check_output(["serve", "shutdown", "-n", "test"])
 
 
-class A:
-    def __init__(self, value, increment=1):
-        self.value = value
-        self.increment = increment
-        self.decrement = 0
-        self.multiplier = int(os.environ["SERVE_TEST_MULTIPLIER"])
-
-        p = Path("hello")
-        assert p.exists()
-        with open(p) as f:
-            assert f.read() == "world"
-
-    def reconfigure(self, config):
-        self.decrement = config["decrement"]
-
-    def __call__(self, inp):
-        return (self.value + self.increment - self.decrement) * self.multiplier
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     # Deploys some valid config files and checks that the deployments work
 
     # Initialize serve in test to enable calling serve.list_deployments()
-    ray.init(address="auto", namespace=RAY_INTERNAL_DASHBOARD_NAMESPACE)
+    ray.init(address="auto", namespace="serve")
     serve.start(detached=True)
 
     # Create absolute file names to YAML config files
@@ -342,11 +138,12 @@ def test_deploy(ray_start_stop):
             == "Hello shallow world!"
         )
 
+    serve.shutdown()
     ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_info(ray_start_stop):
+def test_config(ray_start_stop):
     # Deploys valid config file and checks that serve info returns correct
     # response
 
@@ -357,8 +154,8 @@ def test_info(ray_start_stop):
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
 
-    info_response = subprocess.check_output(["serve", "info", "-j"]).decode("utf-8")
-    info = json.loads(info_response)
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
 
     assert "deployments" in info
     assert len(info["deployments"]) == 2
@@ -412,7 +209,7 @@ def test_status(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file_name])
     status_response = subprocess.check_output(["serve", "status"])
-    statuses = json.loads(status_response)["statuses"]
+    statuses = json.loads(status_response)
 
     expected_deployments = {"shallow", "deep", "one"}
     for status in statuses:
@@ -427,8 +224,8 @@ def test_delete(ray_start_stop):
     # Deploys a config file and deletes it
 
     def get_num_deployments():
-        info_response = subprocess.check_output(["serve", "info", "-j"])
-        info = json.loads(info_response)
+        info_response = subprocess.check_output(["serve", "config"])
+        info = yaml.safe_load(info_response)
         return len(info["deployments"])
 
     config_file_name = os.path.join(
@@ -444,12 +241,16 @@ def test_delete(ray_start_stop):
         wait_for_condition(lambda: get_num_deployments() == 0, timeout=35)
 
 
+@serve.deployment
 def parrot(request):
     return request.query_params["sound"]
 
 
+parrot_app = Application([parrot])
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_basic(ray_start_stop):
+def test_run_application(ray_start_stop):
     # Deploys valid config file and import path via serve run
 
     # Deploy via config file
@@ -470,7 +271,7 @@ def test_run_basic(ray_start_stop):
 
     # Deploy via import path
     p = subprocess.Popen(
-        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot"]
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot_app"]
     )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
@@ -481,6 +282,7 @@ def test_run_basic(ray_start_stop):
     assert ping_endpoint("parrot", params="?sound=squawk") == "connection error"
 
 
+@serve.deployment
 class Macaw:
     def __init__(self, color, name="Mulligan", surname=None):
         self.color = color
@@ -494,8 +296,11 @@ class Macaw:
             return f"{self.name} is {self.color}!"
 
 
+molly_macaw = Macaw.bind("green", name="Molly")
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_init_args_kwargs(ray_start_stop):
+def test_run_deployment_node(ray_start_stop):
     # Tests serve run with specified args and kwargs
 
     # Deploy via import path
@@ -504,11 +309,7 @@ def test_run_init_args_kwargs(ray_start_stop):
             "serve",
             "run",
             "--address=auto",
-            "ray.serve.tests.test_cli.Macaw",
-            "--",
-            "green",
-            "--name",
-            "Molly",
+            "ray.serve.tests.test_cli.molly_macaw",
         ]
     )
     wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
@@ -516,147 +317,38 @@ def test_run_init_args_kwargs(ray_start_stop):
     p.wait()
     assert ping_endpoint("Macaw") == "connection error"
 
-    # Mix and match keyword notation
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "ray.serve.tests.test_cli.Macaw",
-            "--",
-            "green",
-            "--name",
-            "Molly",
-            "--surname==./u=6y",
-        ]
-    )
-    wait_for_condition(
-        lambda: ping_endpoint("Macaw") == "Molly =./u=6y is green!", timeout=10
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-    assert ping_endpoint("Macaw") == "connection error"
 
-    # Args/kwargs with config file
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "macaw.yaml"
-    )
-
-    with pytest.raises(subprocess.CalledProcessError):
-        subprocess.check_output(
-            [
-                "serve",
-                "run",
-                "--address=auto",
-                config_file_name,
-                "--",
-                "green",
-                "--name",
-                "Molly",
-            ]
-        )
+@serve.deployment
+class MetalDetector:
+    def __call__(self, *args):
+        return os.environ.get("buried_item", "no dice")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_simultaneous(ray_start_stop):
-    # Test that two serve run processes can run simultaneously
-
-    p1 = subprocess.Popen(
-        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot"]
-    )
-    wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
-    )
-
-    p2 = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "ray.serve.tests.test_cli.Macaw",
-            "--",
-            "green",
-            "--name=Molly",
-            "--surname=Malarkey",
-        ]
-    )
-    wait_for_condition(
-        lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk", timeout=10
-    )
-    wait_for_condition(
-        lambda: ping_endpoint("Macaw") == "Molly Malarkey is green!", timeout=10
-    )
-
-    # Macaw should still be available after parrot is torn down
-    p1.send_signal(signal.SIGINT)
-    p1.wait()
-    assert "Path '/parrot' not found" in ping_endpoint("parrot")
-    assert ping_endpoint("Macaw") == "Molly Malarkey is green!"
-
-    # Serve should shut down after all deployments are torn down
-    p2.send_signal(signal.SIGINT)
-    p2.wait()
-    assert ping_endpoint("parrot") == "connection error"
-    assert ping_endpoint("Macaw") == "connection error"
+metal_detector_node = MetalDetector.bind()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_run_runtime_env(ray_start_stop):
-    # Tests serve run with runtime_envs specified
+    # Test serve run with runtime_env passed in
 
-    # Use local working_dir with import path
+    # With import path
     p = subprocess.Popen(
         [
             "serve",
             "run",
             "--address=auto",
-            "test_cli.Macaw",
-            "--working-dir",
-            os.path.dirname(__file__),
-            "--",
-            "green",
-            "--name=Molly",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Use local working_dir with config file
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            os.path.join(
-                os.path.dirname(__file__), "test_config_files", "scarlet.yaml"
-            ),
-            "--working-dir",
-            os.path.dirname(__file__),
+            "ray.serve.tests.test_cli.metal_detector_node",
+            "--runtime-env-json",
+            ('{"env_vars": {"buried_item": "lucky coin"} }'),
         ]
     )
     wait_for_condition(
-        lambda: ping_endpoint("Scarlet") == "Scarlet is red!", timeout=10
+        lambda: ping_endpoint("MetalDetector") == "lucky coin", timeout=10
     )
     p.send_signal(signal.SIGINT)
     p.wait()
 
-    # Use remote working_dir
-    p = subprocess.Popen(
-        [
-            "serve",
-            "run",
-            "--address=auto",
-            "test_module.test.one",
-            "--working-dir",
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip",
-        ]
-    )
-    wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-    # Use runtime env
+    # With config
     p = subprocess.Popen(
         [
             "serve",
@@ -680,6 +372,83 @@ def test_run_runtime_env(ray_start_stop):
     wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
+
+
+@serve.deployment
+def global_f(*args):
+    return "wonderful world"
+
+
+@serve.deployment
+class NoArgDriver:
+    def __init__(self, dag: RayServeDAGHandle):
+        self.dag = dag
+
+    async def __call__(self):
+        return await self.dag.remote()
+
+
+TestBuildFNode = global_f.bind()
+TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
+def test_build(ray_start_stop, node):
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+
+        # Build an app
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                f"ray.serve.tests.test_cli.{node}",
+                "-o",
+                tmp.name,
+            ]
+        )
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        assert ping_endpoint("") == "wonderful world"
+        subprocess.check_output(["serve", "delete", "-y"])
+        assert ping_endpoint("") == "connection error"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize("use_command", [True, False])
+def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
+    """Check that CLI is idempotent even if controller dies."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
+    )
+    success_message_fragment = b"Sent deploy request successfully!"
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+
+    ray.init(address="auto", namespace="serve")
+    serve.start(detached=True)
+    assert len(serve.list_deployments()) == 2
+
+    # Kill controller
+    if use_command:
+        subprocess.check_output(["serve", "shutdown"])
+    else:
+        serve.shutdown()
+
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
+
+    assert "deployments" in info
+    assert len(info["deployments"]) == 0
+
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+
+    # Restore testing controller
+    serve.start(detached=True)
+    assert len(serve.list_deployments()) == 2
+    serve.shutdown()
+    ray.shutdown()
 
 
 if __name__ == "__main__":
