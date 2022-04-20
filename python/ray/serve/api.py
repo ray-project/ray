@@ -749,14 +749,6 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    if ray.util.client.ray.get_context().is_connected():
-        logger.warning(
-            "It seems like you are connecting to Serve via Ray Client. "
-            "This codepath will be deprecated soon. We recommend `ray job submit` "
-            "as an alternative. "
-            "See https://docs.ray.io/en/latest/cluster/job-submission.html"
-        )
-
     controller_namespace = _get_controller_namespace(
         detached, _override_controller_namespace=_override_controller_namespace
     )
