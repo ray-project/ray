@@ -4,14 +4,9 @@ import logging
 from collections import defaultdict
 from typing import List
 
-import ray
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
 
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
-from ray.core.generated import node_manager_pb2
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
@@ -23,65 +18,67 @@ from ray.experimental.state.common import (
     TaskState,
     ObjectState,
 )
+from ray.experimental.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
 
 
-# TODO(sang): Add error handling.
-class StateAggregator:
-    def __init__(self, gcs_channel):
-        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_pg_info_stub = gcs_service_pb2_grpc.PlacementGroupInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._raylet_stub = {}
+# TODO(sang): Move the class to state/state_manager.py.
+# TODO(sang): Remove *State and replaces with Pydantic or protobuf
+# (depending on API interface standardization).
+class StateAPIManager:
+    """A class to query states from data source, caches, and post-processes
+    the entries.
+    """
+
+    def __init__(self, state_data_source_client: StateDataSourceClient):
+        self._client = state_data_source_client
         DataSource.nodes.signal.append(self._update_raylet_stubs)
 
     async def _update_raylet_stubs(self, change: Change):
-        """Callback that's called new raylet is added to Datasource.
+        """Callback that's called when a new raylet is added to Datasource.
+
+        Datasource is a api-server-specific module that's updated whenever
+        api server adds/removes a new node.
 
         Args:
             change: The change object. Whenever a new node is added
                 or removed, this callback is invoked.
                 When new node is added: information is in `change.new`.
                 When a node is removed: information is in `change.old`.
-                When a node is overwritten: `change.old` contains the
-                    old node info, and `change.new` contains the
-                    new node info.
+                When a node id is overwritten by a new node with the same node id:
+                    `change.old` contains the old node info, and
+                    `change.new` contains the new node info.
         """
+        # TODO(sang): Move this function out of this class.
         if change.old:
             # When a node is deleted from the DataSource or it is overwritten.
             node_id, node_info = change.old
-            self.unregister_raylet_stub(node_id)
+            self._client.unregister_raylet_client(node_id)
         if change.new:
             # When a new node information is written to DataSource.
             node_id, node_info = change.new
-            stub = self._make_raylet_stub(
-                node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
+            self._client.register_raylet_client(
+                node_id,
+                node_info["nodeManagerAddress"],
+                int(node_info["nodeManagerPort"]),
             )
-            self.register_raylet_stub(node_id, stub)
 
-    def register_raylet_stub(self, node_id: str, stub: NodeManagerServiceStub):
-        self._raylet_stub[node_id] = stub
-
-    def unregister_raylet_stub(self, node_id):
-        self._raylet_stub.pop(node_id)
+    @property
+    def data_source_client(self):
+        return self._client
 
     async def get_actors(self) -> dict:
-        request = gcs_service_pb2.GetAllActorInfoRequest()
-        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-            request, timeout=DEFAULT_RPC_TIMEOUT
-        )
+        """List all actor information from the cluster.
+
+        Returns:
+            A dictionary that converts returned protobuf of `get_all_actor_info`
+            filtered by fields in `ActorState`.
+            {actor_id -> actor_data_in_dict}
+        """
+        reply = await self._client.get_all_actor_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
         for message in reply.actor_table_data:
             data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
@@ -90,12 +87,17 @@ class StateAggregator:
         return result
 
     async def get_placement_groups(self) -> dict:
-        request = gcs_service_pb2.GetAllPlacementGroupRequest()
-        reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
-            request, timeout=DEFAULT_RPC_TIMEOUT
+        """List all placement group information from the cluster.
+
+        Returns:
+            A dictionary that converts returned protobuf of
+            `get_all_placement_group_info` filtered by fields in
+            `PlacementgroupState`. {pg_id -> pg_data_in_dict}
+        """
+        reply = await self._client.get_all_placement_group_info(
+            timeout=DEFAULT_RPC_TIMEOUT
         )
         result = {}
-        logger.error(reply)
         for message in reply.placement_group_table_data:
             data = self._message_to_dict(
                 message=message,
@@ -106,10 +108,14 @@ class StateAggregator:
         return result
 
     async def get_nodes(self) -> dict:
-        request = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
-            request, timeout=DEFAULT_RPC_TIMEOUT
-        )
+        """List all node information from the cluster.
+
+        Returns:
+            A dictionary that converts returned protobuf of `get_all_node_info`
+            filtered by fields in `NodeState`.
+            {node_id -> node_data_in_dict}
+        """
+        reply = await self._client.get_all_node_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
@@ -118,10 +124,14 @@ class StateAggregator:
         return result
 
     async def get_workers(self) -> dict:
-        request = gcs_service_pb2.GetAllWorkerInfoRequest()
-        reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
-            request, timeout=DEFAULT_RPC_TIMEOUT
-        )
+        """List all worker information from the cluster.
+
+        Returns:
+            A dictionary that converts returned protobuf of `get_all_worker_info`
+            filtered by fields in `WorkerState`.
+            {worker_id -> worker_data_in_dict}
+        """
+        reply = await self._client.get_all_worker_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
         for message in reply.worker_table_data:
             data = self._message_to_dict(
@@ -133,12 +143,17 @@ class StateAggregator:
         return result
 
     async def get_tasks(self) -> dict:
+        """List all task information from the cluster.
+
+        Returns:
+            A dictionary that converts returned protobuf of `get_task_info`
+            filtered by fields in `TaskState`.
+            {task_id -> task_data_in_dict}
+        """
         replies = await asyncio.gather(
             *[
-                stub.GetTasksInfo(
-                    node_manager_pb2.GetTasksInfoRequest(), timeout=DEFAULT_RPC_TIMEOUT
-                )
-                for stub in self._raylet_stub.values()
+                self._client.get_task_info(node_id, timeout=DEFAULT_RPC_TIMEOUT)
+                for node_id in self._client.get_all_registered_raylet_ids()
             ]
         )
 
@@ -156,15 +171,18 @@ class StateAggregator:
         return result
 
     async def get_objects(self) -> dict:
-        async def get_object_info(stub):
-            reply = await stub.GetNodeStats(
-                node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
-                timeout=DEFAULT_RPC_TIMEOUT,
-            )
-            return reply
+        """List all object information from the cluster.
 
+        Returns:
+            A dictionary that converts returned protobuf of `get_object_info`
+            filtered by fields in `ObjectState`.
+            {object_id -> object_data_in_dict}
+        """
         replies = await asyncio.gather(
-            *[get_object_info(stub) for stub in self._raylet_stub.values()]
+            *[
+                self._client.get_object_info(node_id, timeout=DEFAULT_RPC_TIMEOUT)
+                for node_id in self._client.get_all_registered_raylet_ids()
+            ]
         )
 
         worker_stats = []
@@ -185,8 +203,13 @@ class StateAggregator:
         memory_table = memory_utils.construct_memory_table(worker_stats)
         for entry in memory_table.table:
             data = entry.as_dict()
+            # `construct_memory_table` returns object_ref field which is indeed
+            # object_id. We do transformatino here.
+            # TODO(sang): Refactor `construct_memory_table`.
+            data["object_id"] = data["object_ref"]
+            del data["object_ref"]
             data = filter_fields(data, ObjectState)
-            result[data["object_ref"]] = data
+            result[data["object_id"]] = data
         return result
 
     def _message_to_dict(
@@ -202,11 +225,3 @@ class StateAggregator:
             including_default_value_fields=True,
             preserving_proto_field_name=preserving_proto_field_name,
         )
-
-    def _make_raylet_stub(self, addr: str, port):
-        full_addr = f"{addr}:{port}"
-        options = (("grpc.enable_http_proxy", 0),)
-        channel = ray._private.utils.init_grpc_channel(
-            full_addr, options, asynchronous=True
-        )
-        return NodeManagerServiceStub(channel)

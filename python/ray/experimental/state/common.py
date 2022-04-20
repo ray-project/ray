@@ -60,7 +60,7 @@ class TaskState:
 
 @dataclass(init=True)
 class ObjectState:
-    object_ref: str
+    object_id: str
     pid: int
     node_ip_address: str
     object_size: int

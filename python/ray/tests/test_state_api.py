@@ -2,11 +2,27 @@ import sys
 import pytest
 
 from typing import List
+from dataclasses import fields
+
+if sys.version_info >= (3, 8):
+    from unittest.mock import AsyncMock
+else:
+    from asyncmock import AsyncMock
 
 import ray
+import ray.ray_constants as ray_constants
 
 from click.testing import CliRunner
 from ray.cluster_utils import cluster_not_supported
+from ray.core.generated.gcs_service_pb2 import (
+    GetAllActorInfoReply,
+    GetAllPlacementGroupReply,
+    GetAllNodeInfoReply,
+    GetAllWorkerInfoReply,
+)
+from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetNodeStatsReply
+from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.dashboard.state_aggregator import StateAPIManager
 from ray.experimental.state.api import (
     list_actors,
     list_placement_groups,
@@ -16,9 +32,176 @@ from ray.experimental.state.api import (
     list_tasks,
     list_objects,
 )
+from ray.experimental.state.common import ActorState
+from ray.experimental.state.state_manager import (
+    StateDataSourceClient,
+    StateSourceNetworkException,
+)
+from ray.experimental.state.state_cli import list_state_cli_group
 from ray._private.test_utils import wait_for_condition
 from ray.job_submission import JobSubmissionClient
-from ray.experimental.state.state_cli import list_state_cli_group
+
+"""
+Unit tests
+"""
+
+
+@pytest.fixture
+def state_api_manager():
+    data_source_client = AsyncMock(StateDataSourceClient)
+    manager = StateAPIManager(data_source_client)
+    yield manager
+
+
+def verify_schema(state, result_dict: dict):
+    state_fields_columns = set()
+    for field in fields(state):
+        state_fields_columns.add(field.name)
+
+    for k in result_dict.keys():
+        assert k in state_fields_columns
+
+
+@pytest.mark.asyncio
+async def test_api_manager_list_actors(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    actor_id = b"1234"
+    data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
+        actor_table_data=[
+            ActorTableData(
+                actor_id=actor_id,
+                state=ActorTableData.ActorState.ALIVE,
+                name="abc",
+                pid=1234,
+                class_name="class",
+            )
+        ]
+    )
+    result = await state_api_manager.get_actors()
+    actor_data = list(result.values())[0]
+    verify_schema(ActorState, actor_data)
+
+
+"""
+Integration tests
+"""
+
+
+@pytest.mark.asyncio
+async def test_state_data_source_client(ray_start_cluster):
+    cluster = ray_start_cluster
+    # head
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    # worker
+    worker = cluster.add_node(num_cpus=2)
+
+    GRPC_CHANNEL_OPTIONS = (
+        ("grpc.enable_http_proxy", 0),
+        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    )
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
+    )
+    client = StateDataSourceClient(gcs_channel)
+
+    """
+    Test actor
+    """
+    result = await client.get_all_actor_info()
+    assert isinstance(result, GetAllActorInfoReply)
+
+    """
+    Test placement group
+    """
+    result = await client.get_all_placement_group_info()
+    assert isinstance(result, GetAllPlacementGroupReply)
+
+    """
+    Test node
+    """
+    result = await client.get_all_node_info()
+    assert isinstance(result, GetAllNodeInfoReply)
+
+    """
+    Test worker info
+    """
+    result = await client.get_all_worker_info()
+    assert isinstance(result, GetAllWorkerInfoReply)
+
+    """
+    Test job
+    """
+    job_client = JobSubmissionClient(
+        f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+    )
+    job_id = job_client.submit_job(  # noqa
+        # Entrypoint shell command to execute
+        entrypoint="ls",
+    )
+    result = client.get_all_job_info()
+    assert list(result.keys())[0] == job_id
+    assert isinstance(result, dict)
+
+    """
+    Test tasks
+    """
+    with pytest.raises(ValueError):
+        # Since we didn't register this node id, it should raise an exception.
+        result = await client.get_task_info("1234")
+
+    wait_for_condition(lambda: len(ray.nodes()) == 2)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        result = await client.get_task_info(node_id)
+        assert isinstance(result, GetTasksInfoReply)
+
+    assert len(client.get_all_registered_raylet_ids()) == 2
+
+    """
+    Test objects
+    """
+    with pytest.raises(ValueError):
+        # Since we didn't register this node id, it should raise an exception.
+        result = await client.get_object_info("1234")
+
+    wait_for_condition(lambda: len(ray.nodes()) == 2)
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        ip = node["NodeManagerAddress"]
+        port = int(node["NodeManagerPort"])
+        client.register_raylet_client(node_id, ip, port)
+        result = await client.get_object_info(node_id)
+        assert isinstance(result, GetNodeStatsReply)
+
+    """
+    Test the exception is raised when the RPC error occurs.
+    """
+    cluster.remove_node(worker)
+    # Wait until the dead node information is propagated.
+    wait_for_condition(
+        lambda: len(list(filter(lambda node: node["Alive"], ray.nodes()))) == 1
+    )
+    for node in ray.nodes():
+        node_id = node["NodeID"]
+        if node["Alive"]:
+            continue
+
+        # Querying to the dead node raises gRPC error, which should be
+        # translated into `StateSourceNetworkException`
+        with pytest.raises(StateSourceNetworkException):
+            result = await client.get_object_info(node_id)
+
+        # Make sure unregister API works as expected.
+        client.unregister_raylet_client(node_id)
+        assert len(client.get_all_registered_raylet_ids()) == 1
+        # Since the node_id is unregistered, the API should raise ValueError.
+        with pytest.raises(ValueError):
+            result = await client.get_object_info(node_id)
 
 
 def is_hex(val):
@@ -70,11 +253,15 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         print(result.output)
         return exit_code_correct and substring_matched
 
-    assert verify_output("actors", ["actor_id"])
-    assert verify_output("workers", ["worker_id"])
-    assert verify_output("nodes", ["node_id"])
-    assert verify_output("placement-groups", ["placement_group_id"])
-    assert verify_output("jobs", ["raysubmit"])
+    wait_for_condition(lambda: verify_output("actors", ["actor_id"]))
+    wait_for_condition(lambda: verify_output("workers", ["worker_id"]))
+    wait_for_condition(lambda: verify_output("nodes", ["node_id"]))
+    wait_for_condition(
+        lambda: verify_output("placement-groups", ["placement_group_id"])
+    )
+    wait_for_condition(lambda: verify_output("jobs", ["raysubmit"]))
+    wait_for_condition(lambda: verify_output("tasks", ["task_id"]))
+    wait_for_condition(lambda: verify_output("objects", ["object_id"]))
 
 
 @pytest.mark.skipif(
@@ -225,7 +412,8 @@ def test_list_objects(shutdown_only):
     ray.init()
     import numpy as np
 
-    plasma_obj = ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))  # noqa
+    data = np.ones(50 * 1024 * 1024, dtype=np.uint8)
+    plasma_obj = ray.put(data)
 
     @ray.remote
     def f(obj):
@@ -236,8 +424,8 @@ def test_list_objects(shutdown_only):
     def verify():
         print(list_objects())
         obj = list(list_objects().values())[0]
-        print(plasma_obj.hex())
-        return obj["object_ref"] == plasma_obj.hex()
+        # For detailed output, the test is covered from `test_memstat.py`
+        return obj["object_id"] == plasma_obj.hex()
 
     wait_for_condition(verify)
     print(list_objects())
