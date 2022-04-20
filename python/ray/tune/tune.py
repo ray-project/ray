@@ -460,7 +460,9 @@ def run(
     # If reuse_actors is unset, default to False for string and class trainables,
     # and default to True for everything else (i.e. function trainables)
     if reuse_actors is None:
-        reuse_actors = isinstance(run_or_experiment, (str, Trainable))
+        reuse_actors = not isinstance(run_or_experiment, str) and not issubclass(
+            run_or_experiment, Trainable
+        )
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
