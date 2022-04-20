@@ -679,3 +679,25 @@ def set_bad_runtime_env_cache_ttl_seconds(request):
     os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"] = ttl
     yield ttl
     del os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"]
+
+
+@pytest.fixture(params=[True, False])
+def start_http_proxy(request):
+    env = {}
+
+    proxy = None
+    try:
+        if request.param:
+            # the `proxy` command is from the proxy.py package.
+            proxy = subprocess.Popen(["proxy", "--port", "8899", "--log-level", "ERROR"])
+            env["RAY_grpc_enable_http_proxy"] = "1"
+            proxy_url = "http://localhost:8899"
+        else:
+            proxy_url = "http://example.com"
+        env["http_proxy"] = proxy_url
+        env["https_proxy"] = proxy_url
+        yield env
+    finally:
+        if proxy:
+            proxy.terminate()
+            proxy.wait()
