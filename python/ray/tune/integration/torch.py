@@ -6,6 +6,7 @@ import logging
 import shutil
 import tempfile
 from typing import Callable, Dict, Generator, Optional, Type, Any
+import warnings
 
 import torch
 from datetime import timedelta
@@ -197,6 +198,16 @@ def DistributedTrainableCreator(
             train_func, num_workers=2)
         analysis = tune.run(trainable_cls)
     """
+    warnings.warn(
+        "Ray Tune's `DistributedTrainableCreator` will be deprecated in Ray "
+        "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+        "https://docs.ray.io/en/master/ray-air/getting-started.html) will "
+        "provide greater functionality than `DistributedTrainableCreator`, "
+        "and with a more flexible and easy-to-use API.",
+        PendingDeprecationWarning,
+        stacklevel=2,
+    )
+
     if use_gpu:
         raise DeprecationWarning(
             "use_gpu is deprecated. Use 'num_gpus_per_worker' instead."
