@@ -77,12 +77,12 @@ class AgentIOTest(unittest.TestCase):
             agent = self.write_outputs("logdir", fw)
             self.assertEqual(len(glob.glob(agent.logdir + "/output-*.json")), 1)
 
-    def test_agent_output_infos_dict(self):
-        """Verify that the infos_dict is written to the output files.
+    def test_agent_output_infos(self):
+        """Verify that the infos dictionary is written to the output files.
 
         Note, with torch this is always the case.
         """
-        output_config = {"store_infos_dict": True}
+        output_config = {"store_infos": True}
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw, output_config=output_config)
             self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
@@ -93,6 +93,7 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_dir(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             self.write_outputs(self.test_dir, fw)
+            print("WROTE TO: ", self.test_dir)
             agent = PGTrainer(
                 env="CartPole-v0",
                 config={

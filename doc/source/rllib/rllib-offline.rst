@@ -182,14 +182,14 @@ Writing Environment Data
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 To include environment data in the training sample datasets you can use the optional
-``store_infos_dict`` parameter that is part of the ``output_config`` dictionary. This parameter
-ensures that the ``infos_dict``, as returned by the RL environment, is included in the output files.
+``store_infos`` parameter that is part of the ``output_config`` dictionary. This parameter
+ensures that the ``infos`` dictionary, as returned by the RL environment, is included in the output files.
 
-Note 1: It is the responsibility of the user to ensure that the content of ``infos_dict`` can be serialized
+Note 1: It is the responsibility of the user to ensure that the content of ``infos`` can be serialized
 to file.
-Note 2: This setting is only relevant for the TensorFlow based agents, for PyTorch agents the ``infos_dict`` data is always stored.
+Note 2: This setting is only relevant for the TensorFlow based agents, for PyTorch agents the ``infos`` data is always stored.
 
-To write the ``infos_dict`` data to JSON or Parquet files using Dataset, specify output and output_config keys like the following:
+To write the ``infos`` data to JSON or Parquet files using Dataset, specify output and output_config keys like the following:
 
 .. code-block:: python
 
@@ -200,7 +200,7 @@ To write the ``infos_dict`` data to JSON or Parquet files using Dataset, specify
             # Directory to write data files.
             "path": "/tmp/test_samples/",
             # Write the infos dict data
-            "store_infos_dict" : True,
+            "store_infos" : True,
         }
     }
 
