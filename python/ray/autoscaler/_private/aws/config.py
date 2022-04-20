@@ -441,7 +441,20 @@ def _usable_subnet_ids(
     vpc_id_of_sg: Optional[str],
     use_internal_ips: bool,
     node_type_key: str,
-) -> List[str]:
+) -> Tuple[List[str], str]:
+    """Prunes subnets down to those that meet the following criteria.
+
+    Subnets must be:
+    * 'Available' according to AWS.
+    * Public, unless `use_internal_ips` is specified.
+    * In one of the AZs, if AZs are provided.
+    * In the given VPC, if a VPC is specified for Security Groups.
+
+    Returns:
+        List[str]: Subnets that are usable.
+        str: VPC ID of the first subnet.
+    """
+
     def _are_user_subnets_pruned(current_subnets: List[Any]) -> bool:
         return user_specified_subnets is not None and len(current_subnets) != len(
             user_specified_subnets
@@ -521,15 +534,17 @@ def _usable_subnet_ids(
     # to set up security groups in all of the user's VPCs and set up networking
     # rules to allow traffic between these groups.
     # See https://github.com/ray-project/ray/pull/14868.
+    first_subnet_vpc_id = subnets[0].vpc_id
     subnets = [s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id]
     if _are_user_subnets_pruned(subnets):
         subnet_vpcs = {s.subnet_id: s.vpc_id for s in user_specified_subnets}
         cli_logger.abort(
             f"Subnets specified in more than one VPC for node type `{node_type_key}`! "
             f"Please ensure that all subnets share the same VPC and retry your "
-            "request. Subnet VPCs: {}", subnet_vpcs
+            "request. Subnet VPCs: {}",
+            subnet_vpcs,
         )
-    return subnets
+    return subnets, first_subnet_vpc_id
 
 
 def _configure_subnet(config):
@@ -559,6 +574,8 @@ def _configure_subnet(config):
         else:
             node_types_no_subnets.append((key, node_type))
 
+    vpc_id = None
+
     # iterate over node types with user-specified subnets first...
     for key, node_type in node_types_subnets:
         node_config = node_type["node_config"]
@@ -581,7 +598,7 @@ def _configure_subnet(config):
     for key, node_type in node_types_no_subnets:
         node_config = node_type["node_config"]
         subnet_ids, vpc_id = _usable_subnet_ids(
-            user_subnets,
+            None,
             all_subnets,
             azs=config["provider"].get("availability_zone"),
             vpc_id_of_sg=vpc_id_of_sg,
@@ -590,28 +607,6 @@ def _configure_subnet(config):
         )
         subnet_src_info[key] = "default"
         node_config["SubnetIds"] = subnet_ids
-        node_config = node_type["node_config"]
-        contains_user_subnet_ids = "SubnetIds" in node_config
-
-        user_specified_subnets = (
-            _get_subnets_or_die(ec2, tuple(node_config.get("SubnetIds")))
-            if contains_user_subnet_ids
-            else None
-        )
-        subnet_ids = _usable_subnet_ids(
-            user_specified_subnets,
-            all_subnets,
-            azs=config["provider"].get("availability_zone"),
-            vpc_id_of_sg=vpc_id_of_sg,
-            use_internal_ips=config["provider"].get("use_internal_ips", False),
-            node_type_key=key,
-        )
-
-        if contains_user_subnet_ids:
-            subnet_src_info[key] = "config"
-        else:
-            subnet_src_info[key] = "default"
-            node_config["SubnetIds"] = subnet_ids
 
     return config
 
