@@ -1,12 +1,3 @@
-# ---------------
-# IMPORTANT NOTE:
-# ---------------
-# A recent bug in openAI gym prevents RLlib's "record_env" option
-# from recording videos properly. Instead, the produced mp4 files
-# have a size of 1kb and are corrupted.
-# A simple fix for this is described here:
-# https://github.com/openai/gym/issues/1925
-
 import argparse
 import gym
 import numpy as np
