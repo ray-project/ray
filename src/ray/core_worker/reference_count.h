@@ -431,12 +431,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                rpc::WorkerObjectLocationsPubMessage *object_info)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get an object's size. This will return 0 if the object is out of scope.
-  ///
-  /// \param[in] object_id The object whose size to get.
-  /// \return Object size, or 0 if the object is out of scope.
-  size_t GetObjectSize(const ObjectID &object_id) const;
-
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
@@ -444,12 +438,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_id The object that has been spilled.
   /// \param[in] spilled_url The URL to which the object has been spilled.
   /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
-  /// \param[in] size The size of the object.
   /// \return True if the reference exists and is in scope, false otherwise.
   bool HandleObjectSpilled(const ObjectID &object_id,
                            const std::string spilled_url,
-                           const NodeID &spilled_node_id,
-                           int64_t size);
+                           const NodeID &spilled_node_id);
 
   /// Get locality data for object. This is used by the leasing policy to implement
   /// locality-aware leasing.
@@ -494,6 +486,52 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseAllLocalReferences();
 
  private:
+  /// Contains information related to nested object refs only.
+  struct NestedReferenceCount {
+    /// Object IDs that we own and that contain this object ID.
+    /// ObjectIDs are added to this field when we discover that this object
+    /// contains other IDs. This can happen in 2 cases:
+    ///  1. We call ray.put() and store the inner ID(s) in the outer object.
+    ///  2. A task that we submitted returned an ID(s).
+    /// ObjectIDs are erased from this field when their Reference is deleted.
+    absl::flat_hash_set<ObjectID> contained_in_owned;
+    /// Object IDs that we borrowed and that contain this object ID.
+    /// ObjectIDs are added to this field when we get the value of an ObjectRef
+    /// (either by deserializing the object or receiving the GetObjectStatus
+    /// reply for inlined objects) and it contains another ObjectRef.
+    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
+    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
+    /// The object IDs contained in this object. These could be objects that we
+    /// own or are borrowing. This field is updated in 2 cases:
+    ///  1. We call ray.put() on this ID and store the contained IDs.
+    ///  2. We call ray.get() on an ID whose contents we do not know and we
+    ///     discover that it contains these IDs.
+    absl::flat_hash_set<ObjectID> contains;
+  };
+
+  /// Contains information related to borrowing only.
+  struct BorrowInfo {
+    /// When a process that is borrowing an object ID stores the ID inside the
+    /// return value of a task that it executes, the caller of the task is also
+    /// considered a borrower for as long as its reference to the task's return
+    /// ID stays in scope. Thus, the borrower must notify the owner that the
+    /// task's caller is also a borrower. The key is the task's return ID, and
+    /// the value is the task ID and address of the task's caller.
+    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    /// A list of processes that are we gave a reference to that are still
+    /// borrowing the ID. This field is updated in 2 cases:
+    ///  1. If we are a borrower of the ID, then we add a process to this list
+    ///     if we passed that process a copy of the ID via task submission and
+    ///     the process is still using the ID by the time it finishes its task.
+    ///     Borrowers are removed from the list when we recursively merge our
+    ///     list into the owner.
+    ///  2. If we are the owner of the ID, then either the above case, or when
+    ///     we hear from a borrower that it has passed the ID to other
+    ///     borrowers. A borrower is removed from the list when it responds
+    ///     that it is no longer using the reference.
+    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
+  };
+
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
     Reference() {}
@@ -507,18 +545,20 @@ class ReferenceCounter : public ReferenceCounterInterface,
               const absl::optional<NodeID> &pinned_at_raylet_id)
         : call_site(call_site),
           object_size(object_size),
-          owned_by_us(true),
-          foreign_owner_already_monitoring(false),
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
+          owned_by_us(true),
           is_reconstructable(is_reconstructable),
+          foreign_owner_already_monitoring(false),
           pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
     static Reference FromProto(const rpc::ObjectReferenceCount &ref_count);
     /// Serialize to a protobuf.
-    void ToProto(rpc::ObjectReferenceCount *ref) const;
+    /// When `deduct_local_ref` is true, one local ref should be removed
+    /// when determining if the object has actual local references.
+    void ToProto(rpc::ObjectReferenceCount *ref, bool deduct_local_ref = false) const;
 
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
@@ -526,7 +566,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - ObjectIDs containing this ObjectID that we own and that are still in
     /// scope.
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
+      return local_ref_count + submitted_task_ref_count +
+             nested().contained_in_owned.size();
     }
 
     /// Whether this reference is no longer in scope. A reference is in scope
@@ -537,9 +578,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool is_nested = contained_in_borrowed_ids.size();
-      bool has_borrowers = borrowers.size() > 0;
-      bool was_stored_in_objects = stored_in_objects.size() > 0;
+      bool is_nested = nested().contained_in_borrowed_ids.size();
+      bool has_borrowers = borrow().borrowers.size() > 0;
+      bool was_stored_in_objects = borrow().stored_in_objects.size() > 0;
 
       bool has_lineage_references = false;
       if (lineage_pinning_enabled && owned_by_us && !is_reconstructable) {
@@ -563,21 +604,51 @@ class ReferenceCounter : public ReferenceCounterInterface,
       }
     }
 
+    /// Access BorrowInfo without modifications.
+    /// Returns the default value of the struct if it is not set.
+    const BorrowInfo &borrow() const {
+      if (borrow_info == nullptr) {
+        static auto *default_info = new BorrowInfo();
+        return *default_info;
+      }
+      return *borrow_info;
+    }
+
+    /// Returns the borrow info for updates.
+    /// Creates the underlying field if it is not set.
+    BorrowInfo *mutable_borrow() {
+      if (borrow_info == nullptr) {
+        borrow_info = std::make_unique<BorrowInfo>();
+      }
+      return borrow_info.get();
+    }
+
+    /// Access NestedReferenceCount without modifications.
+    /// Returns the default value of the struct if it is not set.
+    const NestedReferenceCount &nested() const {
+      if (nested_reference_count == nullptr) {
+        static auto *default_refs = new NestedReferenceCount();
+        return *default_refs;
+      }
+      return *nested_reference_count;
+    }
+
+    /// Returns the containing references for updates.
+    /// Creates the underlying field if it is not set.
+    NestedReferenceCount *mutable_nested() {
+      if (nested_reference_count == nullptr) {
+        nested_reference_count = std::make_unique<NestedReferenceCount>();
+      }
+      return nested_reference_count.get();
+    }
+
     /// Description of the call site where the reference was created.
     std::string call_site = "<unknown>";
     /// Object size if known, otherwise -1;
     int64_t object_size = -1;
-
-    /// Whether we own the object. If we own the object, then we are
-    /// responsible for tracking the state of the task that creates the object
-    /// (see task_manager.h).
-    bool owned_by_us = false;
-    /// Whether the object was created with a foreign owner (i.e., _owner set).
-    /// In this case, the owner is already monitoring this reference with a
-    /// WaitForRefRemoved() call, and it is an error to return borrower
-    /// metadata to the parent of the current task.
-    /// See https://github.com/ray-project/ray/pull/19910 for more context.
-    bool foreign_owner_already_monitoring = false;
+    /// If this object is owned by us and stored in plasma, this contains all
+    /// object locations.
+    absl::flat_hash_set<NodeID> locations;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -587,71 +658,43 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
     absl::optional<NodeID> pinned_at_raylet_id;
-    /// If this object is owned by us and stored in plasma, this contains all
-    /// object locations.
-    absl::flat_hash_set<NodeID> locations;
+    /// Whether we own the object. If we own the object, then we are
+    /// responsible for tracking the state of the task that creates the object
+    /// (see task_manager.h).
+    bool owned_by_us = false;
+
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage. This should be set to false if the object was created
     // by ray.put(), a task that cannot be retried, or its lineage was evicted.
     bool is_reconstructable = false;
-
-    /// The local ref count for the ObjectID in the language frontend.
-    size_t local_ref_count = 0;
-    /// The ref count for submitted tasks that depend on the ObjectID.
-    size_t submitted_task_ref_count = 0;
-    /// Object IDs that we own and that contain this object ID.
-    /// ObjectIDs are added to this field when we discover that this object
-    /// contains other IDs. This can happen in 2 cases:
-    ///  1. We call ray.put() and store the inner ID(s) in the outer object.
-    ///  2. A task that we submitted returned an ID(s).
-    /// ObjectIDs are erased from this field when their Reference is deleted.
-    absl::flat_hash_set<ObjectID> contained_in_owned;
-    /// Object IDs that we borrowed and that contain this object ID.
-    /// ObjectIDs are added to this field when we get the value of an ObjectRef
-    /// (either by deserializing the object or receiving the GetObjectStatus
-    /// reply for inlined objects) and it contains another ObjectRef.
-    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
-    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
-    /// The object IDs contained in this object. These could be objects that we
-    /// own or are borrowing. This field is updated in 2 cases:
-    ///  1. We call ray.put() on this ID and store the contained IDs.
-    ///  2. We call ray.get() on an ID whose contents we do not know and we
-    ///     discover that it contains these IDs.
-    absl::flat_hash_set<ObjectID> contains;
-    /// ObjectRefs nested in this object that are or were in use. These objects
-    /// are not owned by us, and we need to report that we are borrowing them
-    /// to their owner. Nesting is transitive, so this flag is set as long as
-    /// any child object is in scope.
-    bool has_nested_refs_to_report = false;
-    /// A list of processes that are we gave a reference to that are still
-    /// borrowing the ID. This field is updated in 2 cases:
-    ///  1. If we are a borrower of the ID, then we add a process to this list
-    ///     if we passed that process a copy of the ID via task submission and
-    ///     the process is still using the ID by the time it finishes its task.
-    ///     Borrowers are removed from the list when we recursively merge our
-    ///     list into the owner.
-    ///  2. If we are the owner of the ID, then either the above case, or when
-    ///     we hear from a borrower that it has passed the ID to other
-    ///     borrowers. A borrower is removed from the list when it responds
-    ///     that it is no longer using the reference.
-    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
-    /// When a process that is borrowing an object ID stores the ID inside the
-    /// return value of a task that it executes, the caller of the task is also
-    /// considered a borrower for as long as its reference to the task's return
-    /// ID stays in scope. Thus, the borrower must notify the owner that the
-    /// task's caller is also a borrower. The key is the task's return ID, and
-    /// the value is the task ID and address of the task's caller.
-    absl::flat_hash_map<ObjectID, rpc::WorkerAddress> stored_in_objects;
+    /// Whether the lineage of this object was evicted due to memory pressure.
+    bool lineage_evicted = false;
     /// The number of tasks that depend on this object that may be retried in
     /// the future (pending execution or finished but retryable). If the object
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
-    /// Whether the lineage of this object was evicted due to memory pressure.
-    bool lineage_evicted = false;
-    /// Whether this object has been spilled to external storage.
-    bool spilled = false;
+
+    /// The local ref count for the ObjectID in the language frontend.
+    size_t local_ref_count = 0;
+    /// The ref count for submitted tasks that depend on the ObjectID.
+    size_t submitted_task_ref_count = 0;
+
+    /// Metadata related to nesting, including references that contain this
+    /// reference, and references contained by this reference.
+    std::unique_ptr<NestedReferenceCount> nested_reference_count;
+
+    /// Metadata related to borrowing.
+    std::unique_ptr<BorrowInfo> borrow_info;
+
+    /// Callback that will be called when this ObjectID no longer has
+    /// references.
+    std::function<void(const ObjectID &)> on_delete;
+    /// Callback that is called when this process is no longer a borrower
+    /// (RefCount() == 0).
+    std::function<void(const ObjectID &)> on_ref_removed;
+
     /// For objects that have been spilled to external storage, the URL from which
     /// they can be retrieved.
     std::string spilled_url = "";
@@ -659,17 +702,28 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
+    /// Whether this object has been spilled to external storage.
+    bool spilled = false;
+
+    /// Whether the object was created with a foreign owner (i.e., _owner set).
+    /// In this case, the owner is already monitoring this reference with a
+    /// WaitForRefRemoved() call, and it is an error to return borrower
+    /// metadata to the parent of the current task.
+    /// See https://github.com/ray-project/ray/pull/19910 for more context.
+    bool foreign_owner_already_monitoring = false;
+
+    /// ObjectRefs nested in this object that are or were in use. These objects
+    /// are not owned by us, and we need to report that we are borrowing them
+    /// to their owner. Nesting is transitive, so this flag is set as long as
+    /// any child object is in scope.
+    bool has_nested_refs_to_report = false;
+
     /// Whether the task that creates this object is scheduled/executing.
     bool pending_creation = false;
-    /// Callback that will be called when this ObjectID no longer has
-    /// references.
-    std::function<void(const ObjectID &)> on_delete;
-    /// Callback that is called when this process is no longer a borrower
-    /// (RefCount() == 0).
-    std::function<void(const ObjectID &)> on_ref_removed;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+  using ReferenceProtoTable = absl::flat_hash_map<ObjectID, rpc::ObjectReferenceCount>;
 
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -689,8 +743,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Deserialize a ReferenceTable.
   static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
 
-  /// Serialize a ReferenceTable.
-  static void ReferenceTableToProto(const ReferenceTable &table,
+  /// Packs an object ID to ObjectReferenceCount map, into an array of
+  /// ObjectReferenceCount. Consumes the input proto table.
+  static void ReferenceTableToProto(ReferenceProtoTable &table,
                                     ReferenceTableProto *proto);
 
   /// Remove references for the provided object IDs that correspond to them
@@ -718,9 +773,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Populates the table with the ObjectID that we were or are still
   /// borrowing. The table also includes any IDs that we discovered were
-  /// contained in the ID. For each borrowed ID, we will return:
+  /// contained in the ID. For each borrowed ID, we will return in proto:
   /// - The borrowed ID's owner's address.
-  /// - Whether we are still using the ID or not (RefCount() > 0).
+  /// - Whether we are still using the ID or not:
+  ///     RefCount() > 1 when deduct_local_ref, and RefCount() > 0 when not.
   /// - Addresses of new borrowers that we passed the ID to.
   /// - Whether the borrowed ID was contained in another ID that we borrowed.
   ///
@@ -737,7 +793,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///   borrowed_refs.
   bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
                                          bool for_ref_removed,
-                                         ReferenceTable *borrowed_refs)
+                                         bool deduct_local_ref,
+                                         ReferenceProtoTable *borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge remote borrowers into our local ref count. This will add any

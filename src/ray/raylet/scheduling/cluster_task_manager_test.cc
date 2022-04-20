@@ -1646,6 +1646,12 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
       auto missing_arg = task.GetTaskSpecification().GetDependencyIds()[0];
       missing_objects_.insert(missing_arg);
     }
+    if (i == 0) {
+      const_cast<TaskSpecification &>(task.GetTaskSpecification())
+          .GetMutableMessage()
+          .mutable_scheduling_strategy()
+          ->mutable_spread_scheduling_strategy();
+    }
     task_manager_.QueueAndScheduleTask(task, false, false, replies[i].get(), callback);
     pool_.TriggerCallbacks();
   }
@@ -1695,6 +1701,12 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   ASSERT_FALSE(task_manager_.CancelTask(tasks[1].GetTaskSpecification().TaskId()));
   // One task dispatched.
   ASSERT_EQ(replies[4]->worker_address().port(), 1234);
+
+  // Spread task won't be spilled due to waiting for dependencies.
+  AddNode(remote_node_id, 8);
+  task_manager_.ScheduleAndDispatchTasks();
+  ASSERT_EQ(num_callbacks, 4);
+  ASSERT_EQ(replies[0]->retry_at_raylet_address().raylet_id(), "");
 
   RayTask finished_task;
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
