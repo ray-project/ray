@@ -1,15 +1,17 @@
 import asyncio
-import json
-import time
 from collections import defaultdict
+from copy import copy
+import json
+import logging
+import time
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
-from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
-from copy import copy
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
+
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
     DeploymentInfo,
     EndpointTag,
@@ -18,14 +20,20 @@ from ray.serve.common import (
     RunningReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
+from ray.serve.constants import (
+    CONTROL_LOOP_PERIOD_S,
+    SERVE_ROOT_URL_ENV_KEY,
+    SERVE_LOGGER_NAME,
+)
+from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.storage.checkpoint_path import make_kv_store
+from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
+from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import logger
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -68,6 +76,10 @@ class ServeController:
         detached: bool = False,
         _override_controller_namespace: Optional[str] = None,
     ):
+        configure_component_logger(
+            component_name="controller", component_id=str(os.getpid())
+        )
+
         # Used to read/write checkpoints.
         self.controller_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name

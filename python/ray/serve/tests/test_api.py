@@ -8,7 +8,7 @@ import starlette.responses
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.api import Application
+from ray.serve.application import Application
 
 
 def test_e2e(serve_instance):

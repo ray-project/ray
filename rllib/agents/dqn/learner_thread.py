@@ -44,8 +44,8 @@ class LearnerThread(threading.Thread):
     def step(self):
         with self.overall_timer:
             with self.queue_timer:
-                ra, replay = self.inqueue.get()
-            if replay is not None:
+                replay_actor, ma_batch = self.inqueue.get()
+            if ma_batch is not None:
                 prio_dict = {}
                 with self.grad_timer:
                     # Use LearnerInfoBuilder as a unified way to build the
@@ -54,7 +54,7 @@ class LearnerThread(threading.Thread):
                     # structure no matter the setup (multi-GPU, multi-agent,
                     # minibatch SGD, tf vs torch).
                     learner_info_builder = LearnerInfoBuilder(num_devices=1)
-                    multi_agent_results = self.local_worker.learn_on_batch(replay)
+                    multi_agent_results = self.local_worker.learn_on_batch(ma_batch)
                     for pid, results in multi_agent_results.items():
                         learner_info_builder.add_learn_on_batch_results(results, pid)
                         td_error = results["td_error"]
@@ -62,14 +62,16 @@ class LearnerThread(threading.Thread):
                         # tensors for the indices. This may lead to errors
                         # when sent to the buffer for processing
                         # (may get manipulated if they are part of a tensor).
-                        replay.policy_batches[pid].set_get_interceptor(None)
+                        ma_batch.policy_batches[pid].set_get_interceptor(None)
                         prio_dict[pid] = (
-                            replay.policy_batches[pid].get("batch_indexes"),
+                            ma_batch.policy_batches[pid].get("batch_indexes"),
                             td_error,
                         )
                     self.learner_info = learner_info_builder.finalize()
-                    self.grad_timer.push_units_processed(replay.count)
-                self.outqueue.put((ra, prio_dict, replay.count))
+                    self.grad_timer.push_units_processed(ma_batch.count)
+                self.outqueue.put(
+                    (replay_actor, prio_dict, ma_batch.count, ma_batch.agent_steps())
+                )
             self.learner_queue_size.push(self.inqueue.qsize())
             self.weights_updated = True
-            self.overall_timer.push_units_processed(replay and replay.count or 0)
+            self.overall_timer.push_units_processed(ma_batch and ma_batch.count or 0)

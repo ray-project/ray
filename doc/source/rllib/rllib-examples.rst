@@ -49,7 +49,7 @@ Environments and Adapters
    Coin Game Env Example (provided by the "Center on Long Term Risk").
 - `DMLab Watermaze example <https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py>`__:
    Example for how to use a DMLab environment (Watermaze).
-- `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recsim_with_slateq.py>`__:
+- `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py>`__:
    Script showing how to train a SlateQTrainer on a RecSym environment.
 - `SUMO (Simulation of Urban MObility) environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py>`__:
    Example demonstrating how to use the SUMO simulator in connection with RLlib.

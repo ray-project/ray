@@ -191,6 +191,44 @@ class DeploymentConfig(BaseModel):
         proto = DeploymentConfigProto.FromString(proto_bytes)
         return cls.from_proto(proto)
 
+    @classmethod
+    def from_default(cls, ignore_none: bool = False, **kwargs):
+        """Creates a default DeploymentConfig and overrides it with kwargs.
+
+        Only accepts the same keywords as the class. Passing in any other
+        keyword raises a ValueError.
+
+        Args:
+            ignore_none (bool): When True, any valid keywords with value None
+                are ignored, and their values stay default. Invalid keywords
+                still raise a TypeError.
+
+        Raises:
+            TypeError: when a keyword that's not an argument to the class is
+                passed in.
+        """
+
+        config = cls()
+        valid_config_options = set(config.dict().keys())
+
+        # Friendly error if a non-DeploymentConfig kwarg was passed in
+        for key, val in kwargs.items():
+            if key not in valid_config_options:
+                raise TypeError(
+                    f'Got invalid Deployment config option "{key}" '
+                    f"(with value {val}) as keyword argument. All Deployment "
+                    "config options must come from this list: "
+                    f"{list(valid_config_options)}."
+                )
+
+        if ignore_none:
+            kwargs = {key: val for key, val in kwargs.items() if val is not None}
+
+        for key, val in kwargs.items():
+            config.__setattr__(key, val)
+
+        return config
+
 
 class ReplicaConfig:
     def __init__(
@@ -257,8 +295,9 @@ class ReplicaConfig:
                     f"Specifying {option} in ray_actor_options is not allowed."
                 )
 
+        # TODO(suquark): reuse options validation of remote function/actor.
         # Ray defaults to zero CPUs for placement, we default to one here.
-        if self.ray_actor_options.get("num_cpus", None) is None:
+        if self.ray_actor_options.get("num_cpus") is None:
             self.ray_actor_options["num_cpus"] = 1
         num_cpus = self.ray_actor_options["num_cpus"]
         if not isinstance(num_cpus, (int, float)):
@@ -267,7 +306,7 @@ class ReplicaConfig:
             raise ValueError("num_cpus in ray_actor_options must be >= 0.")
         self.resource_dict["CPU"] = num_cpus
 
-        if self.ray_actor_options.get("num_gpus", None) is None:
+        if self.ray_actor_options.get("num_gpus") is None:
             self.ray_actor_options["num_gpus"] = 0
         num_gpus = self.ray_actor_options["num_gpus"]
         if not isinstance(num_gpus, (int, float)):
@@ -276,6 +315,7 @@ class ReplicaConfig:
             raise ValueError("num_gpus in ray_actor_options must be >= 0.")
         self.resource_dict["GPU"] = num_gpus
 
+        # Serve deployments use Ray's default for actor memory.
         self.ray_actor_options.setdefault("memory", None)
         memory = self.ray_actor_options["memory"]
         if memory is not None and not isinstance(memory, (int, float)):
@@ -286,18 +326,17 @@ class ReplicaConfig:
             raise ValueError("memory in ray_actor_options must be > 0.")
         self.resource_dict["memory"] = memory
 
-        if self.ray_actor_options.get("object_store_memory", None) is None:
-            self.ray_actor_options["object_store_memory"] = 0
-        object_store_memory = self.ray_actor_options["object_store_memory"]
-        if not isinstance(object_store_memory, (int, float)):
+        object_store_memory = self.ray_actor_options.get("object_store_memory")
+        if not isinstance(object_store_memory, (int, float, type(None))):
             raise TypeError(
-                "object_store_memory in ray_actor_options must be an int or a float."
+                "object_store_memory in ray_actor_options must be an int, float "
+                "or None."
             )
-        elif object_store_memory < 0:
+        elif object_store_memory is not None and object_store_memory < 0:
             raise ValueError("object_store_memory in ray_actor_options must be >= 0.")
         self.resource_dict["object_store_memory"] = object_store_memory
 
-        if self.ray_actor_options.get("resources", None) is None:
+        if self.ray_actor_options.get("resources") is None:
             self.ray_actor_options["resources"] = {}
         custom_resources = self.ray_actor_options["resources"]
         if not isinstance(custom_resources, dict):

@@ -753,11 +753,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  // Add spilled URL to owned reference.
-  void HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
-                           rpc::AddSpilledUrlReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
-
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
@@ -1001,6 +996,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Pubsub commands are coming as a batch and contain various subscribe / unbsubscribe
   /// messages.
   void ProcessPubsubCommands(const Commands &commands, const NodeID &subscriber_id);
+
+  void AddSpilledObjectLocationOwner(const ObjectID &object_id,
+                                     const std::string &spilled_url,
+                                     const NodeID &spilled_node_id);
 
   void AddObjectLocationOwner(const ObjectID &object_id, const NodeID &node_id);
 

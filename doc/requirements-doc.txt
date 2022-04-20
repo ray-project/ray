@@ -4,6 +4,10 @@
 click
 colorama
 colorful
+# Newer versions of fairscale do not support Python 3.6 even though they still have wheels for it.
+# Have to manually pin it: https://github.com/facebookresearch/fairscale/issues/962
+fairscale; python_version >= '3.7'
+fairscale<=0.4.0; python_version < '3.7'
 filelock
 flask
 flatbuffers
@@ -24,12 +28,13 @@ starlette
 tabulate
 uvicorn==0.16.0
 werkzeug
+wandb
 
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
-git+https://github.com/ray-project/ray_lightning@cacd374370e858adc0c00c76fe2e657e38790e0a#ray_lightning
+git+https://github.com/ray-project/ray_lightning@main#ray_lightning
 
 # Syntax highlighting
 Pygments==2.11.2

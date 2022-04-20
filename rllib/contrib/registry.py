@@ -1,7 +1,5 @@
 """Registry of algorithm names for `rllib train --run=contrib/<alg_name>`"""
 
-from ray.rllib.utils.deprecation import Deprecated
-
 
 def _import_random_agent():
     from ray.rllib.contrib.random_agent.random_agent import RandomAgent
@@ -27,21 +25,13 @@ def _import_alphazero():
 def _import_bandit_lints():
     from ray.rllib.agents.bandit.bandit import BanditLinTSTrainer
 
-    @Deprecated(old="contrib/LinTS", new="BanditLinTS", error=True)
-    class _DeprecatedBandit(BanditLinTSTrainer):
-        pass
-
-    return _DeprecatedBandit, BanditLinTSTrainer.get_default_config()
+    return BanditLinTSTrainer, BanditLinTSTrainer.get_default_config()
 
 
 def _import_bandit_linucb():
     from ray.rllib.agents.bandit.bandit import BanditLinUCBTrainer
 
-    @Deprecated(old="contrib/LinUCB", new="BanditLinUCB", error=True)
-    class _DeprecatedBandit(BanditLinUCBTrainer):
-        pass
-
-    return _DeprecatedBandit, BanditLinUCBTrainer.get_default_config()
+    return BanditLinUCBTrainer, BanditLinUCBTrainer.get_default_config()
 
 
 CONTRIBUTED_ALGORITHMS = {
