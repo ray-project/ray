@@ -1,50 +1,31 @@
-import asyncio
-import atexit
 import collections
 import inspect
 import logging
-import random
-import re
-import time
-from dataclasses import dataclass
-from functools import wraps
 from typing import (
     Any,
     Callable,
     Dict,
     Optional,
     Tuple,
-    Type,
     Union,
-    List,
-    Iterable,
     overload,
 )
 
 from fastapi import APIRouter, FastAPI
-from ray.exceptions import RayActorError
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-from ray.actor import ActorHandle
-from ray.serve.common import (
-    DeploymentInfo,
-    DeploymentStatus,
-    DeploymentStatusInfo,
-    ReplicaTag,
-)
+from ray.serve.common import DeploymentStatusInfo
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
     HTTPOptions,
-    ReplicaConfig,
 )
 from ray.serve.constants import (
     DEFAULT_CHECKPOINT_PATH,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
-    MAX_CACHED_HANDLES,
     CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -52,13 +33,8 @@ from ray.serve.constants import (
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import (
-    DeploymentRoute,
-    DeploymentRouteList,
-    DeploymentStatusInfoList,
-)
 from ray.experimental.dag import DAGNode
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.logging_utils import LoggingContext
 from ray.serve.utils import (

@@ -4,39 +4,13 @@ can use the state stored here to access deployment and replica metadata or the
 Serve controller.
 """
 
-import asyncio
-import atexit
-import random
 import logging
-import time
 from dataclasses import dataclass
-from functools import wraps
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    List,
-    Iterable,
-)
+from typing import Callable, Optional
 
 import ray
 from ray.exceptions import RayActorError
-from ray.actor import ActorHandle
-from ray.serve.common import (
-    DeploymentInfo,
-    DeploymentStatus,
-    DeploymentStatusInfo,
-    ReplicaTag,
-)
-from ray.serve.config import (
-    DeploymentConfig,
-    HTTPOptions,
-    ReplicaConfig,
-)
+from ray.serve.common import ReplicaTag
 from ray.serve.constants import SERVE_CONTROLLER_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.client import ServeControllerClient, get_controller_namespace
