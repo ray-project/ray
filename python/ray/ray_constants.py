@@ -70,7 +70,7 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
-# a rewritten runtime_env dict.
+# a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
 RAY_RUNTIME_ENV_HOOK = "RAY_RUNTIME_ENV_HOOK"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
