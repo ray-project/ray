@@ -313,7 +313,7 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
     node_id = ray_start_with_dashboard["node_id"]
 
     time.sleep(1)
-    # Get dashboard agent log
+    # Get raylet log
     RAYLET_FILE_NAME = "raylet.out"
     DASHBOARD_AGENT_FILE_NAME = "dashboard_agent.log"
     stream_response = requests.get(
