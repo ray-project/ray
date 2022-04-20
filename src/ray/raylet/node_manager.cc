@@ -742,6 +742,8 @@ void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
           for (const auto &task_info : r.task_info_entries()) {
             reply->add_task_info_entries()->CopyFrom(task_info);
           }
+        } else {
+          RAY_LOG(INFO) << "Failed to query task information from a worker.";
         }
       },
       send_reply_callback,
@@ -757,6 +759,8 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
       [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
         if (status.ok()) {
           reply->add_core_workers_stats()->MergeFrom(r.core_worker_stats());
+        } else {
+          RAY_LOG(INFO) << "Failed to query object information from a worker.";
         }
       },
       send_reply_callback,
