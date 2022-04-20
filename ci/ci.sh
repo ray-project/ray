@@ -467,6 +467,10 @@ lint_scripts() {
   FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/lint/format.sh --all-scripts
 }
 
+lint_banned_words() {
+  "${ROOT_DIR}"/lint/check-banned-words.sh
+}
+
 lint_bazel() {
   # Run buildifier without affecting external environment variables
   (
@@ -533,6 +537,9 @@ _lint() {
 
   # Run script linting
   lint_scripts
+
+  # Run banned words check.
+  lint_banned_words
 
   # Make sure that the README is formatted properly.
   lint_readme
