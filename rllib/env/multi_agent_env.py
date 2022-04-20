@@ -502,7 +502,6 @@ class MultiAgentEnvWrapper(BaseEnv):
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
         self._unwrapped_env = self.envs[0].unwrapped
-        self._agent_ids = self.envs[0].get_agent_ids()
 
     @override(BaseEnv)
     def poll(
@@ -596,7 +595,7 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def get_agent_ids(self) -> Set[AgentID]:
-        return self._agent_ids
+        return self.envs[0].get_agent_ids()
 
 
 class _MultiAgentEnvState:
