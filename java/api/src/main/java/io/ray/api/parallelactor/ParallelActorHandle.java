@@ -14,7 +14,7 @@ public interface ParallelActorHandle<A> {
   /** Get an execution instance of the parallel actor by the given index. */
   ParallelActorInstance<A> getInstance(int index);
 
-  /** Get the parallel number of this parallel actor. */
+  /** Get the parallelism of this parallel actor. */
   int getParallelism();
 
   /** Get the real actor handle to use. */
