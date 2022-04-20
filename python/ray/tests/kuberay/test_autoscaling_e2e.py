@@ -100,8 +100,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         for ray_image in ray_images:
             ray_cr_config_str = ray_cr_config_str.replace(ray_image, RAY_IMAGE)
 
-        # CI should set pull policies to IfNotPresent to ensure no issues using a local test
-        # image on kind.
+        # CI should set pull policies to IfNotPresent to ensure no issues using a local
+        # test image on kind.
         ray_cr_config_str = ray_cr_config_str.replace("Always", PULL_POLICY)
 
         raycluster_cr_file = tempfile.NamedTemporaryFile(delete=False)
@@ -204,9 +204,13 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         wait_for_pods(goal_num_pods=1, namespace="default")
 
         logger.info("Waiting for head pod to start Running.")
-        wait_for_pod_to_start(pod_name_filter="raycluster-complete-head", namespace="default")
+        wait_for_pod_to_start(
+            pod_name_filter="raycluster-complete-head", namespace="default"
+        )
         logger.info("Confirming Ray is up on the head pod.")
-        wait_for_ray_health(pod_name_filter="raycluster-complete-head", namespace="default")
+        wait_for_ray_health(
+            pod_name_filter="raycluster-complete-head", namespace="default"
+        )
 
         head_pod = get_pod(
             pod_name_filter="raycluster-complete-head", namespace="default"
