@@ -51,6 +51,16 @@ a multi-node Ray cluster instead.
   with joblib.parallel_backend('ray'):
       search.fit(digits.data, digits.target)
 
+You can also set the ``ray_remote_args`` argument in ``parallel_backend`` to :ref:`configure
+the Ray Actors <ray-remote-ref>` making up the Pool. This can be used to eg. :ref:`assign resources
+to Actors, such as GPUs <actor-resource-guide>`.
+
+.. code-block:: python
+
+  # Allows to use GPU-enabled estimators, such as cuML
+  with joblib.parallel_backend('ray', ray_remote_args=dict(num_gpus=1)):
+      search.fit(digits.data, digits.target)
+
 Run on a Cluster
 ----------------
 
