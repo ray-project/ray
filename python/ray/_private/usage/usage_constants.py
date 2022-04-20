@@ -18,4 +18,4 @@ USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE = (
     "See https://github.com/ray-project/ray/issues/20857 for more details.\n"
 )
 
-USAGE_STATS_CONFIRMATION_MESSAGE = "Enable usage stats collection. See https://github.com/ray-project/ray/issues/20857 for more details."
+USAGE_STATS_CONFIRMATION_MESSAGE = "Enable usage stats collection. See https://github.com/ray-project/ray/issues/20857 for more details. It will be enabled if there is no confirmation within 10s."

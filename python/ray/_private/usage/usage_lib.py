@@ -216,6 +216,7 @@ def show_usage_stats_prompt() -> None:
                     False,
                     usage_constant.USAGE_STATS_CONFIRMATION_MESSAGE,
                     _default=True,
+                    _timeout_s=10,
                 )
                 set_usage_stats_enabled_via_env_var(enabled)
                 set_usage_stats_enabled_via_config(enabled)

@@ -21,6 +21,11 @@ import click
 import ray  # noqa: F401
 import colorama
 
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import select
+
 
 class _ColorfulMock:
     def __init__(self):
@@ -633,6 +638,7 @@ class _CliLogger:
         *args: Any,
         _abort: bool = False,
         _default: bool = False,
+        _timeout_s: Optional[float] = None,
         **kwargs: Any
     ):
         """Display a confirmation dialog.
@@ -648,6 +654,9 @@ class _CliLogger:
             _default (bool):
                 The default action to take if the user just presses enter
                 with no input.
+            _timeout_s (float):
+                If user has no input within _timeout_s seconds, the default
+                action is taken. None means no timeout.
         """
         should_abort = _abort
         default = _default
@@ -686,6 +695,16 @@ class _CliLogger:
         no_answers = ["n", "no", "false", "0"]
         try:
             while True:
+                if sys.platform == "win32":
+                    # TODO(jjyao) windows cannot use select
+                    pass
+                else:
+                    ready, _, _ = select.select([sys.stdin], [], [], _timeout_s)
+                    if not ready:
+                        self.newline()
+                        res = default
+                        break
+
                 ans = sys.stdin.readline()
                 ans = ans.lower()
 
