@@ -1,7 +1,9 @@
 import argparse
+import atexit
 import json
 import os
 import time
+import subprocess
 
 import ray
 import requests
@@ -200,6 +202,17 @@ if __name__ == "__main__":
         help="Finish quickly for testing.",
     )
     args = parser.parse_args()
+
+    if os.environ.get("IS_SMOKE_TEST"):
+        args.smoke_test = True
+        proc = subprocess.Popen(["ray", "start", "--head"])
+        proc.wait()
+        os.environ["RAY_ADDRESS"] = "ray://localhost:10001"
+
+        def stop_ray():
+            subprocess.Popen(["ray", "stop", "--force"]).wait()
+
+        atexit.register(stop_ray)
 
     start = time.time()
 
