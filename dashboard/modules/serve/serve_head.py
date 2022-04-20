@@ -11,6 +11,9 @@ logger.setLevel(logging.INFO)
 routes = optional_utils.ClassMethodRouteTable
 
 
+# NOTE (shrekris-anyscale): This class uses delayed imports for all
+# Ray Serve-related modules. That way, users can use the Ray dashboard for
+# non-Serve purposes without downloading Serve dependencies.
 class ServeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -30,10 +33,8 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
-        from ray.serve.api import (
-            serve_application_status_to_schema,
-            get_deployment_statuses,
-        )
+        from ray.serve.api import get_deployment_statuses
+        from ray.serve.schema import serve_application_status_to_schema
 
         serve_application_status_schema = serve_application_status_to_schema(
             get_deployment_statuses()

@@ -71,7 +71,8 @@ class RaySyncerTest : public ::testing::Test {
           return std::make_optional(std::move(msg));
         }
       };
-      ON_CALL(*reporter, Snapshot(_, _)).WillByDefault(WithArg<0>(Invoke(take_snapshot)));
+      ON_CALL(*reporter, CreateSyncMessage(_, _))
+          .WillByDefault(WithArg<0>(Invoke(take_snapshot)));
     }
     thread_ = std::make_unique<std::thread>([this]() {
       boost::asio::io_context::work work(io_context_);
@@ -111,11 +112,12 @@ class RaySyncerTest : public ::testing::Test {
   NodeID local_id_;
 };
 
-TEST_F(RaySyncerTest, NodeStateGetSnapshot) {
+TEST_F(RaySyncerTest, NodeStateCreateSyncMessage) {
   auto node_status = std::make_unique<NodeState>();
   node_status->SetComponent(RayComponentId::RESOURCE_MANAGER, nullptr, nullptr);
-  ASSERT_EQ(std::nullopt, node_status->GetSnapshot(RayComponentId::RESOURCE_MANAGER));
-  ASSERT_EQ(std::nullopt, node_status->GetSnapshot(RayComponentId::SCHEDULER));
+  ASSERT_EQ(std::nullopt,
+            node_status->CreateSyncMessage(RayComponentId::RESOURCE_MANAGER));
+  ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage(RayComponentId::SCHEDULER));
 
   auto reporter = std::make_unique<MockReporterInterface>();
   ASSERT_TRUE(node_status->SetComponent(RayComponentId::RESOURCE_MANAGER,
@@ -123,12 +125,12 @@ TEST_F(RaySyncerTest, NodeStateGetSnapshot) {
                                         nullptr));
 
   // Take a snapshot
-  ASSERT_EQ(std::nullopt, node_status->GetSnapshot(RayComponentId::SCHEDULER));
-  auto msg = node_status->GetSnapshot(RayComponentId::RESOURCE_MANAGER);
+  ASSERT_EQ(std::nullopt, node_status->CreateSyncMessage(RayComponentId::SCHEDULER));
+  auto msg = node_status->CreateSyncMessage(RayComponentId::RESOURCE_MANAGER);
   ASSERT_EQ(LocalVersion(RayComponentId::RESOURCE_MANAGER), msg->version());
   // Revert one version back.
   LocalVersion(RayComponentId::RESOURCE_MANAGER) -= 1;
-  msg = node_status->GetSnapshot(RayComponentId::RESOURCE_MANAGER);
+  msg = node_status->CreateSyncMessage(RayComponentId::RESOURCE_MANAGER);
   ASSERT_EQ(std::nullopt, msg);
 }
 
@@ -140,12 +142,12 @@ TEST_F(RaySyncerTest, NodeStateConsume) {
   auto from_node_id = NodeID::FromRandom();
   // The first time receiver the message
   auto msg = MakeMessage(RayComponentId::RESOURCE_MANAGER, 0, from_node_id);
-  ASSERT_TRUE(node_status->ConsumeMessage(std::make_shared<RaySyncMessage>(msg)));
-  ASSERT_FALSE(node_status->ConsumeMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 
   msg.set_version(1);
-  ASSERT_TRUE(node_status->ConsumeMessage(std::make_shared<RaySyncMessage>(msg)));
-  ASSERT_FALSE(node_status->ConsumeMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_TRUE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
+  ASSERT_FALSE(node_status->ConsumeSyncMessage(std::make_shared<RaySyncMessage>(msg)));
 }
 
 TEST_F(RaySyncerTest, NodeSyncConnection) {
@@ -217,7 +219,7 @@ struct SyncerServerTest {
       if (has_scheduler_receiver ||
           static_cast<RayComponentId>(cid) != RayComponentId::SCHEDULER) {
         receivers[cid] = std::make_unique<MockReceiverInterface>();
-        EXPECT_CALL(*receivers[cid], Update(_))
+        EXPECT_CALL(*receivers[cid], ConsumeSyncMessage(_))
             .WillRepeatedly(WithArg<0>(Invoke(snapshot_received)));
       }
 
@@ -238,7 +240,7 @@ struct SyncerServerTest {
       if (has_scheduler_reporter ||
           static_cast<RayComponentId>(cid) != RayComponentId::SCHEDULER) {
         reporter = std::make_unique<MockReporterInterface>();
-        EXPECT_CALL(*reporter, Snapshot(_, Eq(cid)))
+        EXPECT_CALL(*reporter, CreateSyncMessage(_, Eq(cid)))
             .WillRepeatedly(WithArg<0>(Invoke(take_snapshot)));
       }
       syncer->Register(static_cast<RayComponentId>(cid),
@@ -500,7 +502,13 @@ TEST(SyncerTest, Test1To1) {
 }
 
 TEST(SyncerTest, Reconnect) {
-  // This test covers the broadcast feature of ray syncer.
+  // This test is to check reconnect works.
+  // Firstly
+  //    s1 -> s3
+  // Then,
+  //    s2 -> s3
+  // And we need to ensure s3 is connecting to s2
+
   auto s1 = SyncerServerTest("19990", false);
   auto s2 = SyncerServerTest("19991", true);
   auto s3 = SyncerServerTest("19992", true);
