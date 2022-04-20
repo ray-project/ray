@@ -241,7 +241,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.json_response(response)
 
         except Exception as e:
-            logger.error(e)
+            logger.exception(e)
             return aiohttp.web.HTTPInternalServerError(reason=e)
 
     async def run(self, server):

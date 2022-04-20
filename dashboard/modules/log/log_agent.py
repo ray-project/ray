@@ -48,20 +48,21 @@ class LogAgentV1Grpc(
         return False
 
     async def ListLogs(self, request, context):
+        """
+        Lists all files in the active Ray logs directory.
+        """
         logger.info(f"initiated ListLogs:\n{request}")
 
         def on_exit(self):
             logger.info(f"terminated ListLogs:\n{request}")
 
         context.add_done_callback(on_exit)
-        """
-        Lists all files in the active Ray logs directory.
-        """
         if os.path.exists(self._dashboard_agent.log_dir):
             log_files = os.listdir(self._dashboard_agent.log_dir)
         else:
-            logger.error(
+            logger.exception(
                 f"Could not find log dir at path: {self._dashboard_agent.log_dir}"
+                "It is unexpected. Please report an issue to Ray Github."
             )
             log_files = []
         return reporter_pb2.ListLogsReply(log_files=log_files)
@@ -90,7 +91,7 @@ class LogAgentV1Grpc(
                 await context.send_initial_metadata([])
                 # If requesting the whole file, we stream it since it may be large.
                 if lines == -1:
-                    while True:
+                    while not context.done():
                         bytes = f.read(BLOCK_SIZE)
                         if bytes == b"":
                             end = f.tell()
@@ -102,7 +103,7 @@ class LogAgentV1Grpc(
                 if request.keep_alive:
                     interval = request.interval if request.interval else 0.5
                     f.seek(end)
-                    while True:
+                    while not context.done():
                         await asyncio.sleep(interval)
                         bytes = f.read()
                         if bytes != b"":
