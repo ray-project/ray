@@ -457,7 +457,7 @@ class ApexTrainer(DQNTrainer):
             ] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_sampling_requests_in_flight,
                 actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=0.003,
+                ray_wait_timeout_s=0.1,
                 max_remote_requests_in_flight_per_actor=4,
                 remote_fn=remote_worker_sample_and_store,
                 remote_kwargs=[{"replay_actors": self.replay_actors}]
@@ -542,7 +542,7 @@ class ApexTrainer(DQNTrainer):
                 ] = asynchronous_parallel_requests(
                     remote_requests_in_flight=self.remote_replay_requests_in_flight,
                     actors=[rand_actor],
-                    ray_wait_timeout_s=0.003,
+                    ray_wait_timeout_s=0.1,
                     max_remote_requests_in_flight_per_actor=num_requests_to_launch,
                     remote_fn=lambda actor: actor.replay(),
                 )
@@ -550,7 +550,7 @@ class ApexTrainer(DQNTrainer):
                 for sample_batch in sample_batches:
                     self.replay_sample_batches.append((replay_actor, sample_batch))
 
-        wait_on_replay_actors(0.003)
+        wait_on_replay_actors(0.1)
 
         # add the sample batches to the learner queue
         while self.replay_sample_batches:
