@@ -367,11 +367,11 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
     )
 
     # Check that gRPC stream initiated as a result of starting the stream
-    assert f'initiated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-    "\nkeep_alive: true" in file_response.text
+    assert (f'initiated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+            "\nkeep_alive: true") in file_response.text
     # Check that gRPC stream has not terminated (is kept alive)
-    assert f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-    "\nkeep_alive: true" not in file_response.text
+    assert (f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+            "\nkeep_alive: true") not in file_response.text
 
     del stream_response
     # give enough time for the termination message to be written to the log
@@ -384,8 +384,8 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
     )
 
     # Check that gRPC terminated as a result of closing the stream
-    assert f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-    "\nkeep_alive: true" in file_response.text
+    assert (f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+            "\nkeep_alive: true") in file_response.text
 
 
 if __name__ == "__main__":
