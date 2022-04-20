@@ -72,9 +72,17 @@ def get_pod_names(namespace: str) -> List[str]:
     pass
 
 
-def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> None:
-    """Waits for the pod to enter running Running status.phase."""
+def wait_for_pod_to_start(pod_name_filter: str, namespace: str, tries=60, backoff_s=5) -> None:
+    """Waits for a pod to have Running status.phase.
+
+    More precisely, waits until there is a pod with name containing `pod_name_filter`
+    and the pod has Running status.phase."""
     for i in range(tries):
+        try:
+            pod = get_pod(pod_name_filter=pod_name_filter, namespace=namespace)
+        except AssertionError:
+            logger.warning(f"Did not find a pod with name matching `{pod_name_filter}`")
+            continue
         pod_status = (
             subprocess.check_output(
                 [
@@ -109,21 +117,29 @@ def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> No
 
 
 def wait_for_ray_health(
-    ray_pod: str, namespace: str, tries=60, backoff_s=5, ray_container="ray-head"
+    pod_name_filter: str, namespace: str, tries=60, backoff_s=5, ray_container="ray-head"
 ) -> None:
-    """Waits for the Ray pod to pass `ray health-check`.
+    """Waits until a Ray pod passes `ray health-check`.
+
+    More precisely, waits until a Ray pod whose name includes the string `pod_name_filter` passes
+    `ray health-check`.
     (Ensures Ray has completely started in the pod.)
+
+    Use case: Wait until there is a Ray head pod with Ray running on it.
     """
     for i in range(tries):
         try:
+            pod = get_pod(
+                pod_name_filter=pod_name_filter, namespace="default"
+            )
             # `ray health-check` yields 0 exit status iff it succeeds
             kubectl_exec(
-                ["ray", "health-check"], ray_pod, namespace, container=ray_container
+                ["ray", "health-check"], pod, namespace, container=ray_container
             )
-            logger.info(f"ray health check passes for pod {ray_pod}")
+            logger.info(f"ray health check passes for pod {pod}")
             return
         except subprocess.CalledProcessError as e:
-            logger.info(f"Failed ray health check for pod {ray_pod}.")
+            logger.info(f"Failed ray health check for pod {pod}.")
             if i < tries - 1:
                 logger.info("Trying again.")
                 time.sleep(backoff_s)

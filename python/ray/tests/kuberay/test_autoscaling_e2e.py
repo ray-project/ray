@@ -196,21 +196,21 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         The `num-cpus` arg to Ray start is 1 for each Ray container; thus Ray accounts
         1 CPU for each Ray node in the test.
         """
-        # Cluster-creation
+        # Cluster creation
         logger.info("Creating a RayCluster with no worker pods.")
         self._apply_ray_cr(min_replicas=0, replicas=0)
 
         logger.info("Confirming presence of head.")
         wait_for_pods(goal_num_pods=1, namespace="default")
+
+        logger.info("Waiting for head pod to start Running.")
+        wait_for_pod_to_start(pod_name_filter="raycluster-complete-head", namespace="default")
+        logger.info("Confirming Ray is up on the head pod.")
+        wait_for_ray_health(pod_name_filter="raycluster-complete-head", namespace="default")
+
         head_pod = get_pod(
             pod_name_filter="raycluster-complete-head", namespace="default"
         )
-
-        logger.info("Waiting for head pod to start Running.")
-        wait_for_pod_to_start(head_pod, namespace="default")
-        logger.info("Confirming Ray is up on the head pod.")
-        wait_for_ray_health(head_pod, namespace="default")
-
         # Scale-up
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
