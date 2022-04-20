@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     import modin
     import dask
     import pyspark
-    import ray.util.sgd
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline

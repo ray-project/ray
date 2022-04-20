@@ -1975,38 +1975,6 @@
   alert: default
 
 ########################
-# SGD tests
-########################
-
-- name: sgd_gpu
-  group: SGD tests
-  working_dir: sgd_tests
-
-  legacy:
-    test_name: sgd_gpu
-    test_suite: sgd_tests
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    cluster_env: sgd_gpu/sgd_gpu_app_config.yaml
-    cluster_compute: sgd_gpu/sgd_gpu_compute.yaml
-
-  run:
-    timeout: 3000
-    script: python sgd_gpu/sgd_gpu_test.py --num-workers=2 --use-gpu --address=auto
-
-    wait_for_nodes:
-      num_nodes: 2
-      timeout: 600
-
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-########################
 # Train tests
 ########################
 
