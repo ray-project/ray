@@ -11,19 +11,22 @@ try:
     import pyarrow
     import pyarrow.fs
 
-    class _CustomFSSpecHandler(pyarrow.fs.FSSpecHandler):
-        """Custom FSSpecHandler that avoids bugs in some fsspec implementations."""
+    # Todo(krfricke): Remove this once gcsfs > 2022.3.0 is released
+    # (and make sure to pin)
+    class _CustomGCSHandler(pyarrow.fs.FSSpecHandler):
+        """Custom FSSpecHandler that avoids a bug in gcsfs <= 2022.3.0."""
 
         def create_dir(self, path, recursive):
             try:
-                # No `create_parents` argument
+                # GCSFS doesn't expose `create_parents` argument,
+                # so it is omitted here
                 self.fs.mkdir(path)
             except FileExistsError:
                 pass
 
 except (ImportError, ModuleNotFoundError):
     pyarrow = None
-    _CustomFSSpecHandler = None
+    _CustomGCSHandler = None
 
 from ray import logger
 
@@ -116,7 +119,7 @@ def get_fs_and_path(
     fsspec_handler = pyarrow.fs.FSSpecHandler
     if parsed.scheme in ["gs", "gcs"]:
         # GS doesn't support `create_parents` arg in `create_dir()`
-        fsspec_handler = _CustomFSSpecHandler
+        fsspec_handler = _CustomGCSHandler
 
     fs = pyarrow.fs.PyFileSystem(fsspec_handler(fsspec_fs))
     _cached_fs[cache_key] = fs
