@@ -502,7 +502,12 @@ TEST(SyncerTest, Test1To1) {
 }
 
 TEST(SyncerTest, Reconnect) {
-  // This test covers the broadcast feature of ray syncer.
+  // This test is to check reconnect works.
+  // Firstly
+  //    s1 -> s3
+  // Then,
+  //    s2 -> s3
+  // And we need to ensure s3 is connecting to s2
   auto s1 = SyncerServerTest("19990", false);
   auto s2 = SyncerServerTest("19991", true);
   auto s3 = SyncerServerTest("19992", true);
