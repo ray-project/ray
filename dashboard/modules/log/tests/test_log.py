@@ -156,76 +156,61 @@ def test_logs_experimental_list(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
-    node_id = ray_start_with_dashboard["node_id"]
 
-    timeout_seconds = 10
-    start_time = time.time()
-    last_ex = None
-    while True:
-        time.sleep(1)
-        try:
-            # Test that logs/list is comprehensive
-            response = requests.get(webui_url + "/api/experimental/logs/list")
-            response.raise_for_status()
-            logs = json.loads(response.text)
-            assert len(logs) == 1
-            node_id = next(iter(logs))
+    # test that list logs is comprehensive
+    response = requests.get(webui_url + "/api/experimental/logs/list")
+    response.raise_for_status()
+    logs = json.loads(response.text)
+    assert len(logs) == 1
+    node_id = next(iter(logs))
 
-            # test worker logs
-            outs = logs[node_id]["worker_outs"]
-            errs = logs[node_id]["worker_outs"]
-            core_worker_logs = logs[node_id]["python_core_worker_logs"]
+    # test worker logs
+    outs = logs[node_id]["worker_outs"]
+    errs = logs[node_id]["worker_outs"]
+    core_worker_logs = logs[node_id]["python_core_worker_logs"]
 
-            assert len(outs) == len(errs) == len(core_worker_logs)
-            assert len(outs) > 0
+    assert len(outs) == len(errs) == len(core_worker_logs)
+    assert len(outs) > 0
 
-            for file in ["debug_state_gcs.txt", "gcs_server.out", "gcs_server.err"]:
-                assert file in logs[node_id]["gcs_server"]
-            for file in ["raylet.out", "raylet.err"]:
-                assert file in logs[node_id]["raylet"]
-            for file in ["dashboard_agent.log", "dashboard.log"]:
-                assert file in logs[node_id]["dashboard"]
-            break
+    for file in ["debug_state_gcs.txt", "gcs_server.out", "gcs_server.err"]:
+        assert file in logs[node_id]["gcs_server"]
+    for file in ["raylet.out", "raylet.err"]:
+        assert file in logs[node_id]["raylet"]
+    for file in ["dashboard_agent.log", "dashboard.log"]:
+        assert file in logs[node_id]["dashboard"]
+    return True
 
-            # Test that logs/list can be filtered
-            response = requests.get(
-                webui_url + "/api/experimental/logs/list?filters=gcs"
-            )
-            response.raise_for_status()
-            logs = json.loads(response.text)
-            assert len(logs) == 1
-            node_id = next(iter(logs))
-            assert "gcs_server" in logs[node_id] and len(logs[node_id]) == 1
+    # Test that logs/list can be filtered
+    response = requests.get(
+        webui_url + "/api/experimental/logs/list?filters=gcs"
+    )
+    response.raise_for_status()
+    logs = json.loads(response.text)
+    assert len(logs) == 1
+    node_id = next(iter(logs))
+    assert "gcs_server" in logs[node_id]
+    for category in logs[node_id]:
+        if category != "gcs_server":
+            assert len(logs[node_id][category]) == 0
 
-            response = requests.get(
-                webui_url + "/api/experimental/logs/list?filters=worker"
-            )
-            response.raise_for_status()
-            logs = json.loads(response.text)
-            assert len(logs) == 1
-            node_id = next(iter(logs))
-            worker_log_categories = [
-                "python_core_worker_logs",
-                "worker_outs",
-                "worker_errors",
-            ]
-            assert (
-                all([cat in logs[node_id] for cat in worker_log_categories])
-                and len(logs[node_id]) == 3
-            )
-        except Exception as ex:
-            last_ex = ex
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                ex_stack = (
-                    traceback.format_exception(
-                        type(last_ex), last_ex, last_ex.__traceback__
-                    )
-                    if last_ex
-                    else []
-                )
-                ex_stack = "".join(ex_stack)
-                raise Exception(f"Timed out while testing, {ex_stack}")
+    response = requests.get(
+        webui_url + "/api/experimental/logs/list?filters=worker"
+    )
+    response.raise_for_status()
+    logs = json.loads(response.text)
+    assert len(logs) == 1
+    node_id = next(iter(logs))
+    worker_log_categories = [
+        "python_core_worker_logs",
+        "worker_outs",
+        "worker_errors",
+    ]
+    assert (
+        all([cat in logs[node_id] for cat in worker_log_categories])
+    )
+    for category in logs[node_id]:
+        if category not in worker_log_categories:
+            assert len(logs[node_id][category]) == 0
 
 
 def test_logs_tail():
@@ -263,80 +248,58 @@ def test_logs_experimental_write(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
-    node_id = ray_start_with_dashboard["node_id"]
 
-    timeout_seconds = 10
-    start_time = time.time()
-    last_ex = None
+    response = requests.get(webui_url + "/api/experimental/logs/list")
+    response.raise_for_status()
+    logs = json.loads(response.text)
+    assert len(logs) == 1
+    node_id = next(iter(logs))
 
-    while True:
-        time.sleep(1)
-        try:
-            response = requests.get(webui_url + "/api/experimental/logs/list")
-            response.raise_for_status()
-            logs = json.loads(response.text)
-            assert len(logs) == 1
-            node_id = next(iter(logs))
+    actor = Actor.remote()
+    ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
 
-            actor = Actor.remote()
-            ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
+    # Test stream and fetching by actor id
+    stream_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/stream?node_id={node_id}&lines=2"
+        + "&actor_id="
+        + actor._ray_actor_id.hex(),
+        stream=True,
+    )
+    if stream_response.status_code != 200:
+        raise ValueError(stream_response.text)
+    stream_iterator = stream_response.iter_content(chunk_size=None)
+    assert (
+        next(stream_iterator).decode("utf-8")
+        == ":actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
+    )
 
-            # Test stream and fetching by actor id
-            stream_response = requests.get(
-                webui_url
-                + f"/api/experimental/logs/stream?node_id={node_id}&lines=2"
-                + "&actor_id="
-                + actor._ray_actor_id.hex(),
-                stream=True,
-            )
-            if stream_response.status_code != 200:
-                raise ValueError(stream_response.text)
-            stream_iterator = stream_response.iter_content(chunk_size=None)
-            assert (
-                next(stream_iterator).decode("utf-8")
-                == ":actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
-            )
+    streamed_string = ""
+    for i in range(5):
+        strings = []
+        for j in range(100):
+            strings.append(test_log_text.format(f"{100*i + j:06d}"))
 
-            streamed_string = ""
-            for i in range(5):
-                strings = []
-                for j in range(100):
-                    strings.append(test_log_text.format(f"{100*i + j:06d}"))
+        ray.get(actor.write_log.remote(strings))
 
-                ray.get(actor.write_log.remote(strings))
+        string = ""
+        for s in strings:
+            string += s + "\n"
+        assert next(stream_iterator).decode("utf-8") == string
+        streamed_string += string
+    del stream_response
 
-                string = ""
-                for s in strings:
-                    string += s + "\n"
-                assert next(stream_iterator).decode("utf-8") == string
-                streamed_string += string
-            del stream_response
-
-            # Test tailing log by actor id
-            LINES = 150
-            file_response = requests.get(
-                webui_url
-                + f"/api/experimental/logs/file?node_id={node_id}&lines={LINES}"
-                + "&actor_id="
-                + actor._ray_actor_id.hex(),
-            ).text
-            assert file_response == "\n".join(
-                streamed_string.split("\n")[-(LINES + 1) :]
-            )
-            break
-        except Exception as ex:
-            last_ex = ex
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                ex_stack = (
-                    traceback.format_exception(
-                        type(last_ex), last_ex, last_ex.__traceback__
-                    )
-                    if last_ex
-                    else []
-                )
-                ex_stack = "".join(ex_stack)
-                raise Exception(f"Timed out while testing, {ex_stack}")
+    # Test tailing log by actor id
+    LINES = 150
+    file_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/file?node_id={node_id}&lines={LINES}"
+        + "&actor_id="
+        + actor._ray_actor_id.hex(),
+    ).text
+    assert file_response == "\n".join(
+        streamed_string.split("\n")[-(LINES + 1) :]
+    )
 
 
 def test_logs_grpc_client_termination(ray_start_with_dashboard):
