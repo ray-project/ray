@@ -27,7 +27,11 @@ from ray.tune.progress_reporter import (
 )
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
-from ray.tune.schedulers import PopulationBasedTraining, PopulationBasedTrainingReplay
+from ray.tune.schedulers import (
+    PopulationBasedTraining,
+    PopulationBasedTrainingReplay,
+    ResourceChangingScheduler,
+)
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
@@ -462,11 +466,15 @@ def run(
     # and default to True for everything else (i.e. function trainables)
     if reuse_actors is None:
         reuse_actors = not (
+            # Default to False for string trainables
             isinstance(run_or_experiment, str)
+            # Default to False for class trainables
             or (
                 inspect.isclass(run_or_experiment)
                 and issubclass(run_or_experiment, Trainable)
             )
+            # Default to False if resource changing scheduler is used
+            or (scheduler and isinstance(scheduler, ResourceChangingScheduler))
         )
 
     if (
