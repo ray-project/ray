@@ -39,6 +39,31 @@ for _ in range(10):
     assert "Spilled " not in out_str
 
 
+def _hook(env):
+    return {"env_vars": {"HOOK_KEY": "HOOK_VALUE"}}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_runtime_env_hook():
+    script = """
+import ray
+import os
+
+@ray.remote
+def f():
+    return os.environ.get("HOOK_KEY")
+
+print(ray.get(f.remote()))
+"""
+
+    proc = run_string_as_driver_nonblocking(
+        script, env={"RAY_RUNTIME_ENV_HOOK": "ray.tests.test_output._hook"}
+    )
+    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
+    print(out_str)
+    assert "HOOK_VALUE" in out_str
+
+
 def test_autoscaler_infeasible():
     script = """
 import ray
