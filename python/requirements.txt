@@ -6,7 +6,6 @@
 #
 # setup.py install_requires
 aiohttp>=3.7
-aioredis < 2
 aiosignal
 click >= 7.0, <= 8.0.4
 cloudpickle
@@ -23,7 +22,6 @@ protobuf >= 3.8.0
 py-spy >= 0.2.0
 pydantic >= 1.8
 pyyaml
-redis >= 3.5.0, < 4.0.0
 requests
 smart_open
 virtualenv
@@ -31,7 +29,7 @@ virtualenv
 ## setup.py extras
 dm_tree
 flask
-gym>=0.21.0,<0.22.0; python_version >= '3.7'
+gym==0.21.0; python_version >= '3.7'
 gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
@@ -83,6 +81,7 @@ pytest-sugar
 pytest-lazy-fixture
 pytest-timeout
 pytest-virtualenv
+redis >= 3.5.0, < 4.0.0
 scikit-learn==0.22.2
 testfixtures
 werkzeug

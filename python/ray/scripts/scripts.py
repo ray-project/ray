@@ -41,9 +41,8 @@ from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_r
 
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
-from ray.core.generated import gcs_service_pb2
-from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.cli import job_cli_group
+from ray.experimental.state.state_cli import list_state_cli_group
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -271,6 +270,14 @@ def debug(address):
     help=f"the port of the head ray process. If not provided, defaults to "
     f"{ray_constants.DEFAULT_PORT}; if port is set to 0, we will"
     f" allocate an available port.",
+)
+@click.option(
+    "--node-name",
+    required=False,
+    hidden=True,
+    type=str,
+    help="the user-provided identifier or name for this node. "
+    "Defaults to the node's ip_address",
 )
 @click.option(
     "--redis-password",
@@ -512,6 +519,7 @@ def start(
     node_ip_address,
     address,
     port,
+    node_name,
     redis_password,
     redis_shard_ports,
     object_manager_port,
@@ -583,6 +591,7 @@ def start(
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
+        node_name=node_name if node_name else node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
         worker_port_list=worker_port_list,
@@ -1728,6 +1737,9 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address(address)
+    if not ray._private.gcs_utils.check_health(address):
+        print(f"Ray cluster is not found at {address}")
+        sys.exit(1)
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(
@@ -1758,6 +1770,9 @@ def memory(
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address(address)
+    if not ray._private.gcs_utils.check_health(address):
+        print(f"Ray cluster is not found at {address}")
+        sys.exit(1)
     gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
@@ -2054,24 +2069,15 @@ def healthcheck(address, redis_password, component):
 
     address = services.canonicalize_bootstrap_address(address)
 
-    gcs_address = address
-
     if not component:
         try:
-            options = (("grpc.enable_http_proxy", 0),)
-            channel = ray._private.utils.init_grpc_channel(gcs_address, options)
-            stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
-            request = gcs_service_pb2.CheckAliveRequest()
-            reply = stub.CheckAlive(
-                request, timeout=ray.ray_constants.HEALTHCHECK_EXPIRATION_S
-            )
-            if reply.status.code == 0:
+            if ray._private.gcs_utils.check_health(address):
                 sys.exit(0)
         except Exception:
             pass
         sys.exit(1)
 
-    gcs_client = ray._private.gcs_utils.GcsClient(address=gcs_address)
+    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
         component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK
@@ -2256,6 +2262,7 @@ cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
 add_command_alias(job_cli_group, name="job", hidden=True)
+add_command_alias(list_state_cli_group, name="list", hidden=True)
 
 try:
     from ray.serve.scripts import serve_cli

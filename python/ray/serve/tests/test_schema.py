@@ -13,18 +13,16 @@ from ray.serve.schema import (
     DeploymentStatusSchema,
     ServeApplicationSchema,
     ServeApplicationStatusSchema,
+    status_info_to_schema,
+    serve_application_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
 from ray.serve.config import AutoscalingConfig
 from ray.serve.common import DeploymentStatus, DeploymentStatusInfo
-from ray.serve.api import (
-    get_deployment_statuses,
+from ray.serve.api import get_deployment_statuses
+from ray.serve.deployment import (
     deployment_to_schema,
     schema_to_deployment,
-    serve_application_to_schema,
-    schema_to_serve_application,
-    status_info_to_schema,
-    serve_application_status_to_schema,
 )
 from ray import serve
 
@@ -572,7 +570,7 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     assert len(deployment.ray_actor_options) == 0
 
 
-def test_serve_application_to_schema_to_serve_application():
+def test_status_schema_helpers():
     @serve.deployment(
         num_replicas=1,
         route_prefix="/hello",
@@ -592,21 +590,10 @@ def test_serve_application_to_schema_to_serve_application():
     f1._func_or_class = "ray.serve.tests.test_schema.global_f"
     f2._func_or_class = "ray.serve.tests.test_schema.global_f"
 
-    deployments = schema_to_serve_application(serve_application_to_schema([f1, f2]))
-
-    assert deployments[0].num_replicas == 1
-    assert deployments[0].route_prefix == "/hello"
-    assert deployments[1].num_replicas == 2
-    assert deployments[1].route_prefix == "/hi"
-
     serve.start()
 
-    deployments[0].deploy()
-    deployments[1].deploy()
-    assert ray.get(deployments[0].get_handle().remote()) == "Hello world!"
-    assert requests.get("http://localhost:8000/hello").text == "Hello world!"
-    assert ray.get(deployments[1].get_handle().remote()) == "Hello world!"
-    assert requests.get("http://localhost:8000/hi").text == "Hello world!"
+    f1.deploy()
+    f2.deploy()
 
     # Check statuses
     statuses = serve_application_status_to_schema(get_deployment_statuses()).statuses
