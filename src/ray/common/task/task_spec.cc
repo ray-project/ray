@@ -116,8 +116,8 @@ void TaskSpecification::ComputeResources() {
     const auto &resource_set = GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
-    auto sched_cls_desc =
-        SchedulingClassDescriptor(resource_set, function_descriptor, depth);
+    auto sched_cls_desc = SchedulingClassDescriptor(
+        resource_set, function_descriptor, depth, GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
@@ -240,6 +240,26 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
+const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
+  return message_->scheduling_strategy();
+}
+
+bool TaskSpecification::IsNodeAffinitySchedulingStrategy() const {
+  return GetSchedulingStrategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeAffinitySchedulingStrategy;
+}
+
+NodeID TaskSpecification::GetNodeAffinitySchedulingStrategyNodeId() const {
+  RAY_CHECK(IsNodeAffinitySchedulingStrategy());
+  return NodeID::FromBinary(
+      GetSchedulingStrategy().node_affinity_scheduling_strategy().node_id());
+}
+
+bool TaskSpecification::GetNodeAffinitySchedulingStrategySoft() const {
+  RAY_CHECK(IsNodeAffinitySchedulingStrategy());
+  return GetSchedulingStrategy().node_affinity_scheduling_strategy().soft();
+}
+
 std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
@@ -297,6 +317,11 @@ bool TaskSpecification::IsActorCreationTask() const {
 
 bool TaskSpecification::IsActorTask() const {
   return message_->type() == TaskType::ACTOR_TASK;
+}
+
+bool TaskSpecification::IsSpreadSchedulingStrategy() const {
+  return message_->scheduling_strategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
 // === Below are getter methods specific to actor creation tasks.

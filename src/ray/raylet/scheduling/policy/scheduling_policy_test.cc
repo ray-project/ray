@@ -67,12 +67,61 @@ class SchedulingPolicyTest : public ::testing::Test {
   }
 };
 
+TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
+
+  nodes.emplace(scheduling::NodeID("local"), CreateNodeResources(20, 20, 0, 0, 0, 0));
+  // Unavailable node
+  nodes.emplace(scheduling::NodeID("unavailable"),
+                CreateNodeResources(0, 20, 0, 0, 0, 0));
+  // Infeasible node
+  nodes.emplace(scheduling::NodeID("infeasible"), CreateNodeResources(0, 0, 0, 0, 0, 0));
+
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+  raylet_scheduling_policy::CompositeSchedulingPolicy scheduling_policy(
+      scheduling::NodeID("local"), cluster_resource_manager, [](auto) { return true; });
+
+  auto to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::NodeAffinity(false, false, "local", false));
+  ASSERT_EQ(to_schedule, scheduling::NodeID("local"));
+
+  to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::NodeAffinity(false, false, "unavailable", false));
+  // Prefer the specified node even if it's not available right now.
+  ASSERT_EQ(to_schedule, scheduling::NodeID("unavailable"));
+
+  to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::NodeAffinity(false, false, "unavailable", true));
+  // Prefer the specified node even if it's not available right now.
+  ASSERT_EQ(to_schedule, scheduling::NodeID("unavailable"));
+
+  to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::NodeAffinity(false, false, "infeasible", false));
+  // The task is unschedulable since soft is false.
+  ASSERT_TRUE(to_schedule.IsNil());
+
+  to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::NodeAffinity(false, false, "infeasible", true));
+  // The task is scheduled somewhere else since soft is true.
+  ASSERT_EQ(to_schedule, scheduling::NodeID("local"));
+
+  to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::NodeAffinity(false, false, "not_exist", false));
+  // The task is unschedulable since soft is false.
+  ASSERT_TRUE(to_schedule.IsNil());
+
+  to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::NodeAffinity(false, false, "not_exist", true));
+  // The task is scheduled somewhere else since soft is true.
+  ASSERT_EQ(to_schedule, scheduling::NodeID("local"));
+}
+
 TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
   ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
-  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 0));
+  nodes.emplace(local_node, CreateNodeResources(20, 20, 0, 0, 0, 1));
   // Unavailable node
-  nodes.emplace(remote_node, CreateNodeResources(0, 20, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(0, 20, 0, 0, 0, 1));
   // Infeasible node
   nodes.emplace(remote_node_2, CreateNodeResources(0, 0, 0, 0, 0, 0));
   nodes.emplace(remote_node_3, CreateNodeResources(20, 20, 0, 0, 0, 0));
@@ -88,8 +137,20 @@ TEST_F(SchedulingPolicyTest, SpreadPolicyTest) {
   ASSERT_EQ(to_schedule, remote_node_3);
 
   to_schedule = scheduling_policy.Schedule(
-      req, SchedulingOptions::Spread(/*force_spillback=*/true, false));
+      req, SchedulingOptions::Spread(/*avoid_local_node=*/true, false));
   ASSERT_EQ(to_schedule, remote_node_3);
+
+  // Spread across feasible nodes if there is no available nodes
+  req = ResourceMapToResourceRequest({{"GPU", 1}}, false);
+  to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+  ASSERT_EQ(to_schedule, local_node);
+
+  to_schedule = scheduling_policy.Schedule(req, SchedulingOptions::Spread(false, false));
+  ASSERT_EQ(to_schedule, remote_node);
+
+  to_schedule = scheduling_policy.Schedule(
+      req, SchedulingOptions::Spread(false, /*require_node_available=*/true));
+  ASSERT_TRUE(to_schedule.IsNil());
 }
 
 TEST_F(SchedulingPolicyTest, RandomPolicyTest) {

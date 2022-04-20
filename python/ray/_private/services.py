@@ -1576,6 +1576,7 @@ def start_raylet(
     backup_count=0,
     ray_debugger_external=False,
     env_updates=None,
+    node_name=None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1800,6 +1801,10 @@ def start_raylet(
         command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
+    if node_name is not None:
+        command.append(
+            f"--node-name={node_name}",
+        )
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,

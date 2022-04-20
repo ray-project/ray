@@ -9,9 +9,9 @@ import scipy.linalg  # noqa: F401
 
 __all__ = [
     "fix_xgb_lgbm_docs",
+    "download_and_preprocess_ecosystem_docs",
     "mock_modules",
     "update_context",
-    "download_and_preprocess_ecosystem_docs",
 ]
 
 try:
@@ -89,7 +89,6 @@ def update_context(app, pagename, templatename, context, doctree):
 MOCK_MODULES = [
     "ax",
     "ax.service.ax_client",
-    "blist",
     "ConfigSpace",
     "dask.distributed",
     "gym",
@@ -101,6 +100,7 @@ MOCK_MODULES = [
     "horovod.ray",
     "horovod.ray.runner",
     "horovod.ray.utils",
+    "horovod.torch",
     "hyperopt",
     "hyperopt.hp" "kubernetes",
     "mlflow",
@@ -135,47 +135,22 @@ MOCK_MODULES = [
     "tensorflow.contrib.slim",
     "tensorflow.core",
     "tensorflow.core.util",
-    "tensorflow.keras",
+    "tensorflow.keras.callbacks",
     "tensorflow.python",
     "tensorflow.python.client",
     "tensorflow.python.util",
-    "torch",
-    "torch.cuda.amp",
-    "torch.distributed",
-    "torch.nn",
-    "torch.nn.parallel",
-    "torch.optim",
-    "torch.profiler",
-    "torch.utils.data",
-    "torch.utils.data.distributed",
     "wandb",
     "zoopt",
 ]
 
-CHILD_MOCK_MODULES = [
-    "pytorch_lightning",
-    "pytorch_lightning.accelerators",
-    "pytorch_lightning.plugins",
-    "pytorch_lightning.plugins.environments",
-    "pytorch_lightning.utilities",
-    "tensorflow.keras.callbacks",
-]
-
-
-class ChildClassMock(mock.Mock):
-    @classmethod
-    def __getattr__(cls, name):
-        return mock.Mock
-
 
 def mock_modules():
     for mod_name in MOCK_MODULES:
-        sys.modules[mod_name] = mock.Mock()
+        mock_module = mock.MagicMock()
+        mock_module.__spec__ = mock.MagicMock()
+        sys.modules[mod_name] = mock_module
 
     sys.modules["tensorflow"].VERSION = "9.9.9"
-
-    for mod_name in CHILD_MOCK_MODULES:
-        sys.modules[mod_name] = ChildClassMock()
 
 
 # Add doc files from external repositories to be downloaded during build here
@@ -187,6 +162,12 @@ EXTERNAL_MARKDOWN_FILES = [
         "master",
         "README.md",
         "ray-more-libs/lightgbm-ray.md",
+    ),
+    (
+        "ray-project/ray_lightning",
+        "main",
+        "README.md",
+        "ray-more-libs/ray-lightning.md",
     ),
 ]
 
