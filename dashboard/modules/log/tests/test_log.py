@@ -181,9 +181,7 @@ def test_logs_experimental_list(ray_start_with_dashboard):
     return True
 
     # Test that logs/list can be filtered
-    response = requests.get(
-        webui_url + "/api/experimental/logs/list?filters=gcs"
-    )
+    response = requests.get(webui_url + "/api/experimental/logs/list?filters=gcs")
     response.raise_for_status()
     logs = json.loads(response.text)
     assert len(logs) == 1
@@ -193,9 +191,7 @@ def test_logs_experimental_list(ray_start_with_dashboard):
         if category != "gcs_server":
             assert len(logs[node_id][category]) == 0
 
-    response = requests.get(
-        webui_url + "/api/experimental/logs/list?filters=worker"
-    )
+    response = requests.get(webui_url + "/api/experimental/logs/list?filters=worker")
     response.raise_for_status()
     logs = json.loads(response.text)
     assert len(logs) == 1
@@ -205,9 +201,7 @@ def test_logs_experimental_list(ray_start_with_dashboard):
         "worker_outs",
         "worker_errors",
     ]
-    assert (
-        all([cat in logs[node_id] for cat in worker_log_categories])
-    )
+    assert all([cat in logs[node_id] for cat in worker_log_categories])
     for category in logs[node_id]:
         if category not in worker_log_categories:
             assert len(logs[node_id][category]) == 0
@@ -285,8 +279,8 @@ def test_logs_experimental_write(ray_start_with_dashboard):
         string = ""
         for s in strings:
             string += s + "\n"
-        assert next(stream_iterator).decode("utf-8") == string
         streamed_string += string
+        assert next(stream_iterator).decode("utf-8") == string
     del stream_response
 
     # Test tailing log by actor id
@@ -297,9 +291,7 @@ def test_logs_experimental_write(ray_start_with_dashboard):
         + "&actor_id="
         + actor._ray_actor_id.hex(),
     ).text
-    assert file_response == "\n".join(
-        streamed_string.split("\n")[-(LINES + 1) :]
-    )
+    assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
 
 
 def test_logs_grpc_client_termination(ray_start_with_dashboard):
@@ -330,11 +322,15 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
     )
 
     # Check that gRPC stream initiated as a result of starting the stream
-    assert (f'initiated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-            "\nkeep_alive: true") in file_response.text
+    assert (
+        f'initiated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+        "\nkeep_alive: true"
+    ) in file_response.text
     # Check that gRPC stream has not terminated (is kept alive)
-    assert (f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-            "\nkeep_alive: true") not in file_response.text
+    assert (
+        f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+        "\nkeep_alive: true"
+    ) not in file_response.text
 
     del stream_response
     # give enough time for the termination message to be written to the log
@@ -347,8 +343,10 @@ def test_logs_grpc_client_termination(ray_start_with_dashboard):
     )
 
     # Check that gRPC terminated as a result of closing the stream
-    assert (f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
-            "\nkeep_alive: true") in file_response.text
+    assert (
+        f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+        "\nkeep_alive: true"
+    ) in file_response.text
 
 
 if __name__ == "__main__":
