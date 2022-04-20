@@ -65,6 +65,13 @@ class GBDTTrainer(Trainer):
         **train_kwargs: Additional kwargs passed to framework ``train()`` function.
     """
 
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+    ]
     _dmatrix_cls: type
     _ray_params_cls: type
     _tune_callback_cls: type
