@@ -35,7 +35,8 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
 )
-from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+
+# from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
     MultiAgentMixInReplayBuffer,
 )
@@ -568,7 +569,7 @@ class ImpalaTrainer(Trainer):
             ] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=0.1,
+                ray_wait_timeout_s=0.03,
                 max_remote_requests_in_flight_per_actor=self.config[
                     "max_sample_requests_in_flight_per_worker"
                 ],
@@ -610,16 +611,16 @@ class ImpalaTrainer(Trainer):
                     learner_infos.append(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
-        if len(learner_infos) > 0:
-            learner_info_builder = LearnerInfoBuilder(num_devices=1)
-            for _learner_info in learner_infos:
-                for policy_id in _learner_info:
-                    learner_info_builder.add_learn_on_batch_results(
-                        _learner_info[policy_id],
-                    )
-            learner_info = learner_info_builder.finalize()
-        else:
-            return copy.deepcopy(self._learner_thread.learner_info)
+        # if len(learner_infos) > 0:
+        #     learner_info_builder = LearnerInfoBuilder(num_devices=1)
+        #     for _learner_info in learner_infos:
+        #         for policy_id in _learner_info:
+        #             learner_info_builder.add_learn_on_batch_results(
+        #                 _learner_info[policy_id],
+        #             )
+        #     learner_info = learner_info_builder.finalize()
+        # else:
+        learner_info = copy.deepcopy(self._learner_thread.learner_info)
 
         # Update the steps trained counters.
         self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = num_agent_steps_trained
