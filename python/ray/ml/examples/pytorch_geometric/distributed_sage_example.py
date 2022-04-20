@@ -8,12 +8,13 @@ from filelock import FileLock
 import torch
 import torch.nn.functional as F
 
-from torch_geometric.datasets import Reddit
+from torch_geometric.datasets import Reddit, FakeDataset
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn import SAGEConv
 
 from ray import train
 from ray.ml.train.integrations.torch import TorchTrainer
+from torch_geometric.transforms import RandomNodeSplit
 
 
 class SAGE(torch.nn.Module):
@@ -41,6 +42,7 @@ class SAGE(torch.nn.Module):
         for i in range(self.num_layers):
             xs = []
             for batch_size, n_id, adj in subgraph_loader:
+
                 edge_index, _, size = adj
                 x = x_all[n_id].to(train.torch.get_device())
                 x_target = x[: size[1]]
@@ -55,9 +57,7 @@ class SAGE(torch.nn.Module):
 
 
 def train_loop_per_worker(train_loop_config):
-    with FileLock(os.path.expanduser("~/.reddit_dataset_lock")):
-        dataset = Reddit("./data/Reddit")
-    print("Loaded dataset")
+    dataset = train_loop_config["dataset_fn"]()
     batch_size = train_loop_config["batch_size"]
     num_epochs = train_loop_config["num_epochs"]
 
@@ -138,13 +138,48 @@ def train_loop_per_worker(train_loop_config):
         )
 
 
-def train_reddit(num_workers=2, use_gpu=False, epochs=3, global_batch_size=32):
+def gen_fake_dataset():
+    """Returns a function to be called on each worker that returns a Fake Dataset."""
+
+    # For fake dataset, since the dataset is randomized, we create it once on the
+    # driver, and then send the same dataset to all the training workers.
+    # Use 10% of nodes for validation and 10% for testing.
+    fake_dataset = FakeDataset(transform=RandomNodeSplit(num_val=0.1, num_test=0.1))
+
+    def gen_dataset():
+        return fake_dataset
+
+    return gen_dataset
+
+
+def gen_reddit_dataset():
+    """Returns a function to be called on each worker that returns Reddit Dataset."""
+
+    # For Reddit dataset, we have to download the data on each node, so we create the
+    # dataset on each training worker.
+    def gen_dataset():
+        with FileLock(os.path.expanduser("~/.reddit_dataset_lock")):
+            dataset = Reddit("./data/Reddit")
+        return dataset
+
+    return gen_dataset
+
+
+def train_gnn(
+    num_workers=2, use_gpu=False, epochs=3, global_batch_size=32, dataset="reddit"
+):
 
     per_worker_batch_size = global_batch_size // num_workers
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
-        train_loop_config={"num_epochs": epochs, "batch_size": per_worker_batch_size},
+        train_loop_config={
+            "num_epochs": epochs,
+            "batch_size": per_worker_batch_size,
+            "dataset_fn": gen_reddit_dataset()
+            if dataset == "reddit"
+            else gen_fake_dataset(),
+        },
         scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
     result = trainer.fit()
@@ -176,12 +211,21 @@ if __name__ == "__main__":
         default=32,
         help="Global batch size to use for training.",
     )
+    parser.add_argument(
+        "--dataset",
+        "-d",
+        type=str,
+        choices=["reddit", "fake"],
+        default="reddit",
+        help="The dataset to use. Either 'reddit' or 'fake' Defaults to 'reddit'.",
+    )
 
     args, _ = parser.parse_known_args()
 
-    train_reddit(
+    train_gnn(
         num_workers=args.num_workers,
         use_gpu=args.use_gpu,
         epochs=args.epochs,
         global_batch_size=args.global_batch_size,
+        dataset=args.dataset,
     )

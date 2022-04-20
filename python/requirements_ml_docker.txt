@@ -3,8 +3,7 @@ ipython
 # Needed for Ray Client error message serialization/deserialization.
 tblib
 
-# If you make changes to anything below this line, please also change `requirements_dl.txt`!
-
+# If you make changes to the torch versions, please also make the corresponding changes to `requirements_dl.txt`!
 -f https://download.pytorch.org/whl/torch_stable.html
 torch==1.9.0+cu111
 torchvision==0.10.0+cu111
