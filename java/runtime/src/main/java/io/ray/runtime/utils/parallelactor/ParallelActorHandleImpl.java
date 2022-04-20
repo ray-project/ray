@@ -3,12 +3,9 @@ package io.ray.runtime.utils.parallelactor;
 import io.ray.api.ActorHandle;
 import io.ray.api.parallelactor.ParallelActorHandle;
 import io.ray.api.parallelactor.ParallelActorInstance;
-import java.io.Externalizable;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
+import java.io.Serializable;
 
-public class ParallelActorHandleImpl<A> implements ParallelActorHandle<A>, Externalizable {
+public class ParallelActorHandleImpl<A> implements ParallelActorHandle<A>, Serializable {
 
   private int parallelism = 1;
 
@@ -23,8 +20,8 @@ public class ParallelActorHandleImpl<A> implements ParallelActorHandle<A>, Exter
   }
 
   @Override
-  public ParallelActorInstance<A> getInstance(int index) {
-    return new ParallelActorInstance<A>(this, index);
+  public ParallelActorInstance<A> getInstance(int instanceId) {
+    return new ParallelActorInstance<A>(this, instanceId);
   }
 
   public ActorHandle<? extends ParallelActorExecutorImpl> getExecutor() {
@@ -39,17 +36,5 @@ public class ParallelActorHandleImpl<A> implements ParallelActorHandle<A>, Exter
   @Override
   public ActorHandle<?> getHandle() {
     return parallelExecutorHandle;
-  }
-
-  @Override
-  public void writeExternal(ObjectOutput out) throws IOException {
-    out.writeObject(parallelExecutorHandle);
-    out.writeInt(parallelism);
-  }
-
-  @Override
-  public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    this.parallelExecutorHandle = (ActorHandle<ParallelActorExecutorImpl>) in.readObject();
-    this.parallelism = in.readInt();
   }
 }

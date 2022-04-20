@@ -288,6 +288,6 @@ public interface RayRuntime {
   /** Create runtime env instance at runtime. */
   RuntimeEnv createRuntimeEnv(Map<String, String> envVars);
 
-  /// Get the parallel context at runtime.
-  ParallelActorContext getParallelContext();
+  /// Get the parallel actor context at runtime.
+  ParallelActorContext getParallelActorContext();
 }

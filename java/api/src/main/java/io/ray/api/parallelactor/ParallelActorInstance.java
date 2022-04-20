@@ -4,18 +4,18 @@ public class ParallelActorInstance<A> implements ActorCall<A> {
 
   private ParallelActorHandle<A> parallelActorHandle;
 
-  private int currentIndex;
+  private int instanceId;
 
-  public ParallelActorInstance(ParallelActorHandle<A> parallelActorHandle, int index) {
+  public ParallelActorInstance(ParallelActorHandle<A> parallelActorHandle, int instanceId) {
     this.parallelActorHandle = parallelActorHandle;
-    this.currentIndex = index;
+    this.instanceId = instanceId;
   }
 
   ParallelActorHandle<A> getActor() {
     return parallelActorHandle;
   }
 
-  int getIndex() {
-    return currentIndex;
+  int getInstanceId() {
+    return instanceId;
   }
 }

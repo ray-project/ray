@@ -47,13 +47,13 @@ public class ParallelActorTest extends BaseTest {
     ParallelActorHandle<A> actor = ParallelActor.actor(A::new).setParallelism(10).remote();
     {
       // stateless tests
-      ParallelActorInstance<A> instance = actor.getInstance(/*index=*/ 2);
+      ParallelActorInstance<A> instance = actor.getInstance(2);
 
       Preconditions.checkNotNull(instance);
       int res = instance.task(A::add, 100000, 200000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 300000);
 
-      instance = actor.getInstance(/*index=*/ 3);
+      instance = actor.getInstance(3);
       Preconditions.checkNotNull(instance);
       res = instance.task(A::add, 100000, 200000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 300000);
@@ -61,13 +61,13 @@ public class ParallelActorTest extends BaseTest {
 
     {
       // stateful tests
-      ParallelActorInstance<A> instance = actor.getInstance(/*index=*/ 2);
+      ParallelActorInstance<A> instance = actor.getInstance(2);
 
       Preconditions.checkNotNull(instance);
       int res = instance.task(A::incr, 1000000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 1000000);
 
-      instance = actor.getInstance(/*index=*/ 2);
+      instance = actor.getInstance(2);
       Preconditions.checkNotNull(instance);
       res = instance.task(A::incr, 2000000).remote().get(); // Executed in instance 2
       Assert.assertEquals(res, 3000000);
@@ -75,11 +75,11 @@ public class ParallelActorTest extends BaseTest {
 
     {
       // Test they are in the same process.
-      ParallelActorInstance<A> instance = actor.getInstance(/*index=*/ 0);
+      ParallelActorInstance<A> instance = actor.getInstance(0);
       Preconditions.checkNotNull(instance);
       int pid1 = instance.task(A::getPid).remote().get();
 
-      instance = actor.getInstance(/*index=*/ 1);
+      instance = actor.getInstance(1);
       Preconditions.checkNotNull(instance);
       int pid2 = instance.task(A::getPid).remote().get();
       Assert.assertEquals(pid1, pid2);
@@ -87,11 +87,11 @@ public class ParallelActorTest extends BaseTest {
 
     {
       // Test they are in different threads.
-      ParallelActorInstance<A> instance = actor.getInstance(/*index=*/ 4);
+      ParallelActorInstance<A> instance = actor.getInstance(4);
       Preconditions.checkNotNull(instance);
       int thread1 = instance.task(A::getThreadId).remote().get();
 
-      instance = actor.getInstance(/*index=*/ 5);
+      instance = actor.getInstance(5);
       Preconditions.checkNotNull(instance);
       int thread2 = instance.task(A::getThreadId).remote().get();
       Assert.assertNotEquals(thread1, thread2);

@@ -22,7 +22,7 @@ public class ParallelActorCreator<A> {
   }
 
   public ParallelActorHandle<A> remote() {
-    ParallelActorContext ctx = Ray.internal().getParallelContext();
+    ParallelActorContext ctx = Ray.internal().getParallelActorContext();
     return ctx.createParallelActorExecutor(parallelism, this.func);
   }
 }

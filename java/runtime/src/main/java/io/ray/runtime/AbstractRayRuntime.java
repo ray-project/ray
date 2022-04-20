@@ -65,7 +65,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
-  private static ParallelActorContextImpl parallelContextImpl = new ParallelActorContextImpl();
+  private static ParallelActorContextImpl parallelActorContextImpl = new ParallelActorContextImpl();
 
   /** Whether the required thread context is set on the current thread. */
   final ThreadLocal<Boolean> isContextSet = ThreadLocal.withInitial(() -> false);
@@ -293,8 +293,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public ParallelActorContext getParallelContext() {
-    return parallelContextImpl;
+  public ParallelActorContext getParallelActorContext() {
+    return parallelActorContextImpl;
   }
 
   @Override
