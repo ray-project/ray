@@ -50,6 +50,7 @@ import ray
 from ray import cloudpickle
 from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.application import Application
+from ray.serve.client import ServeControllerClient
 
 logger = logging.getLogger(__file__)
 
@@ -61,7 +62,7 @@ def start(
     _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
     _override_controller_namespace: Optional[str] = None,
     **kwargs,
-) -> Client:
+) -> ServeControllerClient:
     """Initialize a serve instance.
 
     By default, the instance will be scoped to the lifetime of the returned
@@ -171,7 +172,7 @@ def start(
                 "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
 
-    client = Client(
+    client = ServeControllerClient(
         controller,
         controller_name,
         detached=detached,
@@ -670,7 +671,7 @@ def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
 
 
 def _check_http_and_checkpoint_options(
-    client: Client,
+    client: ServeControllerClient,
     http_options: Union[dict, HTTPOptions],
     checkpoint_path: str,
 ) -> None:
