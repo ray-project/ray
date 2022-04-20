@@ -30,7 +30,7 @@ logging.basicConfig(
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
 RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:413fe0")
-# Set to IfNotPresent in CI. Stick with default for locally-triggered tests.
+# Set to IfNotPresent in kind CI.
 PULL_POLICY = os.environ.get("PULL_POLICY", "Always")
 logger.info(f"Using image `{RAY_IMAGE}` for autoscaler and Ray nodes.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
