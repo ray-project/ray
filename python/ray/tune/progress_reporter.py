@@ -71,6 +71,8 @@ class ProgressReporter:
         """Setup progress reporter for a new Ray Tune run.
 
         This function is used to initialize parameters that are set on runtime.
+        It will be called before any of the other methods.
+
         Defaults to no-op.
 
         Args:
