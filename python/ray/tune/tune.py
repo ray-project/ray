@@ -1,3 +1,4 @@
+import inspect
 import threading
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
@@ -460,8 +461,12 @@ def run(
     # If reuse_actors is unset, default to False for string and class trainables,
     # and default to True for everything else (i.e. function trainables)
     if reuse_actors is None:
-        reuse_actors = not isinstance(run_or_experiment, str) and not issubclass(
-            run_or_experiment, Trainable
+        reuse_actors = not (
+            isinstance(run_or_experiment, str)
+            or (
+                inspect.isclass(run_or_experiment)
+                and issubclass(run_or_experiment, Trainable)
+            )
         )
 
     if (
