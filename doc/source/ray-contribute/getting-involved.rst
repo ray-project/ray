@@ -236,8 +236,6 @@ If a CI build exception doesn't appear to be related to your change,
 please visit `this link <https://flakey-tests.ray.io/>`_ to
 check recent tests known to be flaky.
 
-.. _`CI`: https://github.com/ray-project/ray/tree/master/ci/travis
-
 API stability
 -------------
 
