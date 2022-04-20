@@ -243,5 +243,123 @@ def test_logs_tail():
             os.remove(FILE_NAME)
 
 
+def test_logs_experimental_stream_and_tail(ray_start_with_dashboard):
+    @ray.remote
+    class Actor:
+        def write_log(self, strings):
+            for s in strings:
+                print(s)
+
+    test_log_text = "test_log_text{}"
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    response = requests.get(webui_url + "/api/experimental/logs/list")
+    response.raise_for_status()
+    logs = json.loads(response.text)
+    assert len(logs) == 1
+    node_id = next(iter(logs))
+
+    actor = Actor.remote()
+    ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
+
+    # Test stream and fetching by actor id
+    stream_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/stream?node_id={node_id}&lines=2"
+        + "&actor_id="
+        + actor._ray_actor_id.hex(),
+        stream=True,
+    )
+    if stream_response.status_code != 200:
+        raise ValueError(stream_response.text)
+    stream_iterator = stream_response.iter_content(chunk_size=None)
+    assert (
+        next(stream_iterator).decode("utf-8")
+        == ":actor_name:Actor\n" + test_log_text.format("XXXXXX") + "\n"
+    )
+
+    streamed_string = ""
+    for i in range(5):
+        strings = []
+        for j in range(100):
+            strings.append(test_log_text.format(f"{100*i + j:06d}"))
+
+        ray.get(actor.write_log.remote(strings))
+
+        string = ""
+        for s in strings:
+            string += s + "\n"
+        streamed_string += string
+        assert next(stream_iterator).decode("utf-8") == string
+    del stream_response
+
+    # Test tailing log by actor id
+    LINES = 150
+    file_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/file?node_id={node_id}&lines={LINES}"
+        + "&actor_id="
+        + actor._ray_actor_id.hex(),
+    ).text
+    assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
+
+
+def test_logs_grpc_client_termination(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = ray_start_with_dashboard["node_id"]
+
+    time.sleep(1)
+    # Get dashboard agent log
+    RAYLET_FILE_NAME = "raylet.out"
+    DASHBOARD_AGENT_FILE_NAME = "dashboard_agent.log"
+    stream_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/stream?node_id={node_id}"
+        + f"&lines=0&log_file_name={RAYLET_FILE_NAME}",
+        stream=True,
+    )
+    if stream_response.status_code != 200:
+        raise ValueError(stream_response.text)
+    # give enough time for the initiation message to be written to the log
+    time.sleep(1)
+
+    file_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/file?node_id={node_id}"
+        + f"&lines=10&log_file_name={DASHBOARD_AGENT_FILE_NAME}",
+    )
+
+    # Check that gRPC stream initiated as a result of starting the stream
+    assert (
+        f'initiated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+        "\nkeep_alive: true"
+    ) in file_response.text
+    # Check that gRPC stream has not terminated (is kept alive)
+    assert (
+        f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+        "\nkeep_alive: true"
+    ) not in file_response.text
+
+    del stream_response
+    # give enough time for the termination message to be written to the log
+    time.sleep(1)
+
+    file_response = requests.get(
+        webui_url
+        + f"/api/experimental/logs/file?node_id={node_id}"
+        + f"&lines=10&log_file_name={DASHBOARD_AGENT_FILE_NAME}",
+    )
+
+    # Check that gRPC terminated as a result of closing the stream
+    assert (
+        f'terminated StreamLog:\nlog_file_name: "{RAYLET_FILE_NAME}"'
+        "\nkeep_alive: true"
+    ) in file_response.text
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
