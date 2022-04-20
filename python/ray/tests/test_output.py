@@ -40,7 +40,7 @@ for _ in range(10):
 
 
 def _hook(env):
-    return {"env_vars": {"TEST_BLAH": "HOOK OK"}}
+    return {"env_vars": {"HOOK_KEY": "HOOK_VALUE"}}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -51,7 +51,7 @@ import os
 
 @ray.remote
 def f():
-    return os.environ.get("TEST_BLAH")
+    return os.environ.get("HOOK_KEY")
 
 print(ray.get(f.remote()))
 """
@@ -61,7 +61,7 @@ print(ray.get(f.remote()))
     )
     out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
     print(out_str)
-    assert "HOOK OK" in out_str
+    assert "HOOK_VALUE" in out_str
 
 
 def test_autoscaler_infeasible():
