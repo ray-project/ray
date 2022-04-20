@@ -1648,6 +1648,12 @@ def disable_usage_stats():
 
 
 @cli.command()
+def enable_usage_stats():
+    """Enable usage stats collection."""
+    usage_lib.set_usage_stats_enabled_via_config(enabled=True)
+
+
+@cli.command()
 def stack():
     """Take a stack dump of all Python workers on the local machine."""
     COMMAND = """
@@ -2292,6 +2298,7 @@ cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
+cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
 
 try:
