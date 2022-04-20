@@ -36,6 +36,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
 )
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import (
     MultiAgentMixInReplayBuffer,
 )
@@ -568,7 +569,7 @@ class ImpalaTrainer(Trainer):
             ] = asynchronous_parallel_requests(
                 remote_requests_in_flight=self.remote_requests_in_flight,
                 actors=self.workers.remote_workers(),
-                ray_wait_timeout_s=0.0,
+                ray_wait_timeout_s=0.1,
                 max_remote_requests_in_flight_per_actor=self.config[
                     "max_sample_requests_in_flight_per_worker"
                 ],
@@ -610,19 +611,14 @@ class ImpalaTrainer(Trainer):
                     learner_infos.append(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
-        results_have_same_structure = True
-        for result1, result2 in zip(learner_infos, learner_infos[1:]):
-            try:
-                tree.assert_same_structure(result1, result2)
-            except (ValueError, TypeError):
-                results_have_same_structure = False
-                break
-        if len(learner_infos) > 1 and results_have_same_structure:
-            learner_info = tree.map_structure(
-                lambda *_args: sum(_args) / len(learner_infos), *learner_infos
-            )
-        elif len(learner_infos) == 1:
-            learner_info = learner_infos[0]
+        if len(learner_infos) > 0:
+            learner_info_builder = LearnerInfoBuilder(num_devices=1)
+            for _learner_info in learner_infos:
+                for policy_id in _learner_info:
+                    learner_info_builder.add_learn_on_batch_results(
+                        _learner_info[policy_id],
+                    )
+            learner_info = learner_info_builder.finalize()
         else:
             return copy.deepcopy(self._learner_thread.learner_info)
 
