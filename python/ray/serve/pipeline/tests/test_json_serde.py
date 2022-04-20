@@ -28,6 +28,7 @@ from ray.serve.pipeline.tests.resources.test_modules import (
 from ray.serve.pipeline.generate import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
+    DeploymentNameGenerator,
 )
 
 RayHandleLike = TypeVar("RayHandleLike")
@@ -233,7 +234,10 @@ def _test_deployment_json_serde_helper(
         3) Deserialized serve dag can extract correct number and definition of
             serve deployments.
     """
-    serve_root_dag = ray_dag.apply_recursive(transform_ray_dag_to_serve_dag)
+    with DeploymentNameGenerator() as deployment_name_generator:
+        serve_root_dag = ray_dag.apply_recursive(
+            lambda node: transform_ray_dag_to_serve_dag(node, deployment_name_generator)
+        )
     json_serialized = json.dumps(serve_root_dag, cls=DAGNodeEncoder)
     deserialized_serve_root_dag_node = json.loads(
         json_serialized, object_hook=dagnode_from_json
