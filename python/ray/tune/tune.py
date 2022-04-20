@@ -667,7 +667,7 @@ def run(
     # We should only install the handler when it is safe to do so.
     # When tune.run() is called from worker thread, signal.signal will
     # fail.
-    allow_signal_catching = False
+    allow_signal_catching = True
     if threading.current_thread() != threading.main_thread():
         allow_signal_catching = False
 
