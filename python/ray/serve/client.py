@@ -127,7 +127,7 @@ class ServeControllerClient:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = _get_controller_namespace(
+                    controller_namespace = get_controller_namespace(
                         self._detached,
                         self._override_controller_namespace,
                     )
