@@ -5,6 +5,7 @@ import tempfile
 from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type
+import warnings
 
 import torch
 import transformers
@@ -286,6 +287,7 @@ class HuggingFaceTrainer(TorchTrainer):
             )
 
     def _validate_attributes(self):
+        # exceptions first
         if TRAIN_DATASET_KEY not in self.datasets:
             raise KeyError(
                 f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
@@ -299,7 +301,15 @@ class HuggingFaceTrainer(TorchTrainer):
                 "keys can be preset in `datasets`. "
                 f"Got {list(self.datasets.keys())}"
             )
-        return super()._validate_attributes()
+        super()._validate_attributes()
+        gpus_per_worker = self.scaling_config.get("num_gpus_per_worker", 0)
+        if gpus_per_worker > 1:
+            warnings.warn(
+                f"You have assigned {gpus_per_worker} GPUs per worker. "
+                "This is not supported by HuggingFace, which expects "
+                "one GPU per worker in DDP mode and will not be "
+                "able to make use of more GPUs."
+            )
 
     def as_trainable(self) -> Type[Trainable]:
         # Replace the directory checkpoint with a node ip & path dict checkpoint
