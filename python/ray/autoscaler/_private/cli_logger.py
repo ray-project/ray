@@ -13,6 +13,7 @@ import inspect
 import logging
 import os
 import sys
+import time
 from typing import Any, Callable, Dict, Tuple, Optional, List
 
 import click
@@ -695,17 +696,41 @@ class _CliLogger:
         no_answers = ["n", "no", "false", "0"]
         try:
             while True:
-                if sys.platform == "win32":
-                    # TODO(jjyao) windows cannot use select
-                    pass
+                if _timeout_s is None:
+                    ans = sys.stdin.readline()
+                elif sys.platform == "win32":
+                    # Windows doesn't support select
+                    start_time = time.time()
+                    ans = ""
+                    while True:
+                        if (time.time() - start_time) >= _timeout_s:
+                            self.newline()
+                            ans = "\n"
+                            break
+                        elif msvcrt.kbhit():
+                            ch = msvcrt.getwch()
+                            if ch in ("\n", "\r"):
+                                self.newline()
+                                ans = ans + "\n"
+                                break
+                            elif ch == "\b":
+                                if ans:
+                                    ans = ans[:-1]
+                                    # Emulate backspace erasing
+                                    print("\b \b", end="", flush=True)
+                            else:
+                                ans = ans + ch
+                                print(ch, end="", flush=True)
+                        else:
+                            time.sleep(0.1)
                 else:
                     ready, _, _ = select.select([sys.stdin], [], [], _timeout_s)
                     if not ready:
                         self.newline()
-                        res = default
-                        break
+                        ans = "\n"
+                    else:
+                        ans = sys.stdin.readline()
 
-                ans = sys.stdin.readline()
                 ans = ans.lower()
 
                 if ans == "\n":

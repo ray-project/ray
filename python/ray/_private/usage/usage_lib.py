@@ -207,7 +207,7 @@ def show_usage_stats_prompt() -> None:
 
         is_usage_stats_disabled = usage_stats_disabled()
         if is_usage_stats_disabled:
-            return
+            print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
         elif is_usage_stats_disabled is None:
             from ray.autoscaler._private.cli_logger import cli_logger
 
@@ -222,6 +222,8 @@ def show_usage_stats_prompt() -> None:
                 set_usage_stats_enabled_via_config(enabled)
                 if enabled:
                     print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
+                else:
+                    print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
             else:
                 print(
                     usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE,
