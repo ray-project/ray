@@ -1,7 +1,6 @@
 from typing import Optional, Union, List, Dict
 
 import pandas as pd
-import numpy as np
 import torch
 
 
