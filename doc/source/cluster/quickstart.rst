@@ -1,3 +1,5 @@
+.. include:: /_includes/clusters/announcement.rst
+
 .. include:: we_are_hiring.rst
 
 .. _ref-cluster-quick-start:
@@ -7,7 +9,7 @@ Ray Cluster Quick Start
 
 This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
 
-For launching Ray cluster manually,  you can refer to the :ref:`on premise cluster setup <cluster-private-setup>` guide.
+For launching a Ray cluster manually, you can refer to the :ref:`on-premise cluster setup <cluster-private-setup>` guide.
 
 About the demo
 --------------
@@ -219,7 +221,7 @@ Change it to
 
     ray.init(address='auto')
 
-This will allow Ray to connect to the remote cluster.
+This tells your script to connect to the Ray runtime on the remote cluster instead of initializing a new Ray runtime.
 
 Next, run the following command:
 

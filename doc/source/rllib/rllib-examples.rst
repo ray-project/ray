@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 Examples
 ========
@@ -49,7 +49,7 @@ Environments and Adapters
    Coin Game Env Example (provided by the "Center on Long Term Risk").
 - `DMLab Watermaze example <https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py>`__:
    Example for how to use a DMLab environment (Watermaze).
-- `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recsim_with_slateq.py>`__:
+- `RecSym environment example (for recommender systems) using the SlateQ algorithm <https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py>`__:
    Script showing how to train a SlateQTrainer on a RecSym environment.
 - `SUMO (Simulation of Urban MObility) environment example <https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py>`__:
    Example demonstrating how to use the SUMO simulator in connection with RLlib.
@@ -207,7 +207,7 @@ Community Examples
    A dense traffic simulating environment with RLlib-generated baselines.
 - `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
    Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
-- `Neural MMO <https://jsuarez5341.github.io/neural-mmo/build/html/rst/userguide.html>`__:
+- `Neural MMO <https://github.com/NeuralMMO/environment>`__:
    A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games –
    self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures,
    and ad-hoc high-stakes single and team based conflict.
@@ -224,4 +224,4 @@ Community Examples
 - `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

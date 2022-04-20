@@ -1,11 +1,13 @@
 # coding: utf-8
 from abc import abstractmethod
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 import warnings
 
+from ray.exceptions import RayTaskError
+from ray.tune import TuneError
 from ray.util.annotations import DeveloperAPI
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, _TuneCheckpoint
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +57,8 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         in the TrialRunner.
 
         Args:
-            trial (Trial): Trial to checkpoint.
-            status (Trial.status): Status to set trial to.
+            trial: Trial to checkpoint.
+            status: Status to set trial to.
         """
         if trial.status == status:
             logger.debug("Trial %s: Status %s unchanged.", trial, trial.status)
@@ -83,7 +85,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
-            trial (Trial): Trial to be started.
+            trial: Trial to be started.
 
         Returns:
             True if trial started successfully, False otherwise.
@@ -92,7 +94,10 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
     @abstractmethod
     def stop_trial(
-        self, trial: Trial, error: bool = False, error_msg: Optional[str] = None
+        self,
+        trial: Trial,
+        error: bool = False,
+        exc: Optional[Union[TuneError, RayTaskError]] = None,
     ) -> None:
         """Stops the trial.
 
@@ -101,8 +106,8 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         in error, but no exception will be thrown.
 
         Args:
-            error (bool): Whether to mark this trial as terminated in error.
-            error_msg (str): Optional error message.
+            error: Whether to mark this trial as terminated in error.
+            exc: Optional exception.
 
         """
         pass
@@ -119,7 +124,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.MEMORY)
+            self.save(trial, _TuneCheckpoint.MEMORY)
             self.stop_trial(trial)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -133,10 +138,10 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
-            trial (Trial): Trial to be reset.
-            new_config (dict): New configuration for Trial
+            trial: Trial to be reset.
+            new_config: New configuration for Trial
                 trainable.
-            new_experiment_tag (str): New experiment name
+            new_experiment_tag: New experiment name
                 for trial.
 
         Returns:
@@ -148,7 +153,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """A hook called before running one step of the trial event loop.
 
         Args:
-            trials (List[Trial]): The list of trials. Note, refrain from
+            trials: The list of trials. Note, refrain from
                 providing TrialRunner directly here.
         """
         pass
@@ -157,7 +162,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """A hook called after running one step of the trial event loop.
 
         Args:
-            trials (List[Trial]): The list of trials. Note, refrain from
+            trials: The list of trials. Note, refrain from
                 providing TrialRunner directly here.
         """
         pass
@@ -178,7 +183,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         If restoring fails, the trial status will be set to ERROR.
 
         Args:
-            trial (Trial): Trial to be restored.
+            trial: Trial to be restored.
 
         Returns:
             False if error occurred, otherwise return True.
@@ -187,17 +192,20 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
 
     @abstractmethod
     def save(
-        self, trial, storage: str = Checkpoint.PERSISTENT, result: Optional[Dict] = None
-    ) -> Checkpoint:
+        self,
+        trial: Trial,
+        storage: str = _TuneCheckpoint.PERSISTENT,
+        result: Optional[Dict] = None,
+    ) -> _TuneCheckpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.
 
         Args:
-            trial (Trial): The state of this trial to be saved.
-            storage (str): Where to store the checkpoint. Defaults to
+            trial: The state of this trial to be saved.
+            storage: Where to store the checkpoint. Defaults to
                 PERSISTENT.
-            result (dict): The state of this trial as a dictionary to be saved.
+            result: The state of this trial as a dictionary to be saved.
 
         Returns:
             A Checkpoint object.
@@ -209,7 +217,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """Exports model of this trial based on trial.export_formats.
 
         Args:
-            trial (Trial): The state of this trial to be saved.
+            trial: The state of this trial to be saved.
 
         Returns:
             A dict that maps ExportFormats to successfully exported models.
@@ -224,7 +232,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """Ensures that trials are cleaned up after stopping.
 
         Args:
-            trials (List[Trial]): The list of trials. Note, refrain from
+            trials: The list of trials. Note, refrain from
                 providing TrialRunner directly here.
         """
         pass

@@ -57,7 +57,10 @@ class AsyncClient {
   /// \param is_timeout Whether connection timeout.
   /// \param error_code Set to indicate what error occurred, if any.
   /// \return Whether the connection is successful.
-  bool Connect(const std::string &ip, int port, int64_t timeout_ms, bool *is_timeout,
+  bool Connect(const std::string &ip,
+               int port,
+               int64_t timeout_ms,
+               bool *is_timeout,
                boost::system::error_code *error_code = nullptr) {
     try {
       auto endpoint =
@@ -65,9 +68,11 @@ class AsyncClient {
 
       bool is_connected = false;
       *is_timeout = false;
-      socket_.async_connect(endpoint, boost::bind(&AsyncClient::ConnectHandle, this,
-                                                  boost::asio::placeholders::error,
-                                                  boost::ref(is_connected)));
+      socket_.async_connect(endpoint,
+                            boost::bind(&AsyncClient::ConnectHandle,
+                                        this,
+                                        boost::asio::placeholders::error,
+                                        boost::ref(is_connected)));
 
       // Set a deadline for the asynchronous operation.
       timer_.expires_from_now(boost::posix_time::milliseconds(timeout_ms));
@@ -124,14 +129,6 @@ class AsyncClient {
 /// \param timeout_ms The maximum wait time in milliseconds.
 /// \return a valid local ip.
 std::string GetValidLocalIp(int port, int64_t timeout_ms);
-
-/// A helper function to test whether target rpc server is valid.
-///
-/// \param ip The ip that the target rpc server is listening on.
-/// \param port The port that the target rpc server is listening on.
-/// \param timeout_ms The maximum wait time in milliseconds.
-/// \return Whether target rpc server is valid.
-bool Ping(const std::string &ip, int port, int64_t timeout_ms);
 
 bool CheckFree(int port);
 

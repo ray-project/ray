@@ -34,22 +34,22 @@ typedef std::function<void(const ObjectID &object_id,
     ObjectLookupCallback;
 
 // A callback for if we fail to recover an object.
-typedef std::function<void(const ObjectID &object_id, rpc::ErrorType reason,
-                           bool pin_object)>
+typedef std::function<void(
+    const ObjectID &object_id, rpc::ErrorType reason, bool pin_object)>
     ObjectRecoveryFailureCallback;
 
 class ObjectRecoveryManager {
  public:
-  ObjectRecoveryManager(const rpc::Address &rpc_address,
-                        ObjectPinningClientFactoryFn client_factory,
-                        std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
-                        std::function<Status(const ObjectID &object_id,
-                                             const ObjectLookupCallback &callback)>
-                            object_lookup,
-                        std::shared_ptr<TaskResubmissionInterface> task_resubmitter,
-                        std::shared_ptr<ReferenceCounter> reference_counter,
-                        std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-                        const ObjectRecoveryFailureCallback &recovery_failure_callback)
+  ObjectRecoveryManager(
+      const rpc::Address &rpc_address,
+      ObjectPinningClientFactoryFn client_factory,
+      std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
+      std::function<Status(const ObjectID &object_id,
+                           const ObjectLookupCallback &callback)> object_lookup,
+      std::shared_ptr<TaskResubmissionInterface> task_resubmitter,
+      std::shared_ptr<ReferenceCounter> reference_counter,
+      std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
+      const ObjectRecoveryFailureCallback &recovery_failure_callback)
       : task_resubmitter_(task_resubmitter),
         reference_counter_(reference_counter),
         rpc_address_(rpc_address),

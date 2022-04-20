@@ -2,17 +2,21 @@ from collections import defaultdict, OrderedDict
 from enum import Enum
 import itertools
 import json
+import logging
 import math
 import os
-import pickle
 import random
 import time
+import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
+from ray.util.placement_group import PlacementGroup
+from ray import cloudpickle
+
 from ray.serve.common import (
     DeploymentInfo,
     DeploymentStatus,
@@ -27,6 +31,7 @@ from ray.serve.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.storage.kv_store import KVStoreBase
@@ -35,11 +40,11 @@ from ray.serve.utils import (
     JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,
-    logger,
     msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
-from ray.util.placement_group import PlacementGroup
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ReplicaState(Enum):
@@ -136,12 +141,15 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(detached)
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached, _override_controller_namespace=_override_controller_namespace
+        )
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name
@@ -220,7 +228,6 @@ class ActorReplicaWrapper:
             "Creating placement group '{}' for deployment '{}'".format(
                 placement_group_name, self.deployment_name
             )
-            + f" component=serve deployment={self.deployment_name}"
         )
 
         self._placement_group = ray.util.placement_group(
@@ -260,9 +267,11 @@ class ActorReplicaWrapper:
         )
 
         self._actor_resources = deployment_info.replica_config.resource_dict
-        # it is currently not possiible to create a placement group
+        # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
-        has_resources_assigned = all((r > 0 for r in self._actor_resources.values()))
+        has_resources_assigned = all(
+            (r is not None and r > 0 for r in self._actor_resources.values())
+        )
         if USE_PLACEMENT_GROUP and has_resources_assigned:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources
@@ -270,8 +279,7 @@ class ActorReplicaWrapper:
 
         logger.debug(
             f"Starting replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag}"
+            f"{self.deployment_name}."
         )
 
         actor_def = deployment_info.actor_def
@@ -292,7 +300,9 @@ class ActorReplicaWrapper:
             == DeploymentLanguage.JAVA
         ):
             self._is_cross_language = True
-            actor_def = ray.java_actor_class("io.ray.serve.RayServeWrappedReplica")
+            actor_def = ray.cross_language.java_actor_class(
+                "io.ray.serve.RayServeWrappedReplica"
+            )
             init_args = (
                 # String deploymentName,
                 self.deployment_name,
@@ -334,13 +344,6 @@ class ActorReplicaWrapper:
         Update user config of existing actor behind current
         DeploymentReplica instance.
         """
-        logger.debug(
-            f"Updating replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag} "
-            f"with user_config {user_config}"
-        )
-
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
 
     def recover(self):
@@ -350,10 +353,8 @@ class ActorReplicaWrapper:
         """
         logger.debug(
             f"Recovering replica {self.replica_tag} for deployment "
-            f"{self.deployment_name} component=serve deployment="
-            f"{self.deployment_name} replica={self.replica_tag}"
+            f"{self.deployment_name}."
         )
-
         self._actor_handle = self.actor_handle
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.get_placement_group(self._placement_group_name)
@@ -432,7 +433,9 @@ class ActorReplicaWrapper:
         Returns the timeout after which to kill the actor.
         """
         try:
-            handle = ray.get_actor(self._actor_name)
+            handle = ray.get_actor(
+                self._actor_name, namespace=self._controller_namespace
+            )
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
             pass
@@ -442,7 +445,9 @@ class ActorReplicaWrapper:
     def check_stopped(self) -> bool:
         """Check if the actor has exited."""
         try:
-            handle = ray.get_actor(self._actor_name)
+            handle = ray.get_actor(
+                self._actor_name, namespace=self._controller_namespace
+            )
             stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
@@ -477,7 +482,6 @@ class ActorReplicaWrapper:
                 response = ReplicaHealthCheckResponse.SUCCEEDED
             except RayActorError:
                 # Health check failed due to actor crashing.
-                # logger.info(f"Actor for replica {self._replica_tag} crashed.")
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
                 # Health check failed due to application-level exception.
@@ -575,7 +579,9 @@ class ActorReplicaWrapper:
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
         try:
-            ray.kill(ray.get_actor(self._actor_name))
+            ray.kill(
+                ray.get_actor(self._actor_name, namespace=self._controller_namespace)
+            )
         except ValueError:
             pass
 
@@ -607,6 +613,7 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
+        _override_controller_namespace: Optional[str] = None,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
@@ -614,6 +621,7 @@ class DeploymentReplica(VersionedReplica):
             controller_name,
             replica_tag,
             deployment_name,
+            _override_controller_namespace=_override_controller_namespace,
         )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
@@ -723,8 +731,6 @@ class DeploymentReplica(VersionedReplica):
             logger.debug(
                 f"Replica {self.replica_tag} did not shut down after grace "
                 "period, force-killing it. "
-                f"component=serve deployment={self.deployment_name} "
-                f"replica={self.replica_tag}"
             )
 
             self._actor.force_stop()
@@ -748,7 +754,11 @@ class DeploymentReplica(VersionedReplica):
         if self._actor.actor_resources is None:
             return "UNKNOWN", "UNKNOWN"
 
-        required = {k: v for k, v in self._actor.actor_resources.items() if v > 0}
+        required = {
+            k: v
+            for k, v in self._actor.actor_resources.items()
+            if v is not None and v > 0
+        }
         available = {
             k: v for k, v in self._actor.available_resources.items() if k in required
         }
@@ -905,6 +915,7 @@ class DeploymentState:
         detached: bool,
         long_poll_host: LongPollHost,
         _save_checkpoint_func: Callable,
+        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._name = name
@@ -912,6 +923,9 @@ class DeploymentState:
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._save_checkpoint_func = _save_checkpoint_func
+        self._override_controller_namespace: Optional[
+            str
+        ] = _override_controller_namespace
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -971,6 +985,7 @@ class DeploymentState:
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 None,
+                _override_controller_namespace=self._override_controller_namespace,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
@@ -1154,16 +1169,14 @@ class DeploymentState:
         if code_version_changes > 0:
             logger.info(
                 f"Stopping {code_version_changes} replicas of "
-                f"deployment '{self._name}' with outdated versions. "
-                f"component=serve deployment={self._name}"
+                f"deployment '{self._name}' with outdated versions."
             )
 
         if user_config_changes > 0:
             logger.info(
                 f"Updating {user_config_changes} replicas of "
                 f"deployment '{self._name}' with outdated "
-                f"user_configs. component=serve "
-                f"deployment={self._name}"
+                f"user_configs."
             )
 
         return replicas_stopped
@@ -1171,9 +1184,9 @@ class DeploymentState:
     def _scale_deployment_replicas(self) -> bool:
         """Scale the given deployment to the number of replicas."""
 
-        assert self._target_replicas >= 0, (
-            "Number of replicas must be" " greater than or equal to 0."
-        )
+        assert (
+            self._target_replicas >= 0
+        ), "Number of replicas must be greater than or equal to 0."
 
         replicas_stopped = self._stop_wrong_version_replicas()
 
@@ -1196,9 +1209,7 @@ class DeploymentState:
             to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
                 logger.info(
-                    f"Adding {to_add} replicas to deployment "
-                    f"'{self._name}'. component=serve "
-                    f"deployment={self._name}"
+                    f"Adding {to_add} replicas to deployment " f"'{self._name}'."
                 )
             for _ in range(to_add):
                 replica_name = ReplicaName(self._name, get_random_letters())
@@ -1208,22 +1219,21 @@ class DeploymentState:
                     replica_name.replica_tag,
                     replica_name.deployment_tag,
                     self._target_version,
+                    _override_controller_namespace=self._override_controller_namespace,
                 )
                 new_deployment_replica.start(self._target_info, self._target_version)
 
                 self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
                 logger.debug(
                     "Adding STARTING to replica_tag: "
-                    f"{replica_name}, deployment_name: {self._name}"
+                    f"{replica_name}, deployment: {self._name}"
                 )
 
         elif delta_replicas < 0:
             replicas_stopped = True
             to_remove = -delta_replicas
             logger.info(
-                f"Removing {to_remove} replicas from deployment "
-                f"'{self._name}'. component=serve "
-                f"deployment={self._name}"
+                f"Removing {to_remove} replicas from deployment '{self._name}'."
             )
             replicas_to_stop = self._replicas.pop(
                 states=[
@@ -1379,6 +1389,7 @@ class DeploymentState:
 
         Returns if any running replicas transitioned to another state.
         """
+
         running_replicas_changed = False
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
             if replica.check_health():
@@ -1387,9 +1398,7 @@ class DeploymentState:
                 running_replicas_changed = True
                 logger.warning(
                     f"Replica {replica.replica_tag} of deployment "
-                    f"{self._name} failed health check, stopping it. "
-                    f"component=serve deployment={self._name} "
-                    f"replica={replica.replica_tag}"
+                    f"{self._name} failed health check, stopping it."
                 )
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
@@ -1444,8 +1453,7 @@ class DeploymentState:
                     f"auto-scale, or waiting for a runtime environment "
                     f"to install. "
                     f"Resources required for each replica: {required}, "
-                    f"resources available: {available}. "
-                    f"component=serve deployment={self._name}"
+                    f"resources available: {available}."
                 )
                 if _SCALING_LOG_ENABLED:
                     print_verbose_scaling_log()
@@ -1456,7 +1464,6 @@ class DeploymentState:
                     f"{len(pending_initialization)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
                     f"may be caused by a slow __init__ or reconfigure method."
-                    f"component=serve deployment={self._name}"
                 )
 
             self._prev_startup_warning = time.time()
@@ -1491,10 +1498,10 @@ class DeploymentState:
                 self._notify_running_replicas_changed()
 
             deleted = self._check_curr_status()
-        except Exception as e:
+        except Exception:
             self._curr_status_info = DeploymentStatusInfo(
                 status=DeploymentStatus.UNHEALTHY,
-                message=f"Failed to update deployment:\n{e}.",
+                message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
             deleted = False
 
@@ -1523,6 +1530,7 @@ class DeploymentStateManager:
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
+        _override_controller_namespace: Optional[str] = None,
     ):
 
         self._controller_name = controller_name
@@ -1535,6 +1543,7 @@ class DeploymentStateManager:
             detached,
             long_poll_host,
             self._save_checkpoint_func,
+            _override_controller_namespace=_override_controller_namespace,
         )
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
@@ -1588,9 +1597,10 @@ class DeploymentStateManager:
         )
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (deployment_state_info, self._deleted_deployment_metadata) = pickle.loads(
-                checkpoint
-            )
+            (
+                deployment_state_info,
+                self._deleted_deployment_metadata,
+            ) = cloudpickle.loads(checkpoint)
 
             for deployment_tag, checkpoint_data in deployment_state_info.items():
                 deployment_state = self._create_deployment_state(deployment_tag)
@@ -1635,10 +1645,9 @@ class DeploymentStateManager:
         }
         self._kv_store.put(
             CHECKPOINT_KEY,
-            # NOTE(simon): Make sure to use pickle so we don't save any ray
-            # object that relies on external state (e.g. gcs). For code object,
-            # we are explicitly using cloudpickle to serialize them.
-            pickle.dumps((deployment_state_info, self._deleted_deployment_metadata)),
+            cloudpickle.dumps(
+                (deployment_state_info, self._deleted_deployment_metadata)
+            ),
         )
 
     def get_running_replica_infos(

@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib_announcement.rst
+.. include:: /_includes/rllib/announcement.rst
 
-.. include:: /_includes/rllib_we_are_hiring.rst
+.. include:: /_includes/rllib/we_are_hiring.rst
 
 Algorithms
 ==========
@@ -524,7 +524,7 @@ Dreamer
 
 Dreamer is an image-only model-based RL method that learns by imagining trajectories in the future and is evaluated on the DeepMind Control Suite `environments <https://github.com/ray-project/ray/blob/master/rllib/examples/env/dm_control_suite.py>`__. RLlib's Dreamer is adapted from the `official Google research repo <https://github.com/google-research/dreamer>`__.
 
-To visualize learning, RLLib Dreamer's imagined trajectories are logged as gifs in TensorBoard. Examples of such can be seen `here <https://github.com/ray-project/rl-experiments>`__.
+To visualize learning, RLlib Dreamer's imagined trajectories are logged as gifs in TensorBoard. Examples of such can be seen `here <https://github.com/ray-project/rl-experiments>`__.
 
 Tuned examples: `Deepmind Control Environments <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamer/dreamer-deepmind-control.yaml>`__
 
@@ -712,7 +712,7 @@ uncertainty of action values.
 
 Tuned examples:
 `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
-`UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/tune_lin_ucb_train_recsim.py>`__.
+`UCB Bandit on RecSim <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recsim_env.py>`__.
 `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ucb_train_recommendation.py>`__.
 
 **LinUCB-specific configs** (see also `common configs <rllib-training
@@ -740,7 +740,7 @@ the posterior distributions, and plays the arm that produces the highest reward.
 
 Tuned examples:
 `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/agents/bandit/tests/test_bandits.py>`__,
-`WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ts__train_wheel_env.py>`__.
+`WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/examples/bandit/tune_lin_ts_train_wheel_env.py>`__.
 
 **LinTS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -962,4 +962,4 @@ RE3 uses a randomly initialized encoder to get the state’s latent representati
     :class: inline-figure
     :width: 24
 
-.. include:: /_includes/rllib_announcement_bottom.rst
+.. include:: /_includes/rllib/announcement_bottom.rst

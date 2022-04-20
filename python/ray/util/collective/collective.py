@@ -60,7 +60,11 @@ class GroupManager(object):
         elif backend == types.Backend.GLOO:
             logger.debug("Creating GLOO group: '{}'...".format(group_name))
             g = GLOOGroup(
-                world_size, rank, group_name, store_type="redis", device_type="tcp"
+                world_size,
+                rank,
+                group_name,
+                store_type="ray_internal_kv",
+                device_type="tcp",
             )
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -189,7 +193,7 @@ def create_collective_group(
 
     if world_size <= 0:
         raise RuntimeError(
-            "World size must be greater than zero. " "Got '{}'.".format(world_size)
+            "World size must be greater than zero. Got '{}'.".format(world_size)
         )
     if not all(ranks) >= 0:
         raise RuntimeError("Ranks must be non-negative.")
@@ -733,7 +737,7 @@ def _check_inside_actor():
         return
     else:
         raise RuntimeError(
-            "The collective APIs shall be only used inside " "a Ray actor or task."
+            "The collective APIs shall be only used inside a Ray actor or task."
         )
 
 
@@ -743,7 +747,7 @@ def _check_rank_valid(g, rank: int):
         raise ValueError("rank '{}' is negative.".format(rank))
     if rank >= g.world_size:
         raise ValueError(
-            "rank '{}' must be less than world size " "'{}'".format(rank, g.world_size)
+            "rank '{}' must be less than world size '{}'".format(rank, g.world_size)
         )
 
 

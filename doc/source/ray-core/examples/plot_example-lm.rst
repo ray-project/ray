@@ -1,6 +1,11 @@
 Fault-Tolerant Fairseq Training
 ===============================
 
+.. note::
+    For an overview of Ray's distributed training library,
+    see :ref:`Ray Train <train-docs>`.
+
+
 This document provides a walkthrough of adapting the `Fairseq library <https://github.com/pytorch/fairseq>`__ to perform fault-tolerant distributed training on AWS.
 As an example, we use the WikiText-103 dataset to pretrain the RoBERTa model following `this tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__. The pipeline and configurations in this document will work for other models supported by Fairseq, such as sequence-to-sequence machine translation models.
 

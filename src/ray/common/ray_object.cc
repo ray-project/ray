@@ -74,7 +74,8 @@ std::shared_ptr<ray::LocalMemoryBuffer> MakeSerializedErrorBuffer(
                                                kMessagePackOffset);
   // copy msgpack-serialized bytes
   std::memcpy(final_buffer->Data() + kMessagePackOffset,
-              msgpack_serialized_exception.data(), msgpack_serialized_exception.size());
+              msgpack_serialized_exception.data(),
+              msgpack_serialized_exception.size());
   // copy offset
   msgpack::sbuffer msgpack_int;
   msgpack::pack(msgpack_int, msgpack_serialized_exception.size());

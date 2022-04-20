@@ -5,10 +5,12 @@ from __future__ import print_function
 from ray import Language
 from ray.util.annotations import PublicAPI
 from ray._raylet import JavaFunctionDescriptor
+from ray._raylet import CppFunctionDescriptor
 
 __all__ = [
     "java_function",
     "java_actor_class",
+    "cpp_function",
 ]
 
 
@@ -25,10 +27,10 @@ def format_args(worker, args, kwargs):
     """
     if not worker.load_code_from_local:
         raise ValueError(
-            "Cross language feature needs " "--load-code-from-local to be set."
+            "Cross language feature needs --load-code-from-local to be set."
         )
     if kwargs:
-        raise TypeError("Cross language remote functions " "does not support kwargs.")
+        raise TypeError("Cross language remote functions does not support kwargs.")
     return args
 
 
@@ -54,6 +56,12 @@ def get_function_descriptor_for_actor_method(
             method_name,
             signature,
         )
+    elif language == Language.CPP:
+        return CppFunctionDescriptor(
+            method_name,
+            "PYTHON",
+            actor_creation_function_descriptor.class_name,
+        )
     else:
         raise NotImplementedError(
             "Cross language remote actor method " f"not support language {language}"
@@ -74,20 +82,25 @@ def java_function(class_name, function_name):
         Language.JAVA,
         lambda *args, **kwargs: None,
         JavaFunctionDescriptor(class_name, function_name, ""),
-        None,  # num_cpus,
-        None,  # num_gpus,
-        None,  # memory,
-        None,  # object_store_memory,
-        None,  # resources,
-        None,  # accelerator_type,
-        None,  # num_returns,
-        None,  # max_calls,
-        None,  # max_retries,
-        None,  # retry_exceptions,
-        None,  # runtime_env,
-        None,  # placement_group,
-        None,
-    )  # scheduling_strategy,
+        {},
+    )
+
+
+@PublicAPI(stability="beta")
+def cpp_function(function_name):
+    """Define a Cpp function.
+
+    Args:
+        function_name (str): Cpp function name.
+    """
+    from ray.remote_function import RemoteFunction
+
+    return RemoteFunction(
+        Language.CPP,
+        lambda *args, **kwargs: None,
+        CppFunctionDescriptor(function_name, "PYTHON"),
+        {},
+    )
 
 
 @PublicAPI(stability="beta")
@@ -102,13 +115,23 @@ def java_actor_class(class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
-        max_restarts=0,
-        max_task_retries=0,
-        num_cpus=None,
-        num_gpus=None,
-        memory=None,
-        object_store_memory=None,
-        resources=None,
-        accelerator_type=None,
-        runtime_env=None,
+        {},
+    )
+
+
+@PublicAPI(stability="beta")
+def cpp_actor_class(create_function_name, class_name):
+    """Define a Cpp actor class.
+
+    Args:
+        create_function_name (str): Create cpp class function name.
+        class_name (str): Cpp class name.
+    """
+    from ray.actor import ActorClass
+
+    print("create func=", create_function_name, "class_name=", class_name)
+    return ActorClass._ray_from_function_descriptor(
+        Language.CPP,
+        CppFunctionDescriptor(create_function_name, "PYTHON", class_name),
+        {},
     )

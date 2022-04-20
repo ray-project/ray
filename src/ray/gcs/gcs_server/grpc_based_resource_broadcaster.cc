@@ -22,7 +22,8 @@ namespace gcs {
 GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     std::function<void(const rpc::Address &,
-                       std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                       std::shared_ptr<rpc::NodeManagerClientPool> &,
+                       std::string &,
                        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
         send_batch
 

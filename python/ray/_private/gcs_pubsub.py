@@ -16,7 +16,6 @@ except ImportError:
 
 import ray._private.gcs_utils as gcs_utils
 import ray._private.logging_utils as logging_utils
-from ray._raylet import Config
 from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated import dependency_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -28,32 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Max retries for GCS publisher connection error
 MAX_GCS_PUBLISH_RETRIES = 60
-
-
-def gcs_pubsub_enabled():
-    """Checks whether GCS pubsub feature flag is enabled."""
-    return Config.gcs_grpc_based_pubsub()
-
-
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct an ErrorTableData object.
-
-    Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
-    Returns:
-        The ErrorTableData object.
-    """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data
 
 
 class _PublisherBase:
@@ -181,12 +154,8 @@ class _SubscriberBase:
 class GcsPublisher(_PublisherBase):
     """Publisher to GCS."""
 
-    def __init__(self, *, address: str = None, channel: grpc.Channel = None):
-        if address:
-            assert channel is None, "address and channel cannot both be specified"
-            channel = gcs_utils.create_gcs_channel(address)
-        else:
-            assert channel is not None, "One of address and channel must be specified"
+    def __init__(self, address: str):
+        channel = gcs_utils.create_gcs_channel(address)
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
     def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:

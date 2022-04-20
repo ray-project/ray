@@ -43,10 +43,13 @@ class GcsActorSchedulerTest : public Test {
     client_pool = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
     actor_scheduler = std::make_unique<RayletBasedActorScheduler>(
-        io_context, *actor_table, *gcs_node_manager,
+        io_context,
+        *actor_table,
+        *gcs_node_manager,
         [this](auto a, auto b, auto c) { schedule_failure_handler(a); },
         [this](auto a, const rpc::PushTaskReply) { schedule_success_handler(a); },
-        client_pool, [this](const rpc::Address &) { return core_worker_client; });
+        client_pool,
+        [this](const rpc::Address &) { return core_worker_client; });
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_state(rpc::GcsNodeInfo::ALIVE);
     node_id = NodeID::FromRandom();
@@ -79,7 +82,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak1) {
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
-  auto actor = std::make_shared<GcsActor>(actor_data);
+  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec());
   std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
   EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&cb));
@@ -106,7 +109,7 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
   rpc::ActorTableData actor_data;
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
-  auto actor = std::make_shared<GcsActor>(actor_data);
+  auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec());
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> request_worker_lease_cb;
   // Ensure actor is killed
   EXPECT_CALL(*core_worker_client, KillActor(_, _));
@@ -115,8 +118,8 @@ TEST_F(GcsActorSchedulerTest, KillWorkerLeak2) {
 
   std::function<void(ray::Status)> async_put_with_index_cb;
   // Leasing successfully
-  EXPECT_CALL(*store_client, AsyncPutWithIndex(_, _, _, _, _))
-      .WillOnce(DoAll(SaveArg<4>(&async_put_with_index_cb), Return(Status::OK())));
+  EXPECT_CALL(*store_client, AsyncPut(_, _, _, _))
+      .WillOnce(DoAll(SaveArg<3>(&async_put_with_index_cb), Return(Status::OK())));
   actor_scheduler->Schedule(actor);
   rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_raylet_id(node_id.Binary());

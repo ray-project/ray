@@ -259,7 +259,7 @@ def set_status(cluster_name: str, cluster_namespace: str, status: str) -> None:
         except ApiException as e:
             if e.status == 409:
                 logger.info(
-                    "Caught a 409 error while setting" " RayCluster status. Retrying..."
+                    "Caught a 409 error while setting RayCluster status. Retrying..."
                 )
                 time.sleep(DELAY_BEFORE_STATUS_RETRY)
                 continue

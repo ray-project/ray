@@ -2,44 +2,44 @@
 #- label: ":tv: :octopus: Tune GPU tests "
 #  conditions: ["RAY_CI_TUNE_AFFECTED"]
 #  commands:
-#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-#    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
+#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+#    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
 #    - pip install -Ur ./python/requirements_ml_docker.txt
-#    - ./ci/travis/env_info.sh
-#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/tune/...
+#    - ./ci/env/env_info.sh
+#    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/tune/...
 
 - label: ":tv: :brain: RLlib: GPU Examples {A/B}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - PYTHON=3.7 RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - PYTHON=3.7 RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
-    - ./ci/travis/env_info.sh
+    - ./ci/env/env_info.sh
     # --jobs 1 is necessary as we only have 1 GPU on the machine and running tests in parallel
     # would cause timeouts as the other scripts would wait for the GPU to become available.
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --jobs 1
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --jobs 1
       --test_tag_filters=gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
 
 # Todo: enable once tests pass
 #- label: ":tv: :brain: RLlib: GPU Examples {C/D}"
 #  conditions: ["RAY_CI_RLLIB_AFFECTED"]
 #  commands:
-#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-#    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+#    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
 #    - pip install -Ur ./python/requirements_ml_docker.txt
-#    - ./ci/travis/env_info.sh
-#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+#    - ./ci/env/env_info.sh
+#    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
 #      --test_tag_filters=examples_C,examples_D --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
 
 # Todo: enable once tests pass
 #- label: ":tv: :brain: RLlib: GPU Examples {E/P}"
 #  conditions: ["RAY_CI_RLLIB_AFFECTED"]
 #  commands:
-#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-#    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+#    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
 #    - pip install -Ur ./python/requirements_ml_docker.txt
-#    - ./ci/travis/env_info.sh
-#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+#    - ./ci/env/env_info.sh
+#    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
 #      --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1
 #      rllib/...
 
@@ -47,10 +47,10 @@
 #- label: ":tv: :brain: RLlib: GPU Examples {Q/Z}"
 #  conditions: ["RAY_CI_RLLIB_AFFECTED"]
 #  commands:
-#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-#    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+#    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+#    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
 #    - pip install -Ur ./python/requirements_ml_docker.txt
-#    - ./ci/travis/env_info.sh
-#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+#    - ./ci/env/env_info.sh
+#    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
 #      --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1
 #      rllib/...

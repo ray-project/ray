@@ -53,8 +53,10 @@ using flatbuf::PlasmaError;
 
 class PlasmaStore {
  public:
-  PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
-              const std::string &socket_name, uint32_t delay_on_oom_ms,
+  PlasmaStore(instrumented_io_context &main_service,
+              IAllocator &allocator,
+              const std::string &socket_name,
+              uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
               ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback,
@@ -122,7 +124,8 @@ class PlasmaStore {
   ///    plasma_release.
   PlasmaError CreateObject(const ray::ObjectInfo &object_info,
                            plasma::flatbuf::ObjectSource source,
-                           const std::shared_ptr<Client> &client, bool fallback_allocator,
+                           const std::shared_ptr<Client> &client,
+                           bool fallback_allocator,
                            PlasmaObject *result) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Abort a created but unsealed object. If the client is not the
@@ -156,7 +159,8 @@ class PlasmaStore {
   /// \param object_ids Object IDs of the objects to be gotten.
   /// \param timeout_ms The timeout for the get request in milliseconds.
   void ProcessGetRequest(const std::shared_ptr<Client> &client,
-                         const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                         const std::vector<ObjectID> &object_ids,
+                         int64_t timeout_ms,
                          bool is_from_worker) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Process queued requests to create an object.
@@ -194,13 +198,14 @@ class PlasmaStore {
 
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
-                                        bool fallback_allocator, PlasmaObject *object,
+                                        bool fallback_allocator,
+                                        PlasmaObject *object,
                                         bool *spilling_required)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
-                           const ObjectID &object_id, uint64_t req_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                           const ObjectID &object_id,
+                           uint64_t req_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void AddToClientObjectIds(const ObjectID &object_id,
                             const std::shared_ptr<ClientInterface> &client)

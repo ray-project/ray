@@ -6,8 +6,10 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import snappy
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
+from io import BytesIO
 
 import ray
 
@@ -74,12 +76,25 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
-def test_from_numpy(ray_start_regular_shared):
+@pytest.mark.parametrize("from_ref", [False, True])
+def test_from_numpy(ray_start_regular_shared, from_ref):
     arr1 = np.expand_dims(np.arange(0, 4), axis=1)
     arr2 = np.expand_dims(np.arange(4, 8), axis=1)
-    ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
+    arrs = [arr1, arr2]
+    if from_ref:
+        ds = ray.data.from_numpy_refs([ray.put(arr) for arr in arrs])
+    else:
+        ds = ray.data.from_numpy(arrs)
     values = np.stack([x["value"] for x in ds.take(8)])
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
+
+    # Test from single NumPy ndarray.
+    if from_ref:
+        ds = ray.data.from_numpy_refs(ray.put(arr1))
+    else:
+        ds = ray.data.from_numpy(arr1)
+    values = np.stack([x["value"] for x in ds.take(4)])
+    np.testing.assert_array_equal(values, arr1)
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -748,7 +763,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "Dataset(num_blocks=1, num_rows=None, "
+        "Dataset(num_blocks=1, num_rows=10, "
         "schema={value: <ArrowTensorType: shape=(1,), dtype=int64>})"
     )
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
@@ -838,6 +853,31 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert sorted(ds.take()) == ["goodbye", "hello", "ray", "world"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 5
+
+
+def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_binary_snappy")
+    os.mkdir(path)
+    with open(os.path.join(path, "file"), "wb") as f:
+        byte_str = "hello, world".encode()
+        bytes = BytesIO(byte_str)
+        snappy.stream_compress(bytes, f)
+    ds = ray.data.read_binary_files(
+        path,
+        arrow_open_stream_args=dict(compression="snappy"),
+    )
+    assert sorted(ds.take()) == [byte_str]
+
+
+def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_binary_snappy_inferred")
+    os.mkdir(path)
+    with open(os.path.join(path, "file.snappy"), "wb") as f:
+        byte_str = "hello, world".encode()
+        bytes = BytesIO(byte_str)
+        snappy.stream_compress(bytes, f)
+    ds = ray.data.read_binary_files(path)
+    assert sorted(ds.take()) == [byte_str]
 
 
 @pytest.mark.parametrize("pipelined", [False, True])

@@ -19,7 +19,7 @@ DELETE_PATH = "/api/serve/deployments/"
 class ServeSubmissionClient(SubmissionClient):
     def __init__(
         self,
-        address: str,
+        dashboard_address: str,
         create_cluster_if_needed=False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -31,7 +31,7 @@ class ServeSubmissionClient(SubmissionClient):
                 "installation: `pip install 'ray[default']``"
             )
         super().__init__(
-            address=address,
+            address=dashboard_address,
             create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
@@ -44,8 +44,8 @@ class ServeSubmissionClient(SubmissionClient):
             "running Ray 1.12 or higher.",
         )
 
-    def deploy_application(self, app_config: Dict) -> None:
-        response = self._do_request("PUT", DEPLOY_PATH, json_data=app_config)
+    def deploy_application(self, config: Dict) -> None:
+        response = self._do_request("PUT", DEPLOY_PATH, json_data=config)
 
         if response.status_code != 200:
             self._raise_error(response)
