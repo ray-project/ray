@@ -1,5 +1,5 @@
 import os
-from ray.ml.predictors.integrations.xgboost import XGBoostPredictor
+from ray.ml.integrations.xgboost import XGBoostPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY

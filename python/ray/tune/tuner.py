@@ -46,7 +46,7 @@ class Tuner:
         from ray import tune
         from ray.data import from_pandas
         from ray.ml.config import RunConfig
-        from ray.ml.train.integrations.xgboost import XGBoostTrainer
+        from ray.ml.integrations.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
         def get_dataset():

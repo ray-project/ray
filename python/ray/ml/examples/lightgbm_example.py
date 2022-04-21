@@ -5,8 +5,8 @@ import pandas as pd
 
 import ray
 from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.predictors.integrations.lightgbm import LightGBMPredictor
-from ray.ml.train.integrations.lightgbm import LightGBMTrainer
+from ray.ml.integrations.lightgbm import LightGBMPredictor
+from ray.ml.integrations.lightgbm import LightGBMTrainer
 from ray.data.dataset import Dataset
 from ray.ml.result import Result
 from ray.ml.preprocessors import StandardScaler

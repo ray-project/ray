@@ -44,23 +44,23 @@ Trainer
 .. autoclass:: ray.ml.trainer.Trainer
     :members:
 
-.. automodule:: ray.ml.train.integrations.xgboost
+.. automodule:: ray.ml.integrations.xgboost
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.train.integrations.lightgbm
+.. automodule:: ray.ml.integrations.lightgbm
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.train.integrations.tensorflow
+.. automodule:: ray.ml.integrations.tensorflow
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.train.integrations.torch
+.. automodule:: ray.ml.integrations.torch
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.train.integrations.sklearn
+.. automodule:: ray.ml.integrations.sklearn
     :members:
     :show-inheritance:
 
@@ -92,23 +92,23 @@ Predictors
 .. autoclass:: ray.ml.batch_predictor.BatchPredictor
     :members:
 
-.. automodule:: ray.ml.predictors.integrations.xgboost
+.. automodule:: ray.ml.integrations.xgboost
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.predictors.integrations.lightgbm
+.. automodule:: ray.ml.integrations.lightgbm
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.predictors.integrations.tensorflow
+.. automodule:: ray.ml.integrations.tensorflow
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.predictors.integrations.torch
+.. automodule:: ray.ml.integrations.torch
     :members:
     :show-inheritance:
 
-.. automodule:: ray.ml.predictors.integrations.sklearn
+.. automodule:: ray.ml.integrations.sklearn
     :members:
     :show-inheritance:
 

@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray.ml.config import RunConfig
-from ray.ml.train.integrations.rl.rl_trainer import RLTrainer
+from ray.ml.integrations.rl.rl_trainer import RLTrainer
 from ray.ml.result import Result
 from ray.rllib.agents.marwil import BCTrainer
 

@@ -1,4 +1,4 @@
-from ray.ml.predictors.integrations.tensorflow import TensorflowPredictor
+from ray.ml.integrations.tensorflow import TensorflowPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import PREPROCESSOR_KEY, MODEL_KEY

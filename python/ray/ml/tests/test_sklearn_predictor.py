@@ -8,7 +8,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 import ray
 import ray.cloudpickle as cpickle
-from ray.ml.predictors.integrations.sklearn import SklearnPredictor
+from ray.ml.integrations.sklearn import SklearnPredictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY

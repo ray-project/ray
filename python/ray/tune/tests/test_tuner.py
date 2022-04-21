@@ -11,8 +11,8 @@ from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
 from ray.ml.config import RunConfig
 from ray.ml.examples.pytorch.torch_linear_example import train_func as linear_train_func
-from ray.ml.train.integrations.torch import TorchTrainer
-from ray.ml.train.integrations.xgboost import XGBoostTrainer
+from ray.ml.integrations.torch import TorchTrainer
+from ray.ml.integrations.xgboost import XGBoostTrainer
 from ray.ml.train import Trainer
 from ray.tune import Callback, TuneError
 from ray.tune.cloud import TrialCheckpoint

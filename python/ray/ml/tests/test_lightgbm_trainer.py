@@ -11,7 +11,7 @@ import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import MODEL_KEY, PREPROCESSOR_KEY, TRAIN_DATASET_KEY
 
-from ray.ml.train.integrations.lightgbm import LightGBMTrainer
+from ray.ml.integrations.lightgbm import LightGBMTrainer
 from ray.ml.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
