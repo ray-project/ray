@@ -574,10 +574,9 @@ class RuntimeEnvAgent(
             runtime_env_states[runtime_env].runtime_env = runtime_env
             runtime_env_states[runtime_env].ref_cnt = ref_cnt
         for runtime_env, result in self._env_cache.items():
+            runtime_env_states[runtime_env].runtime_env = runtime_env
             runtime_env_states[runtime_env].success = result.success
-            if result.success:
-                runtime_env_states[runtime_env].context = result.result
-            else:
+            if not result.success:
                 runtime_env_states[runtime_env].error = result.result
             runtime_env_states[runtime_env].created_time_ms = result.creation_time_ms
             runtime_env_states[runtime_env].retry_cnt = result.retry_cnt

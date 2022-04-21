@@ -204,8 +204,7 @@ message RuntimeEnvState {
   string runtime_env = 1;
   int64 ref_cnt = 2;
   optional bool success = 3;
-  optional string context = 4;
-  optional string error = 5;
-  optional double created_time_ms = 6;
-  optional int64 retry_cnt = 7;
+  optional string error = 4;
+  optional double created_time_ms = 5;
+  optional int64 retry_cnt = 6;
 }

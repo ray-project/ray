@@ -88,7 +88,6 @@ class RuntimeEnvState:
     runtime_env: str
     ref_cnt: int
     success: bool
-    context: str
     error: str
     created_time_ms: float
     retry_cnt: int
