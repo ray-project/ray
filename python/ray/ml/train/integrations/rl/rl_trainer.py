@@ -201,11 +201,11 @@ class RLTrainer(Trainer):
                 rllib_config = trainer._get_rllib_config(process_datasets=True)
 
                 super(AIRRLTrainer, self).__init__(
-                    rllib_config,
-                    env,
-                    logger_creator,
-                    remote_checkpoint_dir,
-                    sync_function_tpl,
+                    config=rllib_config,
+                    env=env,
+                    logger_creator=logger_creator,
+                    remote_checkpoint_dir=remote_checkpoint_dir,
+                    sync_function_tpl=sync_function_tpl,
                 )
 
             @classmethod

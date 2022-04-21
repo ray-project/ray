@@ -25,6 +25,7 @@ from typing import (
 )
 
 import ray
+import ray.cloudpickle as cpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
@@ -2060,16 +2061,24 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> str:
-        checkpoint_path = os.path.join(
-            checkpoint_dir, "checkpoint-{}".format(self.iteration)
-        )
-        pickle.dump(self.__getstate__(), open(checkpoint_path, "wb"))
+        data_path = os.path.join(checkpoint_dir, f"checkpoint-{self.iteration}")
+        with open(data_path, "wb") as fp:
+            pickle.dump(self.__getstate__(), fp)
 
-        return checkpoint_path
+        trainer_class_path = os.path.join(checkpoint_dir, "trainer_class.pkl")
+        with open(trainer_class_path, "wb") as fp:
+            cpickle.dump(self.__class__, fp)
+
+        config_path = os.path.join(checkpoint_dir, "config.pkl")
+        with open(config_path, "wb") as fp:
+            cpickle.dump(self.config, fp)
+
+        return checkpoint_dir
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint_path: str) -> None:
-        extra_data = pickle.load(open(checkpoint_path, "rb"))
+        with open(checkpoint_path, "rb") as fp:
+            extra_data = pickle.load(fp)
         self.__setstate__(extra_data)
 
     @override(Trainable)
