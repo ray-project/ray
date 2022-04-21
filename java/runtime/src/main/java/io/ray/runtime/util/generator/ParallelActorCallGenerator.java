@@ -299,8 +299,7 @@ public class ParallelActorCallGenerator extends BaseGenerator {
 
   public static void main(String[] args) throws IOException {
     String path =
-        System.getProperty("user.dir")
-            + "/api/src/main/java/io/ray/api/parallelactor/Call.java";
+        System.getProperty("user.dir") + "/api/src/main/java/io/ray/api/parallelactor/Call.java";
     FileUtils.write(
         new File(path),
         new ParallelActorCallGenerator().generateRayCallDotJava(),
