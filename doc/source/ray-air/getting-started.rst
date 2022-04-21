@@ -77,11 +77,11 @@ Integrations
     :members:
     :show-inheritance:
 
-.. autoclass:: ray.ml.train.data_parallel_trainer.DataParallelTrainer
+.. autoclass:: ray.ml.integrations.data_parallel_trainer.DataParallelTrainer
     :members:
     :show-inheritance:
 
-.. autoclass:: ray.ml.train.gbdt_trainer.GBDTTrainer
+.. autoclass:: ray.ml.integrations.gbdt_trainer.GBDTTrainer
     :members:
     :show-inheritance:
 

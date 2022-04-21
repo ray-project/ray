@@ -6,7 +6,7 @@ from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
 
 
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.integrations.data_parallel_trainer import DataParallelTrainer
 from ray.train.horovod import HorovodConfig
 
 

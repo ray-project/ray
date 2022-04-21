@@ -2,7 +2,7 @@ from typing import Callable, Optional, Dict, Union
 
 from ray.train.torch import TorchConfig
 from ray.ml.trainer import GenDataset
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.integrations.data_parallel_trainer import DataParallelTrainer
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint

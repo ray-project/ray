@@ -124,7 +124,7 @@ class DataParallelTrainer(Trainer):
 
     .. code-block:: python
 
-        from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+        from ray.ml.integrations.data_parallel_trainer import DataParallelTrainer
 
         class MyDataParallelTrainer(DataParallelTrainer):
             def __init__(self, *args, **kwargs):

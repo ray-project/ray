@@ -1,7 +1,7 @@
 from typing import Dict, Any
 import os
 
-from ray.ml.train.gbdt_trainer import GBDTTrainer
+from ray.ml.integrations.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
 from ray.ml.constants import MODEL_KEY
 

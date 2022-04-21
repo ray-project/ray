@@ -5,7 +5,7 @@ from ray import train, tune
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.constants import PREPROCESSOR_KEY
 
-from ray.ml.train.data_parallel_trainer import DataParallelTrainer
+from ray.ml.integrations.data_parallel_trainer import DataParallelTrainer
 from ray.ml.preprocessor import Preprocessor
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
