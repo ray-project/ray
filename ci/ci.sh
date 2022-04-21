@@ -443,8 +443,11 @@ build_wheels() {
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
-      cp -r .whl /tmp/artifacts/.whl
-      chmod -R 777 /tmp/artifacts/.whl
+
+      if [ "${UPLOAD_WHEELS-}" = "1" ]; then
+        cp -r .whl /tmp/artifacts/.whl
+        chmod -R 777 /tmp/artifacts/.whl
+      fi
 
       validate_wheels_commit_str
       ;;
