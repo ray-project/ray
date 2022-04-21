@@ -51,7 +51,7 @@ from ray import cloudpickle
 from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient, get_controller_namespace
-from ray.serve.context import set_global_client
+from ray.serve.context import set_global_client, internal_get_global_client, ReplicaContext, _INTERNAL_REPLICA_CONTEXT
 
 logger = logging.getLogger(__file__)
 
