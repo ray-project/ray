@@ -273,7 +273,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             pod=head_pod,
             container="ray-head",
             namespace="default",
-            return_out=True,
         )
         # Confirms the actor was placed on a GPU-annotated node.
         # (See gpu_actor_validation.py for details.)
@@ -286,7 +285,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             pod=head_pod,
             container="ray-head",
             namespace="default",
-            return_out=True,
         )
         logger.info("Scaling down all workers by editing maxReplicas.")
         # TODO (Dmitri) Expose worker idleTimeout in KubeRay CRD, set it low,

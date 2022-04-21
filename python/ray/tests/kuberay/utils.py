@@ -184,27 +184,20 @@ def kubectl_exec(
     pod: str,
     namespace: str,
     container: Optional[str] = None,
-    return_out: bool = False,
-) -> Optional[str]:
+) -> str:
     """kubectl exec the `command` in the given `pod` in the given `namespace`.
     If a `container` is specified, will specify that container for kubectl.
 
-    Args:
-        return_out: If True, stdout will be captured, printed, and returned as a string.
-            Otherwise, stdout will not be redirected and None will be returned.
+    Prints and return kubectl's output as a string.
     """
     container_option = ["-c", container] if container else []
     kubectl_exec_command = (
         ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
     )
-    if return_out:
-        out = subprocess.check_output(kubectl_exec_command).decode().strip()
-        # Print for debugging convenience.
-        print(out)
-        return out
-    else:
-        subprocess.check_call(kubectl_exec_command)
-        return None
+    out = subprocess.check_output(kubectl_exec_command).decode().strip()
+    # Print for debugging convenience.
+    print(out)
+    return out
 
 
 def kubectl_exec_python_script(
@@ -212,21 +205,17 @@ def kubectl_exec_python_script(
     pod: str,
     namespace: str,
     container: Optional[str] = None,
-    return_out: bool = False,
-) -> Optional[str]:
+) -> str:
     """
     Runs a python script in a container via `kubectl exec`.
     Scripts live in `tests/kuberay/scripts`.
 
-    Args:
-        script_name: The name of a script in tests/kuberay/scripts.
-        return_out: If True, stdout will be redirected to the function's output.
-            Otherwise, stdout will not be redirected and `None` will be returned.
+    Prints and return kubectl's output as a string.
     """
     script_path = Path(__file__).resolve().parent / "scripts" / script_name
     script_string = open(script_path).read()
     return kubectl_exec(
-        ["python", "-c", script_string], pod, namespace, container, return_out
+        ["python", "-c", script_string], pod, namespace, container
     )
 
 
