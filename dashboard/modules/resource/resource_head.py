@@ -1,18 +1,19 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import logging
 
-from ray._private.utils import init_grpc_channel
+from ray._private.utils import init_grpc_channel, binary_to_hex
 import aiohttp.web
-import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.datacenter import DataSource, GlobalSignals
+from ray.dashboard.datacenter import DataSource
 from ray.dashboard.utils import Change
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
-from ray.core.generated.node_manager_pb2 import GetResourceUsageByTaskRequest, GetGcsServerAddressRequest, GetNodeStatsRequest
-from ray.core.generated.gcs_service_pb2_grpc import ActorInfoGcsServiceStub
-from ray.core.generated.gcs_service_pb2 import GetAllActorInfoRequest
-import ray.core.generated.gcs_pb2 as gcs_pb2
+from ray.core.generated.gcs_service_pb2_grpc import (
+    NodeInfoGcsServiceStub,
+    NodeResourceInfoGcsServiceStub,
+)
+import ray.core.generated.gcs_service_pb2 as gcs_service_pb2
+import ray.core.generated.node_manager_pb2 as node_manager_pb2
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -26,9 +27,8 @@ class ResourceHead(dashboard_utils.DashboardHeadModule):
         gcs_channel = init_grpc_channel(
             dashboard_head.gcs_address, options=options, asynchronous=True
         )
-        self._gcs_actor_info_stub = ActorInfoGcsServiceStub(
-            gcs_channel
-        )
+        self._gcs_node_info_stub = NodeInfoGcsServiceStub(gcs_channel)
+        self._gcs_node_resource_info_stub = NodeResourceInfoGcsServiceStub(gcs_channel)
         self._raylet_stubs = {}
         DataSource.nodes.signal.append(self._update_raylet_stubs)
 
@@ -64,67 +64,111 @@ class ResourceHead(dashboard_utils.DashboardHeadModule):
     def _make_raylet_stub(self, addr: str, port):
         full_addr = f"{addr}:{port}"
         options = (("grpc.enable_http_proxy", 0),)
-        channel = init_grpc_channel(
-            full_addr, options, asynchronous=True
-        )
+        channel = init_grpc_channel(full_addr, options, asynchronous=True)
         return NodeManagerServiceStub(channel)
 
-    @routes.get("/api/experimental/resources")
-    async def get_resources(self, request) -> aiohttp.web.Response:
-        group_by_args = request.query.get("group_by", "").split(",")
-
-        # If group by node_id is requested, we need to sort the
-        group_by_node_id = "node_id" in group_by_args
-        group_by_actor_class = "name" in group_by_args
-
-# actor_info = await self._gcs_actor_info_stub.GetAllActorInfo(
-#     GetAllActorInfoRequest)
-# for actor_data in actor_info.actor_table_data:
-#     if gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.values_by_number[
-#         actor_data.state
-#     ].name == "ALIVE":
-#         raylet_id = actor_data.address.raylet_id.hex()
-#         if raylet_id in response:
-#             append_or_create(
-#                 response[raylet_id], actor_data.class_name, str(actor_data.resource_mapping))
-#         else:
-#             response[raylet_id] = {
-#                 actor_data.class_name: [
-#                     f"{actor_data.resource_mapping}"
-#                 ]
-#             }
-        # if group_by_node_id and group_by_actor_class:
-
+    @routes.get("/api/experimental/resources/available/nodes")
+    async def get_available_resources_nodes(self, request) -> aiohttp.web.Response:
+        # Getting the total resources
         response = {}
-        for node_id in self._raylet_stubs:
-            if group_by_node_id:
-                mapping_for_node = {}
-            resource_usage = await self._raylet_stubs[node_id].GetResourceUsageByTask(
-                GetResourceUsageByTaskRequest(), timeout=10)
-            logger.info(f"{resource_usage.task_resource_usage}")
-            for task in resource_usage.task_resource_usage:
-                if hasattr(task.function_descriptor, "python_function_descriptor"):
-                    fd = task.function_descriptor.python_function_descriptor
-                    if task.is_actor:
-                        task_name = fd.class_name
-                    else:
-                        task_name = fd.function_name
-                else:
-                    task_name = None
-                resource_set = {}
-                for k, v in task.resource_usage.items():
-                    resource_set[k] = v
-                if group_by_node_id:
-                    add_resource_usage_to_task(
-                        task_name, resource_set, mapping_for_node)
-                else:
-                    add_resource_usage_to_task(task_name, resource_set, response)
-            if group_by_node_id:
-                response[node_id] = mapping_for_node
+        node_resources = (
+            await self._gcs_node_resource_info_stub.GetAllAvailableResources(
+                gcs_service_pb2.GetAllAvailableResourcesRequest()
+            )
+        )
+        for node in node_resources.resources_list:
+            node_id = binary_to_hex(node.node_id)
+            response[node_id] = {k: v for k, v in node.resources_available.items()}
 
         return aiohttp.web.json_response(response)
 
-    # def aggregate_resources_by_task_name():
+    @routes.get("/api/experimental/resources/available/cluster")
+    async def get_available_resources_cluster(self, request) -> aiohttp.web.Response:
+        # Getting the total resources
+        response = {}
+        node_resources = (
+            await self._gcs_node_resource_info_stub.GetAllAvailableResources(
+                gcs_service_pb2.GetAllAvailableResourcesRequest()
+            )
+        )
+        for node in node_resources.resources_list:
+            for k, v in node.resources_available.items():
+                if k in response:
+                    response[k] += v
+                else:
+                    response[k] = v
+
+        return aiohttp.web.json_response(response)
+
+    @routes.get("/api/experimental/resources/total/nodes")
+    async def get_total_resources_nodes(self, request) -> aiohttp.web.Response:
+        # Getting the total resources
+        response = {}
+        all_node_info = await self._gcs_node_info_stub.GetAllNodeInfo(
+            gcs_service_pb2.GetAllNodeInfoRequest()
+        )
+        for node in all_node_info.node_info_list:
+            node_id = binary_to_hex(node.node_id)
+            response[node_id] = {k: v for k, v in node.resources_total.items()}
+
+        return aiohttp.web.json_response(response)
+
+    @routes.get("/api/experimental/resources/total/cluster")
+    async def get_total_resources_cluster(self, request) -> aiohttp.web.Response:
+        # Getting the total resources
+        response = {}
+        all_node_info = await self._gcs_node_info_stub.GetAllNodeInfo(
+            gcs_service_pb2.GetAllNodeInfoRequest()
+        )
+        for node in all_node_info.node_info_list:
+            for k, v in node.resources_total.items():
+                if k in response:
+                    response[k] += v
+                else:
+                    response[k] = v
+
+        return aiohttp.web.json_response(response)
+
+    @routes.get("/api/experimental/resources/usage/nodes")
+    async def get_resource_usage_nodes(self, request) -> aiohttp.web.Response:
+        node_id_query = request.query.get("node_id", None)
+
+        response = {}
+        for node_id in self._raylet_stubs:
+            if node_id_query is None or node_id == node_id_query:
+                node_mapping = {}
+                await self._fill_resource_usage_by_task_for_node(node_id, node_mapping)
+                response[node_id] = node_mapping
+
+        return aiohttp.web.json_response(response)
+
+    @routes.get("/api/experimental/resources/usage/cluster")
+    async def get_resource_usage_cluster(self, request) -> aiohttp.web.Response:
+        response = {}
+        for node_id in self._raylet_stubs:
+            await self._fill_resource_usage_by_task_for_node(node_id, response)
+
+        return aiohttp.web.json_response(response)
+
+    async def _fill_resource_usage_by_task_for_node(
+        self,
+        node_id: str,
+        task_to_resource_usage: Dict,
+    ):
+        """
+        Mutates task_to_resource_usage in place, filling data for task names and
+        their respective resource usages.
+        """
+        resource_usage = await self._raylet_stubs[node_id].GetResourceUsageByTask(
+            node_manager_pb2.GetResourceUsageByTaskRequest(), timeout=10
+        )
+
+        for task in resource_usage.task_resource_usage:
+            task_name = get_task_name(task)
+            resource_set = {}
+            for k, v in task.resource_usage.items():
+                resource_set[k] = v
+            add_resource_usage_to_task(task_name, resource_set, task_to_resource_usage)
 
     async def run(self, server):
         pass
@@ -135,7 +179,7 @@ class ResourceHead(dashboard_utils.DashboardHeadModule):
 
 
 ResourceSet = Dict[str, float]
-ResourceCountList = List[Tuple[ResourceSet, int]]
+ResourceCountList = List[Dict]
 
 
 def append_or_create(dic, key, entry):
@@ -158,21 +202,40 @@ def add_resource_usage_to_task(
             task_resource_count_mapping[task],
         )
     else:
-        task_resource_count_mapping[task] = [[resource_set, 1]]
+        task_resource_count_mapping[task] = [{"resource_set": resource_set, "count": 1}]
     logger.info(f"mapping after: {resource_set}, {task_resource_count_mapping}")
 
 
 def add_to_resources_list(
     resource_set: ResourceSet,
-    resources_list: ResourceCountList,
+    resource_count_list: ResourceCountList,
 ):
     found = False
-    for idx, resource in enumerate(resources_list):
-        logger.info(f"RESOURCE {resource}, {resources_list}")
-        if resource[0] == resource_set:
-            resources_list[idx] = [resource[0], resource[1]+1]
+    for idx, resource_count in enumerate(resource_count_list):
+        logger.info(f"RESOURCE {resource_count}, {resource_count_list}")
+        if resource_count["resource_set"] == resource_set:
+            resource_count_list[idx] = {
+                "resource_set": resource_set,
+                "count": resource_count["count"] + 1,
+            }
             found = True
             break
     if not found:
-        resources_list.append([resource_set, 1])
-    logger.info(f"RESOURCE after {resource}, {resources_list}")
+        resource_count_list.append({"resource_set": resource_set, "count": 1})
+    logger.info(f"RESOURCE after {resource_count}, {resource_count_list}")
+
+
+def get_task_name(task: node_manager_pb2.TaskResourceUsage):
+    if hasattr(task.function_descriptor, "python_function_descriptor"):
+        fd = task.function_descriptor.python_function_descriptor
+    elif hasattr(task.function_descriptor, "java_function_descriptor"):
+        fd = task.function_descriptor.java_function_descriptor
+    elif hasattr(task.function_descriptor, "cpp_function_descriptor"):
+        fd = task.function_descriptor.cpp_function_descriptor
+    else:
+        return None
+    if task.is_actor:
+        task_name = fd.class_name
+    else:
+        task_name = fd.function_name
+    return task_name
