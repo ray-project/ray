@@ -17,12 +17,14 @@ from ray.experimental.state.common import (
     WorkerState,
     TaskState,
     ObjectState,
+    ListApiOptions,
 )
 from ray.experimental.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RPC_TIMEOUT = 30
+DEFAULT_LIMIT = 1000
 
 
 # TODO(sang): Move the class to state/state_manager.py.
@@ -70,7 +72,7 @@ class StateAPIManager:
     def data_source_client(self):
         return self._client
 
-    async def get_actors(self) -> dict:
+    async def get_actors(self, *, option: ListApiOptions) -> dict:
         """List all actor information from the cluster.
 
         Returns:
@@ -79,13 +81,18 @@ class StateAPIManager:
         """
         reply = await self._client.get_all_actor_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
-        for message in reply.actor_table_data:
+        for i, message in enumerate(reply.actor_table_data):
+            logger.info(i)
+            logger.info(option.limit)
+            if i == option.limit:
+                break
+
             data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
             data = filter_fields(data, ActorState)
             result[data["actor_id"]] = data
         return result
 
-    async def get_placement_groups(self) -> dict:
+    async def get_placement_groups(self, *, option: ListApiOptions) -> dict:
         """List all placement group information from the cluster.
 
         Returns:
@@ -96,7 +103,10 @@ class StateAPIManager:
             timeout=DEFAULT_RPC_TIMEOUT
         )
         result = {}
-        for message in reply.placement_group_table_data:
+        for i, message in enumerate(reply.placement_group_table_data):
+            if i == option.limit:
+                break
+
             data = self._message_to_dict(
                 message=message,
                 fields_to_decode=["placement_group_id"],
@@ -105,7 +115,7 @@ class StateAPIManager:
             result[data["placement_group_id"]] = data
         return result
 
-    async def get_nodes(self) -> dict:
+    async def get_nodes(self, *, option: ListApiOptions) -> dict:
         """List all node information from the cluster.
 
         Returns:
@@ -114,13 +124,16 @@ class StateAPIManager:
         """
         reply = await self._client.get_all_node_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
-        for message in reply.node_info_list:
+        for i, message in enumerate(reply.node_info_list):
+            if i == option.limit:
+                break
+
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
             data = filter_fields(data, NodeState)
             result[data["node_id"]] = data
         return result
 
-    async def get_workers(self) -> dict:
+    async def get_workers(self, *, option: ListApiOptions) -> dict:
         """List all worker information from the cluster.
 
         Returns:
@@ -129,7 +142,10 @@ class StateAPIManager:
         """
         reply = await self._client.get_all_worker_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
-        for message in reply.worker_table_data:
+        for i, message in enumerate(reply.worker_table_data):
+            if i == option.limit:
+                break
+
             data = self._message_to_dict(
                 message=message, fields_to_decode=["worker_id"]
             )
@@ -138,7 +154,7 @@ class StateAPIManager:
             result[data["worker_id"]] = data
         return result
 
-    async def get_tasks(self) -> dict:
+    async def get_tasks(self, *, option: ListApiOptions) -> dict:
         """List all task information from the cluster.
 
         Returns:
@@ -153,18 +169,23 @@ class StateAPIManager:
         )
 
         result = defaultdict(dict)
+        entries = 0
         for reply in replies:
             tasks = reply.task_info_entries
             for task in tasks:
+                if entries == option.limit:
+                    break
+
                 data = self._message_to_dict(
                     message=task,
                     fields_to_decode=["task_id"],
                 )
                 data = filter_fields(data, TaskState)
                 result[data["task_id"]] = data
+                entries += 1
         return result
 
-    async def get_objects(self) -> dict:
+    async def get_objects(self, *, option: ListApiOptions) -> dict:
         """List all object information from the cluster.
 
         Returns:
@@ -192,9 +213,14 @@ class StateAPIManager:
                         preserving_proto_field_name=False,
                     )
                 )
+
         result = {}
+        entries = 0
         memory_table = memory_utils.construct_memory_table(worker_stats)
         for entry in memory_table.table:
+            if entries == option.limit:
+                break
+
             data = entry.as_dict()
             # `construct_memory_table` returns object_ref field which is indeed
             # object_id. We do transformation here.
@@ -203,6 +229,7 @@ class StateAPIManager:
             del data["object_ref"]
             data = filter_fields(data, ObjectState)
             result[data["object_id"]] = data
+            entries += 1
         return result
 
     def _message_to_dict(
