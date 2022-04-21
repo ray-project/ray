@@ -56,19 +56,28 @@ def _get_num_pods(namespace: str) -> int:
 
 def get_pod_names(namespace: str) -> List[str]:
     """Get the list of pod names in the namespace."""
-    get_pod_output = (
+    get_pods_output = (
         subprocess.check_output(
-            ["kubectl", "-n", namespace, "get", "pods", "--no-headers"]
+            [
+                "kubectl",
+                "-n",
+                namespace,
+                "get",
+                "pods",
+                "-o",
+                "custom-columns=POD:metadata.name",
+                "--no-headers",
+            ]
         )
         .decode()
         .strip()
     )
 
     # If there aren't any pods, the output is any empty string.
-    if not get_pod_output:
+    if not get_pods_output:
         return []
     else:
-        return get_pod_output.split("\n")
+        return get_pods_output.split("\n")
     pass
 
 
@@ -152,30 +161,17 @@ def wait_for_ray_health(
                 raise e from None
 
 
-def get_pod(pod_name_filter: str, namespace: str) -> str:
+def get_pod(pod_name_filter: str, namespace: str) -> Optional[str]:
     """Gets pods in the `namespace`.
 
     Returns the first pod that has `pod_name_filter` as a
-    substring of its name. Raises an assertion error if there are no matches.
+    substring of its name. Returns None if there are no matches.
     """
-    get_pods_output = (
-        subprocess.check_output(
-            [
-                "kubectl",
-                "-n",
-                namespace,
-                "get",
-                "pods",
-                "-o",
-                "custom-columns=POD:metadata.name",
-                "--no-headers",
-            ]
-        )
-        .decode()
-        .split()
-    )
-    matches = [item for item in get_pods_output if pod_name_filter in item]
-    assert matches, f"No match for `{pod_name_filter}` in namespace `{namespace}`."
+    pod_names = get_pod_names(namespace)
+    matches = [pod_name for pod_name in pod_names if pod_name_filter in pod_name]
+    if not matches:
+        logger.warning(f"No match for `{pod_name_filter}` in namespace `{namespace}`.")
+        return None
     return matches[0]
 
 
