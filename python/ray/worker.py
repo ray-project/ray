@@ -434,11 +434,6 @@ class Worker:
                 != 0
             ):
                 self.function_actor_manager.export_key(key)
-            # TODO(rkn): If the worker fails after it calls setnx and before it
-            # successfully completes the hset and rpush, then the program will
-            # most likely hang. This could be fixed by making these three
-            # operations into a transaction (or by implementing a custom
-            # command that does all three things).
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -1601,7 +1596,10 @@ def connect(
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped
         )
-        if ray._raylet.Config.start_python_importer_thread():
+        if (
+            worker.mode == ray.SCRIPT_MODE
+            or ray._raylet.Config.start_python_importer_thread()
+        ):
             worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
