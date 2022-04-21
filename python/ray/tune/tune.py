@@ -67,15 +67,42 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 logger = logging.getLogger(__name__)
 
 
-def _check_default_resources_override(run_identifier):
-    if not isinstance(run_identifier, str):
-        # If obscure dtype, assume it is overridden.
+def _check_default_resources_override(
+    run_identifier: Union[Experiment, str, Type, Callable]
+) -> bool:
+    if isinstance(run_identifier, Experiment):
+        run_identifier = run_identifier.run_identifier
+
+    if isinstance(run_identifier, type):
+        if not issubclass(run_identifier, Trainable):
+            # If obscure dtype, assume it is overridden.
+            return True
+        trainable_cls = run_identifier
+    elif callable(run_identifier):
+        trainable_cls = run_identifier
+    elif isinstance(run_identifier, str):
+        trainable_cls = get_trainable_cls(run_identifier)
+    else:
+        # Default to True
         return True
-    trainable_cls = get_trainable_cls(run_identifier)
+
     return hasattr(trainable_cls, "default_resource_request") and (
         trainable_cls.default_resource_request.__code__
         != Trainable.default_resource_request.__code__
     )
+
+
+def _check_gpus_in_resources(
+    resources: Optional[Union[Dict, PlacementGroupFactory]]
+) -> bool:
+    if not resources:
+        return False
+
+    if isinstance(resources, PlacementGroupFactory):
+        return bool(resources.required_resources.get("GPU", None))
+
+    if isinstance(resources, dict):
+        return bool(resources.get("gpu", None))
 
 
 def _report_progress(
@@ -464,10 +491,28 @@ def run(
     # If reuse_actors is unset, default to False for string and class trainables,
     # and default to True for everything else (i.e. function trainables)
     if reuse_actors is None:
-        reuse_actors = is_function_trainable(run_or_experiment) and not (
-            # Reusing actors does not work with resource changing scheduler
-            scheduler
-            and isinstance(scheduler, ResourceChangingScheduler)
+        trainable = (
+            run_or_experiment.run_identifier
+            if isinstance(run_or_experiment, Experiment)
+            else run_or_experiment
+        )
+        reuse_actors = (
+            # Only default to True for function trainables that meet certain conditions
+            is_function_trainable(trainable)
+            and not (
+                # Changing resources requires restarting actors
+                scheduler
+                and isinstance(scheduler, ResourceChangingScheduler)
+            )
+            and not (
+                # If GPUs are requested we could run into problems with device memory
+                _check_gpus_in_resources(resources_per_trial)
+            )
+            and not (
+                # If the resource request is overridden, we don't know if GPUs
+                # will be requested, yet, so default to False
+                _check_default_resources_override(trainable)
+            )
         )
 
     if (
@@ -637,7 +682,7 @@ def run(
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
-        if isinstance(resources_per_trial, dict) and "gpu" in resources_per_trial:
+        if _check_gpus_in_resources(resources=resources_per_trial):
             # "gpu" is manually set.
             pass
         elif _check_default_resources_override(experiments[0].run_identifier):
