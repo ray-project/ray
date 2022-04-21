@@ -143,10 +143,7 @@ class ExecutionPlan:
         )
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
-            snapshot_blocks = self._snapshot_blocks
-            if isinstance(snapshot_blocks, BlockList):
-                snapshot_blocks = snapshot_blocks.copy()
-            plan_copy._snapshot_blocks = snapshot_blocks
+            plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._stages_before_snapshot = self._stages_before_snapshot.copy()
         plan_copy._stages_after_snapshot = self._stages_after_snapshot.copy()
@@ -502,24 +499,22 @@ def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
         stages: Stages to try to fuse.
 
     Returns:
-        Optimized, fused stages.
+        Fused stages.
     """
-    optimized_stages = []
+    fused_stages = []
     prev_stage = None
-    # We do not fuse stages across the snapshot, since we want to reuse the
-    # snapshot.
     for idx, stage in enumerate(stages):
         if prev_stage is None:
             prev_stage = stage
         elif stage.can_fuse(prev_stage):
             prev_stage = stage.fuse(prev_stage)
         else:
-            optimized_stages.append(prev_stage)
+            fused_stages.append(prev_stage)
             prev_stage = stage
     if prev_stage:
-        optimized_stages.append(prev_stage)
+        fused_stages.append(prev_stage)
         prev_stage = None
-    return optimized_stages
+    return fused_stages
 
 
 def _are_remote_args_compatible(prev_args, next_args):
