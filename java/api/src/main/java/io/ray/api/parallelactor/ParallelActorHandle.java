@@ -11,7 +11,7 @@ import io.ray.api.ActorHandle;
  */
 public interface ParallelActorHandle<A> {
 
-  /** Get an execution instance of the parallel actor by the given index. */
+  /** Get an execution instance of the parallel actor by the given instance ID. */
   ParallelActorInstance<A> getInstance(int instanceId);
 
   /** Get the parallelism of this parallel actor. */
