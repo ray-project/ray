@@ -2,6 +2,7 @@
 For consistency, all K8s interactions use kubectl through subprocess calls.
 """
 import logging
+from pathlib import Path
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
@@ -50,24 +51,48 @@ def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> 
 
 
 def _get_num_pods(namespace: str) -> int:
-    get_pod_output = (
+    return len(get_pod_names(namespace))
+
+
+def get_pod_names(namespace: str) -> List[str]:
+    """Get the list of pod names in the namespace."""
+    get_pods_output = (
         subprocess.check_output(
-            ["kubectl", "-n", namespace, "get", "pods", "--no-headers"]
+            [
+                "kubectl",
+                "-n",
+                namespace,
+                "get",
+                "pods",
+                "-o",
+                "custom-columns=POD:metadata.name",
+                "--no-headers",
+            ]
         )
         .decode()
         .strip()
     )
 
     # If there aren't any pods, the output is any empty string.
-    if not get_pod_output:
-        return 0
+    if not get_pods_output:
+        return []
     else:
-        return len(get_pod_output.split("\n"))
+        return get_pods_output.split("\n")
+    pass
 
 
-def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> None:
-    """Waits for the pod to enter running Running status.phase."""
+def wait_for_pod_to_start(
+    pod_name_filter: str, namespace: str, tries=60, backoff_s=5
+) -> None:
+    """Waits for a pod to have Running status.phase.
+
+    More precisely, waits until there is a pod with name containing `pod_name_filter`
+    and the pod has Running status.phase."""
     for i in range(tries):
+        pod = get_pod(pod_name_filter=pod_name_filter, namespace=namespace)
+        if not pod:
+            # We didn't get a matching pod.
+            continue
         pod_status = (
             subprocess.check_output(
                 [
@@ -102,21 +127,32 @@ def wait_for_pod_to_start(pod: str, namespace: str, tries=60, backoff_s=5) -> No
 
 
 def wait_for_ray_health(
-    ray_pod: str, namespace: str, tries=60, backoff_s=5, ray_container="ray-head"
+    pod_name_filter: str,
+    namespace: str,
+    tries=60,
+    backoff_s=5,
+    ray_container="ray-head",
 ) -> None:
-    """Waits for the Ray pod to pass `ray health-check`.
+    """Waits until a Ray pod passes `ray health-check`.
+
+    More precisely, waits until a Ray pod whose name includes the string
+    `pod_name_filter` passes `ray health-check`.
     (Ensures Ray has completely started in the pod.)
+
+    Use case: Wait until there is a Ray head pod with Ray running on it.
     """
     for i in range(tries):
         try:
+            pod = get_pod(pod_name_filter=pod_name_filter, namespace="default")
+            assert pod, f"Couldn't find a pod matching {pod_name_filter}."
             # `ray health-check` yields 0 exit status iff it succeeds
             kubectl_exec(
-                ["ray", "health-check"], ray_pod, namespace, container=ray_container
+                ["ray", "health-check"], pod, namespace, container=ray_container
             )
-            logger.info(f"ray health check passes for pod {ray_pod}")
+            logger.info(f"ray health check passes for pod {pod}")
             return
         except subprocess.CalledProcessError as e:
-            logger.info(f"Failed ray health check for pod {ray_pod}.")
+            logger.info(f"Failed ray health check for pod {pod}.")
             if i < tries - 1:
                 logger.info("Trying again.")
                 time.sleep(backoff_s)
@@ -125,44 +161,57 @@ def wait_for_ray_health(
                 raise e from None
 
 
-def get_pod(pod_name_filter: str, namespace: str) -> str:
+def get_pod(pod_name_filter: str, namespace: str) -> Optional[str]:
     """Gets pods in the `namespace`.
 
     Returns the first pod that has `pod_name_filter` as a
-    substring of its name. Raises an assertion error if there are no matches.
+    substring of its name. Returns None if there are no matches.
     """
-    get_pods_output = (
-        subprocess.check_output(
-            [
-                "kubectl",
-                "-n",
-                namespace,
-                "get",
-                "pods",
-                "-o",
-                "custom-columns=POD:metadata.name",
-                "--no-headers",
-            ]
-        )
-        .decode()
-        .split()
-    )
-    matches = [item for item in get_pods_output if pod_name_filter in item]
-    assert matches, f"No match for `{pod_name_filter}` in namespace `{namespace}`."
+    pod_names = get_pod_names(namespace)
+    matches = [pod_name for pod_name in pod_names if pod_name_filter in pod_name]
+    if not matches:
+        logger.warning(f"No match for `{pod_name_filter}` in namespace `{namespace}`.")
+        return None
     return matches[0]
 
 
 def kubectl_exec(
-    command: List[str], pod: str, namespace: str, container: Optional[str] = None
-) -> None:
+    command: List[str],
+    pod: str,
+    namespace: str,
+    container: Optional[str] = None,
+) -> str:
     """kubectl exec the `command` in the given `pod` in the given `namespace`.
     If a `container` is specified, will specify that container for kubectl.
+
+    Prints and return kubectl's output as a string.
     """
     container_option = ["-c", container] if container else []
-
-    subprocess.check_call(
+    kubectl_exec_command = (
         ["kubectl", "exec", "-it", pod] + container_option + ["--"] + command
     )
+    out = subprocess.check_output(kubectl_exec_command).decode().strip()
+    # Print for debugging convenience.
+    print(out)
+    return out
+
+
+def kubectl_exec_python_script(
+    script_name: str,
+    pod: str,
+    namespace: str,
+    container: Optional[str] = None,
+) -> str:
+    """
+    Runs a python script in a container via `kubectl exec`.
+    Scripts live in `tests/kuberay/scripts`.
+
+    Prints and return kubectl's output as a string.
+    """
+    script_path = Path(__file__).resolve().parent / "scripts" / script_name
+    with open(script_path) as script_file:
+        script_string = script_file.read()
+    return kubectl_exec(["python", "-c", script_string], pod, namespace, container)
 
 
 def get_raycluster(raycluster: str, namespace: str) -> Dict[str, Any]:

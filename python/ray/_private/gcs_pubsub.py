@@ -29,27 +29,6 @@ logger = logging.getLogger(__name__)
 MAX_GCS_PUBLISH_RETRIES = 60
 
 
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct an ErrorTableData object.
-
-    Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
-    Returns:
-        The ErrorTableData object.
-    """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data
-
-
 class _PublisherBase:
     @staticmethod
     def _create_log_request(log_json: dict):
@@ -175,12 +154,8 @@ class _SubscriberBase:
 class GcsPublisher(_PublisherBase):
     """Publisher to GCS."""
 
-    def __init__(self, *, address: str = None, channel: grpc.Channel = None):
-        if address:
-            assert channel is None, "address and channel cannot both be specified"
-            channel = gcs_utils.create_gcs_channel(address)
-        else:
-            assert channel is not None, "One of address and channel must be specified"
+    def __init__(self, address: str):
+        channel = gcs_utils.create_gcs_channel(address)
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
     def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:

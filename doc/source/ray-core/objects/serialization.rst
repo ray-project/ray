@@ -197,6 +197,10 @@ The resulting output is:
     If you have any suggestions on how to improve this error message, please reach out to the Ray developers on github.com/ray-project/ray/issues/
     =============================================================
 
+For even more detailed information, set environmental variable ``RAY_PICKLE_VERBOSE_DEBUG='2'`` before importing Ray. This enables
+serialization with python-based backend instead of C-Pickle, so you can debug into python code at the middle of serialization.
+However, this would make serialization much slower.
+
 Known Issues
 ------------
 
