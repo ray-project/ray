@@ -43,7 +43,8 @@ class TunerInternal:
         tune_config: Tuning algorithm specific configs.
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
-            Refer to ray.ml.config.RunConfig for more info.
+            If passed, this will overwrite the run config passed to the Trainer,
+            if applicable. Refer to ray.ml.config.RunConfig for more info.
     """
 
     def __init__(
