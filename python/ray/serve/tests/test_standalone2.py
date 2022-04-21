@@ -11,7 +11,7 @@ from ray.exceptions import RayActorError
 import ray
 import ray.state
 from ray import serve
-from ray.serve.api import get_global_client
+from ray.serve.context import get_global_client
 from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 

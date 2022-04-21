@@ -11,7 +11,7 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.serve.api import get_global_client
+from ray.serve.context import get_global_client
 
 
 @pytest.fixture

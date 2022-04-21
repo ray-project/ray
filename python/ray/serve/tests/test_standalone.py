@@ -25,7 +25,7 @@ from ray._private.test_utils import (
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 from ray import serve
-from ray.serve.api import get_global_client
+from ray.serve.context import get_global_client
 from ray.serve.config import HTTPOptions
 from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
