@@ -677,7 +677,7 @@ def run(
         metric=metric,
         mode=mode,
     )
-    while not runner.is_finished() and not state[signal.SIGINT]:
+    while not runner.is_finished() and not state["signal"]:
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
