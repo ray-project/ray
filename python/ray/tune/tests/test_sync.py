@@ -409,7 +409,7 @@ class TestSyncFunctionality(unittest.TestCase):
         sync_config = tune.SyncConfig(syncer=None)
 
         # Create syncer callbacks
-        callbacks = create_default_callbacks([], sync_config, loggers=None)
+        callbacks = create_default_callbacks([], sync_config)
         syncer_callback = callbacks[-1]
 
         # Sanity check that we got the syncer callback

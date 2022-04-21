@@ -446,8 +446,7 @@ class WandbLogger(Logger):
 
     .. code-block:: python
 
-        from ray.tune.logger import DEFAULT_LOGGERS
-        from ray.tune.integration.wandb import WandbLogger
+        from ray.tune.integration.wandb import WandbLoggerCallback
         tune.run(
             train_fn,
             config={
@@ -461,14 +460,14 @@ class WandbLogger(Logger):
                     "log_config": True
                 }
             },
-            loggers=DEFAULT_LOGGERS + (WandbLogger, ))
+            calllbacks=[WandbLoggerCallback])
 
     Example for RLlib:
 
     .. code-block :: python
 
         from ray import tune
-        from ray.tune.integration.wandb import WandbLogger
+        from ray.tune.integration.wandb import WandbLoggerCallback
 
         tune.run(
             "PPO",
@@ -481,7 +480,7 @@ class WandbLogger(Logger):
                     }
                 }
             },
-            loggers=[WandbLogger])
+            callbacks=[WandbLoggerCallback])
 
 
     """

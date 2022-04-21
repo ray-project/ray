@@ -28,7 +28,7 @@ from ray.tune import (
 from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.function_runner import wrap_function
-from ray.tune.logger import Logger
+from ray.tune.logger import Logger, LegacyLoggerCallback
 from ray.tune.ray_trial_executor import noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
@@ -122,14 +122,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         [trial1] = run(
             _function_trainable,
-            loggers=[FunctionAPILogger],
+            callbacks=[LegacyLoggerCallback(FunctionAPILogger)],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
 
         [trial2] = run(
             class_trainable_name,
-            loggers=[ClassAPILogger],
+            callbacks=[LegacyLoggerCallback(ClassAPILogger)],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
@@ -729,7 +729,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             },
             verbose=1,
             local_dir=tmpdir,
-            loggers=None,
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)

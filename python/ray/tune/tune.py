@@ -560,9 +560,7 @@ def run(
         )
 
     # Create syncer callbacks
-    callbacks = create_default_callbacks(
-        callbacks, sync_config, metric=metric, loggers=loggers
-    )
+    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
 
     runner = TrialRunner(
         search_alg=search_alg,
