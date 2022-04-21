@@ -372,12 +372,14 @@ available_node_types:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
-def test_usage_lib_report_data(monkeypatch, shutdown_only, tmp_path):
+def test_usage_lib_report_data(monkeypatch, ray_start_cluster, tmp_path):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
         # Runtime env is required to run this test in minimal installation test.
-        ray.init(num_cpus=0, runtime_env={"pip": ["ray[serve]"]})
+        ray.init(address=cluster.address, runtime_env={"pip": ["ray[serve]"]})
         """
         Make sure the generated data is following the schema.
         """

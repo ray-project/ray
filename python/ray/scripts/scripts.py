@@ -1651,7 +1651,7 @@ def disable_usage_stats():
     usage_lib.set_usage_stats_enabled_via_config(enabled=False)
     print(
         "Usage stats disabled for future clusters. "
-        "The current running cluster won't be affected."
+        "Restart any current running clusters for this to take effect."
     )
 
 
@@ -1665,7 +1665,7 @@ def enable_usage_stats():
     usage_lib.set_usage_stats_enabled_via_config(enabled=True)
     print(
         "Usage stats enabled for future clusters. "
-        "The current running cluster won't be affected."
+        "Restart any current running clusters for this to take effect."
     )
 
 
