@@ -49,11 +49,11 @@ class HashingVectorizer(Preprocessor):
                 df[f"hash_{col}_{i}"] = hashed.map(lambda counts: counts[i])
 
         # Drop original columns.
-        df = df.drop(columns=self.columns)
+        df.drop(columns=self.columns, inplace=True)
         return df
 
     def __repr__(self):
-        fn_name = getattr(self.tokenization_fn, __name__, self.tokenization_fn)
+        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
         return (
             f"HashingVectorizer("
             f"Columns={self.columns}, "
@@ -128,12 +128,11 @@ class CountVectorizer(Preprocessor):
                 df[f"{col}_{token}"] = tokenized.map(lambda val: val[token])
 
         # Drop original columns.
-        df = df.drop(columns=self.columns)
-
+        df.drop(columns=self.columns, inplace=True)
         return df
 
     def __repr__(self):
-        fn_name = getattr(self.tokenization_fn, __name__, self.tokenization_fn)
+        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
         return (
             f"CountVectorizer("
             f"columns={self.columns}, "

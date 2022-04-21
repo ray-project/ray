@@ -19,31 +19,29 @@ class Normalizer(Preprocessor):
         norm: "l1", "l2", or "max". Defaults to "l2"
     """
 
-    _valid_norms = ["l1", "l2", "max"]
+    _norm_fns = {
+        "l1": lambda cols: np.abs(cols).sum(axis=1),
+        "l2": lambda cols: np.sqrt(np.power(cols, 2).sum(axis=1)),
+        "max": lambda cols: np.max(abs(cols), axis=1),
+    }
+
     _is_fittable = False
 
     def __init__(self, columns: List[str], norm="l2"):
         self.columns = columns
         self.norm = norm
 
-        if norm not in self._valid_norms:
+        if norm not in self._norm_fns:
             raise ValueError(
                 f"Norm {norm} is not supported."
-                f"Supported values are: {self._valid_norms}"
+                f"Supported values are: {self._norm_fns.keys()}"
             )
 
     def _transform_pandas(self, df: pd.DataFrame):
-
         columns = df.loc[:, self.columns]
+        column_norms = self._norm_fns[self.norm](columns)
 
-        if self.norm == "l1":
-            norm = np.abs(columns).sum(axis=1)
-        elif self.norm == "l2":
-            norm = np.sqrt(np.power(columns, 2).sum(axis=1))
-        elif self.norm == "max":
-            norm = np.max(abs(columns), axis=1)
-
-        df.loc[:, self.columns] = columns.div(norm, axis=0)
+        df.loc[:, self.columns] = columns.div(column_norms, axis=0)
         return df
 
     def __repr__(self):

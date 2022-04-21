@@ -51,7 +51,7 @@ class FeatureHasher(Preprocessor):
         df = df.join(feature_columns)
 
         # Drop original unhashed columns.
-        df = df.drop(columns=self.columns)
+        df.drop(columns=self.columns, inplace=True)
         return df
 
     def __repr__(self):
