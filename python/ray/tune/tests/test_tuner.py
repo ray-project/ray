@@ -175,6 +175,15 @@ class TunerTest(unittest.TestCase):
 
     def test_tuner_trainer_fail(self):
         class DummyTrainer(Trainer):
+            _scaling_config_allowed_keys = [
+                "num_workers",
+                "num_cpus_per_worker",
+                "num_gpus_per_worker",
+                "additional_resources_per_worker",
+                "use_gpu",
+                "trainer_resources",
+            ]
+
             def training_loop(self) -> None:
                 raise RuntimeError("There is an error in trainer!")
 
