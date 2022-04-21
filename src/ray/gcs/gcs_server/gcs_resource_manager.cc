@@ -28,7 +28,7 @@ GcsResourceManager::GcsResourceManager(
       gcs_table_storage_(gcs_table_storage),
       cluster_resource_manager_(cluster_resource_manager) {}
 
-void GcsResourceManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) {
+void GcsResourceManager::ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) {
   // Make sure thread safety.
   io_context_.post(
       [this, message]() {

@@ -370,7 +370,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
   io_context_.dispatch(
       [this, message] {
         // The message is stale. Just skip this one.
-        if (!node_state_->ConsumeMessage(message)) {
+        if (!node_state_->ConsumeSyncMessage(message)) {
           return;
         }
         if (upward_only_[message->component_id()]) {
@@ -384,14 +384,6 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
         }
       },
       "RaySyncer.BroadcastMessage");
-}
-
-void RaySyncer::BroadcastMessage(RayComponentId cid) {
-  auto snapshot = node_state_->GetSnapshot(cid);
-  if (snapshot) {
-    RAY_CHECK(snapshot->node_id() == GetLocalNodeID());
-    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*snapshot)));
-  }
 }
 
 grpc::ServerUnaryReactor *RaySyncerService::StartSync(

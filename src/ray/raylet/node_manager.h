@@ -191,9 +191,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  void Update(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
-  std::optional<syncer::RaySyncMessage> Snapshot(
+  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::RayComponentId component_id) const override;
 
   int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }

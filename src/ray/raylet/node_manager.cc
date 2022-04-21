@@ -2637,7 +2637,7 @@ void NodeManager::RecordMetrics() {
   object_directory_->RecordMetrics(duration_ms);
 }
 
-void NodeManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) {
+void NodeManager::ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) {
   if (message->component_id() == syncer::RayComponentId::RESOURCE_MANAGER) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
@@ -2652,7 +2652,7 @@ void NodeManager::Update(std::shared_ptr<const syncer::RaySyncMessage> message) 
   }
 }
 
-std::optional<syncer::RaySyncMessage> NodeManager::Snapshot(
+std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
     int64_t after_version, syncer::RayComponentId component_id) const {
   // Right now snapshot is put in NodeManager which in long-term, them should
   // be put into each component directly.
