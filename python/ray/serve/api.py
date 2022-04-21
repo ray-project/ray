@@ -55,7 +55,7 @@ from ray.serve.context import (
     set_global_client,
     get_global_client,
     ReplicaContext,
-    _INTERNAL_REPLICA_CONTEXT,
+    INTERNAL_REPLICA_CONTEXT,
 )
 
 logger = logging.getLogger(__file__)
@@ -232,13 +232,13 @@ def get_replica_context() -> ReplicaContext:
         >>> # deployment_name#krcwoa
         >>> serve.get_replica_context().replica_tag # doctest: +SKIP
     """
-    if _INTERNAL_REPLICA_CONTEXT is None:
+    if INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException(
             "`serve.get_replica_context()` "
             "may only be called from within a "
             "Ray Serve deployment."
         )
-    return _INTERNAL_REPLICA_CONTEXT
+    return INTERNAL_REPLICA_CONTEXT
 
 
 @PublicAPI(stability="beta")

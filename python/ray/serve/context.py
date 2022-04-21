@@ -1,7 +1,6 @@
 """
 This file stores global state for a Serve application. Deployment replicas
-can use the state stored here to access deployment and replica metadata or the
-Serve controller.
+can use this state to access metadata or the Serve controller.
 """
 
 import logging
@@ -17,7 +16,7 @@ from ray.serve.client import ServeControllerClient, get_controller_namespace
 
 logger = logging.getLogger(__file__)
 
-_INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
+INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
 
 
@@ -74,8 +73,8 @@ def set_internal_replica_context(
     controller_namespace: str,
     servable_object: Callable,
 ):
-    global _INTERNAL_REPLICA_CONTEXT
-    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
+    global INTERNAL_REPLICA_CONTEXT
+    INTERNAL_REPLICA_CONTEXT = ReplicaContext(
         deployment, replica_tag, controller_name, controller_namespace, servable_object
     )
 
@@ -108,14 +107,14 @@ def _connect(
 
     # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
-    if _INTERNAL_REPLICA_CONTEXT is None:
+    if INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
         controller_namespace = get_controller_namespace(
             detached=True, _override_controller_namespace=_override_controller_namespace
         )
     else:
-        controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
-        controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
+        controller_name = INTERNAL_REPLICA_CONTEXT._internal_controller_name
+        controller_namespace = INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
 
     # Try to get serve controller if it exists
     try:
