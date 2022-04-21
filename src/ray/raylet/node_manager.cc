@@ -556,16 +556,14 @@ ray::Status NodeManager::RegisterGcs() {
         /* receiver */ this,
         /* upward_only */ false,
         /* pull_from_reporter_interval_ms */
-        RayConfig::instance()
-            .raylet_report_resources_period_milliseconds());
+        RayConfig::instance().raylet_report_resources_period_milliseconds());
     ray_syncer_.Register(
         /* component_id */ syncer::RayComponentId::SCHEDULER,
         /* reporter */ this,
         /* receiver */ nullptr,
         /* upward_only */ true,
         /* pull_from_reporter_interval_ms */
-        RayConfig::instance()
-            .raylet_report_loads_period_milliseconds());
+        RayConfig::instance().raylet_report_loads_period_milliseconds());
     // Register a commands channel.
     // It's only used for GC right now.
     ray_syncer_.Register(
