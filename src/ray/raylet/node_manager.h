@@ -624,6 +624,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
       const rpc::RayException *creation_task_exception = nullptr);
 
+  bool TryLocalGC();
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.

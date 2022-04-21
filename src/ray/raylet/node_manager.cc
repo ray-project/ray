@@ -576,28 +576,7 @@ ray::Status NodeManager::RegisterGcs() {
         [this] {
           // If plasma store is under high pressure, we should try to schedule a global
           // gc.
-          bool plasma_high_pressure =
-              object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
-          if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
-            TriggerGlobalGC();
-          }
-
-          // Set the global gc bit on the outgoing heartbeat message.
-          bool triggered_by_global_gc = false;
-          if (should_global_gc_) {
-            triggered_by_global_gc = true;
-            should_global_gc_ = false;
-            global_gc_throttler_.RunNow();
-          }
-
-          // Trigger local GC if needed. This throttles the frequency of local GC calls
-          // to at most once per heartbeat interval.
-          if ((should_local_gc_ || (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ >
-                                    local_gc_interval_ns_)) &&
-              local_gc_throttler_.AbleToRun()) {
-            DoLocalGC(triggered_by_global_gc);
-            should_local_gc_ = false;
-          }
+          auto triggered_by_global_gc = TryLocalGC();
 
           if (triggered_by_global_gc) {
             rpc::ResourcesData resources_data;
@@ -696,30 +675,8 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
-  // If plasma store is under high pressure, we should try to schedule a global gc.
-  bool plasma_high_pressure =
-      object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
-  if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
-    TriggerGlobalGC();
-  }
 
-  // Set the global gc bit on the outgoing heartbeat message.
-  bool triggered_by_global_gc = false;
-  if (should_global_gc_) {
-    resources_data.set_should_global_gc(true);
-    triggered_by_global_gc = true;
-    should_global_gc_ = false;
-    global_gc_throttler_.RunNow();
-  }
-
-  // Trigger local GC if needed. This throttles the frequency of local GC calls
-  // to at most once per heartbeat interval.
-  if ((should_local_gc_ ||
-       (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
-      local_gc_throttler_.AbleToRun()) {
-    DoLocalGC(triggered_by_global_gc);
-    should_local_gc_ = false;
-  }
+  resources_data.set_should_global_gc(TryLocalGC());
 }
 
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
@@ -2620,6 +2577,33 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   TriggerGlobalGC();
+}
+
+bool NodeManager::TryLocalGC() {
+  // If plasma store is under high pressure, we should try to schedule a global gc.
+  bool plasma_high_pressure =
+      object_manager_.GetUsedMemoryPercentage() > high_plasma_storage_usage_;
+  if (plasma_high_pressure && global_gc_throttler_.AbleToRun()) {
+    TriggerGlobalGC();
+  }
+
+  // Set the global gc bit on the outgoing heartbeat message.
+  bool triggered_by_global_gc = false;
+  if (should_global_gc_) {
+    triggered_by_global_gc = true;
+    should_global_gc_ = false;
+    global_gc_throttler_.RunNow();
+  }
+
+  // Trigger local GC if needed. This throttles the frequency of local GC calls
+  // to at most once per heartbeat interval.
+  if ((should_local_gc_ ||
+       (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
+      local_gc_throttler_.AbleToRun()) {
+    DoLocalGC(triggered_by_global_gc);
+    should_local_gc_ = false;
+  }
+  return triggered_by_global_gc;
 }
 
 void NodeManager::TriggerGlobalGC() {
