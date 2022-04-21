@@ -93,7 +93,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         - Returns temp file's name.
         """
         # Set Ray and autoscaler images.
-        ray_cr_config_str = open(EXAMPLE_CLUSTER_PATH).read()
+        with open(EXAMPLE_CLUSTER_PATH) as example_cluster_file:
+            ray_cr_config_str = example_cluster_file.read()
         ray_images = [
             word for word in ray_cr_config_str.split() if "rayproject/ray:" in word
         ]
@@ -118,7 +119,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         Also add a GPU-annotated group for testing GPU upscaling.
         """
-        config = yaml.safe_load(open(self._get_ray_cr_config_file()).read())
+        with open(self._get_ray_cr_config_file()) as ray_config_file:
+            ray_config_str = ray_config_file.read()
+        config = yaml.safe_load(ray_config_str)
         cpu_group = config["spec"]["workerGroupSpecs"][0]
         cpu_group["replicas"] = replicas
         cpu_group["minReplicas"] = min_replicas
