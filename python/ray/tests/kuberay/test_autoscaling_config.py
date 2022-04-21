@@ -49,7 +49,11 @@ def _get_basic_autoscaling_config() -> dict:
                 "max_workers": 300,
                 "min_workers": 1,
                 "node_config": {},
-                "resources": {"CPU": 1},
+                "resources": {
+                    "CPU": 1,
+                    "Custom2": 5,
+                    "Custom3": 1,
+                },
             },
         },
         "auth": {},
