@@ -1,4 +1,3 @@
-import inspect
 import threading
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
@@ -26,7 +25,7 @@ from ray.tune.progress_reporter import (
     JupyterNotebookReporter,
 )
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.registry import get_trainable_cls
+from ray.tune.registry import get_trainable_cls, is_function_trainable
 from ray.tune.schedulers import (
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
@@ -465,16 +464,10 @@ def run(
     # If reuse_actors is unset, default to False for string and class trainables,
     # and default to True for everything else (i.e. function trainables)
     if reuse_actors is None:
-        reuse_actors = not (
-            # Default to False for string trainables
-            isinstance(run_or_experiment, str)
-            # Default to False for class trainables
-            or (
-                inspect.isclass(run_or_experiment)
-                and issubclass(run_or_experiment, Trainable)
-            )
-            # Default to False if resource changing scheduler is used
-            or (scheduler and isinstance(scheduler, ResourceChangingScheduler))
+        reuse_actors = is_function_trainable(run_or_experiment) and not (
+            # Reusing actors does not work with resource changing scheduler
+            scheduler
+            and isinstance(scheduler, ResourceChangingScheduler)
         )
 
     if (

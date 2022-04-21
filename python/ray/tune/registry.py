@@ -54,6 +54,14 @@ def validate_trainable(trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
 
+def is_function_trainable(trainable: Union[Callable, Type]):
+    return not isinstance(trainable, type) and (
+        isinstance(trainable, FunctionType)
+        or isinstance(trainable, partial)
+        or callable(trainable)
+    )
+
+
 def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool = True):
     """Register a trainable function or class.
 
