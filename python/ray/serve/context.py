@@ -80,7 +80,9 @@ def set_internal_replica_context(
     )
 
 
-def _connect(_override_controller_namespace: Optional[str] = None) -> ServeControllerClient:
+def _connect(
+    _override_controller_namespace: Optional[str] = None,
+) -> ServeControllerClient:
     """Connect to an existing Serve instance on this Ray cluster.
 
     If calling from the driver program, the Serve instance on this Ray cluster
