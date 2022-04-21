@@ -189,11 +189,7 @@ class GlobalState:
                 "NodeName": item.node_name,
             }
             node_info["alive"] = node_info["Alive"]
-            node_info["Resources"] = (
-                self.node_resource_table(node_info["NodeID"])
-                if node_info["Alive"]
-                else {}
-            )
+            node_info["Resources"] = item.resources_total
             results.append(node_info)
         return results
 
