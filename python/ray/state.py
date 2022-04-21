@@ -4,6 +4,7 @@ import logging
 
 import ray
 
+import ray.experimental.resources
 import ray._private.gcs_utils as gcs_utils
 from ray.util.annotations import DeveloperAPI
 from google.protobuf.json_format import MessageToDict
@@ -669,15 +670,7 @@ class GlobalState:
                 resource in the cluster.
         """
         self._check_connected()
-
-        resources = defaultdict(int)
-        nodes = self.node_table()
-        for node in nodes:
-            # Only count resources from latest entries of live nodes.
-            if node["Alive"]:
-                for key, value in node["Resources"].items():
-                    resources[key] += value
-        return dict(resources)
+        return ray.experimental.resources.total()
 
     def _live_node_ids(self):
         """Returns a set of node IDs corresponding to nodes still alive."""
@@ -686,29 +679,7 @@ class GlobalState:
     def _available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""
         self._check_connected()
-        available_resources_by_id = {}
-
-        all_available_resources = (
-            self.global_state_accessor.get_all_available_resources()
-        )
-        for available_resource in all_available_resources:
-            message = gcs_utils.AvailableResources.FromString(available_resource)
-            # Calculate available resources for this node.
-            dynamic_resources = {}
-            for resource_id, capacity in message.resources_available.items():
-                dynamic_resources[resource_id] = capacity
-            # Update available resources for this node.
-            node_id = ray._private.utils.binary_to_hex(message.node_id)
-            available_resources_by_id[node_id] = dynamic_resources
-
-        # Update nodes in cluster.
-        node_ids = self._live_node_ids()
-        # Remove disconnected nodes.
-        for node_id in list(available_resources_by_id.keys()):
-            if node_id not in node_ids:
-                del available_resources_by_id[node_id]
-
-        return available_resources_by_id
+        return ray.experimental.resources.available(by_node=True)
 
     def available_resources(self):
         """Get the current available cluster resources.
@@ -723,16 +694,7 @@ class GlobalState:
                 resource in the cluster.
         """
         self._check_connected()
-
-        available_resources_by_id = self._available_resources_per_node()
-
-        # Calculate total available resources.
-        total_available_resources = defaultdict(int)
-        for available_resources in available_resources_by_id.values():
-            for resource_id, num_available in available_resources.items():
-                total_available_resources[resource_id] += num_available
-
-        return dict(total_available_resources)
+        return ray.experimental.resources.available()
 
     def get_system_config(self):
         """Get the system config of the cluster."""

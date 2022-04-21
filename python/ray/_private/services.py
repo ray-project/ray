@@ -2203,3 +2203,21 @@ def start_ray_client_server(
         fate_share=fate_share,
     )
     return process_info
+
+
+def get_dashboard_url(address, password=ray_constants.REDIS_DEFAULT_PASSWORD):
+    gcs_client = GcsClient(address=address)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    dashboard_url = None
+    for _ in range(200):
+        dashboard_url = ray.experimental.internal_kv._internal_kv_get(
+            ray_constants.DASHBOARD_ADDRESS,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+        if dashboard_url is not None:
+            dashboard_url = dashboard_url.decode("utf-8")
+            break
+        # This is often on the critical path of ray.init() and ray start,
+        # so we need to poll often.
+        time.sleep(0.1)
+    return dashboard_url
