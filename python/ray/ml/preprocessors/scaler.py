@@ -20,7 +20,6 @@ class StandardScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str], ddof=0):
-        super().__init__()
         self.columns = columns
         self.ddof = ddof
 
@@ -49,7 +48,9 @@ class StandardScaler(Preprocessor):
 
     def __repr__(self):
         stats = getattr(self, "stats_", None)
-        return f"<Scaler columns={self.columns} ddof={self.ddof} stats={stats}>"
+        return (
+            f"StandardScaler(columns={self.columns}, ddof={self.ddof}, stats={stats})"
+        )
 
 
 class MinMaxScaler(Preprocessor):
@@ -67,7 +68,6 @@ class MinMaxScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str]):
-        super().__init__()
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -95,7 +95,7 @@ class MinMaxScaler(Preprocessor):
 
     def __repr__(self):
         stats = getattr(self, "stats_", None)
-        return f"<Scaler columns={self.columns} stats={stats}>"
+        return f"MixMaxScaler(columns={self.columns}, stats={stats})"
 
 
 class MaxAbsScaler(Preprocessor):
@@ -112,7 +112,6 @@ class MaxAbsScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str]):
-        super().__init__()
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -138,7 +137,7 @@ class MaxAbsScaler(Preprocessor):
 
     def __repr__(self):
         stats = getattr(self, "stats_", None)
-        return f"<Scaler columns={self.columns} stats={stats}>"
+        return f"MaxAbsScaler(columns={self.columns}, stats={stats})"
 
 
 class RobustScaler(Preprocessor):
@@ -158,7 +157,6 @@ class RobustScaler(Preprocessor):
     def __init__(
         self, columns: List[str], quantile_range: Tuple[float, float] = (0.25, 0.75)
     ):
-        super().__init__()
         self.columns = columns
         self.quantile_range = quantile_range
 
@@ -177,16 +175,18 @@ class RobustScaler(Preprocessor):
         # The current implementation will simply choose the closest index.
         # This will affect the results of small datasets more than large datasets.
         for col in self.columns:
-            filtered_dataset = dataset.map_batches(lambda df: df[[col]])
+            filtered_dataset = dataset.map_batches(
+                lambda df: df[[col]], batch_format="pandas"
+            )
             sorted_dataset = filtered_dataset.sort(col)
-            split_datasets = sorted_dataset.split_at_indices(split_indices)
+            _, low, med, high = sorted_dataset.split_at_indices(split_indices)
 
             def _get_first_value(ds: Dataset, c: str):
                 return ds.take(1)[0][c]
 
-            low_val = _get_first_value(split_datasets[1], col)
-            med_val = _get_first_value(split_datasets[2], col)
-            high_val = _get_first_value(split_datasets[3], col)
+            low_val = _get_first_value(low, col)
+            med_val = _get_first_value(med, col)
+            high_val = _get_first_value(high, col)
 
             self.stats_[f"low_quantile({col})"] = low_val
             self.stats_[f"median({col})"] = med_val
@@ -216,7 +216,8 @@ class RobustScaler(Preprocessor):
     def __repr__(self):
         stats = getattr(self, "stats_", None)
         return (
-            f"<Scaler columns={self.columns} "
-            f"quantile_range={self.quantile_range} "
-            f"stats={stats}>"
+            f"RobustScaler("
+            f"columns={self.columns}, "
+            f"quantile_range={self.quantile_range}, "
+            f"stats={stats})>"
         )

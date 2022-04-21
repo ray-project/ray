@@ -23,7 +23,6 @@ class Normalizer(Preprocessor):
     _is_fittable = False
 
     def __init__(self, columns: List[str], norm="l2"):
-        super().__init__()
         self.columns = columns
         self.norm = norm
 
@@ -48,4 +47,4 @@ class Normalizer(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Columns={self.columns} norm={self.norm}>"
+        return f"Normalizer(columns={self.columns}, norm={self.norm})>"

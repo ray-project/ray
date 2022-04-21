@@ -226,7 +226,7 @@ class AbsMax(_AggregateOnKeyBase):
         on_fn = _to_on_fn(on)
 
         super().__init__(
-            init=_null_wrap_init(lambda k: float("-inf")),
+            init=_null_wrap_init(lambda k: 0),
             accumulate=_null_wrap_accumulate(
                 ignore_nulls, on_fn, lambda a, r: max(a, abs(r))
             ),

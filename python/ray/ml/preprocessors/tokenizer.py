@@ -24,7 +24,6 @@ class Tokenizer(Preprocessor):
         columns: List[str],
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
     ):
-        super().__init__()
         self.columns = columns
         # TODO(matt): Add a more robust default tokenizer.
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer
@@ -37,5 +36,5 @@ class Tokenizer(Preprocessor):
         return df
 
     def __repr__(self):
-        name = getattr(self.tokenization_fn, __name__, self.tokenization_fn)
-        return f"<Columns={self.columns} tokenization_fn={name}>"
+        name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        return f"Tokenizer(columns={self.columns}, tokenization_fn={name})"

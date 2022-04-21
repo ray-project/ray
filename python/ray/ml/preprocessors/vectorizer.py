@@ -28,7 +28,6 @@ class HashingVectorizer(Preprocessor):
         num_features: int,
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
     ):
-        super().__init__()
         self.columns = columns
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.
@@ -54,11 +53,12 @@ class HashingVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        name = getattr(self.tokenization_fn, __name__, self.tokenization_fn)
+        fn_name = getattr(self.tokenization_fn, __name__, self.tokenization_fn)
         return (
-            f"<Columns={self.columns} "
-            f"num_features={self.num_features} "
-            f"tokenization_fn={name}>"
+            f"HashingVectorizer("
+            f"Columns={self.columns}, "
+            f"num_features={self.num_features}, "
+            f"tokenization_fn={fn_name})"
         )
 
 
@@ -84,7 +84,6 @@ class CountVectorizer(Preprocessor):
         max_features: Optional[int] = None,
     ):
         # TODO(matt): Add fit_transform to avoid recomputing tokenization step.
-        super().__init__()
         self.columns = columns
         # TODO(matt): Add a more robust default tokenizer.
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer
@@ -134,9 +133,10 @@ class CountVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        name = getattr(self.tokenization_fn, __name__, self.tokenization_fn)
+        fn_name = getattr(self.tokenization_fn, __name__, self.tokenization_fn)
         return (
-            f"<Columns={self.columns} "
-            f"tokenization_fn={name}> "
-            f"max_features={self.max_features}"
+            f"CountVectorizer("
+            f"columns={self.columns}, "
+            f"tokenization_fn={fn_name}, "
+            f"max_features={self.max_features})"
         )

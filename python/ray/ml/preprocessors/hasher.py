@@ -15,7 +15,7 @@ class FeatureHasher(Preprocessor):
     e.g. ``hash_column1_column2_0``, ``hash_column1_column2_1``, ...
 
     Note: Currently sparse matrices are not supported.
-    Therefore, It is recommended to **not** use a large ``num_features``.
+    Therefore, it is recommended to **not** use a large ``num_features``.
 
     Args:
         columns: The columns of features that should be projected
@@ -26,7 +26,6 @@ class FeatureHasher(Preprocessor):
     _is_fittable = False
 
     def __init__(self, columns: List[str], num_features: int):
-        super().__init__()
         self.columns = columns
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.
@@ -56,4 +55,6 @@ class FeatureHasher(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Columns={self.columns} num_features={self.num_features} >"
+        return (
+            f"FeatureHasher(columns={self.columns}, num_features={self.num_features})"
+        )

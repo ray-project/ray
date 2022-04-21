@@ -28,7 +28,6 @@ class PowerTransformer(Preprocessor):
     _is_fittable = False
 
     def __init__(self, columns: List[str], power: float, method: str = "yeo-johnson"):
-        super().__init__()
         self.columns = columns
         self.method = method
         self.power = power
@@ -70,4 +69,9 @@ class PowerTransformer(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Columns={self.columns} method={self.method} power={self.power}>"
+        return (
+            f"PowerTransformer("
+            f"columns={self.columns}, "
+            f"method={self.method}, "
+            f"power={self.power})"
+        )
