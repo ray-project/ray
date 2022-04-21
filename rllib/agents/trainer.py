@@ -30,7 +30,6 @@ from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
@@ -104,7 +103,7 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
 )
 from ray.tune.logger import Logger, UnifiedLogger
-from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
+from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.tune.resources import Resources
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
@@ -788,18 +787,12 @@ class Trainer(Trainable):
         if isinstance(config, TrainerConfig):
             config = config.to_dict()
 
-        # Convert `env` provided in config into a string:
-        # - If `env` is a string: `self._env_id` = `env`.
-        # - If `env` is a class: `self._env_id` = `env.__name__` -> Already
-        #   register it with a auto-generated env creator.
-        # - If `env` is None: `self._env_id` is None.
-        self._env_id: Optional[str] = self._register_if_needed(
+        # Convert `env` provided in config into a concrete env creator callable, which
+        # takes an EnvContext (config dict) as arg and returning an RLlib supported Env
+        # type (e.g. a gym.Env).
+        self._env_id, self.env_creator = self._get_env_id_and_creator(
             env or config.get("env"), config
         )
-
-        # The env creator callable, taking an EnvContext (config dict)
-        # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
-        self.env_creator: Optional[EnvCreator] = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -877,10 +870,6 @@ class Trainer(Trainable):
 
         # Validate the framework settings in config.
         self.validate_framework(self.config)
-
-        # Setup the self.env_creator callable (to be passed
-        # e.g. to RolloutWorkers' c'tors).
-        self.env_creator = self._get_env_creator_from_env_id(self._env_id)
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -1034,8 +1023,9 @@ class Trainer(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
-            env_id = self._register_if_needed(eval_config.get("env"), eval_config)
-            env_creator = self._get_env_creator_from_env_id(env_id)
+            env_id, env_creator = self._get_env_id_and_creator(
+                eval_config.get("env"), eval_config
+            )
 
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
@@ -2137,37 +2127,74 @@ class Trainer(Trainable):
         """Pre-evaluation callback."""
         pass
 
-    def _get_env_creator_from_env_id(self, env_id: Optional[str] = None) -> EnvCreator:
-        """Returns an env creator callable, given an `env_id` (e.g. "CartPole-v0").
+    def _get_env_id_and_creator(
+        self, env_specifier: Union[str, EnvType, None], config
+    ) -> Tuple[Optional[str], EnvCreator]:
+        """Returns env_id and creator callable given original env id from config.
 
         Args:
-            env_id: An already tune registered env ID, a known gym env name,
-                or None (if no env is used).
+            env_specifier: An env class, an already tune registered env ID, a known
+                gym env name, or None (if no env is used).
 
         Returns:
+            Tuple consisting of a) env ID string and b) env creator callable.
         """
-        if env_id:
+        # Environment is specified via a string.
+        if isinstance(env_specifier, str):
             # An already registered env.
-            if _global_registry.contains(ENV_CREATOR, env_id):
-                return _global_registry.get(ENV_CREATOR, env_id)
+            if _global_registry.contains(ENV_CREATOR, env_specifier):
+                return env_specifier, _global_registry.get(ENV_CREATOR, env_specifier)
 
             # A class path specifier.
-            elif "." in env_id:
+            elif "." in env_specifier:
 
                 def env_creator_from_classpath(env_context):
                     try:
-                        env_obj = from_config(env_id, env_context)
+                        env_obj = from_config(env_specifier, env_context)
                     except ValueError:
-                        raise EnvError(ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_id))
+                        raise EnvError(
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env_specifier)
+                        )
                     return env_obj
 
-                return env_creator_from_classpath
+                return env_specifier, env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
-                return functools.partial(gym_env_creator, env_descriptor=env_id)
+                return env_specifier, functools.partial(
+                    gym_env_creator, env_descriptor=env_specifier
+                )
+
+        elif isinstance(env_specifier, type):
+            env_id = env_specifier.__name__
+
+            if config.get("remote_worker_envs"):
+
+                @ray.remote(num_cpus=0)
+                class _wrapper(env_specifier):
+                    # Add convenience `_get_spaces` and `_is_multi_agent`
+                    # methods:
+                    def _get_spaces(self):
+                        return self.observation_space, self.action_space
+
+                    def _is_multi_agent(self):
+                        from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
+                        return isinstance(self, MultiAgentEnv)
+
+                return env_id, lambda cfg: _wrapper.remote(cfg)
+            else:
+                return env_id, lambda cfg: env_specifier(cfg)
+
         # No env -> Env creator always returns None.
+        elif env_specifier is None:
+            return None, lambda env_config: None
+
         else:
-            return lambda env_config: None
+            raise ValueError(
+                "{} is an invalid env specifier. ".format(env_specifier)
+                + "You can specify a custom env as either a class "
+                '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
+            )
 
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
@@ -2730,38 +2757,6 @@ class Trainer(Trainable):
         if self.local_replay_buffer is not None:
             kwargs["local_replay_buffer"] = self.local_replay_buffer
         return kwargs
-
-    def _register_if_needed(
-        self, env_object: Union[str, EnvType, None], config
-    ) -> Optional[str]:
-        if isinstance(env_object, str):
-            return env_object
-        elif isinstance(env_object, type):
-            name = env_object.__name__
-
-            if config.get("remote_worker_envs"):
-
-                @ray.remote(num_cpus=0)
-                class _wrapper(env_object):
-                    # Add convenience `_get_spaces` and `_is_multi_agent`
-                    # methods.
-                    def _get_spaces(self):
-                        return self.observation_space, self.action_space
-
-                    def _is_multi_agent(self):
-                        return isinstance(self, MultiAgentEnv)
-
-                register_env(name, lambda cfg: _wrapper.remote(cfg))
-            else:
-                register_env(name, lambda cfg: env_object(cfg))
-            return name
-        elif env_object is None:
-            return None
-        raise ValueError(
-            "{} is an invalid env specification. ".format(env_object)
-            + "You can specify a custom env as either a class "
-            '(e.g., YourEnvCls) or a registered env id (e.g., "your_env").'
-        )
 
     def _step_context(trainer):
         class StepCtx:
