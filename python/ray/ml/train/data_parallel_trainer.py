@@ -14,7 +14,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import TuneCheckpointManager
-from ray.train.utils import construct_train_func
+from ray.train.utils import construct_train_func, RayDatasetSpec
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -292,19 +292,28 @@ class DataParallelTrainer(Trainer):
         else:
             resume_checkpoint_dict = None
 
-        # Tell Ray Train to only shard the train dataset and not the other datasets.
-        # This is purely an implementation detail and users do not need to know about
-        # this.
-        # TODO(amog): Refactor this to remove hack and make this more modular.
-        #  TrainingIterator should accept a generic custom_ingest_func that contains
-        #  the logic for how to split the Datasets.
-        updated_dataset_dict = {}
-        for key, value in self.datasets.items():
-            if key == TRAIN_DATASET_KEY:
-                updated_dataset_dict[key] = value
-            else:
-                # Ray Train will strip out the added string before exposing to users.
-                updated_dataset_dict[key + "_NO-SHARD"] = value
+        def dataset_split_fn(dataset_dict, training_worker_handles):
+            dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
+
+            for key, dataset in dataset_dict.items():
+                if key == TRAIN_DATASET_KEY:
+                    dataset_splits = dataset.split(
+                        len(training_worker_handles),
+                        equal=True,
+                        locality_hints=training_worker_handles,
+                    )
+                else:
+                    # Only shard the training dataset.
+                    dataset_splits = [dataset] * training_worker_handles
+
+                for i in range(len(dataset_splits)):
+                    dataset_dict_splits[i][key] = dataset_splits[i]
+
+            return dataset_dict_splits
+
+        dataset_spec = RayDatasetSpec(
+            dataset_or_dict=self.datasets, dataset_split_fn=dataset_split_fn
+        )
 
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
         #  of just a Dict.
@@ -312,7 +321,7 @@ class DataParallelTrainer(Trainer):
             backend_executor=backend_executor,
             backend_config=self.backend_config,
             train_func=train_loop_per_worker,
-            dataset=updated_dataset_dict if len(updated_dataset_dict) > 0 else None,
+            dataset_spec=dataset_spec,
             checkpoint_manager=checkpoint_manager,
             checkpoint=resume_checkpoint_dict,
             checkpoint_strategy=None,
