@@ -74,9 +74,8 @@ class StateAPIManager:
         """List all actor information from the cluster.
 
         Returns:
-            A dictionary that converts returned protobuf of `get_all_actor_info`
-            filtered by fields in `ActorState`.
             {actor_id -> actor_data_in_dict}
+            actor_data_in_dict's schema is in ActorState
         """
         reply = await self._client.get_all_actor_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
@@ -90,9 +89,8 @@ class StateAPIManager:
         """List all placement group information from the cluster.
 
         Returns:
-            A dictionary that converts returned protobuf of
-            `get_all_placement_group_info` filtered by fields in
-            `PlacementgroupState`. {pg_id -> pg_data_in_dict}
+            {pg_id -> pg_data_in_dict}
+            pg_data_in_dict's schema is in PlacementGroupState
         """
         reply = await self._client.get_all_placement_group_info(
             timeout=DEFAULT_RPC_TIMEOUT
@@ -111,9 +109,8 @@ class StateAPIManager:
         """List all node information from the cluster.
 
         Returns:
-            A dictionary that converts returned protobuf of `get_all_node_info`
-            filtered by fields in `NodeState`.
             {node_id -> node_data_in_dict}
+            node_data_in_dict's schema is in NodeState
         """
         reply = await self._client.get_all_node_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
@@ -127,9 +124,8 @@ class StateAPIManager:
         """List all worker information from the cluster.
 
         Returns:
-            A dictionary that converts returned protobuf of `get_all_worker_info`
-            filtered by fields in `WorkerState`.
             {worker_id -> worker_data_in_dict}
+            worker_data_in_dict's schema is in WorkerState
         """
         reply = await self._client.get_all_worker_info(timeout=DEFAULT_RPC_TIMEOUT)
         result = {}
@@ -146,9 +142,8 @@ class StateAPIManager:
         """List all task information from the cluster.
 
         Returns:
-            A dictionary that converts returned protobuf of `get_task_info`
-            filtered by fields in `TaskState`.
             {task_id -> task_data_in_dict}
+            task_data_in_dict's schema is in TaskState
         """
         replies = await asyncio.gather(
             *[
@@ -165,7 +160,6 @@ class StateAPIManager:
                     message=task,
                     fields_to_decode=["task_id"],
                 )
-                logger.info(data)
                 data = filter_fields(data, TaskState)
                 result[data["task_id"]] = data
         return result
@@ -174,9 +168,8 @@ class StateAPIManager:
         """List all object information from the cluster.
 
         Returns:
-            A dictionary that converts returned protobuf of `get_object_info`
-            filtered by fields in `ObjectState`.
             {object_id -> object_data_in_dict}
+            object_data_in_dict's schema is in ObjectState
         """
         replies = await asyncio.gather(
             *[
@@ -204,7 +197,7 @@ class StateAPIManager:
         for entry in memory_table.table:
             data = entry.as_dict()
             # `construct_memory_table` returns object_ref field which is indeed
-            # object_id. We do transformatino here.
+            # object_id. We do transformation here.
             # TODO(sang): Refactor `construct_memory_table`.
             data["object_id"] = data["object_ref"]
             del data["object_ref"]

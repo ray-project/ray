@@ -4,6 +4,8 @@ import pytest
 from typing import List
 from dataclasses import fields
 
+from unittest.mock import MagicMock
+
 if sys.version_info >= (3, 8):
     from unittest.mock import AsyncMock
 else:
@@ -14,15 +16,28 @@ import ray.ray_constants as ray_constants
 
 from click.testing import CliRunner
 from ray.cluster_utils import cluster_not_supported
+from ray.core.generated.common_pb2 import (
+    Address,
+    WorkerType,
+    TaskStatus,
+    TaskInfoEntry,
+    CoreWorkerStats,
+    ObjectRefInfo,
+)
+from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetNodeStatsReply
+from ray.core.generated.gcs_pb2 import (
+    ActorTableData,
+    PlacementGroupTableData,
+    GcsNodeInfo,
+    WorkerTableData,
+)
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllPlacementGroupReply,
     GetAllNodeInfoReply,
     GetAllWorkerInfoReply,
 )
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetNodeStatsReply
-from ray.core.generated.gcs_pb2 import ActorTableData
-from ray.dashboard.state_aggregator import StateAPIManager
+from ray.dashboard.state_aggregator import StateAPIManager, DEFAULT_RPC_TIMEOUT
 from ray.experimental.state.api import (
     list_actors,
     list_placement_groups,
@@ -32,7 +47,14 @@ from ray.experimental.state.api import (
     list_tasks,
     list_objects,
 )
-from ray.experimental.state.common import ActorState
+from ray.experimental.state.common import (
+    ActorState,
+    PlacementGroupState,
+    NodeState,
+    WorkerState,
+    TaskState,
+    ObjectState,
+)
 from ray.experimental.state.state_manager import (
     StateDataSourceClient,
     StateSourceNetworkException,
@@ -80,6 +102,147 @@ async def test_api_manager_list_actors(state_api_manager):
     result = await state_api_manager.get_actors()
     actor_data = list(result.values())[0]
     verify_schema(ActorState, actor_data)
+
+
+@pytest.mark.asyncio
+async def test_api_manager_list_pgs(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    id = b"1234"
+    data_source_client.get_all_placement_group_info.return_value = (
+        GetAllPlacementGroupReply(
+            placement_group_table_data=[
+                PlacementGroupTableData(
+                    placement_group_id=id,
+                    state=PlacementGroupTableData.PlacementGroupState.CREATED,
+                    name="abc",
+                    creator_job_dead=True,
+                    creator_actor_dead=False,
+                )
+            ]
+        )
+    )
+    result = await state_api_manager.get_placement_groups()
+    data = list(result.values())[0]
+    verify_schema(PlacementGroupState, data)
+
+
+@pytest.mark.asyncio
+async def test_api_manager_list_nodes(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    id = b"1234"
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(
+                node_id=id,
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                node_manager_address="127.0.0.1",
+                raylet_socket_name="abcd",
+                object_store_socket_name="False",
+            )
+        ]
+    )
+    result = await state_api_manager.get_nodes()
+    data = list(result.values())[0]
+    verify_schema(NodeState, data)
+
+
+@pytest.mark.asyncio
+async def test_api_manager_list_workers(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    id = b"1234"
+    data_source_client.get_all_worker_info.return_value = GetAllWorkerInfoReply(
+        worker_table_data=[
+            WorkerTableData(
+                worker_address=Address(
+                    raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
+                ),
+                is_alive=True,
+                timestamp=1234,
+                worker_type=WorkerType.WORKER,
+            )
+        ]
+    )
+    result = await state_api_manager.get_workers()
+    data = list(result.values())[0]
+    verify_schema(WorkerState, data)
+
+
+@pytest.mark.asyncio
+async def test_api_manager_list_tasks(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    data_source_client.get_all_registered_raylet_ids = MagicMock()
+    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
+
+    def generate_task_info(id, name):
+        return GetTasksInfoReply(
+            task_info_entries=[
+                TaskInfoEntry(
+                    task_id=id,
+                    name=name,
+                    func_or_class_name="class",
+                    scheduling_state=TaskStatus.SCHEDULED,
+                )
+            ]
+        )
+
+    first_task_name = "1"
+    second_task_name = "2"
+    data_source_client.get_task_info.side_effect = [
+        generate_task_info(b"1234", first_task_name),
+        generate_task_info(b"2345", second_task_name),
+    ]
+    result = await state_api_manager.get_tasks()
+    data_source_client.get_task_info.assert_any_call("1", timeout=DEFAULT_RPC_TIMEOUT)
+    data_source_client.get_task_info.assert_any_call("2", timeout=DEFAULT_RPC_TIMEOUT)
+    result = list(result.values())
+    assert len(result) == 2
+    verify_schema(TaskState, result[0])
+    verify_schema(TaskState, result[1])
+
+
+@pytest.mark.asyncio
+async def test_api_manager_list_objects(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+    obj_1_id = b"1" * 28
+    obj_2_id = b"2" * 28
+    data_source_client.get_all_registered_raylet_ids = MagicMock()
+    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
+
+    def generate_node_stats_reply(obj_id):
+        return GetNodeStatsReply(
+            core_workers_stats=[
+                CoreWorkerStats(
+                    pid=1234,
+                    worker_type=WorkerType.DRIVER,
+                    ip_address="1234",
+                    object_refs=[
+                        ObjectRefInfo(
+                            object_id=obj_id,
+                            call_site="",
+                            object_size=1,
+                            local_ref_count=1,
+                            submitted_task_ref_count=1,
+                            contained_in_owned=[],
+                            pinned_in_memory=True,
+                            task_status=TaskStatus.SCHEDULED,
+                            attempt_number=1,
+                        )
+                    ],
+                )
+            ]
+        )
+
+    data_source_client.get_object_info.side_effect = [
+        generate_node_stats_reply(obj_1_id),
+        generate_node_stats_reply(obj_2_id),
+    ]
+    result = await state_api_manager.get_objects()
+    data_source_client.get_object_info.assert_any_call("1", timeout=DEFAULT_RPC_TIMEOUT)
+    data_source_client.get_object_info.assert_any_call("2", timeout=DEFAULT_RPC_TIMEOUT)
+    result = list(result.values())
+    assert len(result) == 2
+    verify_schema(ObjectState, result[0])
+    verify_schema(ObjectState, result[1])
 
 
 """
@@ -140,7 +303,7 @@ async def test_state_data_source_client(ray_start_cluster):
         # Entrypoint shell command to execute
         entrypoint="ls",
     )
-    result = client.get_all_job_info()
+    result = client.get_job_info()
     assert list(result.keys())[0] == job_id
     assert isinstance(result, dict)
 
@@ -422,7 +585,6 @@ def test_list_objects(shutdown_only):
     ray.get(f.remote(plasma_obj))
 
     def verify():
-        print(list_objects())
         obj = list(list_objects().values())[0]
         # For detailed output, the test is covered from `test_memstat.py`
         return obj["object_id"] == plasma_obj.hex()

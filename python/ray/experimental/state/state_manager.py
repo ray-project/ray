@@ -35,15 +35,17 @@ class StateSourceNetworkException(Exception):
     pass
 
 
-def apply_state_client_api_policy(func):
-    """Apply the basic API policy to each APIs, such as retry or exception policies.
+def handle_network_errors(func):
+    """Apply the network error handling logic to each APIs,
+        such as retry or exception policies.
 
     It is a helper method for `StateDataSourceClient`.
+    The method can only be used for async methods.
     """
     assert inspect.iscoroutinefunction(func)
 
     @wraps(func)
-    async def func_with_api_policy(*args, **kwargs):
+    async def api_with_network_error_handler(*args, **kwargs):
         # TODO(sang): Add a retry policy.
         try:
             return await func(*args, **kwargs)
@@ -59,7 +61,7 @@ def apply_state_client_api_policy(func):
                 f"Failed to query the data source, {func}"
             ) from e
 
-    return func_with_api_policy
+    return api_with_network_error_handler
 
 
 class StateDataSourceClient:
@@ -122,7 +124,7 @@ class StateDataSourceClient:
     def get_all_registered_agent_ids(self) -> List[str]:
         return self._agent_stubs.keys()
 
-    @apply_state_client_api_policy
+    @handle_network_errors
     async def get_all_actor_info(self, timeout: int = None) -> GetAllActorInfoReply:
         request = GetAllActorInfoRequest()
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
@@ -130,7 +132,7 @@ class StateDataSourceClient:
         )
         return reply
 
-    @apply_state_client_api_policy
+    @handle_network_errors
     async def get_all_placement_group_info(
         self, timeout: int = None
     ) -> GetAllPlacementGroupReply:
@@ -140,13 +142,13 @@ class StateDataSourceClient:
         )
         return reply
 
-    @apply_state_client_api_policy
+    @handle_network_errors
     async def get_all_node_info(self, timeout: int = None) -> GetAllNodeInfoReply:
         request = GetAllNodeInfoRequest()
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
-    @apply_state_client_api_policy
+    @handle_network_errors
     async def get_all_worker_info(self, timeout: int = None) -> GetAllWorkerInfoReply:
         request = GetAllWorkerInfoRequest()
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
@@ -154,18 +156,15 @@ class StateDataSourceClient:
         )
         return reply
 
-    def get_all_job_info(self) -> Dict[str, JobInfo]:
+    def get_job_info(self) -> Dict[str, JobInfo]:
+        # Cannot use @handle_network_errors because async def is not supported yet.
         # TODO(sang): Support timeout & make it async
-        # & apply the `apply_state_client_api_policy` decorator.
-        # NOTE: `apply_state_client_api_policy` assumes gRPC is used.
-        # Currently, `get_all_jobs()` uses the gRPC interface, which is
-        # InternalKVList to GCS.
         try:
             return self._job_client.get_all_jobs()
         except Exception as e:
             raise StateSourceNetworkException("Failed to query the job info.") from e
 
-    @apply_state_client_api_policy
+    @handle_network_errors
     async def get_task_info(
         self, node_id: str, timeout: int = None
     ) -> GetTasksInfoReply:
@@ -176,7 +175,7 @@ class StateDataSourceClient:
         reply = await stub.GetTasksInfo(GetTasksInfoRequest(), timeout=timeout)
         return reply
 
-    @apply_state_client_api_policy
+    @handle_network_errors
     async def get_object_info(
         self, node_id: str, timeout: int = None
     ) -> GetNodeStatsReply:
