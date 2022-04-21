@@ -298,6 +298,24 @@ message GetGcsServerAddressReply {
   int32 port = 2;
 }
 
+message TaskResourceUsage {
+  // Function descriptor for the task
+  FunctionDescriptor function_descriptor = 1;
+  // The programming language this task runs in
+  Language language = 2;
+  // Whether or not this task was an actor creation task
+  bool is_actor = 3;
+  // The logical resources that this task has consumed
+  map<string, double> resource_usage = 4;
+}
+
+message GetResourceUsageByTaskRequest {
+}
+
+message GetResourceUsageByTaskReply {
+  repeated TaskResourceUsage task_resource_usage = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage
@@ -355,4 +373,6 @@ service NodeManagerService {
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
   // Get gcs server address.
   rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
+  // Get the resource usage per task on this node
+  rpc GetResourceUsageByTask(GetResourceUsageByTaskRequest) returns (GetResourceUsageByTaskReply);
 }

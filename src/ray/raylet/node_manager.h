@@ -562,6 +562,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  rpc::GetGcsServerAddressReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GetResourceUsageByTask` request.
+  void HandleGetResourceUsageByTask(const rpc::GetResourceUsageByTaskRequest &request,
+                                    rpc::GetResourceUsageByTaskReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC(bool triggered_by_global_gc = false);
 

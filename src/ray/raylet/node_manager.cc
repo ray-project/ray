@@ -18,6 +18,7 @@
 #include <csignal>
 #include <fstream>
 #include <memory>
+#include <google/protobuf/map.h>
 
 #include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
@@ -2357,6 +2358,30 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
           }
         });
   }
+}
+
+void NodeManager::HandleGetResourceUsageByTask(const rpc::GetResourceUsageByTaskRequest &request,
+                                               rpc::GetResourceUsageByTaskReply *reply,
+                                               rpc::SendReplyCallback send_reply_callback) {
+  // We get the logical resources acquired by each worker that the raylet has leased out
+  RAY_LOG(INFO) << "HandleGetResourceUsageByTask: lease workers: " << leased_workers_.size();
+  for (const auto &worker_it : leased_workers_) {
+    rpc::TaskResourceUsage task_resource_usage;
+    const auto &task_spec = worker_it.second->GetAssignedTask().GetTaskSpecification();
+    task_resource_usage.mutable_function_descriptor()->MergeFrom(
+      task_spec.GetMessage().function_descriptor());
+    task_resource_usage.set_language(task_spec.GetMessage().language());
+    task_resource_usage.set_is_actor(task_spec.IsActorCreationTask());
+    // We need `GetRequiredPlacementResources` rather than `GetRequiredResources`
+    // because actor creation tasks may require resources for placement.
+    for (auto it: task_spec.GetRequiredPlacementResources().GetResourceMap()) {
+      (*task_resource_usage.mutable_resource_usage())[it.first] = it.second;
+    }
+
+    reply->add_task_resource_usage()->MergeFrom(task_resource_usage);
+  }
+  RAY_LOG(INFO) << "handled HandleGetResourceUsageByTask";
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 rpc::ObjectStoreStats AccumulateStoreStats(

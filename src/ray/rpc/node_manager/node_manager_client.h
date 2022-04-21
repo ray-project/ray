@@ -48,9 +48,21 @@ class NodeManagerClient {
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+
+  /// Get the resource usage per task on this node
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         GetResourceUsageByTask,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
     GetNodeStatsRequest request;
     GetNodeStats(request, callback);
+  }
+
+  void GetResourceUsageByTask(const ClientCallback<GetResourceUsageByTaskReply> &callback) {
+    GetResourceUsageByTaskRequest request;
+    GetResourceUsageByTask(request, callback);
   }
 
  private:
