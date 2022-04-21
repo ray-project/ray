@@ -1588,6 +1588,7 @@ def exec(
     cluster_name,
     no_config_cache,
     port_forward,
+    disable_usage_stats,
 ):
     """Execute a command via SSH on a Ray cluster."""
     port_forward = [(port, port) for port in list(port_forward)]

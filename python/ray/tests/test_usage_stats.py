@@ -80,11 +80,12 @@ def print_dashboard_log():
     pprint(contents)
 
 
-def test_usage_stats_heads_up_message():
+def test_usage_stats_prompt():
     """
-    Test usage stats heads-up message is shown in the proper cases.
+    Test usage stats prompt is shown in the proper cases.
     """
     env = os.environ.copy()
+    env["RAY_USAGE_STATS_ENABLED"] = "1"
     env["RAY_USAGE_STATS_PROMPT_ENABLED"] = "0"
     result = subprocess.run(
         "ray start --head",
@@ -94,72 +95,82 @@ def test_usage_stats_heads_up_message():
         env=env,
     )
     assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
         "utf-8"
     )
 
     subprocess.run("ray stop --force", shell=True)
 
+    env = os.environ.copy()
+    env["RAY_USAGE_STATS_ENABLED"] = "1"
     result = subprocess.run(
         "ray start --head",
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
     assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in result.stderr.decode("utf-8")
 
     result = subprocess.run(
         'ray start --address="127.0.0.1:6379"',
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
     assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
         "utf-8"
     )
 
     subprocess.run("ray stop --force", shell=True)
 
     result = subprocess.run(
-        "ray up xxx.yml", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        "ray up xxx.yml",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in result.stderr.decode("utf-8")
 
     result = subprocess.run(
         "ray exec xxx.yml ls --start",
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in result.stderr.decode("utf-8")
 
     result = subprocess.run(
         "ray exec xxx.yml ls",
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
         "utf-8"
     )
 
@@ -168,22 +179,24 @@ def test_usage_stats_heads_up_message():
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE in result.stderr.decode("utf-8")
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in result.stderr.decode("utf-8")
 
     result = subprocess.run(
         "ray submit xxx.yml yyy.py",
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
         "utf-8"
     )
 
@@ -192,20 +205,23 @@ def test_usage_stats_heads_up_message():
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stdout.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
         "utf-8"
     )
-    assert usage_constants.USAGE_STATS_HEADS_UP_MESSAGE not in result.stderr.decode(
+    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
         "utf-8"
     )
 
 
-def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
+def test_usage_lib_cluster_metadata_generation(monkeypatch, ray_start_cluster):
     with monkeypatch.context() as m:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
-        ray.init(num_cpus=0)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
         """
         Test metadata stored is equivalent to `_generate_cluster_metadata`.
         """
@@ -231,14 +247,18 @@ def test_usage_lib_cluster_metadata_generation(monkeypatch, shutdown_only):
         )
 
 
-def test_usage_lib_cluster_metadata_generation_usage_disabled(shutdown_only):
+def test_usage_lib_cluster_metadata_generation_usage_disabled(
+    monkeypatch, shutdown_only
+):
     """
     Make sure only version information is generated when usage stats are not enabled.
     """
-    meta = ray_usage_lib._generate_cluster_metadata()
-    assert "ray_version" in meta
-    assert "python_version" in meta
-    assert len(meta) == 2
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        meta = ray_usage_lib._generate_cluster_metadata()
+        assert "ray_version" in meta
+        assert "python_version" in meta
+        assert len(meta) == 2
 
 
 def test_usage_lib_get_cluster_status_to_report(shutdown_only):
@@ -455,7 +475,7 @@ provider:
     sys.platform == "win32",
     reason="Test depends on runtime env feature not supported on Windows.",
 )
-def test_usage_report_e2e(monkeypatch, shutdown_only, tmp_path):
+def test_usage_report_e2e(monkeypatch, ray_start_cluster, tmp_path):
     """
     Test usage report works e2e with env vars.
     """
@@ -475,7 +495,9 @@ provider:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        ray.init(num_cpus=3)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=3)
+        ray.init(address=cluster.address)
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -572,18 +594,19 @@ provider:
         assert read_file(temp_dir, "success")
 
 
-def test_usage_report_disabled(monkeypatch, shutdown_only):
+def test_usage_report_disabled(monkeypatch, ray_start_cluster):
     """
     Make sure usage report module is disabled when the env var is not set.
     It also verifies that the failure message is not printed (note that
     the invalid report url is given as an env var).
     """
     with monkeypatch.context() as m:
-        # It is disabled by default.
-        # m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        ray.init(num_cpus=0)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
         # Wait enough so that usage report should happen.
         time.sleep(5)
 
@@ -612,7 +635,7 @@ def test_usage_report_disabled(monkeypatch, shutdown_only):
             assert "Failed to report usage stats" not in c
 
 
-def test_usage_file_error_message(monkeypatch, shutdown_only):
+def test_usage_file_error_message(monkeypatch, ray_start_cluster):
     """
     Make sure the usage report file is generated with a proper
     error message when the report is failed.
@@ -621,7 +644,9 @@ def test_usage_file_error_message(monkeypatch, shutdown_only):
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
-        ray.init(num_cpus=0)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
 
         global_node = ray.worker._global_node
         temp_dir = pathlib.Path(global_node.get_session_dir_path())
