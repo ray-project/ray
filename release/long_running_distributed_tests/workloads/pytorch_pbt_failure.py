@@ -37,7 +37,7 @@ TorchTrainable = trainer.to_tune_trainable(train_func=train_func)
 
 pbt_scheduler = PopulationBasedTraining(
     time_attr="training_iteration",
-    metric="val_loss",
+    metric="loss",
     mode="min",
     perturbation_interval=1,
     hyperparam_mutations={

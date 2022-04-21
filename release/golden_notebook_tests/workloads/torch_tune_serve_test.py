@@ -81,8 +81,8 @@ def training_loop(config):
         validation_dataset, batch_size=config["batch_size"], num_workers=2
     )
 
-    train_loader = train.torch.prepare_dataloader(train_loader)
-    validation_loader = train.torch.prepare_dataloader(validation_loader)
+    train_loader = train.torch.prepare_data_loader(train_loader)
+    validation_loader = train.torch.prepare_data_loader(validation_loader)
 
     # Create loss.
     criterion = nn.CrossEntropyLoss()
