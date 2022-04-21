@@ -497,4 +497,4 @@ def test_logs_max_count(
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", f"{__file__}::test_logs_max_count"]))
+    sys.exit(pytest.main(["-v", __file__]))
