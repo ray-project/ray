@@ -182,7 +182,7 @@ def assert_base_partitioned_ds():
         ds,
         count=6,
         num_input_files=2,
-        num_rows=None,
+        num_rows=6,
         schema="{one: int64, two: string}",
         num_computed=2,
         sorted_values=None,

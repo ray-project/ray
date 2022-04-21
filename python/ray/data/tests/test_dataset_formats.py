@@ -978,7 +978,6 @@ def test_read_text_partitioned_with_filter(
         ds = ray.data.read_text(base_dir, partition_filter=partition_path_filter)
         assert_base_partitioned_ds(
             ds,
-            num_rows=6,
             schema="<class 'str'>",
             num_computed=None,
             sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
