@@ -15,6 +15,7 @@ from ray.tune.utils import flatten_dict
 from ray.tune.trial import Trial
 
 import yaml
+from ray.util.annotations import Deprecated
 
 try:
     import wandb
@@ -398,6 +399,7 @@ class WandbLoggerCallback(LoggerCallback):
             del self._trial_processes[trial]
 
 
+@Deprecated
 class WandbLogger(Logger):
     """WandbLogger
 
@@ -486,33 +488,11 @@ class WandbLogger(Logger):
 
     _experiment_logger_cls = WandbLoggerCallback
 
-    def _init(self):
-        config = self.config.copy()
-        config.pop("callbacks", None)  # Remove callbacks
-
-        try:
-            if config.get("logger_config", {}).get("wandb"):
-                logger_config = config.pop("logger_config")
-                wandb_config = logger_config.get("wandb").copy()
-            else:
-                wandb_config = config.pop("wandb").copy()
-        except KeyError:
-            raise ValueError(
-                "Wandb logger specified but no configuration has been passed. "
-                "Make sure to include a `wandb` key in your `config` dict "
-                "containing at least a `project` specification."
-            )
-
-        self._trial_experiment_logger = self._experiment_logger_cls(**wandb_config)
-        self._trial_experiment_logger.setup()
-        self._trial_experiment_logger.log_trial_start(self.trial)
-
-    def on_result(self, result: Dict):
-        self._trial_experiment_logger.log_trial_result(0, self.trial, result)
-
-    def close(self):
-        self._trial_experiment_logger.log_trial_end(self.trial, failed=False)
-        del self._trial_experiment_logger
+    def __init__(self, *args, **kwargs):
+        raise DeprecationWarning(
+            "This `Logger` class is deprecated. "
+            "Use the `WandbLoggerCallback` callback instead."
+        )
 
 
 class WandbTrainableMixin:

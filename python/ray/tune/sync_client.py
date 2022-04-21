@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 import time
 import types
-import warnings
 
 from typing import Optional, List, Callable, Union, Tuple
 
@@ -198,7 +197,7 @@ class FunctionBasedClient(SyncClient):
 
         if self._sync_up_legacy or self._sync_down_legacy:
             if log_once("func_sync_up_legacy"):
-                warnings.warn(
+                raise DeprecationWarning(
                     "Your sync functions currently only accepts two params "
                     "(a `source` and a `target`). In the future, we will "
                     "pass an additional `exclude` parameter. Please adjust "

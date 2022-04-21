@@ -843,12 +843,11 @@ class ExperimentAnalysis:
         return state
 
 
+# Remove in Ray > 1.13
 @Deprecated
 class Analysis(ExperimentAnalysis):
     def __init__(self, *args, **kwargs):
-        if log_once("durable_deprecated"):
-            logger.warning(
-                "DeprecationWarning: The `Analysis` class is being "
-                "deprecated. Please use `ExperimentAnalysis` instead."
-            )
-        super().__init__(*args, **kwargs)
+        raise DeprecationWarning(
+            "The `Analysis` class is being "
+            "deprecated. Please use `ExperimentAnalysis` instead."
+        )

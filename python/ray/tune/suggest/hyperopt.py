@@ -78,8 +78,6 @@ class HyperOptSearch(Searcher):
             results. Defaults to None.
         gamma: parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
-        max_concurrent: Deprecated.
-        use_early_stopped_trials: Deprecated.
 
     Tune automatically converts search spaces to HyperOpt's format:
 
