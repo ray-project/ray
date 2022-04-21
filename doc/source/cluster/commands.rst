@@ -136,7 +136,7 @@ with the given arguments. See :ref:`the documentation <ray-submit-doc>` for
     # Run a Python script with arguments.
     # This executes script.py on the head node of the cluster, using
     # the command: python ~/script.py --arg1 --arg2 --arg3
-    $ ray submit cluster.yaml script.py -- --arg1 --arg2 --arg3
+    $ ray submit cluster.yaml script.py --arg1 --arg2 --arg3
 
 
 Attaching to a running cluster (``ray attach``)
