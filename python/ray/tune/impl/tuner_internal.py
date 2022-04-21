@@ -82,6 +82,11 @@ class TunerInternal:
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
 
+        # If no run config was passed to Tuner directly, use the one from the Trainer,
+        # if available
+        if not run_config and isinstance(trainable, Trainer):
+            run_config = trainable.run_config
+
         self._is_restored = False
         self._trainable = trainable
         self._tune_config = tune_config or TuneConfig()
