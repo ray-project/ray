@@ -83,7 +83,7 @@ def main():
     # Kill current cluster, recover from remote checkpoint and ensure endpoint
     # is still available with expected results
 
-    ray.kill(serve.api._global_client._controller, no_restart=True)
+    ray.kill(serve.context._global_client._controller, no_restart=True)
     ray.shutdown()
     cluster.shutdown()
     serve.context.set_global_client(None)

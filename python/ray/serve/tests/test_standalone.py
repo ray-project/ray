@@ -58,12 +58,12 @@ def test_shutdown(ray_shutdown):
 
     f.deploy()
 
-    serve_controller_name = serve.api._global_client._controller_name
+    serve_controller_name = serve.context._global_client._controller_name
     actor_names = [
         serve_controller_name,
         format_actor_name(
             SERVE_PROXY_NAME,
-            serve.api._global_client._controller_name,
+            serve.context._global_client._controller_name,
             get_all_node_ids()[0][0],
         ),
     ]
@@ -200,7 +200,9 @@ def test_multiple_routers(ray_cluster):
         for node_id, _ in get_all_node_ids():
             proxy_names.append(
                 format_actor_name(
-                    SERVE_PROXY_NAME, serve.api._global_client._controller_name, node_id
+                    SERVE_PROXY_NAME,
+                    serve.context._global_client._controller_name,
+                    node_id,
                 )
             )
         return proxy_names
@@ -375,7 +377,7 @@ def test_no_http(ray_shutdown):
             if actor["State"] == convert_actor_state(gcs_utils.ActorTableData.ALIVE)
         ]
         assert len(live_actors) == 1
-        controller = serve.api._global_client._controller
+        controller = serve.context._global_client._controller
         assert len(ray.get(controller.get_http_proxies.remote())) == 0
 
         # Test that the handle still works.
