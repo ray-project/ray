@@ -48,7 +48,7 @@ from ray.serve.utils import (
 from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
-from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
+from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient, get_controller_namespace
 from ray.serve.context import (
@@ -562,7 +562,7 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
 
 @PublicAPI(stability="alpha")
 def run(
-    target: Union[DeploymentNode, DeploymentFunctionNode],
+    target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
     *,
     host: str = DEFAULT_HTTP_HOST,
@@ -570,14 +570,14 @@ def run(
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
-    Either a DeploymentNode, DeploymentFunctionNode, or a pre-built application
+    Either a ClassNode, FunctionNode, or a pre-built application
     can be passed in. If a node is passed in, all of the deployments it depends
     on will be deployed. If there is an ingress, its handle will be returned.
 
     Args:
-        target (Union[DeploymentNode, DeploymentFunctionNode, Application]):
-            A user-built Serve Application or a DeploymentNode that acts as the
-            root node of DAG. By default DeploymentNode is the Driver
+        target (Union[ClassNode, FunctionNode, Application]):
+            A user-built Serve Application or a ClassNode that acts as the
+            root node of DAG. By default ClassNode is the Driver
             deployment unless user provides a customized one.
         host (str): The host passed into serve.start().
         port (int): The port passed into serve.start().
@@ -595,12 +595,12 @@ def run(
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
         ingress = target.ingress
-    # Each DAG should always provide a valid Driver DeploymentNode
-    elif isinstance(target, DeploymentNode):
+    # Each DAG should always provide a valid Driver ClassNode
+    elif isinstance(target, ClassNode):
         deployments = pipeline_build(target)
         ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())
-    elif isinstance(target, DeploymentFunctionNode):
+    elif isinstance(target, FunctionNode):
         deployments = pipeline_build(target)
         ingress = get_and_validate_ingress_deployment(deployments)
         if len(deployments) != 1:
@@ -613,15 +613,14 @@ def run(
     elif isinstance(target, DAGNode):
         raise ValueError(
             "Invalid DAGNode type as entry to serve.run(), "
-            f"type: {type(target)}, accepted: DeploymentNode, "
-            "DeploymentFunctionNode please provide a driver class and bind it "
+            f"type: {type(target)}, accepted: ClassNode, "
+            "FunctionNode please provide a driver class and bind it "
             "as entrypoint to your Serve DAG."
         )
     else:
         raise TypeError(
-            "Expected a DeploymentNode, DeploymentFunctionNode, or "
-            "Application as target. Got unexpected type "
-            f'"{type(target)}" instead.'
+            "Expected a ClassNode, FunctionNode, or Application as target. "
+            f"Got unexpected type {type(target)} instead."
         )
 
     parameter_group = []
@@ -648,10 +647,10 @@ def run(
         return ingress.get_handle()
 
 
-def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
+def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
-    Takes in a DeploymentNode or DeploymentFunctionNode and converts it to a
+    Takes in a ClassNode or FunctionNode and converts it to a
     Serve application consisting of one or more deployments. This is intended
     to be used for production scenarios and deployed via the Serve REST API or
     CLI, so there are some restrictions placed on the deployments:
