@@ -7,10 +7,9 @@ import pandas as pd
 import ray
 from ray.data.dataset import Dataset
 from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.integrations.sklearn import SklearnPredictor
+from ray.ml.integrations.sklearn import SklearnTrainer, SklearnPredictor
 from ray.ml.preprocessors import Chain, OrdinalEncoder, StandardScaler
 from ray.ml.result import Result
-from ray.ml.integrations.sklearn import SklearnTrainer
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.ensemble import RandomForestClassifier

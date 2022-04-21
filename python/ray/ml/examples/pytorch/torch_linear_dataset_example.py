@@ -9,9 +9,8 @@ import ray
 import ray.train as train
 from ray.data import Dataset
 from ray.ml.batch_predictor import BatchPredictor
-from ray.ml.integrations.torch import TorchPredictor
+from ray.ml.integrations.torch import TorchTrainer, TorchPredictor
 from ray.ml.result import Result
-from ray.ml.integrations.torch import TorchTrainer
 
 
 def get_datasets(a=5, b=10, size=1000, split=0.8) -> Tuple[Dataset]:
