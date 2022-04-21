@@ -1,14 +1,13 @@
 import asyncio
 import logging
 
-from collections import defaultdict
-from typing import List
+from typing import List, Dict
+from itertools import islice
 
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
+from ray.dashboard.modules.job.common import JobInfo
 
-from ray.dashboard.datacenter import DataSource
-from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
     filter_fields,
     ActorState,
@@ -23,9 +22,6 @@ from ray.experimental.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RPC_TIMEOUT = 30
-DEFAULT_LIMIT = 1000
-
 
 # TODO(sang): Move the class to state/state_manager.py.
 # TODO(sang): Remove *State and replaces with Pydantic or protobuf
@@ -37,124 +33,95 @@ class StateAPIManager:
 
     def __init__(self, state_data_source_client: StateDataSourceClient):
         self._client = state_data_source_client
-        DataSource.nodes.signal.append(self._update_raylet_stubs)
-
-    async def _update_raylet_stubs(self, change: Change):
-        """Callback that's called when a new raylet is added to Datasource.
-
-        Datasource is a api-server-specific module that's updated whenever
-        api server adds/removes a new node.
-
-        Args:
-            change: The change object. Whenever a new node is added
-                or removed, this callback is invoked.
-                When new node is added: information is in `change.new`.
-                When a node is removed: information is in `change.old`.
-                When a node id is overwritten by a new node with the same node id:
-                    `change.old` contains the old node info, and
-                    `change.new` contains the new node info.
-        """
-        # TODO(sang): Move this function out of this class.
-        if change.old:
-            # When a node is deleted from the DataSource or it is overwritten.
-            node_id, node_info = change.old
-            self._client.unregister_raylet_client(node_id)
-        if change.new:
-            # When a new node information is written to DataSource.
-            node_id, node_info = change.new
-            self._client.register_raylet_client(
-                node_id,
-                node_info["nodeManagerAddress"],
-                int(node_info["nodeManagerPort"]),
-            )
 
     @property
     def data_source_client(self):
         return self._client
 
-    async def get_actors(self, *, option: ListApiOptions) -> dict:
+    async def list_actors(self, *, option: ListApiOptions) -> dict:
         """List all actor information from the cluster.
 
         Returns:
             {actor_id -> actor_data_in_dict}
             actor_data_in_dict's schema is in ActorState
         """
-        reply = await self._client.get_all_actor_info(timeout=DEFAULT_RPC_TIMEOUT)
-        result = {}
-        for i, message in enumerate(reply.actor_table_data):
-            logger.info(i)
-            logger.info(option.limit)
-            if i == option.limit:
-                break
-
+        reply = await self._client.get_all_actor_info(timeout=option.timeout)
+        result = []
+        for message in reply.actor_table_data:
             data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
             data = filter_fields(data, ActorState)
-            result[data["actor_id"]] = data
-        return result
+            result.append(data)
 
-    async def get_placement_groups(self, *, option: ListApiOptions) -> dict:
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["actor_id"])
+        return {d["actor_id"]: d for d in islice(result, option.limit)}
+
+    async def list_placement_groups(self, *, option: ListApiOptions) -> dict:
         """List all placement group information from the cluster.
 
         Returns:
             {pg_id -> pg_data_in_dict}
             pg_data_in_dict's schema is in PlacementGroupState
         """
-        reply = await self._client.get_all_placement_group_info(
-            timeout=DEFAULT_RPC_TIMEOUT
-        )
-        result = {}
-        for i, message in enumerate(reply.placement_group_table_data):
-            if i == option.limit:
-                break
+        reply = await self._client.get_all_placement_group_info(timeout=option.timeout)
+        result = []
+        for message in reply.placement_group_table_data:
 
             data = self._message_to_dict(
                 message=message,
                 fields_to_decode=["placement_group_id"],
             )
             data = filter_fields(data, PlacementGroupState)
-            result[data["placement_group_id"]] = data
-        return result
+            result.append(data)
 
-    async def get_nodes(self, *, option: ListApiOptions) -> dict:
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["placement_group_id"])
+        return {d["placement_group_id"]: d for d in islice(result, option.limit)}
+
+    async def list_nodes(self, *, option: ListApiOptions) -> dict:
         """List all node information from the cluster.
 
         Returns:
             {node_id -> node_data_in_dict}
             node_data_in_dict's schema is in NodeState
         """
-        reply = await self._client.get_all_node_info(timeout=DEFAULT_RPC_TIMEOUT)
-        result = {}
-        for i, message in enumerate(reply.node_info_list):
-            if i == option.limit:
-                break
-
+        reply = await self._client.get_all_node_info(timeout=option.timeout)
+        result = []
+        for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
             data = filter_fields(data, NodeState)
-            result[data["node_id"]] = data
-        return result
+            result.append(data)
 
-    async def get_workers(self, *, option: ListApiOptions) -> dict:
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["node_id"])
+        return {d["node_id"]: d for d in islice(result, option.limit)}
+
+    async def list_workers(self, *, option: ListApiOptions) -> dict:
         """List all worker information from the cluster.
 
         Returns:
             {worker_id -> worker_data_in_dict}
             worker_data_in_dict's schema is in WorkerState
         """
-        reply = await self._client.get_all_worker_info(timeout=DEFAULT_RPC_TIMEOUT)
-        result = {}
-        for i, message in enumerate(reply.worker_table_data):
-            if i == option.limit:
-                break
-
+        reply = await self._client.get_all_worker_info(timeout=option.timeout)
+        result = []
+        for message in reply.worker_table_data:
             data = self._message_to_dict(
                 message=message, fields_to_decode=["worker_id"]
             )
             data["worker_id"] = data["worker_address"]["worker_id"]
             data = filter_fields(data, WorkerState)
-            result[data["worker_id"]] = data
-        return result
+            result.append(data)
 
-    async def get_tasks(self, *, option: ListApiOptions) -> dict:
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["worker_id"])
+        return {d["worker_id"]: d for d in islice(result, option.limit)}
+
+    def list_jobs(self, *, option: ListApiOptions) -> Dict[str, JobInfo]:
+        # TODO(sang): Support limit & timeout & async calls.
+        return self._client.get_job_info()
+
+    async def list_tasks(self, *, option: ListApiOptions) -> dict:
         """List all task information from the cluster.
 
         Returns:
@@ -163,29 +130,27 @@ class StateAPIManager:
         """
         replies = await asyncio.gather(
             *[
-                self._client.get_task_info(node_id, timeout=DEFAULT_RPC_TIMEOUT)
+                self._client.get_task_info(node_id, timeout=option.timeout)
                 for node_id in self._client.get_all_registered_raylet_ids()
             ]
         )
 
-        result = defaultdict(dict)
-        entries = 0
+        result = []
         for reply in replies:
             tasks = reply.task_info_entries
             for task in tasks:
-                if entries == option.limit:
-                    break
-
                 data = self._message_to_dict(
                     message=task,
                     fields_to_decode=["task_id"],
                 )
                 data = filter_fields(data, TaskState)
-                result[data["task_id"]] = data
-                entries += 1
-        return result
+                result.append(data)
 
-    async def get_objects(self, *, option: ListApiOptions) -> dict:
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["task_id"])
+        return {d["task_id"]: d for d in islice(result, option.limit)}
+
+    async def list_objects(self, *, option: ListApiOptions) -> dict:
         """List all object information from the cluster.
 
         Returns:
@@ -194,7 +159,7 @@ class StateAPIManager:
         """
         replies = await asyncio.gather(
             *[
-                self._client.get_object_info(node_id, timeout=DEFAULT_RPC_TIMEOUT)
+                self._client.get_object_info(node_id, timeout=option.timeout)
                 for node_id in self._client.get_all_registered_raylet_ids()
             ]
         )
@@ -214,13 +179,9 @@ class StateAPIManager:
                     )
                 )
 
-        result = {}
-        entries = 0
+        result = []
         memory_table = memory_utils.construct_memory_table(worker_stats)
         for entry in memory_table.table:
-            if entries == option.limit:
-                break
-
             data = entry.as_dict()
             # `construct_memory_table` returns object_ref field which is indeed
             # object_id. We do transformation here.
@@ -228,9 +189,11 @@ class StateAPIManager:
             data["object_id"] = data["object_ref"]
             del data["object_ref"]
             data = filter_fields(data, ObjectState)
-            result[data["object_id"]] = data
-            entries += 1
-        return result
+            result.append(data)
+
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["object_id"])
+        return {d["object_id"]: d for d in islice(result, option.limit)}
 
     def _message_to_dict(
         self,
