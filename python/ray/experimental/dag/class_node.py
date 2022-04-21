@@ -87,6 +87,10 @@ class ClassNode(DAGNode):
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))
 
+    def bind(self, *args, **kwargs):
+        """Bind the default __call__ method and return a ClassMethodNode"""
+        return self.__call__.bind(*args, **kwargs)
+
     def get_import_path(self) -> str:
         body = self._body.__ray_actor_class__
         return f"{body.__module__}.{body.__qualname__}"

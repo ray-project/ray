@@ -1,13 +1,9 @@
 import json
 from ray.experimental.dag.class_node import ClassNode  # noqa: F401
 from ray.experimental.dag.function_node import FunctionNode  # noqa: F401
+from ray.experimental.dag.input_node import InputNode  # noqa: F401
 from ray.experimental.dag import DAGNode  # noqa: F401
 from ray.util.annotations import PublicAPI
-from ray.serve.pipeline.deployment_node import DeploymentNode  # noqa: F401
-from ray.serve.pipeline.deployment_function_node import (  # noqa: F401
-    DeploymentFunctionNode,
-)
-from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode  # noqa: F401
 
 
 @PublicAPI(stability="alpha")
