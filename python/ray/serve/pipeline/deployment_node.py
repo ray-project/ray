@@ -10,7 +10,6 @@ from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.config import DeploymentConfig
 from ray.serve.utils import get_deployment_import_path
 from ray.serve.schema import DeploymentSchema
@@ -61,6 +60,7 @@ class DeploymentNode(DAGNode):
                 )
             elif isinstance(node, (DeploymentMethodNode, DeploymentFunctionNode)):
                 from ray.serve.pipeline.json_serde import DAGNodeEncoder
+                from ray.serve.deployment_graph import RayServeDAGHandle
 
                 serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
                 return RayServeDAGHandle(serve_dag_root_json)

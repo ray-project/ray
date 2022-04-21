@@ -64,7 +64,7 @@ class Combine:
         self.m1 = m1
         self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
 
-    def __call__(self, req):
+    def run(self, req):
         r1_ref = self.m1.forward.remote(req)
         r2_ref = self.m2.forward.remote(req)
         return sum(ray.get([r1_ref, r2_ref]))
@@ -202,7 +202,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance, use_b
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2=m2)
-        combine_output = combine.bind(dag_input)
+        combine_output = combine.run.bind(dag_input)
         serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
@@ -215,7 +215,7 @@ def test_shared_deployment_handle(serve_instance, use_build):
     with InputNode() as dag_input:
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
-        combine_output = combine.bind(dag_input)
+        combine_output = combine.run.bind(dag_input)
         serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
@@ -229,7 +229,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance, use
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-        output = combine.bind(dag_input)
+        output = combine.run.bind(dag_input)
         serve_dag = DAGDriver.bind(output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
@@ -417,9 +417,8 @@ def test_unsupported_bind():
         def ping(self):
             return "hello"
 
-    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
-        # Special for serve: Actor.bind().bind() returns DeploymentMethodNode
-        _ = Actor.bind().bind().bind()
+    with pytest.raises(AttributeError, match=r"\'Actor\' has no attribute \'bind\'"):
+        _ = Actor.bind().bind()
 
     with pytest.raises(
         AttributeError,
