@@ -8,7 +8,7 @@ USAGE_STATS_FILE = "usage_stats.json"
 
 USAGE_STATS_ENABLED_MESSAGE = (
     "Usage stats collection is enabled. To disable this, add `--disable-usage-stats` to the command that starts the cluster, or run the following command:"
-    " `ray disable-usage-stats`. "
+    " `ray disable-usage-stats` before starting the cluster. "
     "See https://github.com/ray-project/ray/issues/20857 for more details.\n"
 )
 
@@ -16,8 +16,8 @@ USAGE_STATS_DISABLED_MESSAGE = "Usage stats collection is disabled."
 
 USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE = (
     "Usage stats collection is enabled by default without user confirmation since it is running non-interactively. To disable this, add `--disable-usage-stats` to the command that starts the cluster, or run the following command:"
-    " `ray disable-usage-stats`. "
+    " `ray disable-usage-stats` before starting the cluster. "
     "See https://github.com/ray-project/ray/issues/20857 for more details.\n"
 )
 
-USAGE_STATS_CONFIRMATION_MESSAGE = "Enable usage stats collection. See https://github.com/ray-project/ray/issues/20857 for more details. It will be enabled if there is no confirmation within 10s."
+USAGE_STATS_CONFIRMATION_MESSAGE = "Enable usage stats collection? This prompt will auto-proceed in 10 seconds to avoid blocking cluster startup."

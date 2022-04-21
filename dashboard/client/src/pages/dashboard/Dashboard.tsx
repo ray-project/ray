@@ -141,7 +141,7 @@ const Dashboard: React.FC = () => {
       {usageStatsEnabled ?
         <span>
         Usage stats collection is enabled. To disable this, add `--disable-usage-stats` to the command that starts the cluster, or run the following command:
-        `ray disable-usage-stats`.
+        `ray disable-usage-stats` before starting the cluster.
         See <a href="https://github.com/ray-project/ray/issues/20857" target="_blank" rel="noreferrer">https://github.com/ray-project/ray/issues/20857</a> for more details.
         </span>
       :
