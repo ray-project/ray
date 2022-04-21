@@ -3,12 +3,11 @@ import numpy as np
 
 import ray
 from ray import train
-from ray.ml.integrations.tensorflow import TensorflowTrainer
+from ray.ml.integrations.tensorflow import TensorflowTrainer, TensorflowPredictor
 from ray.ml.examples.tf.tensorflow_linear_dataset_example import (
     train_func as tensorflow_linear_train_func,
     get_dataset,
 )
-from ray.ml.integrations.tensorflow import TensorflowPredictor
 from ray.ml.constants import MODEL_KEY, TRAIN_DATASET_KEY
 
 
