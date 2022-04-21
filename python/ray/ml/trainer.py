@@ -71,7 +71,7 @@ class Trainer(abc.ABC):
 
         import torch
 
-        from ray.ml.train import Trainer
+        from ray.ml.trainer import Trainer
         from ray import tune
 
 
