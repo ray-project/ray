@@ -30,8 +30,13 @@ GcsResourceManager::GcsResourceManager(
 
 void GcsResourceManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
-  // Make sure thread safety.
-  io_context_.post(
+  // ConsumeSyncMessage is called by ray_syncer which might not run
+  // in a dedicated thread for performance.
+  // GcsResourceManager is a module always run in the main thread, so we just
+  // delegate the work to the main thread for thread safety.
+  // Ideally, all public api in GcsResourceManager need to be put into this
+  // io context for thread safety.
+  io_context_.dispatch(
       [this, message]() {
         rpc::ResourcesData resources;
         resources.ParseFromString(message->sync_message());

@@ -424,9 +424,9 @@ void GcsServer::StoreGcsServerAddressInRedis() {
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   if (RayConfig::instance().use_ray_syncer()) {
-    ray_syncer_node_id_ = NodeID::FromRandom();
+    gcs_node_id_ = NodeID::FromRandom();
     ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_,
-                                                      ray_syncer_node_id_.Binary());
+                                                      gcs_node_id_.Binary());
     ray_syncer_->Register(
         syncer::RayComponentId::RESOURCE_MANAGER, nullptr, gcs_resource_manager_.get());
     ray_syncer_->Register(
