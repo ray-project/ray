@@ -185,7 +185,7 @@ class RayDatasetSpec:
         can be passed in as a ``Dict`` that maps each name key to a Dataset value,
         and each Dataset can be accessed from the training function by passing in a
         `dataset_name` argument to ``train.get_dataset_shard()``.
-    dataset_split_fn: An optional callbale to specify how the provided ``dataset``
+    dataset_split_fn: An optional callable to specify how the provided ``dataset``
         should be split across the training workers. It is expected to take in two
         arguments. The first one is the ``dataset``, just as is passed in to the
         ``RayDatasetSpec``. The second argument is a list of the ActorHandles of the
