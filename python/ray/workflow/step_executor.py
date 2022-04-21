@@ -50,7 +50,7 @@ def _resolve_static_workflow_ref(workflow_ref: WorkflowStaticRef):
     return workflow_ref
 
 
-def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
+def _resolve_dynamic_workflow_refs(job_id, workflow_refs: "List[WorkflowRef]"):
     """Get the output of a workflow step with the step ID at runtime.
 
     We lookup the output by the following order:
@@ -90,7 +90,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
                     f"Current step: '{current_step_id}'"
                 )
                 step_ref = recovery.resume_workflow_step(
-                    workflow_id, workflow_ref.step_id, storage_url, None
+                    job_id, workflow_id, workflow_ref.step_id, storage_url, None
                 ).persisted_output
                 output = _resolve_static_workflow_ref(step_ref)
         workflow_ref_mapping.append(output)
@@ -156,6 +156,7 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
         args=inputs.args,
         workflow_outputs=workflow_outputs,
         workflow_refs=inputs.workflow_refs,
+        job_id=job_id,
     )
 
     # Stage 2: match executors
@@ -648,6 +649,7 @@ class _BakedWorkflowInputs:
     args: "ObjectRef"
     workflow_outputs: "List[WorkflowStaticRef]"
     workflow_refs: "List[WorkflowRef]"
+    job_id: str
 
     def resolve(self) -> Tuple[List, Dict]:
         """
@@ -676,7 +678,7 @@ class _BakedWorkflowInputs:
                 obj = _resolve_static_workflow_ref(static_workflow_ref)
             objects_mapping.append(obj)
 
-        workflow_ref_mapping = _resolve_dynamic_workflow_refs(self.workflow_refs)
+        workflow_ref_mapping = _resolve_dynamic_workflow_refs(self.job_id, self.workflow_refs)
 
         with serialization_context.workflow_args_resolving_context(
             objects_mapping, workflow_ref_mapping
@@ -724,6 +726,7 @@ class _BakedWorkflowInputs:
             self.args,
             self.workflow_outputs,
             self.workflow_refs,
+            self.job_id
         )
 
 
