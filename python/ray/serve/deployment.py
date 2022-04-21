@@ -268,9 +268,7 @@ class Deployment:
             ServeHandle
         """
 
-        return get_global_client().get_handle(
-            self._name, missing_ok=True, sync=sync
-        )
+        return get_global_client().get_handle(self._name, missing_ok=True, sync=sync)
 
     @PublicAPI
     def options(
