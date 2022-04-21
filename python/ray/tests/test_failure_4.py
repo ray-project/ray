@@ -400,7 +400,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     """
     # Prepare requests.
     gcs_server_addr = cluster.gcs_address
-    options = ray_constants.COMMON_GRPC_OPTIONS
+    options = ray_constants.GLOBAL_GRPC_OPTIONS
     channel = grpc.insecure_channel(gcs_server_addr, options)
     stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
     r = gcs_service_pb2.DrainNodeRequest()

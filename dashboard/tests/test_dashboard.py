@@ -596,8 +596,8 @@ def test_immutable_types():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1",
-    reason="This test is not supposed to work for minimal installation.",
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test is not supposed to work for minimal or default installation.",
 )
 def test_http_proxy(enable_test_module, start_http_proxy, shutdown_only):
     # C++ config `grpc_enable_http_proxy` only initializes once, so we have to
