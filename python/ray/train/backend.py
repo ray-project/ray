@@ -14,7 +14,7 @@ from ray.train.constants import (
 )
 from ray.train.session import TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
-from ray.train.utils import RayDatasetSpec, check_for_failure, Singleton
+from ray.train.utils import _RayDatasetSpec, check_for_failure, Singleton
 from ray.train.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
@@ -317,7 +317,7 @@ class BackendExecutor:
     def start_training(
         self,
         train_func: Callable[[], T],
-        dataset_spec: RayDatasetSpec = None,
+        dataset_spec: _RayDatasetSpec = None,
         checkpoint: Optional[Dict] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
@@ -325,11 +325,11 @@ class BackendExecutor:
         ``finish_training`` should be called after this.
 
         Args:
-            train_func (Callable): The training function to run on each worker.
-            dataset_spec (RayDatasetSpec): A specification for the Ray Dataset to be
+            train_func: The training function to run on each worker.
+            dataset_spec: A specification for the Ray Dataset to be
                 passed to the training workers, and the logic on how to shard the Ray
                 Dataset.
-            checkpoint (Optional[Dict]): The checkpoint data that
+            checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``train.load_checkpoint()``. If this
                 is ``None`` then no checkpoint will be loaded.

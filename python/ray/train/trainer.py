@@ -19,7 +19,7 @@ from ray.train.utils import (
     RayDataset,
     construct_train_func,
     ActorWrapper,
-    RayDatasetSpec,
+    _RayDatasetSpec,
 )
 from ray.train.checkpoint import (
     CheckpointStrategy,
@@ -325,7 +325,7 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
-        dataset_spec = RayDatasetSpec(dataset_or_dict=dataset)
+        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
 
         try:
             iterator = TrainingIterator(
@@ -404,7 +404,7 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
-        dataset_spec = RayDatasetSpec(dataset_or_dict=dataset)
+        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
 
         return TrainingIterator(
             backend_executor=self._backend_executor,
@@ -643,7 +643,7 @@ class TrainingIterator:
         backend_executor: Union[BackendExecutor, ActorWrapper],
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        dataset_spec: RayDatasetSpec,
+        dataset_spec: _RayDatasetSpec,
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path]],
         checkpoint_strategy: Optional[CheckpointStrategy],

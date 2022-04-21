@@ -176,7 +176,7 @@ class ActorWrapper:
 
 
 @dataclass
-class RayDatasetSpec:
+class _RayDatasetSpec:
     """Configuration for Ray Datasets to pass to the training workers.
 
     dataset_or_dict: An optional Ray Dataset (or DatasetPipeline) or a dictionary of
@@ -188,7 +188,7 @@ class RayDatasetSpec:
     dataset_split_fn: An optional callbale to specify how the provided ``dataset``
         should be split across the training workers. It is expected to take in two
         arguments. The first one is the ``dataset``, just as is passed in to the
-        ``RayDatasetSpec``. The second argument is a list of the ActorHandles of the
+        ``_RayDatasetSpec``. The second argument is a list of the ActorHandles of the
         training workers (to use as locality hints). The Callable is expected to
         return a list of RayDatasets or a list of dictionaries of RayDatasets,
         with the length of the list equal to the length of the list of actor handles.

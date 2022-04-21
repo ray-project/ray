@@ -14,7 +14,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import TuneCheckpointManager
-from ray.train.utils import construct_train_func, RayDatasetSpec
+from ray.train.utils import construct_train_func, _RayDatasetSpec
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -311,7 +311,7 @@ class DataParallelTrainer(Trainer):
 
             return dataset_dict_splits
 
-        dataset_spec = RayDatasetSpec(
+        dataset_spec = _RayDatasetSpec(
             dataset_or_dict=self.datasets, dataset_split_fn=dataset_split_fn
         )
 
