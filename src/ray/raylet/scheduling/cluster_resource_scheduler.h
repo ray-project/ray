@@ -50,11 +50,11 @@ class ClusterResourceScheduler {
   /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
   /// \param is_node_available_fn: Function to determine whether a node is available.
-  /// \param is_local_schedulable: Whether the local node schedulable.
+  /// \param is_local_available: Whether the local node available.
   ClusterResourceScheduler(scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
-                           bool is_local_schedulable = true);
+                           bool is_local_available = true);
 
   ClusterResourceScheduler(
       scheduling::NodeID local_node_id,
@@ -207,8 +207,8 @@ class ClusterResourceScheduler {
   /// The bundle scheduling policy to use.
   std::unique_ptr<raylet_scheduling_policy::IBundleSchedulingPolicy>
       bundle_scheduling_policy_;
-  /// Whether the local node schedulable.
-  bool is_local_schedulable_ = true;
+  /// Whether the local node available.
+  bool is_local_available_ = true;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);

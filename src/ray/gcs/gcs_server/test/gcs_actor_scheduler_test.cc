@@ -47,7 +47,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
-        /*is_local_schedulable=*/false);
+        /*is_local_available=*/false);
     cluster_task_manager_ =
         std::make_shared<ClusterTaskManager>(local_node_id_,
                                              cluster_resource_scheduler,

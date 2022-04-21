@@ -268,7 +268,7 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
-      /*is_local_schedulable=*/false);
+      /*is_local_available=*/false);
 }
 
 void GcsServer::InitClusterTaskManager() {
