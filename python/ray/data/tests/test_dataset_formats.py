@@ -17,8 +17,8 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.data.datasource import (
     DummyOutputDatasource,
-    PathPartitionParser,
-    PathPartitionGenerator,
+    PathPartitionFilter,
+    PathPartitionEncoder,
     PartitionStyle,
 )
 from ray.data.block import BlockAccessor
@@ -816,7 +816,7 @@ def test_numpy_read_partitioned_with_filter(
 
     for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
         base_dir = os.path.join(tmp_path, style.value)
-        partition_path_generator = PathPartitionGenerator(
+        partition_path_encoder = PathPartitionEncoder.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
@@ -824,18 +824,17 @@ def test_numpy_read_partitioned_with_filter(
         write_partitioned_df(
             df,
             partition_keys,
-            partition_path_generator,
-            None,
+            partition_path_encoder,
             df_to_np,
         )
         df_to_np(df, os.path.join(base_dir, "test.npy"))
-        partition_path_parser = PathPartitionParser(
+        partition_path_filter = PathPartitionFilter.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
             filter_fn=skip_unpartitioned,
         )
-        ds = ray.data.read_numpy(base_dir, partitioning=partition_path_parser)
+        ds = ray.data.read_numpy(base_dir, partition_filter=partition_path_filter)
 
         vals = [[1, 0], [1, 1], [1, 2], [3, 3], [3, 4], [3, 5]]
         val_str = "".join([f"{{'value': array({v}, dtype=int8)}}, " for v in vals])[:-2]
@@ -959,25 +958,24 @@ def test_read_text_partitioned_with_filter(
 
     for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
         base_dir = os.path.join(tmp_path, style.value)
-        partition_path_generator = PathPartitionGenerator(
+        partition_path_encoder = PathPartitionEncoder.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
         )
         write_base_partitioned_df(
             partition_keys,
-            partition_path_generator,
-            None,
+            partition_path_encoder,
             df_to_text,
         )
         df_to_text(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.txt"))
-        partition_path_parser = PathPartitionParser(
+        partition_path_filter = PathPartitionFilter.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
             filter_fn=skip_unpartitioned,
         )
-        ds = ray.data.read_text(base_dir, partitioning=partition_path_parser)
+        ds = ray.data.read_text(base_dir, partition_filter=partition_path_filter)
         assert_base_partitioned_ds(
             ds,
             num_rows=6,
@@ -1042,19 +1040,18 @@ def test_read_binary_snappy_partitioned_with_filter(
 
     for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
         base_dir = os.path.join(tmp_path, style.value)
-        partition_path_generator = PathPartitionGenerator(
+        partition_path_encoder = PathPartitionEncoder.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
         )
         write_base_partitioned_df(
             partition_keys,
-            partition_path_generator,
-            None,
+            partition_path_encoder,
             df_to_binary,
         )
         df_to_binary(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.snappy"))
-        partition_path_parser = PathPartitionParser(
+        partition_path_filter = PathPartitionFilter.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
@@ -1062,7 +1059,7 @@ def test_read_binary_snappy_partitioned_with_filter(
         )
         ds = ray.data.read_binary_files(
             base_dir,
-            partitioning=partition_path_parser,
+            partition_filter=partition_path_filter,
             arrow_open_stream_args=dict(compression="snappy"),
         )
         assert_base_partitioned_ds(
@@ -1309,27 +1306,28 @@ def test_json_read_partitioned_with_filter(
 
     for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
         base_dir = os.path.join(data_path, style.value)
-        partition_path_generator = PathPartitionGenerator(
+        partition_path_encoder = PathPartitionEncoder.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
+            filesystem=fs,
         )
         write_base_partitioned_df(
             partition_keys,
-            partition_path_generator,
-            fs,
+            partition_path_encoder,
             file_writer_fn,
         )
         file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
-        partition_path_parser = PathPartitionParser(
+        partition_path_filter = PathPartitionFilter.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
             filter_fn=skip_unpartitioned,
+            filesystem=fs,
         )
         ds = ray.data.read_json(
             base_dir,
-            partitioning=partition_path_parser,
+            partition_filter=partition_path_filter,
             filesystem=fs,
         )
         assert_base_partitioned_ds(ds)
@@ -1636,19 +1634,19 @@ def test_csv_read_partitioned_hive_implicit(
         else dict(client_kwargs=dict(endpoint_url=endpoint_url))
     )
     partition_keys = ["one"]
-    partition_path_generator = PathPartitionGenerator(
+    partition_path_encoder = PathPartitionEncoder.of(
         base_dir=data_path,
         field_names=partition_keys,
+        filesystem=fs,
     )
     write_base_partitioned_df(
         partition_keys,
-        partition_path_generator,
-        fs,
+        partition_path_encoder,
         partial(df_to_csv, storage_options=storage_options, index=False),
     )
     ds = ray.data.read_csv(
         data_path,
-        partitioning=PathPartitionParser(),
+        partition_filter=PathPartitionFilter.of(None, filesystem=fs),
         filesystem=fs,
     )
     assert_base_partitioned_ds(ds)
@@ -1678,25 +1676,27 @@ def test_csv_read_partitioned_styles_explicit(
     partition_keys = ["one"]
     for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
         base_dir = os.path.join(data_path, style.value)
-        partition_path_generator = PathPartitionGenerator(
+        partition_path_encoder = PathPartitionEncoder.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
+            filesystem=fs,
         )
         write_base_partitioned_df(
             partition_keys,
-            partition_path_generator,
-            fs,
+            partition_path_encoder,
             partial(df_to_csv, storage_options=storage_options, index=False),
         )
-        partition_path_parser = PathPartitionParser(
+        partition_path_filter = PathPartitionFilter.of(
+            None,
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
+            filesystem=fs,
         )
         ds = ray.data.read_csv(
             base_dir,
-            partitioning=partition_path_parser,
+            partition_filter=partition_path_filter,
             filesystem=fs,
         )
         assert_base_partitioned_ds(ds)
@@ -1736,27 +1736,28 @@ def test_csv_read_partitioned_with_filter(
 
     for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
         base_dir = os.path.join(data_path, style.value)
-        partition_path_generator = PathPartitionGenerator(
+        partition_path_encoder = PathPartitionEncoder.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
+            filesystem=fs,
         )
         write_base_partitioned_df(
             partition_keys,
-            partition_path_generator,
-            fs,
+            partition_path_encoder,
             file_writer_fn,
         )
         file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.csv"))
-        partition_path_parser = PathPartitionParser(
+        partition_path_filter = PathPartitionFilter.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
+            filesystem=fs,
             filter_fn=skip_unpartitioned,
         )
         ds = ray.data.read_csv(
             base_dir,
-            partitioning=partition_path_parser,
+            partition_filter=partition_path_filter,
             filesystem=fs,
         )
         assert_base_partitioned_ds(ds)
@@ -1803,31 +1804,32 @@ def test_csv_read_partitioned_with_filter_multikey(
 
     for i, style in enumerate([PartitionStyle.HIVE, PartitionStyle.DIRECTORY]):
         base_dir = os.path.join(data_path, style.value)
-        partition_path_generator = PathPartitionGenerator(
+        partition_path_encoder = PathPartitionEncoder.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
+            filesystem=fs,
         )
         write_base_partitioned_df(
             partition_keys,
-            partition_path_generator,
-            fs,
+            partition_path_encoder,
             file_writer_fn,
         )
         df = pd.DataFrame({"1": [1]})
         file_writer_fn(df, os.path.join(data_path, f"test{i}.csv"))
-        partition_path_parser = PathPartitionParser(
+        partition_path_filter = PathPartitionFilter.of(
             style=style,
             base_dir=base_dir,
             field_names=partition_keys,
+            filesystem=fs,
             filter_fn=keep_expected_partitions,
         )
         ds = ray.data.read_csv(
             data_path,
-            partitioning=partition_path_parser,
+            partition_filter=partition_path_filter,
             filesystem=fs,
         )
-        assert_base_partitioned_ds(ds, input_files=6, num_computed=6)
+        assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
         assert ray.get(kept_file_counter.get.remote()) == 6
         if i == 0:
             # expect to skip 1 unpartitioned files in the parent of the base directory

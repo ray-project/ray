@@ -45,7 +45,7 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     ParquetMetadataProvider,
     DefaultParquetMetadataProvider,
-    PathPartitionParser,
+    PathPartitionFilter,
 )
 from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
@@ -356,7 +356,7 @@ def read_json(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partitioning: PathPartitionParser = None,
+    partition_filter: PathPartitionFilter = None,
     **arrow_json_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
@@ -384,7 +384,7 @@ def read_json(
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
-        partitioning: Path-based partitioning style, if any. Can be used
+        partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
         arrow_json_args: Other json read options to pass to pyarrow.
 
@@ -399,7 +399,7 @@ def read_json(
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
-        partitioning=partitioning,
+        partition_filter=partition_filter,
         **arrow_json_args,
     )
 
@@ -413,7 +413,7 @@ def read_csv(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partitioning: PathPartitionParser = None,
+    partition_filter: PathPartitionFilter = None,
     **arrow_csv_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
@@ -441,7 +441,7 @@ def read_csv(
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
-        partitioning: Path-based partitioning style, if any. Can be used
+        partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
@@ -456,7 +456,7 @@ def read_csv(
         ray_remote_args=ray_remote_args,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
-        partitioning=partitioning,
+        partition_filter=partition_filter,
         **arrow_csv_args,
     )
 
@@ -472,7 +472,7 @@ def read_text(
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partitioning: PathPartitionParser = None,
+    partition_filter: PathPartitionFilter = None,
 ) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
@@ -496,7 +496,7 @@ def read_text(
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
-        partitioning: Path-based partitioning style, if any. Can be used
+        partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
 
     Returns:
@@ -515,7 +515,7 @@ def read_text(
         parallelism=parallelism,
         arrow_open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
-        partitioning=partitioning,
+        partition_filter=partition_filter,
     ).flat_map(to_text)
 
 
@@ -527,7 +527,7 @@ def read_numpy(
     parallelism: int = 200,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partitioning: PathPartitionParser = None,
+    partition_filter: PathPartitionFilter = None,
     **numpy_load_args,
 ) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from numpy files.
@@ -555,7 +555,7 @@ def read_numpy(
         numpy_load_args: Other options to pass to np.load.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
-        partitioning: Path-based partitioning style, if any. Can be used
+        partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
     Returns:
         Dataset holding Tensor records read from the specified paths.
@@ -567,7 +567,7 @@ def read_numpy(
         filesystem=filesystem,
         open_stream_args=arrow_open_stream_args,
         meta_provider=meta_provider,
-        partitioning=partitioning,
+        partition_filter=partition_filter,
         **numpy_load_args,
     )
 
@@ -582,7 +582,7 @@ def read_binary_files(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-    partitioning: PathPartitionParser = None,
+    partition_filter: PathPartitionFilter = None,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -608,7 +608,7 @@ def read_binary_files(
             pyarrow.fs.FileSystem.open_input_stream
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
-        partitioning: Path-based partitioning style, if any. Can be used
+        partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
 
     Returns:
@@ -624,7 +624,7 @@ def read_binary_files(
         open_stream_args=arrow_open_stream_args,
         schema=bytes,
         meta_provider=meta_provider,
-        partitioning=partitioning,
+        partition_filter=partition_filter,
     )
 
 

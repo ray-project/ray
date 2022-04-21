@@ -14,7 +14,7 @@ from typing import (
 )
 import urllib.parse
 
-from ray.data.datasource.partitioning import PathPartitionParser
+from ray.data.datasource.partitioning import PathPartitionFilter
 
 if TYPE_CHECKING:
     import pyarrow
@@ -257,7 +257,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
         meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
-        partitioning: PathPartitionParser = None,
+        partition_filter: PathPartitionFilter = None,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
@@ -268,8 +268,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         paths, file_sizes = meta_provider.expand_paths(paths, filesystem)
-        if partitioning is not None:
-            paths = partitioning.filter_paths(paths, filesystem)
+        if partition_filter is not None:
+            paths = partition_filter(paths)
 
         read_stream = self._read_stream
 

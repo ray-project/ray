@@ -26,8 +26,9 @@ from ray.data.datasource.file_based_datasource import (
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
 from ray.data.datasource.partitioning import (
     PartitionStyle,
-    PathPartitionGenerator,
+    PathPartitionEncoder,
     PathPartitionParser,
+    PathPartitionFilter,
 )
 
 __all__ = [
@@ -53,5 +54,6 @@ __all__ = [
     "DefaultParquetMetadataProvider",
     "PartitionStyle",
     "PathPartitionParser",
-    "PathPartitionGenerator",
+    "PathPartitionEncoder",
+    "PathPartitionFilter",
 ]

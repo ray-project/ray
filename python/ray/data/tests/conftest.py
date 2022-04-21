@@ -135,8 +135,7 @@ def write_partitioned_df():
     def _write_partitioned_df(
         df,
         partition_keys,
-        partition_path_generator,
-        fs,
+        partition_path_encoder,
         file_writer_fn,
     ):
         import urllib.parse
@@ -146,12 +145,10 @@ def write_partitioned_df():
             partition_values = []
             for key in partition_keys:
                 partition_values.append(str(df_partition[key].iloc[0]))
-            path = partition_path_generator(partition_values, fs)
-            if fs is None:
-                os.makedirs(path)
-            else:
-                fs.create_dir(path)
-            parsed_base_dir = urllib.parse.urlparse(partition_path_generator.base_dir)
+            path = partition_path_encoder(partition_values)
+            partition_path_encoder.scheme.resolved_filesystem.create_dir(path)
+            base_dir = partition_path_encoder.scheme.base_dir
+            parsed_base_dir = urllib.parse.urlparse(base_dir)
             if parsed_base_dir.scheme:
                 # replace the protocol removed by the partition path generator
                 path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", "test.tmp")
@@ -166,15 +163,13 @@ def write_partitioned_df():
 def write_base_partitioned_df(base_partitioned_df, write_partitioned_df):
     def _write_base_partitioned_df(
         partition_keys,
-        partition_path_generator,
-        fs,
+        partition_path_encoder,
         file_writer_fn,
     ):
         write_partitioned_df(
             base_partitioned_df,
             partition_keys,
-            partition_path_generator,
-            fs,
+            partition_path_encoder,
             file_writer_fn,
         )
 
@@ -186,7 +181,7 @@ def assert_base_partitioned_ds():
     def _assert_base_partitioned_ds(
         ds,
         count=6,
-        input_files=2,
+        num_input_files=2,
         num_rows=None,
         schema="{one: int64, two: string}",
         num_computed=2,
@@ -205,13 +200,13 @@ def assert_base_partitioned_ds():
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
         assert ds.schema() is not None
         actual_input_files = ds.input_files()
-        assert len(actual_input_files) == input_files, actual_input_files
+        assert len(actual_input_files) == num_input_files, actual_input_files
         assert (
-            str(ds) == f"Dataset(num_blocks={input_files}, num_rows={num_rows}, "
+            str(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
             f"schema={schema})"
         ), ds
         assert (
-            repr(ds) == f"Dataset(num_blocks={input_files}, num_rows={num_rows}, "
+            repr(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
             f"schema={schema})"
         ), ds
         if num_computed is not None:
