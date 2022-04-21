@@ -117,6 +117,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
     Example:
         .. code-block:: python
+
             # Based on
             # huggingface/notebooks/examples/language_modeling_from_scratch.ipynb
 

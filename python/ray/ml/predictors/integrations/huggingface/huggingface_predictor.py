@@ -107,7 +107,8 @@ class HuggingFacePredictor(TorchPredictor):
         )
 
     def _predict(self, tensor: Dict[str, torch.Tensor]) -> pd.DataFrame:
-        self.training_args.local_rank = -1
+        if self.training_args:
+            self.training_args.local_rank = -1
         trainer = HFTrainer(model=self.model, args=self.training_args)
         dataset = HFIterableDatasetWithLen([tensor], 1)
         # squeeze out the extra dimension added by torch.stack
@@ -145,41 +146,64 @@ class HuggingFacePredictor(TorchPredictor):
         .. code-block:: python
 
             import numpy as np
-            import torch
-            from ray.ml.predictors.torch import TorchPredictor
+            from datasets import load_dataset
+            from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+            from ray.ml.predictors.huggingface import HuggingFacePredictor
 
-            model = torch.nn.Linear(1, 1)
-            predictor = TorchPredictor(model=model)
+            model_checkpoint = "gpt2"
+            tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
+            block_size = 128
 
-            data = np.array([[1, 2], [3, 4]])
-            predictions = predictor.predict(data)
+            datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
 
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=[0])
+            def tokenize_function(examples):
+                return tokenizer(examples["text"])
 
-        .. code-block:: python
+            tokenized_datasets = datasets.map(
+                tokenize_function, batched=True, num_proc=1, remove_columns=["text"]
+            )
 
-            import pandas as pd
-            import torch
-            from ray.ml.predictors.torch import TorchPredictor
+            def group_texts(examples):
+                # Concatenate all texts.
+                concatenated_examples = {
+                    k: sum(examples[k], []) for k in examples.keys()
+                }
+                total_length = len(concatenated_examples[list(examples.keys())[0]])
+                # We drop the small remainder, we could add padding if the model
+                # supported it.
+                # instead of this drop, you can customize this part to your needs.
+                total_length = (total_length // block_size) * block_size
+                # Split by chunks of max_len.
+                result = {
+                    k: [
+                        t[i : i + block_size]
+                        for i in range(0, total_length, block_size)
+                    ]
+                    for k, t in concatenated_examples.items()
+                }
+                result["labels"] = result["input_ids"].copy()
+                return result
 
-            model = torch.nn.Linear(1, 1)
-            predictor = TorchPredictor(model=model)
+            lm_datasets = tokenized_datasets.map(
+                group_texts,
+                batched=True,
+                batch_size=1000,
+                num_proc=1,
+            )
+            model_config = AutoConfig.from_pretrained(model_checkpoint)
+            model = AutoModelForCausalLM.from_config(model_config)
+            predictor = HuggingFacePredictor(
+                model=model, preprocessor=preprocessor
+            )
 
-            # Pandas dataframe.
-            data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-
-            predictions = predictor.predict(data)
-
-            # Only use first column as the feature
-            predictions = predictor.predict(data, feature_columns=["A"])
+            predictions = predictor.predict(lm_datasets["validation"].to_pandas())
 
 
         Returns:
             DataBatchType: Prediction result.
         """
         # We are just changing the signature and docstring.
-        print(data)
         return super().predict(
             data, feature_columns=feature_columns, dtype=dtype, unsqueeze=False
         )
