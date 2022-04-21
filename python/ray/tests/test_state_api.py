@@ -379,9 +379,10 @@ def is_hex(val):
 def test_cli_apis_sanity_check(ray_start_cluster):
     """Test all of CLI APIs work as expected."""
     cluster = ray_start_cluster
-    for _ in range(4):
-        cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
+    for _ in range(3):
+        cluster.add_node(num_cpus=2)
     runner = CliRunner()
 
     client = JobSubmissionClient(
