@@ -551,19 +551,29 @@ ray::Status NodeManager::RegisterGcs() {
   if (RayConfig::instance().use_ray_syncer()) {
     // Register resource manager and scheduler
     ray_syncer_.Register(
-        syncer::RayComponentId::RESOURCE_MANAGER,
-        this,
-        this,
-        false,
-        RayConfig::instance().raylet_report_resources_period_milliseconds());
-    ray_syncer_.Register(syncer::RayComponentId::SCHEDULER,
-                         this,
-                         nullptr,
-                         true,
-                         RayConfig::instance().raylet_report_loads_period_milliseconds());
+        /* component_id */ syncer::RayComponentId::RESOURCE_MANAGER,
+        /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
+        /* receiver */ this,
+        /* upward_only */ false,
+        /* pull_from_reporter_interval_ms */
+        RayConfig::instance()
+            .raylet_report_resources_period_milliseconds());
+    ray_syncer_.Register(
+        /* component_id */ syncer::RayComponentId::SCHEDULER,
+        /* reporter */ this,
+        /* receiver */ nullptr,
+        /* upward_only */ true,
+        /* pull_from_reporter_interval_ms */
+        RayConfig::instance()
+            .raylet_report_loads_period_milliseconds());
     // Register a commands channel.
     // It's only used for GC right now.
-    ray_syncer_.Register(syncer::RayComponentId::COMMANDS, nullptr, this, false, 0);
+    ray_syncer_.Register(
+        /* component_id */ syncer::RayComponentId::COMMANDS,
+        /* reporter */ nullptr,
+        /* receiver */ this,
+        /* upward_only */ false,
+        /* pull_from_reporter_interval_ms */ 0);
     periodical_runner_.RunFnPeriodically(
         [this] {
           // If plasma store is under high pressure, we should try to schedule a global
@@ -2686,27 +2696,8 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
     RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
     msg.set_sync_message(std::move(serialized_msg));
     return std::make_optional(std::move(msg));
-  } else if (component_id == syncer::RayComponentId::RESOURCE_MANAGER) {
-    auto &local = cluster_resource_scheduler_->GetLocalResourceManager();
-
-    if (local.Version() <= after_version) {
-      return std::nullopt;
-    }
-
-    syncer::RaySyncMessage msg;
-    rpc::ResourcesData resource_data;
-    local.FillResourceUsage(resource_data, true);
-    resource_data.set_node_id(self_node_id_.Binary());
-    resource_data.set_node_manager_address(initial_config_.node_manager_address);
-
-    msg.set_node_id(self_node_id_.Binary());
-    msg.set_version(local.Version());
-    msg.set_component_id(syncer::RayComponentId::RESOURCE_MANAGER);
-    std::string serialized_msg;
-    RAY_CHECK(resource_data.SerializeToString(&serialized_msg));
-    msg.set_sync_message(std::move(serialized_msg));
-    return std::make_optional(std::move(msg));
   } else {
+    RAY_CHECK(false) << "Invalid component id: " << component_id;
     return std::nullopt;
   }
 }

@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -37,7 +38,7 @@ namespace ray {
 /// it also supports creating a new resource or delete an existing resource.
 /// Whenever the resouce changes, it notifies the subscriber of the change.
 /// This class is not thread safe.
-class LocalResourceManager {
+class LocalResourceManager : public syncer::ReporterInterface {
  public:
   LocalResourceManager(
       scheduling::NodeID local_node_id,
@@ -118,8 +119,7 @@ class LocalResourceManager {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  /// \param for_ray_syncer. The resource report is for ray syncer.
-  void FillResourceUsage(rpc::ResourcesData &resources_data, bool for_ray_syncer = false);
+  void FillResourceUsage(rpc::ResourcesData &resources_data);
 
   /// Populate a UpdateResourcesRequest. This is inteneded to update the
   /// resource totals on a node when a custom resource is created or deleted
@@ -150,6 +150,9 @@ class LocalResourceManager {
   ///
   /// \return true, if exist. otherwise, false.
   bool ResourcesExist(scheduling::ResourceID resource_id) const;
+
+  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
+      int64_t after_version, syncer::RayComponentId component_id) const override;
 
  private:
   /// Notify the subscriber that the local resouces has changed.

@@ -315,59 +315,100 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   }
 }
 
-void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data,
-                                             bool for_ray_syncer) {
-  if (!for_ray_syncer) {
-    UpdateAvailableObjectStoreMemResource();
-  }
+void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) {
+  UpdateAvailableObjectStoreMemResource();
 
   NodeResources resources = ToNodeResources(local_resources_);
 
   // Initialize if last report resources is empty.
-  if (!for_ray_syncer && !last_report_resources_) {
+  if (!last_report_resources_) {
     NodeResources node_resources = ResourceMapToNodeResources({{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
   }
+
   for (auto entry : resources.total.ToMap()) {
     auto resource_id = entry.first;
     auto label = ResourceID(resource_id).Binary();
     auto total = entry.second;
     auto available = resources.available.Get(resource_id);
-    auto last_total =
-        for_ray_syncer ? total : last_report_resources_->total.Get(resource_id);
-    auto last_available =
-        for_ray_syncer ? available : last_report_resources_->available.Get(resource_id);
+    auto last_total = last_report_resources_->total.Get(resource_id);
+    auto last_available = last_report_resources_->available.Get(resource_id);
 
     // Note: available may be negative, but only report positive to GCS.
-    if (for_ray_syncer || (available != last_available && available > 0)) {
+    if (available != last_available && available > 0) {
       resources_data.set_resources_available_changed(true);
       (*resources_data.mutable_resources_available())[label] = available.Double();
     }
-    if (for_ray_syncer || (total != last_total)) {
+    if (total != last_total) {
       (*resources_data.mutable_resources_total())[label] = total.Double();
     }
   }
 
   if (get_pull_manager_at_capacity_ != nullptr) {
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    if (for_ray_syncer ||
-        (last_report_resources_->object_pulls_queued != resources.object_pulls_queued)) {
+    if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
       resources_data.set_object_pulls_queued(resources.object_pulls_queued);
       resources_data.set_resources_available_changed(true);
     }
   }
 
-  if (!for_ray_syncer && resources != *last_report_resources_.get()) {
+  if (resources != *last_report_resources_.get()) {
     last_report_resources_.reset(new NodeResources(resources));
   }
 
-  if (for_ray_syncer || !RayConfig::instance().enable_light_weight_resource_report()) {
+  if (!RayConfig::instance().enable_light_weight_resource_report()) {
     resources_data.set_resources_available_changed(true);
   }
 }
 
 double LocalResourceManager::GetLocalAvailableCpus() const {
   return local_resources_.available.Sum(ResourceID::CPU()).Double();
+}
+
+std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
+    int64_t after_version, syncer::RayComponentId component_id) const {
+  RAY_CHECK(component_id == syncer::RayComponentId::RESOURCE_MANAGER);
+  // We check the memory inside version, so version is not a const function.
+  // Ideally, we need to move the memory check somewhere else.
+  // TODO(iycheng): Make version as a const function.
+  auto curr_version = const_cast<LocalResourceManager *>(this)->Version();
+  if (curr_version <= after_version) {
+    return std::nullopt;
+  }
+
+  syncer::RaySyncMessage msg;
+  rpc::ResourcesData resources_data;
+
+  resources_data.set_node_id(local_node_id_.Binary());
+
+  NodeResources resources = ToNodeResources(local_resources_);
+
+  for (auto entry : resources.total.ToMap()) {
+    auto resource_id = entry.first;
+    auto label = ResourceID(resource_id).Binary();
+    auto total = entry.second;
+    auto available = resources.available.Get(resource_id);
+
+    resources_data.set_resources_available_changed(true);
+    (*resources_data.mutable_resources_available())[label] = available.Double();
+    (*resources_data.mutable_resources_total())[label] = total.Double();
+  }
+
+  if (get_pull_manager_at_capacity_ != nullptr) {
+    resources.object_pulls_queued = get_pull_manager_at_capacity_();
+    resources_data.set_object_pulls_queued(resources.object_pulls_queued);
+    resources_data.set_resources_available_changed(true);
+  }
+
+  resources_data.set_resources_available_changed(true);
+
+  msg.set_node_id(local_node_id_.Binary());
+  msg.set_version(curr_version);
+  msg.set_component_id(component_id);
+  std::string serialized_msg;
+  RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
+  msg.set_sync_message(std::move(serialized_msg));
+  return std::make_optional(std::move(msg));
 }
 
 ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourceTotals(
