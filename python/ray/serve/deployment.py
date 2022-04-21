@@ -9,6 +9,7 @@ from typing import (
     Union,
 )
 
+from ray.serve.context import get_global_client
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
@@ -21,10 +22,6 @@ from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )
-
-
-# TODO (shrekris-anyscale): remove following dependencies on api.py:
-# - internal_get_global_client
 
 
 @PublicAPI
@@ -175,8 +172,6 @@ class Deployment:
             # this deployment is not exposed over HTTP
             return None
 
-        from ray.serve.context import get_global_client
-
         return get_global_client().root_url + self.route_prefix
 
     def __call__(self):
@@ -237,8 +232,6 @@ class Deployment:
         if len(init_kwargs) == 0 and self._init_kwargs is not None:
             init_kwargs = self._init_kwargs
 
-        from ray.serve.context import get_global_client
-
         return get_global_client().deploy(
             self._name,
             self._func_or_class,
@@ -257,8 +250,6 @@ class Deployment:
     def delete(self):
         """Delete this deployment."""
 
-        from ray.serve.context import get_global_client
-
         return get_global_client().delete_deployments([self._name])
 
     @PublicAPI
@@ -276,8 +267,6 @@ class Deployment:
         Returns:
             ServeHandle
         """
-
-        from ray.serve.context import get_global_client
 
         return get_global_client().get_handle(
             self._name, missing_ok=True, sync=sync
