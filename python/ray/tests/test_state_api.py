@@ -80,6 +80,79 @@ def verify_schema(state, result_dict: dict):
     for k in result_dict.keys():
         assert k in state_fields_columns
 
+def generate_actor_data(id):
+    return ActorTableData(
+                actor_id=id,
+                state=ActorTableData.ActorState.ALIVE,
+                name="abc",
+                pid=1234,
+                class_name="class")
+
+
+def generate_pg_data(id):
+    return PlacementGroupTableData(
+                    placement_group_id=id,
+                    state=PlacementGroupTableData.PlacementGroupState.CREATED,
+                    name="abc",
+                    creator_job_dead=True,
+                    creator_actor_dead=False,
+                )
+
+
+def generate_node_data(id):
+    return GcsNodeInfo(
+                node_id=id,
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                node_manager_address="127.0.0.1",
+                raylet_socket_name="abcd",
+                object_store_socket_name="False",
+            )
+
+
+def generate_worker_data(id):
+    return WorkerTableData(
+                worker_address=Address(
+                    raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
+                ),
+                is_alive=True,
+                timestamp=1234,
+                worker_type=WorkerType.WORKER,
+            )
+
+
+def generate_task_data(id, name):
+    return GetTasksInfoReply(
+        task_info_entries=[
+            TaskInfoEntry(
+                task_id=id,
+                name=name,
+                func_or_class_name="class",
+                scheduling_state=TaskStatus.SCHEDULED,
+            )
+        ]
+    )
+
+
+def generate_object_info(obj_id):
+    return CoreWorkerStats(
+                pid=1234,
+                worker_type=WorkerType.DRIVER,
+                ip_address="1234",
+                object_refs=[
+                    ObjectRefInfo(
+                        object_id=obj_id,
+                        call_site="",
+                        object_size=1,
+                        local_ref_count=1,
+                        submitted_task_ref_count=1,
+                        contained_in_owned=[],
+                        pinned_in_memory=True,
+                        task_status=TaskStatus.SCHEDULED,
+                        attempt_number=1,
+                    )
+                ],
+            )
+
 
 @pytest.mark.asyncio
 async def test_api_manager_list_actors(state_api_manager):
@@ -87,13 +160,7 @@ async def test_api_manager_list_actors(state_api_manager):
     actor_id = b"1234"
     data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
         actor_table_data=[
-            ActorTableData(
-                actor_id=actor_id,
-                state=ActorTableData.ActorState.ALIVE,
-                name="abc",
-                pid=1234,
-                class_name="class",
-            )
+            generate_actor_data(actor_id)
         ]
     )
     result = await state_api_manager.get_actors()
@@ -108,13 +175,7 @@ async def test_api_manager_list_pgs(state_api_manager):
     data_source_client.get_all_placement_group_info.return_value = (
         GetAllPlacementGroupReply(
             placement_group_table_data=[
-                PlacementGroupTableData(
-                    placement_group_id=id,
-                    state=PlacementGroupTableData.PlacementGroupState.CREATED,
-                    name="abc",
-                    creator_job_dead=True,
-                    creator_actor_dead=False,
-                )
+                generate_pg_data(id)
             ]
         )
     )
@@ -129,13 +190,7 @@ async def test_api_manager_list_nodes(state_api_manager):
     id = b"1234"
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
         node_info_list=[
-            GcsNodeInfo(
-                node_id=id,
-                state=GcsNodeInfo.GcsNodeState.ALIVE,
-                node_manager_address="127.0.0.1",
-                raylet_socket_name="abcd",
-                object_store_socket_name="False",
-            )
+            generate_node_data(id)
         ]
     )
     result = await state_api_manager.get_nodes()
@@ -149,14 +204,7 @@ async def test_api_manager_list_workers(state_api_manager):
     id = b"1234"
     data_source_client.get_all_worker_info.return_value = GetAllWorkerInfoReply(
         worker_table_data=[
-            WorkerTableData(
-                worker_address=Address(
-                    raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
-                ),
-                is_alive=True,
-                timestamp=1234,
-                worker_type=WorkerType.WORKER,
-            )
+            generate_worker_data(id)
         ]
     )
     result = await state_api_manager.get_workers()
@@ -173,23 +221,11 @@ async def test_api_manager_list_tasks(state_api_manager):
     data_source_client.get_all_registered_raylet_ids = MagicMock()
     data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
-    def generate_task_info(id, name):
-        return GetTasksInfoReply(
-            task_info_entries=[
-                TaskInfoEntry(
-                    task_id=id,
-                    name=name,
-                    func_or_class_name="class",
-                    scheduling_state=TaskStatus.SCHEDULED,
-                )
-            ]
-        )
-
     first_task_name = "1"
     second_task_name = "2"
     data_source_client.get_task_info.side_effect = [
-        generate_task_info(b"1234", first_task_name),
-        generate_task_info(b"2345", second_task_name),
+        generate_task_data(b"1234", first_task_name),
+        generate_task_data(b"2345", second_task_name),
     ]
     result = await state_api_manager.get_tasks()
     data_source_client.get_task_info.assert_any_call("1", timeout=DEFAULT_RPC_TIMEOUT)
@@ -211,33 +247,9 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client.get_all_registered_raylet_ids = MagicMock()
     data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
-    def generate_node_stats_reply(obj_id):
-        return GetNodeStatsReply(
-            core_workers_stats=[
-                CoreWorkerStats(
-                    pid=1234,
-                    worker_type=WorkerType.DRIVER,
-                    ip_address="1234",
-                    object_refs=[
-                        ObjectRefInfo(
-                            object_id=obj_id,
-                            call_site="",
-                            object_size=1,
-                            local_ref_count=1,
-                            submitted_task_ref_count=1,
-                            contained_in_owned=[],
-                            pinned_in_memory=True,
-                            task_status=TaskStatus.SCHEDULED,
-                            attempt_number=1,
-                        )
-                    ],
-                )
-            ]
-        )
-
     data_source_client.get_object_info.side_effect = [
-        generate_node_stats_reply(obj_1_id),
-        generate_node_stats_reply(obj_2_id),
+        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_1_id)]),
+        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)])
     ]
     result = await state_api_manager.get_objects()
     data_source_client.get_object_info.assert_any_call("1", timeout=DEFAULT_RPC_TIMEOUT)
@@ -247,6 +259,12 @@ async def test_api_manager_list_objects(state_api_manager):
     verify_schema(ObjectState, result[0])
     verify_schema(ObjectState, result[1])
 
+
+# @pytest.mark.asyncio
+# async def test_limit(state_api_manager):
+#     data_source_client = state_api_manager.data_source_client
+#     data_source_client.get_all_registered_raylet_ids = MagicMock()
+#     data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
 
 """
 Integration tests
@@ -595,6 +613,20 @@ def test_list_objects(shutdown_only):
 
     wait_for_condition(verify)
     print(list_objects())
+
+
+def test_limit(shutdown_only):
+    ray.init()
+    @ray.remote
+    class A:
+        def ready(self):
+            pass
+
+    actors = [A.remote() for _ in range(4)]
+    ray.get([actor.ready.remote() for actor in actors])
+
+    print(list_actors(limit=2))
+    assert len(list_actors(limit=2)) == 2
 
 
 if __name__ == "__main__":

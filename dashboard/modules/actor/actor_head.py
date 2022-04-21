@@ -21,6 +21,7 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.datacenter import DataSource, DataOrganizer
+from ray.experimental.state.common import ListApiOptions
 
 
 logger = logging.getLogger(__name__)
@@ -230,7 +231,10 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/actors")
     async def get_actors(self, req) -> aiohttp.web.Response:
-        data = await self._dashboard_head.state_aggregator.get_actors()
+        limit = int(req.query.get("limit"))
+        timeout = int(req.query.get("timeout"))
+        data = await self._dashboard_head.state_aggregator.get_actors(
+            option=ListApiOptions(limit=limit, timeout=timeout))
         return rest_response(
             success=True, message="", result=data, convert_google_style=False
         )
