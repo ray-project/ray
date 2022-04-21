@@ -200,7 +200,7 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance, use_b
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2=m2)
-        combine_output = combine.bind(dag_input)
+        combine_output = combine.__call__.bind(dag_input)
         serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
@@ -213,7 +213,7 @@ def test_shared_deployment_handle(serve_instance, use_build):
     with InputNode() as dag_input:
         m = Model.bind(2)
         combine = Combine.bind(m, m2=m)
-        combine_output = combine.bind(dag_input)
+        combine_output = combine.__call__.bind(dag_input)
         serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
@@ -227,7 +227,7 @@ def test_multi_instantiation_class_nested_deployment_arg_dag(serve_instance, use
         m1 = Model.bind(2)
         m2 = Model.bind(3)
         combine = Combine.bind(m1, m2={NESTED_HANDLE_KEY: m2}, m2_nested=True)
-        output = combine.bind(dag_input)
+        output = combine.__call__.bind(dag_input)
         serve_dag = DAGDriver.bind(output, input_schema=json_resolver)
 
     handle = serve.run(serve_dag)
@@ -416,8 +416,10 @@ def test_unsupported_bind():
             return "hello"
 
     with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
-        # Actor.bind().bind() == Actor.bind().__call__.bind()
-        _ = Actor.bind().bind().bind()
+        _ = Actor.bind().bind()
+
+    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
+        _ = Actor.bind().ping.bind().bind()
 
     with pytest.raises(
         AttributeError,
