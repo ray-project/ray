@@ -478,7 +478,7 @@ class MultiAgentEnvWrapper(BaseEnv):
     def __init__(
         self,
         make_env: Callable[[int], EnvType],
-        existing_envs: List[MultiAgentEnv],
+        existing_envs: List["MultiAgentEnv"],
         num_envs: int,
     ):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
