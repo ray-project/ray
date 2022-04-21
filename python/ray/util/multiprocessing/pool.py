@@ -9,6 +9,7 @@ import queue
 import copy
 import gc
 import sys
+import itertools
 
 try:
     from joblib.parallel import BatchedCalls, parallel_backend
@@ -334,16 +335,24 @@ class IMapIterator:
         self._pool = pool
         self._func = func
         self._next_chunk_index = 0
+        self._finished_iterating = False
         # List of bools indicating if the given chunk is ready or not for all
         # submitted chunks. Ordering mirrors that in the in the ResultThread.
         self._submitted_chunks = []
         self._ready_objects = collections.deque()
+        self._iterator = iter(iterable)
         if not hasattr(iterable, "__len__"):
             iterable = [iterable]
-        self._iterator = iter(iterable)
+            # conclude that an iterator was passed and we don't know how many items to expect
+            iterator_input = True
+        else:
+            iterator_input = False
         self._chunksize = chunksize or pool._calculate_chunksize(iterable)
         self._total_chunks = div_round_up(len(iterable), chunksize)
-        self._result_thread = ResultThread([], total_object_refs=self._total_chunks)
+        # DANGER: for an iterator, we need to define a queue size; problems will happen if we run out
+        # For now, select 10x the size of the actor pool
+        queue_size = 10*len(self._pool._actor_pool) if iterator_input else self._total_chunks
+        self._result_thread = ResultThread([], total_object_refs=queue_size)
         self._result_thread.start()
 
         for _ in range(len(self._pool._actor_pool)):
@@ -351,12 +360,21 @@ class IMapIterator:
 
     def _submit_next_chunk(self):
         # The full iterable has been submitted, so no-op.
-        if len(self._submitted_chunks) >= self._total_chunks:
+        if self._finished_iterating:
             return
 
         actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
+        chunk_iterator = itertools.islice(self._iterator, self._chunksize)
+
+        # conversion to list and back, but we need to check whether we have run out of samples without destroying the iterator
+        chunk_list = list(chunk_iterator)
+        if len(chunk_list) < self._chunksize:
+            self._finished_iterating = True
+            return
+        chunk_iterator = iter(chunk_list)
+
         new_chunk_id = self._pool._submit_chunk(
-            self._func, self._iterator, self._chunksize, actor_index
+            self._func, chunk_iterator, self._chunksize, actor_index
         )
         self._submitted_chunks.append(False)
         self._result_thread.add_object_ref(new_chunk_id)
@@ -384,7 +402,7 @@ class OrderedIMapIterator(IMapIterator):
 
     def next(self, timeout=None):
         if len(self._ready_objects) == 0:
-            if self._next_chunk_index == self._total_chunks:
+            if self._next_chunk_index == len(self._submitted_chunks):
                 raise StopIteration
 
             # This loop will break when the next index in order is ready or
@@ -420,8 +438,9 @@ class UnorderedIMapIterator(IMapIterator):
     """
 
     def next(self, timeout=None):
+        # NOTE: this condition seems redundant for the unordered iterator: exactly one ready_object is made every time
         if len(self._ready_objects) == 0:
-            if self._next_chunk_index == self._total_chunks:
+            if self._next_chunk_index == len(self._submitted_chunks):
                 raise StopIteration
 
             index = self._result_thread.next_ready_index(timeout=timeout)
