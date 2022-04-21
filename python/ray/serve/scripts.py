@@ -140,7 +140,7 @@ def shutdown(address: str, namespace: str):
         address=address,
         namespace=namespace,
     )
-    serve.api._connect()
+    serve.context._connect()
     serve.shutdown()
 
 
