@@ -11,6 +11,7 @@ from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
+    ProgressReporter,
     _fair_filter_trials,
     best_trial_str,
     detect_reporter,
@@ -682,6 +683,16 @@ class ProgressReporterTest(unittest.TestCase):
             reporter = detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
+
+    def testProgressReporterAPI(self):
+        class CustomReporter(ProgressReporter):
+            def should_report(self, trials, done=False):
+                return True
+
+            def report(self, trials, done, *sys_info):
+                pass
+
+        tune.run(lambda config: 2, num_samples=1, progress_reporter=CustomReporter())
 
 
 if __name__ == "__main__":

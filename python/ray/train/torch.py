@@ -504,7 +504,8 @@ class _WrappedDataLoader(DataLoader):
         # the tensor might be freed once it is no longer used by
         # the creator stream.
         for i in item:
-            i.record_stream(curr_stream)
+            if isinstance(i, torch.Tensor):
+                i.record_stream(curr_stream)
 
     def __len__(self):
         return len(self._dataloader)
