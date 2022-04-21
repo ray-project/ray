@@ -122,14 +122,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         [trial1] = run(
             _function_trainable,
-            callbacks=[LegacyLoggerCallback(FunctionAPILogger)],
+            callbacks=[LegacyLoggerCallback([FunctionAPILogger])],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
 
         [trial2] = run(
             class_trainable_name,
-            callbacks=[LegacyLoggerCallback(ClassAPILogger)],
+            callbacks=[LegacyLoggerCallback([ClassAPILogger])],
             raise_on_failed_trial=False,
             scheduler=MockScheduler(),
         ).trials
