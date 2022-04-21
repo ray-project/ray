@@ -6,10 +6,7 @@ from dataclasses import fields
 
 from unittest.mock import MagicMock
 
-if sys.version_info >= (3, 8):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
+from asyncmock import AsyncMock
 
 import ray
 import ray.ray_constants as ray_constants
