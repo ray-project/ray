@@ -1,7 +1,9 @@
 import argparse
+import atexit
 import json
 import os
 import time
+import subprocess
 
 import ray
 import requests
@@ -128,17 +130,16 @@ def get_model(model_checkpoint_path):
     model = ResNet18(None)
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
     model.load_state_dict(model_state["models"][0])
-    model_id = ray.put(model)
 
-    return model_id
+    return model
 
 
 @serve.deployment(name="mnist", route_prefix="/mnist")
 class MnistDeployment:
-    def __init__(self, model_id):
+    def __init__(self, model):
         use_cuda = torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
-        model = ray.get(model_id).to(self.device)
+        model = model.to(self.device)
         self.model = model
 
     async def __call__(self, request):
@@ -156,13 +157,13 @@ class MnistDeployment:
         return predictions
 
 
-def setup_serve(model_id):
+def setup_serve(model, use_gpu: bool = False):
     serve.start(
         http_options={"location": "EveryNode"}
     )  # Start on every node so `predict` can hit localhost.
-    MnistDeployment.options(num_replicas=2, ray_actor_options={"num_gpus": 1}).deploy(
-        model_id
-    )
+    MnistDeployment.options(
+        num_replicas=2, ray_actor_options={"num_gpus": bool(use_gpu)}
+    ).deploy(model)
 
 
 @ray.remote
@@ -226,6 +227,17 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    if os.environ.get("IS_SMOKE_TEST"):
+        args.smoke_test = True
+        proc = subprocess.Popen(["ray", "start", "--head"])
+        proc.wait()
+        os.environ["RAY_ADDRESS"] = "ray://localhost:10001"
+
+        def stop_ray():
+            subprocess.Popen(["ray", "stop", "--force"]).wait()
+
+        atexit.register(stop_ray)
+
     start = time.time()
 
     addr = os.environ.get("RAY_ADDRESS")
@@ -236,17 +248,17 @@ if __name__ == "__main__":
         client = ray.init(address="auto")
 
     num_workers = 2
-    use_gpu = True
+    use_gpu = not args.smoke_test
 
     print("Training model.")
     analysis = train_mnist(args.smoke_test, num_workers, use_gpu)
 
     print("Retrieving best model.")
     best_checkpoint = analysis.best_checkpoint.local_path
-    model_id = get_remote_model(best_checkpoint)
+    model = get_remote_model(best_checkpoint)
 
     print("Setting up Serve.")
-    setup_serve(model_id)
+    setup_serve(model, use_gpu)
 
     print("Testing Prediction Service.")
     accuracy = test_predictions(args.smoke_test)

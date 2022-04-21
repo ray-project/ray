@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
 import ray.internal.storage as storage
+from ray.internal.storage import _load_class
 import ray.node
 import ray.job_config
 import ray._private.parameter
@@ -918,6 +919,11 @@ def init(
     except ImportError:
         logger.debug("Could not import resource module (on Windows)")
         pass
+
+    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+        runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env
+        )
 
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         if runtime_env:
