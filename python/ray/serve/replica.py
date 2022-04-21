@@ -116,7 +116,7 @@ def create_replica_wrapper(
             # Set the controller name so that serve.connect() in the user's
             # code will connect to the instance that this deployment is running
             # in.
-            ray.serve.api._set_internal_replica_context(
+            ray.serve.context.set_internal_replica_context(
                 deployment_name,
                 replica_tag,
                 controller_name,
@@ -148,7 +148,7 @@ def create_replica_wrapper(
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
 
                 # Setting the context again to update the servable_object.
-                ray.serve.api._set_internal_replica_context(
+                ray.serve.context.set_internal_replica_context(
                     deployment_name,
                     replica_tag,
                     controller_name,
