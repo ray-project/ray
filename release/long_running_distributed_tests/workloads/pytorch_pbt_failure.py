@@ -6,7 +6,6 @@ import numpy as np
 import ray
 
 from ray import tune
-from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils.mock import FailureInjectorCallback
 from ray.tune.utils.release_test_util import ProgressCallback
@@ -48,10 +47,6 @@ pbt_scheduler = PopulationBasedTraining(
     },
 )
 
-reporter = CLIReporter()
-reporter.add_metric_column("val_loss", "loss")
-reporter.add_metric_column("val_accuracy", "acc")
-
 analysis = tune.run(
     TorchTrainable,
     num_samples=4,
@@ -68,10 +63,9 @@ analysis = tune.run(
     },
     max_failures=-1,  # used for fault tolerance
     checkpoint_freq=2,  # used for fault tolerance
-    progress_reporter=reporter,
     scheduler=pbt_scheduler,
     callbacks=[FailureInjectorCallback(time_between_checks=90), ProgressCallback()],
     stop={"training_iteration": 1} if args.smoke_test else None,
 )
 
-print(analysis.get_best_config(metric="val_loss", mode="min"))
+print(analysis.get_best_config(metric="loss", mode="min"))
