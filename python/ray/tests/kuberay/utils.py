@@ -209,7 +209,8 @@ def kubectl_exec_python_script(
     Prints and return kubectl's output as a string.
     """
     script_path = Path(__file__).resolve().parent / "scripts" / script_name
-    script_string = open(script_path).read()
+    with open(script_path) as script_file:
+        script_string = script_file.read()
     return kubectl_exec(["python", "-c", script_string], pod, namespace, container)
 
 
