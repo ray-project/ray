@@ -16,7 +16,7 @@ from ray.serve.client import ServeControllerClient, get_controller_namespace
 
 logger = logging.getLogger(__file__)
 
-INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
+_INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
 
 
@@ -66,6 +66,10 @@ def set_global_client(client):
     _global_client = client
 
 
+def get_internal_replica_context():
+    return _INTERNAL_REPLICA_CONTEXT
+
+
 def set_internal_replica_context(
     deployment: str,
     replica_tag: ReplicaTag,
@@ -73,8 +77,8 @@ def set_internal_replica_context(
     controller_namespace: str,
     servable_object: Callable,
 ):
-    global INTERNAL_REPLICA_CONTEXT
-    INTERNAL_REPLICA_CONTEXT = ReplicaContext(
+    global _INTERNAL_REPLICA_CONTEXT
+    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
         deployment, replica_tag, controller_name, controller_namespace, servable_object
     )
 
@@ -107,14 +111,14 @@ def _connect(
 
     # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
-    if INTERNAL_REPLICA_CONTEXT is None:
+    if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
         controller_namespace = get_controller_namespace(
             detached=True, _override_controller_namespace=_override_controller_namespace
         )
     else:
-        controller_name = INTERNAL_REPLICA_CONTEXT._internal_controller_name
-        controller_namespace = INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
+        controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
+        controller_namespace = _INTERNAL_REPLICA_CONTEXT._internal_controller_namespace
 
     # Try to get serve controller if it exists
     try:

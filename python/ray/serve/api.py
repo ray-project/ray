@@ -54,8 +54,8 @@ from ray.serve.client import ServeControllerClient, get_controller_namespace
 from ray.serve.context import (
     set_global_client,
     get_global_client,
+    get_internal_replica_context,
     ReplicaContext,
-    INTERNAL_REPLICA_CONTEXT,
 )
 
 logger = logging.getLogger(__file__)
@@ -232,13 +232,14 @@ def get_replica_context() -> ReplicaContext:
         >>> # deployment_name#krcwoa
         >>> serve.get_replica_context().replica_tag # doctest: +SKIP
     """
-    if INTERNAL_REPLICA_CONTEXT is None:
+    internal_replica_context = get_internal_replica_context()
+    if internal_replica_context is None:
         raise RayServeException(
             "`serve.get_replica_context()` "
             "may only be called from within a "
             "Ray Serve deployment."
         )
-    return INTERNAL_REPLICA_CONTEXT
+    return internal_replica_context
 
 
 @PublicAPI(stability="beta")
