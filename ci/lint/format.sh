@@ -115,11 +115,11 @@ MYPY_FILES=(
 )
 
 BLACK_EXCLUDES=(
-    '--extend-exclude' 'python/ray/cloudpickle/*'
-    '--extend-exclude' 'python/build/*'
-    '--extend-exclude' 'python/ray/core/src/ray/gcs/*'
-    '--extend-exclude' 'python/ray/thirdparty_files/*'
-    '--extend-exclude' 'python/ray/_private/thirdparty/*'
+    '--force-exclude' 'python/ray/cloudpickle/*'
+    '--force-exclude' 'python/build/*'
+    '--force-exclude' 'python/ray/core/src/ray/gcs/*'
+    '--force-exclude' 'python/ray/thirdparty_files/*'
+    '--force-exclude' 'python/ray/_private/thirdparty/*'
 )
 
 GIT_LS_EXCLUDES=(
