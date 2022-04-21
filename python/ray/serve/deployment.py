@@ -175,9 +175,9 @@ class Deployment:
             # this deployment is not exposed over HTTP
             return None
 
-        from ray.serve.api import internal_get_global_client
+        from ray.serve.api import get_global_client
 
-        return internal_get_global_client().root_url + self.route_prefix
+        return get_global_client().root_url + self.route_prefix
 
     def __call__(self):
         raise RuntimeError(
@@ -237,9 +237,9 @@ class Deployment:
         if len(init_kwargs) == 0 and self._init_kwargs is not None:
             init_kwargs = self._init_kwargs
 
-        from ray.serve.api import internal_get_global_client
+        from ray.serve.api import get_global_client
 
-        return internal_get_global_client().deploy(
+        return get_global_client().deploy(
             self._name,
             self._func_or_class,
             init_args,
@@ -257,9 +257,9 @@ class Deployment:
     def delete(self):
         """Delete this deployment."""
 
-        from ray.serve.api import internal_get_global_client
+        from ray.serve.api import get_global_client
 
-        return internal_get_global_client().delete_deployments([self._name])
+        return get_global_client().delete_deployments([self._name])
 
     @PublicAPI
     def get_handle(
@@ -277,9 +277,9 @@ class Deployment:
             ServeHandle
         """
 
-        from ray.serve.api import internal_get_global_client
+        from ray.serve.api import get_global_client
 
-        return internal_get_global_client().get_handle(
+        return get_global_client().get_handle(
             self._name, missing_ok=True, sync=sync
         )
 

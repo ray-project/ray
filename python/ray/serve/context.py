@@ -32,7 +32,7 @@ class ReplicaContext:
     servable_object: Callable
 
 
-def internal_get_global_client(
+def get_global_client(
     _override_controller_namespace: Optional[str] = None,
     _health_check_controller: bool = False,
 ) -> ServeControllerClient:

@@ -53,7 +53,7 @@ from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient, get_controller_namespace
 from ray.serve.context import (
     set_global_client,
-    internal_get_global_client,
+    get_global_client,
     ReplicaContext,
     _INTERNAL_REPLICA_CONTEXT,
 )
@@ -125,7 +125,7 @@ def start(
     )
 
     try:
-        client = internal_get_global_client(
+        client = get_global_client(
             _override_controller_namespace=_override_controller_namespace,
             _health_check_controller=True,
         )
@@ -202,7 +202,7 @@ def shutdown() -> None:
     """
 
     try:
-        client = internal_get_global_client()
+        client = get_global_client()
     except RayServeException:
         logger.info(
             "Nothing to shut down. There's no Serve application "
@@ -495,7 +495,7 @@ def get_deployment(name: str) -> Deployment:
         (
             deployment_info,
             route_prefix,
-        ) = internal_get_global_client().get_deployment_info(name)
+        ) = get_global_client().get_deployment_info(name)
     except KeyError:
         raise KeyError(
             f"Deployment {name} was not found. Did you call Deployment.deploy()?"
@@ -519,7 +519,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = internal_get_global_client().list_deployments()
+    infos = get_global_client().list_deployments()
 
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():
@@ -556,7 +556,7 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
                 status and a message explaining the status.
     """
 
-    return internal_get_global_client().get_deployment_statuses()
+    return get_global_client().get_deployment_statuses()
 
 
 @PublicAPI(stability="alpha")

@@ -25,7 +25,7 @@ from ray._private.test_utils import (
 from ray.cluster_utils import Cluster, cluster_not_supported
 
 from ray import serve
-from ray.serve.api import internal_get_global_client
+from ray.serve.api import get_global_client
 from ray.serve.config import HTTPOptions
 from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
@@ -446,7 +446,7 @@ def test_fixed_number_proxies(ray_cluster):
     )
 
     # Only the controller and two http proxy should be started.
-    controller_handle = internal_get_global_client()._controller
+    controller_handle = get_global_client()._controller
     node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
     assert len(node_to_http_actors) == 2
 

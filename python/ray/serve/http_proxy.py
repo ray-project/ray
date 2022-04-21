@@ -205,7 +205,7 @@ class HTTPProxy:
         self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
-            return serve.api.internal_get_global_client().get_handle(
+            return serve.client.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
