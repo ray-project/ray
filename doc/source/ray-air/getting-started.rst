@@ -44,6 +44,19 @@ Trainer
 .. autoclass:: ray.ml.trainer.Trainer
     :members:
 
+
+Predictors
+~~~~~~~~~~
+
+.. autoclass:: ray.ml.predictor.Predictor
+    :members:
+
+.. autoclass:: ray.ml.batch_predictor.BatchPredictor
+    :members:
+
+Integrations
+~~~~~~~~~~~~
+
 .. automodule:: ray.ml.integrations.xgboost
     :members:
     :show-inheritance:
@@ -83,34 +96,6 @@ Tuner
 .. automodule:: ray.tune.result_grid
     :members:
 
-Predictors
-~~~~~~~~~~
-
-.. autoclass:: ray.ml.predictor.Predictor
-    :members:
-
-.. autoclass:: ray.ml.batch_predictor.BatchPredictor
-    :members:
-
-.. automodule:: ray.ml.integrations.xgboost
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.integrations.lightgbm
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.integrations.tensorflow
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.integrations.torch
-    :members:
-    :show-inheritance:
-
-.. automodule:: ray.ml.integrations.sklearn
-    :members:
-    :show-inheritance:
 
 .. _air-serve-integration:
 
