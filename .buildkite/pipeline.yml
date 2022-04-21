@@ -365,8 +365,8 @@
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   parallelism: 3
   commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - . ./ci/travis/ci.sh test_large
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RAY_use_ray_syncer=true . ./ci/ci.sh test_large
 - label: ":construction: :python: (syncer) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
