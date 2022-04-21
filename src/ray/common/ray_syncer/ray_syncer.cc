@@ -314,7 +314,7 @@ void RaySyncer::Connect(std::unique_ptr<NodeSyncConnection> connection) {
             if (upward_only_[message->component_id()] && !is_upward_conn) {
               continue;
             }
-            RAY_CHECK(conn.PushToSendingQueue(message));
+            conn.PushToSendingQueue(message);
           }
         }
       },
