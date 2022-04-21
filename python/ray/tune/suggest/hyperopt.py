@@ -136,8 +136,6 @@ class HyperOptSearch(Searcher):
         n_initial_points: int = 20,
         random_state_seed: Optional[int] = None,
         gamma: float = 0.25,
-        max_concurrent: Optional[int] = None,
-        use_early_stopped_trials: Optional[bool] = None,
     ):
         assert (
             hpo is not None
@@ -147,10 +145,7 @@ class HyperOptSearch(Searcher):
         super(HyperOptSearch, self).__init__(
             metric=metric,
             mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials,
         )
-        self.max_concurrent = max_concurrent
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
             self.metric_op = -1.0
