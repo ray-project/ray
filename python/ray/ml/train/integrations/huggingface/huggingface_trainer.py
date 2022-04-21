@@ -5,7 +5,6 @@ import tempfile
 from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type
-import warnings
 
 import torch
 import transformers

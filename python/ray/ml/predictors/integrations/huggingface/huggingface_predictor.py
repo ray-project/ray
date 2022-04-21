@@ -2,7 +2,6 @@ import os
 from typing import Dict, Optional, Type, Union, List
 
 import pandas as pd
-import numpy as np
 from ray.ml.train.integrations.huggingface.huggingface_utils import (
     HFIterableDatasetWithLen,
 )
