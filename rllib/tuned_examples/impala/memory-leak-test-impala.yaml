@@ -1,0 +1,17 @@
+memory-leak-test-impala:
+    stop:
+        timesteps_total: 150000
+    env:
+        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
+    run: IMPALA
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # Switch off np.random, which is known to have memory leaks.
+        env_config:
+            config:
+                static_samples: true
+        num_gpus: 0
+        num_workers: 3
+        num_aggregation_workers: 1
+        num_envs_per_worker: 5

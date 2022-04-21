@@ -44,7 +44,12 @@ from ray.tune.schedulers.util import (
 # fmt: on
 
 from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
+from ray.tune.syncer import (
+    SyncConfig,
+    set_sync_periods,
+    wait_for_sync,
+    validate_upload_dir,
+)
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -170,7 +175,7 @@ def run(
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
             model to train. This may refer to the name of a built-on algorithm
-            (e.g. RLLib's DQN or PPO), a user-defined trainable
+            (e.g. RLlib's DQN or PPO), a user-defined trainable
             function or class, or the string identifier of a
             trainable function or class registered in the tune registry.
             If Experiment, then Tune will execute training based on
@@ -418,6 +423,7 @@ def run(
 
     config = config or {}
     sync_config = sync_config or SyncConfig()
+    validate_upload_dir(sync_config)
     set_sync_periods(sync_config)
 
     if num_samples == -1:
@@ -609,17 +615,6 @@ def run(
         if resources_per_trial:
             runner.update_pending_trial_resources(resources_per_trial)
 
-    progress_reporter = progress_reporter or detect_reporter()
-
-    if not progress_reporter.set_search_properties(metric, mode):
-        raise ValueError(
-            "You passed a `metric` or `mode` argument to `tune.run()`, but "
-            "the reporter you are using was already instantiated with their "
-            "own `metric` and `mode` parameters. Either remove the arguments "
-            "from your reporter or from your call to `tune.run()`"
-        )
-    progress_reporter.set_total_samples(search_alg.total_samples)
-
     # Calls setup on callbacks
     runner.setup_experiments(
         experiments=experiments, total_num_samples=search_alg.total_samples
@@ -667,8 +662,16 @@ def run(
     if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
         signal.signal(signal.SIGINT, sigint_handler)
 
+    progress_reporter = progress_reporter or detect_reporter()
+
     tune_start = time.time()
-    progress_reporter.set_start_time(tune_start)
+
+    progress_reporter.setup(
+        start_time=tune_start,
+        total_samples=search_alg.total_samples,
+        metric=metric,
+        mode=mode,
+    )
     while not runner.is_finished() and not state[signal.SIGINT]:
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):

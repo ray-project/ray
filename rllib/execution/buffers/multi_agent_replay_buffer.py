@@ -1,6 +1,6 @@
 import collections
 import platform
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable
 
 import numpy as np
 import ray
@@ -12,7 +12,8 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.typing import PolicyID, SampleBatchType
+from ray.rllib.utils.typing import PolicyID, SampleBatchType, T
+from ray.util.annotations import DeveloperAPI
 from ray.util.iter import ParallelIteratorWorker
 
 
@@ -157,7 +158,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         """Adds a batch to the appropriate policy's replay buffer.
 
         Turns the batch into a MultiAgentBatch of the DEFAULT_POLICY_ID if
-        it is not a MultiAgentBatch. Subsequently adds the batch to
+        it is not a MultiAgentBatch.
 
         Args:
             batch (SampleBatchType): The batch to be added.
@@ -281,6 +282,16 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         buffer_states = state["replay_buffers"]
         for policy_id in buffer_states.keys():
             self.replay_buffers[policy_id].set_state(buffer_states[policy_id])
+
+    @DeveloperAPI
+    def apply(
+        self,
+        func: Callable[["MultiAgentReplayBuffer", Optional[Any], Optional[Any]], T],
+        *_args,
+        **kwargs,
+    ) -> T:
+        """Calls the given function with this MultiAgentReplayBuffer instance."""
+        return func(self, *_args, **kwargs)
 
 
 ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)

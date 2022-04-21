@@ -1,12 +1,13 @@
 import importlib
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from ray_release.config import set_test_env_var
 from ray_release.exception import (
@@ -150,6 +151,32 @@ def find_and_wait_for_ray_wheels_url(
     return wait_for_url(ray_wheels_url, timeout=timeout)
 
 
+def get_buildkite_repo_branch() -> Tuple[str, str]:
+    if "BUILDKITE_BRANCH" not in os.environ:
+        return DEFAULT_REPO, DEFAULT_BRANCH
+
+    branch_str = os.environ["BUILDKITE_BRANCH"]
+
+    # BUILDKITE_PULL_REQUEST_REPO can be empty string, use `or` to catch this
+    repo_url = os.environ.get("BUILDKITE_PULL_REQUEST_REPO", None) or os.environ.get(
+        "BUILDKITE_REPO", DEFAULT_REPO
+    )
+
+    if ":" in branch_str:
+        # If the branch is user:branch, we split into user, branch
+        owner, branch = branch_str.split(":", maxsplit=1)
+
+        # If this is a PR, the repo_url is already set via env variable.
+        # We only construct our own repo url if this is a branch build.
+        if not os.environ.get("BUILDKITE_PULL_REQUEST_REPO"):
+            repo_url = f"https://github.com/{owner}/ray.git"
+    else:
+        branch = branch_str
+
+    repo_url = repo_url.replace("git://", "https://")
+    return repo_url, branch
+
+
 def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
     if not ray_wheels:
         # If no wheels are specified, default to BUILDKITE_COMMIT
@@ -162,8 +189,7 @@ def find_ray_wheels_url(ray_wheels: Optional[str] = None) -> str:
                 "the latest available master wheels."
             )
 
-        branch = os.environ.get("BUILDKITE_BRANCH", DEFAULT_BRANCH)
-        repo_url = os.environ.get("BUILDKITE_REPO", DEFAULT_REPO)
+        repo_url, branch = get_buildkite_repo_branch()
 
         if not re.match(r"\b([a-f0-9]{40})\b", commit):
             # commit is symbolic, like HEAD
@@ -264,7 +290,10 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
         "pip uninstall -y ray", shell=True, env=os.environ, text=True
     )
     subprocess.check_output(
-        f"pip install -U {ray_wheels}", shell=True, env=os.environ, text=True
+        f"pip install -U {shlex.quote(ray_wheels)}",
+        shell=True,
+        env=os.environ,
+        text=True,
     )
     for module_name in RELOAD_MODULES:
         if module_name in sys.modules:
