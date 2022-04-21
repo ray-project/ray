@@ -89,10 +89,9 @@ def wait_for_pod_to_start(
     More precisely, waits until there is a pod with name containing `pod_name_filter`
     and the pod has Running status.phase."""
     for i in range(tries):
-        try:
-            pod = get_pod(pod_name_filter=pod_name_filter, namespace=namespace)
-        except AssertionError:
-            logger.warning(f"Did not find a pod with name matching `{pod_name_filter}`")
+        pod = get_pod(pod_name_filter=pod_name_filter, namespace=namespace)
+        if not pod:
+            # We didn't get a matching pod.
             continue
         pod_status = (
             subprocess.check_output(
@@ -145,6 +144,7 @@ def wait_for_ray_health(
     for i in range(tries):
         try:
             pod = get_pod(pod_name_filter=pod_name_filter, namespace="default")
+            assert pod, f"Couldn't find a pod matching {pod_name_filter}."
             # `ray health-check` yields 0 exit status iff it succeeds
             kubectl_exec(
                 ["ray", "health-check"], pod, namespace, container=ray_container
