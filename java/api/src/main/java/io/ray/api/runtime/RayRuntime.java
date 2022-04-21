@@ -16,6 +16,7 @@ import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
+import io.ray.api.parallelactor.ParallelActorContext;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
@@ -286,4 +287,7 @@ public interface RayRuntime {
 
   /** Create runtime env instance at runtime. */
   RuntimeEnv createRuntimeEnv(Map<String, String> envVars);
+
+  /// Get the parallel actor context at runtime.
+  ParallelActorContext getParallelActorContext();
 }

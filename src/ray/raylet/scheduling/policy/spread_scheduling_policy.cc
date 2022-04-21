@@ -35,24 +35,34 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
   }
   std::sort(round.begin(), round.end());
 
-  size_t round_index = spread_scheduling_next_index_;
-  for (size_t i = 0; i < round.size(); ++i, ++round_index) {
-    const auto &node_id = round[round_index % round.size()];
-    const auto &node = map_find_or_die(nodes_, node_id);
-    if (node_id == local_node_id_ && options.avoid_local_node) {
-      continue;
-    }
-    if (!is_node_available_(node_id) ||
-        !node.GetLocalView().IsFeasible(resource_request) ||
-        !node.GetLocalView().IsAvailable(resource_request, true)) {
-      continue;
-    }
+  // Spread among available nodes first.
+  // If there is no available nodes, we spread among feasible nodes.
+  for (bool available_nodes_only :
+       (options.require_node_available ? std::vector<bool>{true}
+                                       : std::vector<bool>{true, false})) {
+    size_t round_index = spread_scheduling_next_index_;
+    for (size_t i = 0; i < round.size(); ++i, ++round_index) {
+      const auto &node_id = round[round_index % round.size()];
+      const auto &node = map_find_or_die(nodes_, node_id);
+      if (node_id == local_node_id_ && options.avoid_local_node) {
+        continue;
+      }
+      if (!is_node_alive_(node_id) || !node.GetLocalView().IsFeasible(resource_request)) {
+        continue;
+      }
 
-    spread_scheduling_next_index_ = ((round_index + 1) % round.size());
-    return node_id;
+      if (available_nodes_only &&
+          !node.GetLocalView().IsAvailable(resource_request,
+                                           /*ignore_pull_manager_at_capacity=*/false)) {
+        continue;
+      }
+
+      spread_scheduling_next_index_ = ((round_index + 1) % round.size());
+      return node_id;
+    }
   }
-  options.scheduling_type = SchedulingType::HYBRID;
-  return hybrid_policy_.Schedule(resource_request, options);
+
+  return scheduling::NodeID::Nil();
 }
 
 }  // namespace raylet_scheduling_policy
