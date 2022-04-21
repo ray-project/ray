@@ -21,15 +21,10 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine("");
     newLine("package io.ray.api.parallelactor;");
     newLine("");
-    newLine("import io.ray.api.parallelactor.ParallelActor;");
-    newLine("import io.ray.api.parallelactor.ParallelActorCreator;");
     newLine("import io.ray.api.ObjectRef;");
 
     for (int i = 0; i <= MAX_PARAMETERS; i++) {
       newLine("import io.ray.api.function.RayFunc" + i + ";");
-    }
-    for (int i = 0; i <= MAX_PARAMETERS; i++) {
-      newLine("import io.ray.api.function.RayFuncVoid" + i + ";");
     }
     newLine("");
 
@@ -57,9 +52,6 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine("package io.ray.api.parallelactor;");
     newLine("");
     newLine("import io.ray.api.ObjectRef;");
-    newLine("import io.ray.api.parallelactor.ParallelActor;");
-    newLine("import io.ray.api.parallelactor.ParallelActorTaskCaller;");
-    newLine("import io.ray.api.parallelactor.VoidParallelActorTaskCaller;");
     newLine("import io.ray.api.function.RayFuncVoid;");
     newLine("import io.ray.api.function.RayFuncR;");
 
@@ -73,7 +65,7 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine("/**");
     newLine(" * This class provides type-safe interfaces for remote actor calls.");
     newLine(" **/");
-    newLine("interface ParallelActorCall<A> {");
+    newLine("interface ActorCall<A> {");
     newLine("");
 
     {
@@ -81,24 +73,14 @@ public class ParallelActorCallGenerator extends BaseGenerator {
       newLine(
           0,
           "  default VoidParallelActorTaskCaller buildVoidReturnCaller(RayFuncVoid func, Object[] args) {\n"
-              + "   if (this instanceof ParallelActor) {\n"
-              + "     return new VoidParallelActorTaskCaller((ParallelActor) this, func, args);\n"
-              + "   } else if (this instanceof ParallelInstance) {\n"
-              + "     return new VoidParallelActorTaskCaller((ParallelInstance) this, func, args);\n"
-              + "   }\n"
-              + "   return null;\n"
+              + "    return new VoidParallelActorTaskCaller((ParallelActorInstance) this, func, args);\n"
               + " }\n");
 
       /// Generate buildCaller()
       newLine(
           0,
           "  default <R> ParallelActorTaskCaller<R> buildCaller(RayFuncR<R> func, Object[] args) {\n"
-              + "    if (this instanceof ParallelActor) {\n"
-              + "      return new ParallelActorTaskCaller<R>((ParallelActor) this, func, args);\n"
-              + "    } else if (this instanceof ParallelInstance) {\n"
-              + "      return new ParallelActorTaskCaller<R>((ParallelInstance) this, func, args);\n"
-              + "    }\n"
-              + "    return null;\n"
+              + "    return new ParallelActorTaskCaller<R>((ParallelActorInstance) this, func, args);\n"
               + "  }\n");
     }
 
@@ -318,14 +300,14 @@ public class ParallelActorCallGenerator extends BaseGenerator {
   public static void main(String[] args) throws IOException {
     String path =
         System.getProperty("user.dir")
-            + "/api/src/main/java/io/ray/api/parallelactor/ParallelCall.java";
+            + "/api/src/main/java/io/ray/api/parallelactor/Call.java";
     FileUtils.write(
         new File(path),
         new ParallelActorCallGenerator().generateRayCallDotJava(),
         Charset.defaultCharset());
     path =
         System.getProperty("user.dir")
-            + "/api/src/main/java/io/ray/api/parallelactor/ParallelActorCall.java";
+            + "/api/src/main/java/io/ray/api/parallelactor/ActorCall.java";
     FileUtils.write(
         new File(path),
         new ParallelActorCallGenerator().generateActorCallDotJava(),
