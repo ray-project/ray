@@ -7,31 +7,39 @@ import mars.dataframe as md
 
 @pytest.fixture(scope="module")
 def ray_start_regular(request):  # pragma: no cover
-    param = getattr(request, "param", {})
-    if not param.get("enable", True):
-        yield
-    else:
-        num_cpus = param.get("num_cpus", 64)
-        try:
-            yield ray.init(num_cpus=num_cpus)
-        finally:
-            ray.shutdown()
+    try:
+        yield ray.init(num_cpus=16)
+    finally:
+        ray.shutdown()
 
 
-def test_mars(ray_start_regular):
-    cluster = mars.new_cluster_in_ray(worker_num=2)
-    df = md.DataFrame(mt.random.rand(1000_0000, 4), columns=list("abcd"))
+@pytest.mark.parametrize("use_mars_api", [True, False])
+def test_mars(ray_start_regular, use_mars_api):
+    import pandas as pd
+
+    cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)
+    n = 10000
+    pdf = pd.DataFrame({"a": list(range(n)), "b": list(range(n, 2 * n))})
+    df = md.DataFrame(pdf)
+
     # Convert mars dataframe to ray dataset
-    import ray.data
+    if use_mars_api:
+        ds = md.to_ray_dataset(df)
+    else:
+        ds = ray.data.from_mars(df)
+    pd.testing.assert_dataframe_equal(ds.to_pandas(), df.to_pandas())
+    ds2 = ds.filter(lambda row: row["a"] % 2 == 0)
+    assert ds2.take(5) == [{"a": 2 * i, "b": n + 2 * i} for i in range(5)]
 
-    # ds = md.to_ray_dataset(df)
-    ds = ray.data.from_mars(df)
-    print(ds.schema(), ds.count())
-    ds.filter(lambda row: row["a"] > 0.5).show(5)
     # Convert ray dataset to mars dataframe
-    # df2 = md.read_ray_dataset(ds)
-    df2 = ds.to_mars()
-    print(df2.head(5).execute())
+    if use_mars_api:
+        df2 = md.read_ray_dataset(ds2)
+    else:
+        df2 = ds2.to_mars()
+    pd.testing.assert_dataframe_equal(
+        df2.head(5).execute(),
+        pd.DataFrame({"a": list(range(0, 10, 2)), "b": list(range(n, n + 10, 2))}),
+    )
     cluster.stop()
 
 

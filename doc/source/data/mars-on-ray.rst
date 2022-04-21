@@ -67,7 +67,7 @@ Interact with Ray Dataset:
         mt.random.rand(1000_0000, 4),
         columns=list('abcd'))
     # Convert mars dataframe to ray dataset
-    import ray.data
+    import ray
     # ds = md.to_ray_dataset(df)
     ds = ray.data.from_mars(df)
     print(ds.schema(), ds.count())
