@@ -34,13 +34,20 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             # For now we don't use the new ReplayBuffer API here
             "_enable_replay_buffer_api": False,
             "type": "MultiAgentReplayBuffer",
-            "capacity": 50000,
-            "replay_batch_size": 32,
+            "prioritized_replay": False,
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            # Size of the replay buffer (in sequences, not timesteps).
+            "capacity": 100000,
+            # Set automatically: The number
+            # of contiguous environment steps to
+            # replay at once. Will be calculated via
+            # model->max_seq_len + burn_in.
+            # Do not set this to any valid value!
+            "replay_sequence_length": -1,
         },
         # If True, assume a zero-initialized state input (no matter where in
         # the episode the sequence is located).
@@ -65,17 +72,6 @@ R2D2_DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # The epsilon parameter from the R2D2 loss function (only used
         # if `use_h_function`=True.
         "h_function_epsilon": 1e-3,
-
-        # === Hyperparameters from the paper [1] ===
-        # Size of the replay buffer (in sequences, not timesteps).
-        "buffer_size": 100000,
-        # If True prioritized replay buffer will be used.
-        "prioritized_replay": False,
-        # Set automatically: The number of contiguous environment steps to
-        # replay at once. Will be calculated via
-        # model->max_seq_len + burn_in.
-        # Do not set this to any valid value!
-        "replay_sequence_length": -1,
 
         # Update the target network every `target_network_update_freq` steps.
         "target_network_update_freq": 2500,
@@ -131,14 +127,14 @@ class R2D2Trainer(DQNTrainer):
         # Call super's validation method.
         super().validate_config(config)
 
-        if config["replay_sequence_length"] != -1:
+        if config["replay_buffer_config"]["replay_sequence_length"] != -1:
             raise ValueError(
                 "`replay_sequence_length` is calculated automatically to be "
                 "model->max_seq_len + burn_in!"
             )
         # Add the `burn_in` to the Model's max_seq_len.
         # Set the replay sequence length to the max_seq_len of the model.
-        config["replay_sequence_length"] = (
+        config["replay_buffer_config"]["replay_sequence_length"] = (
             config["burn_in"] + config["model"]["max_seq_len"]
         )
 

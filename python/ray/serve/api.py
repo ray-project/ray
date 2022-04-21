@@ -66,21 +66,13 @@ from ray.serve.utils import (
     format_actor_name,
     get_current_node_resource_key,
     get_random_letters,
-    get_deployment_import_path,
     in_interactive_shell,
     DEFAULT,
 )
 from ray.util.annotations import PublicAPI
 import ray
 from ray import cloudpickle
-from ray.serve.schema import (
-    RayActorOptionsSchema,
-    DeploymentSchema,
-    DeploymentStatusSchema,
-    ServeApplicationSchema,
-    ServeApplicationStatusSchema,
-)
-from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
+from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.application import Application
 
 logger = logging.getLogger(__file__)
@@ -1134,30 +1126,17 @@ def deployment(
             "_autoscaling_config is provided."
         )
 
-    config = DeploymentConfig()
-    if num_replicas is not None:
-        config.num_replicas = num_replicas
-
-    if user_config is not None:
-        config.user_config = user_config
-
-    if max_concurrent_queries is not None:
-        config.max_concurrent_queries = max_concurrent_queries
-
-    if _autoscaling_config is not None:
-        config.autoscaling_config = _autoscaling_config
-
-    if _graceful_shutdown_wait_loop_s is not None:
-        config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
-
-    if _graceful_shutdown_timeout_s is not None:
-        config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
-
-    if _health_check_period_s is not None:
-        config.health_check_period_s = _health_check_period_s
-
-    if _health_check_timeout_s is not None:
-        config.health_check_timeout_s = _health_check_timeout_s
+    config = DeploymentConfig.from_default(
+        ignore_none=True,
+        num_replicas=num_replicas,
+        user_config=user_config,
+        max_concurrent_queries=max_concurrent_queries,
+        autoscaling_config=_autoscaling_config,
+        graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
+        health_check_period_s=_health_check_period_s,
+        health_check_timeout_s=_health_check_timeout_s,
+    )
 
     def decorator(_func_or_class):
         return Deployment(
@@ -1267,7 +1246,7 @@ def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
 
 @PublicAPI(stability="alpha")
 def run(
-    target: Union[DeploymentNode, DeploymentFunctionNode],
+    target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
     *,
     host: str = DEFAULT_HTTP_HOST,
@@ -1275,14 +1254,14 @@ def run(
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
-    Either a DeploymentNode, DeploymentFunctionNode, or a pre-built application
+    Either a ClassNode, FunctionNode, or a pre-built application
     can be passed in. If a node is passed in, all of the deployments it depends
     on will be deployed. If there is an ingress, its handle will be returned.
 
     Args:
-        target (Union[DeploymentNode, DeploymentFunctionNode, Application]):
-            A user-built Serve Application or a DeploymentNode that acts as the
-            root node of DAG. By default DeploymentNode is the Driver
+        target (Union[ClassNode, FunctionNode, Application]):
+            A user-built Serve Application or a ClassNode that acts as the
+            root node of DAG. By default ClassNode is the Driver
             deployment unless user provides a customized one.
         host (str): The host passed into serve.start().
         port (int): The port passed into serve.start().
@@ -1300,12 +1279,12 @@ def run(
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
         ingress = target.ingress
-    # Each DAG should always provide a valid Driver DeploymentNode
-    elif isinstance(target, DeploymentNode):
+    # Each DAG should always provide a valid Driver ClassNode
+    elif isinstance(target, ClassNode):
         deployments = pipeline_build(target)
         ingress = get_and_validate_ingress_deployment(deployments)
     # Special case where user is doing single function serve.run(func.bind())
-    elif isinstance(target, DeploymentFunctionNode):
+    elif isinstance(target, FunctionNode):
         deployments = pipeline_build(target)
         ingress = get_and_validate_ingress_deployment(deployments)
         if len(deployments) != 1:
@@ -1318,15 +1297,14 @@ def run(
     elif isinstance(target, DAGNode):
         raise ValueError(
             "Invalid DAGNode type as entry to serve.run(), "
-            f"type: {type(target)}, accepted: DeploymentNode, "
-            "DeploymentFunctionNode please provide a driver class and bind it "
+            f"type: {type(target)}, accepted: ClassNode, "
+            "FunctionNode please provide a driver class and bind it "
             "as entrypoint to your Serve DAG."
         )
     else:
         raise TypeError(
-            "Expected a DeploymentNode, DeploymentFunctionNode, or "
-            "Application as target. Got unexpected type "
-            f'"{type(target)}" instead.'
+            "Expected a ClassNode, FunctionNode, or Application as target. "
+            f"Got unexpected type {type(target)} instead."
         )
 
     parameter_group = []
@@ -1353,10 +1331,10 @@ def run(
         return ingress.get_handle()
 
 
-def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
+def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
-    Takes in a DeploymentNode or DeploymentFunctionNode and converts it to a
+    Takes in a ClassNode or FunctionNode and converts it to a
     Serve application consisting of one or more deployments. This is intended
     to be used for production scenarios and deployed via the Serve REST API or
     CLI, so there are some restrictions placed on the deployments:
@@ -1381,107 +1359,3 @@ def build(target: Union[DeploymentNode, DeploymentFunctionNode]) -> Application:
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
     return Application(pipeline_build(target))
-
-
-def deployment_to_schema(d: Deployment) -> DeploymentSchema:
-    """Converts a live deployment object to a corresponding structured schema.
-
-    If the deployment has a class or function, it will be attemptetd to be
-    converted to a valid corresponding import path.
-
-    init_args and init_kwargs must also be JSON-serializable or this call will
-    fail.
-    """
-    from ray.serve.pipeline.json_serde import convert_to_json_safe_obj
-
-    if d.ray_actor_options is not None:
-        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
-    else:
-        ray_actor_options_schema = None
-
-    return DeploymentSchema(
-        name=d.name,
-        import_path=get_deployment_import_path(
-            d, enforce_importable=True, replace_main=True
-        ),
-        init_args=convert_to_json_safe_obj(d.init_args, err_key="init_args"),
-        init_kwargs=convert_to_json_safe_obj(d.init_kwargs, err_key="init_kwargs"),
-        num_replicas=d.num_replicas,
-        route_prefix=d.route_prefix,
-        max_concurrent_queries=d.max_concurrent_queries,
-        user_config=d.user_config,
-        autoscaling_config=d._config.autoscaling_config,
-        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
-        health_check_period_s=d._config.health_check_period_s,
-        health_check_timeout_s=d._config.health_check_timeout_s,
-        ray_actor_options=ray_actor_options_schema,
-    )
-
-
-def schema_to_deployment(s: DeploymentSchema) -> Deployment:
-    from ray.serve.pipeline.json_serde import convert_from_json_safe_obj
-
-    if s.ray_actor_options is None:
-        ray_actor_options = None
-    else:
-        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
-
-    return deployment(
-        name=s.name,
-        init_args=convert_from_json_safe_obj(s.init_args, err_key="init_args"),
-        init_kwargs=convert_from_json_safe_obj(s.init_kwargs, err_key="init_kwargs"),
-        num_replicas=s.num_replicas,
-        route_prefix=s.route_prefix,
-        max_concurrent_queries=s.max_concurrent_queries,
-        user_config=s.user_config,
-        _autoscaling_config=s.autoscaling_config,
-        _graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
-        _graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
-        _health_check_period_s=s.health_check_period_s,
-        _health_check_timeout_s=s.health_check_timeout_s,
-        ray_actor_options=ray_actor_options,
-    )(s.import_path)
-
-
-def serve_application_to_schema(
-    deployments: List[Deployment],
-) -> ServeApplicationSchema:
-    return ServeApplicationSchema(
-        deployments=[deployment_to_schema(d) for d in deployments]
-    )
-
-
-def schema_to_serve_application(schema: ServeApplicationSchema) -> List[Deployment]:
-    return [schema_to_deployment(s) for s in schema.deployments]
-
-
-def status_info_to_schema(
-    deployment_name: str, status_info: Union[DeploymentStatusInfo, Dict]
-) -> DeploymentStatusSchema:
-    if isinstance(status_info, DeploymentStatusInfo):
-        return DeploymentStatusSchema(
-            name=deployment_name, status=status_info.status, message=status_info.message
-        )
-    elif isinstance(status_info, dict):
-        return DeploymentStatusSchema(
-            name=deployment_name,
-            status=status_info["status"],
-            message=status_info["message"],
-        )
-    else:
-        raise TypeError(
-            f"Got {type(status_info)} as status_info's "
-            "type. Expected status_info to be either a "
-            "DeploymentStatusInfo or a dictionary."
-        )
-
-
-def serve_application_status_to_schema(
-    status_infos: Dict[str, Union[DeploymentStatusInfo, Dict]]
-) -> ServeApplicationStatusSchema:
-    schemas = [
-        status_info_to_schema(deployment_name, status_info)
-        for deployment_name, status_info in status_infos.items()
-    ]
-    return ServeApplicationStatusSchema(statuses=schemas)

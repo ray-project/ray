@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple, Optional, Any, Dict, Hashable
+from typing import Callable, Iterable, List, Tuple, Optional, Any, Dict, Hashable
 import logging
 from multiprocessing import TimeoutError
 import os
@@ -476,16 +476,19 @@ class Pool:
             Ray cluster will be started on this machine. Otherwise, this will
             be passed to `ray.init()` to connect to a running cluster. This may
             also be specified using the `RAY_ADDRESS` environment variable.
+        ray_remote_args: arguments used to configure the Ray Actors making up
+            the pool.
     """
 
     def __init__(
         self,
-        processes=None,
-        initializer=None,
-        initargs=None,
-        maxtasksperchild=None,
-        context=None,
-        ray_address=None,
+        processes: Optional[int] = None,
+        initializer: Optional[Callable] = None,
+        initargs: Optional[Iterable] = None,
+        maxtasksperchild: Optional[int] = None,
+        context: Any = None,
+        ray_address: Optional[str] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         self._closed = False
         self._initializer = initializer
@@ -495,6 +498,8 @@ class Pool:
         self._registry: List[Tuple[Any, ray.ObjectRef]] = []
         self._registry_hashable: Dict[Hashable, ray.ObjectRef] = {}
         self._current_index = 0
+        self._ray_remote_args = ray_remote_args or {}
+        self._pool_actor = None
 
         if context and log_once("context_argument_warning"):
             logger.warning(
@@ -542,6 +547,7 @@ class Pool:
         return processes
 
     def _start_actor_pool(self, processes):
+        self._pool_actor = None
         self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
         ray.get([actor.ping.remote() for actor, _ in self._actor_pool])
 
@@ -569,7 +575,10 @@ class Pool:
         # NOTE(edoakes): The initializer function can't currently be used to
         # modify the global namespace (e.g., import packages or set globals)
         # due to a limitation in cloudpickle.
-        return (PoolActor.remote(self._initializer, self._initargs), 0)
+        # Cache the PoolActor with options
+        if not self._pool_actor:
+            self._pool_actor = PoolActor.options(**self._ray_remote_args)
+        return (self._pool_actor.remote(self._initializer, self._initargs), 0)
 
     def _next_actor_index(self):
         if self._current_index == len(self._actor_pool) - 1:
@@ -590,7 +599,12 @@ class Pool:
         self._actor_pool[actor_index] = (actor, count)
         return object_ref
 
-    def apply(self, func, args=None, kwargs=None):
+    def apply(
+        self,
+        func: Callable,
+        args: Optional[Tuple] = None,
+        kwargs: Optional[Dict] = None,
+    ):
         """Run the given function on a random actor process and return the
         result synchronously.
 
@@ -607,9 +621,9 @@ class Pool:
 
     def apply_async(
         self,
-        func,
-        args=None,
-        kwargs=None,
+        func: Callable,
+        args: Optional[Tuple] = None,
+        kwargs: Optional[Dict] = None,
         callback: Callable[[Any], None] = None,
         error_callback: Callable[[Exception], None] = None,
     ):
@@ -727,7 +741,7 @@ class Pool:
         )
         return AsyncResult(object_refs, callback, error_callback)
 
-    def map(self, func, iterable, chunksize=None):
+    def map(self, func: Callable, iterable: Iterable, chunksize: Optional[int] = None):
         """Run the given function on each element in the iterable round-robin
         on the actor processes and return the results synchronously.
 
@@ -748,9 +762,9 @@ class Pool:
 
     def map_async(
         self,
-        func,
-        iterable,
-        chunksize=None,
+        func: Callable,
+        iterable: Iterable,
+        chunksize: Optional[int] = None,
         callback: Callable[[List], None] = None,
         error_callback: Callable[[Exception], None] = None,
     ):
@@ -795,8 +809,8 @@ class Pool:
 
     def starmap_async(
         self,
-        func,
-        iterable,
+        func: Callable,
+        iterable: Iterable,
         callback: Callable[[List], None] = None,
         error_callback: Callable[[Exception], None] = None,
     ):
@@ -812,7 +826,7 @@ class Pool:
             error_callback=error_callback,
         )
 
-    def imap(self, func, iterable, chunksize=1):
+    def imap(self, func: Callable, iterable: Iterable, chunksize: Optional[int] = 1):
         """Same as `map`, but only submits one batch of tasks to each actor
         process at a time.
 
@@ -829,7 +843,9 @@ class Pool:
         self._check_running()
         return OrderedIMapIterator(self, func, iterable, chunksize=chunksize)
 
-    def imap_unordered(self, func, iterable, chunksize=1):
+    def imap_unordered(
+        self, func: Callable, iterable: Iterable, chunksize: Optional[int] = 1
+    ):
         """Same as `map`, but only submits one batch of tasks to each actor
         process at a time.
 

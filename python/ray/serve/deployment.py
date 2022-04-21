@@ -8,19 +8,23 @@ from typing import (
     Tuple,
     Union,
 )
-
+from ray.experimental.dag.class_node import ClassNode
+from ray.experimental.dag.function_node import FunctionNode
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
-from ray.serve.utils import DEFAULT
+from ray.serve.utils import DEFAULT, get_deployment_import_path
 from ray.util.annotations import PublicAPI
+from ray.serve.schema import (
+    RayActorOptionsSchema,
+    DeploymentSchema,
+)
+
 
 # TODO (shrekris-anyscale): remove following dependencies on api.py:
 # - internal_get_global_client
-# - deployment_to_schema
 
 
 @PublicAPI
@@ -182,13 +186,12 @@ class Deployment:
         )
 
     @PublicAPI(stability="alpha")
-    def bind(self, *args, **kwargs) -> Union[DeploymentNode, DeploymentFunctionNode]:
-        """Bind the provided arguments and return a DeploymentNode.
+    def bind(self, *args, **kwargs) -> Union[ClassNode, FunctionNode]:
+        """Bind the provided arguments and return a class or function node.
 
         The returned bound deployment can be deployed or bound to other
         deployments to create a deployment graph.
         """
-        from ray.serve.api import deployment_to_schema
 
         copied_self = copy(self)
         copied_self._init_args = []
@@ -197,7 +200,7 @@ class Deployment:
         schema_shell = deployment_to_schema(copied_self)
 
         if inspect.isfunction(self._func_or_class):
-            return DeploymentFunctionNode(
+            return FunctionNode(
                 self._func_or_class,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
@@ -208,7 +211,7 @@ class Deployment:
                 },
             )
         else:
-            return DeploymentNode(
+            return ClassNode(
                 self._func_or_class,
                 args,
                 kwargs,
@@ -444,3 +447,71 @@ class Deployment:
 
     def __repr__(self):
         return str(self)
+
+
+def deployment_to_schema(d: Deployment) -> DeploymentSchema:
+    """Converts a live deployment object to a corresponding structured schema.
+
+    If the deployment has a class or function, it will be attemptetd to be
+    converted to a valid corresponding import path.
+
+    init_args and init_kwargs must also be JSON-serializable or this call will
+    fail.
+    """
+    from ray.serve.pipeline.json_serde import convert_to_json_safe_obj
+
+    if d.ray_actor_options is not None:
+        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+    else:
+        ray_actor_options_schema = None
+
+    return DeploymentSchema(
+        name=d.name,
+        import_path=get_deployment_import_path(
+            d, enforce_importable=True, replace_main=True
+        ),
+        init_args=convert_to_json_safe_obj(d.init_args, err_key="init_args"),
+        init_kwargs=convert_to_json_safe_obj(d.init_kwargs, err_key="init_kwargs"),
+        num_replicas=d.num_replicas,
+        route_prefix=d.route_prefix,
+        max_concurrent_queries=d.max_concurrent_queries,
+        user_config=d.user_config,
+        autoscaling_config=d._config.autoscaling_config,
+        graceful_shutdown_wait_loop_s=d._config.graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=d._config.graceful_shutdown_timeout_s,
+        health_check_period_s=d._config.health_check_period_s,
+        health_check_timeout_s=d._config.health_check_timeout_s,
+        ray_actor_options=ray_actor_options_schema,
+    )
+
+
+def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    from ray.serve.pipeline.json_serde import convert_from_json_safe_obj
+
+    if s.ray_actor_options is None:
+        ray_actor_options = None
+    else:
+        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
+
+    config = DeploymentConfig.from_default(
+        ignore_none=True,
+        num_replicas=s.num_replicas,
+        user_config=s.user_config,
+        max_concurrent_queries=s.max_concurrent_queries,
+        autoscaling_config=s.autoscaling_config,
+        graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
+        health_check_period_s=s.health_check_period_s,
+        health_check_timeout_s=s.health_check_timeout_s,
+    )
+
+    return Deployment(
+        func_or_class=s.import_path,
+        name=s.name,
+        config=config,
+        init_args=convert_from_json_safe_obj(s.init_args, err_key="init_args"),
+        init_kwargs=convert_from_json_safe_obj(s.init_kwargs, err_key="init_kwargs"),
+        route_prefix=s.route_prefix,
+        ray_actor_options=ray_actor_options,
+        _internal=True,
+    )
