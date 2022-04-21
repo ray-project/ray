@@ -146,10 +146,7 @@ def gen_fake_dataset():
     # Use 10% of nodes for validation and 10% for testing.
     fake_dataset = FakeDataset(transform=RandomNodeSplit(num_val=0.1, num_test=0.1))
 
-    def gen_dataset():
-        return fake_dataset
-
-    return gen_dataset
+    return fake_dataset
 
 
 def gen_reddit_dataset():
@@ -178,7 +175,7 @@ def train_gnn(
             "batch_size": per_worker_batch_size,
             "dataset_fn": gen_reddit_dataset()
             if dataset == "reddit"
-            else gen_fake_dataset(),
+            else gen_fake_dataset,
         },
         scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
