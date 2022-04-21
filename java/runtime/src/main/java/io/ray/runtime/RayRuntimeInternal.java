@@ -8,7 +8,7 @@ import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.object.ObjectStore;
 import io.ray.runtime.task.TaskExecutor;
 
-/** This interface is required to make {@link RayRuntimeProxy} work. */
+/// TODO(qwang): We can remove this class.
 public interface RayRuntimeInternal extends RayRuntime {
 
   /** Start runtime. */

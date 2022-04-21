@@ -37,7 +37,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNI
                                                                              jstring,
                                                                              jbyteArray,
                                                                              jobject,
-                                                                             jint,
                                                                              jstring,
                                                                              jbyteArray,
                                                                              jint,

@@ -26,7 +26,6 @@ namespace ray {
 
 namespace raylet {
 
-int NUM_WORKERS_PER_PROCESS_JAVA = 3;
 int MAXIMUM_STARTUP_CONCURRENCY = 5;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 5;
@@ -471,7 +470,6 @@ class WorkerPoolTest : public ::testing::Test {
     worker_pool_ = std::make_unique<WorkerPoolMock>(
         io_service_, worker_commands, mock_worker_rpc_clients_);
     rpc::JobConfig job_config;
-    job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
     RegisterDriver(Language::PYTHON, JOB_ID, job_config);
   }
 
@@ -756,7 +754,6 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
 
   rpc::JobConfig job_config = rpc::JobConfig();
   job_config.add_code_search_path("/test/code_search_path");
-  job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
   job_config.add_jvm_options("-Xmx1g");
   job_config.add_jvm_options("-Xms500m");
   job_config.add_jvm_options("-Dmy-job.hello=world");
@@ -1648,7 +1645,6 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWithMultipleWorkers) {
   std::string uri = "s3://567";
   auto runtime_env_info = ExampleRuntimeEnvInfo({uri}, false);
   rpc::JobConfig job_config;
-  job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
   job_config.mutable_runtime_env_info()->CopyFrom(runtime_env_info);
   // Start job without eager installed runtime env.
   worker_pool_->HandleJobStarted(job_id, job_config);

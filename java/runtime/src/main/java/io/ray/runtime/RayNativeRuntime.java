@@ -102,14 +102,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       if (rayConfig.workerMode == WorkerType.DRIVER && rayConfig.getJobId() == JobId.NIL) {
         rayConfig.setJobId(getGcsClient().nextJobId());
       }
-      int numWorkersPerProcess =
-          rayConfig.workerMode == WorkerType.DRIVER ? 1 : rayConfig.numWorkersPerProcess;
 
       byte[] serializedJobConfig = null;
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         JobConfig.Builder jobConfigBuilder =
             JobConfig.newBuilder()
-                .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
@@ -143,7 +140,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           rayConfig.rayletSocketName,
           (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
           new GcsClientOptions(rayConfig),
-          numWorkersPerProcess,
           rayConfig.logDir,
           serializedJobConfig,
           rayConfig.getStartupToken(),
@@ -282,7 +278,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       String rayletSocket,
       byte[] jobId,
       GcsClientOptions gcsClientOptions,
-      int numWorkersPerProcess,
       String logDir,
       byte[] serializedJobConfig,
       int startupToken,

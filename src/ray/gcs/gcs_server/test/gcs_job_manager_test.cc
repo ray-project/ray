@@ -102,14 +102,6 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
       *add_job_request2,
       &empty_reply,
       [](Status, std::function<void()>, std::function<void()>) {});
-
-  auto job_config1 = gcs_job_manager.GetJobConfig(job_id1);
-  ASSERT_EQ("namespace_1", job_config1->ray_namespace());
-  ASSERT_EQ(4, job_config1->num_java_workers_per_process());
-
-  auto job_config2 = gcs_job_manager.GetJobConfig(job_id2);
-  ASSERT_EQ("namespace_2", job_config2->ray_namespace());
-  ASSERT_EQ(8, job_config2->num_java_workers_per_process());
 }
 
 int main(int argc, char **argv) {

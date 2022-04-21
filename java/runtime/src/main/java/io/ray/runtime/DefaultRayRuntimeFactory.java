@@ -26,16 +26,14 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
           });
     }
 
+    // TODO(qwang): No need too complex, it's for multiple core worker instance feature.
     try {
       logger.debug("Initializing runtime with config: {}", rayConfig);
       AbstractRayRuntime innerRuntime =
           rayConfig.runMode == RunMode.SINGLE_PROCESS
               ? new RayDevRuntime(rayConfig)
               : new RayNativeRuntime(rayConfig);
-      RayRuntimeInternal runtime =
-          rayConfig.numWorkersPerProcess > 1
-              ? RayRuntimeProxy.newInstance(innerRuntime)
-              : innerRuntime;
+      RayRuntimeInternal runtime = innerRuntime;
       runtime.start();
       return runtime;
     } catch (Exception e) {

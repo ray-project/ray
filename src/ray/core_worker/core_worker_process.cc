@@ -84,8 +84,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     : options_(options),
       global_worker_id_(
           options.worker_type == WorkerType::DRIVER
-              ? ComputeDriverIdFromJob(options_.job_id)
-              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
+              ? ComputeDriverIdFromJob(options_.job_id) : WorkerID::FromRandom()) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -109,12 +108,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         << "log_dir must be empty because ray log is disabled.";
     RAY_CHECK(!options_.install_failure_signal_handler)
         << "install_failure_signal_handler must be false because ray log is disabled.";
-  }
-
-  RAY_CHECK(options_.num_workers > 0);
-  if (options_.worker_type == WorkerType::DRIVER) {
-    // Driver process can only contain one worker.
-    RAY_CHECK(options_.num_workers == 1);
   }
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
@@ -250,18 +243,14 @@ bool CoreWorkerProcessImpl::ShouldCreateGlobalWorkerOnConstruction() const {
   // worker APIs before `CoreWorkerProcess::RunTaskExecutionLoop` is called. So we need
   // to create the worker instance here. One example of invocations is
   // https://github.com/ray-project/ray/blob/45ce40e5d44801193220d2c546be8de0feeef988/python/ray/worker.py#L1281.
-  return options_.num_workers == 1 && (options_.worker_type == WorkerType::DRIVER ||
+  return (options_.worker_type == WorkerType::DRIVER ||
                                        options_.language == Language::PYTHON);
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetWorker(
     const WorkerID &worker_id) const {
   absl::ReaderMutexLock lock(&mutex_);
-  auto it = workers_.find(worker_id);
-  if (it != workers_.end()) {
-    return it->second;
-  }
-  return nullptr;
+  return global_worker_;
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetGlobalWorker() {
@@ -275,13 +264,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateWorker() {
       global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
   RAY_LOG(DEBUG) << "Worker " << worker->GetWorkerID() << " is created.";
   absl::WriterMutexLock lock(&mutex_);
-  if (options_.num_workers == 1) {
-    global_worker_ = worker;
-  }
+  global_worker_ = worker;
   thread_local_core_worker_ = worker;
 
-  workers_.emplace(worker->GetWorkerID(), worker);
-  RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
   return worker;
 }
 
@@ -293,10 +278,7 @@ void CoreWorkerProcessImpl::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
     RAY_CHECK(thread_local_core_worker_.lock() == worker);
   }
   thread_local_core_worker_.reset();
-  {
-    workers_.erase(worker->GetWorkerID());
-    RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
-  }
+  RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
   if (global_worker_ == worker) {
     global_worker_ = nullptr;
   }
@@ -304,7 +286,6 @@ void CoreWorkerProcessImpl::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   RAY_CHECK(options_.worker_type == WorkerType::WORKER);
-  if (options_.num_workers == 1) {
     // Run the task loop in the current thread only if the number of workers is 1.
     auto worker = GetGlobalWorker();
     if (!worker) {
@@ -313,23 +294,7 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
     worker->RunTaskExecutionLoop();
     RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
     RemoveWorker(worker);
-  } else {
-    std::vector<std::thread> worker_threads;
-    for (int i = 0; i < options_.num_workers; i++) {
-      worker_threads.emplace_back([this, i] {
-        SetThreadName("worker.task" + std::to_string(i));
-        auto worker = CreateWorker();
-        worker->RunTaskExecutionLoop();
-        RAY_LOG(INFO) << "Task execution loop terminated for a thread "
-                      << std::to_string(i) << ". Removing a worker.";
-        RemoveWorker(worker);
-      });
-    }
-    for (auto &thread : worker_threads) {
-      thread.join();
-    }
   }
-}
 
 void CoreWorkerProcessImpl::ShutdownDriver() {
   RAY_CHECK(options_.worker_type == WorkerType::DRIVER)
@@ -342,7 +307,6 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
 }
 
 CoreWorker &CoreWorkerProcessImpl::GetCoreWorkerForCurrentThread() {
-  if (options_.num_workers == 1) {
     auto global_worker = GetGlobalWorker();
     if (ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
       // This could only happen when the worker has already been shutdown.
@@ -363,21 +327,11 @@ CoreWorker &CoreWorkerProcessImpl::GetCoreWorkerForCurrentThread() {
     }
     RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
     return *global_worker;
-  }
-  auto ptr = thread_local_core_worker_.lock();
-  RAY_CHECK(ptr != nullptr)
-      << "The current thread is not bound with a core worker instance.";
-  return *ptr;
 }
 
 void CoreWorkerProcessImpl::SetThreadLocalWorkerById(const WorkerID &worker_id) {
-  if (options_.num_workers == 1) {
     RAY_CHECK(GetGlobalWorker()->GetWorkerID() == worker_id);
     return;
-  }
-  auto worker = GetWorker(worker_id);
-  RAY_CHECK(worker) << "Worker " << worker_id << " not found.";
-  thread_local_core_worker_ = GetWorker(worker_id);
 }
 
 }  // namespace core

@@ -3102,18 +3102,6 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     if (request.no_restart()) {
       Disconnect();
     }
-    if (options_.num_workers > 1) {
-      // TODO (kfstorm): Should we add some kind of check before sending the killing
-      // request?
-      RAY_LOG(ERROR)
-          << "Killing an actor which is running in a worker process with multiple "
-             "workers will also kill other actors in this process. To avoid this, "
-             "please create the Java actor with some dynamic options to make it being "
-             "hosted in a dedicated worker process.";
-    }
-    // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
-    // `exit()` will destruct static objects in an incorrect order, which will lead to
-    // core dumps.
     QuickExit();
   } else {
     Exit(rpc::WorkerExitType::INTENDED_EXIT);

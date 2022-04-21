@@ -75,8 +75,6 @@ public class RayConfig {
 
   public final List<String> headArgs;
 
-  public final int numWorkersPerProcess;
-
   public final String namespace;
 
   public final List<String> jvmOptionsForJavaWorker;
@@ -189,8 +187,6 @@ public class RayConfig {
       codeSearchPathString = System.getProperty("java.class.path");
     }
     codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
-
-    numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
     startupToken = config.getInt("ray.raylet.startup-token");
 

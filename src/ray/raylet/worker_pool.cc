@@ -268,12 +268,8 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                  << rpc::WorkerType_Name(worker_type) << ", current pool has "
                  << state.idle.size() << " workers";
 
+  // TODO(qwang): Remove this var.
   int workers_to_start = 1;
-  if (dynamic_options.empty()) {
-    if (language == Language::JAVA) {
-      workers_to_start = job_config->num_java_workers_per_process();
-    }
-  }
 
   std::vector<std::string> options;
 
@@ -310,12 +306,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                      job_config->jvm_options().begin(),
                      job_config->jvm_options().end());
     }
-  }
-
-  // Append Ray-defined per-process options here
-  if (language == Language::JAVA) {
-    options.push_back("-Dray.job.num-java-workers-per-process=" +
-                      std::to_string(workers_to_start));
   }
 
   // Append startup-token for JAVA here

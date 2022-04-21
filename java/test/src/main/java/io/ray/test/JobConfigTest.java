@@ -33,10 +33,6 @@ public class JobConfigTest extends BaseTest {
     Assert.assertEquals("998", Ray.task(JobConfigTest::getJvmOptions, "Y").remote().get());
   }
 
-  public void testNumJavaWorkersPerProcess() {
-    Assert.assertEquals(TestUtils.getNumWorkersPerProcess(), 3);
-  }
-
   public void testInActor() {
     ActorHandle<MyActor> actor = Ray.actor(MyActor::new).remote();
 
