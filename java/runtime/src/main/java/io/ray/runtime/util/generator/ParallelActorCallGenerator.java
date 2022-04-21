@@ -34,7 +34,7 @@ public class ParallelActorCallGenerator extends BaseGenerator {
     newLine("");
 
     newLine("/**");
-    newLine(" * This class provides type-safe interfaces for `Ray.call` and `Ray.createActor`.");
+    newLine(" * This class provides type-safe interfaces for `ParallelActor.actor`.");
     newLine(" **/");
     newLine("class ParallelCall {");
 
