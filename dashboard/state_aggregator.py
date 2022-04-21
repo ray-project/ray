@@ -21,7 +21,6 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.state_manager import StateDataSourceClient
 from ray.runtime_env import RuntimeEnv
-from ray._private.runtime_env.context import RuntimeEnvContext
 
 logger = logging.getLogger(__name__)
 
@@ -198,16 +197,19 @@ class StateAPIManager:
         result.sort(key=lambda entry: entry["object_id"])
         return {d["object_id"]: d for d in islice(result, option.limit)}
 
-    async def get_runtime_envs(self) -> dict:
-        async def get_runtime_envs_info(stub):
-            reply = await stub.GetRuntimeEnvsInfo(
-                runtime_env_agent_pb2.GetRuntimeEnvsInfoRequest(),
-                timeout=DEFAULT_RPC_TIMEOUT,
-            )
-            return reply
+    async def list_runtime_envs(self, *, option: ListApiOptions) -> List[dict]:
+        """List all runtime env information from the cluster.
 
+        Returns:
+            A list of runtime env information in the cluster.
+            We don't have id -> data mapping like other API because runtime env
+            doesn't have unique ids.
+        """
         replies = await asyncio.gather(
-            *[get_runtime_envs_info(stub) for stub in self._agent_stub.values()]
+            *[
+                self._client.get_runtime_envs_info(node_id, timeout=option.timeout)
+                for node_id in self._client.get_all_registered_agent_ids()
+            ]
         )
         result = []
         for reply in replies:
@@ -217,14 +219,12 @@ class StateAPIManager:
                 data["runtime_env"] = RuntimeEnv.deserialize(
                     data["runtime_env"]
                 ).to_dict()
-                success = data["success"]
-                if success:
-                    data["context"] = RuntimeEnvContext.deserialize(
-                        data["context"]
-                    ).__dict__
                 data = filter_fields(data, RuntimeEnvState)
                 result.append(data)
-        return result
+
+        # Sort to make the output deterministic.
+        result.sort(key=lambda entry: entry["ref_cnt"])
+        return list(islice(result, option.limit))
 
     def _message_to_dict(
         self,
