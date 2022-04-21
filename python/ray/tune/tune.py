@@ -640,32 +640,27 @@ def run(
             )
 
     original_handler = signal.getsignal(signal.SIGINT)
-    state = {"signal": None}
+    state = {signal.SIGINT: False}
 
-    def signal_interrupt_tune_run(sig: int, frame):
+    def sigint_handler(sig, frame):
         logger.warning(
-            "Stop signal received (e.g. via SIGINT/Ctrl+C), ending Ray Tune run. "
+            "SIGINT received (e.g. via Ctrl+C), ending Ray Tune run. "
             "This will try to checkpoint the experiment state one last time. "
-            "Press CTRL+C (or send SIGINT/SIGKILL/SIGTERM) "
+            "Press CTRL+C one more time (or send SIGINT/SIGKILL/SIGTERM) "
             "to skip. "
         )
-        state["signal"] = sig
+        state[signal.SIGINT] = True
         # Restore original signal handler to react to future SIGINT signals
         signal.signal(signal.SIGINT, original_handler)
 
     # We should only install the handler when it is safe to do so.
     # When tune.run() is called from worker thread, signal.signal will
     # fail.
-    allow_signal_catching = True
     if threading.current_thread() != threading.main_thread():
-        allow_signal_catching = False
+        os.environ["TUNE_DISABLE_SIGINT_HANDLER"] = "1"
 
-    if allow_signal_catching:
-        if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
-            signal.signal(signal.SIGINT, signal_interrupt_tune_run)
-
-        # Always register SIGUSR1
-        signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
+    if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
+        signal.signal(signal.SIGINT, sigint_handler)
 
     progress_reporter = progress_reporter or detect_reporter()
 
@@ -677,7 +672,7 @@ def run(
         metric=metric,
         mode=mode,
     )
-    while not runner.is_finished() and not state["signal"]:
+    while not runner.is_finished() and not state[signal.SIGINT]:
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
@@ -700,7 +695,7 @@ def run(
             incomplete_trials += [trial]
 
     if incomplete_trials:
-        if raise_on_failed_trial and not state["signal"]:
+        if raise_on_failed_trial and not state[signal.SIGINT]:
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
@@ -712,7 +707,7 @@ def run(
             f"({tune_taken:.2f} seconds for the tuning loop)."
         )
 
-    if state["signal"]:
+    if state[signal.SIGINT]:
         logger.warning(
             "Experiment has been interrupted, but the most recent state was "
             "saved. You can continue running this experiment by passing "
