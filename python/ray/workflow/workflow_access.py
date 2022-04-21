@@ -10,6 +10,7 @@ from ray.workflow import recovery
 from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.util.annotations import PublicAPI
+from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
@@ -162,11 +163,12 @@ class WorkflowManagementActor:
             return None
 
     def run_or_resume(
-        self, workflow_id: str, ignore_existing: bool = False
+        self, job_id: str, workflow_id: str, ignore_existing: bool = False
     ) -> "WorkflowExecutionResult":
         """Run or resume a workflow.
 
         Args:
+            job_id: The ID of the job that submits the workflow execution.
             workflow_id: The ID of the workflow.
             ignore_existing: Ignore we already have an existing output. When
             set false, raise an exception if there has already been a workflow
@@ -175,6 +177,13 @@ class WorkflowManagementActor:
         Returns:
             Workflow execution result that contains the state and output.
         """
+        # Re-configure log file to send logs to correct driver.
+        node = ray.worker._global_node
+        out_file, err_file = node.get_log_file_handles(
+            get_worker_log_file_name("WORKER", job_id)
+        )
+        configure_log_file(out_file, err_file)
+
         if workflow_id in self._workflow_outputs and not ignore_existing:
             raise RuntimeError(
                 f"The output of workflow[id={workflow_id}] already exists."
@@ -188,7 +197,7 @@ class WorkflowManagementActor:
         except KeyError:
             current_output = None
         result = recovery.resume_workflow_step(
-            workflow_id, step_id, self._store.storage_url, current_output
+            job_id, workflow_id, step_id, self._store.storage_url, current_output
         )
         latest_output = LatestWorkflowOutput(
             result.persisted_output, workflow_id, step_id

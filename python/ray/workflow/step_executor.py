@@ -7,6 +7,7 @@ from typing import List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING, Un
 import ray
 from ray import ObjectRef
 from ray._private import signature
+from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 from ray.workflow import workflow_context
 from ray.workflow import recovery
@@ -96,7 +97,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
     return workflow_ref_mapping
 
 
-def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
+def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult":
     """Internal function of workflow execution."""
     if workflow.executed:
         return workflow.result
@@ -188,6 +189,7 @@ def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     persisted_output, volatile_output = executor(
         workflow_data.func_body,
         step_context,
+        job_id,
         workflow.step_id,
         baked_inputs,
         workflow_data.step_options,
@@ -224,7 +226,7 @@ class InplaceReturnedWorkflow:
     context: Dict
 
 
-def execute_workflow(workflow: Workflow) -> "WorkflowExecutionResult":
+def execute_workflow(job_id, workflow: Workflow) -> "WorkflowExecutionResult":
     """Execute workflow.
 
     This function also performs tail-recursion optimization for inplace
@@ -239,7 +241,7 @@ def execute_workflow(workflow: Workflow) -> "WorkflowExecutionResult":
     context = {}
     while True:
         with workflow_context.fork_workflow_step_context(**context):
-            result = _execute_workflow(workflow)
+            result = _execute_workflow(job_id, workflow)
         if not isinstance(result.persisted_output, InplaceReturnedWorkflow):
             break
         workflow = result.persisted_output.workflow
@@ -421,6 +423,7 @@ def _wrap_run(
 def _workflow_step_executor(
     func: Callable,
     context: "WorkflowStepContext",
+    job_id: str,
     step_id: "StepID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
@@ -543,19 +546,27 @@ def _workflow_step_executor(
 def _workflow_step_executor_remote(
     func: Callable,
     context: "WorkflowStepContext",
+    job_id: str,
     step_id: "StepID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
 ) -> Any:
     """The remote version of '_workflow_step_executor'."""
+    # Re-configure log file to send logs to correct driver.
+    node = ray.worker._global_node
+    out_file, err_file = node.get_log_file_handles(
+        get_worker_log_file_name("WORKER", job_id)
+    )
+    configure_log_file(out_file, err_file)
     return _workflow_step_executor(
-        func, context, step_id, baked_inputs, runtime_options
+        func, context, job_id, step_id, baked_inputs, runtime_options
     )
 
 
 def _workflow_wait_executor(
     func: Callable,
     context: "WorkflowStepContext",
+    job_id: str,
     step_id: "StepID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
@@ -597,13 +608,20 @@ def _workflow_wait_executor(
 def _workflow_wait_executor_remote(
     func: Callable,
     context: "WorkflowStepContext",
+    job_id: str,
     step_id: "StepID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowStepRuntimeOptions",
 ) -> Any:
     """The remote version of '_workflow_wait_executor'"""
+    # Re-configure log file to send logs to correct driver.
+    node = ray.worker._global_node
+    out_file, err_file = node.get_log_file_handles(
+        get_worker_log_file_name("WORKER", job_id)
+    )
+    configure_log_file(out_file, err_file)
     return _workflow_wait_executor(
-        func, context, step_id, baked_inputs, runtime_options
+        func, context, job_id, step_id, baked_inputs, runtime_options
     )
 
 

@@ -14,6 +14,7 @@ from ray.workflow.common import (
 from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.workflow.step_function import WorkflowStepFunction
+from ray._private.ray_logging import get_worker_log_file_name, configure_log_file
 
 
 class WorkflowStepNotRecoverableError(Exception):
@@ -167,8 +168,14 @@ def _construct_resume_workflow_from_step(
 
 @ray.remote(num_returns=2)
 def _resume_workflow_step_executor(
-    workflow_id: str, step_id: "StepID", store_url: str, current_output: [ray.ObjectRef]
+    job_id: str, workflow_id: str, step_id: "StepID", store_url: str, current_output: [ray.ObjectRef]
 ) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
+    # Re-configure log file to send logs to correct driver.
+    node = ray.worker._global_node
+    out_file, err_file = node.get_log_file_handles(
+        get_worker_log_file_name("WORKER", job_id)
+    )
+    configure_log_file(out_file, err_file)
     # TODO (yic): We need better dependency management for virtual actor
     # The current output will always be empty for normal workflow
     # For virtual actor, if it's not empty, it means the previous job is
@@ -192,13 +199,14 @@ def _resume_workflow_step_executor(
         ):
             from ray.workflow.step_executor import execute_workflow
 
-            result = execute_workflow(r)
+            result = execute_workflow(job_id, r)
             return result.persisted_output, result.volatile_output
     assert isinstance(r, StepID)
     return wf_store.load_step_output(r), None
 
 
 def resume_workflow_step(
+    job_id: str,
     workflow_id: str,
     step_id: "StepID",
     store_url: str,
@@ -207,6 +215,8 @@ def resume_workflow_step(
     """Resume a step of a workflow.
 
     Args:
+        job_id: The ID of the job that submits the workflow execution. The ID
+        is used to identify the submitter of the workflow.
         workflow_id: The ID of the workflow job. The ID is used to identify
             the workflow.
         step_id: The step to resume in the workflow.
@@ -224,7 +234,7 @@ def resume_workflow_step(
         current_output = [current_output]
 
     persisted_output, volatile_output = _resume_workflow_step_executor.remote(
-        workflow_id, step_id, store_url, current_output
+        job_id, workflow_id, step_id, store_url, current_output
     )
     persisted_output = WorkflowStaticRef.from_output(step_id, persisted_output)
     volatile_output = WorkflowStaticRef.from_output(step_id, volatile_output)

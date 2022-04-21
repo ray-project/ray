@@ -78,8 +78,9 @@ def run(
         # ensures caller of 'run()' holds the reference to the workflow
         # result. Otherwise if the actor removes the reference of the
         # workflow output, the caller may fail to resolve the result.
+        job_id = ray.get_runtime_context().job_id.hex()
         result: "WorkflowExecutionResult" = ray.get(
-            workflow_manager.run_or_resume.remote(workflow_id, ignore_existing)
+            workflow_manager.run_or_resume.remote(job_id, workflow_id, ignore_existing)
         )
         if not is_growing:
             return flatten_workflow_output(workflow_id, result.persisted_output)
@@ -100,8 +101,9 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
+    job_id = ray.get_runtime_context().job_id.hex()
     result: "WorkflowExecutionResult" = ray.get(
-        workflow_manager.run_or_resume.remote(workflow_id, ignore_existing=False)
+        workflow_manager.run_or_resume.remote(job_id, workflow_id, ignore_existing=False)
     )
     logger.info(f"Workflow job {workflow_id} resumed.")
     return flatten_workflow_output(workflow_id, result.persisted_output)
@@ -198,8 +200,9 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
 
     async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
         try:
+            job_id = ray.get_runtime_context().job_id.hex()
             result: "WorkflowExecutionResult" = (
-                await workflow_manager.run_or_resume.remote(wid)
+                await workflow_manager.run_or_resume.remote(job_id, wid)
             )
             obj = flatten_workflow_output(wid, result.persisted_output)
             return wid, obj
