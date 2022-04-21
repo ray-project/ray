@@ -249,7 +249,6 @@ class DDPPOTrainer(PPOTrainer):
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
         steps_this_iter = 0
         for worker, results in sample_and_update_results.items():
-            # TODO: Add an inner loop over (>1) results here once APEX has been merged!
             for result in results:
                 steps_this_iter += result["env_steps"]
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
