@@ -210,9 +210,7 @@ def kubectl_exec_python_script(
     """
     script_path = Path(__file__).resolve().parent / "scripts" / script_name
     script_string = open(script_path).read()
-    return kubectl_exec(
-        ["python", "-c", script_string], pod, namespace, container
-    )
+    return kubectl_exec(["python", "-c", script_string], pod, namespace, container)
 
 
 def get_raycluster(raycluster: str, namespace: str) -> Dict[str, Any]:
