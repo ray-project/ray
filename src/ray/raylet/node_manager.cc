@@ -1787,7 +1787,8 @@ void NodeManager::HandleCommitBundleResources(
   if (RayConfig::instance().use_ray_syncer()) {
     auto sync_message = CreateSyncMessage(0, syncer::RayComponentId::RESOURCE_MANAGER);
     RAY_CHECK(sync_message);
-    ray_syncer_.BroadcastMessage(std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
+    ray_syncer_.BroadcastMessage(
+        std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -1829,7 +1830,8 @@ void NodeManager::HandleCancelResourceReserve(
   if (RayConfig::instance().use_ray_syncer()) {
     auto sync_message = CreateSyncMessage(0, syncer::RayComponentId::RESOURCE_MANAGER);
     RAY_CHECK(sync_message);
-    ray_syncer_.BroadcastMessage(std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
+    ray_syncer_.BroadcastMessage(
+        std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
   }
   cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2641,7 +2643,8 @@ void NodeManager::RecordMetrics() {
   object_directory_->RecordMetrics(duration_ms);
 }
 
-void NodeManager::ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) {
+void NodeManager::ConsumeSyncMessage(
+    std::shared_ptr<const syncer::RaySyncMessage> message) {
   if (message->component_id() == syncer::RayComponentId::RESOURCE_MANAGER) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());
