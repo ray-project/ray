@@ -337,8 +337,10 @@ class ActorReplicaWrapper:
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             deployment_info.deployment_config.user_config,
-            # ensure that `reconfigure` will only be called after a response
-            # has been received from `is_allocated`.
+            # Ensure that `is_allocated` will execute before `reconfigure`,
+            # because `reconfigure` runs user code that could block the replica
+            # asyncio loop. If that happens before `is_allocated` is executed,
+            # the `is_allocated` call won't be able to run.
             _after=self._allocated_obj_ref,
         )
 

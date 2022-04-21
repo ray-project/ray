@@ -203,8 +203,8 @@ def create_replica_wrapper(
         async def reconfigure(
             self, user_config: Optional[Any] = None, _after: Optional[Any] = None
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            # unused `_after` argument is for scheduling: passing an ObjectRef
-            # allows delaying reconfiguration until after the object is ready.
+            # Unused `_after` argument is for scheduling: passing an ObjectRef
+            # allows delaying reconfiguration until after this call has returned.
             if self.replica is None:
                 await self._initialize_replica()
             if user_config is not None:
