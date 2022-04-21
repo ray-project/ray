@@ -81,10 +81,7 @@ class ClassNode(DAGNode):
     def __getattr__(self, method_name: str):
         # User trying to call .bind() without a bind class method
         if method_name == "bind" and "bind" not in dir(self._body):
-            raise AttributeError(
-                f".bind() cannot be used again on {type(self)} "
-                f"(args: {self.get_args()}, kwargs: {self.get_kwargs()})."
-            )
+            raise AttributeError(f".bind() cannot be used again on {type(self)} ")
         # Raise an error if the method is invalid.
         getattr(self._body, method_name)
         call_node = _UnboundClassMethodNode(self, method_name)
