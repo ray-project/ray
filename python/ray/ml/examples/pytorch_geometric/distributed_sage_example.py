@@ -146,7 +146,10 @@ def gen_fake_dataset():
     # Use 10% of nodes for validation and 10% for testing.
     fake_dataset = FakeDataset(transform=RandomNodeSplit(num_val=0.1, num_test=0.1))
 
-    return fake_dataset
+    def gen_dataset():
+        return fake_dataset
+
+    return gen_dataset
 
 
 def gen_reddit_dataset():
@@ -154,12 +157,9 @@ def gen_reddit_dataset():
 
     # For Reddit dataset, we have to download the data on each node, so we create the
     # dataset on each training worker.
-    def gen_dataset():
-        with FileLock(os.path.expanduser("~/.reddit_dataset_lock")):
-            dataset = Reddit("./data/Reddit")
-        return dataset
-
-    return gen_dataset
+    with FileLock(os.path.expanduser("~/.reddit_dataset_lock")):
+        dataset = Reddit("./data/Reddit")
+    return dataset
 
 
 def train_gnn(
@@ -173,9 +173,9 @@ def train_gnn(
         train_loop_config={
             "num_epochs": epochs,
             "batch_size": per_worker_batch_size,
-            "dataset_fn": gen_reddit_dataset()
+            "dataset_fn": gen_reddit_dataset
             if dataset == "reddit"
-            else gen_fake_dataset,
+            else gen_fake_dataset(),
         },
         scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
     )
