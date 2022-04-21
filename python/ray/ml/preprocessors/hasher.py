@@ -4,7 +4,8 @@ from typing import List
 import pandas as pd
 
 from ray.ml.preprocessor import Preprocessor
-import hashlib
+
+from ray.ml.preprocessors.utils import simple_hash
 
 
 class FeatureHasher(Preprocessor):
@@ -38,7 +39,7 @@ class FeatureHasher(Preprocessor):
         def row_feature_hasher(row):
             hash_counts = collections.defaultdict(int)
             for column in self.columns:
-                hashed_value = self._hash(row[column])
+                hashed_value = simple_hash(row[column], self.num_features)
                 hash_counts[hashed_value] = hash_counts[hashed_value] + 1
             return {
                 f"hash_{joined_columns}_{i}": hash_counts[i]
@@ -53,12 +54,6 @@ class FeatureHasher(Preprocessor):
         # Drop original unhashed columns.
         df = df.drop(columns=self.columns)
         return df
-
-    def _hash(self, value: object) -> int:
-        encoded_value = str(value).encode()
-        hashed_value = hashlib.sha1(encoded_value)
-        hashed_value_int = int(hashed_value.hexdigest(), 16)
-        return hashed_value_int % self.num_features
 
     def __repr__(self):
         return f"<Columns={self.columns} num_features={self.num_features} >"

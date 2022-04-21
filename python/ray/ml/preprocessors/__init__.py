@@ -12,11 +12,14 @@ from ray.ml.preprocessors.scaler import (
 )
 from ray.ml.preprocessors.tokenizer import Tokenizer
 from ray.ml.preprocessors.transformer import PowerTransformer
+from ray.ml.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
 
 __all__ = [
     "BatchMapper",
+    "CountVectorizer",
     "Chain",
     "FeatureHasher",
+    "HashingVectorizer",
     "LabelEncoder",
     "MaxAbsScaler",
     "MinMaxScaler",
