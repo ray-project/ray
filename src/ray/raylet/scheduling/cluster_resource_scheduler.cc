@@ -210,9 +210,11 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
 }
 
 bool ClusterResourceScheduler::IsSchedulableOnNode(
-    scheduling::NodeID node_id, const absl::flat_hash_map<std::string, double> &shape) {
+    scheduling::NodeID node_id,
+    const absl::flat_hash_map<std::string, double> &shape,
+    bool requires_object_store_memory) {
   auto resource_request =
-      ResourceMapToResourceRequest(shape, /*requires_object_store_memory=*/false);
+      ResourceMapToResourceRequest(shape, requires_object_store_memory);
   return IsSchedulable(resource_request, node_id);
 }
 
@@ -226,21 +228,34 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
   // going through the full hybrid policy since we don't want spillback.
   if (prioritize_local_node && !exclude_local_node &&
       IsSchedulableOnNode(local_node_id_,
-                          task_spec.GetRequiredResources().GetResourceMap())) {
+                          task_spec.GetRequiredResources().GetResourceMap(),
+                          requires_object_store_memory)) {
     *is_infeasible = false;
     return local_node_id_;
   }
 
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
-  return GetBestSchedulableNode(
-      task_spec.GetRequiredPlacementResources().GetResourceMap(),
-      task_spec.GetMessage().scheduling_strategy(),
-      requires_object_store_memory,
-      task_spec.IsActorCreationTask(),
-      exclude_local_node,
-      &_unused,
-      is_infeasible);
+  scheduling::NodeID best_node =
+      GetBestSchedulableNode(task_spec.GetRequiredPlacementResources().GetResourceMap(),
+                             task_spec.GetMessage().scheduling_strategy(),
+                             requires_object_store_memory,
+                             task_spec.IsActorCreationTask(),
+                             exclude_local_node,
+                             &_unused,
+                             is_infeasible);
+
+  // If there is no other available nodes, prefer waiting on the local node
+  // since the local node is chosen for a reason (e.g. spread).
+  if (prioritize_local_node && !best_node.IsNil() &&
+      !IsSchedulableOnNode(best_node,
+                           task_spec.GetRequiredResources().GetResourceMap(),
+                           requires_object_store_memory)) {
+    *is_infeasible = false;
+    return local_node_id_;
+  }
+
+  return best_node;
 }
 
 SchedulingResult ClusterResourceScheduler::Schedule(

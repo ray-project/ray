@@ -91,23 +91,30 @@ class ClassNode(DAGNode):
         body = self._body.__ray_actor_class__
         return f"{body.__module__}.{body.__qualname__}"
 
-    def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(encoder_cls, ClassNode.__name__)
-        json_dict["import_path"] = self.get_import_path()
-        return json_dict
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            DAGNODE_TYPE_KEY: ClassNode.__name__,
+            # Will be overriden by build()
+            "import_path": self.get_import_path(),
+            "args": self.get_args(),
+            "kwargs": self.get_kwargs(),
+            # .options() should not contain any DAGNode type
+            "options": self.get_options(),
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
+            "uuid": self.get_stable_uuid(),
+        }
 
     @classmethod
     def from_json(cls, input_json, module, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__
-        args_dict = super().from_json_base(input_json, object_hook=object_hook)
         node = cls(
             module.__ray_metadata__.modified_class,
-            args_dict["args"],
-            args_dict["kwargs"],
-            args_dict["options"],
-            other_args_to_resolve=args_dict["other_args_to_resolve"],
+            input_json["args"],
+            input_json["kwargs"],
+            input_json["options"],
+            other_args_to_resolve=input_json["other_args_to_resolve"],
         )
-        node._stable_uuid = args_dict["uuid"]
+        node._stable_uuid = input_json["uuid"]
         return node
 
 
@@ -222,22 +229,29 @@ class ClassMethodNode(DAGNode):
         body = self._parent_class_node._body.__ray_actor_class__
         return f"{body.__module__}.{body.__qualname__}"
 
-    def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(encoder_cls, ClassMethodNode.__name__)
-        json_dict["method_name"] = self.get_method_name()
-        json_dict["import_path"] = self.get_import_path()
-        return json_dict
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            DAGNODE_TYPE_KEY: ClassMethodNode.__name__,
+            # Will be overriden by build()
+            "method_name": self.get_method_name(),
+            "import_path": self.get_import_path(),
+            "args": self.get_args(),
+            "kwargs": self.get_kwargs(),
+            # .options() should not contain any DAGNode type
+            "options": self.get_options(),
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
+            "uuid": self.get_stable_uuid(),
+        }
 
     @classmethod
-    def from_json(cls, input_json, object_hook=None):
+    def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__
-        args_dict = super().from_json_base(input_json, object_hook=object_hook)
         node = cls(
             input_json["method_name"],
-            args_dict["args"],
-            args_dict["kwargs"],
-            args_dict["options"],
-            other_args_to_resolve=args_dict["other_args_to_resolve"],
+            input_json["args"],
+            input_json["kwargs"],
+            input_json["options"],
+            other_args_to_resolve=input_json["other_args_to_resolve"],
         )
-        node._stable_uuid = args_dict["uuid"]
+        node._stable_uuid = input_json["uuid"]
         return node
