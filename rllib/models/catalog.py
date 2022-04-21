@@ -299,6 +299,7 @@ class ModelCatalog:
                 dist_cls = TorchCategorical
             elif framework == "jax":
                 from ray.rllib.models.jax.jax_action_dist import JAXCategorical
+
                 dist_cls = JAXCategorical
             else:
                 dist_cls = Categorical
