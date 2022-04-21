@@ -124,7 +124,7 @@ def test_detached_deployment(ray_cluster):
     assert ray.get(f.get_handle().remote()) == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
-    serve.api._global_client = None
+    serve.context._global_client = None
     ray.shutdown()
 
     # Create the second job, make sure we can still create new deployments.
@@ -509,7 +509,7 @@ def test_serve_controller_namespace(
 
     ray.init(namespace=namespace)
     serve.start(detached=detached)
-    client = serve.api._global_client
+    client = serve.context._global_client
     if namespace:
         controller_namespace = namespace
     elif detached:
