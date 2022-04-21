@@ -142,9 +142,13 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
                 extra_options = w.data.step_options.ray_options
                 # The input workflow is not a reference to an executed
                 # workflow.
-                static_ref = execute_workflow(w).persisted_output
-                static_ref._resolve_like_object_ref_in_args = extra_options.get(
-                    "_resolve_like_object_ref_in_args", False
+                output = execute_workflow(job_id, w).persisted_output
+                static_ref = WorkflowStaticRef(
+                    step_id=w.step_id,
+                    ref=output,
+                    _resolve_like_object_ref_in_args=extra_options.get(
+                        "_resolve_like_object_ref_in_args", False
+                    ),
                 )
             workflow_outputs.append(static_ref)
 
@@ -521,7 +525,7 @@ def _workflow_step_executor(
             with workflow_context.fork_workflow_step_context(
                 outer_most_step_id=outer_most_step_id
             ):
-                result = execute_workflow(sub_workflow)
+                result = execute_workflow(job_id, sub_workflow)
             # When virtual actor returns a workflow in the method,
             # the volatile_output and persisted_output will be put together
             persisted_output = result.persisted_output
