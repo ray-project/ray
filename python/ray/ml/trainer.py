@@ -319,7 +319,7 @@ class Trainer(abc.ABC):
             TrainingFailedError: If any failures during the execution of
             ``self.as_trainable()``.
         """
-        from ray.tune.tuner import Tuner
+        from ray.ml.tuner import Tuner
 
         trainable = self.as_trainable()
 

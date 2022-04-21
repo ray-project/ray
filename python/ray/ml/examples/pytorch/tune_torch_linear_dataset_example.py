@@ -4,7 +4,7 @@ import ray
 from ray import tune
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.tune.tune_config import TuneConfig
-from ray.tune.tuner import Tuner
+from ray.ml.tuner import Tuner
 
 from torch_linear_dataset_example import train_func, get_datasets
 

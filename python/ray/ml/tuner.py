@@ -47,7 +47,7 @@ class Tuner:
         from ray.data import from_pandas
         from ray.ml.config import RunConfig
         from ray.ml.train.integrations.xgboost import XGBoostTrainer
-        from ray.tune.tuner import Tuner
+        from ray.ml.tuner import Tuner
 
         def get_dataset():
             data_raw = load_breast_cancer(as_frame=True)
