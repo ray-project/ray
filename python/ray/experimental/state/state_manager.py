@@ -6,7 +6,7 @@ from functools import wraps
 import grpc
 import ray
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoRequest,
@@ -36,15 +36,8 @@ from ray.dashboard.modules.job.common import JobInfoStorageClient, JobInfo
 logger = logging.getLogger(__name__)
 
 
-class StateSourceNetworkException(Exception):
-    """Exceptions raised when there's a network error from data source query."""
-
-    pass
-
-
 def handle_network_errors(func):
-    """Apply the network error handling logic to each APIs,
-        such as retry or exception policies.
+    """Decorator to add a network handling logic.
 
     It is a helper method for `StateDataSourceClient`.
     The method can only be used for async methods.
@@ -53,6 +46,13 @@ def handle_network_errors(func):
 
     @wraps(func)
     async def api_with_network_error_handler(*args, **kwargs):
+        """Apply the network error handling logic to each APIs,
+        such as retry or exception policies.
+
+        Returns:
+            If RPC succeeds, it returns what the original function returns.
+            If RPC fails, it returns None.
+        """
         # TODO(sang): Add a retry policy.
         try:
             return await func(*args, **kwargs)
@@ -64,9 +64,9 @@ def handle_network_errors(func):
             grpc.aio.BaseError,
             grpc.aio.UsageError,
         ) as e:
-            raise StateSourceNetworkException(
-                f"Failed to query the data source, {func}"
-            ) from e
+            logger.exception("Failed to query the data source. Return an empty data.")
+            logger.exception(e)
+            return None
 
     return api_with_network_error_handler
 
@@ -80,8 +80,9 @@ class StateDataSourceClient:
     finding services and register stubs through `register*` APIs.
 
     Non `register*` APIs
+    - Return the protobuf directly if it succeeds to query the source.
+    - Return None if there's any network issue.
     - throw a ValueError if it cannot find the source.
-    - throw `StateSourceNetworkException` if there's any network errors.
     """
 
     def __init__(self, gcs_channel: grpc.aio.Channel):
@@ -132,7 +133,9 @@ class StateDataSourceClient:
         return self._agent_stubs.keys()
 
     @handle_network_errors
-    async def get_all_actor_info(self, timeout: int = None) -> GetAllActorInfoReply:
+    async def get_all_actor_info(
+        self, timeout: int = None
+    ) -> Optional[GetAllActorInfoReply]:
         request = GetAllActorInfoRequest()
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout
@@ -142,7 +145,7 @@ class StateDataSourceClient:
     @handle_network_errors
     async def get_all_placement_group_info(
         self, timeout: int = None
-    ) -> GetAllPlacementGroupReply:
+    ) -> Optional[GetAllPlacementGroupReply]:
         request = GetAllPlacementGroupRequest()
         reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
             request, timeout=timeout
@@ -150,31 +153,44 @@ class StateDataSourceClient:
         return reply
 
     @handle_network_errors
-    async def get_all_node_info(self, timeout: int = None) -> GetAllNodeInfoReply:
+    async def get_all_node_info(
+        self, timeout: int = None
+    ) -> Optional[GetAllNodeInfoReply]:
         request = GetAllNodeInfoRequest()
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
     @handle_network_errors
-    async def get_all_worker_info(self, timeout: int = None) -> GetAllWorkerInfoReply:
+    async def get_all_worker_info(
+        self, timeout: int = None
+    ) -> Optional[GetAllWorkerInfoReply]:
         request = GetAllWorkerInfoRequest()
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
             request, timeout=timeout
         )
         return reply
 
-    def get_job_info(self) -> Dict[str, JobInfo]:
+    def get_job_info(self) -> Optional[Dict[str, JobInfo]]:
         # Cannot use @handle_network_errors because async def is not supported yet.
         # TODO(sang): Support timeout & make it async
         try:
             return self._job_client.get_all_jobs()
-        except Exception as e:
-            raise StateSourceNetworkException("Failed to query the job info.") from e
+        except (
+            # https://grpc.github.io/grpc/python/grpc_asyncio.html#grpc-exceptions
+            grpc.aio.AioRpcError,
+            grpc.aio.InternalError,
+            grpc.aio.AbortError,
+            grpc.aio.BaseError,
+            grpc.aio.UsageError,
+        ) as e:
+            logger.exception("Failed to query the data source. Return an empty data.")
+            logger.exception(e)
+            return None
 
     @handle_network_errors
     async def get_task_info(
         self, node_id: str, timeout: int = None
-    ) -> GetTasksInfoReply:
+    ) -> Optional[GetTasksInfoReply]:
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
@@ -185,7 +201,7 @@ class StateDataSourceClient:
     @handle_network_errors
     async def get_object_info(
         self, node_id: str, timeout: int = None
-    ) -> GetNodeStatsReply:
+    ) -> Optional[GetNodeStatsReply]:
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
@@ -199,7 +215,7 @@ class StateDataSourceClient:
     @handle_network_errors
     async def get_runtime_envs_info(
         self, node_id: str, timeout: int = None
-    ) -> GetRuntimeEnvsInfoReply:
+    ) -> Optional[GetRuntimeEnvsInfoReply]:
         stub = self._agent_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Agent for a node id, {node_id} doesn't exist.")

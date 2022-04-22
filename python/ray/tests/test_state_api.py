@@ -40,7 +40,12 @@ from ray.core.generated.runtime_env_common_pb2 import (
 )
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.state_aggregator import StateAPIManager
+from ray.dashboard.state_aggregator import (
+    StateAPIManager,
+    GCS_QUERY_FAILURE_WARNING,
+    RAYLET_QUERY_FAILURE_WARNING,
+    AGENT_QUERY_FAILURE_WARNING,
+)
 from ray.experimental.state.api import (
     list_actors,
     list_placement_groups,
@@ -65,7 +70,6 @@ from ray.experimental.state.common import (
 )
 from ray.experimental.state.state_manager import (
     StateDataSourceClient,
-    StateSourceNetworkException,
 )
 from ray.experimental.state.state_cli import list_state_cli_group
 from ray.runtime_env import RuntimeEnv
@@ -194,15 +198,28 @@ async def test_api_manager_list_actors(state_api_manager):
         actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
     )
     result = await state_api_manager.list_actors(option=list_api_options())
-    actor_data = list(result.values())[0]
+    data = result.data
+    actor_data = list(data.values())[0]
     verify_schema(ActorState, actor_data)
 
     """
     Test limit
     """
-    assert len(result) == 2
+    assert len(data) == 2
     result = await state_api_manager.list_actors(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.data
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    # The client returns None if there's a network failure.
+    data_source_client.get_all_actor_info.return_value = None
+    result = await state_api_manager.list_actors(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warnings = result.warnings
+    assert len(warnings) == 1
+    assert GCS_QUERY_FAILURE_WARNING in warnings[0]
 
 
 @pytest.mark.asyncio
@@ -218,17 +235,32 @@ async def test_api_manager_list_pgs(state_api_manager):
         )
     )
     result = await state_api_manager.list_placement_groups(option=list_api_options())
-    data = list(result.values())[0]
+    data = result.data
+    data = list(data.values())[0]
     verify_schema(PlacementGroupState, data)
 
     """
     Test limit
     """
-    assert len(result) == 2
+    assert len(data) == 2
     result = await state_api_manager.list_placement_groups(
         option=list_api_options(limit=1)
     )
-    assert len(result) == 1
+    data = result.data
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    # The client returns None if there's a network failure.
+    data_source_client.get_all_placement_group_info.return_value = None
+    result = await state_api_manager.list_placement_groups(
+        option=list_api_options(limit=1)
+    )
+    # Make sure warnings are returned.
+    warnings = result.warnings
+    assert len(warnings) == 1
+    assert GCS_QUERY_FAILURE_WARNING in warnings[0]
 
 
 @pytest.mark.asyncio
@@ -239,15 +271,28 @@ async def test_api_manager_list_nodes(state_api_manager):
         node_info_list=[generate_node_data(id), generate_node_data(b"12345")]
     )
     result = await state_api_manager.list_nodes(option=list_api_options())
-    data = list(result.values())[0]
+    data = result.data
+    data = list(data.values())[0]
     verify_schema(NodeState, data)
 
     """
     Test limit
     """
-    assert len(result) == 2
+    assert len(data) == 2
     result = await state_api_manager.list_nodes(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.data
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    # The client returns None if there's a network failure.
+    data_source_client.get_all_node_info.return_value = None
+    result = await state_api_manager.list_nodes(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warnings = result.warnings
+    assert len(warnings) == 1
+    assert GCS_QUERY_FAILURE_WARNING in warnings[0]
 
 
 @pytest.mark.asyncio
@@ -261,15 +306,28 @@ async def test_api_manager_list_workers(state_api_manager):
         ]
     )
     result = await state_api_manager.list_workers(option=list_api_options())
-    data = list(result.values())[0]
+    data = result.data
+    data = list(data.values())[0]
     verify_schema(WorkerState, data)
 
     """
     Test limit
     """
-    assert len(result) == 2
+    assert len(result.data) == 2
     result = await state_api_manager.list_workers(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.data
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    # The client returns None if there's a network failure.
+    data_source_client.get_all_worker_info.return_value = None
+    result = await state_api_manager.list_workers(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warnings = result.warnings
+    assert len(warnings) == 1
+    assert GCS_QUERY_FAILURE_WARNING in warnings[0]
 
 
 @pytest.mark.skip(
@@ -290,10 +348,11 @@ async def test_api_manager_list_tasks(state_api_manager):
     result = await state_api_manager.list_tasks(option=list_api_options())
     data_source_client.get_task_info.assert_any_call("1", timeout=DEFAULT_RPC_TIMEOUT)
     data_source_client.get_task_info.assert_any_call("2", timeout=DEFAULT_RPC_TIMEOUT)
-    result = list(result.values())
-    assert len(result) == 2
-    verify_schema(TaskState, result[0])
-    verify_schema(TaskState, result[1])
+    data = result.data
+    data = list(data.values())
+    assert len(data) == 2
+    verify_schema(TaskState, data[0])
+    verify_schema(TaskState, data[1])
 
     """
     Test limit
@@ -303,7 +362,24 @@ async def test_api_manager_list_tasks(state_api_manager):
         generate_task_data(b"2345", second_task_name),
     ]
     result = await state_api_manager.list_tasks(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.data
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    # The client returns None if there's a network failure.
+    data_source_client.get_task_info.side_effect = [
+        None,
+        generate_task_data(b"2345", second_task_name),
+    ]
+    result = await state_api_manager.list_tasks(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warnings = result.warnings
+    assert len(warnings) == 1
+    assert (
+        RAYLET_QUERY_FAILURE_WARNING.format(total=2, network_failures=1) in warnings[0]
+    )
 
 
 @pytest.mark.skip(
@@ -322,12 +398,13 @@ async def test_api_manager_list_objects(state_api_manager):
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
     result = await state_api_manager.list_objects(option=list_api_options())
+    data = result.data
     data_source_client.get_object_info.assert_any_call("1", timeout=DEFAULT_RPC_TIMEOUT)
     data_source_client.get_object_info.assert_any_call("2", timeout=DEFAULT_RPC_TIMEOUT)
-    result = list(result.values())
-    assert len(result) == 2
-    verify_schema(ObjectState, result[0])
-    verify_schema(ObjectState, result[1])
+    data = list(data.values())
+    assert len(data) == 2
+    verify_schema(ObjectState, data[0])
+    verify_schema(ObjectState, data[1])
 
     """
     Test limit
@@ -337,7 +414,24 @@ async def test_api_manager_list_objects(state_api_manager):
         GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
     ]
     result = await state_api_manager.list_objects(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.data
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    # The client returns None if there's a network failure.
+    data_source_client.get_object_info.side_effect = [
+        None,
+        GetNodeStatsReply(core_workers_stats=[generate_object_info(obj_2_id)]),
+    ]
+    result = await state_api_manager.list_objects(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warnings = result.warnings
+    assert len(warnings) == 1
+    assert (
+        RAYLET_QUERY_FAILURE_WARNING.format(total=2, network_failures=1) in warnings[0]
+    )
 
 
 @pytest.mark.skip(
@@ -357,23 +451,25 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]}), creation_time=10),
     ]
     result = await state_api_manager.list_runtime_envs(option=list_api_options())
+    data = result.data
     data_source_client.get_runtime_envs_info.assert_any_call(
         "1", timeout=DEFAULT_RPC_TIMEOUT
     )
     data_source_client.get_runtime_envs_info.assert_any_call(
         "2", timeout=DEFAULT_RPC_TIMEOUT
     )
+
     data_source_client.get_runtime_envs_info.assert_any_call(
         "3", timeout=DEFAULT_RPC_TIMEOUT
     )
-    assert len(result) == 3
-    verify_schema(RuntimeEnvState, result[0])
-    verify_schema(RuntimeEnvState, result[1])
-    verify_schema(RuntimeEnvState, result[2])
+    assert len(data) == 3
+    verify_schema(RuntimeEnvState, data[0])
+    verify_schema(RuntimeEnvState, data[1])
+    verify_schema(RuntimeEnvState, data[2])
 
     # Make sure the higher creation time is sorted first.
-    assert "creation_time_ms" not in result[0]
-    result[1]["creation_time_ms"] > result[2]["creation_time_ms"]
+    assert "creation_time_ms" not in data[0]
+    result[1]["creation_time_ms"] > data[2]["creation_time_ms"]
 
     """
     Test limit
@@ -386,7 +482,24 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
     ]
     result = await state_api_manager.list_runtime_envs(option=list_api_options(limit=1))
-    assert len(result) == 1
+    data = result.data
+    assert len(data) == 1
+
+    """
+    Test error handling
+    """
+    # The client returns None if there's a network failure.
+    data_source_client.get_runtime_envs_info.side_effect = [
+        None,
+        generate_runtime_env_info(RuntimeEnv(**{"pip": ["ray"]})),
+    ]
+    result = await state_api_manager.list_runtime_envs(option=list_api_options(limit=1))
+    # Make sure warnings are returned.
+    warnings = result.warnings
+    assert len(warnings) == 1
+    assert (
+        AGENT_QUERY_FAILURE_WARNING.format(total=2, network_failures=1) in warnings[0]
+    )
 
 
 """
@@ -483,6 +596,8 @@ async def test_state_data_source_client(ray_start_cluster):
         port = int(node["NodeManagerPort"])
         client.register_raylet_client(node_id, ip, port)
         result = await client.get_object_info(node_id)
+        if not result:
+            print("bag")
         assert isinstance(result, GetNodeStatsReply)
 
     """
@@ -490,7 +605,7 @@ async def test_state_data_source_client(ray_start_cluster):
     """
     with pytest.raises(ValueError):
         # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_object_info("1234")
+        result = await client.get_runtime_envs_info("1234")
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
@@ -522,10 +637,8 @@ async def test_state_data_source_client(ray_start_cluster):
         if node["Alive"]:
             continue
 
-        # Querying to the dead node raises gRPC error, which should be
-        # translated into `StateSourceNetworkException`
-        with pytest.raises(StateSourceNetworkException):
-            result = await client.get_object_info(node_id)
+        # Querying to the dead node raises gRPC error, which should return None
+        assert (await client.get_object_info(node_id)) is None
 
         # Make sure unregister API works as expected.
         client.unregister_raylet_client(node_id)
@@ -680,6 +793,7 @@ def test_list_jobs(shutdown_only):
 
     def verify():
         job_data = list(list_jobs().values())[0]
+        print(job_data)
         job_id_from_api = list(list_jobs().keys())[0]
         correct_state = job_data["status"] == "SUCCEEDED"
         correct_id = job_id == job_id_from_api
@@ -822,6 +936,29 @@ def test_limit(shutdown_only):
 
     # Make sure the output is deterministic.
     assert output == list_actors(limit=2)
+
+
+def test_network_failure(shutdown_only, capsys):
+    """When the request fails due to network failure,
+    verifies it prints proper warning."""
+    ray.init()
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    a = [f.remote() for _ in range(4)]  # noqa
+    wait_for_condition(lambda: len(list_tasks()) == 4)
+
+    # Kill raylet so that list_tasks will have network error on querying raylets.
+    ray.worker._global_node.kill_raylet()
+
+    list_tasks(_print_api_stats=True)
+    captured = capsys.readouterr()
+    # Make sure there's a correct data reported.
+    assert "Queryed 1 raylets and 1 raylets failed to reply." in captured.out
 
 
 if __name__ == "__main__":
