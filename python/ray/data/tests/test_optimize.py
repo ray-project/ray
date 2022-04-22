@@ -96,6 +96,60 @@ def test_spread_hint_inherit(ray_start_regular_shared):
     assert optimized_stages[0].ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
+def test_execution_preserves_original(ray_start_regular_shared):
+    ds = ray.data.range(10).map(lambda x: x + 1)._experimental_lazy()
+    ds1 = ds.map(lambda x: x + 1)
+    assert ds1._plan._snapshot_blocks is not None
+    assert len(ds1._plan._stages_after_snapshot) == 1
+    ds2 = ds1.fully_executed()
+    # Confirm that snapshot blocks and stages on original lazy dataset have not changed.
+    assert ds1._plan._snapshot_blocks is not None
+    assert len(ds1._plan._stages_after_snapshot) == 1
+    # Confirm that UUID on executed dataset is properly set.
+    assert ds2._get_uuid() == ds1._get_uuid()
+    # Check content.
+    assert ds2.take() == list(range(2, 12))
+    # Check original lazy dataset content.
+    assert ds1.take() == list(range(2, 12))
+    # Check source lazy dataset content.
+    # TODO(Clark): Uncomment this when we add new block clearing semantics.
+    # assert ds.take() == list(range(1, 11))
+
+
+def _assert_has_stages(stages, stage_names):
+    assert len(stages) == len(stage_names)
+    for stage, name in zip(stages, stage_names):
+        assert stage.name == name
+
+
+def test_stage_linking(ray_start_regular_shared):
+    # NOTE: This tests the internals of `ExecutionPlan`, which is bad practice. Remove
+    # this test once we have proper unit testing of `ExecutionPlan`.
+    # Test eager dataset.
+    ds = ray.data.range(10)
+    assert len(ds._plan._stages_before_snapshot) == 0
+    assert len(ds._plan._stages_after_snapshot) == 0
+    assert len(ds._plan._last_optimized_stages) == 0
+    ds = ds.map(lambda x: x + 1)
+    _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
+    assert len(ds._plan._stages_after_snapshot) == 0
+    _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
+
+    # Test lazy dataset.
+    ds = ray.data.range(10)._experimental_lazy()
+    assert len(ds._plan._stages_before_snapshot) == 0
+    assert len(ds._plan._stages_after_snapshot) == 0
+    assert len(ds._plan._last_optimized_stages) == 0
+    ds = ds.map(lambda x: x + 1)
+    assert len(ds._plan._stages_before_snapshot) == 0
+    _assert_has_stages(ds._plan._stages_after_snapshot, ["map"])
+    assert ds._plan._last_optimized_stages is None
+    ds = ds.fully_executed()
+    _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
+    assert len(ds._plan._stages_after_snapshot) == 0
+    _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
+
+
 def test_optimize_fuse(ray_start_regular_shared):
     context = DatasetContext.get_current()
 
