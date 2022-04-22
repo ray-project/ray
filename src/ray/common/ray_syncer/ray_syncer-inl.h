@@ -45,7 +45,7 @@ class NodeState {
   /// \param cid The component id to take the snapshot.
   ///
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
-  std::optional<RaySyncMessage> GetSnapshot(RayComponentId cid);
+  std::optional<RaySyncMessage> CreateSyncMessage(RayComponentId cid);
 
   /// Consume a message. Receiver will consume this message if it doesn't have
   /// this message.
@@ -53,7 +53,7 @@ class NodeState {
   /// \param message The message received.
   ///
   /// \return true if the local node doesn't have message with newer version.
-  bool ConsumeMessage(std::shared_ptr<const RaySyncMessage> message);
+  bool ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message);
 
   /// Return the cluster view of this local node.
   const absl::flat_hash_map<
@@ -68,8 +68,8 @@ class NodeState {
   std::array<const ReporterInterface *, kComponentArraySize> reporters_ = {nullptr};
   std::array<ReceiverInterface *, kComponentArraySize> receivers_ = {nullptr};
 
-  /// This field records the version of the snapshot that has been taken.
-  std::array<int64_t, kComponentArraySize> snapshots_versions_taken_;
+  /// This field records the version of the sync message that has been taken.
+  std::array<int64_t, kComponentArraySize> sync_message_versions_taken_;
   /// Keep track of the latest messages received.
   /// Use shared pointer for easier liveness management since these messages might be
   /// sending via rpc.

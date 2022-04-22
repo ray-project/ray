@@ -68,7 +68,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     ), "Should have two running replicas fetched from ray API."
 
     # Kill controller and wait for endpoint to be available again
-    ray.kill(serve.api._global_client._controller, no_restart=False)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
     for _ in range(10):
         response = request_with_retries(
             "/recover_start_from_replica_actor_names/", timeout=30
@@ -171,7 +171,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
-    ray.kill(serve.api._global_client._controller, no_restart=False)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
 
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
@@ -181,7 +181,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
         client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
 
-    ray.kill(serve.api._global_client._controller, no_restart=False)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())

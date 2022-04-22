@@ -1,6 +1,5 @@
 import inspect
 import json
-import pickle
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -15,7 +14,7 @@ from pydantic import (
     validator,
 )
 
-from ray import cloudpickle as cloudpickle
+from ray import cloudpickle
 from ray.serve.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -153,7 +152,7 @@ class DeploymentConfig(BaseModel):
     def to_proto(self):
         data = self.dict()
         if data.get("user_config"):
-            data["user_config"] = pickle.dumps(data["user_config"])
+            data["user_config"] = cloudpickle.dumps(data["user_config"])
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
@@ -173,7 +172,7 @@ class DeploymentConfig(BaseModel):
         )
         if "user_config" in data:
             if data["user_config"] != "":
-                data["user_config"] = pickle.loads(proto.user_config)
+                data["user_config"] = cloudpickle.loads(proto.user_config)
             else:
                 data["user_config"] = None
         if "autoscaling_config" in data:
@@ -355,9 +354,11 @@ class ReplicaConfig:
                 # TODO use messagepack
                 deployment_def = cloudpickle.loads(proto.serialized_deployment_def)
 
-        init_args = pickle.loads(proto.init_args) if proto.init_args != b"" else None
+        init_args = (
+            cloudpickle.loads(proto.init_args) if proto.init_args != b"" else None
+        )
         init_kwargs = (
-            pickle.loads(proto.init_kwargs) if proto.init_kwargs != b"" else None
+            cloudpickle.loads(proto.init_kwargs) if proto.init_kwargs != b"" else None
         )
         ray_actor_options = (
             json.loads(proto.ray_actor_options)
@@ -379,9 +380,9 @@ class ReplicaConfig:
             "serialized_deployment_def": self.serialized_deployment_def,
         }
         if self.init_args:
-            data["init_args"] = pickle.dumps(self.init_args)
+            data["init_args"] = cloudpickle.dumps(self.init_args)
         if self.init_kwargs:
-            data["init_kwargs"] = pickle.dumps(self.init_kwargs)
+            data["init_kwargs"] = cloudpickle.dumps(self.init_kwargs)
         if self.ray_actor_options:
             data["ray_actor_options"] = json.dumps(
                 self.ray_actor_options, cls=ServeEncoder
