@@ -198,7 +198,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       });
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  RegisterToGcs();
+  RegisterToGcs(local_raylet_id);
 
   // Register a callback to monitor removed nodes.
   auto on_node_change = [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
@@ -699,7 +699,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number
   }
 }
 
-void CoreWorker::RegisterToGcs() {
+void CoreWorker::RegisterToGcs(const NodeID &local_raylet_id) {
   absl::flat_hash_map<std::string, std::string> worker_info;
   const auto &worker_id = GetWorkerID();
   worker_info.emplace("node_ip_address", options_.node_ip_address);
@@ -726,6 +726,7 @@ void CoreWorker::RegisterToGcs() {
 
   auto worker_data = std::make_shared<rpc::WorkerTableData>();
   worker_data->mutable_worker_address()->set_worker_id(worker_id.Binary());
+  worker_data->mutable_worker_address()->set_raylet_id(local_raylet_id.Binary());
   worker_data->set_worker_type(options_.worker_type);
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
   worker_data->set_is_alive(true);

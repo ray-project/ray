@@ -181,3 +181,36 @@ def list_runtime_envs(
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )
+
+
+def summary_cluster(api_server_url: str = None, timeout=30, _print_api_stats=False):
+    if api_server_url is None:
+        assert ray.is_initialized()
+        api_server_url = (
+            f"http://{ray.worker.global_worker.node.address_info['webui_url']}"
+        )
+
+    r = requests.request(
+        "GET",
+        f"{api_server_url}/api/v0/summary",
+        headers={"Content-Type": "application/json"},
+        json=None,
+        timeout=timeout,
+    )
+    r.raise_for_status()
+
+    response = r.json()
+    if response["result"] is False:
+        print(response)
+        raise ValueError(
+            "API server internal error. See dashboard.log file for more details."
+        )
+
+    if _print_api_stats:
+        # Print warnings if anything was given.
+        warnings = response["data"].get("warnings")
+        if warnings:
+            for warning in warnings:
+                print(warning)
+
+    return r.json()["data"]["result"]

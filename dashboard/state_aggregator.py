@@ -8,6 +8,7 @@ from typing import List, Dict, Union
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
 from ray.dashboard.modules.job.common import JobInfo
+from ray.dashboard.datacenter import DataOrganizer
 
 from ray.experimental.state.common import (
     filter_fields,
@@ -114,7 +115,7 @@ class StateAPIManager:
         result = []
         for message in reply.actor_table_data:
             data = self._message_to_dict(
-                message=message, fields_to_decode=["actor_id", "owner_id"]
+                message=message, fields_to_decode=["actor_id", "owner_id", "raylet_id"]
             )
             data = filter_fields(data, ActorState)
             result.append(data)
@@ -192,7 +193,7 @@ class StateAPIManager:
         result = []
         for message in reply.worker_table_data:
             data = self._message_to_dict(
-                message=message, fields_to_decode=["worker_id"]
+                message=message, fields_to_decode=["worker_id", "raylet_id"]
             )
             data["worker_id"] = data["worker_address"]["worker_id"]
             data = filter_fields(data, WorkerState)
@@ -375,6 +376,120 @@ class StateAPIManager:
         return StateApiResult(
             data=list(islice(result, option.limit)), warnings=warnings
         )
+
+    async def summary(self):
+        op = ListApiOptions(timeout=30, limit=1000, filter="")
+        results = await asyncio.gather(
+            *[
+                self.list_actors(option=op),
+                self.list_tasks(option=op),
+                self.list_workers(option=op),
+            ]
+        )
+        actors, tasks, workers = results
+        all_node_summary = await DataOrganizer.get_all_node_summary()
+        # logger.info(all_node_summary)
+
+        from collections import defaultdict
+
+        node_to_summary = defaultdict(dict)
+
+        for node_summary in all_node_summary:
+            logger.info(node_summary)
+            node_id = node_summary["raylet"]["nodeId"]
+            node_to_summary[node_id]["cpu"] = f"{node_summary['cpu']}%"
+            disk = node_summary["disk"]["/"]
+            node_to_summary[node_id]["disk_utilization"] = f"{disk['percent']}%"
+            node_to_summary[node_id][
+                "disk_read"
+            ] = f"{round(node_summary['diskIoSpeed'][0] / (1024 ^ 2), 3)} MB"
+            node_to_summary[node_id][
+                "disk_write"
+            ] = f"{round(node_summary['diskIoSpeed'][1] / (1024 ^ 2), 3)} MB"
+            node_to_summary[node_id][
+                "network_sent_speed"
+            ] = f"{round(node_summary['networkSpeed'][0] / (1024), 3)} KB"
+            node_to_summary[node_id][
+                "network_recv_speed"
+            ] = f"{round(node_summary['networkSpeed'][1] / (1024), 3)} KB"
+            node_to_summary[node_id]["mem_utilization"] = f"{node_summary['mem'][2]}%"
+            object_store_percent = node_summary["raylet"].get(
+                "object_store_used_memory", 0
+            ) / (
+                node_summary["raylet"].get("object_store_used_memory", 0)
+                + node_summary["raylet"]["object_store_available_memory"]
+            )
+            node_to_summary[node_id][
+                "object_store_utilization"
+            ] = f"{round(object_store_percent * 100, 3)}%"
+
+        for actor in actors.data.values():
+            logger.info(actor)
+            logger.info(actor["address"])
+            node_id = actor["address"]["raylet_id"]
+            if "actors" not in node_to_summary[node_id]:
+                node_to_summary[node_id]["actors"] = defaultdict(int)
+            if "actors" not in node_to_summary:
+                node_to_summary["actors"] = {}
+            if actor["class_name"] not in node_to_summary["actors"]:
+                node_to_summary["actors"][actor["class_name"]] = {}
+            node_to_summary["actors"][actor["class_name"]] = defaultdict(int)
+            node_to_summary[node_id]["actors"]["cnt"] += 1
+            node_to_summary["actors"][actor["class_name"]]["cnt"] += 1
+            if actor["class_name"] not in node_to_summary[node_id]["actors"]:
+                node_to_summary[node_id]["actors"][actor["class_name"]] = defaultdict(
+                    int
+                )
+            if actor["state"] == "DEPENDENCIES_UNREADY":
+                node_to_summary[node_id]["actors"][actor["class_name"]][
+                    "dep_unready_cnt"
+                ] += 1
+                node_to_summary["actors"][actor["class_name"]]["dep_unready_cnt"] += 1
+            elif actor["state"] == "PENDING_CREATION":
+                node_to_summary[node_id]["actors"][actor["class_name"]][
+                    "pending_cnt"
+                ] += 1
+                node_to_summary["actors"][actor["class_name"]]["pending_cnt"] += 1
+            elif actor["state"] == "ALIVE":
+                node_to_summary[node_id]["actors"][actor["class_name"]][
+                    "alive_cnt"
+                ] += 1
+                node_to_summary["actors"][actor["class_name"]]["alive_cnt"] += 1
+            elif actor["state"] == "RESTARTING":
+                node_to_summary[node_id]["actors"][actor["class_name"]][
+                    "restarting_cnt"
+                ] += 1
+                node_to_summary["actors"][actor["class_name"]]["restarting_cnt"] += 1
+            elif actor["state"] == "DEAD":
+                node_to_summary[node_id]["actors"][actor["class_name"]]["dead_cnt"] += 1
+                node_to_summary["actors"][actor["class_name"]]["dead_cnt"] += 1
+
+        for task in tasks.data.values():
+            logger.info(task)
+            if task["type"] == "ACTOR_CREATION_TASK":
+                continue
+            if "tasks" not in node_to_summary:
+                node_to_summary["tasks"] = {}
+            if task["name"] not in node_to_summary["tasks"]:
+                node_to_summary["tasks"][task["name"]] = defaultdict(int)
+            node_to_summary["tasks"][task["name"]]["cnt"] += 1
+            if task["scheduling_state"] == "WAITING_FOR_DEPENDENCIES":
+                node_to_summary["tasks"][task["name"]]["wait_for_dep_cnt"] += 1
+            elif task["scheduling_state"] == "SCHEDULED":
+                node_to_summary["tasks"][task["name"]]["scheduled_cnt"] += 1
+            elif task["scheduling_state"] == "FINISHED":
+                node_to_summary["tasks"][task["name"]]["finished_cnt"] += 1
+
+        for worker in workers.data.values():
+            logger.info(worker)
+            node_id = worker["worker_address"]["raylet_id"]
+            if worker["is_alive"]:
+                if "num_workers" not in node_to_summary[node_id]:
+                    node_to_summary[node_id]["num_workers"] = 0
+                node_to_summary[node_id]["num_workers"] += 1
+
+        logger.info(node_to_summary)
+        return node_to_summary
 
     def _message_to_dict(
         self,

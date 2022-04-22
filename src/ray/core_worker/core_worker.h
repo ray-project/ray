@@ -857,7 +857,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 nullptr);
 
   /// Register this worker or driver to GCS.
-  void RegisterToGcs();
+  void RegisterToGcs(const NodeID &local_raylet_id);
 
   /// (WORKER mode only) Check if the raylet has failed. If so, shutdown.
   void ExitIfParentRayletDies();

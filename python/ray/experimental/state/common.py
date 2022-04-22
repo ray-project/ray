@@ -43,6 +43,7 @@ class ActorState:
     resource_mapping: dict
     death_cause: dict
     is_detached: bool
+    address: dict
 
 
 @dataclass(init=True)
@@ -73,6 +74,7 @@ class WorkerState:
     worker_type: str
     exit_type: str
     worker_info: dict
+    worker_address: dict
 
 
 @dataclass(init=True)

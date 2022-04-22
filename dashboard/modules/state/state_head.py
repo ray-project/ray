@@ -164,6 +164,11 @@ class StateHead(dashboard_utils.DashboardHeadModule):
             success=True, message="", result=result.data, warnings=result.warnings
         )
 
+    @routes.get("/api/v0/summary")
+    async def summary(self, req) -> aiohttp.web.Response:
+        result = await self._state_api.summary()
+        return self._reply(success=True, message="", result=result, warnings=None)
+
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(gcs_channel)
