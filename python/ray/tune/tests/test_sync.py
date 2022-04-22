@@ -176,7 +176,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 time.sleep(1)
                 tune.report(score=i)
 
-        def counter(local, remote):
+        def counter(local, remote, exclude=None):
             count_file = os.path.join(tmpdir, "count.txt")
             if not os.path.exists(count_file):
                 count = 0
