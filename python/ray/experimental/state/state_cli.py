@@ -57,6 +57,7 @@ def print_state_api_output(state_data: Union[dict, list], format: str, resource:
             f"Unexpected format: {format}. "
             "Supported formatting: [default | json | table]"
         )
+    print(f"Total {len(state_data)} entries retrieved.")
 
 
 @click.group("list")
