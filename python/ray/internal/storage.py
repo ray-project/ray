@@ -154,20 +154,20 @@ class KVClient:
         except FileNotFoundError:
             return False
 
-    def delete_prefix(self, path: str) -> bool:
+    def delete_dir(self, path: str) -> bool:
         """Delete a directory and its contents, recursively.
 
         Examples:
-            # Deletes blob at <storage_prefix>/my_app/path/foo.txt
+            # Deletes dir at <storage_prefix>/my_app/path/
             >>> client = storage.get_client("my_app")
-            >>> client.delete_prefix("path")
+            >>> client.delete_dir("path")
             True
 
         Args:
             path: Relative directory of the blob.
 
         Returns:
-            Whether the blob was deleted.
+            Whether the dir was deleted.
         """
         full_path = self._resolve_path(path)
         try:

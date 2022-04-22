@@ -609,7 +609,7 @@ class WorkflowStorage:
     def delete_workflow(self) -> None:
         # TODO (Alex): There's a race condition here if someone tries to
         # start the workflow between these ops.
-        found = self._storage.delete_prefix("")
+        found = self._storage.delete_dir("")
         # TODO (Alex): Different file systems seem to have different
         # behavior when deleting a prefix that doesn't exist, so we may
         # need to catch a broader class of exceptions.
