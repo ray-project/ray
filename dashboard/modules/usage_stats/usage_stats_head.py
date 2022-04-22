@@ -54,6 +54,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         - If file write fails, the error will just stay at dashboard.log.
             usage_stats.json won't be written.
         """
+        if not self.usage_stats_enabled:
+            return
+
         try:
             data = ray_usage_lib.generate_report_data(
                 self.cluster_metadata,
@@ -84,6 +87,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             logger.info(f"Usage report failed: {e}")
 
     async def _report_usage_async(self):
+        if not self.usage_stats_enabled:
+            return
+
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
             await loop.run_in_executor(executor, self._report_usage_sync)

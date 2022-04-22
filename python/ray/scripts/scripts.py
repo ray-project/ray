@@ -1643,7 +1643,7 @@ def get_worker_ips(cluster_config_file, cluster_name):
 def disable_usage_stats():
     """Disable usage stats collection.
 
-    This will not affect the current running cluster
+    This will not affect the current running clusters
     but clusters launched in the future.
     """
     usage_lib.set_usage_stats_enabled_via_config(enabled=False)
@@ -1657,7 +1657,7 @@ def disable_usage_stats():
 def enable_usage_stats():
     """Enable usage stats collection.
 
-    This will not affect the current running cluster
+    This will not affect the current running clusters
     but clusters launched in the future.
     """
     usage_lib.set_usage_stats_enabled_via_config(enabled=True)

@@ -151,15 +151,15 @@ def _usage_stats_config_path():
 
 def _usage_stats_enabledness() -> UsageStatsEnabledness:
     # Env var has higher priority than config file.
-    usage_stats_enabled_env_var = os.getenv("RAY_USAGE_STATS_ENABLED")
+    usage_stats_enabled_env_var = os.getenv(usage_constant.USAGE_STATS_ENABLED_ENV_VAR)
     if usage_stats_enabled_env_var == "0":
         return UsageStatsEnabledness.DISABLED_EXPLICITLY
     elif usage_stats_enabled_env_var == "1":
         return UsageStatsEnabledness.ENABLED_EXPLICITLY
     elif usage_stats_enabled_env_var is not None:
         raise ValueError(
-            f"Valid value for RAY_USAGE_STATS_ENABLED env var is 0 or 1"
-            f", but got {usage_stats_enabled_env_var}"
+            f"Valid value for {usage_constant.USAGE_STATS_ENABLED_ENV_VAR} "
+            f"env var is 0 or 1, but got {usage_stats_enabled_env_var}"
         )
 
     try:
@@ -188,8 +188,8 @@ def usage_stats_enabled() -> bool:
     return _usage_stats_enabledness() is not UsageStatsEnabledness.DISABLED_EXPLICITLY
 
 
-def _usage_stats_prompt_disabled():
-    return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 0
+def _usage_stats_prompt_enabled():
+    return int(os.getenv("RAY_USAGE_STATS_PROMPT_ENABLED", "1")) == 1
 
 
 def _generate_cluster_metadata():
@@ -217,41 +217,37 @@ def _generate_cluster_metadata():
 
 
 def show_usage_stats_prompt() -> None:
-    try:
-        if _usage_stats_prompt_disabled():
-            return
+    if not _usage_stats_prompt_enabled():
+        return
 
-        usage_stats_enabledness = _usage_stats_enabledness()
-        if usage_stats_enabledness is UsageStatsEnabledness.DISABLED_EXPLICITLY:
-            print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
-        elif usage_stats_enabledness is UsageStatsEnabledness.ENABLED_BY_DEFAULT:
-            from ray.autoscaler._private.cli_logger import cli_logger
+    usage_stats_enabledness = _usage_stats_enabledness()
+    if usage_stats_enabledness is UsageStatsEnabledness.DISABLED_EXPLICITLY:
+        print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
+    elif usage_stats_enabledness is UsageStatsEnabledness.ENABLED_BY_DEFAULT:
+        from ray.autoscaler._private.cli_logger import cli_logger
 
-            if cli_logger.interactive:
-                enabled = cli_logger.confirm(
-                    False,
-                    usage_constant.USAGE_STATS_CONFIRMATION_MESSAGE,
-                    _default=True,
-                    _timeout_s=10,
-                )
-                set_usage_stats_enabled_via_env_var(enabled)
-                set_usage_stats_enabled_via_config(enabled)
-                if enabled:
-                    print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
-                else:
-                    print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
+        if cli_logger.interactive:
+            enabled = cli_logger.confirm(
+                False,
+                usage_constant.USAGE_STATS_CONFIRMATION_MESSAGE,
+                _default=True,
+                _timeout_s=10,
+            )
+            set_usage_stats_enabled_via_env_var(enabled)
+            # Remember user's choice.
+            set_usage_stats_enabled_via_config(enabled)
+            if enabled:
+                print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
             else:
-                print(
-                    usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE,
-                    file=sys.stderr,
-                )
+                print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
         else:
-            assert usage_stats_enabledness is UsageStatsEnabledness.ENABLED_EXPLICITLY
-            print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
-
-    except Exception:
-        # Silently ignore the exception since it doesn't affect the use of ray.
-        pass
+            print(
+                usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE,
+                file=sys.stderr,
+            )
+    else:
+        assert usage_stats_enabledness is UsageStatsEnabledness.ENABLED_EXPLICITLY
+        print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
 
 
 def set_usage_stats_enabled_via_config(enabled) -> None:
@@ -287,7 +283,7 @@ def set_usage_stats_enabled_via_config(enabled) -> None:
 
 
 def set_usage_stats_enabled_via_env_var(enabled) -> None:
-    os.environ["RAY_USAGE_STATS_ENABLED"] = "1" if enabled else "0"
+    os.environ[usage_constant.USAGE_STATS_ENABLED_ENV_VAR] = "1" if enabled else "0"
 
 
 def put_cluster_metadata(gcs_client, num_retries) -> None:

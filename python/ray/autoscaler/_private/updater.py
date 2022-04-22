@@ -21,6 +21,7 @@ from ray.autoscaler._private.command_runner import (
     ProcessRunnerError,
 )
 from ray._private.usage import usage_lib
+from ray._private.usage import usage_constants
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
@@ -496,10 +497,10 @@ class NodeUpdater:
                     env_vars = {}
                     if self.is_head_node:
                         if usage_lib.usage_stats_enabled():
-                            env_vars["RAY_USAGE_STATS_ENABLED"] = 1
+                            env_vars[usage_constants.USAGE_STATS_ENABLED_ENV_VAR] = 1
                         else:
                             # Disable usage stats collection in the cluster.
-                            env_vars["RAY_USAGE_STATS_ENABLED"] = 0
+                            env_vars[usage_constants.USAGE_STATS_ENABLED_ENV_VAR] = 0
                     # Add a resource override env variable if needed:
                     if self.provider_type == "local":
                         # Local NodeProvider doesn't need resource override.

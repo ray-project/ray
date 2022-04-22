@@ -6,6 +6,8 @@ CLUSTER_METADATA_KEY = b"CLUSTER_METADATA"
 # The name of a json file where usage stats will be written.
 USAGE_STATS_FILE = "usage_stats.json"
 
+USAGE_STATS_ENABLED_ENV_VAR = "RAY_USAGE_STATS_ENABLED"
+
 USAGE_STATS_ENABLED_MESSAGE = (
     "Usage stats collection is enabled. To disable this, add `--disable-usage-stats` "
     "to the command that starts the cluster, or run the following command:"
