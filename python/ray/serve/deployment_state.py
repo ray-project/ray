@@ -147,7 +147,7 @@ class ActorReplicaWrapper:
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(
+        self._controller_namespace = ray.serve.client.get_controller_namespace(
             detached, _override_controller_namespace=_override_controller_namespace
         )
 
@@ -336,7 +336,12 @@ class ActorReplicaWrapper:
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            deployment_info.deployment_config.user_config
+            deployment_info.deployment_config.user_config,
+            # Ensure that `is_allocated` will execute before `reconfigure`,
+            # because `reconfigure` runs user code that could block the replica
+            # asyncio loop. If that happens before `is_allocated` is executed,
+            # the `is_allocated` call won't be able to run.
+            self._allocated_obj_ref,
         )
 
     def update_user_config(self, user_config: Any):
