@@ -43,15 +43,10 @@ void GcsResourceManager::ConsumeSyncMessage(
         resources.set_node_id(message->node_id());
         auto node_id = NodeID::FromBinary(message->node_id());
         if (message->component_id() == syncer::RayComponentId::RESOURCE_MANAGER) {
-          if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-            UpdateNodeNormalTaskResources(NodeID::FromBinary(message->node_id()),
-                                          resources);
-          } else {
-            cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-                scheduling::NodeID(message->node_id()), resources);
-          }
+          UpdateFromResourceReport(resources);
+        } else {
+          UpdateNodeResourceUsage(node_id, resources);
         }
-        UpdateNodeResourceUsage(node_id, resources);
       },
       "GcsResourceManager::Update");
 }

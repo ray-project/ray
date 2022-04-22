@@ -1752,7 +1752,7 @@ void NodeManager::HandleCommitBundleResources(
   if (RayConfig::instance().use_ray_syncer()) {
     auto sync_message =
         cluster_resource_scheduler_->GetLocalResourceManager().CreateSyncMessage(
-            0, // Use version = 0 to for a snapshot
+            0,  // Use version = 0 to for a snapshot
             syncer::RayComponentId::RESOURCE_MANAGER);
     RAY_CHECK(sync_message);
     ray_syncer_.BroadcastMessage(
@@ -1798,7 +1798,7 @@ void NodeManager::HandleCancelResourceReserve(
   if (RayConfig::instance().use_ray_syncer()) {
     auto sync_message =
         cluster_resource_scheduler_->GetLocalResourceManager().CreateSyncMessage(
-            0, // Use version = 0 to get a snapshot
+            0,  // Use version = 0 to get a snapshot
             syncer::RayComponentId::RESOURCE_MANAGER);
     RAY_CHECK(sync_message);
     ray_syncer_.BroadcastMessage(
