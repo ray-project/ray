@@ -664,8 +664,9 @@ def run(
         if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
             signal.signal(signal.SIGINT, signal_interrupt_tune_run)
 
-        # Always register SIGUSR1
-        signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
+        # Always register SIGUSR1 if available (not available e.g. on Windows)
+        if hasattr(signal, "SIGUSR1"):
+            signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
     progress_reporter = progress_reporter or detect_reporter()
 
