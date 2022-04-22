@@ -271,7 +271,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_asyncio,
             const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
-            c_bool enable_task_fast_fail,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order,
             int32_t max_pending_calls)

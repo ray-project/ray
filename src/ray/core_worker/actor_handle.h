@@ -44,8 +44,7 @@ class ActorHandle {
               const std::string &name,
               const std::string &ray_namespace,
               int32_t max_pending_calls,
-              bool execute_out_of_order = false,
-              bool enable_task_fast_fail = false);
+              bool execute_out_of_order = false);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -99,8 +98,6 @@ class ActorHandle {
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
 
   bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
-
-  bool EnableTaskFastFail() const { return inner_.enable_task_fast_fail(); }
 
  private:
   // Protobuf-defined persistent state of the actor handle.

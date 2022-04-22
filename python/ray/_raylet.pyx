@@ -1559,7 +1559,6 @@ cdef class CoreWorker:
                      concurrency_groups_dict,
                      int32_t max_pending_calls,
                      scheduling_strategy,
-                     c_bool enable_task_fast_fail,
                      ):
         cdef:
             CRayFunction ray_function
@@ -1602,7 +1601,6 @@ cdef class CoreWorker:
                         is_asyncio,
                         c_scheduling_strategy,
                         serialized_runtime_env_info,
-                        enable_task_fast_fail,
                         c_concurrency_groups,
                         # execute out of order for
                         # async or threaded actors.

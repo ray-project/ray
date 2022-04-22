@@ -577,7 +577,8 @@ def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
 
 
 def test_actor_task_fast_fail(ray_start_cluster):
-    @ray.remote(max_restarts=1, enable_task_fast_fail=True)
+    # Explicitly set `max_task_retries=0` here to show the test scenario.
+    @ray.remote(max_restarts=1, max_task_retries=0)
     class SlowActor:
         def __init__(self, signal_actor):
             if ray.get_runtime_context().was_current_actor_reconstructed:
@@ -594,7 +595,8 @@ def test_actor_task_fast_fail(ray_start_cluster):
     # Wait for a while so that now the driver knows the actor is in
     # RESTARTING state.
     time.sleep(1)
-    # An actor task should fail quickly until the actor is restarted.
+    # An actor task should fail quickly until the actor is restarted if
+    # `max_task_retries` is 0.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.ping.remote())
 

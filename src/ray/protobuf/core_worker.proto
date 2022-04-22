@@ -67,10 +67,6 @@ message ActorHandle {
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
-
-  // If enabled, tasks of this actor will fail immediately when the actor is temporarily
-  // unavailable. E.g., when there is a network issue, or when the actor is restarting.
-  bool enable_task_fast_fail = 14;
 }
 
 message ReturnObject {

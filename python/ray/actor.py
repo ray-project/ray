@@ -300,9 +300,6 @@ class ActorClassMetadata:
             the actor class definition could be exported multiple times by
             different workers.
         method_meta: The actor method metadata.
-        enable_task_fast_fail: If enabled, tasks of this actor will fail
-            immediately when the actor is temporarily unavailable. E.g., when
-            there is a network issue, or when the actor is restarting.
     """
 
     def __init__(
@@ -322,7 +319,6 @@ class ActorClassMetadata:
         runtime_env,
         concurrency_groups,
         scheduling_strategy: SchedulingStrategyT,
-        enable_task_fast_fail,
     ):
         self.language = language
         self.modified_class = modified_class
@@ -345,7 +341,6 @@ class ActorClassMetadata:
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor
         )
-        self.enable_task_fast_fail = enable_task_fast_fail
 
 
 class ActorClassInheritanceException(TypeError):
@@ -426,7 +421,6 @@ class ActorClass:
         runtime_env,
         concurrency_groups,
         scheduling_strategy: SchedulingStrategyT,
-        enable_task_fast_fail,
     ):
         for attribute in [
             "remote",
@@ -488,7 +482,6 @@ class ActorClass:
             new_runtime_env,
             concurrency_groups,
             scheduling_strategy,
-            enable_task_fast_fail,
         )
 
         return self
@@ -507,7 +500,6 @@ class ActorClass:
         resources,
         accelerator_type,
         runtime_env,
-        enable_task_fast_fail,
     ):
         self = ActorClass.__new__(ActorClass)
 
@@ -529,7 +521,6 @@ class ActorClass:
             new_runtime_env,
             [],
             None,
-            enable_task_fast_fail,
         )
 
         return self
@@ -571,7 +562,6 @@ class ActorClass:
         runtime_env=None,
         max_pending_calls=-1,
         scheduling_strategy: SchedulingStrategyT = None,
-        enable_task_fast_fail=None,
     ):
         """Configures and overrides the actor instantiation parameters.
 
@@ -614,7 +604,6 @@ class ActorClass:
             runtime_env=new_runtime_env,
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
-            enable_task_fast_fail=enable_task_fast_fail,
         )
 
         class ActorOptionWrapper:
@@ -692,7 +681,6 @@ class ActorClass:
         runtime_env=None,
         max_pending_calls=-1,
         scheduling_strategy: SchedulingStrategyT = None,
-        enable_task_fast_fail=None,
     ):
         """Create an actor.
 
@@ -751,9 +739,6 @@ class ActorClass:
                 Note that this limit is counted per handle. -1 means that the
                 number of pending calls is unlimited.
             scheduling_strategy: Strategy about how to schedule this actor.
-            enable_task_fast_fail: If enabled, tasks of this actor will fail
-                immediately when the actor is temporarily unavailable. E.g.,
-                when there is a network issue, or when the actor is restarting.
 
         Returns:
             A handle to the newly created actor.
@@ -807,7 +792,6 @@ class ActorClass:
                 runtime_env=runtime_env,
                 max_pending_calls=max_pending_calls,
                 scheduling_strategy=scheduling_strategy,
-                enable_task_fast_fail=enable_task_fast_fail,
             )
 
         worker = ray.worker.global_worker
@@ -1023,11 +1007,6 @@ class ActorClass:
                 )
             )
 
-        if enable_task_fast_fail is None:
-            enable_task_fast_fail = meta.enable_task_fast_fail
-        if enable_task_fast_fail is None:
-            enable_task_fast_fail = False
-
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -1047,7 +1026,6 @@ class ActorClass:
             concurrency_groups_dict=concurrency_groups_dict or dict(),
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
-            enable_task_fast_fail=enable_task_fast_fail,
         )
 
         actor_handle = ActorHandle(
@@ -1401,7 +1379,6 @@ def make_actor(
     runtime_env,
     concurrency_groups,
     scheduling_strategy: SchedulingStrategyT,
-    enable_task_fast_fail,
 ):
     Class = modify_class(cls)
     _inject_tracing_into_class(Class)
@@ -1442,7 +1419,6 @@ def make_actor(
         runtime_env,
         concurrency_groups,
         scheduling_strategy,
-        enable_task_fast_fail,
     )
 
 

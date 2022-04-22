@@ -640,8 +640,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFastFail) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(
-      actor_id, -1, execute_out_of_order, /*enable_task_fast_fail=*/true);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1, execute_out_of_order);
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
@@ -657,7 +656,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFastFail) {
   const auto death_cause = CreateMockDeathCause();
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false, death_cause);
 
-  // Submit a new task. This task should fail immediately because "fast fail" is enabled.
+  // Submit a new task. This task should fail immediately because "max_task_retries" is 0.
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   ASSERT_TRUE(CheckSubmitTask(task2));
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _)).Times(0);

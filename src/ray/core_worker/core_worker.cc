@@ -1785,8 +1785,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name,
       ray_namespace,
       actor_creation_options.max_pending_calls,
-      actor_creation_options.execute_out_of_order,
-      actor_creation_options.enable_task_fast_fail);
+      actor_creation_options.execute_out_of_order);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(actor_id,

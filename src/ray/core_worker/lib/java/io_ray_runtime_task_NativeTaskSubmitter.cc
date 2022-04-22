@@ -152,7 +152,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::vector<std::string> dynamic_worker_options;
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
-  bool enable_task_fast_fail = false;
   std::vector<ConcurrencyGroup> concurrency_groups;
   std::string serialized_runtime_env = "";
   int32_t max_pending_calls = -1;
@@ -195,10 +194,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                     java_actor_creation_options_bundle_index);
       placement_options = std::make_pair(id, index);
     }
-
-    enable_task_fast_fail = env->GetBooleanField(
-        actorCreationOptions, java_actor_creation_options_enable_task_fast_fail);
-
     // Convert concurrency groups from Java to native.
     jobject java_concurrency_groups_field = env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_concurrency_groups);
@@ -273,7 +268,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       /*is_asyncio=*/false,
       /*scheduling_strategy=*/scheduling_strategy,
       serialized_runtime_env,
-      enable_task_fast_fail,
       concurrency_groups,
       /*execute_out_of_order*/ false,
       max_pending_calls};

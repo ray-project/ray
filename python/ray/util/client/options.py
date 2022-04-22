@@ -48,7 +48,6 @@ options = {
     "max_pending_calls": (),
     "concurrency_groups": (),
     "scheduling_strategy": (),
-    "enable_task_fast_fail": (),
 }
 
 

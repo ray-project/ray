@@ -155,11 +155,11 @@ public class FailureTest extends BaseTest {
 
   public void testActorTaskFastFail() throws IOException, InterruptedException {
     ActorHandle<SignalActor> signalActor = SignalActor.create();
+    // NOTE(kfstorm): Currently, `max_task_retries` is always 0 for actors created in Java.
+    // Once `max_task_retries` is configurable in Java, we'd better set it to 0 explicitly to show
+    // the test scenario.
     ActorHandle<SlowActor> actor =
-        Ray.actor(SlowActor::new, signalActor)
-            .setMaxRestarts(1)
-            .setEnableTaskFastFail(true)
-            .remote();
+        Ray.actor(SlowActor::new, signalActor).setMaxRestarts(1).remote();
     actor.task(SlowActor::ping).remote().get();
     actor.kill(/*noRestart=*/ false);
 

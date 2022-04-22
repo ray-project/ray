@@ -2128,7 +2128,6 @@ def make_decorator(
     retry_exceptions=None,
     concurrency_groups=None,
     scheduling_strategy: SchedulingStrategyT = None,
-    enable_task_fast_fail=None,
 ):
     def decorator(function_or_class):
         if inspect.isfunction(function_or_class) or is_cython(function_or_class):
@@ -2160,11 +2159,6 @@ def make_decorator(
             ):
                 raise ValueError(
                     "The keyword 'max_calls' only accepts 0 or a positive integer"
-                )
-            if enable_task_fast_fail is not None:
-                raise ValueError(
-                    "The keyword 'enable_task_fast_fail' is not "
-                    "allowed for remote functions."
                 )
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON,
@@ -2210,12 +2204,6 @@ def make_decorator(
                     "The keyword 'max_task_retries' only accepts -1, 0 or a"
                     " positive integer"
                 )
-            if enable_task_fast_fail is not None and (
-                not isinstance(enable_task_fast_fail, bool)
-            ):
-                raise ValueError(
-                    "The keyword 'enable_task_fast_fail' only accepts bool values."
-                )
             return ray.actor.make_actor(
                 function_or_class,
                 num_cpus,
@@ -2229,7 +2217,6 @@ def make_decorator(
                 runtime_env,
                 concurrency_groups,
                 scheduling_strategy,
-                enable_task_fast_fail,
             )
 
         raise TypeError(
@@ -2353,9 +2340,6 @@ def remote(*args, **kwargs):
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
-        enable_task_fast_fail (bool): If enabled, tasks of this actor will fail
-            immediately when the actor is temporarily unavailable. E.g., when
-            there is a network issue, or when the actor is restarting.
     """
     worker = global_worker
 
@@ -2381,7 +2365,6 @@ def remote(*args, **kwargs):
         "placement_group",
         "concurrency_groups",
         "scheduling_strategy",
-        "enable_task_fast_fail",
     ]
     error_string = (
         "The @ray.remote decorator must be applied either "
@@ -2422,7 +2405,6 @@ def remote(*args, **kwargs):
     retry_exceptions = kwargs.get("retry_exceptions")
     concurrency_groups = kwargs.get("concurrency_groups")
     scheduling_strategy = kwargs.get("scheduling_strategy")
-    enable_task_fast_fail = kwargs.get("enable_task_fast_fail")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2442,5 +2424,4 @@ def remote(*args, **kwargs):
         retry_exceptions=retry_exceptions,
         concurrency_groups=concurrency_groups or [],
         scheduling_strategy=scheduling_strategy,
-        enable_task_fast_fail=enable_task_fast_fail,
     )

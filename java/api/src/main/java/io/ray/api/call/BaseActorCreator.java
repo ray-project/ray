@@ -125,19 +125,6 @@ public class BaseActorCreator<T extends BaseActorCreator> {
     return setPlacementGroup(group, -1);
   }
 
-  /**
-   * If enabled, tasks of this actor will fail immediately when the actor is temporarily
-   * unavailable. E.g., when there is a network issue, or when the actor is restarting.
-   *
-   * @param enabled Whether to enable this option.
-   * @return self.
-   * @see ActorCreationOptions.Builder#setEnableTaskFastFail(boolean)
-   */
-  public T setEnableTaskFastFail(boolean enabled) {
-    builder.setEnableTaskFastFail(enabled);
-    return self();
-  }
-
   @SuppressWarnings("unchecked")
   private T self() {
     return (T) this;

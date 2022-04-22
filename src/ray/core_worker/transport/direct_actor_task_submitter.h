@@ -47,8 +47,7 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
                                         int32_t max_pending_calls,
-                                        bool execute_out_of_order = false,
-                                        bool enable_task_fast_fail = false) = 0;
+                                        bool execute_out_of_order = false) = 0;
   virtual void ConnectActor(const ActorID &actor_id,
                             const rpc::Address &address,
                             int64_t num_restarts) = 0;
@@ -92,8 +91,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
-                                bool execute_out_of_order = false,
-                                bool enable_task_fast_fail = false);
+                                bool execute_out_of_order = false);
 
   /// Submit a task to an actor for execution.
   ///
@@ -157,12 +155,8 @@ class CoreWorkerDirectActorTaskSubmitter
 
  private:
   struct ClientQueue {
-    ClientQueue(ActorID actor_id,
-                bool execute_out_of_order,
-                int32_t max_pending_calls,
-                bool enable_task_fast_fail)
-        : max_pending_calls(max_pending_calls),
-          enable_task_fast_fail(enable_task_fast_fail) {
+    ClientQueue(ActorID actor_id, bool execute_out_of_order, int32_t max_pending_calls)
+        : max_pending_calls(max_pending_calls) {
       if (execute_out_of_order) {
         actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
       } else {
@@ -215,10 +209,6 @@ class CoreWorkerDirectActorTaskSubmitter
 
     /// The current task number in this client queue.
     int32_t cur_pending_calls = 0;
-
-    // If enabled, tasks of this actor will fail immediately when the actor is temporarily
-    // unavailable. E.g., when there is a network issue, or when the actor is restarting.
-    bool enable_task_fast_fail = false;
 
     /// Returns debug string for class.
     ///
