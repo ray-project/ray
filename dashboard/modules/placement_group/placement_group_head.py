@@ -17,7 +17,7 @@ class PlacementGroupHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/placement_groups")
     async def get_placement_groups(self, req) -> aiohttp.web.Response:
-        data = await self._dashboard_head.gcs_state_aggregator.get_placement_groups()
+        data = await self._dashboard_head.state_aggregator.get_placement_groups()
         return rest_response(
             success=True, message="", result=data, convert_google_style=False
         )

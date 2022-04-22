@@ -9,6 +9,9 @@ from ray.data.block import BlockAccessor
 from ray.data.tests.mock_server import *  # noqa
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 
+# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
+
 
 @pytest.fixture(scope="function")
 def aws_credentials():
