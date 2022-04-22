@@ -18,7 +18,7 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 class StateHead(dashboard_utils.DashboardHeadModule):
     """Module to obtain state information from the Ray cluster.
-    
+
     It is responsible for state observability APIs such as
     ray.list_actors(), ray.get_actor(), ray.summary_actors().
     """
@@ -28,22 +28,18 @@ class StateHead(dashboard_utils.DashboardHeadModule):
         self._state_api_data_source_client = None
         self._state_api = None
         DataSource.nodes.signal.append(self._update_raylet_stubs)
-    
+
     def _options_from_req(self, req) -> ListApiOptions:
         """Obtain `ListApiOptions` from the aiohttp request."""
         limit = int(req.query.get("limit"))
         timeout = int(req.query.get("timeout"))
         return ListApiOptions(limit=limit, timeout=timeout)
-    
+
     def _reply(self, success: bool, message: str, result: dict):
         """Reply to the client."""
         return rest_response(
-            success=success,
-            message=message,
-            result=result,
-            convert_google_style=False)
-
-
+            success=success, message=message, result=result, convert_google_style=False
+        )
 
     async def _update_raylet_stubs(self, change: Change):
         """Callback that's called when a new raylet is added to Datasource.
@@ -76,17 +72,12 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/actors")
     async def list_actors(self, req) -> aiohttp.web.Response:
-        data = await self._state_api.list_actors(
-            option=self._options_from_req(req))
-        return self._reply(
-            success=True, message="", result=data
-        )
+        data = await self._state_api.list_actors(option=self._options_from_req(req))
+        return self._reply(success=True, message="", result=data)
 
     @routes.get("/api/v0/jobs")
     async def list_jobs(self, req) -> aiohttp.web.Response:
-        data = self._state_api.list_jobs(
-            option=self._options_from_req(req)
-        )
+        data = self._state_api.list_jobs(option=self._options_from_req(req))
         return self._reply(
             success=True,
             message="",
@@ -98,48 +89,30 @@ class StateHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/nodes")
     async def list_nodes(self, req) -> aiohttp.web.Response:
-        data = await self._state_api.list_nodes(
-            option=self._options_from_req(req)
-        )
-        return self._reply(
-            success=True, message="", result=data
-        )
+        data = await self._state_api.list_nodes(option=self._options_from_req(req))
+        return self._reply(success=True, message="", result=data)
 
     @routes.get("/api/v0/placement_groups")
     async def list_placement_groups(self, req) -> aiohttp.web.Response:
         data = await self._state_api.list_placement_groups(
             option=self._options_from_req(req)
         )
-        return self._reply(
-            success=True, message="", result=data
-        )
+        return self._reply(success=True, message="", result=data)
 
     @routes.get("/api/v0/workers")
     async def list_workers(self, req) -> aiohttp.web.Response:
-        data = await self._state_api.list_workers(
-            option=self._options_from_req(req)
-        )
-        return self._reply(
-            success=True, message="", result=data
-        )
+        data = await self._state_api.list_workers(option=self._options_from_req(req))
+        return self._reply(success=True, message="", result=data)
 
     @routes.get("/api/v0/tasks")
     async def list_tasks(self, req) -> aiohttp.web.Response:
-        data = await self._state_api.list_tasks(
-            option=self._options_from_req(req)
-        )
-        return self._reply(
-            success=True, message="", result=data
-        )
+        data = await self._state_api.list_tasks(option=self._options_from_req(req))
+        return self._reply(success=True, message="", result=data)
 
     @routes.get("/api/v0/objects")
     async def list_objects(self, req) -> aiohttp.web.Response:
-        data = await self._state_api.list_objects(
-            option=self._options_from_req(req)
-        )
-        return self._reply(
-            success=True, message="", result=data
-        )
+        data = await self._state_api.list_objects(option=self._options_from_req(req))
+        return self._reply(success=True, message="", result=data)
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
