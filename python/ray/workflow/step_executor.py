@@ -142,13 +142,9 @@ def _execute_workflow(job_id, workflow: "Workflow") -> "WorkflowExecutionResult"
                 extra_options = w.data.step_options.ray_options
                 # The input workflow is not a reference to an executed
                 # workflow.
-                output = execute_workflow(job_id, w).persisted_output
-                static_ref = WorkflowStaticRef(
-                    step_id=w.step_id,
-                    ref=output,
-                    _resolve_like_object_ref_in_args=extra_options.get(
-                        "_resolve_like_object_ref_in_args", False
-                    ),
+                static_ref = execute_workflow(job_id, w).persisted_output
+                static_ref._resolve_like_object_ref_in_args = extra_options.get(
+                    "_resolve_like_object_ref_in_args", False
                 )
             workflow_outputs.append(static_ref)
 
