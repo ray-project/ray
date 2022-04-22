@@ -227,19 +227,43 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
 
 
 def _store_package_in_gcs(
-    pkg_uri: str, data: bytes, logger: Optional[logging.Logger] = default_logger
+    pkg_uri: str,
+    data: bytes,
+    logger: Optional[logging.Logger] = default_logger,
 ) -> int:
+    """Stores package data in the Global Control Store (GCS).
+
+    Args:
+        pkg_uri (str): The GCS key to store the data in.
+        data (bytes): The serialized package's bytes to store in the GCS.
+        logger (Optional[logging.Logger]): The logger used by this function.
+
+    Return:
+        int: Size of data
+
+    Raises:
+        RuntimeError: If the upload to the GCS fails.
+        ValueError: If the data's size exceeds GCS_STORAGE_MAX_SIZE.
+    """
+
     file_size = len(data)
     size_str = _mib_string(file_size)
     if len(data) >= GCS_STORAGE_MAX_SIZE:
-        raise RuntimeError(
+        raise ValueError(
             f"Package size ({size_str}) exceeds the maximum size of "
             f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
             "files using the 'excludes' option to the runtime_env."
         )
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to Ray cluster...")
-    _internal_kv_put(pkg_uri, data)
+    try:
+        _internal_kv_put(pkg_uri, data)
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to store package in the GCS.\n"
+            f"  - GCS URI: {pkg_uri}\n"
+            f"  - Package data ({size_str}): {data[:15]}...\n"
+        ) from e
     logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
 
@@ -366,7 +390,9 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
-        raise RuntimeError("push_package should not be called with remote path.")
+        raise RuntimeError(
+            "upload_package_to_gcs should not be called with remote path."
+        )
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 

@@ -1,32 +1,39 @@
 import asyncio
-import json
-import time
 from collections import defaultdict
+from copy import copy
+import json
+import logging
+import time
 import os
 from typing import Dict, Iterable, List, Optional, Tuple, Any
-from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
-from copy import copy
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
+
+from ray.serve.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.common import (
     DeploymentInfo,
-    DeploymentStatusInfo,
     EndpointTag,
     EndpointInfo,
     NodeId,
     RunningReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
+from ray.serve.constants import (
+    CONTROL_LOOP_PERIOD_S,
+    SERVE_ROOT_URL_ENV_KEY,
+    SERVE_LOGGER_NAME,
+)
+from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.storage.checkpoint_path import make_kv_store
+from ray.serve.logging_utils import configure_component_logger
 from ray.serve.long_poll import LongPollHost
+from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import logger
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -69,6 +76,10 @@ class ServeController:
         detached: bool = False,
         _override_controller_namespace: Optional[str] = None,
     ):
+        configure_component_logger(
+            component_name="controller", component_id=str(os.getpid())
+        )
+
         # Used to read/write checkpoints.
         self.controller_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
@@ -151,12 +162,21 @@ class ServeController:
         """Returns a dictionary of node ID to http_proxy actor handles."""
         return self.http_state.get_http_proxy_handles()
 
+    def get_http_proxy_names(self) -> bytes:
+        """Returns the http_proxy actor name list serialized by protobuf."""
+        from ray.serve.generated.serve_pb2 import ActorNameList
+
+        actor_name_list = ActorNameList(
+            names=self.http_state.get_http_proxy_names().values()
+        )
+        return actor_name_list.SerializeToString()
+
     def autoscale(self) -> None:
         """Updates autoscaling deployments with calculated num_replicas."""
         for deployment_name, (
             deployment_info,
             route_prefix,
-        ) in self.list_deployments().items():
+        ) in self.list_deployments_internal().items():
             deployment_config = deployment_info.deployment_config
             autoscaling_policy = deployment_info.autoscaling_policy
 
@@ -223,9 +243,10 @@ class ServeController:
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
-        for deployment_name, (deployment_info, route_prefix) in self.list_deployments(
-            include_deleted=True
-        ).items():
+        for deployment_name, (
+            deployment_info,
+            route_prefix,
+        ) in self.list_deployments_internal(include_deleted=True).items():
             entry = dict()
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
@@ -295,9 +316,7 @@ class ServeController:
         self,
         name: str,
         deployment_config_proto_bytes: bytes,
-        replica_config: ReplicaConfig,
-        version: Optional[str],
-        prev_version: Optional[str],
+        replica_config_proto_bytes: bytes,
         route_prefix: Optional[str],
         deployer_job_id: "ray._raylet.JobID",
     ) -> bool:
@@ -306,6 +325,11 @@ class ServeController:
 
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
+        )
+        version = deployment_config.version
+        prev_version = deployment_config.prev_version
+        replica_config = ReplicaConfig.from_proto_bytes(
+            replica_config_proto_bytes, deployment_config.deployment_language
         )
 
         if prev_version is not None:
@@ -375,14 +399,14 @@ class ServeController:
         for name in names:
             self.delete_deployment(name)
 
-    def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
+    def get_deployment_info(self, name: str) -> bytes:
         """Get the current information about a deployment.
 
         Args:
             name(str): the name of the deployment.
 
         Returns:
-            (DeploymentInfo, route)
+            DeploymentRoute's protobuf serialized bytes
 
         Raises:
             KeyError if the deployment doesn't exist.
@@ -393,9 +417,14 @@ class ServeController:
 
         route = self.endpoint_state.get_endpoint_route(name)
 
-        return deployment_info, route
+        from ray.serve.generated.serve_pb2 import DeploymentRoute
 
-    def list_deployments(
+        deployment_route = DeploymentRoute(
+            deployment_info=deployment_info.to_proto(), route=route
+        )
+        return deployment_route.SerializeToString()
+
+    def list_deployments_internal(
         self, include_deleted: Optional[bool] = False
     ) -> Dict[str, Tuple[DeploymentInfo, str]]:
         """Gets the current information about all deployments.
@@ -422,5 +451,48 @@ class ServeController:
             )
         }
 
-    def get_deployment_statuses(self) -> Dict[str, DeploymentStatusInfo]:
-        return self.deployment_state_manager.get_deployment_statuses()
+    def list_deployments(self, include_deleted: Optional[bool] = False) -> bytes:
+        """Gets the current information about all deployments.
+
+        Args:
+            include_deleted(bool): Whether to include information about
+                deployments that have been deleted.
+
+        Returns:
+            DeploymentRouteList's protobuf serialized bytes
+        """
+        from ray.serve.generated.serve_pb2 import DeploymentRouteList, DeploymentRoute
+
+        deployment_route_list = DeploymentRouteList()
+        for deployment_name, (
+            deployment_info,
+            route_prefix,
+        ) in self.list_deployments_internal(include_deleted=include_deleted).items():
+            deployment_info_proto = deployment_info.to_proto()
+            deployment_info_proto.name = deployment_name
+            deployment_route_list.deployment_routes.append(
+                DeploymentRoute(
+                    deployment_info=deployment_info_proto, route=route_prefix
+                )
+            )
+        return deployment_route_list.SerializeToString()
+
+    def get_deployment_statuses(self) -> bytes:
+        """Gets the current status information about all deployments.
+
+        Returns:
+            DeploymentStatusInfoList's protobuf serialized bytes
+        """
+        from ray.serve.generated.serve_pb2 import DeploymentStatusInfoList
+
+        deployment_status_info_list = DeploymentStatusInfoList()
+        for (
+            name,
+            deployment_status_info,
+        ) in self.deployment_state_manager.get_deployment_statuses().items():
+            deployment_status_info_proto = deployment_status_info.to_proto()
+            deployment_status_info_proto.name = name
+            deployment_status_info_list.deployment_status_infos.append(
+                deployment_status_info_proto
+            )
+        return deployment_status_info_list.SerializeToString()

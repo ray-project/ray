@@ -35,7 +35,6 @@
 
 namespace ray {
 
-using raylet_scheduling_policy::SchedulingContext;
 using raylet_scheduling_policy::SchedulingOptions;
 using raylet_scheduling_policy::SchedulingResult;
 using rpc::HeartbeatTableData;
@@ -73,8 +72,7 @@ class ClusterResourceScheduler {
   /// a flag to indicate whether this request can be retry or not.
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options,
-      SchedulingContext *context = nullptr);
+      SchedulingOptions options);
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
@@ -116,7 +114,8 @@ class ClusterResourceScheduler {
   /// \param node_name Name of the node.
   /// \param shape The resource demand's shape.
   bool IsSchedulableOnNode(scheduling::NodeID node_id,
-                           const absl::flat_hash_map<std::string, double> &shape);
+                           const absl::flat_hash_map<std::string, double> &shape,
+                           bool requires_object_store_memory);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
   ClusterResourceManager &GetClusterResourceManager() {
@@ -198,6 +197,9 @@ class ClusterResourceScheduler {
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   /// The scheduling policy to use.
   std::unique_ptr<raylet_scheduling_policy::ISchedulingPolicy> scheduling_policy_;
+  /// The bundle scheduling policy to use.
+  std::unique_ptr<raylet_scheduling_policy::IBundleSchedulingPolicy>
+      bundle_scheduling_policy_;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
@@ -205,6 +207,7 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);

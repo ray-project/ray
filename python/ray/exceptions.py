@@ -563,6 +563,34 @@ class PendingCallsLimitExceeded(RayError):
     pass
 
 
+class TaskUnschedulableError(RayError):
+    """Raised when the task cannot be scheduled.
+
+    One example is that the node specified through
+    NodeAffinitySchedulingStrategy is dead.
+    """
+
+    def __init__(self, error_message: str):
+        self.error_message = error_message
+
+    def __str__(self):
+        return f"The task is not schedulable: {self.error_message}"
+
+
+class ActorUnschedulableError(RayError):
+    """Raised when the actor cannot be scheduled.
+
+    One example is that the node specified through
+    NodeAffinitySchedulingStrategy is dead.
+    """
+
+    def __init__(self, error_message: str):
+        self.error_message = error_message
+
+    def __str__(self):
+        return f"The actor is not schedulable: {self.error_message}"
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -584,4 +612,6 @@ RAY_EXCEPTION_TYPES = [
     ActorPlacementGroupRemoved,
     PendingCallsLimitExceeded,
     LocalRayletDiedError,
+    TaskUnschedulableError,
+    ActorUnschedulableError,
 ]

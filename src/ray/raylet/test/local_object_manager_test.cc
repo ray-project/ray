@@ -25,6 +25,7 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "src/ray/object_manager/ownership_based_object_directory.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -108,26 +109,31 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  void AddSpilledUrl(
-      const rpc::AddSpilledUrlRequest &request,
-      const rpc::ClientCallback<rpc::AddSpilledUrlReply> &callback) override {
-    object_urls.emplace(ObjectID::FromBinary(request.object_id()), request.spilled_url());
-    spilled_url_callbacks.push_back(callback);
+  void UpdateObjectLocationBatch(
+      const rpc::UpdateObjectLocationBatchRequest &request,
+      const rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply> &callback) override {
+    for (const auto &object_location_update : request.object_location_updates()) {
+      ASSERT_TRUE(object_location_update.has_spilled_location_update());
+      object_urls.emplace(ObjectID::FromBinary(object_location_update.object_id()),
+                          object_location_update.spilled_location_update().spilled_url());
+    }
+    update_object_location_batch_callbacks.push_back(callback);
   }
 
-  bool ReplyAddSpilledUrl(Status status = Status::OK()) {
-    if (spilled_url_callbacks.empty()) {
+  bool ReplyUpdateObjectLocationBatch(Status status = Status::OK()) {
+    if (update_object_location_batch_callbacks.empty()) {
       return false;
     }
-    auto callback = spilled_url_callbacks.front();
-    auto reply = rpc::AddSpilledUrlReply();
+    auto callback = update_object_location_batch_callbacks.front();
+    auto reply = rpc::UpdateObjectLocationBatchReply();
     callback(status, reply);
-    spilled_url_callbacks.pop_front();
+    update_object_location_batch_callbacks.pop_front();
     return true;
   }
 
   absl::flat_hash_map<ObjectID, std::string> object_urls;
-  std::deque<rpc::ClientCallback<rpc::AddSpilledUrlReply>> spilled_url_callbacks;
+  std::deque<rpc::ClientCallback<rpc::UpdateObjectLocationBatchReply>>
+      update_object_location_batch_callbacks;
 };
 
 class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
@@ -289,14 +295,23 @@ class MockObjectBuffer : public Buffer {
   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins_;
 };
 
-class LocalObjectManagerTest : public ::testing::Test {
+class LocalObjectManagerTestWithMinSpillingSize {
  public:
-  LocalObjectManagerTest()
+  LocalObjectManagerTestWithMinSpillingSize(int64_t min_spilling_size,
+                                            int64_t max_fused_object_count)
       : subscriber_(std::make_shared<MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
-        max_fused_object_count_(15),
+        max_fused_object_count_(max_fused_object_count),
+        gcs_client_(),
+        object_directory_(std::make_unique<OwnershipBasedObjectDirectory>(
+            io_service_,
+            gcs_client_,
+            subscriber_.get(),
+            &client_pool,
+            /*max_object_report_batch_size=*/20000,
+            [](const ObjectID &object_id, const rpc::ErrorType &error_type) {})),
         manager(
             manager_node_id_,
             "address",
@@ -306,7 +321,7 @@ class LocalObjectManagerTest : public ::testing::Test {
             worker_pool,
             client_pool,
             /*max_io_workers=*/2,
-            /*min_spilling_size=*/0,
+            /*min_spilling_size=*/min_spilling_size,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
             /*on_objects_freed=*/
@@ -319,7 +334,8 @@ class LocalObjectManagerTest : public ::testing::Test {
             [&](const ray::ObjectID &object_id) {
               return unevictable_objects_.count(object_id) == 0;
             },
-            /*core_worker_subscriber=*/subscriber_.get()),
+            /*core_worker_subscriber=*/subscriber_.get(),
+            object_directory_.get()),
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
   }
@@ -350,6 +366,8 @@ class LocalObjectManagerTest : public ::testing::Test {
   MockIOWorkerPool worker_pool;
   NodeID manager_node_id_;
   size_t max_fused_object_count_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<IObjectDirectory> object_directory_;
   LocalObjectManager manager;
 
   std::unordered_set<ObjectID> freed;
@@ -358,6 +376,18 @@ class LocalObjectManagerTest : public ::testing::Test {
   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins;
   // Object ids in this field won't be evictable.
   std::unordered_set<ObjectID> unevictable_objects_;
+};
+
+class LocalObjectManagerTest : public LocalObjectManagerTestWithMinSpillingSize,
+                               public ::testing::Test {
+ public:
+  LocalObjectManagerTest() : LocalObjectManagerTestWithMinSpillingSize(0, 1) {}
+};
+
+class LocalObjectManagerFusedTest : public LocalObjectManagerTestWithMinSpillingSize,
+                                    public ::testing::Test {
+ public:
+  LocalObjectManagerFusedTest() : LocalObjectManagerTestWithMinSpillingSize(100, 15) {}
 };
 
 TEST_F(LocalObjectManagerTest, TestPin) {
@@ -415,11 +445,14 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_FALSE(manager.GetLocalSpilledObjectURL(object_ids[i]).empty());
+  // The first update is sent out immediately and the remaining ones are batched
+  // since the first one is still in-flight.
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
   for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+    ASSERT_FALSE(manager.GetLocalSpilledObjectURL(object_ids[i]).empty());
+    ASSERT_EQ(owner_client->object_urls[object_ids[i]], urls[i]);
   }
 
   // Then try restoring objects from local.
@@ -481,8 +514,8 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
   ASSERT_EQ(num_times_fired, 1);
   for (size_t i = 0; i < object_ids.size(); i++) {
@@ -532,8 +565,8 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   }
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
   ASSERT_EQ(num_times_fired, 1);
   for (size_t i = 0; i < object_ids.size(); i++) {
@@ -545,7 +578,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
   }
 }
 
-TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
+TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSizeZero) {
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
 
@@ -564,32 +597,6 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     objects.push_back(std::move(object));
   }
   manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
-  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size / 2));
-  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
-  for (const auto &id : object_ids) {
-    ASSERT_EQ((*unpins)[id], 0);
-  }
-
-  // Check that half the objects get spilled and the URLs get added to the
-  // global object directory.
-  std::vector<std::string> urls;
-  for (size_t i = 0; i < object_ids.size() / 2 + 1; i++) {
-    urls.push_back(BuildURL("url" + std::to_string(i)));
-  }
-  EXPECT_CALL(worker_pool, PushSpillWorker(_));
-  // Objects should get freed even though we didn't wait for the owner's notice
-  // to evict.
-  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < urls.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
-  }
-  ASSERT_EQ(owner_client->object_urls.size(), object_ids.size() / 2 + 1);
-  for (auto &object_url : owner_client->object_urls) {
-    auto it = std::find(urls.begin(), urls.end(), object_url.second);
-    ASSERT_TRUE(it != urls.end());
-    ASSERT_EQ((*unpins)[object_url.first], 1);
-  }
-
   // Make sure providing 0 bytes to SpillObjectsOfSize will spill one object.
   // This is important to cover min_spilling_size_== 0.
   ASSERT_TRUE(manager.SpillObjectsOfSize(0));
@@ -597,17 +604,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   const std::string url = BuildURL("url" + std::to_string(object_ids.size()));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
-  urls.push_back(url);
-  ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
-  ASSERT_EQ(owner_client->object_urls.size(), 3);
-  for (auto &object_url : owner_client->object_urls) {
-    auto it = std::find(urls.begin(), urls.end(), object_url.second);
-    ASSERT_TRUE(it != urls.end());
-    ASSERT_EQ((*unpins)[object_url.first], 1);
-  }
-
-  // Since there's no more object to spill, this should fail.
-  ASSERT_FALSE(manager.SpillObjectsOfSize(0));
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
 }
 
@@ -651,9 +648,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
   // Objects should get freed even though we didn't wait for the owner's notice
   // to evict.
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < urls.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
-  }
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(owner_client->object_urls.size(), max_fused_object_count_);
   for (auto &object_url : owner_client->object_urls) {
     auto it = std::find(urls.begin(), urls.end(), object_url.second);
@@ -727,7 +722,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
   std::vector<std::string> urls;
   urls.push_back(BuildURL("url" + std::to_string(0)));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({urls[0]}));
-  ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   // Make sure object is spilled.
   ASSERT_EQ(owner_client->object_urls.size(), 1);
   for (auto &object_url : owner_client->object_urls) {
@@ -752,7 +747,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
   }
   for (size_t i = 1; i < urls.size(); i++) {
     ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({urls[i]}));
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
   ASSERT_EQ(owner_client->object_urls.size(), 3);
   for (auto &object_url : owner_client->object_urls) {
@@ -793,7 +788,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(
       worker_pool.io_worker_client->ReplySpillObjects({}, Status::IOError("error")));
-  ASSERT_FALSE(owner_client->ReplyAddSpilledUrl());
+  ASSERT_FALSE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(num_times_fired, 1);
   ASSERT_EQ((*unpins)[object_id], 0);
 
@@ -806,7 +801,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   std::string url = BuildURL("url");
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
-  ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(owner_client->object_urls[object_id], url);
   ASSERT_EQ(num_times_fired, 2);
   ASSERT_EQ((*unpins)[object_id], 1);
@@ -908,8 +903,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
 
   // All objects are out of scope now.
@@ -961,8 +956,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
                             /*num_objects*/ object_ids_to_spill.size()));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
 
   // Everything is evicted except the last object. In this case, ref count is still > 0.
@@ -1034,9 +1029,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
 
   // Spillset 1 objects are spilled.
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls_spill_set_1));
-  for (size_t i = 0; i < spill_set_1_size; i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
-  }
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   // Every object has gone out of scope.
   for (size_t i = 0; i < spilled_urls_size; i++) {
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
@@ -1051,11 +1044,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
 
   // Now spilling is completely done.
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls_spill_set_2));
-  for (size_t i = 0; i < spill_set_2_size; i++) {
-    // These fail because the object is already freed, so the raylet does not
-    // send the RPC.
-    ASSERT_FALSE(owner_client->ReplyAddSpilledUrl());
-  }
+  // These fail because the object is already freed, so the raylet does not
+  // send the RPC.
+  ASSERT_FALSE(owner_client->ReplyUpdateObjectLocationBatch());
 
   // Every object is now deleted.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -1096,8 +1087,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
 
   // Every reference has gone out of scope.
@@ -1151,8 +1142,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
 
-  // Imagine a scenario only the first location is updated to the owner.
-  ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
   EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[0].Binary()));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
   // Delete operation is called. In this case, the file with the url should not be
@@ -1163,7 +1152,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
 
   // Everything else is now deleted.
   for (size_t i = 1; i < free_objects_batch_size; i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
@@ -1299,12 +1287,116 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
   AssertNoLeaks();
 }
 
-TEST_F(LocalObjectManagerTest, TestPinBytes) {
-  // Prepare data for objects.
+TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSize) {
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
 
   std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  int64_t object_size = 52;
+
+  for (size_t i = 0; i < 3; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    auto object = std::make_unique<RayObject>(
+        data_buffer, nullptr, std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+  manager.SpillObjectUptoMaxThroughput();
+  // Only 2 of the objects should be spilled.
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+  for (const auto &id : object_ids) {
+    ASSERT_EQ((*unpins)[id], 0);
+  }
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+  // Check that half the objects get spilled and the URLs get added to the
+  // global object directory.
+  std::vector<std::string> urls;
+  urls.push_back(BuildURL("url1"));
+  urls.push_back(BuildURL("url2"));
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
+  // Objects should get freed even though we didn't wait for the owner's notice
+  // to evict.
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  }
+  ASSERT_EQ(owner_client->object_urls.size(), 2);
+  int num_unpinned = 0;
+  for (const auto &id : object_ids) {
+    if ((*unpins)[id] == 1) {
+      num_unpinned++;
+    }
+  }
+  ASSERT_EQ(num_unpinned, 2);
+
+  // We will spill the last object, even though we're under the min spilling
+  // size, because they are the only spillable objects.
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+}
+
+TEST_F(LocalObjectManagerFusedTest, TestMinSpillingSizeMaxFusionCount) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  // 20 of these objects are needed to hit the min spilling size, but
+  // max_fused_object_count=15.
+  int64_t object_size = 5;
+
+  for (size_t i = 0; i < 40; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    auto object = std::make_unique<RayObject>(
+        data_buffer, nullptr, std::vector<rpc::ObjectReference>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
+  manager.SpillObjectUptoMaxThroughput();
+  // First two spill batches succeed because they have at least 15 objects.
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  // Last spill batch fails because we have 10 objects and their total size is
+  // less than 100.
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+
+  std::vector<std::string> urls;
+  for (int i = 0; i < 15; i++) {
+    urls.push_back(BuildURL("url", i));
+  }
+  EXPECT_CALL(worker_pool, PushSpillWorker(_)).Times(2);
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  }
+
+  // We will spill the last objects even though we're under the min spilling
+  // size because they are the only spillable objects.
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_FALSE(worker_pool.FlushPopSpillWorkerCallbacks());
+}
+
+TEST_F(LocalObjectManagerTest, TestPinBytes) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  // Prepare data for objects.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
@@ -1342,8 +1434,8 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+  for (size_t i = 0; i < 2; i++) {
+    ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   }
   ASSERT_TRUE(spilled);
 

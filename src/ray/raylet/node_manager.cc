@@ -174,10 +174,12 @@ void HeartbeatSender::Heartbeat() {
 
 NodeManager::NodeManager(instrumented_io_context &io_service,
                          const NodeID &self_node_id,
+                         const std::string &self_node_name,
                          const NodeManagerConfig &config,
                          const ObjectManagerConfig &object_manager_config,
                          std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(self_node_id),
+      self_node_name_(self_node_name),
       io_service_(io_service),
       gcs_client_(gcs_client),
       worker_pool_(
@@ -319,7 +321,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           [this](const ObjectID &object_id) {
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
-          /*core_worker_subscriber_=*/core_worker_subscriber_.get()),
+          /*core_worker_subscriber_=*/core_worker_subscriber_.get(),
+          object_directory_.get()),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -727,6 +730,86 @@ void NodeManager::HandleReleaseUnusedBundles(
   placement_group_resource_manager_->ReturnUnusedBundle(in_use_bundles);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
+                                     rpc::GetTasksInfoReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  QueryAllWorkerStates(
+      /*on_replied*/
+      [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
+        if (status.ok()) {
+          for (const auto &task_info : r.task_info_entries()) {
+            reply->add_task_info_entries()->CopyFrom(task_info);
+          }
+        } else {
+          RAY_LOG(INFO) << "Failed to query task information from a worker.";
+        }
+      },
+      send_reply_callback,
+      /*include_memory_info*/ false,
+      /*include_task_info*/ true);
+}
+
+void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
+                                       rpc::GetObjectsInfoReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  QueryAllWorkerStates(
+      /*on_replied*/
+      [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
+        if (status.ok()) {
+          reply->add_core_workers_stats()->MergeFrom(r.core_worker_stats());
+        } else {
+          RAY_LOG(INFO) << "Failed to query object information from a worker.";
+        }
+      },
+      send_reply_callback,
+      /*include_memory_info*/ true,
+      /*include_task_info*/ false);
+}
+
+void NodeManager::QueryAllWorkerStates(
+    const std::function<void(const ray::Status &, const rpc::GetCoreWorkerStatsReply &)>
+        &on_replied,
+    rpc::SendReplyCallback &send_reply_callback,
+    bool include_memory_info,
+    bool include_task_info) {
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
+  for (auto driver :
+       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
+    all_workers.push_back(driver);
+  }
+
+  if (all_workers.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  auto rpc_replied = std::make_shared<size_t>(0);
+  auto num_workers = all_workers.size();
+  for (const auto &worker : all_workers) {
+    if (worker->IsDead()) {
+      continue;
+    }
+    rpc::GetCoreWorkerStatsRequest request;
+    request.set_intended_worker_id(worker->WorkerId().Binary());
+    request.set_include_memory_info(include_memory_info);
+    request.set_include_task_info(include_task_info);
+    // TODO(sang): Add timeout to the RPC call.
+    worker->rpc_client()->GetCoreWorkerStats(
+        request,
+        [num_workers,
+         rpc_replied,
+         send_reply_callback,
+         on_replied = std::move(on_replied)](const ray::Status &status,
+                                             const rpc::GetCoreWorkerStatsReply &r) {
+          *rpc_replied += 1;
+          on_replied(status, r);
+          if (*rpc_replied == num_workers) {
+            send_reply_callback(Status::OK(), nullptr, nullptr);
+          }
+        });
+  }
 }
 
 // This warns users that there could be the resource deadlock. It works this way;
@@ -2156,6 +2239,8 @@ std::string NodeManager::DebugString() const {
   std::stringstream result;
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
+  result << "\nNode ID: " << self_node_id_;
+  result << "\nNode name: " << self_node_name_;
   result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
   if (cluster_task_manager_ != nullptr) {
     result << "\nClusterTaskManager:\n";

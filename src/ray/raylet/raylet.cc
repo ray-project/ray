@@ -58,6 +58,7 @@ namespace raylet {
 Raylet::Raylet(instrumented_io_context &main_service,
                const std::string &socket_name,
                const std::string &node_ip_address,
+               const std::string &node_name,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -70,6 +71,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
       gcs_client_(gcs_client),
       node_manager_(main_service,
                     self_node_id_,
+                    node_name,
                     node_manager_config,
                     object_manager_config,
                     gcs_client_),
@@ -79,6 +81,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_node_id(self_node_id_.Binary());
   self_node_info_.set_state(GcsNodeInfo::ALIVE);
   self_node_info_.set_node_manager_address(node_ip_address);
+  self_node_info_.set_node_name(node_name);
   self_node_info_.set_raylet_socket_name(socket_name);
   self_node_info_.set_object_store_socket_name(object_manager_config.store_socket_name);
   self_node_info_.set_object_manager_port(node_manager_.GetObjectManagerPort());

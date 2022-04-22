@@ -8,31 +8,33 @@ from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 
 
 class TestReplayBuffer(unittest.TestCase):
+    batch_id = 0
+
+    def _add_data_to_buffer(self, _buffer, batch_size, num_batches=5, **kwargs):
+        def _generate_data():
+            return SampleBatch(
+                {
+                    SampleBatch.T: [np.random.random((4,))],
+                    SampleBatch.ACTIONS: [np.random.choice([0, 1])],
+                    SampleBatch.OBS: [np.random.random((4,))],
+                    SampleBatch.NEXT_OBS: [np.random.random((4,))],
+                    SampleBatch.REWARDS: [np.random.rand()],
+                    SampleBatch.DONES: [np.random.choice([False, True])],
+                    "batch_id": [self.batch_id],
+                }
+            )
+
+        for i in range(num_batches):
+            data = [_generate_data() for _ in range(batch_size)]
+            self.batch_id += 1
+            batch = SampleBatch.concat_samples(data)
+            _buffer.add(batch, **kwargs)
+
     def test_stats(self):
         """Tests stats by adding and sampling few samples and checking the
         values of the buffer's stats.
         """
         self.batch_id = 0
-
-        def _add_data_to_buffer(_buffer, batch_size, num_batches=5, **kwargs):
-            def _generate_data():
-                return SampleBatch(
-                    {
-                        SampleBatch.T: [np.random.random((4,))],
-                        SampleBatch.ACTIONS: [np.random.choice([0, 1])],
-                        SampleBatch.OBS: [np.random.random((4,))],
-                        SampleBatch.NEXT_OBS: [np.random.random((4,))],
-                        SampleBatch.REWARDS: [np.random.rand()],
-                        SampleBatch.DONES: [np.random.choice([False, True])],
-                        "batch_id": [self.batch_id],
-                    }
-                )
-
-            for i in range(num_batches):
-                data = [_generate_data() for _ in range(batch_size)]
-                self.batch_id += 1
-                batch = SampleBatch.concat_samples(data)
-                _buffer.add(batch, **kwargs)
 
         batch_size = 5
         buffer_size = 15
@@ -40,7 +42,7 @@ class TestReplayBuffer(unittest.TestCase):
         buffer = ReplayBuffer(capacity=buffer_size)
 
         # Test add/sample
-        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
+        self._add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
 
         # After adding a single batch to a buffer, it should not be full
         assert len(buffer) == 1
@@ -55,7 +57,7 @@ class TestReplayBuffer(unittest.TestCase):
         buffer.sample(2)
         assert buffer._num_timesteps_sampled == 15
 
-        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=2)
+        self._add_data_to_buffer(buffer, batch_size=batch_size, num_batches=2)
 
         # After adding two more batches, the buffer should be full
         assert len(buffer) == 3
@@ -106,7 +108,7 @@ class TestReplayBuffer(unittest.TestCase):
         # Test add/sample
         _add_multi_agent_batch_to_buffer(buffer, num_policies=2, num_batches=2)
 
-        # After adding a single batch to a buffer, it should not be full
+        # After adding two batches to a buffer, it should not be full
         assert len(buffer) == 2
         assert buffer._num_timesteps_added == 8
         assert buffer._num_timesteps_added_wrap == 8
@@ -121,7 +123,7 @@ class TestReplayBuffer(unittest.TestCase):
             buffer, batch_size=100, num_policies=3, num_batches=3
         )
 
-        # After adding two more batches, the buffer should be full
+        # After adding three more batches, the buffer should be full
         assert len(buffer) == 5
         assert buffer._num_timesteps_added == 26
         assert buffer._num_timesteps_added_wrap == 26
@@ -133,35 +135,15 @@ class TestReplayBuffer(unittest.TestCase):
         """
         self.batch_id = 0
 
-        def _add_data_to_buffer(_buffer, batch_size, num_batches=5, **kwargs):
-            def _generate_data():
-                return SampleBatch(
-                    {
-                        SampleBatch.T: [np.random.random((4,))],
-                        SampleBatch.ACTIONS: [np.random.choice([0, 1])],
-                        SampleBatch.OBS: [np.random.random((4,))],
-                        SampleBatch.NEXT_OBS: [np.random.random((4,))],
-                        SampleBatch.REWARDS: [np.random.rand()],
-                        SampleBatch.DONES: [np.random.choice([False, True])],
-                        "batch_id": [self.batch_id],
-                    }
-                )
-
-            for i in range(num_batches):
-                data = [_generate_data() for _ in range(batch_size)]
-                self.batch_id += 1
-                batch = SampleBatch.concat_samples(data)
-                _buffer.add(batch, **kwargs)
-
         batch_size = 5
         buffer_size = 15
 
         buffer = ReplayBuffer(capacity=buffer_size)
 
         # Test add/sample
-        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
+        self._add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1)
 
-        _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=2)
+        self._add_data_to_buffer(buffer, batch_size=batch_size, num_batches=2)
 
         # Sampling from it now should yield our first batch 1/3 of the time
         num_sampled_dict = {_id: 0 for _id in range(self.batch_id)}
@@ -178,7 +160,7 @@ class TestReplayBuffer(unittest.TestCase):
         # Test set/get state
         state = buffer.get_state()
         other_buffer = ReplayBuffer(capacity=buffer_size)
-        _add_data_to_buffer(other_buffer, 1)
+        self._add_data_to_buffer(other_buffer, 1)
         other_buffer.set_state(state)
 
         assert other_buffer._storage == buffer._storage
