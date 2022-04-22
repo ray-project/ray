@@ -244,6 +244,137 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             logger.exception(e)
             return aiohttp.web.HTTPInternalServerError(reason=e)
 
+    @routes.get("/api/experimental/logs/{media_type}")
+    async def handle_get_log(self, req):
+        """
+        If `media_type = stream`, creates HTTP stream which is either kept alive while
+        the HTTP connection is not closed. Else, if `media_type = file`, the stream
+        ends once all the lines in the file requested are transmitted.
+        """
+        response = None
+        try:
+            err = await self._wait_until_initialized()
+            if err is not None:
+                return err
+            node_id = req.query.get("node_id", None)
+
+            # If no `node_id` is provided, try to determine node_id
+            # via the `node_ip` if it is provided
+            if node_id is None:
+                ip = req.query.get("node_ip", None)
+                if ip is not None:
+                    if ip not in self._ip_to_node_id:
+                        return aiohttp.web.HTTPNotFound(
+                            reason=f"node_ip: {ip} not found"
+                        )
+                    node_id = self._ip_to_node_id[ip]
+
+            log_file_name = req.query.get("log_file_name", None)
+
+            # If `log_file_name` is not provided, check if we can get the
+            # corresponding `log_file_name` if an `actor_id` is provided.
+            if log_file_name is None or node_id is None:
+                actor_id = req.query.get("actor_id", None)
+                if actor_id is not None:
+                    actor_data = DataSource.actors.get(actor_id)
+                    if actor_data is None:
+                        return aiohttp.web.HTTPNotFound(
+                            reason=f"Actor ID {actor_id} not found."
+                        )
+                    worker_id = actor_data["address"].get("workerId")
+                    if worker_id is None:
+                        return aiohttp.web.HTTPNotFound(
+                            reason=f"Worker ID for Actor ID {actor_id} not found."
+                        )
+
+                    index = await self._list_logs(node_id, [worker_id])
+                    for node in index:
+                        for file in index[node]["worker_outs"]:
+                            if file.split(".")[0].split("-")[1] == worker_id:
+                                log_file_name = file
+                                if node_id is None:
+                                    node_id = node
+                                break
+
+            # If `log_file_name` cannot be resolved, check if we can get the
+            # corresponding `log_file_name` if a `pid` is provided.
+            if log_file_name is None:
+                pid = req.query.get("pid", None)
+                if node_id is None:
+                    return aiohttp.web.HTTPNotFound(
+                        reason="Node identifiers (node_ip, node_id) not provided."
+                        f" Available: {self._ip_to_node_id}"
+                    )
+                if pid is not None:
+                    index = await self._list_logs(node_id, [pid])
+                    for file in index[node_id]["worker_outs"]:
+                        if file.split(".")[0].split("-")[3] == pid:
+                            log_file_name = file
+                            break
+                    return aiohttp.web.HTTPNotFound(
+                        reason=f"Worker with pid {pid} not found on node {node_id}"
+                    )
+
+            media_type = req.match_info.get("media_type", None)
+
+            lines = req.query.get("lines", None)
+            lines = int(lines) if lines else None
+
+            interval = req.query.get("interval", None)
+            interval = float(interval) if interval else None
+
+            if node_id is None or node_id not in self._stubs:
+                return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
+            if log_file_name is None:
+                return aiohttp.web.HTTPNotFound(
+                    reason="Could not resolve file identifiers to a file name."
+                )
+
+            if media_type == "stream":
+                keep_alive = True
+            elif media_type == "file":
+                keep_alive = False
+            else:
+                return aiohttp.web.HTTPNotFound(
+                    reason=f"Invalid media type: {media_type}"
+                )
+            stream = self._stubs[node_id].StreamLog(
+                reporter_pb2.StreamLogRequest(
+                    keep_alive=keep_alive,
+                    log_file_name=log_file_name,
+                    lines=lines,
+                    interval=interval,
+                )
+            )
+
+            metadata = await stream.initial_metadata()
+            if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
+                return aiohttp.web.HTTPNotFound(
+                    reason=f'File "{log_file_name}" not found on node {node_id}'
+                )
+
+            response = aiohttp.web.StreamResponse()
+            response.content_type = "text/plain"
+            await response.prepare(req)
+
+            # try-except here in order to properly handle ongoing HTTP stream
+            try:
+                async for log_response in stream:
+                    await response.write(log_response.data)
+                await response.write_eof()
+                return response
+            except Exception as e:
+                logger.exception(str(e))
+                await response.write(
+                    b"Closing HTTP stream due to internal server error:\n"
+                )
+                await response.write(str(e).encode())
+                await response.write_eof()
+                return response
+        except Exception as e:
+            logger.exception(e)
+            return aiohttp.web.HTTPInternalServerError(reason=e)
+
     async def run(self, server):
         pass
 

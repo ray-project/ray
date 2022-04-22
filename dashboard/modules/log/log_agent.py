@@ -1,5 +1,6 @@
 import logging
 
+import grpc
 import ray.dashboard.modules.log.log_utils as log_utils
 import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.utils as dashboard_utils
@@ -47,16 +48,16 @@ class LogAgentV1Grpc(
     def is_minimal_module():
         return False
 
-    async def ListLogs(self, request, context):
+    async def ListLogs(self, request, context: grpc.aio.ServicerContext):
         """
         Lists all files in the active Ray logs directory.
         """
         logger.info(f"initiated ListLogs:\n{request}")
 
-        def on_exit(self):
-            logger.info(f"terminated ListLogs:\n{request}")
+        # def on_exit(self):
+        #     logger.info(f"terminated ListLogs:\n{request}")
 
-        context.add_done_callback(on_exit)
+        # context.add_done_callback(on_exit)
         if os.path.exists(self._dashboard_agent.log_dir):
             log_files = os.listdir(self._dashboard_agent.log_dir)
         else:
@@ -67,7 +68,7 @@ class LogAgentV1Grpc(
             log_files = []
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
-    async def StreamLog(self, request, context):
+    async def StreamLog(self, request, context: grpc.aio.ServicerContext):
         """
         Streams the log in real time starting from `request.lines` number of lines from
         the end of the file if `request.keep_alive == True`. Else, it terminates the
@@ -75,10 +76,10 @@ class LogAgentV1Grpc(
         """
         logger.info(f"initiated StreamLog:\n{request}")
 
-        def on_exit(self):
-            logger.info(f"terminated StreamLog:\n{request}")
+        # def on_exit(self):
+        #     logger.info(f"terminated StreamLog:\n{request}")
 
-        context.add_done_callback(on_exit)
+        # context.add_done_callback(on_exit)
         lines = request.lines if request.lines else 1000
 
         filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
