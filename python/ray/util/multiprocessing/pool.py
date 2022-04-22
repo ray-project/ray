@@ -369,7 +369,7 @@ class IMapIterator:
         if self._iterator == iterable:
             # we were passsed an iterator, so do not know the number of samples
             self._chunksize = chunksize or 1
-            result_list_size = 0  # len(self._pool._actor_pool)
+            result_list_size = 0
         else:
             self._chunksize = chunksize or pool._calculate_chunksize(iterable)
             result_list_size = div_round_up(len(iterable), chunksize)
