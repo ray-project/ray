@@ -508,7 +508,10 @@ bool LocalTaskManager::PoppedWorkerHandler(
     RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
                    << worker->WorkerId();
 
-    Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
+    Dispatch(
+        worker, leased_workers_, work->allocated_instances, task, reply, [callback]() {
+          callback(NodeID::Nil());
+        });
     erase_from_dispatch_queue_fn(work, scheduling_class);
     dispatched = true;
   }
@@ -820,7 +823,7 @@ void LocalTaskManager::Dispatch(
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayTask &task,
     rpc::RequestWorkerLeaseReply *reply,
-    std::function<void(const NodeID &node_id)> send_reply_callback) {
+    std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
   worker->SetBundleId(task_spec.PlacementGroupBundleId());
@@ -870,7 +873,7 @@ void LocalTaskManager::Dispatch(
     }
   }
   // Send the result back.
-  send_reply_callback(NodeID::Nil());
+  send_reply_callback();
 }
 
 void LocalTaskManager::ClearWorkerBacklog(const WorkerID &worker_id) {

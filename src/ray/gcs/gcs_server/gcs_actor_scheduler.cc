@@ -70,49 +70,86 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
                   .emplace(actor->GetActorID())
                   .second);
 
-    auto &acquired_resources = actor->GetMutableAcquiredResources();
-    acquired_resources = ResourceMapToResourceRequest(
+    auto acquired_resources = actor->GetMutableAcquiredResources();
+    *acquired_resources = ResourceMapToResourceRequest(
         actor->GetCreationTaskSpecification().GetRequiredResources().GetResourceMap(),
         false);
     // Lease worker directly from the node.
+    actor->SetGrantOrReject(true);
     LeaseWorkerFromNode(actor, node.value());
   };
 
   // Queue and schedule the actor locally (gcs).
   cluster_task_manager_->QueueAndScheduleTask(actor->GetCreationTaskSpecification(),
-                                              /*forward_to=*/NodeID::Nil(),
-                                              /*use_required_resources=*/false,
-                                              callback);
+                                              /*grant_or_reject*/ false,
+                                              /*is_selected_based_on_locality*/ false,
+                                              /*reply*/ nullptr,
+                                              /*send_reply_callback*/ nullptr,
+                                              /*node_selected_callback*/ callback);
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
-  auto callback = [this, actor](const NodeID &node_id) {
-    auto node = gcs_node_manager_.GetAliveNode(node_id);
-    RAY_CHECK(node.has_value());
+  RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
-    // Update the address of the actor as it is tied to a node.
-    rpc::Address address;
-    address.set_raylet_id(node.value()->node_id());
-    actor->UpdateAddress(address);
+  // Select a node to where the actor is forwarded.
+  auto node_id = SelectForwardingNode(actor);
 
-    RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
-                  .emplace(actor->GetActorID())
-                  .second);
+  auto node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!node.has_value()) {
+    // There are no available nodes to schedule the actor, so just trigger the failed
+    // handler.
+    schedule_failure_handler_(std::move(actor),
+                              rpc::RequestWorkerLeaseReply::SCHEDULING_FAILED,
+                              "No available nodes to schedule the actor");
+    return;
+  }
 
-    // Lease worker directly from the node.
-    LeaseWorkerFromNode(actor, node.value());
-  };
+  // Update the address of the actor as it is tied to a node.
+  rpc::Address address;
+  address.set_raylet_id(node.value()->node_id());
+  actor->UpdateAddress(address);
 
-  // If an actor has resource requirements, we will try to forward it to the owner's node
-  // for scheduling. Otherwise, it would be forwarded to a random remote node for
-  // scheduling.
-  const auto task_spec = actor->GetCreationTaskSpecification();
-  NodeID node_id = task_spec.GetRequiredResources().IsEmpty() ? NodeID::Nil()
-                                                              : actor->GetOwnerNodeID();
-  cluster_task_manager_->QueueAndScheduleTask(task_spec,
-                                              /*forward_to=*/node_id,
-                                              /*use_required_resources=*/true,
-                                              callback);
+  RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
+                .emplace(actor->GetActorID())
+                .second);
+
+  // Lease worker directly from the node.
+  actor->SetGrantOrReject(false);
+  LeaseWorkerFromNode(actor, node.value());
+}
+
+NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) {
+  // Select a node to lease worker for the actor.
+  std::shared_ptr<rpc::GcsNodeInfo> node;
+
+  // If an actor has resource requirements, we will try to schedule it on the same node as
+  // the owner if possible.
+  const auto &task_spec = actor->GetCreationTaskSpecification();
+  if (!task_spec.GetRequiredResources().IsEmpty()) {
+    auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
+    node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
+  } else {
+    node = SelectNodeRandomly();
+  }
+
+  return node ? NodeID::FromBinary(node->node_id()) : NodeID::Nil();
+}
+
+std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const {
+  auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  if (alive_nodes.empty()) {
+    return nullptr;
+  }
+
+  static std::mt19937_64 gen_(
+      std::chrono::high_resolution_clock::now().time_since_epoch().count());
+  std::uniform_int_distribution<int> distribution(0, alive_nodes.size() - 1);
+  int key_index = distribution(gen_);
+  int index = 0;
+  auto iter = alive_nodes.begin();
+  for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter)
+    ;
+  return iter->second;
 }
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
@@ -277,7 +314,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // backlog in GCS.
   lease_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification().GetMessage(),
-      RayConfig::instance().gcs_actor_scheduling_enabled(),
+      actor->GetGrantOrReject(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
@@ -326,6 +363,7 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
       RAY_CHECK(node_to_actors_when_leasing_[actor->GetNodeID()]
                     .emplace(actor->GetActorID())
                     .second);
+      actor->SetGrantOrReject(true);
       LeaseWorkerFromNode(actor, spill_back_node);
     } else {
       // If the spill back node is dead, we need to schedule again.
@@ -374,11 +412,6 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
       << ", cancel type: "
       << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(failure_type);
 
-  if (failure_type == rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) {
-    // Return directly if the actor was canceled actively as we've already done the
-    // recreate and destroy operation when we killed the actor.
-    return;
-  }
   schedule_failure_handler_(actor, failure_type, scheduling_failure_message);
 }
 
@@ -594,10 +627,10 @@ void GcsActorScheduler::HandleWorkerLeaseRejectedReply(
   auto node_id = actor->GetNodeID();
   auto &cluster_resource_manager =
       cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
-  auto &acquired_resources = actor->GetMutableAcquiredResources();
+  auto acquired_resources = actor->GetMutableAcquiredResources();
   cluster_resource_manager.AddNodeAvailableResources(scheduling::NodeID(node_id.Binary()),
-                                                     acquired_resources);
-  acquired_resources.Clear();
+                                                     *acquired_resources);
+  acquired_resources->Clear();
   actor->UpdateAddress(rpc::Address());
   if (normal_task_resources_changed_callback_) {
     normal_task_resources_changed_callback_(node_id, reply.resources_data());
@@ -609,10 +642,10 @@ void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetAcquiredResources().IsEmpty()) {
     auto &cluster_resource_manager =
         cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
-    auto &acquired_resources = actor->GetMutableAcquiredResources();
+    auto acquired_resources = actor->GetMutableAcquiredResources();
     cluster_resource_manager.AddNodeAvailableResources(
-        scheduling::NodeID(actor->GetNodeID().Binary()), acquired_resources);
-    acquired_resources.Clear();
+        scheduling::NodeID(actor->GetNodeID().Binary()), *acquired_resources);
+    acquired_resources->Clear();
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }

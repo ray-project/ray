@@ -65,9 +65,11 @@ class GcsActorSchedulerTest : public ::testing::Test {
         *gcs_node_manager_,
         cluster_task_manager_,
         /*schedule_failure_handler=*/
-        [](std::shared_ptr<gcs::GcsActor> actor,
-           const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
-           const std::string &scheduling_failure_message) { return; },
+        [this](std::shared_ptr<gcs::GcsActor> actor,
+               const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+               const std::string &scheduling_failure_message) {
+          failure_actors_.emplace_back(std::move(actor));
+        },
         /*schedule_success_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {
           success_actors_.emplace_back(std::move(actor));
@@ -136,6 +138,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
+  std::vector<std::shared_ptr<gcs::GcsActor>> failure_actors_;
   std::vector<std::shared_ptr<gcs::GcsActor>> success_actors_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
@@ -161,7 +164,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   // are no available nodes.
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(1, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(1, failure_actors_.size());
   ASSERT_TRUE(actor->GetNodeID().IsNil());
 }
 
@@ -195,8 +198,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
   // Reply the actor creation request, then the actor should be scheduled successfully.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -246,8 +248,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
   // Reply the actor creation request, then the actor should be scheduled successfully.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -290,8 +291,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
   // Reply the actor creation request, then the actor should be scheduled successfully.
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id);
@@ -335,8 +335,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
 
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
 }
 
 TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
@@ -372,8 +371,7 @@ TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_leasing_count_);
 
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
 }
 
 TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
@@ -417,8 +415,7 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
 }
 
 TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
@@ -459,8 +456,7 @@ TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
   ASSERT_EQ(0, gcs_actor_scheduler_->num_retry_creating_count_);
 
   ASSERT_EQ(0, success_actors_.size());
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
 }
 
 TEST_F(GcsActorSchedulerTest, TestSpillback) {
@@ -522,8 +518,7 @@ TEST_F(GcsActorSchedulerTest, TestSpillback) {
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(1, success_actors_.size());
   ASSERT_EQ(actor, success_actors_.front());
   ASSERT_EQ(actor->GetNodeID(), node_id_2);
@@ -577,8 +572,7 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
   ASSERT_TRUE(worker_client_->ReplyPushTask());
   ASSERT_EQ(0, worker_client_->callbacks.size());
 
-  ASSERT_EQ(0, cluster_task_manager_->GetInfeasibleQueueSize());
-  ASSERT_EQ(0, cluster_task_manager_->GetWaitingQueueSize());
+  ASSERT_EQ(0, failure_actors_.size());
   ASSERT_EQ(2, success_actors_.size());
 }
 

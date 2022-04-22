@@ -148,7 +148,9 @@ class GcsActor {
   rpc::TaskSpec *GetMutableTaskSpec();
 
   const ResourceRequest &GetAcquiredResources() const;
-  ResourceRequest &GetMutableAcquiredResources();
+  ResourceRequest *GetMutableAcquiredResources();
+  bool GetGrantOrReject() const;
+  void SetGrantOrReject(bool grant_or_reject);
 
  private:
   /// The actor meta data which contains the task specification as well as the state of
@@ -157,6 +159,8 @@ class GcsActor {
   const std::unique_ptr<rpc::TaskSpec> task_spec_;
   /// Resources acquired by this actor.
   ResourceRequest acquired_resources_;
+  /// Whether the actor's target node only grants or rejects the lease request.
+  bool grant_or_reject_ = false;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
@@ -296,6 +300,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \returns List of <namespace, name> pairs.
   std::vector<std::pair<std::string, std::string>> ListNamedActors(
       bool all_namespaces, const std::string &ray_namespace) const;
+
+  /// Schedule actors in the `pending_actors_` queue.
+  /// This method should be called when new nodes are registered or resources
+  /// change.
+  void SchedulePendingActors();
 
   /// Handle a node death. This will restart all actors associated with the
   /// specified node id, including actors which are scheduled or have been
@@ -519,6 +528,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// dies.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>>
       unresolved_actors_;
+  /// The pending actors which will not be scheduled until there's a resource change.
+  std::vector<std::shared_ptr<GcsActor>> pending_actors_;
   /// Map contains the relationship of node and created actors. Each node ID
   /// maps to a map from worker ID to the actor created on that worker.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> created_actors_;

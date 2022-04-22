@@ -66,22 +66,15 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param is_selected_based_on_locality : should schedule on local node if possible.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
+  /// \param node_selected_callback: The function used when a node is selected (used by
+  /// gcs actor scheduler).
   void QueueAndScheduleTask(const RayTask &task,
                             bool grant_or_reject,
                             bool is_selected_based_on_locality,
                             rpc::RequestWorkerLeaseReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Queue task and schedule. This is called by `GcsActorScheduler` for actor scheduling.
-  /// \param task_spec: The (actor creatioin) task's specification.
-  /// \param forward_to: The node to be forwarded to for scheduling.
-  /// \param use_required_resources: Whether using required_resources (instead of
-  /// required_placement_resources) for scheduling. \param callback: The function used
-  /// when finding an available node.
-  void QueueAndScheduleTask(TaskSpecification task_spec,
-                            NodeID forward_to,
-                            bool use_required_resources,
-                            std::function<void(const NodeID &node_id)> callback);
+                            rpc::SendReplyCallback send_reply_callback,
+                            std::function<void(const NodeID &node_id)>
+                                node_selected_callback = nullptr) override;
 
   /// Attempt to cancel an already queued task.
   ///

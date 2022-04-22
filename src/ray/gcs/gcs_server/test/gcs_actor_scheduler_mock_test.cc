@@ -72,15 +72,6 @@ class GcsActorSchedulerMockTest : public Test {
     node_id = NodeID::FromRandom();
     node_info->set_node_id(node_id.Binary());
     worker_id = WorkerID::FromRandom();
-    gcs_node_manager->AddNodeAddedListener(
-        [cluster_resource_scheduler](std::shared_ptr<rpc::GcsNodeInfo> node) {
-          scheduling::NodeID node_id(node->node_id());
-          auto &cluster_resource_manager =
-              cluster_resource_scheduler->GetClusterResourceManager();
-          auto resource_map = MapFromProtobuf(node->resources_total());
-          auto node_resources = ResourceMapToNodeResources(resource_map, resource_map);
-          cluster_resource_manager.AddOrUpdateNode(node_id, node_resources);
-        });
     gcs_node_manager->AddNode(node_info);
   }
   std::shared_ptr<MockRayletClientInterface> raylet_client;

@@ -203,13 +203,7 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     bool prioritize_local_node,
     bool exclude_local_node,
     bool requires_object_store_memory,
-    bool *is_infeasible,
-    scheduling::NodeID forward_to,
-    bool use_required_resources) {
-  if (!forward_to.IsNil() && cluster_resource_manager_->ContainsNode(forward_to)) {
-    return forward_to;
-  }
-
+    bool *is_infeasible) {
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
   if (prioritize_local_node && !exclude_local_node &&
@@ -221,16 +215,14 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 
   // This argument is used to set violation, which is an unsupported feature now.
   int64_t _unused;
-  auto resource_map = use_required_resources
-                          ? task_spec.GetRequiredResources().GetResourceMap()
-                          : task_spec.GetRequiredPlacementResources().GetResourceMap();
-  return GetBestSchedulableNode(resource_map,
-                                task_spec.GetMessage().scheduling_strategy(),
-                                requires_object_store_memory,
-                                task_spec.IsActorCreationTask(),
-                                exclude_local_node,
-                                &_unused,
-                                is_infeasible);
+  return GetBestSchedulableNode(
+      task_spec.GetRequiredPlacementResources().GetResourceMap(),
+      task_spec.GetMessage().scheduling_strategy(),
+      requires_object_store_memory,
+      task_spec.IsActorCreationTask(),
+      exclude_local_node,
+      &_unused,
+      is_infeasible);
 }
 
 SchedulingResult ClusterResourceScheduler::Schedule(

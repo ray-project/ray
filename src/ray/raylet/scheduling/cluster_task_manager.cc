@@ -49,41 +49,20 @@ void ClusterTaskManager::QueueAndScheduleTask(
     bool grant_or_reject,
     bool is_selected_based_on_locality,
     rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    rpc::SendReplyCallback send_reply_callback,
+    std::function<void(const NodeID &node_id)> node_selected_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
+  auto callback = node_selected_callback
+                      ? node_selected_callback
+                      : [send_reply_callback](const NodeID &node_id) {
+                          send_reply_callback(Status::OK(), nullptr, nullptr);
+                        };
   auto work = std::make_shared<internal::Work>(
-      task,
-      grant_or_reject,
-      is_selected_based_on_locality,
-      reply,
-      [send_reply_callback](const NodeID &node_id) {
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      });
+      task, grant_or_reject, is_selected_based_on_locality, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
-  if (infeasible_tasks_.count(scheduling_class) > 0) {
-    infeasible_tasks_[scheduling_class].push_back(work);
-  } else {
-    tasks_to_schedule_[scheduling_class].push_back(work);
-  }
-  ScheduleAndDispatchTasks();
-}
-
-void ClusterTaskManager::QueueAndScheduleTask(
-    TaskSpecification task_spec,
-    NodeID forward_to,
-    bool use_required_resources,
-    std::function<void(const NodeID &node_id)> callback) {
-  auto work = std::make_shared<internal::Work>(RayTask(task_spec),
-                                               false,
-                                               false,
-                                               nullptr,
-                                               callback,
-                                               forward_to,
-                                               use_required_resources);
-  const auto &scheduling_class = task_spec.GetSchedulingClass();
   if (infeasible_tasks_.count(scheduling_class) > 0) {
     infeasible_tasks_[scheduling_class].push_back(work);
   } else {
@@ -114,9 +93,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
           work->PrioritizeLocalNode(),
           /*exclude_local_node*/ false,
           /*requires_object_store_memory*/ false,
-          &is_infeasible,
-          /*forward_to*/ scheduling::NodeID(work->forward_to.Binary()),
-          /*use_required_resources*/ work->use_required_resources);
+          &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -174,9 +151,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
         work->PrioritizeLocalNode(),
         /*exclude_local_node*/ false,
         /*requires_object_store_memory*/ false,
-        &is_infeasible,
-        /*forward_to*/ scheduling::NodeID(work->forward_to.Binary()),
-        /*use_required_resources*/ work->use_required_resources);
+        &is_infeasible);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.

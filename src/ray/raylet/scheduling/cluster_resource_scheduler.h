@@ -87,20 +87,14 @@ class ClusterResourceScheduler {
   ///  scheduling decision.
   ///  \param is_infeasible[out]: It is set
   ///  true if the task is not schedulable because it is infeasible.
-  ///  \param forward_to: The node to be forwarded to for scheduling.
-  ///  \param use_required_resources: Whether using required_resources (instead of
-  ///  required_placement_resources) for scheduling.
   ///
   ///  \return emptry string, if no node can schedule the current request; otherwise,
   ///          return the string name of a node that can schedule the resource request.
-  scheduling::NodeID GetBestSchedulableNode(
-      const TaskSpecification &task_spec,
-      bool prioritize_local_node,
-      bool exclude_local_node,
-      bool requires_object_store_memory,
-      bool *is_infeasible,
-      scheduling::NodeID forward_to = scheduling::NodeID::Nil(),
-      bool use_required_resources = false);
+  scheduling::NodeID GetBestSchedulableNode(const TaskSpecification &task_spec,
+                                            bool prioritize_local_node,
+                                            bool exclude_local_node,
+                                            bool requires_object_store_memory,
+                                            bool *is_infeasible);
 
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.

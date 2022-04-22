@@ -392,6 +392,17 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::function<void(const NodeID &, const rpc::ResourcesData &)>
       normal_task_resources_changed_callback_;
 
+  /// Select a node where the actor is forwarded (for queueing and scheduling).
+  ///
+  /// \param actor The actor to be forwarded.
+  /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
+  NodeID SelectForwardingNode(std::shared_ptr<GcsActor> actor);
+
+  /// A helper function to select a node from alive nodes randomly.
+  ///
+  /// \return The selected node. If the selection fails, `nullptr` is returned.
+  std::shared_ptr<rpc::GcsNodeInfo> SelectNodeRandomly() const;
+
   friend class GcsActorSchedulerTest;
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode);
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleActorSuccess);
