@@ -1,6 +1,8 @@
-from pprint import pprint
-
 import click
+import json
+
+from typing import Union
+
 import ray
 
 import ray._private.services as services
@@ -18,6 +20,43 @@ from ray.experimental.state.api import (
     list_objects,
     list_runtime_envs,
 )
+
+
+def format_print(data: dict, indentation: int = 1):
+    for k, v in data.items():
+        tabs = "".join(["\t" for _ in range(indentation)])
+        print(f"{tabs}{k}:", end="")
+        if isinstance(v, dict):
+            print()
+            format_print(v, indentation=indentation + 1)
+        else:
+            print(f" {v}")
+
+
+def print_state_api_output(state_data: Union[dict, list], format: str, resource: str):
+    if len(state_data) == 0:
+        print(f"No {resource} in the cluster")
+
+    if format == "default":
+        if isinstance(state_data, list):
+            for i, d in enumerate(state_data):
+                print(f"{resource} index: {i}")
+                format_print(d)
+                print("".join(["-" for _ in range(60)]))
+        else:
+            for id, state in state_data.items():
+                print(f"Id: {id}")
+                format_print(state)
+                print("".join(["-" for _ in range(60)]))
+    elif format == "json":
+        print(json.dumps(state_data))
+    elif format == "table":
+        raise NotImplementedError("Table formatter is not implemented yet.")
+    else:
+        raise ValueError(
+            f"Unexpected format: {format}. "
+            "Supported formatting: [default | json | table]"
+        )
 
 
 @click.group("list")
@@ -47,56 +86,100 @@ def list_state_cli_group(ctx):
 
 
 @list_state_cli_group.command()
+@click.option(
+    "--format", default="default", type=click.Choice(["default", "json", "table"])
+)
 @click.pass_context
-def actors(ctx):
+def actors(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    pprint(list_actors(url))
+    print_state_api_output(
+        list_actors(api_server_url=url), format, "actors"
+    )
 
 
 @list_state_cli_group.command()
+@click.option(
+    "--format", default="default", type=click.Choice(["default", "json", "table"])
+)
 @click.pass_context
-def placement_groups(ctx):
+def placement_groups(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    pprint(list_placement_groups(url))
+    print_state_api_output(
+        list_placement_groups(api_server_url=url),
+        format,
+        "placement groups",
+    )
 
 
 @list_state_cli_group.command()
+@click.option(
+    "--format", default="default", type=click.Choice(["default", "json", "table"])
+)
 @click.pass_context
-def nodes(ctx):
+def nodes(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    pprint(list_nodes(url))
+    print_state_api_output(
+        list_nodes(api_server_url=url), format, "nodes"
+    )
 
 
 @list_state_cli_group.command()
+@click.option(
+    "--format", default="default", type=click.Choice(["default", "json", "table"])
+)
 @click.pass_context
-def jobs(ctx):
+def jobs(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    pprint(list_jobs(url))
+    print_state_api_output(
+        list_jobs(api_server_url=url), format, "jobs"
+    )
 
 
 @list_state_cli_group.command()
+@click.option(
+    "--format", default="default", type=click.Choice(["default", "json", "table"])
+)
 @click.pass_context
-def workers(ctx):
+def workers(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    pprint(list_workers(url))
+    print_state_api_output(
+        list_workers(api_server_url=url), format, "workers"
+    )
 
 
 @list_state_cli_group.command()
+@click.option(
+    "--format", default="default", type=click.Choice(["default", "json", "table"])
+)
 @click.pass_context
-def tasks(ctx):
+def tasks(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    pprint(list_tasks(url))
+    print_state_api_output(
+        list_tasks(api_server_url=url), format, "tasks"
+    )
 
 
 @list_state_cli_group.command()
+@click.option(
+    "--format", default="default", type=click.Choice(["default", "json", "table"])
+)
 @click.pass_context
-def objects(ctx):
+def objects(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    pprint(list_objects(url))
+    print_state_api_output(
+        list_objects(api_server_url=url), format, "objects"
+    )
 
 
 @list_state_cli_group.command()
+@click.option(
+    "--format", default="default", type=click.Choice(["default", "json", "table"])
+)
 @click.pass_context
-def runtime_envs(ctx):
+def runtime_envs(ctx, format: str):
     url = ctx.obj["api_server_url"]
-    pprint(list_runtime_envs(url))
+    print_state_api_output(
+        list_runtime_envs(api_server_url=url),
+        format,
+        "runtime envs",
+    )
