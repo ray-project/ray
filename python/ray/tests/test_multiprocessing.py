@@ -656,6 +656,7 @@ def test_imap_timeout(pool_4_processes):
     with pytest.raises(StopIteration):
         result_iter.next()
 
+
 def test_maxtasksperchild(shutdown_only):
     def f(args):
         return os.getpid()
