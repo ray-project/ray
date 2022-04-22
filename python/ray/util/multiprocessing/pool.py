@@ -366,7 +366,7 @@ class IMapIterator:
             # for compatibility with prior releases, encapsulate non-iterable in a list
             iterable = [iterable]
             self._iterator = iter(iterable)
-        if isinstance(iterable, collections.Iterator):
+        if isinstance(iterable, collections.abc.Iterator):
             # Got iterator (which has no len() function).
             # Make default chunksize 1 instead of using _calculate_chunksize().
             self._chunksize = chunksize or 1
