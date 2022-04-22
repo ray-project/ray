@@ -83,3 +83,19 @@ def list_workers(api_server_url: str = None, limit: int = 1000, timeout: int = 3
         ListApiOptions(limit=limit, timeout=timeout),
         api_server_url=api_server_url,
     )
+
+
+def list_tasks(api_server_url: str = None, limit: int = 1000, timeout: int = 30):
+    return _list(
+        "tasks",
+        ListApiOptions(limit=limit, timeout=timeout),
+        api_server_url=api_server_url,
+    )
+
+
+def list_objects(api_server_url: str = None, limit: int = 1000, timeout: int = 30):
+    return _list(
+        "objects",
+        ListApiOptions(limit=limit, timeout=timeout),
+        api_server_url=api_server_url,
+    )

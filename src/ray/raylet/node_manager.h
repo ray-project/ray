@@ -208,6 +208,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Stop this node manager.
   void Stop();
 
+  /// Query all of local core worker states.
+  ///
+  /// \param on_replied A callback that's called when each of query RPC is replied.
+  /// \param send_reply_callback A reply callback that will be called when all
+  /// RPCs are replied.
+  /// \param include_memory_info If true, it requires every object ref information
+  /// from all workers.
+  /// \param include_task_info If true, it requires every task metadata information
+  /// from all workers.
+  void QueryAllWorkerStates(
+      const std::function<void(const ray::Status &status,
+                               const rpc::GetCoreWorkerStatsReply &r)> &on_replied,
+      rpc::SendReplyCallback &send_reply_callback,
+      bool include_memory_info,
+      bool include_task_info);
+
  private:
   /// Methods for handling nodes.
 
@@ -562,6 +578,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  rpc::GetGcsServerAddressReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `HandleGetTasksInfo` request.
+  void HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
+                          rpc::GetTasksInfoReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `HandleGetObjectsInfo` request.
+  void HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
+                            rpc::GetObjectsInfoReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+                            
   /// Handle a `GetResourceUsageByTask` request.
   void HandleGetResourceUsageByTask(const rpc::GetResourceUsageByTaskRequest &request,
                                     rpc::GetResourceUsageByTaskReply *reply,
