@@ -175,6 +175,7 @@ class ResultThread(threading.Thread):
         self._callback = callback
         self._error_callback = error_callback
         self._total_object_refs = total_object_refs or len(object_refs)
+        self._stop_event = threading.Event()
         self._indices = {}
         # Thread-safe queue used to add ObjectRefs to fetch after creating
         # this thread (used to lazily submit for imap and imap_unordered).
@@ -193,40 +194,50 @@ class ResultThread(threading.Thread):
     def run(self):
         unready = copy.copy(self._object_refs)
         aggregated_batch_results = []
-        while self._num_ready < self._total_object_refs:
+        # Run for a specific number of objects (if self._total_object_refs > 0) or indefinitely (if self._total_object_refs == 0)
+        # In the latter case, a self._stop() command is required.
+        while (self._total_object_refs == 0) or (self._num_ready < self._total_object_refs):
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
             while True:
                 try:
-                    block = len(unready) == 0
+                    # Block if we have no IDs to wait on *and* we are not stopping
+                    block = (len(unready) == 0) and not self._stop_event.is_set()
                     new_object_ref = self._new_object_refs.get(block=block)
-                    self._add_object_ref(new_object_ref)
-                    unready.append(new_object_ref)
+                    # a None object is pushed onto the queue by the stopping process to unblock; if so, ignore it.
+                    if new_object_ref is not None:
+                        self._add_object_ref(new_object_ref)
+                        unready.append(new_object_ref)
                 except queue.Empty:
                     # queue.Empty means no result was retrieved if block=False.
                     break
 
-            [ready_id], unready = ray.wait(unready, num_returns=1)
-            try:
-                batch = ray.get(ready_id)
-            except ray.exceptions.RayError as e:
-                batch = [e]
+            if len(unready) == 0:
+                # not awaiting any IDs; stop if the stop event has been received
+                if self._stop_event.is_set():
+                    break
+            else:
+                [ready_id], unready = ray.wait(unready, num_returns=1)
+                try:
+                    batch = ray.get(ready_id)
+                except ray.exceptions.RayError as e:
+                    batch = [e]
 
-            # The exception callback is called only once on the first result
-            # that errors. If no result errors, it is never called.
-            if not self._got_error:
-                for result in batch:
-                    if isinstance(result, Exception):
-                        self._got_error = True
-                        if self._error_callback is not None:
-                            self._error_callback(result)
-                        break
-                    else:
-                        aggregated_batch_results.append(result)
+                # The exception callback is called only once on the first result
+                # that errors. If no result errors, it is never called.
+                if not self._got_error:
+                    for result in batch:
+                        if isinstance(result, Exception):
+                            self._got_error = True
+                            if self._error_callback is not None:
+                                self._error_callback(result)
+                            break
+                        else:
+                            aggregated_batch_results.append(result)
 
-            self._num_ready += 1
-            self._results[self._indices[ready_id]] = batch
-            self._ready_index_queue.put(self._indices[ready_id])
+                self._num_ready += 1
+                self._results[self._indices[ready_id]] = batch
+                self._ready_index_queue.put(self._indices[ready_id])
 
         # The regular callback is called only once on the entire List of
         # results as long as none of the results were errors. If any results
@@ -243,6 +254,12 @@ class ResultThread(threading.Thread):
                 # (e.g. apply_async), we call the callback on just that result
                 # instead of on a list encaspulating that result
                 self._callback(aggregated_batch_results[0])
+
+    def stop(self):
+        # Call this to interrupt the run function.
+        self._stop_event.set()
+        # Push a non-event to trigger the stop, to unblock the run function if it is waiting for input
+        self.add_object_ref(None)
 
     def got_error(self):
         # Should only be called after the thread finishes.
@@ -340,19 +357,21 @@ class IMapIterator:
         # submitted chunks. Ordering mirrors that in the in the ResultThread.
         self._submitted_chunks = []
         self._ready_objects = collections.deque()
-        self._iterator = iter(iterable)
-        if not hasattr(iterable, "__len__"):
+        try:
+            self._iterator = iter(iterable)
+        except TypeError:
+            # for compatibility with prior releases, assume we must encapsulate our non-iterable in a list
             iterable = [iterable]
-            # conclude that an iterator was passed and we don't know how many items to expect
-            iterator_input = True
+            self._iterator = iter(iterable)
+        if self._iterator == iterable:
+            # we were passsed an iterator, so do not know the number of samples
+            self._chunksize = chunksize or 1
+            result_list_size = 0 #len(self._pool._actor_pool) 
         else:
-            iterator_input = False
-        self._chunksize = chunksize or pool._calculate_chunksize(iterable)
-        self._total_chunks = div_round_up(len(iterable), chunksize)
-        # DANGER: for an iterator, we need to define a queue size; problems will happen if we run out
-        # For now, select 10x the size of the actor pool
-        queue_size = 10*len(self._pool._actor_pool) if iterator_input else self._total_chunks
-        self._result_thread = ResultThread([], total_object_refs=queue_size)
+            self._chunksize = chunksize or pool._calculate_chunksize(iterable)
+            result_list_size = div_round_up(len(iterable), chunksize)
+
+        self._result_thread = ResultThread([], total_object_refs=result_list_size)
         self._result_thread.start()
 
         for _ in range(len(self._pool._actor_pool)):
@@ -366,9 +385,10 @@ class IMapIterator:
         actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
         chunk_iterator = itertools.islice(self._iterator, self._chunksize)
 
-        # conversion to list and back, but we need to check whether we have run out of samples without destroying the iterator
+        # conversion to list and back to check whether we have run out of samples, which consumes the orginal iterator
         chunk_list = list(chunk_iterator)
         if len(chunk_list) < self._chunksize:
+            # we have reached the end of self._iterator
             self._finished_iterating = True
             if len(chunk_list) == 0:
                 # there is nothing to do, return.
@@ -404,7 +424,10 @@ class OrderedIMapIterator(IMapIterator):
 
     def next(self, timeout=None):
         if len(self._ready_objects) == 0:
-            if self._next_chunk_index == len(self._submitted_chunks):
+            if self._finished_iterating and (self._next_chunk_index == len(self._submitted_chunks)):
+                # Stop the result_thread and wait for it to complete
+                self._result_thread.stop()
+                self._result_thread.join()
                 raise StopIteration
 
             # This loop will break when the next index in order is ready or
@@ -440,9 +463,11 @@ class UnorderedIMapIterator(IMapIterator):
     """
 
     def next(self, timeout=None):
-        # NOTE: this condition seems redundant for the unordered iterator: exactly one ready_object is made every time
         if len(self._ready_objects) == 0:
-            if self._next_chunk_index == len(self._submitted_chunks):
+            if self._finished_iterating and (self._next_chunk_index == len(self._submitted_chunks)):
+                # Stop the result_thread and wait for it to complete
+                self._result_thread.stop()
+                self._result_thread.join()
                 raise StopIteration
 
             index = self._result_thread.next_ready_index(timeout=timeout)
