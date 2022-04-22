@@ -130,7 +130,11 @@ class EpisodicBuffer(object):
             index = int(random.randint(0, available))
             episodes_buffer.append(episode[index : index + self.length])
 
-        return SampleBatch.concat_samples(episodes_buffer)
+        batch = {}
+        for k in episodes_buffer[0].keys():
+            batch[k] = np.stack([e[k] for e in episodes_buffer], axis=0)
+
+        return SampleBatch(batch)
 
 
 def total_sampled_timesteps(worker):
