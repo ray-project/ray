@@ -165,7 +165,15 @@ class TestSkipLocalGC:
         reason="Requires PR wheels built in CI, so only run on linux CI machines.",
     )
     @pytest.mark.parametrize("field", ["conda", "pip"])
-    def test_skip_local_gc_env_var(self, skip_local_gc, start_cluster, field, tmp_path):
+    def test_skip_local_gc_env_var(
+            self,
+            skip_local_gc,
+            # The URI cache must be disabled for this test, or it will spuriously
+            # pass because the files won't be garbage collected (they'll be cached).
+            runtime_env_disable_uri_cache,
+            start_cluster,
+            field,
+            tmp_path):
         cluster, address = start_cluster
         runtime_env = generate_runtime_env_dict(field, "python_object", tmp_path)
         ray.init(address, namespace="test", runtime_env=runtime_env)
