@@ -494,11 +494,12 @@ class NodeUpdater:
                 for cmd in self.ray_start_commands:
 
                     env_vars = {}
-                    if usage_lib.usage_stats_disabled():
-                        # Disable usage stats collection in the cluster.
-                        env_vars["RAY_USAGE_STATS_ENABLED"] = 0
-                    else:
-                        env_vars["RAY_USAGE_STATS_ENABLED"] = 1
+                    if self.is_head_node:
+                        if usage_lib.usage_stats_enabled():
+                            env_vars["RAY_USAGE_STATS_ENABLED"] = 1
+                        else:
+                            # Disable usage stats collection in the cluster.
+                            env_vars["RAY_USAGE_STATS_ENABLED"] = 0
                     # Add a resource override env variable if needed:
                     if self.provider_type == "local":
                         # Local NodeProvider doesn't need resource override.

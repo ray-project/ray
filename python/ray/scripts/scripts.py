@@ -1147,7 +1147,6 @@ def up(
     """Create or update a Ray cluster."""
     if disable_usage_stats:
         usage_lib.set_usage_stats_enabled_via_env_var(False)
-    usage_lib.show_usage_stats_prompt()
 
     if restart_only or no_restart:
         cli_logger.doassert(
@@ -1478,7 +1477,6 @@ def submit(
     if start:
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
-        usage_lib.show_usage_stats_prompt()
 
         create_or_update_cluster(
             config_file=cluster_config_file,
@@ -1596,7 +1594,6 @@ def exec(
     if start:
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
-        usage_lib.show_usage_stats_prompt()
 
     exec_cluster(
         cluster_config_file,

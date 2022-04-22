@@ -52,6 +52,7 @@ import yaml
 from dataclasses import dataclass, asdict
 from typing import Optional, List
 from pathlib import Path
+from enum import Enum, auto
 
 import ray
 import requests
@@ -128,6 +129,12 @@ class UsageStatsToWrite:
     error: str
 
 
+class UsageStatsEnabledness(Enum):
+    ENABLED_EXPLICITLY = auto()
+    DISABLED_EXPLICITLY = auto()
+    ENABLED_BY_DEFAULT = auto()
+
+
 def _usage_stats_report_url():
     # The usage collection server URL.
     # The environment variable is testing-purpose only.
@@ -142,34 +149,43 @@ def _usage_stats_config_path():
     return os.path.expanduser("~/.ray/config.json")
 
 
-def usage_stats_disabled() -> Optional[bool]:
-    """
-    Check whether usage stats is explicitly disabled or enabled by the user.
-    Return True if it's explicitly disabled.
-    Return False if it's explicitly enabled.
-    Return None if it's enabled by default.
-    """
+def _usage_stats_enabledness() -> UsageStatsEnabledness:
     # Env var has higher priority than config file.
     usage_stats_enabled_env_var = os.getenv("RAY_USAGE_STATS_ENABLED")
     if usage_stats_enabled_env_var == "0":
-        return True
+        return UsageStatsEnabledness.DISABLED_EXPLICITLY
     elif usage_stats_enabled_env_var == "1":
-        return False
+        return UsageStatsEnabledness.ENABLED_EXPLICITLY
+    elif usage_stats_enabled_env_var is not None:
+        raise ValueError(
+            f"Valid value for RAY_USAGE_STATS_ENABLED env var is 0 or 1"
+            f", but got {usage_stats_enabled_env_var}"
+        )
 
     try:
         with open(_usage_stats_config_path()) as f:
             config = json.load(f)
-            if config.get("usage_stats") is False:
-                return True
-            elif config.get("usage_stats") is True:
-                return False
+            usage_stats_enabled_config_var = config.get("usage_stats")
+            if usage_stats_enabled_config_var is False:
+                return UsageStatsEnabledness.DISABLED_EXPLICITLY
+            elif usage_stats_enabled_config_var is True:
+                return UsageStatsEnabledness.ENABLED_EXPLICITLY
+            elif usage_stats_enabled_config_var is not None:
+                raise ValueError(
+                    f"Valid value for 'usage_stats' in {_usage_stats_config_path()}"
+                    f" is true or false, but got {usage_stats_enabled_config_var}"
+                )
     except FileNotFoundError:
         pass
     except Exception as e:
         logger.debug(f"Failed to load usage stats config {e}")
 
     # Usage stats is enabled by default.
-    return None
+    return UsageStatsEnabledness.ENABLED_BY_DEFAULT
+
+
+def usage_stats_enabled() -> bool:
+    return _usage_stats_enabledness() is not UsageStatsEnabledness.DISABLED_EXPLICITLY
 
 
 def _usage_stats_prompt_disabled():
@@ -186,7 +202,7 @@ def _generate_cluster_metadata():
         "python_version": python_version,
     }
     # Additional metadata is recorded only when usage stats are enabled.
-    if not usage_stats_disabled():
+    if usage_stats_enabled():
         metadata.update(
             {
                 "schema_version": usage_constant.SCHEMA_VERSION,
@@ -205,10 +221,10 @@ def show_usage_stats_prompt() -> None:
         if _usage_stats_prompt_disabled():
             return
 
-        is_usage_stats_disabled = usage_stats_disabled()
-        if is_usage_stats_disabled:
+        usage_stats_enabledness = _usage_stats_enabledness()
+        if usage_stats_enabledness is UsageStatsEnabledness.DISABLED_EXPLICITLY:
             print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
-        elif is_usage_stats_disabled is None:
+        elif usage_stats_enabledness is UsageStatsEnabledness.ENABLED_BY_DEFAULT:
             from ray.autoscaler._private.cli_logger import cli_logger
 
             if cli_logger.interactive:
@@ -230,6 +246,7 @@ def show_usage_stats_prompt() -> None:
                     file=sys.stderr,
                 )
         else:
+            assert usage_stats_enabledness is UsageStatsEnabledness.ENABLED_EXPLICITLY
             print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
 
     except Exception:

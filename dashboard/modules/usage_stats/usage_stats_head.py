@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self.usage_stats_enabled = not ray_usage_lib.usage_stats_disabled()
+        self.usage_stats_enabled = ray_usage_lib.usage_stats_enabled()
         self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
             ray.experimental.internal_kv.internal_kv_get_gcs_client(),
             num_retries=20,
