@@ -1752,7 +1752,8 @@ void NodeManager::HandleCommitBundleResources(
   if (RayConfig::instance().use_ray_syncer()) {
     auto sync_message =
         cluster_resource_scheduler_->GetLocalResourceManager().CreateSyncMessage(
-            0, syncer::RayComponentId::RESOURCE_MANAGER);
+            0, // Use version = 0 to for a snapshot
+            syncer::RayComponentId::RESOURCE_MANAGER);
     RAY_CHECK(sync_message);
     ray_syncer_.BroadcastMessage(
         std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
@@ -1797,7 +1798,8 @@ void NodeManager::HandleCancelResourceReserve(
   if (RayConfig::instance().use_ray_syncer()) {
     auto sync_message =
         cluster_resource_scheduler_->GetLocalResourceManager().CreateSyncMessage(
-            0, syncer::RayComponentId::RESOURCE_MANAGER);
+            0, // Use version = 0 to get a snapshot
+            syncer::RayComponentId::RESOURCE_MANAGER);
     RAY_CHECK(sync_message);
     ray_syncer_.BroadcastMessage(
         std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
