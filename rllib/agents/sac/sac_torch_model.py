@@ -6,7 +6,6 @@ from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -188,13 +187,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
                 )
                 self.concat_obs_and_actions = True
             else:
-                if isinstance(orig_space, gym.spaces.Tuple):
-                    spaces = list(orig_space.spaces)
-                elif isinstance(orig_space, gym.spaces.Dict):
-                    spaces = list(orig_space.spaces.values())
-                else:
-                    spaces = [obs_space]
-                input_space = gym.spaces.Tuple(spaces + [action_space])
+                input_space = gym.spaces.Tuple([orig_space, action_space])
 
         model = ModelCatalog.get_model_v2(
             input_space,
@@ -253,8 +246,6 @@ class SACTorchModel(TorchModelV2, nn.Module):
                 model_out = torch.cat(model_out, dim=-1)
             elif isinstance(model_out, dict):
                 model_out = torch.cat(list(model_out.values()), dim=-1)
-        elif isinstance(model_out, dict):
-            model_out = list(model_out.values())
 
         # Continuous case -> concat actions to model_out.
         if actions is not None:
@@ -263,7 +254,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
             else:
                 # TODO(junogng) : SampleBatch doesn't support list columns yet.
                 #     Use ModelInputDict.
-                input_dict = {"obs": force_list(model_out) + [actions]}
+                input_dict = {"obs": (model_out, actions)}
         # Discrete case -> return q-vals for all actions.
         else:
             input_dict = {"obs": model_out}
