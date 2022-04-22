@@ -16,6 +16,6 @@ if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summ
 
     # Remove test summaries files (don't actually upload as artifacts)
     # This has to be done with docker to avoid permission issues
+    echo "--- Cleaning up"
     docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/test-summaries' || true
-    echo "---"
 fi
