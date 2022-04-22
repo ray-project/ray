@@ -38,7 +38,7 @@ steps:
     - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
     - java -version
     # Build wheels
-    - export UPLOAD_WHEELS=1
+    - export UPLOAD_WHEELS_AS_ARTIFACTS=1
     - export MAC_WHEELS=1
     - export MAC_JARS=1
     - export RAY_INSTALL_JAVA=1

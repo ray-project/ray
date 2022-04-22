@@ -430,7 +430,7 @@ build_wheels() {
         # Sync the directory to buildkite artifacts
         rm -rf /artifact-mount/.whl || true
 
-        if [ "${UPLOAD_WHEELS-}" = "1" ]; then
+        if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
           cp -r .whl /artifact-mount/.whl
           chmod -R 777 /artifact-mount/.whl
         fi
@@ -444,7 +444,7 @@ build_wheels() {
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 
-      if [ "${UPLOAD_WHEELS-}" = "1" ]; then
+      if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
         cp -r .whl /tmp/artifacts/.whl
         chmod -R 777 /tmp/artifacts/.whl
       fi
