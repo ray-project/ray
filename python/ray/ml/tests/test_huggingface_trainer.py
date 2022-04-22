@@ -10,7 +10,7 @@ from ray.ml.predictors.integrations.huggingface import HuggingFacePredictor
 from ray.ml.train.integrations.huggingface.huggingface_utils import process_datasets
 from ray.ml.batch_predictor import BatchPredictor
 
-from ._huggingface_data import train_data, validation_data
+from ray.ml.tests._huggingface_data import train_data, validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
 train_df = pd.read_json(train_data)

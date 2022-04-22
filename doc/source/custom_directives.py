@@ -131,6 +131,7 @@ MOCK_MODULES = [
     "tensorflow.contrib.all_reduce",
     "transformers",
     "transformers.modeling_utils",
+    "transformers.models",
     "transformers.trainer",
     "transformers.training_args",
     "transformers.trainer_callback",

@@ -5,7 +5,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, TrainingArguments
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.predictors.integrations.huggingface import HuggingFacePredictor
 
-from ._huggingface_data import validation_data
+from ray.ml.tests._huggingface_data import validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 validation
 validation_df = pd.read_json(validation_data)
