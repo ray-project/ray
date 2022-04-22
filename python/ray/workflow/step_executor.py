@@ -674,7 +674,9 @@ class _BakedWorkflowInputs:
                 obj = _resolve_static_workflow_ref(static_workflow_ref)
             objects_mapping.append(obj)
 
-        workflow_ref_mapping = _resolve_dynamic_workflow_refs(self.job_id, self.workflow_refs)
+        workflow_ref_mapping = _resolve_dynamic_workflow_refs(
+            self.job_id, self.workflow_refs
+        )
 
         with serialization_context.workflow_args_resolving_context(
             objects_mapping, workflow_ref_mapping
@@ -722,7 +724,7 @@ class _BakedWorkflowInputs:
             self.args,
             self.workflow_outputs,
             self.workflow_refs,
-            self.job_id
+            self.job_id,
         )
 
 

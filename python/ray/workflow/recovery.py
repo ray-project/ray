@@ -168,7 +168,11 @@ def _construct_resume_workflow_from_step(
 
 @ray.remote(num_returns=2)
 def _resume_workflow_step_executor(
-    job_id: str, workflow_id: str, step_id: "StepID", store_url: str, current_output: [ray.ObjectRef]
+    job_id: str,
+    workflow_id: str,
+    step_id: "StepID",
+    store_url: str,
+    current_output: [ray.ObjectRef],
 ) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
     # Re-configure log file to send logs to correct driver.
     node = ray.worker._global_node

@@ -103,7 +103,9 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     # workflow output, the caller may fail to resolve the result.
     job_id = ray.get_runtime_context().job_id.hex()
     result: "WorkflowExecutionResult" = ray.get(
-        workflow_manager.run_or_resume.remote(job_id, workflow_id, ignore_existing=False)
+        workflow_manager.run_or_resume.remote(
+            job_id, workflow_id, ignore_existing=False
+        )
     )
     logger.info(f"Workflow job {workflow_id} resumed.")
     return flatten_workflow_output(workflow_id, result.persisted_output)
