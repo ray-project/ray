@@ -1750,7 +1750,7 @@ void NodeManager::HandleCommitBundleResources(
                  << GetDebugStringForBundles(bundle_specs);
   placement_group_resource_manager_->CommitBundles(bundle_specs);
   if (RayConfig::instance().use_ray_syncer()) {
-    auto sync_message = CreateSyncMessage(0, syncer::RayComponentId::RESOURCE_MANAGER);
+    auto sync_message = cluster_resource_scheduler_->GetLocalResourceManager().CreateSyncMessage(, syncer::RayComponentId::RESOURCE_MANAGER);
     RAY_CHECK(sync_message);
     ray_syncer_.BroadcastMessage(
         std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
@@ -1793,7 +1793,7 @@ void NodeManager::HandleCancelResourceReserve(
   // Return bundle resources.
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
   if (RayConfig::instance().use_ray_syncer()) {
-    auto sync_message = CreateSyncMessage(0, syncer::RayComponentId::RESOURCE_MANAGER);
+    auto sync_message = cluster_resource_scheduler_->GetLocalResourceManager().CreateSyncMessage(, syncer::RayComponentId::RESOURCE_MANAGER);
     RAY_CHECK(sync_message);
     ray_syncer_.BroadcastMessage(
         std::make_shared<const syncer::RaySyncMessage>(std::move(*sync_message)));
