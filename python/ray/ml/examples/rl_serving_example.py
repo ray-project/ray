@@ -4,6 +4,7 @@ import ray
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import RunConfig
 from ray.ml.train.integrations.rl.rl_trainer import RLTrainer
+from ray.ml.train.integrations.rl.rl_predictor import RLPredictor
 from ray.ml.result import Result
 from ray.tune.tuner import Tuner
 
@@ -52,14 +53,25 @@ if __name__ == "__main__":
 
     ray.init(address=args.address)
 
-    if True:
+    if False:
         result = train_rl_ppo_online(num_workers=args.num_workers, use_gpu=args.use_gpu)
         checkpoint = result.checkpoint
         print(result.checkpoint)
         print(result.checkpoint._local_path)
     else:
         checkpoint = Checkpoint.from_directory(
-            "/Users/kai/ray_results/AIRPPOTrainer_2022-04-21_16-02-18/AIRPPOTrainer_09b06_00000_0_2022-04-21_16-02-19"
+            "/Users/kai/ray_results/AIRPPOTrainer_2022-04-21_17-38-12/"
+            "AIRPPOTrainer_6f311_00000_0_2022-04-21_17-38-12/checkpoint_000015/"
         )
+
+    predictor = RLPredictor.from_checkpoint(checkpoint)
+
+    import gym
+
+    env = gym.make("CartPole-v0")
+    obs = env.reset()
+
+    actions = predictor.predict(obs)
+    print("ACTIONS", actions)
 
     serve_rl_model(checkpoint)

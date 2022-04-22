@@ -1,6 +1,8 @@
 import inspect
+import os
 from typing import Optional, Dict, Type, Union, Callable, Any
 
+import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.preprocessor import Preprocessor
@@ -13,6 +15,10 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
 from ray.util.annotations import PublicAPI
 from ray.util.ml_utils.dict import merge_dicts
+
+
+RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
+RL_CONFIG_FILE = "config.pkl"
 
 
 @PublicAPI(stability="alpha")
@@ -207,6 +213,17 @@ class RLTrainer(Trainer):
                     remote_checkpoint_dir=remote_checkpoint_dir,
                     sync_function_tpl=sync_function_tpl,
                 )
+
+            def save_checkpoint(self, checkpoint_dir: str):
+                super().save_chekpoint()
+
+                trainer_class_path = os.path.join(checkpoint_dir, RL_TRAINER_CLASS_FILE)
+                with open(trainer_class_path, "wb") as fp:
+                    cpickle.dump(self.__class__, fp)
+
+                config_path = os.path.join(checkpoint_dir, RL_CONFIG_FILE)
+                with open(config_path, "wb") as fp:
+                    cpickle.dump(self.config, fp)
 
             @classmethod
             def default_resource_request(
