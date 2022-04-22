@@ -108,6 +108,46 @@ def test_deploy_async_function_no_params(serve_instance):
     assert ray.get(async_d.get_handle().remote()) == "async!"
 
 
+def test_deploy_sync_function_no_params_call_with_param(serve_instance):
+    @serve.deployment()
+    def sync_d():
+        return "sync!"
+
+    serve.start()
+
+    sync_d.deploy()
+    assert requests.get("http://localhost:8000/sync_d").text == "sync!"
+    with pytest.raises(
+        TypeError, match=r"sync_d\(\) takes 0 positional arguments but 1 was given"
+    ):
+        assert ray.get(sync_d.get_handle().remote(1)) == "sync!"
+
+    with pytest.raises(
+        TypeError, match=r"sync_d\(\) got an unexpected keyword argument"
+    ):
+        assert ray.get(sync_d.get_handle().remote(key=1)) == "sync!"
+
+
+def test_deploy_async_function_no_params_call_with_param(serve_instance):
+    @serve.deployment()
+    async def async_d():
+        await asyncio.sleep(5)
+        return "async!"
+
+    serve.start()
+
+    async_d.deploy()
+    assert requests.get("http://localhost:8000/async_d").text == "async!"
+    with pytest.raises(
+        TypeError, match=r"sync_d\(\) takes 0 positional arguments but 1 was given"
+    ):
+        assert ray.get(async_d.get_handle().remote(1)) == "async!"
+    with pytest.raises(
+        TypeError, match=r"sync_d\(\) got an unexpected keyword argument"
+    ):
+        assert ray.get(async_d.get_handle().remote(key=1)) == "async!"
+
+
 def test_deploy_sync_class_no_params(serve_instance):
     @serve.deployment
     class Counter:
