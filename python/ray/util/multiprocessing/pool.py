@@ -366,8 +366,9 @@ class IMapIterator:
             # for compatibility with prior releases, encapsulate non-iterable in a list
             iterable = [iterable]
             self._iterator = iter(iterable)
-        if self._iterator == iterable:
-            # we were passsed an iterator, so do not know the number of samples
+        if isinstance(iterable, collections.Iterator):
+            # Got iterator (which has no len() function). 
+            # Make default chunksize 1 instead of using _calculate_chunksize().
             self._chunksize = chunksize or 1
             result_list_size = 0
         else:
