@@ -169,7 +169,7 @@ class DDPPOTrainer(PPOTrainer):
         # Must have `num_workers` >= 1.
         if config["num_workers"] < 1:
             raise ValueError(
-                "Due to its ditributed, decentralized nature, "
+                "Due to its distributed, decentralized nature, "
                 "DD-PPO requires `num_workers` to be >= 1!"
             )
 
