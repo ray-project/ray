@@ -162,23 +162,25 @@ def _usage_stats_enabledness() -> UsageStatsEnabledness:
             f"env var is 0 or 1, but got {usage_stats_enabled_env_var}"
         )
 
+    usage_stats_enabled_config_var = None
     try:
         with open(_usage_stats_config_path()) as f:
             config = json.load(f)
             usage_stats_enabled_config_var = config.get("usage_stats")
-            if usage_stats_enabled_config_var is False:
-                return UsageStatsEnabledness.DISABLED_EXPLICITLY
-            elif usage_stats_enabled_config_var is True:
-                return UsageStatsEnabledness.ENABLED_EXPLICITLY
-            elif usage_stats_enabled_config_var is not None:
-                raise ValueError(
-                    f"Valid value for 'usage_stats' in {_usage_stats_config_path()}"
-                    f" is true or false, but got {usage_stats_enabled_config_var}"
-                )
     except FileNotFoundError:
         pass
     except Exception as e:
         logger.debug(f"Failed to load usage stats config {e}")
+
+    if usage_stats_enabled_config_var is False:
+        return UsageStatsEnabledness.DISABLED_EXPLICITLY
+    elif usage_stats_enabled_config_var is True:
+        return UsageStatsEnabledness.ENABLED_EXPLICITLY
+    elif usage_stats_enabled_config_var is not None:
+        raise ValueError(
+            f"Valid value for 'usage_stats' in {_usage_stats_config_path()}"
+            f" is true or false, but got {usage_stats_enabled_config_var}"
+        )
 
     # Usage stats is enabled by default.
     return UsageStatsEnabledness.ENABLED_BY_DEFAULT
@@ -220,11 +222,12 @@ def show_usage_stats_prompt() -> None:
     if not _usage_stats_prompt_enabled():
         return
 
+    from ray.autoscaler._private.cli_logger import cli_logger
+
     usage_stats_enabledness = _usage_stats_enabledness()
     if usage_stats_enabledness is UsageStatsEnabledness.DISABLED_EXPLICITLY:
-        print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
+        cli_logger.print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
     elif usage_stats_enabledness is UsageStatsEnabledness.ENABLED_BY_DEFAULT:
-        from ray.autoscaler._private.cli_logger import cli_logger
 
         if cli_logger.interactive:
             enabled = cli_logger.confirm(
@@ -237,17 +240,16 @@ def show_usage_stats_prompt() -> None:
             # Remember user's choice.
             set_usage_stats_enabled_via_config(enabled)
             if enabled:
-                print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
+                cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
             else:
-                print(usage_constant.USAGE_STATS_DISABLED_MESSAGE, file=sys.stderr)
+                cli_logger.print(usage_constant.USAGE_STATS_DISABLED_MESSAGE)
         else:
-            print(
+            cli_logger.print(
                 usage_constant.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE,
-                file=sys.stderr,
             )
     else:
         assert usage_stats_enabledness is UsageStatsEnabledness.ENABLED_EXPLICITLY
-        print(usage_constant.USAGE_STATS_ENABLED_MESSAGE, file=sys.stderr)
+        cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
 
 
 def set_usage_stats_enabled_via_config(enabled) -> None:

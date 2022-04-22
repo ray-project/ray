@@ -649,6 +649,7 @@ def get_or_create_head_node(
         cli_logger.confirm(
             yes, "No head node found. Launching a new cluster.", _abort=True
         )
+        cli_logger.newline()
         usage_lib.show_usage_stats_prompt()
 
     if head_node:
@@ -661,6 +662,7 @@ def get_or_create_head_node(
                 cf.bold("--restart-only"),
                 _abort=True,
             )
+            cli_logger.newline()
             usage_lib.show_usage_stats_prompt()
         elif no_restart:
             cli_logger.print(
@@ -677,6 +679,7 @@ def get_or_create_head_node(
             cli_logger.confirm(
                 yes, cf.bold("Cluster Ray runtime will be restarted."), _abort=True
             )
+            cli_logger.newline()
             usage_lib.show_usage_stats_prompt()
 
     cli_logger.newline()

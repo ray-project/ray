@@ -627,6 +627,7 @@ def start(
         if disable_usage_stats:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
         usage_lib.show_usage_stats_prompt()
+        cli_logger.newline()
 
         if port is None:
             port = ray_constants.DEFAULT_PORT

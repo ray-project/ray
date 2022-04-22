@@ -5,7 +5,6 @@ import ray
 import pathlib
 import json
 import time
-import subprocess
 
 from dataclasses import asdict
 from pathlib import Path
@@ -14,6 +13,8 @@ from jsonschema import validate
 import ray._private.usage.usage_lib as ray_usage_lib
 import ray._private.usage.usage_constants as usage_constants
 from ray._private.usage.usage_lib import ClusterConfigToReport
+from ray._private.usage.usage_lib import UsageStatsEnabledness
+from ray.autoscaler._private.cli_logger import cli_logger
 
 from ray._private.test_utils import wait_for_condition
 
@@ -80,139 +81,147 @@ def print_dashboard_log():
     pprint(contents)
 
 
-def test_usage_stats_prompt():
+def test_usage_stats_enabledness(monkeypatch, tmp_path):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        assert (
+            ray_usage_lib._usage_stats_enabledness()
+            is UsageStatsEnabledness.ENABLED_EXPLICITLY
+        )
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        assert (
+            ray_usage_lib._usage_stats_enabledness()
+            is UsageStatsEnabledness.DISABLED_EXPLICITLY
+        )
+
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "xxx")
+        with pytest.raises(ValueError):
+            ray_usage_lib._usage_stats_enabledness()
+
+    saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+    tmp_usage_stats_config_path = tmp_path / "config.json"
+    ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+    tmp_usage_stats_config_path.write_text('{"usage_stats": true}')
+    assert (
+        ray_usage_lib._usage_stats_enabledness()
+        is UsageStatsEnabledness.ENABLED_EXPLICITLY
+    )
+    tmp_usage_stats_config_path.write_text('{"usage_stats": false}')
+    assert (
+        ray_usage_lib._usage_stats_enabledness()
+        is UsageStatsEnabledness.DISABLED_EXPLICITLY
+    )
+    tmp_usage_stats_config_path.write_text('{"usage_stats": "xxx"}')
+    with pytest.raises(ValueError):
+        ray_usage_lib._usage_stats_enabledness()
+    tmp_usage_stats_config_path.write_text("")
+    assert (
+        ray_usage_lib._usage_stats_enabledness()
+        is UsageStatsEnabledness.ENABLED_BY_DEFAULT
+    )
+    tmp_usage_stats_config_path.unlink()
+    assert (
+        ray_usage_lib._usage_stats_enabledness()
+        is UsageStatsEnabledness.ENABLED_BY_DEFAULT
+    )
+    ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
+
+
+def test_usage_stats_prompt(monkeypatch, capsys, tmp_path):
     """
     Test usage stats prompt is shown in the proper cases.
     """
-    env = os.environ.copy()
-    env["RAY_USAGE_STATS_ENABLED"] = "1"
-    env["RAY_USAGE_STATS_PROMPT_ENABLED"] = "0"
-    result = subprocess.run(
-        "ray start --head",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv("RAY_USAGE_STATS_PROMPT_ENABLED", "0")
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in captured.out
+        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in captured.err
 
-    subprocess.run("ray stop --force", shell=True)
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "0")
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
 
-    env = os.environ.copy()
-    env["RAY_USAGE_STATS_ENABLED"] = "1"
-    result = subprocess.run(
-        "ray start --head",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in result.stderr.decode("utf-8")
+    with monkeypatch.context() as m:
+        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        # Usage stats collection is enabled by default.
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE in captured.out
 
-    result = subprocess.run(
-        'ray start --address="127.0.0.1:6379"',
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
+    with monkeypatch.context() as m:
+        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        saved_interactive = cli_logger.interactive
+        saved_stdin = sys.stdin
+        saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+        tmp_usage_stats_config_path = tmp_path / "config1.json"
+        ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+        cli_logger.interactive = True
+        (r_pipe, w_pipe) = os.pipe()
+        sys.stdin = open(r_pipe)
+        os.write(w_pipe, b"y\n")
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
+        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in captured.out
+        cli_logger.interactive = saved_interactive
+        sys.stdin = saved_stdin
+        ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
-    subprocess.run("ray stop --force", shell=True)
+    with monkeypatch.context() as m:
+        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        saved_interactive = cli_logger.interactive
+        saved_stdin = sys.stdin
+        saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+        tmp_usage_stats_config_path = tmp_path / "config2.json"
+        ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+        cli_logger.interactive = True
+        (r_pipe, w_pipe) = os.pipe()
+        sys.stdin = open(r_pipe)
+        os.write(w_pipe, b"n\n")
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
+        assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
+        cli_logger.interactive = saved_interactive
+        sys.stdin = saved_stdin
+        ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
-    result = subprocess.run(
-        "ray up xxx.yml",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in result.stderr.decode("utf-8")
+    with monkeypatch.context() as m:
+        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        saved_interactive = cli_logger.interactive
+        saved_stdin = sys.stdin
+        saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+        tmp_usage_stats_config_path = tmp_path / "config3.json"
+        ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+        cli_logger.interactive = True
+        (r_pipe, w_pipe) = os.pipe()
+        sys.stdin = open(r_pipe)
+        ray_usage_lib.show_usage_stats_prompt()
+        captured = capsys.readouterr()
+        assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
+        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in captured.out
+        cli_logger.interactive = saved_interactive
+        sys.stdin = saved_stdin
+        ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
-    result = subprocess.run(
-        "ray exec xxx.yml ls --start",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in result.stderr.decode("utf-8")
-
-    result = subprocess.run(
-        "ray exec xxx.yml ls",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
-
-    result = subprocess.run(
-        "ray submit xxx.yml yyy.py --start",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in result.stderr.decode("utf-8")
-
-    result = subprocess.run(
-        "ray submit xxx.yml yyy.py",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
-
-    result = subprocess.run(
-        'python -c "import ray; ray.init()"',
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stdout.decode(
-        "utf-8"
-    )
-    assert usage_constants.USAGE_STATS_ENABLED_MESSAGE not in result.stderr.decode(
-        "utf-8"
-    )
+    with monkeypatch.context() as m:
+        # Usage stats is not enabled for ray.init()
+        ray.init()
+        ray.shutdown()
+        captured = capsys.readouterr()
+        assert (
+            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE not in captured.out
+        )
+        assert (
+            usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE not in captured.err
+        )
 
 
 def test_usage_lib_cluster_metadata_generation(monkeypatch, ray_start_cluster):

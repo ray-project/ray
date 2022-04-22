@@ -41,6 +41,7 @@ import ray.autoscaler._private.aws.config as aws_config
 from ray.cluster_utils import cluster_not_supported
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
+import ray._private.usage.usage_lib as ray_usage_lib
 
 boto3_list = [
     {
@@ -216,6 +217,26 @@ MISSING_MAX_WORKER_CONFIG_PATH = str(
 DOCKER_TEST_CONFIG_PATH = str(
     Path(__file__).parent / "test_cli_patterns" / "test_ray_up_docker_config.yaml"
 )
+
+
+def test_enable_usage_stats(tmp_path):
+    saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+    tmp_usage_stats_config_path = tmp_path / "config.json"
+    ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+    runner = CliRunner()
+    runner.invoke(scripts.enable_usage_stats, [])
+    assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
+    ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
+
+
+def test_disable_usage_stats(tmp_path):
+    saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+    tmp_usage_stats_config_path = tmp_path / "config.json"
+    ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+    runner = CliRunner()
+    runner.invoke(scripts.disable_usage_stats, [])
+    assert '{"usage_stats": false}' == tmp_usage_stats_config_path.read_text()
+    ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
 
 @pytest.mark.skipif(
