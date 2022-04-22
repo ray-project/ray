@@ -43,6 +43,8 @@ def _clean_log(obj: Any):
         return {k: _clean_log(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [_clean_log(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_clean_log(v) for v in obj)
     elif _is_allowed_type(obj):
         return obj
 
