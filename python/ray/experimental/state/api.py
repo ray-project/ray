@@ -48,6 +48,7 @@ def _list(
 
     response = r.json()
     if response["result"] is False:
+        print(response)
         raise ValueError(
             "API server internal error. See dashboard.log file for more details."
         )
@@ -64,13 +65,14 @@ def _list(
 
 def list_actors(
     api_server_url: str = None,
+    filter: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _print_api_stats: bool = False,
 ):
     return _list(
         "actors",
-        ListApiOptions(limit=limit, timeout=timeout),
+        ListApiOptions(limit=limit, timeout=timeout, filter=filter),
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )
@@ -78,13 +80,14 @@ def list_actors(
 
 def list_placement_groups(
     api_server_url: str = None,
+    filter: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _print_api_stats: bool = False,
 ):
     return _list(
         "placement_groups",
-        ListApiOptions(limit=limit, timeout=timeout),
+        ListApiOptions(limit=limit, timeout=timeout, filter=filter),
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )
@@ -92,13 +95,14 @@ def list_placement_groups(
 
 def list_nodes(
     api_server_url: str = None,
+    filter: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _print_api_stats: bool = False,
 ):
     return _list(
         "nodes",
-        ListApiOptions(limit=limit, timeout=timeout),
+        ListApiOptions(limit=limit, timeout=timeout, filter=filter),
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )
@@ -106,13 +110,14 @@ def list_nodes(
 
 def list_jobs(
     api_server_url: str = None,
+    filter: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _print_api_stats: bool = False,
 ):
     return _list(
         "jobs",
-        ListApiOptions(limit=limit, timeout=timeout),
+        ListApiOptions(limit=limit, timeout=timeout, filter=filter),
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )
@@ -120,13 +125,14 @@ def list_jobs(
 
 def list_workers(
     api_server_url: str = None,
+    filter: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _print_api_stats: bool = False,
 ):
     return _list(
         "workers",
-        ListApiOptions(limit=limit, timeout=timeout),
+        ListApiOptions(limit=limit, timeout=timeout, filter=filter),
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )
@@ -134,13 +140,14 @@ def list_workers(
 
 def list_tasks(
     api_server_url: str = None,
+    filter: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _print_api_stats: bool = False,
 ):
     return _list(
         "tasks",
-        ListApiOptions(limit=limit, timeout=timeout),
+        ListApiOptions(limit=limit, timeout=timeout, filter=filter),
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )
@@ -148,13 +155,14 @@ def list_tasks(
 
 def list_objects(
     api_server_url: str = None,
+    filter: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _print_api_stats: bool = False,
 ):
     return _list(
         "objects",
-        ListApiOptions(limit=limit, timeout=timeout),
+        ListApiOptions(limit=limit, timeout=timeout, filter=filter),
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )
@@ -162,13 +170,14 @@ def list_objects(
 
 def list_runtime_envs(
     api_server_url: str = None,
+    filter: str = None,
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _print_api_stats: bool = False,
 ):
     return _list(
         "runtime_envs",
-        ListApiOptions(limit=limit, timeout=timeout),
+        ListApiOptions(limit=limit, timeout=timeout, filter=filter),
         api_server_url=api_server_url,
         _print_api_stats=_print_api_stats,
     )

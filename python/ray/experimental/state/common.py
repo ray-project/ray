@@ -23,6 +23,7 @@ def filter_fields(data: dict, state_dataclass) -> dict:
 class ListApiOptions:
     limit: int
     timeout: int
+    filter: str
 
     # TODO(sang): Use Pydantic instead.
     def __post_init__(self):

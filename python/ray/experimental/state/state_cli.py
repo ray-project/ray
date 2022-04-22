@@ -90,11 +90,14 @@ def list_state_cli_group(ctx):
 @click.option(
     "--format", default="default", type=click.Choice(["default", "json", "table"])
 )
+@click.option("--filter", default="default", type=str)
 @click.pass_context
-def actors(ctx, format: str):
+def actors(ctx, format: str, filter: str):
     url = ctx.obj["api_server_url"]
     print_state_api_output(
-        list_actors(api_server_url=url, _print_api_stats=True), format, "actors"
+        list_actors(api_server_url=url, _print_api_stats=True, filter=filter),
+        format,
+        "actors",
     )
 
 
@@ -102,11 +105,12 @@ def actors(ctx, format: str):
 @click.option(
     "--format", default="default", type=click.Choice(["default", "json", "table"])
 )
+@click.option("--filter", default="default", type=str)
 @click.pass_context
-def placement_groups(ctx, format: str):
+def placement_groups(ctx, format: str, filter: str):
     url = ctx.obj["api_server_url"]
     print_state_api_output(
-        list_placement_groups(api_server_url=url, _print_api_stats=True),
+        list_placement_groups(api_server_url=url, _print_api_stats=True, filter=filter),
         format,
         "placement groups",
     )
@@ -116,11 +120,14 @@ def placement_groups(ctx, format: str):
 @click.option(
     "--format", default="default", type=click.Choice(["default", "json", "table"])
 )
+@click.option("--filter", default="default", type=str)
 @click.pass_context
-def nodes(ctx, format: str):
+def nodes(ctx, format: str, filter: str):
     url = ctx.obj["api_server_url"]
     print_state_api_output(
-        list_nodes(api_server_url=url, _print_api_stats=True), format, "nodes"
+        list_nodes(api_server_url=url, _print_api_stats=True, filter=filter),
+        format,
+        "nodes",
     )
 
 
@@ -128,11 +135,14 @@ def nodes(ctx, format: str):
 @click.option(
     "--format", default="default", type=click.Choice(["default", "json", "table"])
 )
+@click.option("--filter", default="default", type=str)
 @click.pass_context
-def jobs(ctx, format: str):
+def jobs(ctx, format: str, filter: str):
     url = ctx.obj["api_server_url"]
     print_state_api_output(
-        list_jobs(api_server_url=url, _print_api_stats=True), format, "jobs"
+        list_jobs(api_server_url=url, _print_api_stats=True, filter=filter),
+        format,
+        "jobs",
     )
 
 
@@ -140,11 +150,14 @@ def jobs(ctx, format: str):
 @click.option(
     "--format", default="default", type=click.Choice(["default", "json", "table"])
 )
+@click.option("--filter", default="default", type=str)
 @click.pass_context
-def workers(ctx, format: str):
+def workers(ctx, format: str, filter: str):
     url = ctx.obj["api_server_url"]
     print_state_api_output(
-        list_workers(api_server_url=url, _print_api_stats=True), format, "workers"
+        list_workers(api_server_url=url, _print_api_stats=True, filter=filter),
+        format,
+        "workers",
     )
 
 
@@ -152,11 +165,14 @@ def workers(ctx, format: str):
 @click.option(
     "--format", default="default", type=click.Choice(["default", "json", "table"])
 )
+@click.option("--filter", default="default", type=str)
 @click.pass_context
-def tasks(ctx, format: str):
+def tasks(ctx, format: str, filter: str):
     url = ctx.obj["api_server_url"]
     print_state_api_output(
-        list_tasks(api_server_url=url, _print_api_stats=True), format, "tasks"
+        list_tasks(api_server_url=url, _print_api_stats=True, filter=filter),
+        format,
+        "tasks",
     )
 
 
@@ -164,11 +180,14 @@ def tasks(ctx, format: str):
 @click.option(
     "--format", default="default", type=click.Choice(["default", "json", "table"])
 )
+@click.option("--filter", default="default", type=str)
 @click.pass_context
-def objects(ctx, format: str):
+def objects(ctx, format: str, filter: str):
     url = ctx.obj["api_server_url"]
     print_state_api_output(
-        list_objects(api_server_url=url, _print_api_stats=True), format, "objects"
+        list_objects(api_server_url=url, _print_api_stats=True, filter=filter),
+        format,
+        "objects",
     )
 
 
@@ -176,11 +195,12 @@ def objects(ctx, format: str):
 @click.option(
     "--format", default="default", type=click.Choice(["default", "json", "table"])
 )
+@click.option("--filter", default="default", type=str)
 @click.pass_context
-def runtime_envs(ctx, format: str):
+def runtime_envs(ctx, format: str, filter: str):
     url = ctx.obj["api_server_url"]
     print_state_api_output(
-        list_runtime_envs(api_server_url=url, _print_api_stats=True),
+        list_runtime_envs(api_server_url=url, _print_api_stats=True, filter=filter),
         format,
         "runtime envs",
     )

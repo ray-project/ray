@@ -76,6 +76,30 @@ class StateAPIManager:
     def data_source_client(self):
         return self._client
 
+    def _filter(self, filters: str, data: list):
+        kvs = filters.split(",")
+        kv_filters = {}
+        for kv in kvs:
+            result = kv.split("=")
+            if len(result) == 2:
+                kv_filters[result[0]] = result[1]
+
+        matched_result = []
+        for d in data:
+            match = True
+            for column, value in kv_filters.items():
+                data = d.get(column)
+                if not data:
+                    match = False
+                    break
+
+                if data != value:
+                    match = False
+            if match:
+                matched_result.append(d)
+
+        return matched_result
+
     async def list_actors(self, *, option: ListApiOptions) -> StateApiResult:
         """List all actor information from the cluster.
 
@@ -95,6 +119,7 @@ class StateAPIManager:
             data = filter_fields(data, ActorState)
             result.append(data)
 
+        result = self._filter(option.filter, result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
         return StateApiResult(
@@ -122,6 +147,7 @@ class StateAPIManager:
             data = filter_fields(data, PlacementGroupState)
             result.append(data)
 
+        result = self._filter(option.filter, result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
         return StateApiResult(
@@ -145,6 +171,7 @@ class StateAPIManager:
             data = filter_fields(data, NodeState)
             result.append(data)
 
+        result = self._filter(option.filter, result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
         return StateApiResult(
@@ -171,6 +198,7 @@ class StateAPIManager:
             data = filter_fields(data, WorkerState)
             result.append(data)
 
+        result = self._filter(option.filter, result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
         return StateApiResult(
@@ -180,6 +208,7 @@ class StateAPIManager:
     def list_jobs(self, *, option: ListApiOptions) -> StateApiResult:
         # TODO(sang): Support limit & timeout & async calls.
         result = self._client.get_job_info()
+        result = self._filter(option.filter, result)
         if not result:
             return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
         return StateApiResult(data=result)
@@ -224,6 +253,8 @@ class StateAPIManager:
             if network_failures
             else None
         )
+
+        result = self._filter(option.filter, result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
         return StateApiResult(
@@ -287,6 +318,8 @@ class StateAPIManager:
             if network_failures
             else None
         )
+
+        result = self._filter(option.filter, result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         return StateApiResult(
@@ -335,6 +368,8 @@ class StateAPIManager:
             if network_failures
             else None
         )
+
+        result = self._filter(option.filter, result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["ref_cnt"])
         return StateApiResult(
