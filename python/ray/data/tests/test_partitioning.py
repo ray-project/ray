@@ -161,7 +161,7 @@ def test_path_partition_encoder_directory(fs, base_dir):
     )
 
 
-def test_path_partition_filter_errors():
+def test_path_partition_parser_errors():
     # no field names for DIRECTORY path partitioning
     with pytest.raises(ValueError):
         PathPartitionParser.of(style=PartitionStyle.DIRECTORY)
