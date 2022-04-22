@@ -278,10 +278,7 @@ class DAGNode:
 
     def __getattr__(self, attr: str):
         if attr == "bind":
-            raise AttributeError(
-                f".bind() cannot be used again on {type(self)} "
-                f"(args: {self.get_args()}, kwargs: {self.get_kwargs()})."
-            )
+            raise AttributeError(f".bind() cannot be used again on {type(self)} ")
         elif attr == "remote":
             raise AttributeError(
                 f".remote() cannot be used on {type(self)}. To execute the task "

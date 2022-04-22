@@ -564,7 +564,7 @@ TEST_P(GcsClientTest, TestNodeResourceUsage) {
 
   // Get and check last report resource usage.
   auto last_resource_usage = gcs_client_->NodeResources().GetLastResourceUsage();
-  ASSERT_EQ(last_resource_usage->GetTotalResources().GetResource(resource_name),
+  ASSERT_EQ(last_resource_usage->total.Get(scheduling::ResourceID::CPU()),
             resource_value);
 }
 

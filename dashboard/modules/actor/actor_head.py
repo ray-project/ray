@@ -230,7 +230,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/actors")
     async def get_actors(self, req) -> aiohttp.web.Response:
-        data = await self._dashboard_head.gcs_state_aggregator.get_actors()
+        data = await self._dashboard_head.state_aggregator.get_actors()
         return rest_response(
             success=True, message="", result=data, convert_google_style=False
         )
