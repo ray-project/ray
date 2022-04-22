@@ -39,7 +39,7 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        with checkpoint.to_directory() as path:
+        with checkpoint.as_directory() as path:
             bst = lightgbm.Booster(model_file=os.path.join(path, MODEL_KEY))
             preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
             if os.path.exists(preprocessor_path):
