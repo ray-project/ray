@@ -3447,6 +3447,15 @@ MemAvailable:   33000000 kB
         assert head_node_config["min_workers"] == 0
         assert head_node_config["max_workers"] == 0
 
+    def testInitializeSDKArguments(self):
+        # https://github.com/ray-project/ray/issues/23166
+        from ray.autoscaler.sdk import request_resources
+        ray.init()
+        # dict[str, int] is invalid
+        self.assertRaises(TypeError, request_resources(bundles={"GPU": 1}))
+        # list[str, str] is invalid
+        self.assertRaises(TypeError, request_resources(bundles=["GPU", "CPU"]))
+
 
 def test_import():
     """This test ensures that all the autoscaler imports work as expected to

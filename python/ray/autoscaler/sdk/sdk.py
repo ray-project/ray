@@ -234,6 +234,12 @@ def request_resources(
         >>> request_resources( # doctest: +SKIP
         ...     bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
+    if not isinstance(bundles, List):
+        raise TypeError('bundles input must be in form List[Dict[str,int]]')
+    else:
+        for bundle in bundles:
+            if not isinstance(bundle, Dict):
+                raise TypeError('bundles input must be in form List[Dict[str,int]]')
     return commands.request_resources(num_cpus, bundles)
 
 
