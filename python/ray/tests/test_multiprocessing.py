@@ -491,6 +491,22 @@ def test_imap(pool_4_processes):
     with pytest.raises(StopIteration):
         result_iter.next()
 
+    # Repeat of the above with iterators as inputs
+
+    error_indices = [2, 50, 98]
+    result_iter = pool_4_processes.imap(
+        f, iter([(index, error_indices) for index in range(100)]), chunksize=11
+    )
+    for i in range(100):
+        result = result_iter.next()
+        if i in error_indices:
+            assert isinstance(result, Exception)
+        else:
+            assert result == i
+
+    with pytest.raises(StopIteration):
+        result_iter.next()
+
 
 def test_imap_unordered(pool_4_processes):
     def f(args):
@@ -506,6 +522,31 @@ def test_imap_unordered(pool_4_processes):
     num_errors = 0
     result_iter = pool_4_processes.imap_unordered(
         f, [(index, error_indices) for index in range(100)], chunksize=11
+    )
+    for i in range(100):
+        result = result_iter.next()
+        if isinstance(result, Exception):
+            in_order.append(True)
+            num_errors += 1
+        else:
+            in_order.append(result == i)
+
+    # Check that the results didn't come back all in order.
+    # NOTE: this could be flaky if the calls happened to finish in order due
+    # to the random sleeps, but it's very unlikely.
+    assert not all(in_order)
+    assert num_errors == len(error_indices)
+
+    with pytest.raises(StopIteration):
+        result_iter.next()
+
+    # Repeat of the above with iterators as inputs
+
+    error_indices = [2, 50, 98]
+    in_order = []
+    num_errors = 0
+    result_iter = pool_4_processes.imap_unordered(
+        f, iter([(index, error_indices) for index in range(100)]), chunksize=11
     )
     for i in range(100):
         result = result_iter.next()
@@ -573,6 +614,47 @@ def test_imap_timeout(pool_4_processes):
     with pytest.raises(StopIteration):
         result_iter.next()
 
+    # Repeat of the above with iterators as inputs
+
+    wait_index = 23
+    signal = SignalActor.remote()
+    result_iter = pool_4_processes.imap(
+        f, iter([(index, wait_index, signal) for index in range(100)])
+    )
+    for i in range(100):
+        if i == wait_index:
+            with pytest.raises(TimeoutError):
+                result = result_iter.next(timeout=0.1)
+            ray.get(signal.send.remote())
+
+        result = result_iter.next()
+        assert result == i
+
+    with pytest.raises(StopIteration):
+        result_iter.next()
+
+    wait_index = 23
+    signal = SignalActor.remote()
+    result_iter = pool_4_processes.imap_unordered(
+        f, iter([(index, wait_index, signal) for index in range(100)]), chunksize=11
+    )
+    in_order = []
+    for i in range(100):
+        try:
+            result = result_iter.next(timeout=1)
+        except TimeoutError:
+            ray.get(signal.send.remote())
+            result = result_iter.next()
+
+        in_order.append(result == i)
+
+    # Check that the results didn't come back all in order.
+    # NOTE: this could be flaky if the calls happened to finish in order due
+    # to the random sleeps, but it's very unlikely.
+    assert not all(in_order)
+
+    with pytest.raises(StopIteration):
+        result_iter.next()
 
 def test_maxtasksperchild(shutdown_only):
     def f(args):
