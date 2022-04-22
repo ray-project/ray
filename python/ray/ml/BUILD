@@ -11,6 +11,16 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "distributed_sage_example",
+    size = "large",
+    main = "examples/pytorch_geometric/distributed_sage_example.py",
+    srcs = ["examples/pytorch_geometric/distributed_sage_example.py"],
+    tags = ["team:ml", "exclusive", "gpu"],
+    deps = [":ml_lib"],
+    args = ["--use-gpu", "--num-workers=2", "--epochs=1", "--dataset=fake"]
+)
+
 py_test (
     name = "lightgbm_example",
     size = "medium",

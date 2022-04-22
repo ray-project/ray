@@ -114,9 +114,11 @@ def test_actor_method_options(shared_ray_instance):
 
 
 def test_basic_actor_dag_constructor_invalid_options(shared_ray_instance):
-    a1 = Actor.options(num_cpus=-1).bind(10)
-    invalid_dag = a1.get.bind()
-    with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
+    with pytest.raises(
+        ValueError, match=r".*only accepts None, 0 or a positive number.*"
+    ):
+        a1 = Actor.options(num_cpus=-1).bind(10)
+        invalid_dag = a1.get.bind()
         ray.get(invalid_dag.execute())
 
 
@@ -248,7 +250,7 @@ def test_unsupported_bind():
 
     with pytest.raises(
         AttributeError,
-        match="'Actor' has no attribute 'bind'",
+        match=r"\.bind\(\) cannot be used again on",
     ):
         actor = Actor.bind()
         _ = actor.bind()
