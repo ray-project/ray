@@ -175,7 +175,7 @@ class ResultThread(threading.Thread):
         self._callback = callback
         self._error_callback = error_callback
         self._total_object_refs = total_object_refs or len(object_refs)
-        self._stop_event = threading.Event()
+        self._shutdown_event = threading.Event()
         self._indices = {}
         # Thread-safe queue used to add ObjectRefs to fetch after creating
         # this thread (used to lazily submit for imap and imap_unordered).
@@ -195,7 +195,7 @@ class ResultThread(threading.Thread):
         unready = copy.copy(self._object_refs)
         aggregated_batch_results = []
         # Run for a specific number of objects if self._total_object_refs > 0
-        # Run indefinitely if self._total_object_refs == 0, until stop event
+        # Run indefinitely if self._total_object_refs == 0, until shutdown event
         while (self._total_object_refs == 0) or (
             self._num_ready < self._total_object_refs
         ):
@@ -203,10 +203,10 @@ class ResultThread(threading.Thread):
             # unless we have no IDs to wait on, in which case we block.
             while True:
                 try:
-                    # Block if we have no IDs to wait on *and* we are not stopping
-                    block = (len(unready) == 0) and not self._stop_event.is_set()
+                    # Block if we have no IDs to wait on *and* we are not shutting down
+                    block = (len(unready) == 0) and not self._shutdown_event.is_set()
                     new_object_ref = self._new_object_refs.get(block=block)
-                    # the stop function will push None onto the queue to unblock
+                    # the shutdown function will push None onto the queue to unblock
                     if new_object_ref is not None:
                         self._add_object_ref(new_object_ref)
                         unready.append(new_object_ref)
@@ -215,8 +215,8 @@ class ResultThread(threading.Thread):
                     break
 
             if len(unready) == 0:
-                # not awaiting any IDs; stop if the stop event has been received
-                if self._stop_event.is_set():
+                # not awaiting any IDs; stop if the shutdown event has been received
+                if self._shutdown_event.is_set():
                     break
             else:
                 [ready_id], unready = ray.wait(unready, num_returns=1)
@@ -257,10 +257,10 @@ class ResultThread(threading.Thread):
                 # instead of on a list encaspulating that result
                 self._callback(aggregated_batch_results[0])
 
-    def stop(self):
+    def shutdown(self):
         # Call this to interrupt the run function.
         # The run() will terminate when all pending jobs have completed.
-        self._stop_event.set()
+        self._shutdown_event.set()
         # Push a non-event to trigger to unblock the run function if it is waiting.
         self.add_object_ref(None)
 
@@ -433,7 +433,7 @@ class OrderedIMapIterator(IMapIterator):
                 self._next_chunk_index == len(self._submitted_chunks)
             ):
                 # Stop the result_thread and wait for it to complete
-                self._result_thread.stop()
+                self._result_thread.shutdown()
                 self._result_thread.join()
                 raise StopIteration
 
@@ -475,7 +475,7 @@ class UnorderedIMapIterator(IMapIterator):
                 self._next_chunk_index == len(self._submitted_chunks)
             ):
                 # Stop the result_thread and wait for it to complete
-                self._result_thread.stop()
+                self._result_thread.shutdown()
                 self._result_thread.join()
                 raise StopIteration
 
