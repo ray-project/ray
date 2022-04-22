@@ -49,3 +49,26 @@ class WorkerState:
     worker_id: str
     is_alive: str
     worker_type: str
+
+
+@dataclass(init=True)
+class TaskState:
+    task_id: str
+    name: str
+    scheduling_state: str
+
+
+@dataclass(init=True)
+class ObjectState:
+    object_id: str
+    pid: int
+    node_ip_address: str
+    object_size: int
+    reference_type: str
+    call_site: str
+    task_status: str
+    local_ref_count: int
+    pinned_in_memory: int
+    submitted_task_ref_count: int
+    contained_in_owned: int
+    type: str
