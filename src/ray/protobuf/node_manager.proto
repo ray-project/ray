@@ -326,6 +326,7 @@ message GetResourceUsageByTaskRequest {
 
 message GetResourceUsageByTaskReply {
   repeated TaskResourceUsage task_resource_usage = 1;
+}
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
