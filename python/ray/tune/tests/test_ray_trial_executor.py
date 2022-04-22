@@ -341,7 +341,10 @@ class RayTrialExecutorTest(unittest.TestCase):
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
         self._simulate_starting_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        time.sleep(1)
+        # This should be enough time for `trial._default_result_or_future`
+        # to return. Otherwise, PID won't show up in `trial.last_result`,
+        # which is asserted down below.
+        time.sleep(2)
         print("Stop trial")
         self.trial_executor.stop_trial(trial)
         print("Start trial cleanup")
