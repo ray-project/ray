@@ -9,7 +9,7 @@
 # tests to make it easy for users to see which tests are failing.
 # Because we print them here, we don't need to persist them as
 # artifacts, so we remove the directory afterwards.
-set -x
+set -e
 if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summaries)" ]; then
     echo "+++ :rotating_light: :rotating_light: :rotating_light: Failing test short summaries"
     cat /tmp/artifacts/test-summaries/*.txt
