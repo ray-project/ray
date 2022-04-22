@@ -208,7 +208,7 @@ class TestSyncFunctionality(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):
-        def sync_func_driver(source, target):
+        def sync_func_driver(source, target, exclude=None):
             assert ":" in source, "Source {} not a remote path.".format(source)
             assert ":" not in target, "Target is supposed to be local."
             with open(os.path.join(target, "test.log2"), "w") as f:
@@ -244,7 +244,7 @@ class TestSyncFunctionality(unittest.TestCase):
     def testNoSync(self):
         """Sync should not run on a single node."""
 
-        def sync_func(source, target):
+        def sync_func(source, target, exclude=None):
             pass
 
         sync_config = tune.SyncConfig(syncer=sync_func)
