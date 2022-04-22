@@ -15,7 +15,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-import warnings
 
 from inspect import isclass
 from shlex import quote
@@ -98,13 +97,12 @@ def validate_sync_config(sync_config: "SyncConfig"):
         sync_config.node_sync_period = -1
         sync_config.cloud_sync_period = -1
 
-        warnings.warn(
+        raise DeprecationWarning(
             "The `node_sync_period` and "
             "`cloud_sync_period` properties of `tune.SyncConfig` are "
             "deprecated. Pass the `sync_period` property instead. "
             "\nFor now, the lower of the two values (if provided) will "
             f"be used as the sync_period. This value is: {sync_period}",
-            DeprecationWarning,
         )
 
     if sync_config.sync_to_cloud or sync_config.sync_to_driver:
@@ -119,7 +117,7 @@ def validate_sync_config(sync_config: "SyncConfig"):
         sync_config.sync_to_cloud = None
         sync_config.sync_to_driver = None
 
-        warnings.warn(
+        raise DeprecationWarning(
             "The `sync_to_cloud` and `sync_to_driver` properties of "
             "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
             "instead. Presence of an `upload_dir` decides if checkpoints "
@@ -127,7 +125,6 @@ def validate_sync_config(sync_config: "SyncConfig"):
             "automatically disabled if an `upload_dir` is given."
             f"\nFor now, as the upload dir is {help}, the respective "
             f"syncer is used. This value is: {syncer}",
-            DeprecationWarning,
         )
 
 
