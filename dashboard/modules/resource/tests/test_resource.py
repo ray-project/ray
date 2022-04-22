@@ -120,12 +120,6 @@ def test_all(ray_start_cluster):
 
     # Check cluster resource usage
     cluster_resource_usage = get_check_and_parse("/usage/cluster")
-
-    assert cluster_resource_usage["g"] == [
-        {"resource_set": {"CPU": 1.0, "GPU": 1.0}, "count": 4}
-    ]
-
-    assert len(cluster_resource_usage["f"]) == 2
     f_resources = [
         {
             "resource_set": {"memory": 1000.0, "CPU": 1.0, "custom_a": 2.0},
@@ -136,11 +130,21 @@ def test_all(ray_start_cluster):
             "count": 4,
         },
     ]
-    assert all([r in cluster_resource_usage["f"] for r in f_resources])
-
-    assert cluster_resource_usage["Actor"] == [
+    g_resources = [
+        {"resource_set": {"CPU": 1.0, "GPU": 1.0}, "count": 4}
+    ]
+    actor_resources = [
         {"resource_set": {"CPU": 1.0, "custom_b": 1.0}, "count": 16}
     ]
+
+    assert cluster_resource_usage["g"]["resource_set_list"] == g_resources
+
+    assert len(cluster_resource_usage["f"]["resource_set_list"]) == 2
+
+    assert all([r in cluster_resource_usage["f"]["resource_set_list"]
+               for r in f_resources])
+
+    assert cluster_resource_usage["Actor"]["resource_set_list"] == actor_resources
 
     # Check nodes resource usage
     nodes_resource_usage = get_check_and_parse("/usage/nodes")
@@ -148,27 +152,13 @@ def test_all(ray_start_cluster):
     assert len(nodes_resource_usage) == 2
     for node_id, resources in nodes_resource_usage.items():
         if node_id == node_a_id:
-            assert resources["g"] == [
-                {"resource_set": {"CPU": 1.0, "GPU": 1.0}, "count": 4}
-            ]
+            assert resources["g"]["resource_set_list"] == g_resources
 
-            assert len(resources["f"]) == 2
-            f_resources = [
-                {
-                    "resource_set": {"memory": 1000.0, "CPU": 1.0, "custom_a": 2.0},
-                    "count": 4,
-                },
-                {
-                    "resource_set": {"memory": 1000.0, "CPU": 1.0, "custom_a": 1.0},
-                    "count": 4,
-                },
-            ]
-            assert all([r in resources["f"] for r in f_resources])
+            assert len(resources["f"]["resource_set_list"]) == 2
+            assert all([r in resources["f"]["resource_set_list"] for r in f_resources])
             assert "Actor" not in resources
         else:
-            assert resources["Actor"] == [
-                {"resource_set": {"CPU": 1.0, "custom_b": 1.0}, "count": 16}
-            ]
+            assert resources["Actor"]["resource_set_list"] == actor_resources
             assert "f" not in resources
             assert "g" not in resources
 
