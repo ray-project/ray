@@ -89,7 +89,9 @@ class StateAPIManager:
 
         result = []
         for message in reply.actor_table_data:
-            data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
+            data = self._message_to_dict(
+                message=message, fields_to_decode=["actor_id", "owner_id"]
+            )
             data = filter_fields(data, ActorState)
             result.append(data)
 
