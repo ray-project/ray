@@ -79,9 +79,7 @@ def create_replica_wrapper(
             )
 
             if import_path is not None:
-                logger.info(f">>>> import_path: {import_path}")
                 module_name, attr_name = parse_import_path(import_path)
-                logger.info(f">>>> module_name: {module_name}, attr_name: {attr_name}")
                 deployment_def = getattr(import_module(module_name), attr_name)
                 # For ray or serve decorated class or function, strip to return
                 # original body
