@@ -41,37 +41,26 @@ class TestSyncFunctionality(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testSyncConfigDeprecation(self):
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(node_sync_period=4, cloud_sync_period=8)
-            self.assertEqual(sync_conf.sync_period, 4)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(node_sync_period=4, cloud_sync_period=8)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(node_sync_period=4)
-            self.assertEqual(sync_conf.sync_period, 4)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(node_sync_period=4)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(cloud_sync_period=8)
-            self.assertEqual(sync_conf.sync_period, 8)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(cloud_sync_period=8)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(
-                sync_to_driver="a", sync_to_cloud="b", upload_dir=None
-            )
-            self.assertEqual(sync_conf.syncer, "a")
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", sync_to_cloud="b", upload_dir=None)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(
-                sync_to_driver="a", sync_to_cloud="b", upload_dir="c"
-            )
-            self.assertEqual(sync_conf.syncer, "b")
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", sync_to_cloud="b", upload_dir="c")
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
-            self.assertEqual(sync_conf.syncer, None)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(sync_to_driver="a", upload_dir="c")
-            self.assertEqual(sync_conf.syncer, None)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", upload_dir="c")
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testCloudProperString(self):
@@ -159,7 +148,7 @@ class TestSyncFunctionality(unittest.TestCase):
         tmpdir2 = tempfile.mkdtemp()
         os.mkdir(os.path.join(tmpdir2, "foo"))
 
-        def sync_func(local, remote):
+        def sync_func(local, remote, exclude=None):
             for filename in glob.glob(os.path.join(local, "*.json")):
                 shutil.copy(filename, remote)
 
