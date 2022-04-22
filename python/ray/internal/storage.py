@@ -82,7 +82,7 @@ class KVClient:
         """Use storage.get_client() to construct KVClient."""
         self.fs = fs
         # make root path absolute, otherwise `_resolve_path` would fail
-        # when comparing root path and absolution paths.
+        # when comparing root path and absolute paths.
         self.root = Path(prefix).resolve()
 
     def put(self, path: str, value: bytes) -> None:
