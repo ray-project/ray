@@ -258,7 +258,7 @@ class ResultThread(threading.Thread):
                 self._callback(aggregated_batch_results[0])
 
     def stop(self):
-        # Call this to interrupt the run function. 
+        # Call this to interrupt the run function.
         # The run() will terminate when all pending jobs have completed.
         self._stop_event.set()
         # Push a non-event to trigger to unblock the run function if it is waiting.
@@ -388,7 +388,7 @@ class IMapIterator:
         actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
         chunk_iterator = itertools.islice(self._iterator, self._chunksize)
 
-        # Check whether we have run out of samples. 
+        # Check whether we have run out of samples.
         # This consumes the original iterator, so we convert to a list and back
         chunk_list = list(chunk_iterator)
         if len(chunk_list) < self._chunksize:
