@@ -1,4 +1,5 @@
 import random
+from collections import defaultdict
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
+from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
@@ -131,6 +133,53 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular, use_push_based_shuffle)
         == 2
     )
     assert ds.sort("value").count() == 0
+
+
+def test_push_based_shuffle_schedule():
+    def _test(num_input_blocks, merge_factor, num_cpus_per_node_map):
+        num_cpus = sum(v for v in num_cpus_per_node_map.values())
+        schedule = PushBasedShufflePlan._compute_shuffle_schedule(
+            num_cpus_per_node_map, num_input_blocks, merge_factor, num_input_blocks
+        )
+        # All input blocks will be processed.
+        assert (
+            schedule.num_rounds * schedule.num_map_tasks_per_round >= num_input_blocks
+        )
+        # Each round of tasks does not over-subscribe CPUs.
+        assert (
+            schedule.num_map_tasks_per_round + schedule.num_merge_tasks_per_round
+            <= max(num_cpus, 2)
+        )
+        # Merge factor between map : merge tasks is approximately correct.
+        if schedule.num_map_tasks_per_round > merge_factor:
+            actual_merge_factor = (
+                schedule.num_map_tasks_per_round // schedule.num_merge_tasks_per_round
+            )
+            next_highest_merge_factor = schedule.num_map_tasks_per_round // (
+                schedule.num_merge_tasks_per_round + 1
+            )
+            assert next_highest_merge_factor <= merge_factor <= actual_merge_factor
+        else:
+            assert schedule.num_merge_tasks_per_round == 1
+
+        # Tasks are evenly distributed.
+        tasks_per_node = defaultdict(int)
+        for node_id in schedule.merge_task_placement:
+            tasks_per_node[node_id] += 1
+        low = min(tasks_per_node.values())
+        high = low + 1
+        assert low <= max(tasks_per_node.values()) <= high
+
+        # Reducers are evenly distributed across mergers.
+        low = min(schedule.num_reducers_per_merge_idx)
+        high = low + 1
+        assert low <= max(schedule.num_reducers_per_merge_idx) <= high
+
+    for num_cpus in range(1, 20):
+        _test(20, 3, {"node1": num_cpus})
+    _test(20, 3, {"node1": 100})
+    _test(100, 3, {"node1": 10, "node2": 10, "node3": 10})
+    _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
 
 
 if __name__ == "__main__":

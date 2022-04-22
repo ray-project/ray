@@ -19,7 +19,6 @@ block and becomes part of the new, sorted dataset.
 from typing import List, Any, Callable, TypeVar, Tuple, Union
 
 import numpy as np
-import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder

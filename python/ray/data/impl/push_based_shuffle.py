@@ -22,25 +22,55 @@ U = TypeVar("U")
 class _PushBasedShuffleTaskSchedule:
     def __init__(
         self,
+        output_num_blocks: int,
+        num_rounds: int,
         num_map_tasks_per_round: int,
         num_merge_tasks_per_round: int,
-        merge_task_options: List[Dict[str, Any]],
+        merge_task_placement: List[str],
     ):
+        self.num_rounds = num_rounds
         self.num_map_tasks_per_round = num_map_tasks_per_round
         self.num_merge_tasks_per_round = num_merge_tasks_per_round
-        self.merge_task_options = merge_task_options
+        self.merge_task_placement = merge_task_placement
+        self._merge_task_options = [
+            {"scheduling_strategy": NodeAffinitySchedulingStrategy(node_id, soft=True)}
+            for node_id in self.merge_task_placement
+        ]
 
-    def get_merge_partition_size(self, merge_idx: int, output_num_blocks: int):
+        self._compute_reducers_per_merge_task(output_num_blocks)
+
+    def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
+        """
+        Each intermediate merge task will produce outputs for a partition of P
+        final reduce tasks. This helper function returns P based on the merge
+        task index.
+        """
+        return self.num_reducers_per_merge_idx[merge_idx]
+
+    def get_merge_idx_for_reducer_idx(self, reducer_idx: int) -> int:
+        return self.reducer_idx_to_merge_idx[reducer_idx]
+
+    def get_merge_task_options(self, merge_idx):
+        return self._merge_task_options[merge_idx]
+
+    def _compute_reducers_per_merge_task(self, output_num_blocks):
         """
         Each intermediate merge task will produce outputs for a partition of P
         final reduce tasks. This helper function computes P based on the merge
         task index.
         """
-        partition_size = output_num_blocks // self.num_merge_tasks_per_round
-        extra_blocks = output_num_blocks % self.num_merge_tasks_per_round
-        if merge_idx < extra_blocks:
-            partition_size += 1
-        return partition_size
+        self.num_reducers_per_merge_idx = []
+        self.reducer_idx_to_merge_idx = []
+        for merge_idx in range(self.num_merge_tasks_per_round):
+            partition_size = output_num_blocks // self.num_merge_tasks_per_round
+            extra_blocks = output_num_blocks % self.num_merge_tasks_per_round
+            if merge_idx < extra_blocks:
+                partition_size += 1
+
+            self.num_reducers_per_merge_idx.append(partition_size)
+            for _ in range(partition_size):
+                if len(self.reducer_idx_to_merge_idx) < output_num_blocks:
+                    self.reducer_idx_to_merge_idx.append(merge_idx)
 
 
 class PushBasedShufflePlan(ShuffleOp):
@@ -145,12 +175,10 @@ class PushBasedShufflePlan(ShuffleOp):
 
         def submit_merge_task(arg):
             merge_idx, map_results = arg
-            num_merge_returns = schedule.get_merge_partition_size(
-                merge_idx, output_num_blocks
-            )
+            num_merge_returns = schedule.get_num_reducers_per_merge_idx(merge_idx)
             merge_result = shuffle_merge.options(
                 num_returns=1 + num_merge_returns,
-                **schedule.merge_task_options[merge_idx],
+                **schedule.get_merge_task_options(merge_idx),
             ).remote(
                 *map_results,
                 reduce_args=self._reduce_args,
@@ -160,8 +188,11 @@ class PushBasedShufflePlan(ShuffleOp):
 
         # Compute all constants used for task scheduling.
         num_cpus_per_node_map = _get_num_cpus_per_node_map()
-        schedule = _compute_shuffle_schedule(
-            num_cpus_per_node_map, len(input_blocks_list), merge_factor
+        schedule = self._compute_shuffle_schedule(
+            num_cpus_per_node_map,
+            len(input_blocks_list),
+            merge_factor,
+            output_num_blocks,
         )
 
         # ObjectRef results from the last round of tasks. Used to add
@@ -257,36 +288,30 @@ class PushBasedShufflePlan(ShuffleOp):
         shuffle_reduce = cached_remote_fn(self.reduce)
         # Execute the final reduce stage.
         shuffle_reduce_out = []
-        for merge_idx in range(schedule.num_merge_tasks_per_round):
-            num_merge_returns = schedule.get_merge_partition_size(
-                merge_idx, output_num_blocks
-            )
-            for reduce_idx in range(num_merge_returns):
-                # Submit one partition of reduce tasks, one for each of the P
-                # outputs produced by the corresponding merge task.
-                # We also add the merge task arguments so that the reduce task
-                # is colocated with its inputs.
-                shuffle_reduce_out.append(
-                    shuffle_reduce.options(
-                        **reduce_ray_remote_args,
-                        **schedule.merge_task_options[merge_idx],
-                        num_returns=2,
-                    ).remote(
-                        *self._reduce_args,
-                        *[
-                            merge_results[reduce_idx]
-                            for merge_results in all_merge_results[merge_idx]
-                        ],
-                    )
+        for reducer_idx in range(output_num_blocks):
+            merge_idx = schedule.get_merge_idx_for_reducer_idx(reducer_idx)
+            # Submit one partition of reduce tasks, one for each of the P
+            # outputs produced by the corresponding merge task.
+            # We also add the merge task arguments so that the reduce task
+            # is colocated with its inputs.
+            shuffle_reduce_out.append(
+                shuffle_reduce.options(
+                    **reduce_ray_remote_args,
+                    **schedule.get_merge_task_options(merge_idx),
+                    num_returns=2,
+                ).remote(
+                    *self._reduce_args,
+                    *[
+                        merge_results.pop(0)
+                        for merge_results in all_merge_results[merge_idx]
+                    ],
                 )
-            # Eagerly delete the merge outputs in order to release the blocks'
-            # memory.
-            del all_merge_results[merge_idx]
-
-        assert len(all_merge_results) == 0, (
-            "Reduce stage did not process outputs from all merge tasks: "
-            f"{list(all_merge_results.keys())}"
-        )
+            )
+        for merge_idx, merge_results in enumerate(all_merge_results):
+            assert all(len(merge_result) == 0 for merge_result in merge_results), (
+                "Reduce stage did not process outputs from merge tasks at index: "
+                f"{merge_idx}"
+            )
         assert (
             len(shuffle_reduce_out) == output_num_blocks
         ), f"Expected {output_num_blocks} outputs, produced {len(shuffle_reduce_out)}"
@@ -313,9 +338,7 @@ class PushBasedShufflePlan(ShuffleOp):
         parts = []
         merge_idx = 0
         while mapper_outputs:
-            partition_size = schedule.get_merge_partition_size(
-                merge_idx, output_num_blocks
-            )
+            partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
             parts.append(mapper_outputs[:partition_size])
             mapper_outputs = mapper_outputs[partition_size:]
             merge_idx += 1
@@ -349,6 +372,90 @@ class PushBasedShufflePlan(ShuffleOp):
         )
         return [meta] + merged_outputs
 
+    @staticmethod
+    def _compute_shuffle_schedule(
+        num_cpus_per_node_map: Dict[str, int],
+        num_input_blocks: int,
+        merge_factor: int,
+        num_output_blocks: int,
+    ) -> _PushBasedShuffleTaskSchedule:
+        num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
+        task_parallelism = min(num_cpus_total, num_input_blocks)
+
+        num_tasks_per_map_merge_group = merge_factor + 1
+        num_merge_tasks_per_round = max(
+            task_parallelism // num_tasks_per_map_merge_group, 1
+        )
+        num_map_tasks_per_round = max(task_parallelism - num_merge_tasks_per_round, 1)
+
+        num_rounds = math.ceil(num_input_blocks / num_map_tasks_per_round)
+        # Scheduling args for assigning merge tasks to nodes. We use node-affinity
+        # scheduling here to colocate merge tasks that output to the same
+        # reducer.
+        merge_task_placement = PushBasedShufflePlan._compute_merge_task_placement(
+            num_merge_tasks_per_round, merge_factor, num_cpus_per_node_map
+        )
+        return _PushBasedShuffleTaskSchedule(
+            num_output_blocks,
+            num_rounds,
+            num_map_tasks_per_round,
+            num_merge_tasks_per_round,
+            merge_task_placement,
+        )
+
+    @staticmethod
+    def _compute_merge_task_placement(
+        num_merge_tasks_per_round: int,
+        merge_factor: int,
+        num_cpus_per_node_map: Dict[str, int],
+    ) -> List[str]:
+        """
+        Compute the task options needed to schedule merge tasks.
+
+        Each merge task should be grouped with `merge_factor` map tasks for
+        pipelining. These groups should then be spread across nodes according
+        to CPU availability for load-balancing. Across the rounds of merge
+        tasks, we also want to make sure that the i-th task from each round is
+        colocated on the same node to reduce data movement during the final
+        reduce stage.
+
+        Args:
+            num_merge_tasks_per_round: The total number of merge tasks in each
+                round.
+            merge_factor: The ratio of map : merge tasks.
+            num_cpus_per_node_map: A map from node ID to the number of CPUs
+                available on that node.
+
+        Returns: A list with num_merge_tasks_per_round, where the i-th element
+            is the node ID where the i-th merge task should be placed.
+        """
+        merge_task_placement = []
+        merge_tasks_assigned = 0
+        node_ids = list(num_cpus_per_node_map)
+        leftover_cpu_map = {}
+        while (
+            merge_tasks_assigned < num_merge_tasks_per_round and num_cpus_per_node_map
+        ):
+            node_id = node_ids[merge_tasks_assigned % len(node_ids)]
+            # We group `merge_factor` map tasks with 1 merge task.
+            if num_cpus_per_node_map[node_id] >= merge_factor + 1:
+                num_cpus_per_node_map[node_id] -= merge_factor + 1
+                merge_task_placement.append(node_id)
+                merge_tasks_assigned += 1
+            else:
+                leftover_cpu_map[node_id] = num_cpus_per_node_map.pop(node_id)
+                node_ids.remove(node_id)
+        while merge_tasks_assigned < num_merge_tasks_per_round:
+            node_id = max(leftover_cpu_map, key=leftover_cpu_map.get)
+            # We should have enough CPUs to schedule a round of merge tasks in
+            # parallel.
+            assert leftover_cpu_map[node_id] != 0
+            assert leftover_cpu_map[node_id] <= merge_factor
+            merge_task_placement.append(node_id)
+            merge_tasks_assigned += 1
+            leftover_cpu_map[node_id] -= 1
+        return merge_task_placement
+
 
 def _execute_pipelined_stage(
     stage_fn: Callable[[T], Tuple[ObjectRef, U]],
@@ -377,83 +484,6 @@ def _execute_pipelined_stage(
         metadata_refs.append(metadata_ref)
         data_outputs.append(data_output)
     return prev_metadata, metadata_refs, data_outputs
-
-
-def _compute_merge_task_options(
-    num_merge_tasks_per_round: int,
-    merge_factor: int,
-    num_cpus_per_node_map: Dict[str, int],
-):
-    """
-    Compute the task options needed to schedule merge tasks.
-
-    Each merge task should be grouped with `merge_factor` map tasks for
-    pipelining. These groups should then be spread across nodes according
-    to CPU availability for load-balancing. Across the rounds of merge
-    tasks, we also want to make sure that the i-th task from each round is
-    colocated on the same node to reduce data movement during the final
-    reduce stage.
-
-    Args:
-        num_merge_tasks_per_round: The total number of merge tasks in each
-            round.
-        merge_factor: The ratio of map : merge tasks.
-        num_cpus_per_node_map: A map from node ID to the number of CPUs
-            available on that node.
-    """
-    merge_to_node_map = []
-    merge_tasks_assigned = 0
-    node_ids = list(num_cpus_per_node_map)
-    leftover_cpu_map = {}
-    while merge_tasks_assigned < num_merge_tasks_per_round and num_cpus_per_node_map:
-        node_id = node_ids[merge_tasks_assigned % len(node_ids)]
-        # We group `merge_factor` map tasks with 1 merge task.
-        if num_cpus_per_node_map[node_id] >= merge_factor + 1:
-            num_cpus_per_node_map[node_id] -= merge_factor + 1
-            merge_to_node_map.append(node_id)
-            merge_tasks_assigned += 1
-        else:
-            leftover_cpu_map[node_id] = num_cpus_per_node_map.pop(node_id)
-            node_ids.remove(node_id)
-    while merge_tasks_assigned < num_merge_tasks_per_round:
-        node_id = max(leftover_cpu_map, key=leftover_cpu_map.get)
-        # We should have enough CPUs to schedule a round of merge tasks in
-        # parallel.
-        assert leftover_cpu_map[node_id] != 0
-        assert leftover_cpu_map[node_id] <= merge_factor
-        merge_to_node_map.append(node_id)
-        merge_tasks_assigned += 1
-        leftover_cpu_map[node_id] -= 1
-    merge_task_options = [
-        {"scheduling_strategy": NodeAffinitySchedulingStrategy(node_id, soft=True)}
-        for node_id in merge_to_node_map
-    ]
-    return merge_task_options
-
-
-def _compute_shuffle_schedule(
-    num_cpus_per_node_map: Dict[str, int], num_input_blocks: int, merge_factor: int
-) -> _PushBasedShuffleTaskSchedule:
-    num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
-    task_parallelism = min(num_cpus_total, num_input_blocks)
-    # Total number of merge tasks.
-    num_merge_tasks = math.ceil(num_input_blocks / merge_factor)
-    # Number of map-merge rounds.
-    num_rounds = math.ceil((num_input_blocks + num_merge_tasks) / task_parallelism)
-    # M: Number of map tasks in one map-merge round.
-    num_map_tasks_per_round = math.ceil(num_input_blocks / num_rounds)
-    # N: Number of merge tasks in one map-merge round. Each map_partition
-    # task will send one output to each of these merge tasks.
-    num_merge_tasks_per_round = math.ceil(num_merge_tasks / num_rounds)
-    # Scheduling args for assigning merge tasks to nodes. We use node-affinity
-    # scheduling here to colocate merge tasks that output to the same
-    # reducer.
-    merge_task_options = _compute_merge_task_options(
-        num_merge_tasks_per_round, merge_factor, num_cpus_per_node_map
-    )
-    return _PushBasedShuffleTaskSchedule(
-        num_map_tasks_per_round, num_merge_tasks_per_round, merge_task_options
-    )
 
 
 def _get_num_cpus_per_node_map() -> Dict[str, int]:
