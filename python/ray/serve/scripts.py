@@ -22,7 +22,7 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.serve.api import build as build_app
-from ray.serve.api import Application
+from ray.serve.application import Application
 from ray.serve.deployment_graph import (
     FunctionNode,
     ClassNode,
@@ -140,7 +140,7 @@ def shutdown(address: str, namespace: str):
         address=address,
         namespace=namespace,
     )
-    serve.api._connect()
+    serve.context._connect()
     serve.shutdown()
 
 

@@ -116,7 +116,7 @@ def create_replica_wrapper(
             # Set the controller name so that serve.connect() in the user's
             # code will connect to the instance that this deployment is running
             # in.
-            ray.serve.api._set_internal_replica_context(
+            ray.serve.context.set_internal_replica_context(
                 deployment_name,
                 replica_tag,
                 controller_name,
@@ -148,7 +148,7 @@ def create_replica_wrapper(
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
 
                 # Setting the context again to update the servable_object.
-                ray.serve.api._set_internal_replica_context(
+                ray.serve.context.set_internal_replica_context(
                     deployment_name,
                     replica_tag,
                     controller_name,
@@ -201,8 +201,10 @@ def create_replica_wrapper(
             return ray.get_runtime_context().node_id
 
         async def reconfigure(
-            self, user_config: Optional[Any] = None
+            self, user_config: Optional[Any] = None, _after: Optional[Any] = None
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            # Unused `_after` argument is for scheduling: passing an ObjectRef
+            # allows delaying reconfiguration until after this call has returned.
             if self.replica is None:
                 await self._initialize_replica()
             if user_config is not None:
