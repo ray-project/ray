@@ -1,25 +1,17 @@
 import pytest
-import os
 import sys
-from typing import TypeVar, Union
-
-import numpy as np
-import requests
+from typing import Union
+import starlette
 
 import ray
 from ray import serve
 from ray.serve.application import Application
 from ray.serve.api import build as build_app
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.pipeline.api import build as pipeline_build
 from ray.serve.deployment_graph import ClassNode, InputNode
 from ray.serve.drivers import DAGDriver
-import starlette.requests
 
 
-def maybe_build(
-    node: ClassNode, use_build: bool
-) -> Union[Application, ClassNode]:
+def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
     if use_build:
         return Application.from_dict(build_app(node).to_dict())
     else:
@@ -42,7 +34,8 @@ class Counter:
         return self.val
 
 
-def test_two_dags_shared_instance(serve_instance):
+@pytest.mark.parametrize("use_build", [False, True])
+def test_two_dags_shared_instance(serve_instance, use_build):
     """Test classmethod chain behavior is consistent across core and serve dag.
 
     Note this only works if serve also has one replica given each class method
@@ -59,26 +52,28 @@ def test_two_dags_shared_instance(serve_instance):
         counter.inc.bind(input_1)
         dag = counter.get.bind()
         serve_dag = DAGDriver.options(route_prefix="/serve_dag").bind(
-            dag, input_schema=json_resolver
+            dag,
+            input_schema="ray.serve.tests.test_deployment_graph_classmethod.json_resolver",
         )
 
     with InputNode() as _:
         counter.inc.bind(10)
         counter.inc.bind(20)
         other_dag = counter.get.bind()
-        other_serve_dag = DAGDriver.options(
-            route_prefix="/other_serve_dag"
-        ).bind(other_dag, input_schema=json_resolver)
+        other_serve_dag = DAGDriver.options(route_prefix="/other_serve_dag").bind(
+            other_dag,
+            input_schema="ray.serve.tests.test_deployment_graph_classmethod.json_resolver",
+        )
 
     # First DAG
     assert ray.get(dag.execute(3)) == 5  # 0 + 2 + input(3)
-    serve_handle = serve.run(serve_dag)
+    serve_handle = serve.run(maybe_build(serve_dag, use_build))
     assert ray.get(serve_handle.predict.remote(3)) == 5  # 0 + 2 + input(3)
 
     # Second DAG with shared counter ClassNode
     assert ray.get(other_dag.execute(0)) == 32  # 0 + 2 + 10 + 20
-    other_serve_handle = serve.run(other_serve_dag)
-    assert ray.get(serve_handle.predict.remote(0)) == 32  # 0 + 2 + 10 + 20
+    other_serve_handle = serve.run(maybe_build(other_serve_dag, use_build))
+    assert ray.get(other_serve_handle.predict.remote(0)) == 32  # 0 + 2 + 10 + 20
 
 
 if __name__ == "__main__":
