@@ -16,7 +16,7 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 
 PYTHON_VERSION=$(python -c"from platform import python_version; print(python_version())")
 
-RAY_VERSIONS=("1.9.0")
+RAY_VERSIONS=("1.12.0")
 
 for RAY_VERSION in "${RAY_VERSIONS[@]}"
 do
