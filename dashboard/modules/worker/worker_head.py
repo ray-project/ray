@@ -17,7 +17,7 @@ class WorkerHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/v0/workers")
     async def get_workers(self, req) -> aiohttp.web.Response:
-        data = await self._dashboard_head.gcs_state_aggregator.get_workers()
+        data = await self._dashboard_head.state_aggregator.get_workers()
         return rest_response(
             success=True, message="", result=data, convert_google_style=False
         )

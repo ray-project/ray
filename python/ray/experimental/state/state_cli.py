@@ -14,6 +14,8 @@ from ray.experimental.state.api import (
     list_jobs,
     list_placement_groups,
     list_workers,
+    list_tasks,
+    list_objects,
 )
 
 
@@ -76,3 +78,17 @@ def jobs(ctx):
 def workers(ctx):
     url = ctx.obj["api_server_url"]
     pprint(list_workers(url))
+
+
+@list_state_cli_group.command()
+@click.pass_context
+def tasks(ctx):
+    url = ctx.obj["api_server_url"]
+    pprint(list_tasks(url))
+
+
+@list_state_cli_group.command()
+@click.pass_context
+def objects(ctx):
+    url = ctx.obj["api_server_url"]
+    pprint(list_objects(url))
