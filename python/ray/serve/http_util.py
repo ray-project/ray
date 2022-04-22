@@ -170,6 +170,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     # Delayed import to prevent ciruclar imports in workers.
     from fastapi import Depends, APIRouter
     from fastapi.routing import APIRoute
+    from pydantic import BaseModel
 
     def get_current_servable_instance():
         from ray import serve
@@ -234,7 +235,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
-        if route.response_model:
+        if route.response_model and isinstance(route.response_model, BaseModel):
             original_resp_fields = route.response_field.outer_type_.__fields__
             cloned_resp_fields = (
                 route.secure_cloned_response_field.outer_type_.__fields__
