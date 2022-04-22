@@ -194,9 +194,11 @@ class ResultThread(threading.Thread):
     def run(self):
         unready = copy.copy(self._object_refs)
         aggregated_batch_results = []
-        # Run for a specific number of objects (if self._total_object_refs > 0) or indefinitely (if self._total_object_refs == 0)
-        # In the latter case, a self._stop() command is required.
-        while (self._total_object_refs == 0) or (self._num_ready < self._total_object_refs):
+        # Run for a specific number of objects if self._total_object_refs > 0
+        # Run indefinitely if self._total_object_refs == 0, until stop event
+        while (self._total_object_refs == 0) or (
+            self._num_ready < self._total_object_refs
+        ):
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
             while True:
@@ -204,7 +206,7 @@ class ResultThread(threading.Thread):
                     # Block if we have no IDs to wait on *and* we are not stopping
                     block = (len(unready) == 0) and not self._stop_event.is_set()
                     new_object_ref = self._new_object_refs.get(block=block)
-                    # a None object is pushed onto the queue by the stopping process to unblock; if so, ignore it.
+                    # the stop function will push None onto the queue to unblock
                     if new_object_ref is not None:
                         self._add_object_ref(new_object_ref)
                         unready.append(new_object_ref)
@@ -256,9 +258,10 @@ class ResultThread(threading.Thread):
                 self._callback(aggregated_batch_results[0])
 
     def stop(self):
-        # Call this to interrupt the run function.
+        # Call this to interrupt the run function. 
+        # The run() will terminate when all pending jobs have completed.
         self._stop_event.set()
-        # Push a non-event to trigger the stop, to unblock the run function if it is waiting for input
+        # Push a non-event to trigger to unblock the run function if it is waiting.
         self.add_object_ref(None)
 
     def got_error(self):
@@ -360,13 +363,13 @@ class IMapIterator:
         try:
             self._iterator = iter(iterable)
         except TypeError:
-            # for compatibility with prior releases, assume we must encapsulate our non-iterable in a list
+            # for compatibility with prior releases, encapsulate non-iterable in a list
             iterable = [iterable]
             self._iterator = iter(iterable)
         if self._iterator == iterable:
             # we were passsed an iterator, so do not know the number of samples
             self._chunksize = chunksize or 1
-            result_list_size = 0 #len(self._pool._actor_pool) 
+            result_list_size = 0  # len(self._pool._actor_pool)
         else:
             self._chunksize = chunksize or pool._calculate_chunksize(iterable)
             result_list_size = div_round_up(len(iterable), chunksize)
@@ -385,7 +388,8 @@ class IMapIterator:
         actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
         chunk_iterator = itertools.islice(self._iterator, self._chunksize)
 
-        # conversion to list and back to check whether we have run out of samples, which consumes the orginal iterator
+        # Check whether we have run out of samples. 
+        # This consumes the original iterator, so we convert to a list and back
         chunk_list = list(chunk_iterator)
         if len(chunk_list) < self._chunksize:
             # we have reached the end of self._iterator
@@ -424,7 +428,9 @@ class OrderedIMapIterator(IMapIterator):
 
     def next(self, timeout=None):
         if len(self._ready_objects) == 0:
-            if self._finished_iterating and (self._next_chunk_index == len(self._submitted_chunks)):
+            if self._finished_iterating and (
+                self._next_chunk_index == len(self._submitted_chunks)
+            ):
                 # Stop the result_thread and wait for it to complete
                 self._result_thread.stop()
                 self._result_thread.join()
@@ -464,7 +470,9 @@ class UnorderedIMapIterator(IMapIterator):
 
     def next(self, timeout=None):
         if len(self._ready_objects) == 0:
-            if self._finished_iterating and (self._next_chunk_index == len(self._submitted_chunks)):
+            if self._finished_iterating and (
+                self._next_chunk_index == len(self._submitted_chunks)
+            ):
                 # Stop the result_thread and wait for it to complete
                 self._result_thread.stop()
                 self._result_thread.join()
