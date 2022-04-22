@@ -1,8 +1,9 @@
 import asyncio
 import logging
 
-from typing import List, Dict
+from dataclasses import dataclass
 from itertools import islice
+from typing import List, Dict, Union
 
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.memory_utils as memory_utils
@@ -25,6 +26,41 @@ from ray.runtime_env import RuntimeEnv
 logger = logging.getLogger(__name__)
 
 
+@dataclass(init=True)
+class StateApiResult:
+    # Returned data.
+    data: Union[dict, List[dict], Dict[str, JobInfo]] = None
+    # A list of warnings generated from the API that should be delivered to users.
+    warnings: List[str] = None
+
+
+GCS_QUERY_FAILURE_WARNING = (
+    "Failed to query data from GCS. It is due to "
+    "(1) GCS is unexpectedly failed. "
+    "(2) GCS is overloaded by lots of work. "
+    "(3) There's an uexpected network issues. Please check the GCS logs to "
+    "find the root cause."
+)
+RAYLET_QUERY_FAILURE_WARNING = (
+    "Failed to query data from some raylets. You might have data loss. "
+    "Queryed {total} raylets "
+    "and {network_failures} raylets failed to reply. It is due to "
+    "(1) Raylet is unexpectedly failed. "
+    "(2) Raylet is overloaded by lots of work. "
+    "(3) There's an uexpected network issues. Please check the Raylet logs to "
+    "find the root cause."
+)
+AGENT_QUERY_FAILURE_WARNING = (
+    "Failed to query data from some Ray agents. You might have data loss. "
+    "Queryed {total} Ray agents "
+    "and {network_failures} Ray agents failed to reply. It is due to "
+    "(1) Ray agent is unexpectedly failed. "
+    "(2) Ray agent is overloaded by lots of work. "
+    "(3) There's an uexpected network issues. Please check the Ray agent logs to "
+    "find the root cause."
+)
+
+
 # TODO(sang): Move the class to state/state_manager.py.
 # TODO(sang): Remove *State and replaces with Pydantic or protobuf
 # (depending on API interface standardization).
@@ -40,7 +76,7 @@ class StateAPIManager:
     def data_source_client(self):
         return self._client
 
-    async def list_actors(self, *, option: ListApiOptions) -> dict:
+    async def list_actors(self, *, option: ListApiOptions) -> StateApiResult:
         """List all actor information from the cluster.
 
         Returns:
@@ -48,6 +84,9 @@ class StateAPIManager:
             actor_data_in_dict's schema is in ActorState
         """
         reply = await self._client.get_all_actor_info(timeout=option.timeout)
+        if not reply:
+            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+
         result = []
         for message in reply.actor_table_data:
             data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
@@ -56,9 +95,11 @@ class StateAPIManager:
 
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
-        return {d["actor_id"]: d for d in islice(result, option.limit)}
+        return StateApiResult(
+            data={d["actor_id"]: d for d in islice(result, option.limit)}
+        )
 
-    async def list_placement_groups(self, *, option: ListApiOptions) -> dict:
+    async def list_placement_groups(self, *, option: ListApiOptions) -> StateApiResult:
         """List all placement group information from the cluster.
 
         Returns:
@@ -66,6 +107,9 @@ class StateAPIManager:
             pg_data_in_dict's schema is in PlacementGroupState
         """
         reply = await self._client.get_all_placement_group_info(timeout=option.timeout)
+        if not reply:
+            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+
         result = []
         for message in reply.placement_group_table_data:
 
@@ -78,9 +122,11 @@ class StateAPIManager:
 
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
-        return {d["placement_group_id"]: d for d in islice(result, option.limit)}
+        return StateApiResult(
+            data={d["placement_group_id"]: d for d in islice(result, option.limit)}
+        )
 
-    async def list_nodes(self, *, option: ListApiOptions) -> dict:
+    async def list_nodes(self, *, option: ListApiOptions) -> StateApiResult:
         """List all node information from the cluster.
 
         Returns:
@@ -88,6 +134,9 @@ class StateAPIManager:
             node_data_in_dict's schema is in NodeState
         """
         reply = await self._client.get_all_node_info(timeout=option.timeout)
+        if not reply:
+            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+
         result = []
         for message in reply.node_info_list:
             data = self._message_to_dict(message=message, fields_to_decode=["node_id"])
@@ -96,9 +145,11 @@ class StateAPIManager:
 
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
-        return {d["node_id"]: d for d in islice(result, option.limit)}
+        return StateApiResult(
+            data={d["node_id"]: d for d in islice(result, option.limit)}
+        )
 
-    async def list_workers(self, *, option: ListApiOptions) -> dict:
+    async def list_workers(self, *, option: ListApiOptions) -> StateApiResult:
         """List all worker information from the cluster.
 
         Returns:
@@ -106,6 +157,9 @@ class StateAPIManager:
             worker_data_in_dict's schema is in WorkerState
         """
         reply = await self._client.get_all_worker_info(timeout=option.timeout)
+        if not reply:
+            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+
         result = []
         for message in reply.worker_table_data:
             data = self._message_to_dict(
@@ -117,28 +171,39 @@ class StateAPIManager:
 
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
-        return {d["worker_id"]: d for d in islice(result, option.limit)}
+        return StateApiResult(
+            data={d["worker_id"]: d for d in islice(result, option.limit)}
+        )
 
-    def list_jobs(self, *, option: ListApiOptions) -> Dict[str, JobInfo]:
+    def list_jobs(self, *, option: ListApiOptions) -> StateApiResult:
         # TODO(sang): Support limit & timeout & async calls.
-        return self._client.get_job_info()
+        result = self._client.get_job_info()
+        if not result:
+            return StateApiResult(warnings=[GCS_QUERY_FAILURE_WARNING])
+        return StateApiResult(data=result)
 
-    async def list_tasks(self, *, option: ListApiOptions) -> dict:
+    async def list_tasks(self, *, option: ListApiOptions) -> StateApiResult:
         """List all task information from the cluster.
 
         Returns:
             {task_id -> task_data_in_dict}
             task_data_in_dict's schema is in TaskState
         """
+        raylet_ids = self._client.get_all_registered_raylet_ids()
         replies = await asyncio.gather(
             *[
                 self._client.get_task_info(node_id, timeout=option.timeout)
-                for node_id in self._client.get_all_registered_raylet_ids()
-            ]
+                for node_id in raylet_ids
+            ],
         )
 
+        network_failures = 0
         result = []
         for reply in replies:
+            if not reply:
+                network_failures += 1
+                continue
+
             tasks = reply.task_info_entries
             for task in tasks:
                 data = self._message_to_dict(
@@ -148,26 +213,44 @@ class StateAPIManager:
                 data = filter_fields(data, TaskState)
                 result.append(data)
 
+        warnings = (
+            [
+                RAYLET_QUERY_FAILURE_WARNING.format(
+                    total=len(raylet_ids), network_failures=network_failures
+                )
+            ]
+            if network_failures
+            else None
+        )
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
-        return {d["task_id"]: d for d in islice(result, option.limit)}
+        return StateApiResult(
+            data={d["task_id"]: d for d in islice(result, option.limit)},
+            warnings=warnings,
+        )
 
-    async def list_objects(self, *, option: ListApiOptions) -> dict:
+    async def list_objects(self, *, option: ListApiOptions) -> StateApiResult:
         """List all object information from the cluster.
 
         Returns:
             {object_id -> object_data_in_dict}
             object_data_in_dict's schema is in ObjectState
         """
+        raylet_ids = self._client.get_all_registered_raylet_ids()
         replies = await asyncio.gather(
             *[
                 self._client.get_object_info(node_id, timeout=option.timeout)
-                for node_id in self._client.get_all_registered_raylet_ids()
+                for node_id in raylet_ids
             ]
         )
 
+        network_failures = 0
         worker_stats = []
         for reply in replies:
+            if not reply:
+                network_failures += 1
+                continue
+
             for core_worker_stat in reply.core_workers_stats:
                 # NOTE: Set preserving_proto_field_name=False here because
                 # `construct_memory_table` requires a dictionary that has
@@ -193,11 +276,23 @@ class StateAPIManager:
             data = filter_fields(data, ObjectState)
             result.append(data)
 
+        warnings = (
+            [
+                RAYLET_QUERY_FAILURE_WARNING.format(
+                    total=len(raylet_ids), network_failures=network_failures
+                )
+            ]
+            if network_failures
+            else None
+        )
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
-        return {d["object_id"]: d for d in islice(result, option.limit)}
+        return StateApiResult(
+            data={d["object_id"]: d for d in islice(result, option.limit)},
+            warnings=warnings,
+        )
 
-    async def list_runtime_envs(self, *, option: ListApiOptions) -> List[dict]:
+    async def list_runtime_envs(self, *, option: ListApiOptions) -> StateApiResult:
         """List all runtime env information from the cluster.
 
         Returns:
@@ -205,14 +300,21 @@ class StateAPIManager:
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
+        agent_ids = self._client.get_all_registered_agent_ids()
         replies = await asyncio.gather(
             *[
                 self._client.get_runtime_envs_info(node_id, timeout=option.timeout)
-                for node_id in self._client.get_all_registered_agent_ids()
+                for node_id in agent_ids
             ]
         )
+
         result = []
+        network_failures = 0
         for reply in replies:
+            if not reply:
+                network_failures += 1
+                continue
+
             states = reply.runtime_env_states
             for state in states:
                 data = self._message_to_dict(message=state, fields_to_decode=[])
@@ -222,9 +324,20 @@ class StateAPIManager:
                 data = filter_fields(data, RuntimeEnvState)
                 result.append(data)
 
+        warnings = (
+            [
+                AGENT_QUERY_FAILURE_WARNING.format(
+                    total=len(agent_ids), network_failures=network_failures
+                )
+            ]
+            if network_failures
+            else None
+        )
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["ref_cnt"])
-        return list(islice(result, option.limit))
+        return StateApiResult(
+            data=list(islice(result, option.limit)), warnings=warnings
+        )
 
     def _message_to_dict(
         self,

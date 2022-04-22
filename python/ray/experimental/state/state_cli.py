@@ -32,6 +32,7 @@ def list_state_cli_group(ctx):
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         num_retries=20,
     )
+
     if api_server_url is None:
         raise ValueError(
             (
@@ -50,53 +51,53 @@ def list_state_cli_group(ctx):
 @click.pass_context
 def actors(ctx):
     url = ctx.obj["api_server_url"]
-    pprint(list_actors(url))
+    pprint(list_actors(api_server_url=url, _print_api_stats=True))
 
 
 @list_state_cli_group.command()
 @click.pass_context
 def placement_groups(ctx):
     url = ctx.obj["api_server_url"]
-    pprint(list_placement_groups(url))
+    pprint(list_placement_groups(api_server_url=url, _print_api_stats=True))
 
 
 @list_state_cli_group.command()
 @click.pass_context
 def nodes(ctx):
     url = ctx.obj["api_server_url"]
-    pprint(list_nodes(url))
+    pprint(list_nodes(api_server_url=url, _print_api_stats=True))
 
 
 @list_state_cli_group.command()
 @click.pass_context
 def jobs(ctx):
     url = ctx.obj["api_server_url"]
-    pprint(list_jobs(url))
+    pprint(list_jobs(api_server_url=url, _print_api_stats=True))
 
 
 @list_state_cli_group.command()
 @click.pass_context
 def workers(ctx):
     url = ctx.obj["api_server_url"]
-    pprint(list_workers(url))
+    pprint(list_workers(api_server_url=url, _print_api_stats=True))
 
 
 @list_state_cli_group.command()
 @click.pass_context
 def tasks(ctx):
     url = ctx.obj["api_server_url"]
-    pprint(list_tasks(url))
+    pprint(list_tasks(api_server_url=url, _print_api_stats=True))
 
 
 @list_state_cli_group.command()
 @click.pass_context
 def objects(ctx):
     url = ctx.obj["api_server_url"]
-    pprint(list_objects(url))
+    pprint(list_objects(api_server_url=url, _print_api_stats=True))
 
 
 @list_state_cli_group.command()
 @click.pass_context
 def runtime_envs(ctx):
     url = ctx.obj["api_server_url"]
-    pprint(list_runtime_envs(url))
+    pprint(list_runtime_envs(api_server_url=url, _print_api_stats=True))
