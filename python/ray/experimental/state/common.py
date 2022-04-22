@@ -1,5 +1,6 @@
 import logging
 
+from typing import List, Dict
 from dataclasses import dataclass, fields
 
 from ray.dashboard.modules.job.common import JobInfo
@@ -72,3 +73,29 @@ class ObjectState:
     submitted_task_ref_count: int
     contained_in_owned: int
     type: str
+
+
+@dataclass(init=True)
+class DetailedResourceSummary:
+    summary: "ResourceSummary"
+    usage: "TaskResourceUsage"
+
+
+@dataclass(init=True)
+class ResourceSummary:
+    available: Dict[str, float]
+    total: Dict[str, float]
+
+
+@dataclass(init=True)
+class TaskResourceUsage:
+    task_name: str
+    # List of resource sets used by this task
+    # and their respective counts
+    resource_set_counts: List["ResourceSetCount"]
+
+
+@dataclass(init=True)
+class ResourceSetCount:
+    resource_set: Dict[str, float]
+    count: int

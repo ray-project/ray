@@ -43,7 +43,7 @@ def test_all(ray_start_cluster):
 
     gs = [g.remote() for _ in range(4)]
     actors = [Actor.remote() for _ in range(16)]
-    # Make sure tasks requiring special resources can be placed
+    # Make sure tasks requiring special resources have been placed
     time.sleep(1)
     fs = [f.remote() for _ in range(4)]
     fs_2 = [
@@ -64,18 +64,29 @@ def test_all(ray_start_cluster):
         return json.loads(response.text)
 
     # Check cluster total resources
-    cluster_total_resources = get_check_and_parse("/total/cluster")
+    cluster_resources_summary = get_check_and_parse("/summary/cluster")
 
-    assert cluster_total_resources["custom_b"] == 16
-    assert cluster_total_resources["custom_a"] == 16
-    assert cluster_total_resources["GPU"] == 4
-    assert cluster_total_resources["CPU"] == 64
+    cluster_resources_total = cluster_resources_summary["total"]
+
+    assert cluster_resources_total["custom_b"] == 16
+    assert cluster_resources_total["custom_a"] == 16
+    assert cluster_resources_total["GPU"] == 4
+    assert cluster_resources_total["CPU"] == 64
+
+    # Check cluster available resources
+    cluster_resources_available = cluster_resources_summary["available"]
+
+    assert "custom_b" not in cluster_resources_available
+    assert "GPU" not in cluster_resources_available
+    assert cluster_resources_available["custom_a"] == 4.0
+    assert cluster_resources_available["CPU"] == 64 - 8 - 4 - 16
 
     # Check nodes total resources
-    nodes_available_resources = get_check_and_parse("/total/nodes")
+    nodes_resources_summary = get_check_and_parse("/summary/nodes")
+    nodes_resources_total = nodes_resources_summary["total"]
 
-    assert len(nodes_available_resources) == 2
-    for node_id, resources in nodes_available_resources.items():
+    assert len(nodes_resources_total) == 2
+    for node_id, resources in nodes_resources_total.items():
         if "custom_a" in resources:
             node_a_id = node_id
             assert resources["CPU"] == 32.0
@@ -88,19 +99,11 @@ def test_all(ray_start_cluster):
             assert "GPU" not in resources
             assert "custom_a" not in resources
 
-    # Check cluster available resources
-    cluster_available_resources = get_check_and_parse("/available/cluster")
-
-    assert "custom_b" not in cluster_available_resources
-    assert "GPU" not in cluster_available_resources
-    assert cluster_available_resources["custom_a"] == 4.0
-    assert cluster_available_resources["CPU"] == 64 - 8 - 4 - 16
-
     # Check nodes available resources
-    nodes_available_resources = get_check_and_parse("/available/nodes")
+    nodes_resources_available = nodes_resources_summary["available"]
 
-    assert len(nodes_available_resources) == 2
-    for node_id, resources in nodes_available_resources.items():
+    assert len(nodes_resources_available) == 2
+    for node_id, resources in nodes_resources_available.items():
         if node_id == node_a_id:
             assert resources["custom_a"] == 4.0
             assert resources["CPU"] == 32 - 12

@@ -17,6 +17,12 @@ from ray.experimental.state.common import (
     WorkerState,
     TaskState,
     ObjectState,
+    ResourceSummary,
+    TaskResourceUsage,
+)
+from ray.experimental.state.utils import (
+    get_task_name,
+    aggregate_resource_usage_for_task,
 )
 from ray.experimental.state.state_manager import StateDataSourceClient
 
@@ -205,11 +211,119 @@ class StateAPIManager:
             result[data["object_id"]] = data
         return result
 
+    async def get_resource_summary(
+        self, per_node: bool = False
+    ) -> dict:
+        """Summarizes the total/available resources in the cluster.
+
+        Returns:
+            if per_node == True:
+                {node_id -> resource_summary_dict}
+            else:
+                resource_summary_dict
+            resource_summary_dict's schema is in ResourceSummary
+        """
+        resources_available = {}
+        resources_total = {}
+
+        def fill_resources(resources: dict, data_field: str, node_list: list):
+            for node in node_list:
+                data = self._message_to_dict(
+                    message=node,
+                    fields_to_decode=["node_id"],
+                )
+                if per_node:
+                    resources[data["node_id"]] = data[data_field]
+                else:
+                    for k, v in data[data_field].items():
+                        if k in resources:
+                            resources[k] += v
+                        else:
+                            resources[k] = v
+
+        async def fill_available_resources():
+            reply = await self.data_source_client.get_all_available_resources(
+                timeout=DEFAULT_RPC_TIMEOUT)
+            fill_resources(resources_available, "resources_available",
+                           reply.resources_list)
+
+        async def fill_total_resources():
+            reply = await self.data_source_client.get_all_node_info(
+                timeout=DEFAULT_RPC_TIMEOUT)
+            fill_resources(resources_total, "resources_total",
+                           reply.node_info_list)
+
+        await asyncio.gather(
+            *[fill_total_resources(), fill_available_resources()]
+        )
+        if per_node:
+            # Combine resources_total and resources_available into
+            # ResourceSummary per node
+            response = {}
+            all_node_ids = {k for k in resources_available}.union(
+                {k for k in resources_total})
+            for node_id in all_node_ids:
+                response[node_id] = filter_fields({
+                    "total": resources_total.get(node_id) or {},
+                    "available": resources_available.get(node_id) or {}
+                }, ResourceSummary)  # sanity check
+        else:
+            response = filter_fields({
+                "total": resources_total,
+                "available": resources_available
+            }, ResourceSummary)  # sanity check
+        return response
+
+    async def get_task_resource_usage(self, per_node: bool = False):
+        """Returns the resources usage per task/actor type in the cluster.
+
+        Returns:
+            if per_node == True:
+                {node_id -> task_resource_usage_dict}
+            else:
+                task_resource_usage_dict
+            task_resource_usage_dict's schema is in TaskResourceUsage
+        """
+        async def _fill_for_node(node_id: str, resource_usage: dict):
+            reply = await self._client.get_resource_usage_by_task(
+                    node_id, timeout=DEFAULT_RPC_TIMEOUT)
+
+            for task in reply.task_resource_usage:
+                task_name = get_task_name(task)
+                resource_set = self._message_to_dict(task.resource_usage)
+                aggregate_resource_usage_for_task(
+                    task_name, resource_set, resource_usage)
+
+        if per_node:
+            result = {}
+
+            async def _fill_result(node_id: str):
+                resource_usage = {}
+                _fill_for_node(node_id, resource_usage)
+                result[node_id] = resource_usage
+
+            await asyncio.gather(
+                *[
+                    _fill_result(node_id)
+                    for node_id in self._client.get_all_registered_raylet_ids()
+                ]
+            )
+        else:
+            resource_usage = {}
+            await asyncio.gather(
+                *[
+                    _fill_for_node(node_id, resource_usage)
+                    for node_id in self._client.get_all_registered_raylet_ids()
+                ]
+            )
+            result = resource_usage
+        return result
+
     def _message_to_dict(
         self,
         *,
         message,
-        fields_to_decode: List[str],
+        fields_to_decode: List[str] = None,
         preserving_proto_field_name: bool = True,
     ) -> dict:
         return dashboard_utils.message_to_dict(

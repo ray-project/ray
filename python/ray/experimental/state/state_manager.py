@@ -16,12 +16,16 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllNodeInfoReply,
     GetAllWorkerInfoRequest,
     GetAllWorkerInfoReply,
+    GetAllAvailableResourcesRequest,
+    GetAllAvailableResourcesReply,
 )
 from ray.core.generated.node_manager_pb2 import (
     GetTasksInfoRequest,
     GetTasksInfoReply,
     GetNodeStatsRequest,
     GetNodeStatsReply,
+    GetResourceUsageByTaskRequest,
+    GetResourceUsageByTaskReply
 )
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.node_manager_pb2_grpc import NodeManagerServiceStub
@@ -94,6 +98,12 @@ class StateDataSourceClient:
             gcs_channel
         )
         self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
+            gcs_channel
+        )
+        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
+            gcs_channel
+        )
+        self._gcs_node_resource_info_stub = gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(
             gcs_channel
         )
 
@@ -170,7 +180,7 @@ class StateDataSourceClient:
     ) -> GetTasksInfoReply:
         stub = self._raylet_stubs.get(node_id)
         if not stub:
-            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
+            raise ValueError(f"Raylet for the node id: {node_id} doesn't exist.")
 
         reply = await stub.GetTasksInfo(GetTasksInfoRequest(), timeout=timeout)
         return reply
@@ -181,10 +191,32 @@ class StateDataSourceClient:
     ) -> GetNodeStatsReply:
         stub = self._raylet_stubs.get(node_id)
         if not stub:
-            raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
+            raise ValueError(f"Raylet for the node id: {node_id} doesn't exist.")
 
         reply = await stub.GetNodeStats(
             GetNodeStatsRequest(include_memory_info=True),
             timeout=timeout,
         )
+        return reply
+
+    @handle_network_errors
+    async def get_all_available_resources(
+        self, timeout: int = None
+    ) -> GetAllAvailableResourcesReply:
+        request = GetAllAvailableResourcesRequest()
+        reply = await self._gcs_node_resource_info_stub.GetAllAvailableResources(
+            request, timeout=timeout
+        )
+        return reply
+
+    @handle_network_errors
+    async def get_resource_usage_by_task(
+        self, node_id: str, timeout: int = None
+    ) -> GetResourceUsageByTaskReply:
+        stub = self._raylet_stubs.get(node_id)
+        if not stub:
+            raise ValueError(f"Raylet for the node id: {node_id} doesn't exist.")
+
+        reply = await stub.GetResourceUsageByTask(
+            GetResourceUsageByTaskRequest(), timeout=timeout)
         return reply
