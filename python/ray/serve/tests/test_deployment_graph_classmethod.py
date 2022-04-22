@@ -8,7 +8,6 @@ from ray import serve
 from ray.serve.application import Application
 from ray.serve.api import build as build_app
 from ray.serve.deployment_graph import ClassNode, InputNode
-from ray.serve.drivers import DAGDriver
 
 
 def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
@@ -18,8 +17,19 @@ def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNod
         return node
 
 
-async def json_resolver(request: starlette.requests.Request):
-    return await request.json()
+@serve.deployment
+class DAGDriver:
+    def __init__(self, dag_handle):
+        self.dag_handle = dag_handle
+
+    async def predict(self, inp):
+        """Perform inference directly without HTTP."""
+        return await self.dag_handle.remote(inp)
+
+    async def __call__(self, request: starlette.requests.Request):
+        """HTTP endpoint of the DAG."""
+        input_data = await request.json()
+        return await self.predict(input_data)
 
 
 @serve.deployment
@@ -51,18 +61,14 @@ def test_two_dags_shared_instance(serve_instance, use_build):
         # Only applicable to current execution
         counter.inc.bind(input_1)
         dag = counter.get.bind()
-        serve_dag = DAGDriver.options(route_prefix="/serve_dag").bind(
-            dag,
-            input_schema="ray.serve.tests.test_deployment_graph_classmethod.json_resolver",
-        )
+        serve_dag = DAGDriver.options(route_prefix="/serve_dag").bind(dag)
 
     with InputNode() as _:
         counter.inc.bind(10)
         counter.inc.bind(20)
         other_dag = counter.get.bind()
         other_serve_dag = DAGDriver.options(route_prefix="/other_serve_dag").bind(
-            other_dag,
-            input_schema="ray.serve.tests.test_deployment_graph_classmethod.json_resolver",
+            other_dag
         )
 
     # First DAG
