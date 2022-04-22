@@ -1,0 +1,21 @@
+#!/bin/bash
+# This script is executed by Buildkite on the host machine.
+# In contrast, our build jobs are run in Docker containers.
+# This means that even though our build jobs write to
+# `/artifact-mount`, the directory on the host machine is
+# actually `/tmp/artifacts`.
+# Here, we cat all text files in artifact-mount/test-summaries.
+# These files contain a condensed summary of all failing pytest
+# tests to make it easy for users to see which tests are failing.
+# Because we print them here, we don't need to persist them as
+# artifacts, so we remove the directory afterwards.
+set -x
+if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summaries)" ]; then
+    echo "+++ :rotating_light: :rotating_light: :rotating_light: Failing test short summaries"
+    cat /tmp/artifacts/test-summaries/*.txt
+
+    # Remove test summaries files (don't actually upload as artifacts)
+    # This has to be done with docker to avoid permission issues
+    docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/test-summaries' || true
+    echo "---"
+fi

@@ -690,6 +690,44 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
 
+    append_short_test_summary(rep)
+    create_ray_logs_for_failed_test(rep)
+
+
+def append_short_test_summary(rep):
+    """Writes a short summary txt for failed tests to be printed later."""
+
+    # Only record failed test summaries
+    if rep.when != "call" or not rep.failed:
+        return
+
+    # No failing test information
+    if rep.longrepr is None:
+        return
+
+    # No failing test information
+    if not hasattr(rep.longrepr, "chain"):
+        return
+
+    summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
+
+    if not summary_dir:
+        return
+
+    if not os.path.exists(summary_dir):
+        os.makedirs(summary_dir)
+
+    summary_file = os.path.join(summary_dir, "test_summaries.txt")
+
+    with open(summary_file, "at") as fp:
+        for _tb, location_message, _ in rep.longrepr.chain:
+            fp.write(f"{rep.outcome.upper()} {rep.nodeid} - {location_message}\n")
+        fp.write("\n")
+
+
+def create_ray_logs_for_failed_test(rep):
+    """Creates artifact zip of /tmp/ray/session_latest/logs for failed tests"""
+
     # We temporarily restrict to Linux until we have artifact dirs
     # for Windows and Mac
     if platform.system() != "Linux":
