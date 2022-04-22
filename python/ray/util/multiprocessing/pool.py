@@ -370,7 +370,9 @@ class IMapIterator:
         chunk_list = list(chunk_iterator)
         if len(chunk_list) < self._chunksize:
             self._finished_iterating = True
-            return
+            if len(chunk_list) == 0:
+                # there is nothing to do, return.
+                return
         chunk_iterator = iter(chunk_list)
 
         new_chunk_id = self._pool._submit_chunk(
