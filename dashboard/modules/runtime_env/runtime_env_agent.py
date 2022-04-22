@@ -44,18 +44,32 @@ if os.environ.get("RAY_RUNTIME_ENV_SKIP_LOCAL_GC"):
     # Effectively disable local garbage collection by setting a large cache size limit.
     DEFAULT_CACHE_SIZE_GB = 100000000
 
-WORKING_DIR_CACHE_SIZE_BYTES = int((1024**3) * float(
-    os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB",
-                   DEFAULT_CACHE_SIZE_GB)))
-PY_MODULES_CACHE_SIZE_BYTES = int((1024**3) * float(
-    os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB",
-                   DEFAULT_CACHE_SIZE_GB)))
-CONDA_CACHE_SIZE_BYTES = int((1024**3) * float(
-    os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB",
-                   DEFAULT_CACHE_SIZE_GB)))
-PIP_CACHE_SIZE_BYTES = int((1024**3) * float(
-    os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB",
-                   DEFAULT_CACHE_SIZE_GB)))
+WORKING_DIR_CACHE_SIZE_BYTES = int(
+    (1024**3)
+    * float(
+        os.environ.get(
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", DEFAULT_CACHE_SIZE_GB
+        )
+    )
+)
+PY_MODULES_CACHE_SIZE_BYTES = int(
+    (1024**3)
+    * float(
+        os.environ.get(
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", DEFAULT_CACHE_SIZE_GB
+        )
+    )
+)
+CONDA_CACHE_SIZE_BYTES = int(
+    (1024**3)
+    * float(
+        os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", DEFAULT_CACHE_SIZE_GB)
+    )
+)
+PIP_CACHE_SIZE_BYTES = int(
+    (1024**3)
+    * float(os.environ.get("RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB", DEFAULT_CACHE_SIZE_GB))
+)
 
 
 @dataclass
@@ -83,10 +97,10 @@ class ReferenceTable:
     """
 
     def __init__(
-            self,
-            uris_parser: Callable[[RuntimeEnv], Tuple[str, UriType]],
-            unused_uris_callback: Callable[[List[Tuple[str, UriType]]], None],
-            unused_runtime_env_callback: Callable[[str], None],
+        self,
+        uris_parser: Callable[[RuntimeEnv], Tuple[str, UriType]],
+        unused_uris_callback: Callable[[List[Tuple[str, UriType]]], None],
+        unused_runtime_env_callback: Callable[[str], None],
     ):
         # Runtime Environment reference table. The key is serialized runtime env and
         # the value is reference count.
@@ -126,13 +140,11 @@ class ReferenceTable:
         return unused_uris
 
     def _increase_reference_for_runtime_env(self, serialized_env: str):
-        default_logger.debug(
-            f"Increase reference for runtime env {serialized_env}.")
+        default_logger.debug(f"Increase reference for runtime env {serialized_env}.")
         self._runtime_env_reference[serialized_env] += 1
 
     def _decrease_reference_for_runtime_env(self, serialized_env: str):
-        default_logger.debug(
-            f"Decrease reference for runtime env {serialized_env}.")
+        default_logger.debug(f"Decrease reference for runtime env {serialized_env}.")
         unused = False
         if self._runtime_env_reference[serialized_env] > 0:
             self._runtime_env_reference[serialized_env] -= 1
@@ -140,23 +152,24 @@ class ReferenceTable:
                 unused = True
                 del self._runtime_env_reference[serialized_env]
         else:
-            default_logger.warn(
-                f"Runtime env {serialized_env} does not exist.")
+            default_logger.warn(f"Runtime env {serialized_env} does not exist.")
         if unused:
             default_logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
         return unused
 
-    def increase_reference(self, runtime_env: RuntimeEnv, serialized_env: str,
-                           source_process: str) -> None:
+    def increase_reference(
+        self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
+    ) -> None:
         if source_process in self._reference_exclude_sources:
             return
         self._increase_reference_for_runtime_env(serialized_env)
         uris = self._uris_parser(runtime_env)
         self._increase_reference_for_uris(uris)
 
-    def decrease_reference(self, runtime_env: RuntimeEnv, serialized_env: str,
-                           source_process: str) -> None:
+    def decrease_reference(
+        self, runtime_env: RuntimeEnv, serialized_env: str, source_process: str
+    ) -> None:
         if source_process in self._reference_exclude_sources:
             return list()
         self._decrease_reference_for_runtime_env(serialized_env)
@@ -165,8 +178,8 @@ class ReferenceTable:
 
 
 class RuntimeEnvAgent(
-        dashboard_utils.DashboardAgentModule,
-        runtime_env_agent_pb2_grpc.RuntimeEnvServiceServicer,
+    dashboard_utils.DashboardAgentModule,
+    runtime_env_agent_pb2_grpc.RuntimeEnvServiceServicer,
 ):
     """An RPC server to create and delete runtime envs.
 
@@ -201,13 +214,17 @@ class RuntimeEnvAgent(
         )
 
         self._working_dir_uri_cache = URICache(
-            self._working_dir_manager.delete_uri, WORKING_DIR_CACHE_SIZE_BYTES)
+            self._working_dir_manager.delete_uri, WORKING_DIR_CACHE_SIZE_BYTES
+        )
         self._py_modules_uri_cache = URICache(
-            self._py_modules_manager.delete_uri, PY_MODULES_CACHE_SIZE_BYTES)
-        self._conda_uri_cache = URICache(self._conda_manager.delete_uri,
-                                         CONDA_CACHE_SIZE_BYTES)
-        self._pip_uri_cache = URICache(self._pip_manager.delete_uri,
-                                       PIP_CACHE_SIZE_BYTES)
+            self._py_modules_manager.delete_uri, PY_MODULES_CACHE_SIZE_BYTES
+        )
+        self._conda_uri_cache = URICache(
+            self._conda_manager.delete_uri, CONDA_CACHE_SIZE_BYTES
+        )
+        self._pip_uri_cache = URICache(
+            self._pip_manager.delete_uri, PIP_CACHE_SIZE_BYTES
+        )
         self._logger = default_logger
 
     def uris_parser(self, runtime_env):
@@ -226,8 +243,7 @@ class RuntimeEnvAgent(
             result.append((uri, UriType.CONDA))
         return result
 
-    def unused_uris_processor(self,
-                              unused_uris: List[Tuple[str, UriType]]) -> None:
+    def unused_uris_processor(self, unused_uris: List[Tuple[str, UriType]]) -> None:
         for uri, uri_type in unused_uris:
             if uri_type == UriType.WORKING_DIR:
                 self._working_dir_uri_cache.mark_unused(uri)
@@ -268,22 +284,25 @@ class RuntimeEnvAgent(
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
-            f"{request.serialized_runtime_env}.")
+            f"{request.serialized_runtime_env}."
+        )
 
-        async def _setup_runtime_env(runtime_env, serialized_runtime_env,
-                                     serialized_allocated_resource_instances):
+        async def _setup_runtime_env(
+            runtime_env, serialized_runtime_env, serialized_allocated_resource_instances
+        ):
             allocated_resource: dict = json.loads(
-                serialized_allocated_resource_instances or "{}")
+                serialized_allocated_resource_instances or "{}"
+            )
 
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id)
             # TODO(chenk008): Add log about allocated_resource to
             # avoid lint error. That will be moved to cgroup plugin.
-            per_job_logger.debug(f"Worker has resource :"
-                                 f"{allocated_resource}")
+            per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
             await self._container_manager.setup(
-                runtime_env, context, logger=per_job_logger)
+                runtime_env, context, logger=per_job_logger
+            )
 
             for (manager, uri_cache) in [
                 (self._working_dir_manager, self._working_dir_uri_cache),
@@ -295,7 +314,8 @@ class RuntimeEnvAgent(
                     if uri not in uri_cache:
                         per_job_logger.debug(f"Cache miss for URI {uri}.")
                         size_bytes = await manager.create(
-                            uri, runtime_env, context, logger=per_job_logger)
+                            uri, runtime_env, context, logger=per_job_logger
+                        )
                         uri_cache.add(uri, size_bytes, logger=per_job_logger)
                     else:
                         per_job_logger.debug(f"Cache hit for URI {uri}.")
@@ -311,27 +331,32 @@ class RuntimeEnvAgent(
                     if uri not in self._py_modules_uri_cache:
                         per_job_logger.debug(f"Cache miss for URI {uri}.")
                         size_bytes = await self._py_modules_manager.create(
-                            uri, runtime_env, context, logger=per_job_logger)
+                            uri, runtime_env, context, logger=per_job_logger
+                        )
                         self._py_modules_uri_cache.add(
-                            uri, size_bytes, logger=per_job_logger)
+                            uri, size_bytes, logger=per_job_logger
+                        )
                     else:
                         per_job_logger.debug(f"Cache hit for URI {uri}.")
-                        self._py_modules_uri_cache.mark_used(
-                            uri, logger=per_job_logger)
-            self._py_modules_manager.modify_context(py_modules_uris,
-                                                    runtime_env, context)
+                        self._py_modules_uri_cache.mark_used(uri, logger=per_job_logger)
+            self._py_modules_manager.modify_context(
+                py_modules_uris, runtime_env, context
+            )
 
             def setup_plugins():
                 # Run setup function from all the plugins
                 for plugin_class_path, config in runtime_env.plugins():
                     per_job_logger.debug(
-                        f"Setting up runtime env plugin {plugin_class_path}")
+                        f"Setting up runtime env plugin {plugin_class_path}"
+                    )
                     plugin_class = import_attr(plugin_class_path)
                     # TODO(simon): implement uri support
-                    plugin_class.create("uri not implemented",
-                                        json.loads(config), context)
-                    plugin_class.modify_context("uri not implemented",
-                                                json.loads(config), context)
+                    plugin_class.create(
+                        "uri not implemented", json.loads(config), context
+                    )
+                    plugin_class.modify_context(
+                        "uri not implemented", json.loads(config), context
+                    )
 
             loop = asyncio.get_event_loop()
             # Plugins setup method is sync process, running in other threads
@@ -341,10 +366,10 @@ class RuntimeEnvAgent(
             return context
 
         async def _create_runtime_env_with_retry(
-                runtime_env,
-                serialized_runtime_env,
-                serialized_allocated_resource_instances,
-                setup_timeout_seconds,
+            runtime_env,
+            serialized_runtime_env,
+            serialized_allocated_resource_instances,
+            setup_timeout_seconds,
         ) -> Tuple[bool, str, str]:
             """
             Create runtime env with retry times. This function won't raise exceptions.
@@ -363,7 +388,8 @@ class RuntimeEnvAgent(
             """
             self._logger.info(
                 f"Creating runtime env: {serialized_env} with timeout "
-                f"{setup_timeout_seconds} seconds.")
+                f"{setup_timeout_seconds} seconds."
+            )
             serialized_context = None
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
@@ -376,9 +402,11 @@ class RuntimeEnvAgent(
                             runtime_env,
                             serialized_env,
                             request.serialized_allocated_resource_instances,
-                        ))
+                        )
+                    )
                     runtime_env_context = await asyncio.wait_for(
-                        runtime_env_setup_task, timeout=setup_timeout_seconds)
+                        runtime_env_setup_task, timeout=setup_timeout_seconds
+                    )
                     serialized_context = runtime_env_context.serialize()
                     error_message = None
                     break
@@ -386,8 +414,8 @@ class RuntimeEnvAgent(
                     err_msg = f"Failed to create runtime env {serialized_env}."
                     self._logger.exception(err_msg)
                     error_message = "".join(
-                        traceback.format_exception(
-                            type(e), e, e.__traceback__))
+                        traceback.format_exception(type(e), e, e.__traceback__)
+                    )
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
@@ -410,17 +438,20 @@ class RuntimeEnvAgent(
             serialized_env = request.serialized_runtime_env
             runtime_env = RuntimeEnv.deserialize(serialized_env)
         except Exception as e:
-            self._logger.exception("[Increase] Failed to parse runtime env: "
-                                   f"{serialized_env}")
+            self._logger.exception(
+                "[Increase] Failed to parse runtime env: " f"{serialized_env}"
+            )
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
-                    traceback.format_exception(type(e), e, e.__traceback__)),
+                    traceback.format_exception(type(e), e, e.__traceback__)
+                ),
             )
 
         # Increase reference
-        self._reference_table.increase_reference(runtime_env, serialized_env,
-                                                 request.source_process)
+        self._reference_table.increase_reference(
+            runtime_env, serialized_env, request.source_process
+        )
 
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
@@ -432,21 +463,26 @@ class RuntimeEnvAgent(
                 result = self._env_cache[serialized_env]
                 if result.success:
                     context = result.result
-                    self._logger.info("Runtime env already created "
-                                      f"successfully. Env: {serialized_env}, "
-                                      f"context: {context}")
+                    self._logger.info(
+                        "Runtime env already created "
+                        f"successfully. Env: {serialized_env}, "
+                        f"context: {context}"
+                    )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
                         serialized_runtime_env_context=context,
                     )
                 else:
                     error_message = result.result
-                    self._logger.info("Runtime env already failed. "
-                                      f"Env: {serialized_env}, "
-                                      f"err: {error_message}")
+                    self._logger.info(
+                        "Runtime env already failed. "
+                        f"Env: {serialized_env}, "
+                        f"err: {error_message}"
+                    )
                     # Recover the reference.
                     self._reference_table.decrease_reference(
-                        runtime_env, serialized_env, request.source_process)
+                        runtime_env, serialized_env, request.source_process
+                    )
                     return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                         status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                         error_message=error_message,
@@ -456,13 +492,14 @@ class RuntimeEnvAgent(
                 self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
                 time.sleep(int(SLEEP_FOR_TESTING_S))
 
-            runtime_env_config = RuntimeEnvConfig.from_proto(
-                request.runtime_env_config)
+            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
             # accroding to the document of `asyncio.wait_for`,
             # None means disable timeout logic
             setup_timeout_seconds = (
-                None if runtime_env_config["setup_timeout_seconds"] == -1 else
-                runtime_env_config["setup_timeout_seconds"])
+                None
+                if runtime_env_config["setup_timeout_seconds"] == -1
+                else runtime_env_config["setup_timeout_seconds"]
+            )
 
             (
                 successful,
@@ -477,15 +514,17 @@ class RuntimeEnvAgent(
             if not successful:
                 # Recover the reference.
                 self._reference_table.decrease_reference(
-                    runtime_env, serialized_env, request.source_process)
+                    runtime_env, serialized_env, request.source_process
+                )
             # Add the result to env cache.
             self._env_cache[serialized_env] = CreatedEnvResult(
-                successful, serialized_context
-                if successful else error_message)
+                successful, serialized_context if successful else error_message
+            )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK
-                if successful else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                if successful
+                else agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 serialized_runtime_env_context=serialized_context,
                 error_message=error_message,
             )
@@ -494,31 +533,36 @@ class RuntimeEnvAgent(
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
-            f"{request.serialized_runtime_env}.")
+            f"{request.serialized_runtime_env}."
+        )
 
         try:
-            runtime_env = RuntimeEnv.deserialize(
-                request.serialized_runtime_env)
+            runtime_env = RuntimeEnv.deserialize(request.serialized_runtime_env)
         except Exception as e:
-            self._logger.exception("[Decrease] Failed to parse runtime env: "
-                                   f"{request.serialized_runtime_env}")
+            self._logger.exception(
+                "[Decrease] Failed to parse runtime env: "
+                f"{request.serialized_runtime_env}"
+            )
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="".join(
-                    traceback.format_exception(type(e), e, e.__traceback__)),
+                    traceback.format_exception(type(e), e, e.__traceback__)
+                ),
             )
 
         self._reference_table.decrease_reference(
-            runtime_env, request.serialized_runtime_env,
-            request.source_process)
+            runtime_env, request.serialized_runtime_env, request.source_process
+        )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
-            status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
+            status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+        )
 
     async def run(self, server):
         if server:
             runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
-                self, server)
+                self, server
+            )
 
     @staticmethod
     def is_minimal_module():
