@@ -38,7 +38,17 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="beta")
 def init() -> None:
-    """Initialize workflow."""
+    """Initialize workflow.
+
+    If Ray is not initialized, we will initialize Ray and
+    use ``/tmp/ray/workflow_data`` as the default storage.
+    """
+    if not ray.is_initialized():
+        # We should use get_temp_dir_path, but for ray client, we don't
+        # have this one. We need a flag to tell whether it's a client
+        # or a driver to use the right dir.
+        # For now, just use /tmp/ray/workflow_data
+        ray.init(storage="file:///tmp/ray/workflow_data")
     workflow_access.init_management_actor()
     serialization.init_manager()
 
