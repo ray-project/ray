@@ -67,7 +67,7 @@ def transform_ray_dag_to_serve_dag(
             deployment_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
-            ray_actor_options,
+            dag_node.get_options(),
             # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
