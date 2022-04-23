@@ -41,6 +41,7 @@ from ray.autoscaler._private.kuberay.run_autoscaler import run_autoscaler_with_r
 from ray.experimental.logs import (
     get_log,
     list_logs,
+    pretty_print_logs_index,
 )
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
@@ -1866,36 +1867,7 @@ def local_dump(
     )
 
 
-def format_print_logs_index(api_endpoint, node_id, links):
-    def print_section(name, key):
-        if len(links[key]) > 0:
-            print(f"\n{name}")
-            print("----------------------------")
-            [
-                print(
-                    f"{api_endpoint}/api/experimental/logs/file"
-                    f"?node_id={node_id}&log_file_name={log}"
-                )
-                for log in links[key]
-            ]
-
-    for lang in ray_constants.LANGUAGE_WORKER_TYPES:
-        print_section(f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs")
-        print_section(
-            f"{lang.capitalize()} Core Worker Logs", f"{lang}_core_worker_logs"
-        )
-    print_section("Worker Errors", "worker_errors")
-    print_section("Worker Stdout", "worker_outs")
-    print_section("Raylet Logs", "raylet")
-    print_section("GCS Logs", "gcs_server")
-    print_section("Miscellaneous Logs", "misc")
-    print_section("Autoscaler Monitor Logs", "autoscaler")
-    print_section("Runtime Environment Logs", "runtime_env")
-    print_section("Dashboard Logs", "dashboard")
-    print_section("Ray Client Logs", "ray_client")
-
-
-@cli.command()
+@cli.command(hidden=True)
 @click.argument(
     "filters",
     nargs=-1,
@@ -1951,8 +1923,8 @@ def format_print_logs_index(api_endpoint, node_id, links):
     help="Retrieves the logs corresponding to this TaskID.",
 )
 @click.option(
-    "--watch",
-    "-w",
+    "--follow",
+    "-f",
     required=False,
     type=bool,
     is_flag=True,
@@ -1974,7 +1946,7 @@ def logs(
     pid: str,
     actor_id: str,
     task_id: str,
-    watch: bool,
+    follow: bool,
     lines: int,
 ):
     """
@@ -2021,37 +1993,31 @@ def logs(
         if not match_unique:
             # Try to match a single log file.
             # If we find more than one match, we output the index.
-            filters = ",".join(filters) + (
-                f",{filename}" if filename is not None else ""
-            )
-            api_endpoint, logs_dict = list_logs(node_id, node_ip, filters)
-            # to_dedup = ["gcs_logs", "dashboard", "autoscaler", "autoscaler_monitor"] ?
+            logs_dict = list_logs(node_id, node_ip, filters)
             if len(logs_dict) == 0:
-                raise Exception("Could not find node.")
+                raise ValueError(f"Could not find node {node_id}")
             if filename is None:
-                for node_id, logs in logs_dict.items():
-                    log = None
-                    for log_list in logs.values():
-                        if len(log_list) > 0:
-                            if log is not None or len(log_list) != 1:
-                                found_many = True
-                                break
-                            log = log_list[0]
-                    if found_many:
+                total_found = 0
+                for node_id_it, log_list_per_node in logs_dict.items():
+                    files_on_node = sum(log_list_per_node.values(), [])
+                    total_found += len(files_on_node)
+                    if total_found > 1:
+                        found_many = True
                         break
-                    elif log is None:
-                        raise Exception(
-                            "Could not find any log file. Please ammend your query. "
-                            "Check --help for more."
-                        )
-                    filename = log
+                    if len(files_on_node) == 1 and total_found == 1:
+                        filename = files_on_node[0]
+                        node_id = node_id_it
+                if not found_many and filename is None:
+                    raise Exception(
+                        "Could not find any log file. Please ammend your query. "
+                        "Check --help for more."
+                    )
 
         if found_many:
             print(
                 "Warning: More than one log file matches your query. Please add "
-                "additional file name substrings, flags or specify the full filename "
-                "with -f to narrow down the search results to a single file. "
-                "Check --help for more."
+                "additional flags or filname globs to narrow down the "
+                "search results to a single file. Check --help for more."
             )
 
             MAX_NODES = 10
@@ -2063,7 +2029,7 @@ def logs(
                     )
                     break
                 print(f"\nNode ID: {node_id}")
-                format_print_logs_index(api_endpoint, node_id, logs)
+                pretty_print_logs_index(node_id, logs)
         else:
 
             def default_lines(lines):
@@ -2073,24 +2039,14 @@ def logs(
                 )
                 return lines
 
-            if watch:
-                if lines is None:
-                    lines = default_lines(1000)
-                for chunk in get_log(
-                    node_ip, pid, node_id, actor_id, task_id, filename, True, lines
-                ):
-                    print(chunk, end="", flush=True)
-
-            elif not watch:
-                if lines is None:
-                    lines = default_lines(100)
-                for chunk in get_log(
-                    node_ip, pid, node_id, actor_id, task_id, filename, False, lines
-                ):
-                    print(chunk, end="", flush=True)
+            lines = lines or default_lines(1000 if follow else 100)
+            for chunk in get_log(
+                node_ip, pid, node_id, actor_id, task_id, filename, follow, lines
+            ):
+                print(chunk, end="", flush=True)
 
     except Exception as e:
-        print(e)
+        print("Client Error: ", e)
 
 
 @cli.command()

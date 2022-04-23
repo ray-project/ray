@@ -1,6 +1,9 @@
 import requests
 import json
+from typing import List
+
 import ray._private.services as services
+import ray.ray_constants as ray_constants
 
 SESSION_DASHBOARD_URL = None
 
@@ -47,8 +50,7 @@ def get_log(
     Raises a ValueError if the identifying input params provided cannot match
     a single log file in the cluster.
     """
-    if api_server_url is None:
-        api_server_url = _get_dashboard_url()
+    api_server_url = api_server_url or _get_dashboard_url()
     if task_id is not None:
         raise NotImplementedError(
             "querying for logs by`task_id` is not yet implemented"
@@ -84,7 +86,7 @@ def get_log(
 def list_logs(
     node_id: str,
     node_ip: str,
-    filters: str,
+    filters: List[str],
     api_server_url: str = None,
 ):
     """
@@ -98,9 +100,7 @@ def list_logs(
     If the given node_ip or node_ip cannot be found, it will throw a
     ValueError.
     """
-
-    if api_server_url is None:
-        api_server_url = _get_dashboard_url()
+    api_server_url = api_server_url or _get_dashboard_url()
     query_string = ""
     args = {
         "node_id": node_id,
@@ -112,9 +112,38 @@ def list_logs(
 
     response = requests.get(
         f"{api_server_url}/api/experimental/logs/list?{query_string}"
-        f"filters={filters}"
+        f"filters={','.join(filters)}"
     )
     if response.status_code != 200:
         raise ValueError(response.text)
     logs_dict = json.loads(response.text)
-    return api_server_url, logs_dict
+    return logs_dict
+
+
+def pretty_print_logs_index(node_id, links):
+    def print_section(name, key):
+        if len(links[key]) > 0:
+            print(f"\n{name}")
+            print("----------------------------")
+            [
+                print(
+                    f"{_get_dashboard_url()}/api/experimental/logs/file"
+                    f"?node_id={node_id}&log_file_name={log}"
+                )
+                for log in links[key]
+            ]
+
+    for lang in ray_constants.LANGUAGE_WORKER_TYPES:
+        print_section(f"{lang.capitalize()} Core Driver Logs", f"{lang}_driver_logs")
+        print_section(
+            f"{lang.capitalize()} Core Worker Logs", f"{lang}_core_worker_logs"
+        )
+    print_section("Worker Errors", "worker_errors")
+    print_section("Worker Stdout", "worker_outs")
+    print_section("Raylet Logs", "raylet")
+    print_section("GCS Logs", "gcs_server")
+    print_section("Miscellaneous Logs", "misc")
+    print_section("Autoscaler Monitor Logs", "autoscaler")
+    print_section("Runtime Environment Logs", "runtime_env")
+    print_section("Dashboard Logs", "dashboard")
+    print_section("Ray Client Logs", "ray_client")
