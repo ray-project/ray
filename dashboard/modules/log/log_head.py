@@ -10,7 +10,8 @@ from ray.core.generated import reporter_pb2_grpc
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
 from ray import ray_constants
-from typing import List, Tuple
+from typing import List, Tuple, cast
+from dataclasses import dataclass, fields, is_dataclass
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -112,9 +113,151 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 class LogHeadV1(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
+        self.grpc_logs_client = GrpcLogsClient()
+
+    @routes.get("/api/experimental/logs/list")
+    async def handle_list_logs(self, req: aiohttp.web.Request):
+        """
+        Returns a JSON file containing, for each node in the cluster,
+        a dict mapping a category of log component to a list of filenames.
+        """
+        try:
+            filters = req.query.get("filters", "").split(",")
+            await self.grpc_logs_client._wait_until_initialized()
+            node_id = self.grpc_logs_client._resolve_node_id(
+                to_schema(req, NodeResolverArgs))
+            response = await self.grpc_logs_client._list_logs(node_id, filters)
+            return aiohttp.web.json_response(response)
+
+        except Exception as e:
+            logger.exception(e)
+            return aiohttp.web.HTTPInternalServerError(reason=e)
+
+    @routes.get("/api/experimental/logs/{media_type}")
+    async def handle_get_log(self, req: aiohttp.web.Request):
+        """
+        If `media_type = stream`, creates HTTP stream which is either kept alive while
+        the HTTP connection is not closed. Else, if `media_type = file`, the stream
+        ends once all the lines in the file requested are transmitted.
+        """
+        response = None
+        try:
+            await self.grpc_logs_client._wait_until_initialized()
+
+            stream = await self.grpc_logs_client._create_and_validate_log_stream(
+                resolver_args=to_schema(req, NodeResolverArgs),
+                stream_options=to_schema(req, LogStreamOptions)
+            )
+
+            response = aiohttp.web.StreamResponse()
+            response.content_type = "text/plain"
+            await response.prepare(req)
+
+            # try-except here in order to properly handle ongoing HTTP stream
+            try:
+                async for log_response in stream:
+                    await response.write(log_response.data)
+                await response.write_eof()
+                return response
+            except Exception as e:
+                logger.exception(str(e))
+                await response.write(
+                    b"Closing HTTP stream due to internal server error:\n"
+                )
+                await response.write(str(e).encode())
+                await response.write_eof()
+                return response
+        except Exception as e:
+            logger.exception(e)
+            return aiohttp.web.HTTPInternalServerError(reason=e)
+
+    async def run(self, server):
+        pass
+
+    @staticmethod
+    def is_minimal_module():
+        return False
+
+
+def to_schema(req, Dataclass):
+    kwargs = {}
+    for field in fields(Dataclass):
+        print(field.type)
+        if is_dataclass(field.type):
+            # recursively resolve the dataclass
+            kwargs[field.name] = to_schema(req, field.type)
+        else:
+            value = req.get(field.name)
+            kwargs[field.name] = cast(field.type, value) if value else None
+    print(kwargs)
+    return Dataclass(**kwargs)
+
+
+@dataclass(init=True)
+class NodeResolverArgs:
+    node_id: str
+    node_ip: str
+
+
+@dataclass(init=True)
+class FileResolverArgs:
+    log_file_name: str
+    actor_id: str
+    pid: str
+
+
+@dataclass(init=True)
+class ResolverArgs:
+    file: FileResolverArgs
+    node: NodeResolverArgs
+
+
+@dataclass(init=True)
+class LogStreamOptions:
+    media_type: str
+    lines: int
+    interval: float
+
+class GrpcLogsClient:
+    def __init__(self):
         self._stubs = {}
         self._ip_to_node_id = {}
         DataSource.agents.signal.append(self._update_stubs)
+
+    async def _list_logs(self, node_id_query: str, filters: List[str]):
+        """
+        Helper function to list the logs by querying each agent
+        on each cluster via gRPC.
+        """
+        response = {}
+        tasks = []
+        for node_id, grpc_stub in self._stubs.items():
+            if node_id_query is None or node_id_query == node_id:
+
+                async def coro():
+                    reply = await grpc_stub.ListLogs(
+                        reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
+                    )
+                    response[node_id] = self._list_logs_single_node(
+                        reply.log_files, filters
+                    )
+
+                tasks.append(coro())
+        await asyncio.gather(*tasks)
+        return response
+
+    async def _wait_until_initialized(self):
+        """
+        Wait until connected to at least one node's log agent.
+        """
+        POLL_SLEEP_TIME = 0.5
+        POLL_RETRIES = 10
+        for _ in range(POLL_RETRIES):
+            if self._stubs != {}:
+                return None
+            await asyncio.sleep(POLL_SLEEP_TIME)
+        raise ValueError("Could not connect to agents via gRPC after "
+                         f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds.")
 
     async def _update_stubs(self, change):
         if change.old:
@@ -133,6 +276,103 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             stub = reporter_pb2_grpc.LogServiceStub(channel)
             self._stubs[node_id] = stub
             self._ip_to_node_id[ip] = node_id
+
+    def _resolve_node_id(self, args: NodeResolverArgs):
+        node_id = args.node_id
+        if node_id is None:
+            ip = args.node_ip
+            if ip is not None:
+                if ip not in self._ip_to_node_id:
+                    raise ValueError(f"node_ip: {ip} not found")
+                node_id = self._ip_to_node_id[ip]
+        elif node_id not in self._stubs:
+            raise ValueError(f"node_id: {node_id} not found")
+        return node_id
+
+    async def _resolve_file_and_node(
+        self,
+        args: ResolverArgs
+    ):
+        node_id = self._resolve_node_id(args.node)
+        log_file_name = args.file.log_file_name
+
+        # If `log_file_name` is not provided, check if we can get the
+        # corresponding `log_file_name` if an `actor_id` is provided.
+        if log_file_name is None or node_id is None:
+            if args.file.actor_id is not None:
+                actor_data = DataSource.actors.get(args.file.actor_id)
+                if actor_data is None:
+                    raise ValueError("Actor ID {actor_id} not found.")
+                worker_id = actor_data["address"].get("workerId")
+                if worker_id is None:
+                    raise ValueError("Worker ID for Actor ID {actor_id} not found.")
+
+                index = await self._list_logs(node_id)
+                for node in index:
+                    for file in index[node]["worker_outs"]:
+                        if file.split(".")[0].split("-")[1] == worker_id:
+                            log_file_name = file
+                            if node_id is None:
+                                node_id = node
+                            break
+
+        # If `log_file_name` cannot be resolved, check if we can get the
+        # corresponding `log_file_name` if a `pid` is provided.
+        if log_file_name is None:
+            pid = args.file.pid
+            if pid is not None:
+                if node_id is None:
+                    raise ValueError("Node identifiers (node_ip, node_id) not provided "
+                                     f"with pid: {pid}. Available: {self._ip_to_node_id}")
+                index = await self._list_logs(node_id, [pid])
+                for file in index[node_id]["worker_outs"]:
+                    if file.split(".")[0].split("-")[3] == pid:
+                        log_file_name = file
+                        break
+                if log_file_name is None:
+                    raise ValueError(
+                        f"Worker with pid {pid} not found on node {node_id}")
+
+        # node_id and log_file_name need to be known by this point
+        if node_id is None or node_id not in self._stubs:
+            raise ValueError(f"node_id {node_id} not found")
+        if log_file_name is None:
+            raise ValueError("Could not resolve file identifiers to a file name.")
+
+        return log_file_name, node_id
+
+    @staticmethod
+    async def _validate_grpc_log_stream(stream):
+        metadata = await stream.initial_metadata()
+        if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
+            raise ValueError('File "{log_file_name}" not found on node {node_id}')
+
+    async def _create_and_validate_log_stream(
+        self,
+        resolver_args: ResolverArgs,
+        stream_options: LogStreamOptions,
+    ):
+        log_file_name, node_id = await self._resolve_file_and_node(resolver_args)
+
+        if stream_options.media_type == "stream":
+            keep_alive = True
+        elif stream_options.media_type == "file":
+            keep_alive = False
+        else:
+            raise ValueError("Invalid media type: {media_type}")
+
+        stream = self._stubs[node_id].StreamLog(
+            reporter_pb2.StreamLogRequest(
+                keep_alive=keep_alive,
+                log_file_name=log_file_name,
+                lines=stream_options.lines,
+                interval=stream_options.interval,
+            )
+        )
+
+        await self._validate_grpc_log_stream(stream)
+
+        return stream
 
     @staticmethod
     def _list_logs_single_node(log_files: List[str], filters: List[str]):
@@ -179,212 +419,3 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             filter(lambda s: all([s not in logs[k] for k in logs]), filtered)
         )
         return logs
-
-    async def _wait_until_initialized(self):
-        """
-        Wait until connected to at least one node's log agent.
-        """
-        POLL_SLEEP_TIME = 0.5
-        POLL_RETRIES = 10
-        for _ in range(POLL_RETRIES):
-            if self._stubs != {}:
-                return None
-            await asyncio.sleep(POLL_SLEEP_TIME)
-        raise ValueError("Could not connect to agents via gRPC after "
-                         f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds.")
-
-    async def _list_logs(self, node_id_query: str, filters: List[str]):
-        """
-        Helper function to list the logs by querying each agent
-        on each cluster via gRPC.
-        """
-        response = {}
-        tasks = []
-        for node_id, grpc_stub in self._stubs.items():
-            if node_id_query is None or node_id_query == node_id:
-
-                async def coro():
-                    reply = await grpc_stub.ListLogs(
-                        reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
-                    )
-                    response[node_id] = self._list_logs_single_node(
-                        reply.log_files, filters
-                    )
-
-                tasks.append(coro())
-        await asyncio.gather(*tasks)
-        return response
-
-    def _resolve_node_id(self, req: aiohttp.web.Request):
-        node_id = req.query.get("node_id", None)
-        if node_id is None:
-            ip = req.query.get("node_ip", None)
-            if ip is not None:
-                if ip not in self._ip_to_node_id:
-                    raise ValueError(f"node_ip: {ip} not found")
-                node_id = self._ip_to_node_id[ip]
-        elif node_id not in self._stubs:
-            raise ValueError(f"node_id: {node_id} not found")
-        return node_id
-
-    async def _resolve_file_and_node(
-        self,
-        req: aiohttp.web.Request,
-        node_id: str = None
-    ):
-        node_id = self._resolve_node_id(req)
-        log_file_name = req.query.get("log_file_name", None)
-
-        # If `log_file_name` is not provided, check if we can get the
-        # corresponding `log_file_name` if an `actor_id` is provided.
-        if log_file_name is None or node_id is None:
-            actor_id = req.query.get("actor_id", None)
-            if actor_id is not None:
-                actor_data = DataSource.actors.get(actor_id)
-                if actor_data is None:
-                    raise ValueError("Actor ID {actor_id} not found.")
-                worker_id = actor_data["address"].get("workerId")
-                if worker_id is None:
-                    raise ValueError("Worker ID for Actor ID {actor_id} not found.")
-
-                index = await self._list_logs(node_id)
-                for node in index:
-                    for file in index[node]["worker_outs"]:
-                        if file.split(".")[0].split("-")[1] == worker_id:
-                            log_file_name = file
-                            if node_id is None:
-                                node_id = node
-                            break
-
-        # If `log_file_name` cannot be resolved, check if we can get the
-        # corresponding `log_file_name` if a `pid` is provided.
-        if log_file_name is None:
-            pid = req.query.get("pid", None)
-            if pid is not None:
-                if node_id is None:
-                    raise ValueError("Node identifiers (node_ip, node_id) not provided "
-                                     f"with pid: {pid}. Available: {self._ip_to_node_id}")
-                index = await self._list_logs(node_id, [pid])
-                for file in index[node_id]["worker_outs"]:
-                    if file.split(".")[0].split("-")[3] == pid:
-                        log_file_name = file
-                        break
-                if log_file_name is None:
-                    raise ValueError(
-                        f"Worker with pid {pid} not found on node {node_id}")
-
-        # node_id and log_file_name need to be known by this point
-        if node_id is None or node_id not in self._stubs:
-            raise ValueError(f"node_id {node_id} not found")
-        if log_file_name is None:
-            raise ValueError("Could not resolve file identifiers to a file name.")
-
-        return log_file_name, node_id
-
-    @staticmethod
-    async def _validate_grpc_log_stream(stream):
-        metadata = await stream.initial_metadata()
-        if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
-            raise ValueError('File "{log_file_name}" not found on node {node_id}')
-
-    async def _create_and_validate_log_stream(
-        self,
-        req: aiohttp.web.Request
-    ):
-        log_file_name, node_id = await self._resolve_file_and_node(req)
-
-        media_type = req.match_info.get("media_type")
-
-        lines = req.query.get("lines")
-        lines = int(lines) if lines else None
-
-        interval = req.query.get("interval")
-        interval = float(interval) if interval else None
-
-        if media_type == "stream":
-            keep_alive = True
-        elif media_type == "file":
-            keep_alive = False
-        else:
-            raise ValueError("Invalid media type: {media_type}")
-
-        stream = self._stubs[node_id].StreamLog(
-            reporter_pb2.StreamLogRequest(
-                keep_alive=keep_alive,
-                log_file_name=log_file_name,
-                lines=lines,
-                interval=interval,
-            )
-        )
-
-        await self._validate_grpc_log_stream(stream)
-
-        return stream
-
-    @ routes.get("/api/experimental/logs/list")
-    async def handle_list_logs(self, req: aiohttp.web.Request):
-        """
-        Returns a JSON file containing, for each node in the cluster,
-        a dict mapping a category of log component to a list of filenames.
-        """
-        try:
-            filters = req.query.get("filters", "").split(",")
-            err = await self._wait_until_initialized()
-            if err is not None:
-                return err
-            node_id = self._resolve_node_id(req)
-            response = await self._list_logs(node_id, filters)
-            return aiohttp.web.json_response(response)
-
-        except Exception as e:
-            logger.exception(e)
-            return aiohttp.web.HTTPInternalServerError(reason=e)
-
-    @ routes.get("/api/experimental/logs/{media_type}")
-    async def handle_get_log(self, req: aiohttp.web.Request):
-        """
-        If `media_type = stream`, creates HTTP stream which is either kept alive while
-        the HTTP connection is not closed. Else, if `media_type = file`, the stream
-        ends once all the lines in the file requested are transmitted.
-        """
-        response = None
-        try:
-            await self._wait_until_initialized()
-
-            stream = await self._create_and_validate_log_stream(req)
-
-            response = aiohttp.web.StreamResponse()
-            response.content_type = "text/plain"
-            await response.prepare(req)
-
-            # try-except here in order to properly handle ongoing HTTP stream
-            try:
-                async for log_response in stream:
-                    await response.write(log_response.data)
-                await response.write_eof()
-                return response
-            except Exception as e:
-                logger.exception(str(e))
-                await response.write(
-                    b"Closing HTTP stream due to internal server error:\n"
-                )
-                await response.write(str(e).encode())
-                await response.write_eof()
-                return response
-        except Exception as e:
-            logger.exception(e)
-            return aiohttp.web.HTTPInternalServerError(reason=e)
-
-    async def run(self, server):
-        pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False
-
-
-# class LogFileResolver:
-#     def __init__(self):
-#
-#     def resolve_from_request() -> Tuple[str, str]:
-#         str
