@@ -401,6 +401,7 @@ class FunctionActorManager:
                         if self.fetch_and_register_remote_function(key) is True:
                             break
                 elif not self._worker.actor_id.is_nil():
+                    # Actor loading will happen when execute_task is called.
                     assert self._worker.actor_id in self._worker.actors
                     break
 
