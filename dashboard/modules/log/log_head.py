@@ -110,66 +110,69 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         return False
 
 
+def catch_internal_server_error(func):
+    async def try_catch_wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.exception(e)
+            return aiohttp.web.HTTPInternalServerError(reason=e)
+
+    return try_catch_wrapper
+
+
 class LogHeadV1(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self.grpc_logs_client = GrpcLogsClient()
 
     @routes.get("/api/experimental/logs/list")
+    @catch_internal_server_error
     async def handle_list_logs(self, req: aiohttp.web.Request):
         """
         Returns a JSON file containing, for each node in the cluster,
         a dict mapping a category of log component to a list of filenames.
         """
-        try:
-            filters = req.query.get("filters", "").split(",")
-            await self.grpc_logs_client._wait_until_initialized()
-            node_id = self.grpc_logs_client._resolve_node_id(
-                to_schema(req, NodeResolverArgs))
-            response = await self.grpc_logs_client._list_logs(node_id, filters)
-            return aiohttp.web.json_response(response)
-
-        except Exception as e:
-            logger.exception(e)
-            return aiohttp.web.HTTPInternalServerError(reason=e)
+        filters = req.query.get("filters", "").split(",")
+        await self.grpc_logs_client.wait_until_initialized()
+        node_id = self.grpc_logs_client.resolve_node_id(
+                to_schema(req, NodeIdentifiers))
+        response = await self.grpc_logs_client.list_logs(node_id, filters)
+        return aiohttp.web.json_response(response)
 
     @routes.get("/api/experimental/logs/{media_type}")
+    @catch_internal_server_error
     async def handle_get_log(self, req: aiohttp.web.Request):
         """
         If `media_type = stream`, creates HTTP stream which is either kept alive while
         the HTTP connection is not closed. Else, if `media_type = file`, the stream
         ends once all the lines in the file requested are transmitted.
         """
-        response = None
+        await self.grpc_logs_client.wait_until_initialized()
+
+        stream = await self.grpc_logs_client.create_and_validate_log_stream(
+            identifiers=to_schema(req, LogIdentifiers),
+            stream_options=to_schema(req, LogStreamOptions)
+        )
+
+        response = aiohttp.web.StreamResponse()
+        response.content_type = "text/plain"
+        await response.prepare(req)
+
+        # try-except here in order to properly handle ongoing HTTP stream
         try:
-            await self.grpc_logs_client._wait_until_initialized()
-
-            stream = await self.grpc_logs_client._create_and_validate_log_stream(
-                resolver_args=to_schema(req, NodeResolverArgs),
-                stream_options=to_schema(req, LogStreamOptions)
-            )
-
-            response = aiohttp.web.StreamResponse()
-            response.content_type = "text/plain"
-            await response.prepare(req)
-
-            # try-except here in order to properly handle ongoing HTTP stream
-            try:
-                async for log_response in stream:
-                    await response.write(log_response.data)
-                await response.write_eof()
-                return response
-            except Exception as e:
-                logger.exception(str(e))
-                await response.write(
-                    b"Closing HTTP stream due to internal server error:\n"
-                )
-                await response.write(str(e).encode())
-                await response.write_eof()
-                return response
+            async for log_response in stream:
+                await response.write(log_response.data)
+            await response.write_eof()
+            return response
         except Exception as e:
-            logger.exception(e)
-            return aiohttp.web.HTTPInternalServerError(reason=e)
+            logger.exception(str(e))
+            await response.write(
+                b"Closing HTTP stream due to internal server error:\n"
+            )
+            await response.write(str(e).encode())
+            await response.write_eof()
+            return response
 
     async def run(self, server):
         pass
@@ -179,37 +182,39 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         return False
 
 
-def to_schema(req, Dataclass):
+def to_schema(req: aiohttp.web.Request, Dataclass):
     kwargs = {}
     for field in fields(Dataclass):
-        print(field.type)
         if is_dataclass(field.type):
             # recursively resolve the dataclass
             kwargs[field.name] = to_schema(req, field.type)
         else:
-            value = req.get(field.name)
-            kwargs[field.name] = cast(field.type, value) if value else None
-    print(kwargs)
+            value = req.query.get(field.name)
+            if value is None:
+                value = req.match_info.get(field.name)
+            # This is brittle as the class needs to be
+            # instantiable from the str
+            kwargs[field.name] = field.type(value) if value else None
     return Dataclass(**kwargs)
 
 
 @dataclass(init=True)
-class NodeResolverArgs:
+class NodeIdentifiers:
     node_id: str
     node_ip: str
 
 
 @dataclass(init=True)
-class FileResolverArgs:
+class FileIdentifiers:
     log_file_name: str
     actor_id: str
     pid: str
 
 
 @dataclass(init=True)
-class ResolverArgs:
-    file: FileResolverArgs
-    node: NodeResolverArgs
+class LogIdentifiers:
+    file: FileIdentifiers
+    node: NodeIdentifiers
 
 
 @dataclass(init=True)
@@ -218,13 +223,14 @@ class LogStreamOptions:
     lines: int
     interval: float
 
+
 class GrpcLogsClient:
     def __init__(self):
         self._stubs = {}
         self._ip_to_node_id = {}
         DataSource.agents.signal.append(self._update_stubs)
 
-    async def _list_logs(self, node_id_query: str, filters: List[str]):
+    async def list_logs(self, node_id_query: str, filters: List[str]):
         """
         Helper function to list the logs by querying each agent
         on each cluster via gRPC.
@@ -246,7 +252,7 @@ class GrpcLogsClient:
         await asyncio.gather(*tasks)
         return response
 
-    async def _wait_until_initialized(self):
+    async def wait_until_initialized(self):
         """
         Wait until connected to at least one node's log agent.
         """
@@ -277,7 +283,7 @@ class GrpcLogsClient:
             self._stubs[node_id] = stub
             self._ip_to_node_id[ip] = node_id
 
-    def _resolve_node_id(self, args: NodeResolverArgs):
+    def resolve_node_id(self, args: NodeIdentifiers):
         node_id = args.node_id
         if node_id is None:
             ip = args.node_ip
@@ -291,9 +297,9 @@ class GrpcLogsClient:
 
     async def _resolve_file_and_node(
         self,
-        args: ResolverArgs
+        args: LogIdentifiers
     ):
-        node_id = self._resolve_node_id(args.node)
+        node_id = self.resolve_node_id(args.node)
         log_file_name = args.file.log_file_name
 
         # If `log_file_name` is not provided, check if we can get the
@@ -347,12 +353,12 @@ class GrpcLogsClient:
         if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
             raise ValueError('File "{log_file_name}" not found on node {node_id}')
 
-    async def _create_and_validate_log_stream(
+    async def create_and_validate_log_stream(
         self,
-        resolver_args: ResolverArgs,
+        identifiers: LogIdentifiers,
         stream_options: LogStreamOptions,
     ):
-        log_file_name, node_id = await self._resolve_file_and_node(resolver_args)
+        log_file_name, node_id = await self._resolve_file_and_node(identifiers)
 
         if stream_options.media_type == "stream":
             keep_alive = True
