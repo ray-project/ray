@@ -467,6 +467,7 @@ def callback_test_helper(args):
         raise Exception("intentional failure")
     return index
 
+
 @pytest.mark.parametrize("use_iter", [True, False])
 def test_imap(pool_4_processes, use_iter):
     def f(args):
@@ -482,9 +483,7 @@ def test_imap(pool_4_processes, use_iter):
         imap_iterable = iter([(index, error_indices) for index in range(100)])
     else:
         imap_iterable = [(index, error_indices) for index in range(100)]
-    result_iter = pool_4_processes.imap(
-        f, imap_iterable, chunksize=11
-    )
+    result_iter = pool_4_processes.imap(f, imap_iterable, chunksize=11)
     for i in range(100):
         result = result_iter.next()
         if i in error_indices:
@@ -513,9 +512,7 @@ def test_imap_unordered(pool_4_processes, use_iter):
         imap_iterable = iter([(index, error_indices) for index in range(100)])
     else:
         imap_iterable = [(index, error_indices) for index in range(100)]
-    result_iter = pool_4_processes.imap_unordered(
-        f, imap_iterable, chunksize=11
-    )
+    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=11)
     for i in range(100):
         result = result_iter.next()
         if isinstance(result, Exception):
@@ -549,9 +546,7 @@ def test_imap_timeout(pool_4_processes, use_iter):
         imap_iterable = iter([(index, wait_index, signal) for index in range(100)])
     else:
         imap_iterable = [(index, wait_index, signal) for index in range(100)]
-    result_iter = pool_4_processes.imap(
-        f, imap_iterable
-    )
+    result_iter = pool_4_processes.imap(f, imap_iterable)
     for i in range(100):
         if i == wait_index:
             with pytest.raises(TimeoutError):
@@ -570,9 +565,7 @@ def test_imap_timeout(pool_4_processes, use_iter):
         imap_iterable = iter([(index, wait_index, signal) for index in range(100)])
     else:
         imap_iterable = [(index, wait_index, signal) for index in range(100)]
-    result_iter = pool_4_processes.imap_unordered(
-        f, imap_iterable, chunksize=11
-    )
+    result_iter = pool_4_processes.imap_unordered(f, imap_iterable, chunksize=11)
     in_order = []
     for i in range(100):
         try:
