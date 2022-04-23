@@ -5,6 +5,7 @@ import ray
 import pathlib
 import json
 import time
+import stat
 
 from dataclasses import asdict
 from pathlib import Path
@@ -130,6 +131,23 @@ def test_usage_stats_enabledness(monkeypatch, tmp_path):
     ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
 
+def test_set_usage_stats_enabled_via_config(tmp_path):
+    saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+    tmp_usage_stats_config_path = tmp_path / "config1.json"
+    ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+    ray_usage_lib.set_usage_stats_enabled_via_config(True)
+    assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
+    ray_usage_lib.set_usage_stats_enabled_via_config(False)
+    assert '{"usage_stats": false}' == tmp_usage_stats_config_path.read_text()
+    tmp_usage_stats_config_path.write_text('"xxx"')
+    ray_usage_lib.set_usage_stats_enabled_via_config(True)
+    assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
+    os.chmod(tmp_usage_stats_config_path, stat.S_IREAD)
+    with pytest.raises(Exception, match="Failed to enable usage stats.*"):
+        ray_usage_lib.set_usage_stats_enabled_via_config(True)
+    ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
+
+
 def test_usage_stats_prompt(monkeypatch, capsys, tmp_path):
     """
     Test usage stats prompt is shown in the proper cases.
@@ -150,17 +168,21 @@ def test_usage_stats_prompt(monkeypatch, capsys, tmp_path):
 
     with monkeypatch.context() as m:
         m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+        saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+        tmp_usage_stats_config_path = tmp_path / "config1.json"
+        ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
         # Usage stats collection is enabled by default.
         ray_usage_lib.show_usage_stats_prompt()
         captured = capsys.readouterr()
         assert usage_constants.USAGE_STATS_ENABLED_BY_DEFAULT_MESSAGE in captured.out
+        ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
     with monkeypatch.context() as m:
         m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
         saved_interactive = cli_logger.interactive
         saved_stdin = sys.stdin
         saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
-        tmp_usage_stats_config_path = tmp_path / "config1.json"
+        tmp_usage_stats_config_path = tmp_path / "config2.json"
         ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
         cli_logger.interactive = True
         (r_pipe, w_pipe) = os.pipe()
@@ -179,7 +201,7 @@ def test_usage_stats_prompt(monkeypatch, capsys, tmp_path):
         saved_interactive = cli_logger.interactive
         saved_stdin = sys.stdin
         saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
-        tmp_usage_stats_config_path = tmp_path / "config2.json"
+        tmp_usage_stats_config_path = tmp_path / "config3.json"
         ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
         cli_logger.interactive = True
         (r_pipe, w_pipe) = os.pipe()
@@ -198,7 +220,7 @@ def test_usage_stats_prompt(monkeypatch, capsys, tmp_path):
         saved_interactive = cli_logger.interactive
         saved_stdin = sys.stdin
         saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
-        tmp_usage_stats_config_path = tmp_path / "config3.json"
+        tmp_usage_stats_config_path = tmp_path / "config4.json"
         ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
         cli_logger.interactive = True
         (r_pipe, w_pipe) = os.pipe()

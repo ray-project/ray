@@ -238,7 +238,12 @@ def show_usage_stats_prompt() -> None:
             )
             set_usage_stats_enabled_via_env_var(enabled)
             # Remember user's choice.
-            set_usage_stats_enabled_via_config(enabled)
+            try:
+                set_usage_stats_enabled_via_config(enabled)
+            except Exception as e:
+                logger.debug(
+                    f"Failed to persist usage stats choice for future clusters: {e}"
+                )
             if enabled:
                 cli_logger.print(usage_constant.USAGE_STATS_ENABLED_MESSAGE)
             else:
@@ -273,15 +278,15 @@ def set_usage_stats_enabled_via_config(enabled) -> None:
         os.makedirs(os.path.dirname(_usage_stats_config_path()), exist_ok=True)
         with open(_usage_stats_config_path(), "w") as f:
             json.dump(config, f)
-    except Exception:
-        logger.exception(
+    except Exception as e:
+        raise Exception(
             "Failed to "
             f'{"enable" if enabled else "disable"}'
             ' usage stats by writing {"usage_stats": '
             f'{"true" if enabled else "false"}'
             "} to "
             f"{_usage_stats_config_path()}"
-        )
+        ) from e
 
 
 def set_usage_stats_enabled_via_env_var(enabled) -> None:
