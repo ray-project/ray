@@ -2606,22 +2606,22 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 to repeat indefinitely.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+        from ray.data.impl.plan import _rewrite_read_stage
 
-        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
-        # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
-        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
-            self._plan._in_blocks.clear()
-            blocks, read_stage = self._plan._rewrite_read_stage()
-            outer_stats = DatasetStats(stages={}, parent=None)
+        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, _ = self._plan._get_source_blocks()
+            blocks.clear()
+            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
             blocks = self._plan.execute()
-            read_stage = None
             outer_stats = self._plan.stats()
+            read_stage = None
+        uuid = self._get_uuid()
+        outer_stats.dataset_uuid = uuid
 
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
-        uuid = self._get_uuid()
 
         class Iterator:
             def __init__(self, blocks):
@@ -2719,6 +2719,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 exclusive with ``blocks_per_window``.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+        from ray.data.impl.plan import _rewrite_read_stage
 
         if blocks_per_window is not None and bytes_per_window is not None:
             raise ValueError("Only one windowing scheme can be specified.")
@@ -2726,17 +2727,15 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         if blocks_per_window is None:
             blocks_per_window = 10
 
-        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
-        # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
-        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
-            self._plan._in_blocks.clear()
-            blocks, read_stage = self._plan._rewrite_read_stage()
-            outer_stats = DatasetStats(stages={}, parent=None)
+        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, _ = self._plan._get_source_blocks()
+            blocks.clear()
+            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
             blocks = self._plan.execute()
-            read_stage = None
             outer_stats = self._plan.stats()
+            read_stage = None
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2814,19 +2813,9 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        blocks, metadata = [], []
-        for b, m in self._plan.execute().get_blocks_with_metadata():
-            blocks.append(b)
-            metadata.append(m)
-        ds = Dataset(
-            ExecutionPlan(
-                BlockList(blocks, metadata),
-                self._plan.stats(),
-                dataset_uuid=self._get_uuid(),
-            ),
-            self._epoch,
-            lazy=False,
-        )
+        plan = self._plan.deep_copy(preserve_uuid=True)
+        plan.execute(force_read=True)
+        ds = Dataset(plan, self._epoch, lazy=False)
         ds._set_uuid(self._get_uuid())
         return ds
 
