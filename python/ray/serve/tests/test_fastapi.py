@@ -636,6 +636,30 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
         assert requests.get("http://localhost:8000" + path).status_code == 404, path
 
 
+def test_fastapi_incorrect_parameter_form(self, serve_instance):
+    from fastapi import FastAPI
+
+    # https://github.com/ray-project/ray/issues/21744
+    app = FastAPI()
+
+    class A:
+        @app.get("/{i}")
+        def b(self, i: int):
+            pass
+
+    class Nested(BaseModel):
+        val: int
+
+    @app.post("/fakepage/", response_model=Nested)
+    def z(self, i: int):
+        pass
+
+    try:
+        make_fastapi_class_based_view(app, A)
+    except Exception:
+        self.fail("make_fastapi_class_based_view raised an exception")
+
+
 if __name__ == "__main__":
     import sys
 
