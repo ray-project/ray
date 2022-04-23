@@ -2,8 +2,8 @@ import logging
 
 import aiohttp.web
 import ray.dashboard.modules.log.log_utils as log_utils
-from ray.dashboard.modules.log.log_grpc_client import (
-    GrpcLogsClient,
+from ray.dashboard.modules.log.log_manager import (
+    LogsManager,
     LogIdentifiers,
     NodeIdentifiers,
     LogStreamOptions,
@@ -123,7 +123,7 @@ def catch_internal_server_error(func):
 class LogHeadV1(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self.grpc_logs_client = GrpcLogsClient()
+        self.logs_manager = LogsManager()
 
     @routes.get("/api/experimental/logs/list")
     @catch_internal_server_error
@@ -133,10 +133,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         a dict mapping a category of log component to a list of filenames.
         """
         filters = req.query.get("filters", "").split(",")
-        await self.grpc_logs_client.wait_until_initialized()
-        node_id = self.grpc_logs_client.resolve_node_id(
+        await self.logs_manager.wait_until_initialized()
+        node_id = self.logs_manager.resolve_node_id(
                 to_schema(req, NodeIdentifiers))
-        response = await self.grpc_logs_client.list_logs(node_id, filters)
+        response = await self.logs_manager.list_logs(node_id, filters)
         return aiohttp.web.json_response(response)
 
     @routes.get("/api/experimental/logs/{media_type}")
@@ -147,9 +147,9 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         the HTTP connection is not closed. Else, if `media_type = file`, the stream
         ends once all the lines in the file requested are transmitted.
         """
-        await self.grpc_logs_client.wait_until_initialized()
+        await self.logs_manager.wait_until_initialized()
 
-        stream = await self.grpc_logs_client.create_and_validate_log_stream(
+        stream = await self.logs_manager.create_log_stream(
             identifiers=to_schema(req, LogIdentifiers),
             stream_options=to_schema(req, LogStreamOptions)
         )
