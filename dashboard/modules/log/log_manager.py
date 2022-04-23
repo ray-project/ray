@@ -1,4 +1,4 @@
-from typing import List, Tuple, cast
+from typing import List
 from dataclasses import dataclass, fields, is_dataclass
 import asyncio
 import aiohttp.web
@@ -38,6 +38,12 @@ class LogStreamOptions:
 
 
 def to_schema(req: aiohttp.web.Request, Dataclass):
+    """Converts a aiohttp Request into the given dataclass
+
+    Args:
+        req: the request to extract the fields from
+        Dataclass: the dataclass to instantiate from the Request
+    """
     kwargs = {}
     for field in fields(Dataclass):
         if is_dataclass(field.type):
@@ -47,7 +53,7 @@ def to_schema(req: aiohttp.web.Request, Dataclass):
             value = req.query.get(field.name)
             if value is None:
                 value = req.match_info.get(field.name)
-            # This is brittle as the class needs to be
+            # Note: This is brittle as the class needs to be
             # instantiable from the str
             kwargs[field.name] = field.type(value) if value else None
     return Dataclass(**kwargs)
@@ -57,7 +63,15 @@ class LogsManager:
     def __init__(self):
         self.client = LogsGrpcClient()
 
-    def resolve_node_id(self, args: NodeIdentifiers):
+    def wait_until_client_initializes(func):
+        async def wait_wrapper(self, *args, **kwargs):
+            await self.client.wait_until_initialized()
+            return await func(self, *args, **kwargs)
+
+        return wait_wrapper
+
+    @wait_until_client_initializes
+    async def resolve_node_id(self, args: NodeIdentifiers):
         node_id = args.node_id
         if node_id is None:
             ip = args.node_ip
@@ -65,10 +79,11 @@ class LogsManager:
                 if ip not in self._ip_to_node_id:
                     raise ValueError(f"node_ip: {ip} not found")
                 node_id = self._ip_to_node_id[ip]
-        elif node_id not in self._stubs:
+        elif node_id not in self.client.get_all_registered_nodes():
             raise ValueError(f"node_id: {node_id} not found")
         return node_id
 
+    @wait_until_client_initializes
     async def list_logs(self, node_id_query: str, filters: List[str]):
         """
         Helper function to list the logs by querying each agent
@@ -76,7 +91,7 @@ class LogsManager:
         """
         response = {}
         tasks = []
-        for node_id, grpc_stub in self._stubs.items():
+        for node_id in self.client.get_all_registered_nodes():
             if node_id_query is None or node_id_query == node_id:
 
                 async def coro():
@@ -93,7 +108,7 @@ class LogsManager:
         self,
         args: LogIdentifiers
     ):
-        node_id = self.resolve_node_id(args.node)
+        node_id = await self.resolve_node_id(args.node)
         log_file_name = args.file.log_file_name
 
         # If `log_file_name` is not provided, check if we can get the
@@ -135,13 +150,14 @@ class LogsManager:
                         f"Worker with pid {pid} not found on node {node_id}")
 
         # node_id and log_file_name need to be known by this point
-        if node_id is None or node_id not in self._stubs:
+        if node_id is None or node_id not in self.client.get_all_registered_nodes():
             raise ValueError(f"node_id {node_id} not found")
         if log_file_name is None:
             raise ValueError("Could not resolve file identifiers to a file name.")
 
         return log_file_name, node_id
 
+    @wait_until_client_initializes
     async def create_log_stream(
         self,
         identifiers: LogIdentifiers,
@@ -156,7 +172,7 @@ class LogsManager:
         else:
             raise ValueError("Invalid media type: {media_type}")
 
-        return self.client.stream_log(
+        return await self.client.stream_log(
             node_id=node_id,
             log_file_name=log_file_name,
             keep_alive=keep_alive,
@@ -213,7 +229,8 @@ class LogsManager:
 
 class LogsGrpcClient:
     def __init__(self):
-        self._stubs = {}
+
+        self._agent_stubs = {}
         self._ip_to_node_id = {}
         DataSource.agents.signal.append(self._update_stubs)
 
@@ -224,35 +241,45 @@ class LogsGrpcClient:
         POLL_SLEEP_TIME = 0.5
         POLL_RETRIES = 10
         for _ in range(POLL_RETRIES):
-            if self._stubs != {}:
-                return None
+            if self._agent_stubs != {}:
+                return
             await asyncio.sleep(POLL_SLEEP_TIME)
         raise ValueError("Could not connect to agents via gRPC after "
                          f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds.")
+
+    def unregister_raylet_client(self, node_id: str):
+        self._raylet_stubs.pop(node_id)
+
+    def register_agent_client(self, node_id, address: str, port: int):
+        options = (("grpc.enable_http_proxy", 0),)
+        channel = init_grpc_channel(
+            f"{address}:{port}", options=options, asynchronous=True
+        )
+        self._agent_stubs[node_id] = reporter_pb2_grpc.LogServiceStub(channel)
+
+    def unregister_agent_client(self, node_id: str):
+        self._agent_stubs.pop(node_id)
 
     async def _update_stubs(self, change):
         if change.old:
             node_id, _ = change.old
             ip = DataSource.node_id_to_ip[node_id]
-            self._stubs.pop(node_id)
+            self.unregister_agent_client(node_id)
             self._ip_to_node_id.pop(ip)
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
-
-            options = (("grpc.enable_http_proxy", 0),)
-            channel = init_grpc_channel(
-                f"{ip}:{ports[1]}", options=options, asynchronous=True
-            )
-            stub = reporter_pb2_grpc.LogServiceStub(channel)
-            self._stubs[node_id] = stub
+            self.register_agent_client(node_id, ip, ports[1])
             self._ip_to_node_id[ip] = node_id
 
+    def get_all_registered_nodes(self) -> List[str]:
+        return self._agent_stubs.keys()
+
     async def list_logs(self, node_id: str, timeout: int = None):
-        stub = self._stubs.get(node_id)
+        stub = self._agent_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
-        stub.ListLogs(
+        return await stub.ListLogs(
             reporter_pb2.ListLogsRequest(), timeout=log_consts.GRPC_TIMEOUT
         )
 
@@ -264,7 +291,7 @@ class LogsGrpcClient:
         lines: int,
         interval: float
     ):
-        stub = self._stubs.get(node_id)
+        stub = self._agent_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
         stream = stub.StreamLog(

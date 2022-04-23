@@ -133,8 +133,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         a dict mapping a category of log component to a list of filenames.
         """
         filters = req.query.get("filters", "").split(",")
-        await self.logs_manager.wait_until_initialized()
-        node_id = self.logs_manager.resolve_node_id(
+        node_id = await self.logs_manager.resolve_node_id(
                 to_schema(req, NodeIdentifiers))
         response = await self.logs_manager.list_logs(node_id, filters)
         return aiohttp.web.json_response(response)
@@ -147,7 +146,6 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         the HTTP connection is not closed. Else, if `media_type = file`, the stream
         ends once all the lines in the file requested are transmitted.
         """
-        await self.logs_manager.wait_until_initialized()
 
         stream = await self.logs_manager.create_log_stream(
             identifiers=to_schema(req, LogIdentifiers),
