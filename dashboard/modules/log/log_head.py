@@ -10,7 +10,7 @@ from ray.core.generated import reporter_pb2_grpc
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
 from ray import ray_constants
-from typing import List
+from typing import List, Tuple
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -190,10 +190,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             if self._stubs != {}:
                 return None
             await asyncio.sleep(POLL_SLEEP_TIME)
-        return aiohttp.web.HTTPGatewayTimeout(
-            reason="Could not connect to agents via gRPC after "
-            f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds."
-        )
+        raise ValueError("Could not connect to agents via gRPC after "
+                         f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds.")
 
     async def _list_logs(self, node_id_query: str, filters: List[str]):
         """
@@ -217,26 +215,124 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         await asyncio.gather(*tasks)
         return response
 
-    @routes.get("/api/experimental/logs/list")
-    async def handle_list_logs(self, req):
+    def _resolve_node_id(self, req: aiohttp.web.Request):
+        node_id = req.query.get("node_id", None)
+        if node_id is None:
+            ip = req.query.get("node_ip", None)
+            if ip is not None:
+                if ip not in self._ip_to_node_id:
+                    raise ValueError(f"node_ip: {ip} not found")
+                node_id = self._ip_to_node_id[ip]
+        elif node_id not in self._stubs:
+            raise ValueError(f"node_id: {node_id} not found")
+        return node_id
+
+    async def _resolve_file_and_node(
+        self,
+        req: aiohttp.web.Request,
+        node_id: str = None
+    ):
+        node_id = self._resolve_node_id(req)
+        log_file_name = req.query.get("log_file_name", None)
+
+        # If `log_file_name` is not provided, check if we can get the
+        # corresponding `log_file_name` if an `actor_id` is provided.
+        if log_file_name is None or node_id is None:
+            actor_id = req.query.get("actor_id", None)
+            if actor_id is not None:
+                actor_data = DataSource.actors.get(actor_id)
+                if actor_data is None:
+                    raise ValueError("Actor ID {actor_id} not found.")
+                worker_id = actor_data["address"].get("workerId")
+                if worker_id is None:
+                    raise ValueError("Worker ID for Actor ID {actor_id} not found.")
+
+                index = await self._list_logs(node_id)
+                for node in index:
+                    for file in index[node]["worker_outs"]:
+                        if file.split(".")[0].split("-")[1] == worker_id:
+                            log_file_name = file
+                            if node_id is None:
+                                node_id = node
+                            break
+
+        # If `log_file_name` cannot be resolved, check if we can get the
+        # corresponding `log_file_name` if a `pid` is provided.
+        if log_file_name is None:
+            pid = req.query.get("pid", None)
+            if pid is not None:
+                if node_id is None:
+                    raise ValueError("Node identifiers (node_ip, node_id) not provided "
+                                     f"with pid: {pid}. Available: {self._ip_to_node_id}")
+                index = await self._list_logs(node_id, [pid])
+                for file in index[node_id]["worker_outs"]:
+                    if file.split(".")[0].split("-")[3] == pid:
+                        log_file_name = file
+                        break
+                if log_file_name is None:
+                    raise ValueError(
+                        f"Worker with pid {pid} not found on node {node_id}")
+
+        # node_id and log_file_name need to be known by this point
+        if node_id is None or node_id not in self._stubs:
+            raise ValueError(f"node_id {node_id} not found")
+        if log_file_name is None:
+            raise ValueError("Could not resolve file identifiers to a file name.")
+
+        return log_file_name, node_id
+
+    @staticmethod
+    async def _validate_grpc_log_stream(stream):
+        metadata = await stream.initial_metadata()
+        if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
+            raise ValueError('File "{log_file_name}" not found on node {node_id}')
+
+    async def _create_and_validate_log_stream(
+        self,
+        req: aiohttp.web.Request
+    ):
+        log_file_name, node_id = await self._resolve_file_and_node(req)
+
+        media_type = req.match_info.get("media_type")
+
+        lines = req.query.get("lines")
+        lines = int(lines) if lines else None
+
+        interval = req.query.get("interval")
+        interval = float(interval) if interval else None
+
+        if media_type == "stream":
+            keep_alive = True
+        elif media_type == "file":
+            keep_alive = False
+        else:
+            raise ValueError("Invalid media type: {media_type}")
+
+        stream = self._stubs[node_id].StreamLog(
+            reporter_pb2.StreamLogRequest(
+                keep_alive=keep_alive,
+                log_file_name=log_file_name,
+                lines=lines,
+                interval=interval,
+            )
+        )
+
+        await self._validate_grpc_log_stream(stream)
+
+        return stream
+
+    @ routes.get("/api/experimental/logs/list")
+    async def handle_list_logs(self, req: aiohttp.web.Request):
         """
         Returns a JSON file containing, for each node in the cluster,
         a dict mapping a category of log component to a list of filenames.
         """
         try:
-            node_id = req.query.get("node_id", None)
-            if node_id is None:
-                ip = req.query.get("node_ip", None)
-                if ip is not None:
-                    if ip not in self._ip_to_node_id:
-                        return aiohttp.web.HTTPNotFound(
-                            reason=f"node_ip: {ip} not found"
-                        )
-                    node_id = self._ip_to_node_id[ip]
             filters = req.query.get("filters", "").split(",")
             err = await self._wait_until_initialized()
             if err is not None:
                 return err
+            node_id = self._resolve_node_id(req)
             response = await self._list_logs(node_id, filters)
             return aiohttp.web.json_response(response)
 
@@ -244,8 +340,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             logger.exception(e)
             return aiohttp.web.HTTPInternalServerError(reason=e)
 
-    @routes.get("/api/experimental/logs/{media_type}")
-    async def handle_get_log(self, req):
+    @ routes.get("/api/experimental/logs/{media_type}")
+    async def handle_get_log(self, req: aiohttp.web.Request):
         """
         If `media_type = stream`, creates HTTP stream which is either kept alive while
         the HTTP connection is not closed. Else, if `media_type = file`, the stream
@@ -253,105 +349,9 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         """
         response = None
         try:
-            err = await self._wait_until_initialized()
-            if err is not None:
-                return err
-            node_id = req.query.get("node_id", None)
+            await self._wait_until_initialized()
 
-            # If no `node_id` is provided, try to determine node_id
-            # via the `node_ip` if it is provided
-            if node_id is None:
-                ip = req.query.get("node_ip", None)
-                if ip is not None:
-                    if ip not in self._ip_to_node_id:
-                        return aiohttp.web.HTTPNotFound(
-                            reason=f"node_ip: {ip} not found"
-                        )
-                    node_id = self._ip_to_node_id[ip]
-
-            log_file_name = req.query.get("log_file_name", None)
-
-            # If `log_file_name` is not provided, check if we can get the
-            # corresponding `log_file_name` if an `actor_id` is provided.
-            if log_file_name is None or node_id is None:
-                actor_id = req.query.get("actor_id", None)
-                if actor_id is not None:
-                    actor_data = DataSource.actors.get(actor_id)
-                    if actor_data is None:
-                        return aiohttp.web.HTTPNotFound(
-                            reason=f"Actor ID {actor_id} not found."
-                        )
-                    worker_id = actor_data["address"].get("workerId")
-                    if worker_id is None:
-                        return aiohttp.web.HTTPNotFound(
-                            reason=f"Worker ID for Actor ID {actor_id} not found."
-                        )
-
-                    index = await self._list_logs(node_id, [worker_id])
-                    for node in index:
-                        for file in index[node]["worker_outs"]:
-                            if file.split(".")[0].split("-")[1] == worker_id:
-                                log_file_name = file
-                                if node_id is None:
-                                    node_id = node
-                                break
-
-            # If `log_file_name` cannot be resolved, check if we can get the
-            # corresponding `log_file_name` if a `pid` is provided.
-            if log_file_name is None:
-                pid = req.query.get("pid", None)
-                if node_id is None:
-                    return aiohttp.web.HTTPNotFound(
-                        reason="Node identifiers (node_ip, node_id) not provided."
-                        f" Available: {self._ip_to_node_id}"
-                    )
-                if pid is not None:
-                    index = await self._list_logs(node_id, [pid])
-                    for file in index[node_id]["worker_outs"]:
-                        if file.split(".")[0].split("-")[3] == pid:
-                            log_file_name = file
-                            break
-                    return aiohttp.web.HTTPNotFound(
-                        reason=f"Worker with pid {pid} not found on node {node_id}"
-                    )
-
-            media_type = req.match_info.get("media_type", None)
-
-            lines = req.query.get("lines", None)
-            lines = int(lines) if lines else None
-
-            interval = req.query.get("interval", None)
-            interval = float(interval) if interval else None
-
-            if node_id is None or node_id not in self._stubs:
-                return aiohttp.web.HTTPNotFound(reason=f"Node ID {node_id} not found")
-            if log_file_name is None:
-                return aiohttp.web.HTTPNotFound(
-                    reason="Could not resolve file identifiers to a file name."
-                )
-
-            if media_type == "stream":
-                keep_alive = True
-            elif media_type == "file":
-                keep_alive = False
-            else:
-                return aiohttp.web.HTTPNotFound(
-                    reason=f"Invalid media type: {media_type}"
-                )
-            stream = self._stubs[node_id].StreamLog(
-                reporter_pb2.StreamLogRequest(
-                    keep_alive=keep_alive,
-                    log_file_name=log_file_name,
-                    lines=lines,
-                    interval=interval,
-                )
-            )
-
-            metadata = await stream.initial_metadata()
-            if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
-                return aiohttp.web.HTTPNotFound(
-                    reason=f'File "{log_file_name}" not found on node {node_id}'
-                )
+            stream = await self._create_and_validate_log_stream(req)
 
             response = aiohttp.web.StreamResponse()
             response.content_type = "text/plain"
@@ -381,3 +381,10 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
     @staticmethod
     def is_minimal_module():
         return False
+
+
+# class LogFileResolver:
+#     def __init__(self):
+#
+#     def resolve_from_request() -> Tuple[str, str]:
+#         str
