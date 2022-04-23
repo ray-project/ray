@@ -97,7 +97,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     path = os.path.dirname(os.path.abspath(__file__))
-    ray.init(runtime_env={working_dir=path})
+    ray.init(runtime_env={"working_dir": path})
 
     import urllib.request
 
