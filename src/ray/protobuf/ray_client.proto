@@ -243,7 +243,8 @@ message KVGetRequest {
 }
 
 message KVGetResponse {
-  bytes value = 1;
+  // Not set when key does not exist.
+  optional bytes value = 1;
 }
 
 message KVPutRequest {

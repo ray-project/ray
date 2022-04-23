@@ -1,17 +1,18 @@
+import contextlib
 import io
 import os
 import shutil
 import tarfile
 import tempfile
-from typing import Optional, Union, Tuple
+from typing import Iterator, Optional, Tuple, Union
 
 import ray
 from ray import cloudpickle as pickle
 from ray.ml.utils.remote_storage import (
-    upload_to_uri,
-    is_non_local_path_uri,
     download_from_uri,
     fs_hint,
+    is_non_local_path_uri,
+    upload_to_uri,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -227,30 +228,21 @@ class Checkpoint:
             return ray.get(self._obj_ref)
         elif self._local_path or self._uri:
             # Else, checkpoint is either on FS or external storage
-            cleanup = False
+            with self.as_directory() as local_path:
+                checkpoint_data_path = os.path.join(
+                    local_path, _DICT_CHECKPOINT_FILE_NAME
+                )
+                if os.path.exists(checkpoint_data_path):
+                    # If we are restoring a dict checkpoint, load the dict
+                    # from the checkpoint file.
+                    with open(checkpoint_data_path, "rb") as f:
+                        checkpoint_data = pickle.load(f)
+                else:
+                    data = _pack(local_path)
 
-            local_path = self._local_path
-            if not local_path:
-                # Checkpoint does not exist on local path. Save
-                # in temporary directory, but clean up later
-                local_path = self.to_directory()
-                cleanup = True
-
-            checkpoint_data_path = os.path.join(local_path, _DICT_CHECKPOINT_FILE_NAME)
-            if os.path.exists(checkpoint_data_path):
-                # If we are restoring a dict checkpoint, load the dict
-                # from the checkpoint file.
-                with open(checkpoint_data_path, "rb") as f:
-                    checkpoint_data = pickle.load(f)
-            else:
-                data = _pack(local_path)
-
-                checkpoint_data = {
-                    _FS_CHECKPOINT_KEY: data,
-                }
-
-            if cleanup:
-                shutil.rmtree(local_path)
+                    checkpoint_data = {
+                        _FS_CHECKPOINT_KEY: data,
+                    }
 
             return checkpoint_data
         else:
@@ -338,6 +330,37 @@ class Checkpoint:
 
         return path
 
+    @contextlib.contextmanager
+    def as_directory(self) -> Iterator[str]:
+        """Return checkpoint directory path in a context.
+
+        This function makes checkpoint data available as a directory while avoiding
+        unnecessary copies and left-over temporary data.
+
+        If the checkpoint is already a directory checkpoint, it will return
+        the existing path. If it is not, it will create a temporary directory,
+        which will be deleted after the context is exited.
+
+        Users should treat the returned checkpoint directory as read-only and avoid
+        changing any data within it, as it might get deleted when exiting the context.
+
+        Example:
+
+            with checkpoint.as_directory() as checkpoint_dir:
+                # Do some read-only processing of files within checkpoint_dir
+                pass
+
+            # At this point, if a temporary directory was created, it will have
+            # been deleted.
+
+        """
+        if self._local_path:
+            yield self._local_path
+        else:
+            temp_dir = self.to_directory()
+            yield temp_dir
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     @classmethod
     def from_uri(cls, uri: str) -> "Checkpoint":
         """Create checkpoint object from location URI (e.g. cloud storage).
@@ -374,17 +397,8 @@ class Checkpoint:
                 f"Hint: {fs_hint(uri)}"
             )
 
-        cleanup = False
-
-        local_path = self._local_path
-        if not local_path:
-            cleanup = True
-            local_path = self.to_directory()
-
-        upload_to_uri(local_path=local_path, uri=uri)
-
-        if cleanup:
-            shutil.rmtree(local_path)
+        with self.as_directory() as local_path:
+            upload_to_uri(local_path=local_path, uri=uri)
 
         return uri
 

@@ -198,6 +198,7 @@
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
       -//:gcs_server_rpc_test -//:gcs_client_test
       -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
+      -//:ray_syncer_test
 
 - label: ":serverless: Dashboard Tests"
   conditions:
@@ -390,9 +391,9 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    # Set up local kind cluster.
+    - echo "--- Setting up local kind cluster."
     - ./ci/k8s/prep-k8s-environment.sh
-    # Build py37-cpu Ray image for the test.
+    - echo "--- Building py37-cpu Ray image for the test."
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker
     - python ci/build/build-docker-images.py --py-versions py37 --device-types cpu --build-type LOCAL --build-base
@@ -400,8 +401,10 @@
     - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
     # Load the image into the kind node.
     - kind load docker-image ray-ci:kuberay-test
+    - echo "--- Running the test."
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=kuberay_operator
       --test_env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test
+      --test_env=PULL_POLICY=IfNotPresent
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...

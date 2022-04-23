@@ -96,6 +96,7 @@ _common_options = {
             NodeAffinitySchedulingStrategy,
         )
     ),
+    "_metadata": Option((dict, type(None))),
 }
 
 

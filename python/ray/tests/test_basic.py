@@ -177,10 +177,8 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-def test_invalid_arguments(shutdown_only):
+def test_invalid_arguments():
     import re
-
-    ray.init(num_cpus=2)
 
     def f():
         return 1
@@ -224,6 +222,16 @@ def test_invalid_arguments(shutdown_only):
     for keyword in ("max_restarts", "max_task_retries"):
         with pytest.raises(ValueError, match=template2.format(keyword)):
             ray.remote(**{keyword: np.random.randint(-100, -2)})(A)
+
+    metadata_type_err = (
+        "The type of keyword '_metadata' "
+        + f"must be {(dict, type(None))}, but received type {float}"
+    )
+    with pytest.raises(TypeError, match=re.escape(metadata_type_err)):
+        ray.remote(_metadata=3.14)(A)
+
+    ray.remote(_metadata={"data": 1})(f)
+    ray.remote(_metadata={"data": 1})(A)
 
 
 def test_options():

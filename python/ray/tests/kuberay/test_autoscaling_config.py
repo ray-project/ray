@@ -49,7 +49,11 @@ def _get_basic_autoscaling_config() -> dict:
                 "max_workers": 300,
                 "min_workers": 1,
                 "node_config": {},
-                "resources": {"CPU": 1},
+                "resources": {
+                    "CPU": 1,
+                    "Custom2": 5,
+                    "Custom3": 1,
+                },
             },
         },
         "auth": {},
@@ -96,7 +100,7 @@ def _get_ray_cr_memory_and_gpu() -> dict:
     """CR with memory and gpu rayStartParams."""
     cr = _get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["memory"] = "300000000"
-    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num_gpus"] = "1"
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-gpus"] = "1"
     return cr
 
 
