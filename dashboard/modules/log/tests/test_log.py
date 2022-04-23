@@ -41,7 +41,8 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
     def write_log(s):
         print(s)
 
-    test_log_text = "test_log_text"
+    # Make sure that this works with unicode
+    test_log_text = "test_log_text_日志"
     ray.get(write_log.remote(test_log_text))
 
     test_file = "test.log"
@@ -83,7 +84,7 @@ def test_log(disable_aiohttp_cache, ray_start_with_dashboard):
             for u in urls:
                 response = requests.get(u)
                 response.raise_for_status()
-                if test_log_text in response.text:
+                if test_log_text in response.content.decode(encoding="utf-8"):
                     break
             else:
                 raise Exception(f"Can't find {test_log_text} from {urls}")
@@ -228,14 +229,16 @@ def test_logs_tail():
     try:
         with open(FILE_NAME, "w") as f:
             for i in range(TOTAL_LINES):
-                f.write(f"Message {i:4}\n")
+                # Check this works with unicode
+                f.write(f"Message 日志 {i:4}\n")
         file = open(FILE_NAME, "rb")
         text, byte_pos = tail_file(file, 100)
-        assert byte_pos == TOTAL_LINES * len(b"Message 1000\n")
+        assert byte_pos == TOTAL_LINES * \
+            len("Message 日志 1000\n".encode(encoding="utf-8"))
         lines = text.decode("utf-8").split("\n")
         assert len(lines) == 100
-        assert lines[0] == "Message  900"
-        assert lines[99] == "Message  999"
+        assert lines[0] == "Message 日志  900"
+        assert lines[99] == "Message 日志  999"
     except Exception as e:
         raise e
     finally:
@@ -250,7 +253,7 @@ def test_logs_experimental_stream_and_tail(ray_start_with_dashboard):
             for s in strings:
                 print(s)
 
-    test_log_text = "test_log_text{}"
+    test_log_text = "test_log_text_日志_{}"
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -273,7 +276,7 @@ def test_logs_experimental_stream_and_tail(ray_start_with_dashboard):
         stream=True,
     )
     if stream_response.status_code != 200:
-        raise ValueError(stream_response.text)
+        raise ValueError(stream_response.content.decode("utf-8"))
     stream_iterator = stream_response.iter_content(chunk_size=None)
     assert (
         next(stream_iterator).decode("utf-8")
@@ -302,7 +305,7 @@ def test_logs_experimental_stream_and_tail(ray_start_with_dashboard):
         + f"/api/experimental/logs/file?node_id={node_id}&lines={LINES}"
         + "&actor_id="
         + actor._ray_actor_id.hex(),
-    ).text
+    ).content.decode("utf-8")
     assert file_response == "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
 
 
