@@ -9,7 +9,7 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 import ray._private.profiling as profiling
 import logging
-
+from time import sleep
 logger = logging.getLogger(__name__)
 
 
@@ -59,22 +59,14 @@ class ImportThread:
 
     def _run(self):
         try:
-            self._do_importing()
             while True:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
                     return
-                key = self.subscriber.poll()
-                if key is None:
-                    # subscriber has closed.
-                    break
                 self._do_importing()
-        except (OSError, self.exception_type) as e:
+                sleep(1)
+        except Exception as e:
             logger.error(f"ImportThread: {e}")
-        finally:
-            # Close the Redis / GCS subscriber to avoid leaking file
-            # descriptors.
-            self.subscriber.close()
 
     def _do_importing(self):
         while True:
