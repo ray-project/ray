@@ -2891,8 +2891,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 "Dataset.write_*() APIs, and serialize a new dataset reading from the "
                 "external store using the ray.data.read_*() APIs."
             )
-        # Copy Dataset and clear the execution plan so the Dataset is out-of-band
-        # serializable.
+        # Copy Dataset and clear the blocks from the execution plan so only the
+        # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
         ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
         ds._plan.clear_block_refs()

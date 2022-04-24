@@ -210,9 +210,10 @@ def test_dataset_lineage_serialization(shutdown_only, lazy):
     in_blocks = ds._plan._in_blocks
     # Should not raise.
     in_blocks._check_if_cleared()
-    if lazy and isinstance(in_blocks, LazyBlockList):
+    assert isinstance(in_blocks, LazyBlockList)
+    if lazy:
         assert in_blocks._block_partition_refs[0] is not None
-    if not lazy:
+    else:
         assert ds._plan._snapshot_blocks is not None
 
     ray.shutdown()
