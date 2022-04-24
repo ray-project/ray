@@ -285,7 +285,7 @@ def actor_critic_loss(
         policy_tp1 = torch.exp(log_pis_tp1)
 
         # Q-values.
-        q_t, _ = model.get_q_values(model_out_t, states_in_t["q"], seq_lens)
+        q_t = model.get_q_values(model_out_t, states_in_t["q"], seq_lens)[0]
         # Target Q-values.
         q_tp1, _ = target_model.get_q_values(
             target_model_out_tp1, target_states_in_tp1["q"], seq_lens
