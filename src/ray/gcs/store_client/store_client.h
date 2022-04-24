@@ -41,8 +41,7 @@ class StoreClient {
   /// \param data The value of the key that will be written to the table.
   /// \param overwrite Whether to overwrite existing values. Otherwise, the update
   ///   will be ignored.
-  /// \param callback Callback that will be called after write finishes.
-  /// WARNING: it returns true if and only if A NEW ENTRY is added.
+  /// \param callback WARNING: it returns true if and only if A NEW ENTRY is added.
   /// Overwritten return false.
   /// \return Status
   virtual Status AsyncPut(const std::string &table_name,
@@ -55,7 +54,7 @@ class StoreClient {
   ///
   /// \param table_name The name of the table to be read.
   /// \param key The key to lookup from the table.
-  /// \param callback Callback that will be called after read finishes.
+  /// \param callback returns the value or null.
   /// \return Status
   virtual Status AsyncGet(const std::string &table_name,
                           const std::string &key,
@@ -64,7 +63,7 @@ class StoreClient {
   /// Get all data from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.
-  /// \param callback Callback that will be called after data has been received.
+  /// \param callback returns the key value pairs in a map.
   /// \return Status
   virtual Status AsyncGetAll(const std::string &table_name,
                              const MapCallback<std::string, std::string> &callback) = 0;
@@ -72,7 +71,7 @@ class StoreClient {
   /// Get all data from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.
-  /// \param callback Callback that will be called after data has been received.
+  /// \param callback returns the key value pairs in a map.
   /// \return Status
   virtual Status AsyncMultiGet(const std::string &table_name,
                                const std::vector<std::string> &keys,
@@ -82,7 +81,7 @@ class StoreClient {
   ///
   /// \param table_name The name of the table from which data is to be deleted.
   /// \param key The key that will be deleted from the table.
-  /// \param callback Callback that will be called after delete finishes.
+  /// \param callback returns true if an entry with matching key is deleted.
   /// \return Status
   virtual Status AsyncDelete(const std::string &table_name,
                              const std::string &key,
@@ -92,7 +91,7 @@ class StoreClient {
   ///
   /// \param table_name The name of the table from which data is to be deleted.
   /// \param keys The keys that will be deleted from the table.
-  /// \param callback Callback that will be called after delete finishes.
+  /// \param callback returns the number of deleted entries.
   /// \return Status
   virtual Status AsyncBatchDelete(const std::string &table_name,
                                   const std::vector<std::string> &keys,
@@ -107,7 +106,7 @@ class StoreClient {
   ///
   /// \param table_name The name of the table to be read.
   /// \param prefix The prefix to be scaned.
-  /// \param callback Callback that will be called after data has been received.
+  /// \param callback returns all matching keys in a vector.
   /// \return Status
   virtual Status AsyncGetKeys(const std::string &table_name,
                               const std::string &prefix,
@@ -117,7 +116,7 @@ class StoreClient {
   ///
   /// \param table_name The name of the table to be read.
   /// \param key The key to be checked.
-  /// \param callback Callback function.
+  /// \param callback Returns true if such key exists.
   virtual Status AsyncExists(const std::string &table_name,
                              const std::string &key,
                              std::function<void(bool)> callback) = 0;

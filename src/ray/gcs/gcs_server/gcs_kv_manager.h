@@ -34,7 +34,7 @@ class InternalKVInterface {
   ///
   /// \param ns The namespace of the key.
   /// \param key The key to fetch.
-  /// \param callback Callback function.
+  /// \param callback Returns the value or null if the key doesn't exist.
   virtual void Get(const std::string &ns,
                    const std::string &key,
                    std::function<void(std::optional<std::string>)> callback) = 0;
@@ -46,8 +46,7 @@ class InternalKVInterface {
   /// \param value The value for the pair.
   /// \param overwrite Whether to overwrite existing values. Otherwise, the update
   ///   will be ignored.
-  /// \param callback Callback function.
-  /// WARNING: it returns true if and only if A NEW ENTRY is added.
+  /// \param callback WARNING: it returns true if and only if A NEW ENTRY is added.
   /// Overwritten return false.
   virtual void Put(const std::string &ns,
                    const std::string &key,
@@ -61,7 +60,7 @@ class InternalKVInterface {
   /// \param key The key to be deleted.
   /// \param del_by_prefix Whether to treat the key as prefix. If true, it'll
   ///     delete all keys with `key` as the prefix.
-  /// \param callback Callback function.
+  /// \param callback returns the number of entries deleted.
   virtual void Del(const std::string &ns,
                    const std::string &key,
                    bool del_by_prefix,
@@ -80,7 +79,7 @@ class InternalKVInterface {
   ///
   /// \param ns The namespace of the prefix.
   /// \param prefix The prefix to be scaned.
-  /// \param callback Callback function.
+  /// \param callback return all the keys matching the prefix.
   virtual void Keys(const std::string &ns,
                     const std::string &prefix,
                     std::function<void(std::vector<std::string>)> callback) = 0;

@@ -29,7 +29,11 @@ Status GcsTable<Key, Data>::Put(const Key &key,
                                  key.Binary(),
                                  value.SerializeAsString(),
                                  /*overwrite*/ true,
-                                 [callback](auto) { callback(Status::OK()); });
+                                 [callback](auto) {
+                                   if (callback) {
+                                     callback(Status::OK());
+                                   }
+                                 });
 }
 
 template <typename Key, typename Data>
@@ -37,6 +41,9 @@ Status GcsTable<Key, Data>::Get(const Key &key,
                                 const OptionalItemCallback<Data> &callback) {
   auto on_done = [callback](const Status &status,
                             const boost::optional<std::string> &result) {
+    if (!callback) {
+      return;
+    }
     boost::optional<Data> value;
     if (result) {
       Data data;
@@ -51,6 +58,9 @@ Status GcsTable<Key, Data>::Get(const Key &key,
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
   auto on_done = [callback](absl::flat_hash_map<std::string, std::string> &&result) {
+    if (!callback) {
+      return;
+    }
     absl::flat_hash_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
@@ -99,7 +109,12 @@ Status GcsTableWithJobId<Key, Data>::Put(const Key &key,
                                        key.Binary(),
                                        value.SerializeAsString(),
                                        /*overwrite*/ true,
-                                       [callback](auto) { callback(Status::OK()); });
+                                       [callback](auto) {
+                                         if (!callback) {
+                                           return;
+                                         }
+                                         callback(Status::OK());
+                                       });
 }
 
 template <typename Key, typename Data>
@@ -114,6 +129,9 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(const JobID &job_id,
     }
   }
   auto on_done = [callback](absl::flat_hash_map<std::string, std::string> &&result) {
+    if (!callback) {
+      return;
+    }
     absl::flat_hash_map<Key, Data> values;
     for (auto &item : result) {
       if (!item.second.empty()) {
@@ -175,6 +193,9 @@ Status GcsTableWithJobId<Key, Data>::AsyncRebuildIndexAndGetAll(
     for (auto &item : result) {
       auto key = item.first;
       index_[GetJobIdFromKey(key)].insert(key);
+    }
+    if (!callback) {
+      return;
     }
     callback(std::move(result));
   });

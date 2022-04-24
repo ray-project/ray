@@ -15,6 +15,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <functional>
+#include <regex>
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
@@ -213,16 +214,28 @@ std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
   return ss.str();
 }
 
+namespace {
+
+// "[, ], -, ?, *, ^, \" are special chars in Redis pattern matching.
+// escape them with / according to the doc:
+// https://redis.io/commands/keys/
+std::string EscapeMatchPattern(const std::string &s) {
+  static std::regex kSpecialChars("\\[|\\]|-|\\?|\\*|\\^|\\\\");
+  return std::regex_replace(s, kSpecialChars, "\\$&");
+}
+};  // namespace
+
 std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_name) {
   std::stringstream ss;
-  ss << table_name << table_separator_ << "*";
+  ss << EscapeMatchPattern(table_name) << table_separator_ << "*";
   return ss.str();
 }
 
 std::string RedisStoreClient::GenKeyRedisMatchPattern(const std::string &table_name,
                                                       const std::string &key) {
   std::stringstream ss;
-  ss << table_name << table_separator_ << key << "*";
+  ss << EscapeMatchPattern(table_name) << table_separator_ << EscapeMatchPattern(key)
+     << "*";
   return ss.str();
 }
 

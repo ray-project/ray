@@ -25,6 +25,7 @@ namespace ray {
 namespace gcs {
 
 /// \class InMemoryStoreClient
+/// Please refer to StoreClient for API semantics.
 ///
 /// This class is thread safe.
 class InMemoryStoreClient : public StoreClient {

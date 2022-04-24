@@ -23,30 +23,32 @@ namespace gcs {
 
 /// InternalKVInterface implementation that wraps around
 /// StoreClient.
+/// Please refer to InternalKVInterface for semantics
+/// of public APIs.
 class StoreClientInternalKV : public InternalKVInterface {
  public:
   explicit StoreClientInternalKV(std::unique_ptr<StoreClient> store_client);
 
-  void Get(const std::string &ns,
+  void Get(const std::string &table_name,
            const std::string &key,
            std::function<void(std::optional<std::string>)> callback) override;
 
-  void Put(const std::string &ns,
+  void Put(const std::string &table_name,
            const std::string &key,
            const std::string &value,
            bool overwrite,
            std::function<void(bool)> callback) override;
 
-  void Del(const std::string &ns,
+  void Del(const std::string &table_name,
            const std::string &key,
            bool del_by_prefix,
            std::function<void(int64_t)> callback) override;
 
-  void Exists(const std::string &ns,
+  void Exists(const std::string &table_name,
               const std::string &key,
               std::function<void(bool)> callback) override;
 
-  void Keys(const std::string &ns,
+  void Keys(const std::string &table_name,
             const std::string &prefix,
             std::function<void(std::vector<std::string>)> callback) override;
 

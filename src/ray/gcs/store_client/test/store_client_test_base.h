@@ -64,10 +64,10 @@ class StoreClientTestBase : public ::testing::Test {
     for (const auto &[key, value] : key_to_value_) {
       ++pending_count_;
       RAY_CHECK_OK(store_client_->AsyncPut(
-          table_name_, key.Hex(), value.SerializeAsString(), true, put_calllback));
+          table_name_, key.Binary(), value.SerializeAsString(), true, put_calllback));
       // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncPut(
-          table_name_, key.Hex(), value.SerializeAsString(), true, nullptr));
+          table_name_, key.Binary(), value.SerializeAsString(), true, nullptr));
     }
     WaitPendingDone();
   }
@@ -76,9 +76,10 @@ class StoreClientTestBase : public ::testing::Test {
     auto delete_calllback = [this](auto) { --pending_count_; };
     for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key.Hex(), delete_calllback));
+      RAY_CHECK_OK(
+          store_client_->AsyncDelete(table_name_, key.Binary(), delete_calllback));
       // Make sure no-op callback is handled well
-      RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key.Hex(), nullptr));
+      RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key.Binary(), nullptr));
     }
     WaitPendingDone();
   }
@@ -97,14 +98,14 @@ class StoreClientTestBase : public ::testing::Test {
     };
     for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(store_client_->AsyncGet(table_name_, key.Hex(), get_callback));
+      RAY_CHECK_OK(store_client_->AsyncGet(table_name_, key.Binary(), get_callback));
     }
     WaitPendingDone();
   }
 
   void GetEmpty() {
     for (const auto &[k, _] : key_to_value_) {
-      auto key = k.Hex();
+      auto key = k.Binary();
       auto get_callback = [this, key](const Status &status,
                                       const boost::optional<std::string> &result) {
         RAY_CHECK_OK(status);
@@ -123,7 +124,7 @@ class StoreClientTestBase : public ::testing::Test {
         [this](const absl::flat_hash_map<std::string, std::string> &result) {
           static std::unordered_set<ActorID> received_keys;
           for (const auto &item : result) {
-            const ActorID &actor_id = ActorID::FromHex(item.first);
+            const ActorID &actor_id = ActorID::FromBinary(item.first);
             auto it = received_keys.find(actor_id);
             RAY_CHECK(it == received_keys.end());
             received_keys.emplace(actor_id);
@@ -142,13 +143,13 @@ class StoreClientTestBase : public ::testing::Test {
 
   void GetKeys() {
     for (int i = 0; i < 30; i++) {
-      auto key = keys_.at(std::rand() % keys_.size()).Hex();
+      auto key = keys_.at(std::rand() % keys_.size()).Binary();
       auto prefix = key.substr(0, std::rand() % key.size());
       RAY_LOG(INFO) << "key is: " << key << ", prefix is: " << prefix;
       std::unordered_set<std::string> result_set;
       for (const auto &item1 : key_to_value_) {
-        if (item1.first.Hex().find(prefix) == 0) {
-          result_set.insert(item1.first.Hex());
+        if (item1.first.Binary().find(prefix) == 0) {
+          result_set.insert(item1.first.Binary());
         }
       }
       ASSERT_FALSE(result_set.empty());
@@ -176,7 +177,7 @@ class StoreClientTestBase : public ::testing::Test {
     pending_count_ += key_to_value_.size();
     for (const auto &item : key_to_value_) {
       RAY_CHECK_OK(
-          store_client_->AsyncExists(table_name_, item.first.Hex(), exists_callback));
+          store_client_->AsyncExists(table_name_, item.first.Binary(), exists_callback));
     }
     WaitPendingDone();
   }
@@ -186,7 +187,7 @@ class StoreClientTestBase : public ::testing::Test {
     ++pending_count_;
     std::vector<std::string> keys;
     for (auto &[key, _] : key_to_value_) {
-      keys.push_back(key.Hex());
+      keys.push_back(key.Binary());
     }
     RAY_CHECK_OK(store_client_->AsyncBatchDelete(table_name_, keys, delete_calllback));
     // Make sure no-op callback is handled well
