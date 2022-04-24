@@ -78,8 +78,8 @@ class TestSAC(unittest.TestCase):
         config["num_workers"] = 0  # Run locally.
         config["n_step"] = 3
         config["twin_q"] = True
-        config["learning_starts"] = 0
-        config["prioritized_replay"] = True
+        config["replay_buffer_config"]["learning_starts"] = 0
+        config["replay_buffer_config"]["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10
         config["train_batch_size"] = 10
         # If we use default buffer size (1e6), the buffer will take up
@@ -171,7 +171,7 @@ class TestSAC(unittest.TestCase):
         # Run locally.
         config["seed"] = 42
         config["num_workers"] = 0
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["learning_starts"] = 0
         config["twin_q"] = False
         config["gamma"] = 0.99
         # Switch on deterministic loss so we can compare the loss values.

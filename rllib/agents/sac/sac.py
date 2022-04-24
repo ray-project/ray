@@ -90,12 +90,26 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 100,
 
     # === Replay buffer ===
-    # Size of the replay buffer (in time steps).
+    # The following values have moved because of the new ReplayBuffer API
     "buffer_size": DEPRECATED_VALUE,
+    "prioritized_replay": DEPRECATED_VALUE,
+    "learning_starts": DEPRECATED_VALUE,
+    "replay_batch_size": DEPRECATED_VALUE,
+    "replay_sequence_length": DEPRECATED_VALUE,
+    "prioritized_replay_alpha": DEPRECATED_VALUE,
+    "prioritized_replay_beta": DEPRECATED_VALUE,
+    "prioritized_replay_eps": DEPRECATED_VALUE,
     "replay_buffer_config": {
         "_enable_replay_buffer_api": False,
         "type": "MultiAgentReplayBuffer",
         "capacity": int(1e6),
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": 1500,
+        # If True prioritized replay buffer will be used.
+        "prioritized_replay": False,
+        "prioritized_replay_alpha": 0.6,
+        "prioritized_replay_beta": 0.4,
+        "prioritized_replay_eps": 1e-6,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -105,11 +119,6 @@ DEFAULT_CONFIG = with_common_config({
     # - This is False AND restoring from a checkpoint that does contain
     #   buffer data.
     "store_buffer_in_checkpoints": False,
-    # If True prioritized replay buffer will be used.
-    "prioritized_replay": False,
-    "prioritized_replay_alpha": 0.6,
-    "prioritized_replay_beta": 0.4,
-    "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
 
@@ -137,8 +146,6 @@ DEFAULT_CONFIG = with_common_config({
     },
     # If not None, clip gradients during optimization at this value.
     "grad_clip": None,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 1,

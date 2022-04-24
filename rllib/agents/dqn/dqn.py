@@ -93,7 +93,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # Deprecated, use capacity in replay_buffer_config instead.
         "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
-            # For now we don't use the new ReplayBuffer API here
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             # Size of the replay buffer. Note that if async_updates is set,

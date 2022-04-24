@@ -167,8 +167,8 @@ def validate_buffer_config(config: dict):
         # Can't use DEPRECATED_VALUE here because this is also a deliberate
         # value set for some algorithms
         # TODO: (Artur): Compare to DEPRECATED_VALUE on deprecation
-        replay_sequence_length = config.get("replay_sequence_length", None)
-        if replay_sequence_length is not None:
+        replay_sequence_length = config.get("replay_sequence_length", DEPRECATED_VALUE)
+        if replay_sequence_length != DEPRECATED_VALUE:
             config["replay_buffer_config"][
                 "replay_sequence_length"
             ] = replay_sequence_length
