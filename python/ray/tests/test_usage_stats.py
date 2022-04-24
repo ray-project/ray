@@ -712,5 +712,4 @@ def test_usage_file_error_message(monkeypatch, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    os.environ["RAY_USAGE_STATS_REPORT_URL"] = "http://127.0.0.1:8000"
     sys.exit(pytest.main(["-v", __file__]))
