@@ -12,6 +12,7 @@ import time
 import urllib
 import urllib.parse
 import yaml
+import functools
 
 import ray
 import psutil
@@ -1867,6 +1868,26 @@ def local_dump(
     )
 
 
+def hide_exception_stacktrace(func):
+    @click.option(
+        "--show-stacktrace",
+        type=bool,
+        default=False,
+        is_flag=True,
+        help="Shows full stacktrace for CLI exceptions."
+    )
+    @functools.wraps(func)
+    def inner(show_stacktrace: bool, *args, **kwargs):
+        if not show_stacktrace:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                print(f"Client Error ({e.__class__.__name__}): ", e)
+        else:
+            return func(*args, **kwargs)
+    return inner
+
+
 @cli.command(hidden=True)
 @click.argument(
     "filters",
@@ -1938,6 +1959,7 @@ def local_dump(
     default=None,
     help="Number of lines to tail from log. -1 indicates fetching the whole file.",
 )
+@hide_exception_stacktrace
 def logs(
     filters,
     filename: str,
@@ -1971,82 +1993,78 @@ def logs(
 
     """
 
-    try:
-        found_many = False
+    found_many = False
 
-        if task_id is not None:
-            raise ValueError("--task-id is not yet supported")
+    if task_id is not None:
+        raise ValueError("--task-id is not yet supported")
 
-        match_node = node_ip is not None or node_id is not None
-        match_file = filename is not None or pid is not None
-        match_actor = actor_id is not None
+    match_node = node_ip is not None or node_id is not None
+    match_file = filename is not None or pid is not None
+    match_actor = actor_id is not None
 
-        match_unique = (match_node and match_file) or match_actor
+    match_unique = (match_node and match_file) or match_actor
 
-        if match_file and not match_node:
-            identifier = f"filename: {filename}" if filename else f"pid: {pid}"
-            raise ValueError(
-                f"Unique logfile identifier '{identifier}' needs to be "
-                "accompanied with a node identifier (--node-id or --node-ip)."
-            )
+    if match_file and not match_node:
+        identifier = f"filename: {filename}" if filename else f"pid: {pid}"
+        raise ValueError(
+            f"Unique logfile identifier '{identifier}' needs to be "
+            "accompanied with a node identifier (--node-id or --node-ip)."
+        )
 
-        if not match_unique:
-            # Try to match a single log file.
-            # If we find more than one match, we output the index.
-            logs_dict = list_logs(node_id, node_ip, filters)
-            if len(logs_dict) == 0:
-                raise ValueError(f"Could not find node {node_id}")
-            if filename is None:
-                total_found = 0
-                for node_id_it, log_list_per_node in logs_dict.items():
-                    files_on_node = sum(log_list_per_node.values(), [])
-                    total_found += len(files_on_node)
-                    if total_found > 1:
-                        found_many = True
-                        break
-                    if len(files_on_node) == 1 and total_found == 1:
-                        filename = files_on_node[0]
-                        node_id = node_id_it
-                if not found_many and filename is None:
-                    raise Exception(
-                        "Could not find any log file. Please ammend your query. "
-                        "Check --help for more."
-                    )
-
-        if found_many:
-            print(
-                "Warning: More than one log file matches your query. Please add "
-                "additional flags or filname globs to narrow down the "
-                "search results to a single file. Check --help for more."
-            )
-
-            MAX_NODES = 10
-            for i, (node_id, logs) in enumerate(logs_dict.items()):
-                if i >= MAX_NODES:
-                    print(
-                        f"\nDisplaying only {MAX_NODES} nodes."
-                        "Narrow down with --node-id."
-                    )
+    if not match_unique:
+        # Try to match a single log file.
+        # If we find more than one match, we output the index.
+        logs_dict = list_logs(node_id, node_ip, filters)
+        if len(logs_dict) == 0:
+            raise ValueError(f"Could not find node {node_id}")
+        if filename is None:
+            total_found = 0
+            for node_id_it, log_list_per_node in logs_dict.items():
+                files_on_node = sum(log_list_per_node.values(), [])
+                total_found += len(files_on_node)
+                if total_found > 1:
+                    found_many = True
                     break
-                print(f"\nNode ID: {node_id}")
-                pretty_print_logs_index(node_id, logs)
-        else:
-
-            def default_lines(lines):
-                print(
-                    f"--- Log has been truncated to last {lines} lines."
-                    " Use `--lines` flag to toggle. ---\n"
+                if len(files_on_node) == 1 and total_found == 1:
+                    filename = files_on_node[0]
+                    node_id = node_id_it
+            if not found_many and filename is None:
+                raise Exception(
+                    "Could not find any log file. Please ammend your query. "
+                    "Check --help for more."
                 )
-                return lines
 
-            lines = lines or default_lines(1000 if follow else 100)
-            for chunk in get_log(
-                node_ip, pid, node_id, actor_id, task_id, filename, follow, lines
-            ):
-                print(chunk, end="", flush=True)
+    if found_many:
+        print(
+            "Warning: More than one log file matches your query. Please add "
+            "additional flags or filname globs to narrow down the "
+            "search results to a single file. Check --help for more."
+        )
 
-    except Exception as e:
-        print("Client Error: ", e)
+        MAX_NODES = 10
+        for i, (node_id, logs) in enumerate(logs_dict.items()):
+            if i >= MAX_NODES:
+                print(
+                    f"\nDisplaying only {MAX_NODES} nodes."
+                    "Narrow down with --node-id."
+                )
+                break
+            print(f"\nNode ID: {node_id}")
+            pretty_print_logs_index(node_id, logs)
+    else:
+
+        def default_lines(lines):
+            print(
+                f"--- Log has been truncated to last {lines} lines."
+                " Use `--lines` flag to toggle. ---\n"
+            )
+            return lines
+
+        lines = lines or default_lines(1000 if follow else 100)
+        for chunk in get_log(
+            node_ip, pid, node_id, actor_id, task_id, filename, follow, lines
+        ):
+            print(chunk, end="", flush=True)
 
 
 @cli.command()
