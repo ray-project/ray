@@ -38,7 +38,7 @@ class SAGE(torch.nn.Module):
         return x.log_softmax(dim=-1)
 
     @torch.no_grad()
-    def inference(self, x_all, subgraph_loader):
+    def test(self, x_all, subgraph_loader):
         for i in range(self.num_layers):
             xs = []
             for batch_size, n_id, adj in subgraph_loader:
@@ -121,7 +121,7 @@ def train_loop_per_worker(train_loop_config):
         if train.world_rank() == 0:
             model.eval()
             with torch.no_grad():
-                out = model.module.inference(x, subgraph_loader)
+                out = model.module.test(x, subgraph_loader)
             res = out.argmax(dim=-1) == data.y
             train_accuracy = int(res[data.train_mask].sum()) / int(
                 data.train_mask.sum()
@@ -157,12 +157,9 @@ def gen_reddit_dataset():
 
     # For Reddit dataset, we have to download the data on each node, so we create the
     # dataset on each training worker.
-    def gen_dataset():
-        with FileLock(os.path.expanduser("~/.reddit_dataset_lock")):
-            dataset = Reddit("./data/Reddit")
-        return dataset
-
-    return gen_dataset
+    with FileLock(os.path.expanduser("~/.reddit_dataset_lock")):
+        dataset = Reddit("./data/Reddit")
+    return dataset
 
 
 def train_gnn(
@@ -176,7 +173,7 @@ def train_gnn(
         train_loop_config={
             "num_epochs": epochs,
             "batch_size": per_worker_batch_size,
-            "dataset_fn": gen_reddit_dataset()
+            "dataset_fn": gen_reddit_dataset
             if dataset == "reddit"
             else gen_fake_dataset(),
         },
