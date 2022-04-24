@@ -56,16 +56,17 @@ def to_schema(req: aiohttp.web.Request, Dataclass):
     return Dataclass(**kwargs)
 
 
+def wait_until_client_initializes(func):
+    async def wait_wrapper(self, *args, **kwargs):
+        await self.client.wait_until_initialized()
+        return await func(self, *args, **kwargs)
+
+    return wait_wrapper
+
+
 class LogsManager:
     def __init__(self):
         self.client = LogsGrpcClient()
-
-    def wait_until_client_initializes(func):
-        async def wait_wrapper(self, *args, **kwargs):
-            await self.client.wait_until_initialized()
-            return await func(self, *args, **kwargs)
-
-        return wait_wrapper
 
     @wait_until_client_initializes
     async def resolve_node_id(self, args: NodeIdentifiers):
@@ -73,9 +74,9 @@ class LogsManager:
         if node_id is None:
             ip = args.node_ip
             if ip is not None:
-                if ip not in self._ip_to_node_id:
+                node_id = self.client.ip_to_node_id(ip)
+                if node_id is None:
                     raise ValueError(f"node_ip: {ip} not found")
-                node_id = self._ip_to_node_id[ip]
         elif node_id not in self.client.get_all_registered_nodes():
             raise ValueError(f"node_id: {node_id} not found")
         return node_id
@@ -135,8 +136,7 @@ class LogsManager:
             if pid is not None:
                 if node_id is None:
                     raise ValueError("Node identifiers (node_ip, node_id) not provided "
-                                     f"with pid: {pid}. "
-                                     f"Available: {self._ip_to_node_id}")
+                                     f"with pid: {pid}. ")
                 index = await self.list_logs(node_id, [pid])
                 for file in index[node_id]["worker_outs"]:
                     if file.split(".")[0].split("-")[3] == pid:

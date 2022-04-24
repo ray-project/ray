@@ -42,6 +42,9 @@ class LogsGrpcClient:
     def unregister_agent_client(self, node_id: str):
         self._agent_stubs.pop(node_id)
 
+    def ip_to_node_id(self, ip: str) -> str:
+        self._ip_to_node_id.get(ip)
+
     async def _update_stubs(self, change):
         if change.old:
             node_id, _ = change.old
