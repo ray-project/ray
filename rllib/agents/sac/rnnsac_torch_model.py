@@ -94,7 +94,14 @@ class RNNSACTorchModel(SACTorchModel):
         seq_lens: TensorType,
     ) -> (TensorType, List[TensorType]):
         # Continuous case -> concat actions to model_out.
-        if actions is not None:
+        if (
+            actions is not None
+            and not model_out.get("obs_and_action_concatenated") is True
+        ):
+            # Make sure that, if we call this method twice with the same
+            # input, we don't concatenate twice
+            model_out["obs_and_action_concatenated"] = True
+
             if self.concat_obs_and_actions:
                 model_out[SampleBatch.OBS] = torch.cat(
                     [model_out[SampleBatch.OBS], actions], dim=-1
