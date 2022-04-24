@@ -34,7 +34,7 @@ def test_controller_failure(serve_instance):
         response = request_with_retries("/controller_failure/", timeout=30)
         assert response.text == "hello1"
 
-    ray.kill(serve.api._global_client._controller, no_restart=False)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
 
     for _ in range(10):
         response = request_with_retries("/controller_failure/", timeout=30)
@@ -43,7 +43,7 @@ def test_controller_failure(serve_instance):
     def function2(_):
         return "hello2"
 
-    ray.kill(serve.api._global_client._controller, no_restart=False)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
 
     function.options(func_or_class=function2).deploy()
 
@@ -57,9 +57,9 @@ def test_controller_failure(serve_instance):
     def function3(_):
         return "hello3"
 
-    ray.kill(serve.api._global_client._controller, no_restart=False)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
     function3.deploy()
-    ray.kill(serve.api._global_client._controller, no_restart=False)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
 
     for _ in range(10):
         response = request_with_retries("/controller_failure/", timeout=30)
@@ -70,7 +70,7 @@ def test_controller_failure(serve_instance):
 
 def _kill_http_proxies():
     http_proxies = ray.get(
-        serve.api._global_client._controller.get_http_proxies.remote()
+        serve.context._global_client._controller.get_http_proxies.remote()
     )
     for http_proxy in http_proxies.values():
         ray.kill(http_proxy, no_restart=False)
@@ -107,7 +107,7 @@ def test_http_proxy_failure(serve_instance):
 
 
 def _get_worker_handles(deployment):
-    controller = serve.api._global_client._controller
+    controller = serve.context._global_client._controller
     deployment_dict = ray.get(controller._all_running_replicas.remote())
 
     return [replica.actor_handle for replica in deployment_dict[deployment]]

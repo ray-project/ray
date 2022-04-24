@@ -99,9 +99,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in] last_reported_resources: The last reported resources. Used to check
   /// whether
   ///                                     resources have been changed.
-  void FillResourceUsage(rpc::ResourcesData &data,
-                         const std::shared_ptr<SchedulingResources>
-                             &last_reported_resources = nullptr) override;
+  void FillResourceUsage(
+      rpc::ResourcesData &data,
+      const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
