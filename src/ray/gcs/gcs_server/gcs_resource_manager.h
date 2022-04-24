@@ -65,11 +65,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
-
   /// Handle report resource usage rpc come from raylet.
   void HandleReportResourceLoad(const rpc::ReportResourceLoadRequest &request,
-                                 rpc::ReportResourceLoadReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+                                rpc::ReportResourceLoadReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle report resource usage rpc come from raylet.
   void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
@@ -139,7 +138,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
  private:
-
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
   /// Newest resource usage of all nodes.
