@@ -340,7 +340,10 @@ class ReplayBuffer:
             batch: Batch to add to this buffer's storage.
             **kwargs: Forward compatibility kwargs.
         """
-        assert batch.count > 0, batch
+        try:
+            assert batch.count > 0, batch#TODO
+        except Exception as e:
+            raise e
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
 
         if (

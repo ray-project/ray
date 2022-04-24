@@ -1,6 +1,9 @@
+from gym.spaces import Box
+
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -22,12 +25,20 @@ class RNNModel(TorchModelV2, nn.Module):
         self.fc2 = nn.Linear(self.rnn_hidden_dim, num_outputs)
         self.n_agents = model_config["n_agents"]
 
+        #space = Box(-1.0, 1.0, shape=(self.rnn_hidden_dim,))
+        #self.view_requirements["state_in_0"] = ViewRequirement(
+        #    "state_out_0",
+        #    shift=-1,
+        #    space=space,
+        #)
+        #self.view_requirements["state_out_0"] = ViewRequirement(
+        #    space=space, used_for_training=False
+        #)
+
     @override(ModelV2)
     def get_initial_state(self):
         # Place hidden states on same device as model.
-        return [
-            self.fc1.weight.new(self.n_agents, self.rnn_hidden_dim).zero_().squeeze(0)
-        ]
+        return [self.fc1.weight.new(self.n_agents, self.rnn_hidden_dim).zero_().squeeze(0)]
 
     @override(ModelV2)
     def forward(self, input_dict, hidden_state, seq_lens):

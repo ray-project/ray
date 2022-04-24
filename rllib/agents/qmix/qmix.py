@@ -15,6 +15,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -67,11 +68,20 @@ DEFAULT_CONFIG = with_common_config({
     "target_network_update_freq": 500,
 
     # === Replay buffer ===
-    # Size of the replay buffer in batches (not timesteps!).
-    "buffer_size": 1000,
     "replay_buffer_config": {
-        "no_local_replay_buffer": True,
+        # Use the new ReplayBuffer API here
+        "_enable_replay_buffer_api": True,
+        # How many steps of the model to sample before learning starts.
+        "learning_starts": 1000,
+        "type": "MultiAgentReplayBuffer",
+        # Size of the replay buffer in batches (not timesteps!).
+        "capacity": 1000,
+        "replay_batch_size": 32,
+        # The number of contiguous environment steps to replay at once. This
+        # may be set to greater than 1 to support recurrent models.
+        "replay_sequence_length": 1,
     },
+
     # === Optimization ===
     # Learning rate for RMSProp optimizer
     "lr": 0.0005,
@@ -81,8 +91,6 @@ DEFAULT_CONFIG = with_common_config({
     "optim_eps": 0.00001,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 10,
-    # How many steps of the model to sample before learning starts.
-    "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
@@ -112,7 +120,13 @@ DEFAULT_CONFIG = with_common_config({
     # If True, the execution plan API will not be used. Instead,
     # a Trainer's `training_iteration` method will be called as-is each
     # training iteration.
-    "_disable_execution_plan_api": False,
+    "_disable_execution_plan_api": True,
+
+    # Deprecated keys:
+    # Use `replay_buffer_config.learning_starts` instead.
+    "learning_starts": DEPRECATED_VALUE,
+    # Use `replay_buffer_config.capacity` instead.
+    "buffer_size": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on
