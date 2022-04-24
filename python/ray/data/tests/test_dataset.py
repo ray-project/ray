@@ -193,7 +193,7 @@ def test_transform_failure(shutdown_only):
 
 
 @pytest.mark.parametrize("lazy", [False, True])
-def test_dataset_out_of_band_serialization(shutdown_only, lazy):
+def test_dataset_lineage_serialization(shutdown_only, lazy):
     ray.init()
     ds = ray.data.range(10)
     ds = maybe_lazy(ds, lazy)
@@ -205,7 +205,7 @@ def test_dataset_out_of_band_serialization(shutdown_only, lazy):
     plan_uuid = ds._plan._dataset_uuid
     lazy = ds._lazy
 
-    serialized_ds = ds.serialize_out_of_band()
+    serialized_ds = ds.serialize_lineage()
     # Confirm that the original Dataset was properly copied before clearing/mutating.
     in_blocks = ds._plan._in_blocks
     # Should not raise.
@@ -218,7 +218,7 @@ def test_dataset_out_of_band_serialization(shutdown_only, lazy):
     ray.shutdown()
     ray.init()
 
-    ds = Dataset.deserialize_out_of_band(serialized_ds)
+    ds = Dataset.deserialize_lineage(serialized_ds)
     # Check Dataset state.
     assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
@@ -230,7 +230,7 @@ def test_dataset_out_of_band_serialization(shutdown_only, lazy):
 
 
 @pytest.mark.parametrize("lazy", [False, True])
-def test_dataset_out_of_band_serialization_in_memory(shutdown_only, lazy):
+def test_dataset_lineage_serialization_in_memory(shutdown_only, lazy):
     ray.init()
     ds = ray.data.from_items(list(range(10)))
     ds = maybe_lazy(ds, lazy)
@@ -238,7 +238,7 @@ def test_dataset_out_of_band_serialization_in_memory(shutdown_only, lazy):
     ds = ds.map(lambda x: x + 1)
 
     with pytest.raises(ValueError):
-        ds.serialize_out_of_band()
+        ds.serialize_lineage()
 
 
 @pytest.mark.parametrize("pipelined", [False, True])

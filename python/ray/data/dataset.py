@@ -2851,52 +2851,61 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         self._lazy = True
         return self
 
-    def is_out_of_band_serializable(self) -> bool:
-        """Whether this dataset is able to be out-of-band serialized, i.e. serialized
-        for use across different Ray clusters. Only datasets that read from lazy
-        datasources (i.e. via one of the ray.data.read_*() APIs) are out-of-band
-        serializable.
+    def has_serializable_lineage(self) -> bool:
+        """Whether this dataset's lineage is able to be serialized for storage and
+        later deserialized, possibly on a different cluster.
+
+        Only datasets that are created from data that we know will still exist at
+        deserialization time, e.g. data external to this Ray cluster such as persistent
+        cloud object stores, support lineage-based serialization. All of the
+        ray.data.read_*() APIs support lineage-based serialization.
         """
         return self._plan.has_lazy_input()
 
     @DeveloperAPI
-    def serialize_out_of_band(self) -> bytes:
+    def serialize_lineage(self) -> bytes:
         """
-        Serialize the Dataset for out-of-band use, i.e. for use across different Ray
-        clusters. This method serializes the lineage of the Dataset operations. Note
-        that this will drop all computed data, and that everything will be recomputed
-        from scratch after deserialization.
+        Serialize this dataset's lineage, not the actual data or the existing data
+        futures, to bytes that can be stored and later deserialized, possibly on a
+        different cluster.
 
-        Use ``Dataset.deserialize_out_of_band`` to deserialize the serialized bytes
-        into a Dataset.
+        Note that this will drop all computed data, and that everything will be
+        recomputed from scratch after deserialization.
+
+        Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized bytes
+        returned from this method into a Dataset.
 
         Returns:
-            Serialized bytes.
+            Serialized bytes containing the lineage of this dataset.
         """
-        if not self.is_out_of_band_serializable():
+        if not self.has_serializable_lineage():
             raise ValueError(
-                "Out-of-band serialization is only supported for Datasets created from "
-                "lazy datasources. I.e., out-of-band serialization is not "
-                "supported for any ray.data.from_*() APIs. To allow this Dataset to be "
-                "out-of-band serialized, write the data to an external store (such as "
-                "AWS S3, GCS, or Azure Blob Storage) using the Dataset.write_*() APIs, "
-                "and serialize a new dataset reading from the external store using the "
-                "ray.data.read_*() APIs."
+                "Lineage-based serialization is only supported for Datasets created "
+                "from data that we know will still exist at deserialization "
+                "time, e.g. external data in persistent cloud object stores or "
+                "in-memory data from long-lived clusters. Concretely, all "
+                "ray.data.read_*() APIs should support lineage-based serialization, "
+                "while all of the ray.data.from_*() APIs do not. To allow this "
+                "Dataset to be serialized to storage, write the data to an external "
+                "store (such as AWS S3, GCS, or Azure Blob Storage) using the "
+                "Dataset.write_*() APIs, and serialize a new dataset reading from the "
+                "external store using the ray.data.read_*() APIs."
             )
         # Copy Dataset and clear the execution plan so the Dataset is out-of-band
         # serializable.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
         ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
-        ds._plan.clear()
+        ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
         def _reduce(rf: ray.remote_function.RemoteFunction):
             # Custom reducer for Ray remote function handles that allows for
             # cross-cluster serialization.
-            # TODO(Clark): Fix this in core Ray.
+            # This manually unsets the last export session and job to force re-exporting
+            # of the function when the handle is deserialized on a new cluster.
+            # TODO(Clark): Fix this in core Ray, see issue:
+            # https://github.com/ray-project/ray/issues/24152.
             reconstructor, args, state = rf.__reduce__()
-            # Manually unset last export session and job to force re-exporting of the
-            # function when the handle is deserialized on a new cluster.
             state["_last_export_session_and_job"] = None
             return reconstructor, args, state
 
@@ -2912,12 +2921,12 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
     @DeveloperAPI
     @staticmethod
-    def deserialize_out_of_band(serialized_ds: bytes) -> "Dataset":
+    def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
         """
-        Deserialize the provided out-of-band serialized Dataset.
+        Deserialize the provided lineage-serialized Dataset.
 
         This assumes that the provided serialized bytes were serialized using
-        ``Dataset.serialize_out_of_band``.
+        :py:meth:`Dataset.serialize_lineage`.
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
