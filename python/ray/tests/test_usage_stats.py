@@ -178,42 +178,46 @@ def test_usage_stats_prompt(monkeypatch, capsys, tmp_path):
         ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
     with monkeypatch.context() as m:
-        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
-        saved_interactive = cli_logger.interactive
-        saved_stdin = sys.stdin
-        saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
-        tmp_usage_stats_config_path = tmp_path / "config2.json"
-        ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
-        cli_logger.interactive = True
-        (r_pipe, w_pipe) = os.pipe()
-        sys.stdin = open(r_pipe)
-        os.write(w_pipe, b"y\n")
-        ray_usage_lib.show_usage_stats_prompt()
-        captured = capsys.readouterr()
-        assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
-        assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in captured.out
-        cli_logger.interactive = saved_interactive
-        sys.stdin = saved_stdin
-        ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
+        # Win impl relies on kbhit() instead of select()
+        # so the pipe trick won't work.
+        if sys.platform != "win32":
+            m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+            saved_interactive = cli_logger.interactive
+            saved_stdin = sys.stdin
+            saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+            tmp_usage_stats_config_path = tmp_path / "config2.json"
+            ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+            cli_logger.interactive = True
+            (r_pipe, w_pipe) = os.pipe()
+            sys.stdin = open(r_pipe)
+            os.write(w_pipe, b"y\n")
+            ray_usage_lib.show_usage_stats_prompt()
+            captured = capsys.readouterr()
+            assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
+            assert usage_constants.USAGE_STATS_ENABLED_MESSAGE in captured.out
+            cli_logger.interactive = saved_interactive
+            sys.stdin = saved_stdin
+            ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
     with monkeypatch.context() as m:
-        m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
-        saved_interactive = cli_logger.interactive
-        saved_stdin = sys.stdin
-        saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
-        tmp_usage_stats_config_path = tmp_path / "config3.json"
-        ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
-        cli_logger.interactive = True
-        (r_pipe, w_pipe) = os.pipe()
-        sys.stdin = open(r_pipe)
-        os.write(w_pipe, b"n\n")
-        ray_usage_lib.show_usage_stats_prompt()
-        captured = capsys.readouterr()
-        assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
-        assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
-        cli_logger.interactive = saved_interactive
-        sys.stdin = saved_stdin
-        ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
+        if sys.platform != "win32":
+            m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
+            saved_interactive = cli_logger.interactive
+            saved_stdin = sys.stdin
+            saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+            tmp_usage_stats_config_path = tmp_path / "config3.json"
+            ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+            cli_logger.interactive = True
+            (r_pipe, w_pipe) = os.pipe()
+            sys.stdin = open(r_pipe)
+            os.write(w_pipe, b"n\n")
+            ray_usage_lib.show_usage_stats_prompt()
+            captured = capsys.readouterr()
+            assert usage_constants.USAGE_STATS_CONFIRMATION_MESSAGE in captured.out
+            assert usage_constants.USAGE_STATS_DISABLED_MESSAGE in captured.out
+            cli_logger.interactive = saved_interactive
+            sys.stdin = saved_stdin
+            ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
     with monkeypatch.context() as m:
         m.delenv("RAY_USAGE_STATS_ENABLED", raising=False)
