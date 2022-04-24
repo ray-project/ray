@@ -47,9 +47,7 @@ def to_schema(req: aiohttp.web.Request, Dataclass):
             # recursively resolve the dataclass
             kwargs[field.name] = to_schema(req, field.type)
         else:
-            value = req.query.get(field.name)
-            if value is None:
-                value = req.match_info.get(field.name)
+            value = req.query.get(field.name) or req.match_info.get(field.name)
             # Note: This is brittle as the class needs to be
             # instantiable from the str
             kwargs[field.name] = field.type(value) if value else None
