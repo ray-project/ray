@@ -169,7 +169,11 @@ def build_slateq_losses(
     q_clicked = torch.gather(replay_click_q, 0, clicked_indices)
     target_clicked = torch.gather(target, 0, clicked_indices)
 
-    td_error = torch.where(clicked.bool(), q_clicked - target_clicked, torch.zeros_like(train_batch[SampleBatch.REWARDS]))
+    td_error = torch.where(
+        clicked.bool(),
+        replay_click_q - target,
+        torch.zeros_like(train_batch[SampleBatch.REWARDS]),
+    )
     if policy.config["use_huber"]:
         loss = huber_loss(td_error, delta=policy.config["huber_threshold"])
     else:
