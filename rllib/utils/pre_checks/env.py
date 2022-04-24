@@ -218,10 +218,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
                 "within your MutiAgentEnv's constructor. "
                 "This will raise an error in the future."
             )
-        env.observation_space = (
-            env.action_space
-        ) = env._spaces_in_preferred_format = None
-        env._agent_ids = set()
+        return
 
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
