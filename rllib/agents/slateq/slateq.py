@@ -15,6 +15,7 @@ environment (https://github.com/google-research/recsim).
 import logging
 from typing import List, Type
 
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
@@ -132,6 +133,9 @@ DEFAULT_CONFIG = with_common_config({
 
     # Switch on no-preprocessors for easier Q-model coding.
     "_disable_preprocessor_api": True,
+
+    # Use `training_iteration()` instead of `execution_plan()` by default.
+    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -149,18 +153,18 @@ def calculate_round_robin_weights(config: TrainerConfigDict) -> List[float]:
     return weights
 
 
-class SlateQTrainer(Trainer):
+class SlateQTrainer(DQNTrainer):
     @classmethod
-    @override(Trainer)
+    @override(DQNTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
-    @override(Trainer)
+    @override(DQNTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         super().validate_config(config)
         validate_buffer_config(config)
 
-    @override(Trainer)
+    @override(DQNTrainer)
     def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return SlateQTorchPolicy
@@ -168,7 +172,7 @@ class SlateQTrainer(Trainer):
             return SlateQTFPolicy
 
     @staticmethod
-    @override(Trainer)
+    @override(DQNTrainer)
     def execution_plan(
         workers: WorkerSet, config: TrainerConfigDict, **kwargs
     ) -> LocalIterator[dict]:
