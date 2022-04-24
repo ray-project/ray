@@ -43,9 +43,13 @@ class ImportThread:
         self.num_imported = 0
         # Protect writes to self.num_imported.
         self._lock = threading.Lock()
+        # Do importing if initialized first
+        self._do_importing()
 
     def start(self):
         """Start the import thread."""
+        # we first do a sync importing to execute all init functions
+        self._do_importing()
         self.t = threading.Thread(target=self._run, name="ray_import_thread")
         # Making the thread a daemon causes it to exit
         # when the main thread exits.

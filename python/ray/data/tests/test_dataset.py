@@ -3644,5 +3644,4 @@ def test_datasource(ray_start_regular):
 if __name__ == "__main__":
     import sys
 
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     sys.exit(pytest.main(["-v", __file__]))

@@ -1635,7 +1635,7 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         if not interactive_mode:
-            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+            script_directory = os.path.abspath(os.path.dirname(sys.argv[1]))
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, script_directory)
             )
