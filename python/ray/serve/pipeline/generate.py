@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Dict, List, Union
 from collections import OrderedDict
 
 from ray.experimental.dag import (
