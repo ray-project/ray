@@ -2,6 +2,7 @@ import pytest
 import ray
 import mars
 import mars.dataframe as md
+import pyarrow as pa
 
 
 @pytest.fixture(scope="module")
@@ -31,6 +32,15 @@ def test_mars(ray_start_regular):
     pd.testing.assert_frame_equal(
         df2.head(5).to_pandas(),
         pd.DataFrame({"a": list(range(0, 10, 2)), "b": list(range(n, n + 10, 2))}),
+    )
+
+    # Test Arrow Dataset
+    pdf2 = pd.DataFrame({c: range(5) for c in 'abc'})
+    ds = ray.data.from_arrow([pa.Table.from_pandas(pdf2) for _ in range(3)])
+    df3 = ds2.to_mars()
+    pd.testing.assert_frame_equal(
+        df3.head(5).to_pandas(),
+        pdf2,
     )
     cluster.stop()
 

@@ -2439,12 +2439,13 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
 
         refs = self.to_pandas_refs()
         # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
-        if isinstance(self.schema(), PandasBlockSchema):
-            dtypes = pd.Series(self.schema().types, index=self.schema().names)
-        elif isinstance(self.schema(), pa.Schema):
-            dtypes = self.schmea().empty_table().to_pandas().dtypes
+        schema = self.schema()
+        if isinstance(schema, PandasBlockSchema):
+            dtypes = pd.Series(schema.types, index=schema.names)
+        elif isinstance(schema, pa.Schema):
+            dtypes = schema.empty_table().to_pandas().dtypes
         else:
-            raise NotImplementedError(f"Unsuppoted format of schema {self.schmea()}")
+            raise NotImplementedError(f"Unsupported format of schema {schema}")
         index_value = parse_index(pd.RangeIndex(-1))
         columns_value = parse_index(dtypes.index, store_data=True)
         op = DataFrameReadRayDataset(refs=refs)
