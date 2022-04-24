@@ -29,9 +29,6 @@ class LogsGrpcClient:
         raise ValueError("Could not connect to agents via gRPC after "
                          f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds.")
 
-    def unregister_raylet_client(self, node_id: str):
-        self._raylet_stubs.pop(node_id)
-
     def register_agent_client(self, node_id, address: str, port: int):
         options = (("grpc.enable_http_proxy", 0),)
         channel = init_grpc_channel(
