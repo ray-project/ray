@@ -431,6 +431,19 @@ message ResourcesData {
   bool cluster_full_of_actors_detected = 14;
 }
 
+// This message is a subset of ResourcesData. Right now, ResourcesData is
+// used by python code. We can't split it directly.
+// TODO(iycheng) Revisit ResourcesData and split it into smaller messages.
+message ResourceLoad {
+  // Node id.
+  bytes node_id = 1;
+  // Indicates whether resource load is changed. Only used when
+  // light heartbeat enabled.
+  bool resource_load_changed = 2;
+  // The resource load on this node, sorted by resource shape.
+  ResourceLoad resource_load_by_shape = 3;
+}
+
 message ResourceUsageBatchData {
   repeated ResourcesData batch = 1;
   // The total resource demand on all nodes included in the batch, sorted by
