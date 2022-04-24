@@ -455,6 +455,13 @@ def actor_critic_loss(
         # the Q-net(s)' variables.
         actor_loss = reduce_mean_valid(alpha.detach() * log_pis_t - q_t_det_policy)
 
+    # Delete obs_and_action_concatenated flag, so it does not pollute our
+    # stats and might later lead to an error in np.nanmean() (for example in
+    # LearnerInfoBuilder.finalize() in certain numpy versions
+    for o in [model_out_t, model_out_tp1]:
+        if "obs_and_action_concatenated" in o:
+            del o["obs_and_action_concatenated"]
+
     # Store values for stats function in model (tower), such that for
     # multi-GPU, we do not override them during the parallel loss phase.
     model.tower_stats["q_t"] = q_t * seq_mask[..., None]
