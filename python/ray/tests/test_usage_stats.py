@@ -5,7 +5,6 @@ import ray
 import pathlib
 import json
 import time
-import stat
 
 from dataclasses import asdict
 from pathlib import Path
@@ -142,7 +141,8 @@ def test_set_usage_stats_enabled_via_config(tmp_path):
     tmp_usage_stats_config_path.write_text('"xxx"')
     ray_usage_lib.set_usage_stats_enabled_via_config(True)
     assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
-    os.chmod(tmp_usage_stats_config_path, stat.S_IREAD)
+    tmp_usage_stats_config_path.unlink()
+    os.makedirs(os.path.dirname(tmp_usage_stats_config_path / "xxx.txt"), exist_ok=True)
     with pytest.raises(Exception, match="Failed to enable usage stats.*"):
         ray_usage_lib.set_usage_stats_enabled_via_config(True)
     ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
