@@ -194,15 +194,17 @@ Status ActorInfoAccessor::AsyncGetByName(
 
 Status ActorInfoAccessor::SyncGetByName(const std::string &name,
                                         const std::string &ray_namespace,
-                                        rpc::ActorTableData &actor_table_data) {
+                                        rpc::ActorTableData &actor_table_data,
+                                        rpc::TaskSpec &task_spec) {
   rpc::GetNamedActorInfoRequest request;
   rpc::GetNamedActorInfoReply reply;
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
   auto status = client_impl_->GetGcsRpcClient().SyncGetNamedActorInfo(
       request, &reply, /*timeout_ms*/ GetGcsTimeoutMs());
-  if (status.ok() && reply.has_actor_table_data()) {
+  if (status.ok()) {
     actor_table_data = reply.actor_table_data();
+    task_spec = reply.task_spec();
   }
   return status;
 }
@@ -702,12 +704,11 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
 Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
   absl::MutexLock lock(&mutex_);
-  last_resource_usage_->SetAvailableResources(
-      ResourceSet(MapFromProtobuf(data_ptr->resources_available())));
-  last_resource_usage_->SetTotalResources(
-      ResourceSet(MapFromProtobuf(data_ptr->resources_total())));
-  last_resource_usage_->SetLoadResources(
-      ResourceSet(MapFromProtobuf(data_ptr->resource_load())));
+  last_resource_usage_ = std::make_shared<NodeResources>(
+      ResourceMapToNodeResources(MapFromProtobuf(data_ptr->resources_total()),
+                                 MapFromProtobuf(data_ptr->resources_available())));
+  last_resource_usage_->load =
+      ResourceMapToResourceRequest(MapFromProtobuf(data_ptr->resource_load()), false);
   cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
       cached_resource_usage_,
@@ -732,27 +733,25 @@ void NodeResourceInfoAccessor::AsyncReReportResourceUsage() {
 
 void NodeResourceInfoAccessor::FillResourceUsageRequest(
     rpc::ReportResourceUsageRequest &resources) {
-  SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
+  NodeResources cached_resources = *GetLastResourceUsage();
 
   auto resources_data = resources.mutable_resources();
   resources_data->clear_resources_total();
-  for (const auto &resource_pair :
-       cached_resources.GetTotalResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.total.ToResourceMap()) {
     (*resources_data->mutable_resources_total())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resources_available();
   resources_data->set_resources_available_changed(true);
-  for (const auto &resource_pair :
-       cached_resources.GetAvailableResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.available.ToResourceMap()) {
     (*resources_data->mutable_resources_available())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resource_load();
   resources_data->set_resource_load_changed(true);
-  for (const auto &resource_pair : cached_resources.GetLoadResources().GetResourceMap()) {
+  for (const auto &resource_pair : cached_resources.load.ToResourceMap()) {
     (*resources_data->mutable_resource_load())[resource_pair.first] =
         resource_pair.second;
   }

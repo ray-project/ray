@@ -557,7 +557,7 @@ class VirtualActor:
         ):
             wf = method_helper.step(*args, **kwargs)
             if method_helper.readonly:
-                return execute_workflow(wf).volatile_output
+                return execute_workflow(wf).volatile_output.ref
             else:
                 return wf.run_async(self._actor_id)
 

@@ -100,6 +100,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     client_io_service_->stop();
     client_io_service_thread_->join();
     gcs_client_->Disconnect();
+    gcs_client_.reset();
 
     server_io_service_->stop();
     server_io_service_thread_->join();
@@ -563,7 +564,7 @@ TEST_P(GcsClientTest, TestNodeResourceUsage) {
 
   // Get and check last report resource usage.
   auto last_resource_usage = gcs_client_->NodeResources().GetLastResourceUsage();
-  ASSERT_EQ(last_resource_usage->GetTotalResources().GetResource(resource_name),
+  ASSERT_EQ(last_resource_usage->total.Get(scheduling::ResourceID::CPU()),
             resource_value);
 }
 
@@ -907,7 +908,6 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
   }
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
-    actor_table_data->mutable_task_spec()->CopyFrom(task_spec);
     RegisterActor(actor_table_data, false, true);
   }
 

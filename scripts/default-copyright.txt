@@ -1,0 +1,1 @@
+../ci/lint/default-copyright.txt

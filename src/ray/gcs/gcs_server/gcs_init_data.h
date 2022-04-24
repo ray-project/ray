@@ -59,6 +59,10 @@ class GcsInitData {
     return actor_table_data_;
   }
 
+  const absl::flat_hash_map<ActorID, rpc::TaskSpec> &ActorTaskSpecs() const {
+    return actor_task_spec_table_data_;
+  }
+
   /// Get placement group metadata.
   const absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData>
       &PlacementGroups() const {
@@ -91,6 +95,8 @@ class GcsInitData {
   /// \param on_done The callback when actor metadata is loaded successfully.
   void AsyncLoadActorTableData(const EmptyCallback &on_done);
 
+  void AsyncLoadActorTaskSpecTableData(const EmptyCallback &on_done);
+
  protected:
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
@@ -110,6 +116,8 @@ class GcsInitData {
 
   /// Actor metadata.
   absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_table_data_;
+
+  absl::flat_hash_map<ActorID, rpc::TaskSpec> actor_task_spec_table_data_;
 };
 
 }  // namespace gcs

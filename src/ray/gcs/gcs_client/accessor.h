@@ -80,7 +80,8 @@ class ActorInfoAccessor {
   /// NotFound if the name doesn't exist.
   virtual Status SyncGetByName(const std::string &name,
                                const std::string &ray_namespace,
-                               rpc::ActorTableData &actor_table_data);
+                               rpc::ActorTableData &actor_table_data,
+                               rpc::TaskSpec &task_spec);
 
   /// List all named actors from the GCS asynchronously.
   ///
@@ -471,7 +472,7 @@ class NodeResourceInfoAccessor {
   virtual void AsyncReReportResourceUsage();
 
   /// Return resources in last report. Used by light heartbeat.
-  virtual const std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
+  virtual const std::shared_ptr<NodeResources> &GetLastResourceUsage() {
     return last_resource_usage_;
   }
 
@@ -488,8 +489,7 @@ class NodeResourceInfoAccessor {
  protected:
   /// Cache which stores resource usage in last report used to check if they are changed.
   /// Used by light resource usage report.
-  std::shared_ptr<SchedulingResources> last_resource_usage_ =
-      std::make_shared<SchedulingResources>();
+  std::shared_ptr<NodeResources> last_resource_usage_ = std::make_shared<NodeResources>();
 
  private:
   // Mutex to protect the cached_resource_usage_ field.

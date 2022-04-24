@@ -29,6 +29,7 @@ More details on the expected results can be found in the scenario descriptions.
 
 import argparse
 import csv
+import io
 import tarfile
 from dataclasses import dataclass
 import json
@@ -319,7 +320,7 @@ def run_tune_script_for_time(
         # Wait until indicator file exists
         wait_for_run_or_raise(process, indicator_file=indicator_file, timeout=30)
         # Stop experiment (with checkpoint) after some time
-        send_signal_after_wait(process, signal=signal.SIGINT, wait=run_time)
+        send_signal_after_wait(process, signal=signal.SIGUSR1, wait=run_time)
         # Wait until process gracefully terminated
         wait_until_process_terminated(process, timeout=45)
     finally:
@@ -407,22 +408,16 @@ def fetch_remote_directory_content(
     local_dir: str,
 ):
     def _pack(dir: str):
-        _, tmpfile = tempfile.mkstemp()
-        with tarfile.open(tmpfile, "w:gz") as tar:
+        stream = io.BytesIO()
+        with tarfile.open(
+            fileobj=stream, mode="w:gz", format=tarfile.PAX_FORMAT
+        ) as tar:
             tar.add(dir, arcname="")
 
-        with open(tmpfile, "rb") as f:
-            stream = f.read()
-
-        return stream
+        return stream.getvalue()
 
     def _unpack(stream: str, dir: str):
-        _, tmpfile = tempfile.mkstemp()
-
-        with open(tmpfile, "wb") as f:
-            f.write(stream)
-
-        with tarfile.open(tmpfile) as tar:
+        with tarfile.open(fileobj=io.BytesIO(stream)) as tar:
             tar.extractall(dir)
 
     try:

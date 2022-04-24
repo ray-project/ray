@@ -36,7 +36,6 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -47,15 +46,20 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
 )
 from ray.util.iter import LocalIterator
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.replay_buffers import MultiAgentPrioritizedReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer as LegacyMultiAgentReplayBuffer,
+)
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+)
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.common import (
     LAST_TARGET_UPDATE_TS,
     NUM_TARGET_UPDATES,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +99,14 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
             # Size of the replay buffer. Note that if async_updates is set,
             # then each worker will have a replay buffer of this size.
             "capacity": 50000,
-            "replay_batch_size": 32,
             "prioritized_replay_alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            # The number of continuous environment steps to replay at once. This may
+            # be set to greater than 1 to support recurrent models.
+            "replay_sequence_length": 1,
         },
         # Set this to True, if you want the contents of your buffer(s) to be
         # stored in any saved checkpoints as well.
@@ -110,9 +116,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # - This is False AND restoring from a checkpoint that does contain
         #   buffer data.
         "store_buffer_in_checkpoints": False,
-        # The number of contiguous environment steps to replay at once. This may
-        # be set to greater than 1 to support recurrent models.
-        "replay_sequence_length": 1,
 
 
         # Callback to run before learning on a multi-agent batch of
@@ -222,32 +225,27 @@ class DQNTrainer(SimpleQTrainer):
 
         def update_prio(item):
             samples, info_dict = item
-            if config.get("prioritized_replay"):
-                prio_dict = {}
-                for policy_id, info in info_dict.items():
-                    # TODO(sven): This is currently structured differently for
-                    #  torch/tf. Clean up these results/info dicts across
-                    #  policies (note: fixing this in torch_policy.py will
-                    #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info[LEARNER_STATS_KEY].get("td_error")
+            prio_dict = {}
+            for policy_id, info in info_dict.items():
+                # TODO(sven): This is currently structured differently for
+                #  torch/tf. Clean up these results/info dicts across
+                #  policies (note: fixing this in torch_policy.py will
+                #  break e.g. DDPPO!).
+                td_error = info.get("td_error", info[LEARNER_STATS_KEY].get("td_error"))
+                samples.policy_batches[policy_id].set_get_interceptor(None)
+                batch_indices = samples.policy_batches[policy_id].get("batch_indexes")
+                # In case the buffer stores sequences, TD-error could
+                # already be calculated per sequence chunk.
+                if len(batch_indices) != len(td_error):
+                    T = local_replay_buffer.replay_sequence_length
+                    assert (
+                        len(batch_indices) > len(td_error)
+                        and len(batch_indices) % T == 0
                     )
-                    samples.policy_batches[policy_id].set_get_interceptor(None)
-                    batch_indices = samples.policy_batches[policy_id].get(
-                        "batch_indexes"
-                    )
-                    # In case the buffer stores sequences, TD-error could
-                    # already be calculated per sequence chunk.
-                    if len(batch_indices) != len(td_error):
-                        T = local_replay_buffer.replay_sequence_length
-                        assert (
-                            len(batch_indices) > len(td_error)
-                            and len(batch_indices) % T == 0
-                        )
-                        batch_indices = batch_indices.reshape([-1, T])[:, 0]
-                        assert len(batch_indices) == len(td_error)
-                    prio_dict[policy_id] = (batch_indices, td_error)
-                local_replay_buffer.update_priorities(prio_dict)
+                    batch_indices = batch_indices.reshape([-1, T])[:, 0]
+                    assert len(batch_indices) == len(td_error)
+                prio_dict[policy_id] = (batch_indices, td_error)
+            local_replay_buffer.update_priorities(prio_dict)
             return info_dict
 
         # (2) Read and train on experiences from the replay buffer. Every batch
@@ -267,11 +265,22 @@ class DQNTrainer(SimpleQTrainer):
                 _fake_gpus=config["_fake_gpus"],
             )
 
+        if (
+            type(local_replay_buffer) is LegacyMultiAgentReplayBuffer
+            and config["replay_buffer_config"].get("prioritized_replay_alpha", 0.0)
+            > 0.0
+        ) or isinstance(local_replay_buffer, MultiAgentPrioritizedReplayBuffer):
+            update_prio_fn = update_prio
+        else:
+
+            def update_prio_fn(x):
+                return x
+
         replay_op = (
             Replay(local_buffer=local_replay_buffer)
             .for_each(lambda x: post_fn(x, workers, config))
             .for_each(train_step_op)
-            .for_each(update_prio)
+            .for_each(update_prio_fn)
             .for_each(
                 UpdateTargetNetwork(workers, config["target_network_update_freq"])
             )
@@ -293,22 +302,20 @@ class DQNTrainer(SimpleQTrainer):
     def training_iteration(self) -> ResultDict:
         """DQN training iteration function.
 
-        This replicates DQN's execution_plan behaviour, e.g.:
-        - For every time we (1) sample (MultiAgentBatch) from workers...
-            - (2) Concatenate freshly collected samples.
-            - (3) Store new samples in replay buffer.
-            - (4) Sample training batch (MultiAgentBatch) from replay buffer.
-            - (5) Learn on training batch.
-            - (6) Update target network every target_network_update_freq steps.
-        - (7) Return all collected metrics for the iteration.
+        Each training iteration, we:
+        - Sample (MultiAgentBatch) from workers.
+        - Store new samples in replay buffer.
+        - Sample training batch (MultiAgentBatch) from replay buffer.
+        - Learn on training batch.
+        - Update remote workers' new policy weights.
+        - Update target network every target_network_update_freq steps.
+        - Return all collected metrics for the iteration.
 
         Returns:
             The results dict from executing the training iteration.
         """
-        batch_size = self.config["train_batch_size"]
         local_worker = self.workers.local_worker()
 
-        sample_batches = []
         train_results = {}
 
         # We alternate between storing new samples and sampling and training
@@ -316,32 +323,30 @@ class DQNTrainer(SimpleQTrainer):
 
         for _ in range(store_weight):
             # (1) Sample (MultiAgentBatch) from workers
-            new_sample_batches = synchronous_parallel_sample(self.workers)
-            sample_batches.extend(new_sample_batches)
+            new_sample_batch = synchronous_parallel_sample(
+                worker_set=self.workers, concat=True
+            )
 
             # Update counters
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(
-                len(s) for s in new_sample_batches
-            )
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(
-                len(s) if isinstance(s, SampleBatch) else s.agent_steps()
-                for s in new_sample_batches
-            )
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += new_sample_batch.agent_steps()
+            self._counters[NUM_ENV_STEPS_SAMPLED] += new_sample_batch.env_steps()
 
-            # (2) Concatenate freshly collected samples
-            concatenated_samples = SampleBatch.concat_samples(sample_batches)
-            # (3) Store new samples in replay buffer
-            self.local_replay_buffer.add_batch(concatenated_samples)
+            # (2) Store new samples in replay buffer
+            self.local_replay_buffer.add_batch(new_sample_batch)
 
         for _ in range(sample_and_train_weight):
-            # (4) Sample training batch (MultiAgentBatch) from replay buffer.
-            train_batch = self.local_replay_buffer.replay(batch_size)
+            # (3) Sample training batch (MultiAgentBatch) from replay buffer.
+            train_batch = self.local_replay_buffer.replay()
+
+            # Old-style replay buffers return None if learning has not started
+            if not train_batch:
+                continue
 
             # Postprocess batch before we learn on it
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
             train_batch = post_fn(train_batch, self.workers, self.config)
 
-            # (5) Learn on training batch.
+            # (4) Learn on training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other
             # cases should use the multi-GPU optimizer, even if only using 1 GPU)
             if self.config.get("simple_optimizer") is True:
@@ -350,7 +355,15 @@ class DQNTrainer(SimpleQTrainer):
                 train_results = multi_gpu_train_one_step(self, train_batch)
 
             # Update priorities
-            if self.config.get("prioritized_replay"):
+            if (
+                type(self.local_replay_buffer) is LegacyMultiAgentReplayBuffer
+                and self.config["replay_buffer_config"].get(
+                    "prioritized_replay_alpha", 0.0
+                )
+                > 0.0
+            ) or isinstance(
+                self.local_replay_buffer, MultiAgentPrioritizedReplayBuffer
+            ):
                 prio_dict = {}
                 for policy_id, info in train_results.items():
                     # TODO(sven): This is currently structured differently for

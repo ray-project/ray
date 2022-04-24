@@ -18,7 +18,7 @@ namespace syncer {
 class MockReporterInterface : public ReporterInterface {
  public:
   MOCK_METHOD(std::optional<RaySyncMessage>,
-              Snapshot,
+              CreateSyncMessage,
               (int64_t current_version, RayComponentId component_id),
               (const, override));
 };
@@ -31,7 +31,10 @@ namespace syncer {
 
 class MockReceiverInterface : public ReceiverInterface {
  public:
-  MOCK_METHOD(void, Update, (std::shared_ptr<const RaySyncMessage> message), (override));
+  MOCK_METHOD(void,
+              ConsumeSyncMessage,
+              (std::shared_ptr<const RaySyncMessage> message),
+              (override));
 };
 
 }  // namespace syncer

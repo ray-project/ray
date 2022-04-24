@@ -1,4 +1,8 @@
-""""Example using Sigopt's support for prior beliefs."""
+""""
+Example using Sigopt's support for prior beliefs.
+
+Requires the SigOpt library to be installed (`pip install sigopt`).
+"""
 import sys
 
 import numpy as np

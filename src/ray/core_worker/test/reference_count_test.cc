@@ -102,7 +102,8 @@ using SubscriptionFailureCallbackMap =
 // static maps are used to simulate distirubted environment.
 static SubscriptionCallbackMap subscription_callback_map;
 static SubscriptionFailureCallbackMap subscription_failure_callback_map;
-static pubsub::pub_internal::SubscriptionIndex directory;
+static pubsub::pub_internal::SubscriptionIndex directory(
+    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
 
 static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
   return publisher_id.Binary() + subscriber_id.Binary();
@@ -125,12 +126,17 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
       pubsub::pub_internal::SubscriptionIndex *directory,
       SubscriptionCallbackMap *subscription_callback_map,
       SubscriptionFailureCallbackMap *subscription_failure_callback_map,
-      WorkerID subscriber_id,
+      pubsub::SubscriberID subscriber_id,
       PublisherFactoryFn client_factory)
       : directory_(directory),
         subscription_callback_map_(subscription_callback_map),
         subscription_failure_callback_map_(subscription_failure_callback_map),
         subscriber_id_(subscriber_id),
+        subscriber_(std::make_unique<pubsub::pub_internal::SubscriberState>(
+            subscriber_id,
+            /*get_time_ms=*/[]() { return 1.0; },
+            /*subscriber_timeout_ms=*/1000,
+            /*publish_batch_size=*/1000)),
         client_factory_(client_factory) {}
 
   ~MockDistributedSubscriber() = default;
@@ -157,7 +163,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     // subscriber is subscribed twice. We should just no-op in this case.
     if (!(directory_->HasKeyId(key_id_binary) &&
           directory_->HasSubscriber(subscriber_id_))) {
-      directory_->AddEntry(key_id_binary, subscriber_id_);
+      directory_->AddEntry(key_id_binary, subscriber_.get());
     }
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     const auto id = GenerateID(publisher_id, subscriber_id_);
@@ -215,7 +221,8 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
-  WorkerID subscriber_id_;
+  pubsub::SubscriberID subscriber_id_;
+  std::unique_ptr<pubsub::pub_internal::SubscriberState> subscriber_;
   PublisherFactoryFn client_factory_;
 };
 
@@ -610,6 +617,31 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
   ASSERT_EQ(stats2.object_refs(0).object_size(), 100);
   ASSERT_EQ(stats2.object_refs(0).call_site(), "file2.py:43");
   rc->RemoveLocalReference(id2, nullptr);
+}
+
+TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
+  ObjectID obj1 = ObjectID::FromRandom();
+  NodeID node1 = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_ip_address("1234");
+
+  int64_t object_size = 100;
+  rc->AddOwnedObject(obj1,
+                     {},
+                     address,
+                     "file1.py:42",
+                     object_size,
+                     false,
+                     /*add_local_ref=*/true,
+                     absl::optional<NodeID>(node1));
+  rc->HandleObjectSpilled(obj1, "url1", node1);
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  Status status = rc->FillObjectInformation(obj1, &object_info);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(object_info.object_size(), object_size);
+  ASSERT_EQ(object_info.spilled_url(), "url1");
+  ASSERT_EQ(object_info.spilled_node_id(), node1.Binary());
+  rc->RemoveLocalReference(obj1, nullptr);
 }
 
 // Tests fetching of locality data from reference table.
