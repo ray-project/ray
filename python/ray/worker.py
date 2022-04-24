@@ -1635,13 +1635,10 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         if not interactive_mode:
-            import __main__
-
-            if "__file__" in dir(__main__):
-                script_directory = os.path.dirname(os.path.realpath(__main__.__file__))
-                worker.run_function_on_all_workers(
-                    lambda worker_info: sys.path.insert(1, script_directory)
-                )
+            script_directory = os.path.dirname(os.path.realpath(driver_name))
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, script_directory)
+            )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and not job_config.runtime_env_has_uris():
