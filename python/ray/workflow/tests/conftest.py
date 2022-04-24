@@ -19,11 +19,7 @@ def aws_credentials():
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
     os.environ["AWS_SECURITY_TOKEN"] = "testing"
     os.environ["AWS_SESSION_TOKEN"] = "testing"
-    yield (
-        f"aws_access_key_id={os.environ['AWS_ACCESS_KEY_ID']}&"
-        f"aws_secret_access_key={os.environ['AWS_SECRET_ACCESS_KEY']}&"
-        f"aws_session_token={os.environ['AWS_SESSION_TOKEN']}"
-    )
+    yield
     os.environ = old_env
 
 
@@ -45,15 +41,11 @@ def filesystem_storage():
 
 @contextmanager
 def s3_storage():
-    with moto_s3_server() as s3_server, aws_credentials() as aws_cred, mock_s3():
+    with moto_s3_server() as s3_server, aws_credentials(), mock_s3():
         client = boto3.client("s3", region_name="us-west-2", endpoint_url=s3_server)
         bucket = str(uuid.uuid1())
         client.create_bucket(Bucket=bucket)
-        url = (
-            f"s3://{bucket}/workflow"
-            f"?region_name=us-west-2&endpoint_url={s3_server}"
-            f"&{aws_cred}"
-        )
+        url = f"s3://{bucket}/workflow?region=us-west-2&endpoint_override={s3_server}"
         yield url
 
 

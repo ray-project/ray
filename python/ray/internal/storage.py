@@ -1,3 +1,4 @@
+import pathlib
 from typing import List, Optional, TYPE_CHECKING
 from pathlib import Path
 import os
@@ -81,9 +82,7 @@ class KVClient:
     def __init__(self, fs: "pyarrow.fs.FileSystem", prefix: str):
         """Use storage.get_client() to construct KVClient."""
         self.fs = fs
-        # make root path absolute, otherwise `_resolve_path` would fail
-        # when comparing root path and absolute paths.
-        self.root = Path(prefix).resolve()
+        self.root = Path(prefix)
 
     def put(self, path: str, value: bytes) -> None:
         """Save a blob in persistent storage at the given path, if possible.
@@ -243,10 +242,26 @@ class KVClient:
         return files
 
     def _resolve_path(self, path: str) -> str:
-        joined = self.root.joinpath(path).resolve()
+        from pyarrow.fs import LocalFileSystem
+
+        root = str(self.root)
+        full_path = str(self.root.joinpath(path))
+        is_capped = False
+        if not isinstance(self.fs, LocalFileSystem):
+            # In this case, we are not a local file system. However, pathlib would
+            # still add prefix to the path as if it is a local path when resolving
+            # the path, even when the path does not exist at all. We prevent it by
+            # capping the path with "/".
+            if not root.startswith("/"):
+                root = "/" + root
+                full_path = "/" + full_path
+                is_capped = True
+        root = pathlib.Path(root).resolve()
+        joined = pathlib.Path(full_path).resolve()
         # Raises an error if the path is above the root (e.g., "../data" attack).
-        joined.resolve().relative_to(self.root)
-        return str(joined)
+        # NOTE: we need to also
+        joined.relative_to(root)
+        return str(joined)[int(is_capped):]
 
 
 def _init_storage(storage_uri: str, is_head: bool):
