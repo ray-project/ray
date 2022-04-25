@@ -18,6 +18,10 @@ class SimpleTensorFlowDatasource(Datasource[T]):
         this datasource for small datasets like MNIST or CIFAR.
 
     Example:
+        >>> import ray.data
+        >>> from ray.data.datasource import SimpleTensorFlowDatasource
+        >>> import tensorflow_datasets as tfds
+        >>>
         >>> def dataset_factory():
         ...     return tfds.load("cifar10", split=["train"], as_supervised=True)[0]
         ...
