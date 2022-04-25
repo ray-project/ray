@@ -49,15 +49,18 @@ class GcsActorSchedulerMockTest : public Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_available=*/false);
-    auto cluster_task_manager =
-        std::make_shared<ClusterTaskManager>(local_node_id,
-                                             cluster_resource_scheduler,
-                                             /*get_node_info=*/
-                                             nullptr,
-                                             /*announce_infeasible_task=*/
-                                             nullptr,
-                                             /*local_task_manager=*/
-                                             nullptr);
+    auto cluster_task_manager = std::make_shared<ClusterTaskManager>(
+        local_node_id,
+        cluster_resource_scheduler,
+        /*get_node_info=*/
+        [this](const NodeID &node_id) {
+          auto node = gcs_node_manager->GetAliveNode(node_id);
+          return node.has_value() ? node.value().get() : nullptr;
+        },
+        /*announce_infeasible_task=*/
+        nullptr,
+        /*local_task_manager=*/
+        nullptr);
     actor_scheduler = std::make_unique<GcsActorScheduler>(
         io_context,
         *actor_table,

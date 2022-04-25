@@ -179,23 +179,14 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
 
-const ResourceRequest &GcsActor::GetAcquiredResources() const {
-  return acquired_resources_;
+bool GcsActor::GetScheduledByGcs() const { return scheduled_by_gcs_; }
+void GcsActor::SetScheduledByGcs(bool scheduled_by_gcs) {
+  scheduled_by_gcs_ = scheduled_by_gcs;
 }
-
-ResourceRequest *GcsActor::GetMutableAcquiredResources() { return &acquired_resources_; }
 
 bool GcsActor::GetGrantOrReject() const { return grant_or_reject_; }
 void GcsActor::SetGrantOrReject(bool grant_or_reject) {
   grant_or_reject_ = grant_or_reject;
-}
-
-const rpc::RequestWorkerLeaseReply &GcsActor::GetRequestWorkerLeaseReply() const {
-  return reply_;
-}
-
-rpc::RequestWorkerLeaseReply *GcsActor::GetMutableRequestWorkerLeaseReply() {
-  return &reply_;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
