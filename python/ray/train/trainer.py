@@ -139,7 +139,7 @@ class Trainer:
         warnings.warn(
             "The `ray.train.Trainer` API will be deprecated in Ray "
             "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
-            "https://docs.ray.io/en/master/ray-air/getting-started.html) will "
+            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
             "provide greater functionality than `ray.train.Trainer`, "
             "and with a more flexible and easy-to-use API.",
             PendingDeprecationWarning,
