@@ -1,11 +1,11 @@
 Out-of-band Communication
 =========================
 
-Normally the actors communication is done through actor method calls and data is shared through distributed object store,
-however there are some use cases where out-of-band communication can be used.
+Typically, Ray actor communication is done through actor method calls and data is shared through the distributed object store.
+However, in some use cases out-of-band communication can be useful.
 
-Wrap Library Processes
-----------------------
+Wrapping Library Processes
+--------------------------
 Many libraries already have mature, high-performance internal communication stacks and
 they leverage Ray as a language-integrated actor scheduler.
 The actual communication between actors is mostly done out-of-band using existing communication stacks.
@@ -13,10 +13,10 @@ For example, Horovod-on-Ray uses NCCL or MPI-based collective communications, an
 See `Ray Distributed Library Patterns <https://www.anyscale.com/blog/ray-distributed-library-patterns>`_ for more details.
 
 GPU-to-GPU Data Transfer
------------
-Currently Ray object store only manages CPU memory so efficient GPU-to-GPU data transfer needs to be done out-of-band (e.g. ``cudaMemcpyPeer``).
+------------------------
+Currently Ray's object store only manages CPU memory, so efficient GPU-to-GPU data transfer needs to be done out-of-band (e.g., via ``cudaMemcpyPeer``).
 
-Http Server
+HTTP Server
 -----------
 You can start a http server inside the actor and expose http endpoints to clients
 so users outside of the ray cluster can communicate with the actor.
@@ -57,4 +57,9 @@ so users outside of the ray cluster can communicate with the actor.
         # Should print "5"
         print(r.text)
 
-Similarly, you can expose other types of servers as well (e.g. grpc server).
+Similarly, you can expose other types of servers as well (e.g., gRPC servers).
+
+Limitations
+-----------
+
+When using out-of-band communication with Ray actors, keep in mind that Ray does not manage the calls between actors. This means that functionalities like distributed reference counting will not work with out-of-band communication, so you should take care not to pass object references in this way.
