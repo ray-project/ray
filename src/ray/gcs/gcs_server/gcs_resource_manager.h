@@ -138,7 +138,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
  private:
-
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
