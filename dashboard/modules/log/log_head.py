@@ -9,6 +9,7 @@ from ray.dashboard.modules.log.log_manager import (
     LogStreamOptions,
     to_schema,
 )
+from ray.dashboard.modules.log.log_grpc_client import LogsGrpcClient
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.datacenter import DataSource, GlobalSignals
@@ -123,7 +124,7 @@ def catch_internal_server_error(func):
 class LogHeadV1(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self.logs_manager = LogsManager()
+        self.logs_manager = LogsManager(LogsGrpcClient())
 
     @routes.get("/api/experimental/logs/list")
     @catch_internal_server_error

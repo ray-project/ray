@@ -1,5 +1,6 @@
 from typing import List
 import asyncio
+import logging
 
 from ray._private.utils import init_grpc_channel
 from ray.core.generated import reporter_pb2
@@ -7,6 +8,9 @@ from ray.core.generated import reporter_pb2_grpc
 
 from ray.dashboard.datacenter import DataSource
 import ray.dashboard.modules.log.log_consts as log_consts
+
+
+logger = logging.getLogger(__name__)
 
 
 class LogsGrpcClient:

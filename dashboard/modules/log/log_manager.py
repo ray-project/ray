@@ -2,23 +2,26 @@ from typing import List
 from dataclasses import dataclass, fields, is_dataclass
 import asyncio
 import aiohttp.web
+import logging
 
 from ray.dashboard.datacenter import DataSource
-from ray.dashboard.modules.log.log_grpc_client import LogsGrpcClient
 from ray import ray_constants
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(init=True)
 class NodeIdentifiers:
-    node_id: str
-    node_ip: str
+    node_id: str = None
+    node_ip: str = None
 
 
 @dataclass(init=True)
 class FileIdentifiers:
-    log_file_name: str
-    actor_id: str
-    pid: str
+    log_file_name: str = None
+    actor_id: str = None
+    pid: str = None
 
 
 @dataclass(init=True)
@@ -29,9 +32,9 @@ class LogIdentifiers:
 
 @dataclass(init=True)
 class LogStreamOptions:
-    media_type: str
-    lines: int
-    interval: float
+    media_type: str = None
+    lines: int = None
+    interval: float = None
 
 
 def to_schema(req: aiohttp.web.Request, Dataclass):
@@ -63,8 +66,12 @@ def wait_until_client_initializes(func):
 
 
 class LogsManager:
-    def __init__(self):
-        self.client = LogsGrpcClient()
+    def __init__(self, grpc_client):
+        self.client = grpc_client
+
+    @property
+    def logs_client(self):
+        return self.client
 
     @wait_until_client_initializes
     async def resolve_node_id(self, args: NodeIdentifiers):
@@ -80,22 +87,21 @@ class LogsManager:
         return node_id
 
     @wait_until_client_initializes
-    async def list_logs(self, node_id_query: str, filters: List[str]):
+    async def list_logs(self, node_id: str, filters: List[str]):
         """
         Helper function to list the logs by querying each agent
         on each cluster via gRPC.
         """
         response = {}
         tasks = []
-        for node_id in self.client.get_all_registered_nodes():
-            if node_id_query is None or node_id_query == node_id:
+        for node_id_it in self.client.get_all_registered_nodes():
+            if node_id is None or node_id == node_id_it:
 
                 async def coro():
-                    reply = await self.client.list_logs(node_id)
-                    response[node_id] = self._list_logs_single_node(
+                    reply = await self.client.list_logs(node_id_it, timeout=None)
+                    response[node_id_it] = self._list_logs_single_node(
                         reply.log_files, filters
                     )
-
                 tasks.append(coro())
         await asyncio.gather(*tasks)
         return response
