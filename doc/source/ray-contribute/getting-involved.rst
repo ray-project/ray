@@ -197,6 +197,12 @@ In addition, there are other formatting and semantic checkers for components lik
     cd python
     python setup.py check --restructuredtext --strict --metadata
 
+* Python & Docs banned words check
+
+.. code-block:: shell
+
+    ./ci/lint/check-banned-words.sh
+
 * Bazel format:
 
 .. code-block:: shell
@@ -236,7 +242,7 @@ If a CI build exception doesn't appear to be related to your change,
 please visit `this link <https://flakey-tests.ray.io/>`_ to
 check recent tests known to be flaky.
 
-.. _`CI`: https://github.com/ray-project/ray/tree/master/ci/travis
+.. _`CI`: https://github.com/ray-project/ray/tree/master/ci
 
 API stability
 -------------

@@ -5,7 +5,6 @@ import json
 import logging
 import math
 import os
-import pickle
 import random
 import time
 import traceback
@@ -16,6 +15,7 @@ from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
 from ray.util.placement_group import PlacementGroup
+from ray import cloudpickle
 
 from ray.serve.common import (
     DeploymentInfo,
@@ -147,7 +147,7 @@ class ActorReplicaWrapper:
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(
+        self._controller_namespace = ray.serve.client.get_controller_namespace(
             detached, _override_controller_namespace=_override_controller_namespace
         )
 
@@ -267,9 +267,11 @@ class ActorReplicaWrapper:
         )
 
         self._actor_resources = deployment_info.replica_config.resource_dict
-        # it is currently not possiible to create a placement group
+        # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
-        has_resources_assigned = all((r > 0 for r in self._actor_resources.values()))
+        has_resources_assigned = all(
+            (r is not None and r > 0 for r in self._actor_resources.values())
+        )
         if USE_PLACEMENT_GROUP and has_resources_assigned:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources
@@ -334,7 +336,12 @@ class ActorReplicaWrapper:
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            deployment_info.deployment_config.user_config
+            deployment_info.deployment_config.user_config,
+            # Ensure that `is_allocated` will execute before `reconfigure`,
+            # because `reconfigure` runs user code that could block the replica
+            # asyncio loop. If that happens before `is_allocated` is executed,
+            # the `is_allocated` call won't be able to run.
+            self._allocated_obj_ref,
         )
 
     def update_user_config(self, user_config: Any):
@@ -752,7 +759,11 @@ class DeploymentReplica(VersionedReplica):
         if self._actor.actor_resources is None:
             return "UNKNOWN", "UNKNOWN"
 
-        required = {k: v for k, v in self._actor.actor_resources.items() if v > 0}
+        required = {
+            k: v
+            for k, v in self._actor.actor_resources.items()
+            if v is not None and v > 0
+        }
         available = {
             k: v for k, v in self._actor.available_resources.items() if k in required
         }
@@ -1591,9 +1602,10 @@ class DeploymentStateManager:
         )
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (deployment_state_info, self._deleted_deployment_metadata) = pickle.loads(
-                checkpoint
-            )
+            (
+                deployment_state_info,
+                self._deleted_deployment_metadata,
+            ) = cloudpickle.loads(checkpoint)
 
             for deployment_tag, checkpoint_data in deployment_state_info.items():
                 deployment_state = self._create_deployment_state(deployment_tag)
@@ -1638,10 +1650,9 @@ class DeploymentStateManager:
         }
         self._kv_store.put(
             CHECKPOINT_KEY,
-            # NOTE(simon): Make sure to use pickle so we don't save any ray
-            # object that relies on external state (e.g. gcs). For code object,
-            # we are explicitly using cloudpickle to serialize them.
-            pickle.dumps((deployment_state_info, self._deleted_deployment_metadata)),
+            cloudpickle.dumps(
+                (deployment_state_info, self._deleted_deployment_metadata)
+            ),
         )
 
     def get_running_replica_infos(

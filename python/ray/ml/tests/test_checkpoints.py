@@ -270,6 +270,22 @@ class CheckpointsConversionTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             checkpoint.to_directory()
 
+    def test_fs_cp_as_directory(self):
+        checkpoint = self._prepare_fs_checkpoint()
+
+        with checkpoint.as_directory() as checkpoint_dir:
+            assert checkpoint._local_path == checkpoint_dir
+
+        assert os.path.exists(checkpoint_dir)
+
+    def test_dict_cp_as_directory(self):
+        checkpoint = self._prepare_dict_checkpoint()
+
+        with checkpoint.as_directory() as checkpoint_dir:
+            assert os.path.exists(checkpoint_dir)
+
+        assert not os.path.exists(checkpoint_dir)
+
 
 class CheckpointsSerdeTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -309,13 +325,11 @@ class CheckpointsSerdeTest(unittest.TestCase):
         # Local checkpoints are converted to bytes on serialization. Currently
         # this is a pickled dict, so we compare with a dict checkpoint.
         source_checkpoint = Checkpoint.from_dict({"checkpoint_data": 5})
-        tmpdir = source_checkpoint.to_directory()
-        self.addCleanup(shutil.rmtree, tmpdir)
-
-        checkpoint = Checkpoint.from_directory(tmpdir)
-        self._testCheckpointSerde(
-            checkpoint, *source_checkpoint.get_internal_representation()
-        )
+        with source_checkpoint.as_directory() as tmpdir:
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            self._testCheckpointSerde(
+                checkpoint, *source_checkpoint.get_internal_representation()
+            )
 
     def testBytesCheckpointSerde(self):
         # Bytes checkpoints are just dict checkpoints constructed

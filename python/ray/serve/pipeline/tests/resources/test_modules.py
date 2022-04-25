@@ -69,6 +69,11 @@ def fn_hello():
 
 
 @ray.remote
+def fn(val, incr=0):
+    return val + incr
+
+
+@ray.remote
 def combine(m1_output, m2_output, kwargs_output=0):
     return m1_output + m2_output + kwargs_output
 
