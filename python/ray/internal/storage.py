@@ -130,6 +130,16 @@ class KVClient:
                 return f.read()
         except FileNotFoundError:
             return None
+        except OSError as e:
+            # TODO(suquark): Instead of "FileNotFoundError", S3 filesystem raises
+            # OSError starts with "Path does not exist".
+            if (
+                len(e.args) > 0
+                and isinstance(e.args[0], str)
+                and e.args[0].startswith("Path does not exist")
+            ):
+                return None
+            raise e
 
     def delete(self, path: str) -> bool:
         """Load the blob from persistent storage at the given path, if possible.
@@ -261,7 +271,7 @@ class KVClient:
         # Raises an error if the path is above the root (e.g., "../data" attack).
         # NOTE: we need to also
         joined.relative_to(root)
-        return str(joined)[int(is_capped):]
+        return str(joined)[int(is_capped) :]
 
 
 def _init_storage(storage_uri: str, is_head: bool):

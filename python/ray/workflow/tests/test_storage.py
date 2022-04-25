@@ -152,12 +152,7 @@ def test_workflow_storage(workflow_start_regular):
     from ray.internal.storage import _storage_uri
 
     if _storage_uri.startswith("s3://"):
-        assert (
-            wf_storage._storage.get(
-                "workflow/test_workflow_storage/steps/outputs.json", True
-            )
-            == root_output_metadata
-        )
+        assert wf_storage._get("steps/outputs.json", True) == root_output_metadata
 
     # test "inspect_step"
     inspect_result = wf_storage.inspect_step(step_id)
