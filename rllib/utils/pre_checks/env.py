@@ -260,7 +260,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not env.action_space_contains(sampled_action):
         error = (
             _not_contained_error("action_space_sample", "action")
-            + "\n\n sampled_action {sampled_action}\n\n"
+            + f"\n\n sampled_action {sampled_action}\n\n"
         )
         raise ValueError(error)
 
@@ -277,7 +277,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not env.observation_space_contains(next_obs):
         error = (
             _not_contained_error("env.step(sampled_action)", "observation")
-            + ":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
+            + f":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
         )
         raise ValueError(error)
 
