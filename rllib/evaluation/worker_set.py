@@ -2,6 +2,7 @@ import gym
 import logging
 import importlib.util
 import os
+import time
 from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
@@ -139,6 +140,17 @@ class WorkerSet:
                     or not trainer_config.get("action_space")
                 )
             ):
+                # First assert that the first worker is ready.
+                # Not doing so leads to worker-not-ready errors sometimes on Windows.
+                for _ in range(10):
+                    try:
+                        test = ray.get(self.remote_workers()[0].apply.remote(lambda w: w.worker_index))
+                        assert test == 1
+                        break
+                    except Exception as e:
+                        time.sleep(1.0)
+                        pass
+                # When ready, get the first worker's spaces.
                 remote_spaces = ray.get(
                     self.remote_workers()[0].foreach_policy.remote(
                         lambda p, pid: (pid, p.observation_space, p.action_space)
