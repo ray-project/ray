@@ -10,7 +10,7 @@ from ray.serve.generated.serve_pb2 import DeploymentRoute
 def test_redeploy_start_time(serve_instance):
     """Check that redeploying a deployment doesn't reset its start time."""
 
-    controller = serve.api._global_client._controller
+    controller = serve.context._global_client._controller
 
     @serve.deployment
     def test(_):
