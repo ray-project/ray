@@ -12,6 +12,7 @@ from ray.serve.application import Application
 
 
 def test_e2e(serve_instance):
+    1/0
     @serve.deployment(name="api")
     def function(starlette_request):
         return {"method": starlette_request.method}
