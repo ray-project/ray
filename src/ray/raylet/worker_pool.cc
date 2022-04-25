@@ -423,6 +423,17 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
 
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
+      if (language == Language::JAVA) {
+          std::string debug_info;
+          debug_info.append("java command:");
+          for (const auto &arg : worker_command_args) {
+            debug_info.append(" ").append(arg);
+          }
+          RAY_LOG(INFO) << "===================java worker command: " << debug_info;
+        // Remove ["java" -"cp" "xxx"]
+        worker_command_args.erase(worker_command_args.begin() + 2,
+                                    worker_command_args.begin() + 5); 
+      }                        
     } else {
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
@@ -431,10 +442,20 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
         if (language == Language::PYTHON) {
           worker_command_args.erase(worker_command_args.begin() + 1,
                                     worker_command_args.begin() + 2);
-        } else {
+        } else if (language == Language::JAVA) {
+          std::string debug_info;
+          debug_info.append("java command:");
+          for (const auto &arg : worker_command_args) {
+            debug_info.append(" ").append(arg);
+          }
+          RAY_LOG(INFO) << "===================java worker command: " << debug_info;
           // Erase the python executable as well for other languages.
           worker_command_args.erase(worker_command_args.begin(),
                                     worker_command_args.begin() + 2);
+        } else {
+          // Erase the python executable as well for other languages.
+          worker_command_args.erase(worker_command_args.begin(),
+                                    worker_command_args.begin() + 2); 
         }
       }
     }

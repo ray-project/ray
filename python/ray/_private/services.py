@@ -1881,15 +1881,18 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
+    # Add ray jars path to java classpath
+    ray_jars = os.path.join(get_ray_jars_dir(), "*")
     command = (
         [sys.executable]
         + [setup_worker_path]
-        # + ["java"]
+        + ["java"]
+        + ["-cp", ray_jars] 
         + ["-D{}={}".format(*pair) for pair in pairs]
     )
 
-    # Add ray jars path to java classpath
-    ray_jars = os.path.join(get_ray_jars_dir(), "*")
+    # # Add ray jars path to java classpath
+    # ray_jars = os.path.join(get_ray_jars_dir(), "*")
     # command += ["-cp", ray_jars]
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
