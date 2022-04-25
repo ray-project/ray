@@ -3412,13 +3412,13 @@
     file_manager: sdk
 
 - name: dataset_shuffle_random_shuffle_1tb
-  group: core-multi-test
+  group: core-dataset-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_random_shuffle_1tb
     test_suite: dataset_test
 
-  stable: false
+  stable: true
 
   frequency: nightly
   team: core
@@ -3438,13 +3438,13 @@
     file_manager: sdk
 
 - name: dataset_shuffle_sort_1tb
-  group: core-multi-test
+  group: core-dataset-tests
   working_dir: nightly_tests
   legacy:
     test_name: dataset_shuffle_sort_1tb
     test_suite: dataset_test
 
-  stable: false
+  stable: true
 
   frequency: nightly
   team: core
