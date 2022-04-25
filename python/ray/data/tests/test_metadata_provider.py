@@ -2,6 +2,7 @@ import pytest
 import posixpath
 import urllib.parse
 import os
+import logging
 
 import pyarrow as pa
 import pandas as pd
@@ -73,7 +74,7 @@ def test_file_metadata_providers_not_implemented():
         ),
     ],
 )
-def test_default_parquet_metadata_provider(ray_start_regular_shared, fs, data_path):
+def test_default_parquet_metadata_provider(fs, data_path):
     path_module = os.path if urllib.parse.urlparse(data_path).scheme else posixpath
     paths = [
         path_module.join(data_path, "test1.parquet"),
@@ -124,7 +125,7 @@ def test_default_parquet_metadata_provider(ray_start_regular_shared, fs, data_pa
         ),
     ],
 )
-def test_default_file_metadata_provider(fs, data_path, endpoint_url):
+def test_default_file_metadata_provider(caplog, fs, data_path, endpoint_url):
     storage_options = (
         {}
         if endpoint_url is None
@@ -143,7 +144,9 @@ def test_default_file_metadata_provider(fs, data_path, endpoint_url):
     df2.to_csv(path2, index=False, storage_options=storage_options)
 
     meta_provider = DefaultFileMetadataProvider()
-    file_paths, file_sizes = meta_provider.expand_paths(paths, fs)
+    with caplog.at_level(logging.WARNING):
+        file_paths, file_sizes = meta_provider.expand_paths(paths, fs)
+    assert "meta_provider=FastFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     expected_file_sizes = _get_file_sizes_bytes(paths, fs)
     assert file_sizes == expected_file_sizes
@@ -179,7 +182,7 @@ def test_default_file_metadata_provider(fs, data_path, endpoint_url):
         ),
     ],
 )
-def test_fast_file_metadata_provider(fs, data_path, endpoint_url):
+def test_fast_file_metadata_provider(caplog, fs, data_path, endpoint_url):
     storage_options = (
         {}
         if endpoint_url is None
@@ -198,7 +201,9 @@ def test_fast_file_metadata_provider(fs, data_path, endpoint_url):
     df2.to_csv(path2, index=False, storage_options=storage_options)
 
     meta_provider = FastFileMetadataProvider()
-    file_paths, file_sizes = meta_provider.expand_paths(paths, fs)
+    with caplog.at_level(logging.WARNING):
+        file_paths, file_sizes = meta_provider.expand_paths(paths, fs)
+    assert "meta_provider=DefaultFileMetadataProvider()" in caplog.text
     assert file_paths == paths
     assert len(file_sizes) == len(file_paths)
 
