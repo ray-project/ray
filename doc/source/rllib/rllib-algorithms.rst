@@ -17,7 +17,7 @@ Algorithm                   Frameworks Discrete Actions              Continuous 
 =========================== ========== ============================= ================== =========== ============================================================= ===============
 `A2C, A3C`_                 tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
 `ARS`_                      tf + torch **Yes**                       **Yes**            No                                                                        No
-`Bandits`_ (`TS`_ & `UCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
+`Bandits`_ (`TS`_ & `LinUCB`_) torch      **Yes** `+parametric`_        No                 **Yes**                                                                   No
 `BC`_                       tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_                                                       torch
 `CQL`_                      tf + torch No                            **Yes**            No                                                                        tf + torch
 `ES`_                       tf + torch **Yes**                       **Yes**            No                                                                        No
@@ -71,7 +71,7 @@ Algorithm                     Frameworks Discrete Actions        Continuous Acti
 .. _`TD3`: rllib-algorithms.html#ddpg
 .. _`+Attention`: rllib-models.html#attention
 .. _`TS`: rllib-models.html#lints
-.. _`UCB`: rllib-models.html#linucb
+.. _`LinUCB`: rllib-models.html#linucb
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -692,7 +692,7 @@ arms are related to each other. The agent does this by balancing the
 trade-off between exploration and exploitation.
 
 Contextual bandit algorithms typically consist of an action-value model (Q
-model) and an exploration strategy (epsilon-greedy, UCB, Thompson Sampling etc.)
+model) and an exploration strategy (epsilon-greedy, LinUCB, Thompson Sampling etc.)
 
 RLlib supports the following online contextual bandit algorithms,
 named after the exploration strategies that they employ:
