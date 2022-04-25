@@ -70,7 +70,7 @@ Finally, you can create a ``Dataset`` from existing data in the Ray object store
 From Torch datasets
 ---------------------------------------
 
-If you're using a Torch dataset, you can create a Dataset using 
+If you already have a Torch dataset available, you can create a Ray Dataset using 
 ``SimpleTorchDatasource``.
 
 .. warning::
