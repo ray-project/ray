@@ -215,7 +215,9 @@ class RLTrainer(Trainer):
                 )
 
             def save_checkpoint(self, checkpoint_dir: str):
-                super().save_chekpoint()
+                checkpoint_path = super(AIRRLTrainer, self).save_checkpoint(
+                    checkpoint_dir
+                )
 
                 trainer_class_path = os.path.join(checkpoint_dir, RL_TRAINER_CLASS_FILE)
                 with open(trainer_class_path, "wb") as fp:
@@ -224,6 +226,8 @@ class RLTrainer(Trainer):
                 config_path = os.path.join(checkpoint_dir, RL_CONFIG_FILE)
                 with open(config_path, "wb") as fp:
                     cpickle.dump(self.config, fp)
+
+                return checkpoint_path
 
             @classmethod
             def default_resource_request(

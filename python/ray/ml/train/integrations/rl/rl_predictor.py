@@ -53,7 +53,9 @@ class RLPredictor(Predictor):
 
             checkpoint_data_path = None
             for file in os.listdir(checkpoint_path):
-                if file.startswith("checkpoint"):
+                if file.startswith("checkpoint") and not file.endswith(
+                    ".tune_metadata"
+                ):
                     checkpoint_data_path = os.path.join(checkpoint_path, file)
 
             if not checkpoint_data_path:

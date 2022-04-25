@@ -6,6 +6,8 @@ from ray.ml.config import RunConfig
 from ray.ml.train.integrations.rl.rl_trainer import RLTrainer
 from ray.ml.train.integrations.rl.rl_predictor import RLPredictor
 from ray.ml.result import Result
+from ray.serve.model_wrappers import ModelWrapperDeployment
+from ray import serve
 from ray.tune.tuner import Tuner
 
 
@@ -31,7 +33,9 @@ def train_rl_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
 
 
 def serve_rl_model(checkpoint: Checkpoint):
-    pass
+    serve.start(detached=True)
+    deployment = ModelWrapperDeployment
+    deployment.deploy(RLPredictor, checkpoint)
 
 
 if __name__ == "__main__":
@@ -64,21 +68,25 @@ if __name__ == "__main__":
             "AIRPPOTrainer_6f311_00000_0_2022-04-21_17-38-12/checkpoint_000015/"
         )
 
-    predictor = RLPredictor.from_checkpoint(checkpoint)
-
-    import gym
-
-    env = gym.make("CartPole-v0")
-    obs = env.reset()
-
-    reward = 0.0
-    for i in range(200):
-        action = predictor.predict([obs])
-        obs, rew, done, _ = env.step(action[0])
-        reward += rew
-        if done:
-            break
-
-    print("EVAL", reward)
+    # predictor = RLPredictor.from_checkpoint(checkpoint)
+    #
+    # import gym
+    #
+    # env = gym.make("CartPole-v0")
+    # obs = env.reset()
+    #
+    # reward = 0.0
+    # for i in range(200):
+    #     action = predictor.predict([obs])
+    #     obs, rew, done, _ = env.step(action[0])
+    #     reward += rew
+    #     if done:
+    #         break
+    #
+    # print("EVAL", reward)
 
     serve_rl_model(checkpoint)
+    print("SERVING NOW")
+    import time
+
+    time.sleep(30)
