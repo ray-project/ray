@@ -21,8 +21,17 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_TARGET_UPDATES,
+    TARGET_NET_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
+from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -143,7 +152,7 @@ class CQLTrainer(SACTrainer):
     @override(SACTrainer)
     def training_iteration(self) -> ResultDict:
 
-        # Sample training batch (MultiAgentBatch) from replay buffer.
+        # Sample training batch from replay buffer.
         train_batch = self.local_replay_buffer.replay()
 
         # Old-style replay buffers return None if learning has not started
@@ -171,13 +180,15 @@ class CQLTrainer(SACTrainer):
         )
 
         # Update target network every target_network_update_freq steps
-        cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config["target_network_update_freq"]:
-            to_update = self.workers.local_worker().get_policies_to_train()
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, pid: pid in to_update and p.update_target()
-            )
+            with self._timers[TARGET_NET_UPDATE_TIMER]:
+                to_update = self.workers.local_worker().get_policies_to_train()
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
