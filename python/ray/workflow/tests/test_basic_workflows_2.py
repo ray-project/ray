@@ -1,6 +1,5 @@
 import pytest
 import ray
-import re
 from filelock import FileLock
 from ray._private.test_utils import SignalActor
 from ray import workflow
@@ -221,25 +220,16 @@ def test_get_named_step_duplicate(workflow_start_regular):
     assert ray.get(workflow.get_output("duplicate", name="f_1")) == 10
 
 
-def test_no_init(shutdown_only):
+def test_no_init_run(shutdown_only):
     @ray.remote
     def f():
         pass
 
-    fail_wf_init_error_msg = re.escape(
-        "`workflow.init()` must be called prior to using the workflows API."
-    )
+    workflow.create(f.bind()).run()
 
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.create(f.bind()).run()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.list_all()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.resume_all()
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.cancel("wf")
-    with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        workflow.get_actor("wf")
+
+def test_no_init_api(shutdown_only):
+    workflow.list_all()
 
 
 if __name__ == "__main__":

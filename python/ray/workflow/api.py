@@ -15,7 +15,6 @@ from ray.workflow.step_function import WorkflowStepFunction
 from ray.workflow import virtual_actor_class
 from ray.workflow.common import (
     WorkflowStatus,
-    ensure_ray_initialized,
     Workflow,
     Event,
     WorkflowRunningError,
@@ -36,6 +35,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_is_workflow_initialized = False
+
+
 @PublicAPI(stability="beta")
 def init() -> None:
     """Initialize workflow.
@@ -51,6 +53,13 @@ def init() -> None:
         ray.init(storage="file:///tmp/ray/workflow_data")
     workflow_access.init_management_actor()
     serialization.init_manager()
+    global _is_workflow_initialized
+    _is_workflow_initialized = True
+
+
+def ensure_workflow_initialized() -> None:
+    if not _is_workflow_initialized:
+        init()
 
 
 def make_step_decorator(
@@ -169,7 +178,7 @@ def get_actor(actor_id: str) -> "VirtualActor":
     Returns:
         A virtual actor.
     """
-    ensure_ray_initialized()
+    ensure_workflow_initialized()
     return virtual_actor_class.get_actor(actor_id)
 
 
@@ -195,7 +204,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    ensure_ray_initialized()
+    ensure_workflow_initialized()
     return execution.resume(workflow_id)
 
 
@@ -222,7 +231,7 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    ensure_ray_initialized()
+    ensure_workflow_initialized()
     return execution.get_output(workflow_id, name)
 
 
@@ -258,7 +267,7 @@ def list_all(
     Returns:
         A list of tuple with workflow id and workflow status
     """
-    ensure_ray_initialized()
+    ensure_workflow_initialized()
     if isinstance(status_filter, str):
         status_filter = set({WorkflowStatus(status_filter)})
     elif isinstance(status_filter, WorkflowStatus):
@@ -307,7 +316,7 @@ def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     Returns:
         A list of (workflow_id, returned_obj_ref) resumed.
     """
-    ensure_ray_initialized()
+    ensure_workflow_initialized()
     return execution.resume_all(include_failed)
 
 
@@ -328,7 +337,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     Returns:
         The status of that workflow
     """
-    ensure_ray_initialized()
+    ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.get_status(workflow_id)
@@ -424,7 +433,7 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
     Raises:
         ValueError: if given workflow or workflow step does not exist.
     """
-    ensure_ray_initialized()
+    ensure_workflow_initialized()
     return execution.get_metadata(workflow_id, name)
 
 
@@ -449,7 +458,7 @@ def cancel(workflow_id: str) -> None:
         None
 
     """
-    ensure_ray_initialized()
+    ensure_workflow_initialized()
     if not isinstance(workflow_id, str):
         raise TypeError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)
@@ -480,6 +489,7 @@ def delete(workflow_id: str) -> None:
 
     """
 
+    ensure_workflow_initialized()
     try:
         status = get_status(workflow_id)
         if status == WorkflowStatus.RUNNING:
