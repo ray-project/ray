@@ -11,7 +11,7 @@
 # artifacts, so we remove the directory afterwards.
 set -e
 if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summaries)" ]; then
-    cat /tmp/artifacts/test-summaries/*.txt | buildkite-agent annotate --job "${BUILDKITE_JOB_ID}" --append --style error
+    cat /tmp/artifacts/test-summaries/*.txt | buildkite-agent annotate --job "${BUILDKITE_JOB_ID}" --append --style error --context "${BUILDKITE_JOB_ID}"
 
     # Remove test summaries files (don't actually upload as artifacts)
     # This has to be done with docker to avoid permission issues
