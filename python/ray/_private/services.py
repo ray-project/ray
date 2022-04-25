@@ -861,13 +861,8 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
                 ) from connEx
             # Wait a little bit.
             time.sleep(delay)
-            # When deploying a Ray cluster based on k8s, if the shape of the
-            # head node is large, the delivery time of the redis inside the
-            # head pod will be long as well. If exponential backoff is used on
-            # the work node, it may occur that the redis started at 33s, the
-            # work node did not connect the redis until 64s, which in turn
-            # affected the delivery time of the Ray cluster. Therefore, we make
-            # a fixed retry interval (1s) when backoff times >= 10.
+            # Make sure the retry interval doesn't increase too large, which will
+            # affect the delivery time of the Ray cluster.
             delay = 1000 if i >= 10 else delay * 2
         else:
             break
