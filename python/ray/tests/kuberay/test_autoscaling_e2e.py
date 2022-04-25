@@ -22,7 +22,11 @@ from ray.tests.kuberay.utils import (
     wait_for_crd,
 )
 
-from ray.tests.kuberay import scripts
+
+from ray.tests.kuberay.scripts import (
+    gpu_actor_placement,
+    gpu_actor_validation
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -253,12 +257,10 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         )
         # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
         logger.info("Scheduling an Actor with GPU demands.")
-        kubectl_exec_python_script(
-            script_name="gpu_actor_placement.py",
-            pod=head_pod,
-            container="ray-head",
-            namespace="default",
-        )
+        # Use Ray client to validate that it works against KubeRay.
+        with ray_client_port_forward(head_service="raycluster-complete-head-svc",
+                                     ray_namespace="gpu-test"):
+            gpu_actor_placement.main()
         # 3. Confirm new pod number and presence of fake GPU worker.
         logger.info("Confirming fake GPU worker up-scaling.")
         wait_for_pods(goal_num_pods=4, namespace="default")
@@ -271,13 +273,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # 4. Confirm that the GPU actor is up and that Ray believes
         # the node the actor is on has a GPU.
         logger.info("Confirming GPU actor placement.")
-        out = kubectl_exec_python_script(
-            script_name="gpu_actor_validation.py",
-            pod=head_pod,
-            container="ray-head",
-            namespace="default",
-            return_out=True,
-        )
+        with ray_client_port_forward(head_service="raycluster-complete-head-svc",
+                                     ray_namespace="gpu-test"):
+            out = gpu_actor_validation.main()
         # Confirms the actor was placed on a GPU-annotated node.
         # (See gpu_actor_validation.py for details.)
         assert "on-a-gpu-node" in out
@@ -320,10 +318,12 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # Submit two {"Custom2": 3} bundles to upscale two workers with 5
         # Custom2 capacity each.
         logger.info("Scaling up workers with request for custom resources.")
-        # Use Ray client to validate that it works against KubeRay.
-        with ray_client_port_forward(head_service="raycluster-complete-head-svc"):
-            scripts.scale_up_custom.scale_up_custom()
-        logger.info("Confirming two workers have scaled up.")
+        kubectl_exec_python_script(
+            script_name="scale_up_custom.py",
+            pod=head_pod,
+            container="ray-head",
+            namespace="default",
+        )
         wait_for_pods(goal_num_pods=3, namespace="default")
 
         # Cluster deletion

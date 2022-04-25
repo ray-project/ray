@@ -2,6 +2,8 @@ import ray
 
 
 def main():
+    """Requests placement of a GPU actor.
+    """
     @ray.remote(num_gpus=1, num_cpus=1)
     class GPUActor:
         def where_am_i(self):
@@ -10,5 +12,7 @@ def main():
 
     GPUActor.options(name="gpu_actor", lifetime="detached").remote()
 
+
 if __name__ == "__main__":
     ray.init("auto", namespace="gpu-test")
+    main()

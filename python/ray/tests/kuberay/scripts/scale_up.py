@@ -2,7 +2,7 @@ import ray
 
 
 def main():
-    """Submits resource request.
+    """Submits CPU request.
     """
     ray.autoscaler.sdk.request_resources(num_cpus=2)
 
