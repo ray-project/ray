@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class SimpleTensorFlowDatasource(Datasource[T]):
-    """A datasource that let's you use TensorFlow datasets with Ray Data.
+    """A datasource that lets you use TensorFlow datasets with Ray Data.
 
     .. warning::
         ``SimpleTensorFlowDataset`` doesn't support parallel reads. You should only use
