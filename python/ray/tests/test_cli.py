@@ -219,31 +219,28 @@ DOCKER_TEST_CONFIG_PATH = str(
 )
 
 
-def test_enable_usage_stats(tmp_path):
-    saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+def test_enable_usage_stats(monkeypatch, tmp_path):
     tmp_usage_stats_config_path = tmp_path / "config.json"
-    ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
     runner = CliRunner()
     runner.invoke(scripts.enable_usage_stats, [])
     assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
-    ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
 
-def test_disable_usage_stats(tmp_path):
-    saved_usage_stats_config_path = ray_usage_lib._usage_stats_config_path
+def test_disable_usage_stats(monkeypatch, tmp_path):
     tmp_usage_stats_config_path = tmp_path / "config.json"
-    ray_usage_lib._usage_stats_config_path = lambda: tmp_usage_stats_config_path
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
     runner = CliRunner()
     runner.invoke(scripts.disable_usage_stats, [])
     assert '{"usage_stats": false}' == tmp_usage_stats_config_path.read_text()
-    ray_usage_lib._usage_stats_config_path = saved_usage_stats_config_path
 
 
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-def test_ray_start(configure_lang):
+def test_ray_start(configure_lang, monkeypatch, tmp_path):
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner()
     temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
@@ -275,7 +272,11 @@ def test_ray_start(configure_lang):
 )
 @mock_ec2
 @mock_iam
-def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
+def test_ray_up(
+    configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -312,7 +313,11 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
 )
 @mock_ec2
 @mock_iam
-def test_ray_up_docker(configure_lang, _unlink_test_ssh_key, configure_aws):
+def test_ray_up_docker(
+    configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.
@@ -351,7 +356,11 @@ def test_ray_up_docker(configure_lang, _unlink_test_ssh_key, configure_aws):
 )
 @mock_ec2
 @mock_iam
-def test_ray_up_record(configure_lang, _unlink_test_ssh_key, configure_aws):
+def test_ray_up_record(
+    configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
+
     def commands_mock(command, stdin):
         # if we want to have e.g. some commands fail,
         # we can have overrides happen here.

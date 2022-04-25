@@ -146,7 +146,9 @@ def _usage_stats_report_interval_s():
 
 
 def _usage_stats_config_path():
-    return os.path.expanduser("~/.ray/config.json")
+    return os.getenv(
+        "RAY_USAGE_STATS_CONFIG_PATH", os.path.expanduser("~/.ray/config.json")
+    )
 
 
 def _usage_stats_enabledness() -> UsageStatsEnabledness:
