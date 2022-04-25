@@ -1705,6 +1705,7 @@ class Dataset(Generic[T]):
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
     ) -> None:
         """Write the dataset to parquet.
@@ -1739,12 +1740,14 @@ class Dataset(Generic[T]):
                 instead of arrow_parquet_args if any of your write arguments
                 cannot be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             arrow_parquet_args: Options to pass to
                 pyarrow.parquet.write_table(), which is used to write out each
                 block to a file.
         """
         self.write_datasource(
             ParquetDatasource(),
+            ray_remote_args=ray_remote_args,
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
@@ -1764,6 +1767,7 @@ class Dataset(Generic[T]):
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
     ) -> None:
         """Write the dataset to json.
@@ -1798,6 +1802,7 @@ class Dataset(Generic[T]):
                 instead of pandas_json_args if any of your write arguments
                 cannot be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             pandas_json_args: These args will be passed to
                 pandas.DataFrame.to_json(), which we use under the hood to
                 write out each Datasets block. These
@@ -1805,6 +1810,7 @@ class Dataset(Generic[T]):
         """
         self.write_datasource(
             JSONDatasource(),
+            ray_remote_args=ray_remote_args,
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
@@ -1824,6 +1830,7 @@ class Dataset(Generic[T]):
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
     ) -> None:
         """Write the dataset to csv.
@@ -1858,10 +1865,12 @@ class Dataset(Generic[T]):
                 instead of arrow_csv_args if any of your write arguments
                 cannot be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             arrow_csv_args: Other CSV write options to pass to pyarrow.
         """
         self.write_datasource(
             CSVDatasource(),
+            ray_remote_args=ray_remote_args,
             path=path,
             dataset_uuid=self._uuid,
             filesystem=filesystem,
@@ -1881,6 +1890,7 @@ class Dataset(Generic[T]):
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        ray_remote_args: Dict[str, Any] = None,
     ) -> None:
         """Write a tensor column of the dataset to npy files.
 
@@ -1911,9 +1921,11 @@ class Dataset(Generic[T]):
                 pyarrow.fs.FileSystem.open_output_stream
             block_path_provider: BlockWritePathProvider implementation to
                 write each dataset block to a custom output path.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
         self.write_datasource(
             NumpyDatasource(),
+            ray_remote_args=ray_remote_args,
             path=path,
             dataset_uuid=self._uuid,
             column=column,
@@ -1923,7 +1935,13 @@ class Dataset(Generic[T]):
             block_path_provider=block_path_provider,
         )
 
-    def write_datasource(self, datasource: Datasource[T], **write_args) -> None:
+    def write_datasource(
+        self,
+        datasource: Datasource[T],
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+        **write_args,
+    ) -> None:
         """Write the dataset to a custom datasource.
 
         Examples:
@@ -1939,6 +1957,7 @@ class Dataset(Generic[T]):
 
         Args:
             datasource: The datasource to write to.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             write_args: Additional write args to pass to the datasource.
         """
 
@@ -1948,7 +1967,7 @@ class Dataset(Generic[T]):
         # TODO(ekl) remove this feature flag.
         if "RAY_DATASET_FORCE_LOCAL_METADATA" in os.environ:
             write_results: List[ObjectRef[WriteResult]] = datasource.do_write(
-                blocks, metadata, **write_args
+                blocks, metadata, ray_remote_args=ray_remote_args, **write_args
             )
         else:
             # Prepare write in a remote task so that in Ray client mode, we
@@ -1960,6 +1979,7 @@ class Dataset(Generic[T]):
                     ctx,
                     blocks,
                     metadata,
+                    ray_remote_args,
                     _wrap_arrow_serialization_workaround(write_args),
                 )
             )
@@ -2606,22 +2626,22 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 to repeat indefinitely.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+        from ray.data.impl.plan import _rewrite_read_stage
 
-        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
-        # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
-        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
-            self._plan._in_blocks.clear()
-            blocks, read_stage = self._plan._rewrite_read_stage()
-            outer_stats = DatasetStats(stages={}, parent=None)
+        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, _ = self._plan._get_source_blocks()
+            blocks.clear()
+            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
             blocks = self._plan.execute()
-            read_stage = None
             outer_stats = self._plan.stats()
+            read_stage = None
+        uuid = self._get_uuid()
+        outer_stats.dataset_uuid = uuid
 
         if times is not None and times < 1:
             raise ValueError("`times` must be >= 1, got {}".format(times))
-        uuid = self._get_uuid()
 
         class Iterator:
             def __init__(self, blocks):
@@ -2719,6 +2739,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 exclusive with ``blocks_per_window``.
         """
         from ray.data.dataset_pipeline import DatasetPipeline
+        from ray.data.impl.plan import _rewrite_read_stage
 
         if blocks_per_window is not None and bytes_per_window is not None:
             raise ValueError("Only one windowing scheme can be specified.")
@@ -2726,17 +2747,15 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         if blocks_per_window is None:
             blocks_per_window = 10
 
-        # If optimizations are enabled, rewrite the read stage into a OneToOneStage
-        # to enable fusion with downstream map stages.
         ctx = DatasetContext.get_current()
-        if self._plan._is_read_stage() and ctx.optimize_fuse_read_stages:
-            self._plan._in_blocks.clear()
-            blocks, read_stage = self._plan._rewrite_read_stage()
-            outer_stats = DatasetStats(stages={}, parent=None)
+        if self._plan.is_read_stage() and ctx.optimize_fuse_read_stages:
+            blocks, _ = self._plan._get_source_blocks()
+            blocks.clear()
+            blocks, outer_stats, read_stage = _rewrite_read_stage(blocks)
         else:
             blocks = self._plan.execute()
-            read_stage = None
             outer_stats = self._plan.stats()
+            read_stage = None
 
         class Iterator:
             def __init__(self, splits, epoch):
@@ -2814,19 +2833,9 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         Returns:
             A Dataset with all blocks fully materialized in memory.
         """
-        blocks, metadata = [], []
-        for b, m in self._plan.execute().get_blocks_with_metadata():
-            blocks.append(b)
-            metadata.append(m)
-        ds = Dataset(
-            ExecutionPlan(
-                BlockList(blocks, metadata),
-                self._plan.stats(),
-                dataset_uuid=self._get_uuid(),
-            ),
-            self._epoch,
-            lazy=False,
-        )
+        plan = self._plan.deep_copy(preserve_uuid=True)
+        plan.execute(force_read=True)
+        ds = Dataset(plan, self._epoch, lazy=False)
         ds._set_uuid(self._get_uuid())
         return ds
 
@@ -3153,8 +3162,9 @@ def _do_write(
     ctx: DatasetContext,
     blocks: List[Block],
     meta: List[BlockMetadata],
-    write_args: dict,
+    ray_remote_args: Dict[str, Any],
+    write_args: Dict[str, Any],
 ) -> List[ObjectRef[WriteResult]]:
     write_args = _unwrap_arrow_serialization_workaround(write_args)
     DatasetContext._set_current(ctx)
-    return ds.do_write(blocks, meta, **write_args)
+    return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)

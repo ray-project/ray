@@ -197,6 +197,12 @@ In addition, there are other formatting and semantic checkers for components lik
     cd python
     python setup.py check --restructuredtext --strict --metadata
 
+* Python & Docs banned words check
+
+.. code-block:: shell
+
+    ./ci/lint/check-banned-words.sh
+
 * Bazel format:
 
 .. code-block:: shell

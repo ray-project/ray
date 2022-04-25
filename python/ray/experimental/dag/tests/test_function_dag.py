@@ -111,8 +111,10 @@ def test_invalid_task_options(shared_ray_instance):
 
     # Ensure current DAG is executable
     assert ray.get(dag.execute()) == 4
-    invalid_dag = b.options(num_cpus=-1).bind(a_ref)
-    with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
+    with pytest.raises(
+        ValueError, match=r".*only accepts None, 0 or a positive number.*"
+    ):
+        invalid_dag = b.options(num_cpus=-1).bind(a_ref)
         ray.get(invalid_dag.execute())
 
 

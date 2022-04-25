@@ -270,6 +270,7 @@ def _find_address_from_flag(flag: str):
             cmdline = proc.cmdline()
             # NOTE(kfstorm): To support Windows, we can't use
             # `os.path.basename(cmdline[0]) == "raylet"` here.
+
             if len(cmdline) > 0 and "raylet" in os.path.basename(cmdline[0]):
                 for arglist in cmdline:
                     # Given we're merely seeking --redis-address, we just split
@@ -860,7 +861,9 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
                 ) from connEx
             # Wait a little bit.
             time.sleep(delay)
-            delay *= 2
+            # Make sure the retry interval doesn't increase too large, which will
+            # affect the delivery time of the Ray cluster.
+            delay = 1000 if i >= 10 else delay * 2
         else:
             break
     else:

@@ -9,22 +9,20 @@ from typing import (
     Union,
 )
 
+from ray.serve.context import get_global_client
+from ray.experimental.dag.class_node import ClassNode
+from ray.experimental.dag.function_node import FunctionNode
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.deployment_graph import DeploymentNode, DeploymentFunctionNode
 from ray.serve.utils import DEFAULT, get_deployment_import_path
 from ray.util.annotations import PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )
-
-
-# TODO (shrekris-anyscale): remove following dependencies on api.py:
-# - internal_get_global_client
 
 
 @PublicAPI
@@ -175,9 +173,7 @@ class Deployment:
             # this deployment is not exposed over HTTP
             return None
 
-        from ray.serve.api import internal_get_global_client
-
-        return internal_get_global_client().root_url + self.route_prefix
+        return get_global_client().root_url + self.route_prefix
 
     def __call__(self):
         raise RuntimeError(
@@ -186,8 +182,8 @@ class Deployment:
         )
 
     @PublicAPI(stability="alpha")
-    def bind(self, *args, **kwargs) -> Union[DeploymentNode, DeploymentFunctionNode]:
-        """Bind the provided arguments and return a DeploymentNode.
+    def bind(self, *args, **kwargs) -> Union[ClassNode, FunctionNode]:
+        """Bind the provided arguments and return a class or function node.
 
         The returned bound deployment can be deployed or bound to other
         deployments to create a deployment graph.
@@ -200,7 +196,7 @@ class Deployment:
         schema_shell = deployment_to_schema(copied_self)
 
         if inspect.isfunction(self._func_or_class):
-            return DeploymentFunctionNode(
+            return FunctionNode(
                 self._func_or_class,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
@@ -211,7 +207,7 @@ class Deployment:
                 },
             )
         else:
-            return DeploymentNode(
+            return ClassNode(
                 self._func_or_class,
                 args,
                 kwargs,
@@ -237,9 +233,7 @@ class Deployment:
         if len(init_kwargs) == 0 and self._init_kwargs is not None:
             init_kwargs = self._init_kwargs
 
-        from ray.serve.api import internal_get_global_client
-
-        return internal_get_global_client().deploy(
+        return get_global_client().deploy(
             self._name,
             self._func_or_class,
             init_args,
@@ -257,9 +251,7 @@ class Deployment:
     def delete(self):
         """Delete this deployment."""
 
-        from ray.serve.api import internal_get_global_client
-
-        return internal_get_global_client().delete_deployments([self._name])
+        return get_global_client().delete_deployments([self._name])
 
     @PublicAPI
     def get_handle(
@@ -277,11 +269,7 @@ class Deployment:
             ServeHandle
         """
 
-        from ray.serve.api import internal_get_global_client
-
-        return internal_get_global_client().get_handle(
-            self._name, missing_ok=True, sync=sync
-        )
+        return get_global_client().get_handle(self._name, missing_ok=True, sync=sync)
 
     @PublicAPI
     def options(

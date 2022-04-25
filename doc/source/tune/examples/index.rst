@@ -151,40 +151,133 @@ At the end of these guides you will often find links to even more examples.
 Search Algorithm Examples
 -------------------------
 
-.. TODO: make these panels with logos!
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
 
-- :doc:`/tune/examples/includes/ax_example`:
-  Example script showing usage of :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
-- :doc:`/tune/examples/includes/dragonfly_example`:
-  Example script showing usage of :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
-- :doc:`/tune/examples/includes/skopt_example`:
-  Example script showing usage of :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
-- :doc:`/tune/examples/hyperopt_example`:
-  Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__]
-- :doc:`/tune/examples/includes/hyperopt_conditional_search_space_example`:
-  Example script showing usage of :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__] with a conditional search space
-- :doc:`/tune/examples/includes/bayesopt_example`:
-  Example script showing usage of :ref:`BayesOptSearch <bayesopt>` [`BayesianOptimization website <https://github.com/fmfn/BayesianOptimization>`__]
-- :doc:`/tune/examples/includes/blendsearch_example`:
-  Example script showing usage of :ref:`BlendSearch <BlendSearch>` [`BlendSearch website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-- :doc:`/tune/examples/includes/cfo_example`:
-  Example script showing usage of :ref:`CFO <CFO>` [`CFO website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-- :doc:`/tune/examples/includes/bohb_example`:
-  Example script showing usage of :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
-- :doc:`/tune/examples/includes/nevergrad_example`:
-  Example script showing usage of :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
-- :doc:`/tune/examples/optuna_example`:
-  Example script showing usage of :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
-- :doc:`/tune/examples/includes/zoopt_example`:
-  Example script showing usage of :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
-- :doc:`/tune/examples/includes/sigopt_example`:
-  Example script showing usage of :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__]
-- :doc:`/tune/examples/includes/hebo_example`:
-  Example script showing usage of :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-- :doc:`/tune/examples/includes/sigopt_multi_objective_example`:
-  Example using Sigopt's multi-objective functionality (contributed).
-- :doc:`/tune/examples/includes/sigopt_prior_beliefs_example`:
-  Example using Sigopt's support for prior beliefs (contributed).
+    ---
+    :img-top: ../images/ax.png
+
+    +++
+    .. link-button:: ax_example
+        :type: ref
+        :text: How To Use Tune With Ax
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/dragonfly.png
+
+    +++
+    .. link-button:: dragonfly_example
+        :type: ref
+        :text: How To Use Tune With Dragonfly
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/skopt.png
+
+    +++
+    .. link-button:: skopt_example
+        :type: ref
+        :text: How To Use Tune With Scikit-Optimize
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/hyperopt.png
+
+    +++
+    .. link-button:: hyperopt_example
+        :type: ref
+        :text: How To Use Tune With HyperOpt
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/bayesopt.png
+
+    +++
+    .. link-button:: bayesopt_example
+        :type: ref
+        :text: How To Use Tune With BayesOpt
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/flaml.png
+
+    +++
+    .. link-button:: flaml_example
+        :type: ref
+        :text: How To Use Tune With BlendSearch and CFO
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/bohb.png
+
+    +++
+    .. link-button:: bohb_example
+        :type: ref
+        :text: How To Use Tune With TuneBOHB
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/nevergrad.png
+
+    +++
+    .. link-button:: nevergrad_example
+        :type: ref
+        :text: How To Use Tune With Nevergrad
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/optuna.png
+
+    +++
+    .. link-button:: optuna_example
+        :type: ref
+        :text: How To Use Tune With Optuna
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/zoopt.png
+
+    +++
+    .. link-button:: zoopt_example
+        :type: ref
+        :text: How To Use Tune With ZOOpt
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/sigopt.png
+
+    +++
+    .. link-button:: sigopt_example
+        :type: ref
+        :text: How To Use Tune With SigOpt
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: ../images/hebo.png
+
+    +++
+    .. link-button:: hebo_example
+        :type: ref
+        :text: How To Use Tune With HEBO
+        :classes: btn-link btn-block stretched-link
+
+API docs:
+
+- :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
+- :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
+- :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
+- :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__] including a conditional search space.
+- :ref:`BayesOptSearch <bayesopt>` [`BayesianOptimization website <https://github.com/fmfn/BayesianOptimization>`__]
+- :ref:`BlendSearch <BlendSearch>` [`BlendSearch website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__] and :ref:`CFO <CFO>` [`CFO website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
+- :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
+- :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
+- :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
+- :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
+- :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__] including support for prior beliefs and the multi-objective case.
+- :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
 
 
 .. _tune-general-examples:

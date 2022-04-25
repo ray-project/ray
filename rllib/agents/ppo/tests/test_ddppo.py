@@ -47,15 +47,16 @@ class TestDDPPO(unittest.TestCase):
         config = ppo.ddppo.DEFAULT_CONFIG.copy()
         config["num_gpus_per_worker"] = 0
         config["lr_schedule"] = [[0, config["lr"]], [1000, 0.0]]
-        num_iterations = 3
+        num_iterations = 10
 
         for _ in framework_iterator(config, "torch"):
             trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
             for _ in range(num_iterations):
                 result = trainer.train()
-                lr = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
-                    "cur_lr"
-                ]
+                if result["info"][LEARNER_INFO]:
+                    lr = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID][
+                        LEARNER_STATS_KEY
+                    ]["cur_lr"]
             trainer.stop()
             assert lr == 0.0, "lr should anneal to 0.0"
 
