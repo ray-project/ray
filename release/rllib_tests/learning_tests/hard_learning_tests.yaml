@@ -416,6 +416,22 @@ ppo-breakoutnoframeskip-v4:
             vf_share_layers: true
         num_gpus: 1
 
+
+qmix-pettingzoo-cooperative-pong-v5:
+    # Use the full path to an env creator callable (`CooperativePong()`).
+    env: ray.rllib.examples.env.pettingzoo_envs.CooperativePong
+    run: QMIX
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 90.0
+        timesteps_total: 100000
+    stop:
+        time_total_s: 3600
+    config:
+        # QMIX only supports torch for now.
+    frameworks: ["tf"]
+
+
 # Expect roughly 1000 reward after 1h on 1GPU
 sac-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0

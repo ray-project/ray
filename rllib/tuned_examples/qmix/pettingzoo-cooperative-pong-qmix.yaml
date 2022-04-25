@@ -1,0 +1,10 @@
+pettingzoo-cooperative-pong-qmix:
+    # Use the full path to an env creator callable (`CooperativePong()`).
+    env: ray.rllib.examples.env.pettingzoo_envs.CooperativePong
+    run: QMIX
+    stop:
+        episode_reward_mean: 90.0
+        timesteps_total: 100000
+    config:
+        # QMIX only supports torch for now.
+        framework: torch
