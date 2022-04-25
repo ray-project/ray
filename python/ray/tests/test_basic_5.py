@@ -135,8 +135,8 @@ from filelock import FileLock
 from pathlib import Path
 import pickle
 
-lock_file = "{str(lock_file)}"
-data_file = Path("{str(data_file)}")
+lock_file = r"{str(lock_file)}"
+data_file = Path(r"{str(data_file)}")
 
 def init_func(worker_info):
     with FileLock(lock_file):

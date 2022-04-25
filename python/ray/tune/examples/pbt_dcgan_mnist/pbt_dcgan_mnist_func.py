@@ -95,9 +95,7 @@ if __name__ == "__main__":
         "--data-dir", type=str, default="~/data/", help="Set the path of the dataset."
     )
     args, _ = parser.parse_known_args()
-
-    path = os.path.dirname(os.path.abspath(__file__))
-    ray.init(runtime_env={"working_dir": path})
+    ray.init()
 
     import urllib.request
 
