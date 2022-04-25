@@ -941,11 +941,13 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
-                info_out = {
-                    DEFAULT_POLICY_ID: self.policy_map[
-                        DEFAULT_POLICY_ID
-                    ].learn_on_batch(samples)
-                }
+                info_out.update(
+                    {
+                        DEFAULT_POLICY_ID: self.policy_map[
+                            DEFAULT_POLICY_ID
+                        ].learn_on_batch(samples)
+                    }
+                )
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
@@ -1792,15 +1794,16 @@ class RolloutWorker(ParallelIteratorWorker):
             env = env_creator(env_ctx)
             # Validate first.
             if not disable_env_checking:
-                logger.warning(
-                    "We've added a module for checking environments that "
-                    "are used in experiments. It will cause your "
-                    "environment to fail if your environment is not set up"
-                    "correctly. You can disable check env by setting "
-                    "`disable_env_checking` to True in your experiment config "
-                    "dictionary. You can run the environment checking module "
-                    "standalone by calling ray.rllib.utils.check_env(env)."
-                )
+                if log_once("env_creator_warning"):
+                    logger.warning(
+                        "We've added a module for checking environments that "
+                        "are used in experiments. It will cause your "
+                        "environment to fail if your environment is not set up"
+                        "correctly. You can disable check env by setting "
+                        "`disable_env_checking` to True in your experiment config "
+                        "dictionary. You can run the environment checking module "
+                        "standalone by calling ray.rllib.utils.check_env(env)."
+                    )
                 check_env(env)
             # Custom validation function given by user.
             if validate_env is not None:

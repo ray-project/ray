@@ -119,12 +119,7 @@ class RemoteFunction:
             f"try '{self._function_name}.remote()'."
         )
 
-    def options(
-        self,
-        args=None,
-        kwargs=None,
-        **task_options,
-    ):
+    def options(self, **task_options):
         """Configures and overrides the task invocation parameters.
 
         The arguments are the same as those that can be passed to :obj:`ray.remote`.
@@ -229,12 +224,6 @@ class RemoteFunction:
 
         # TODO(suquark): cleanup these fields
         name = task_options["name"]
-        num_cpus = task_options["num_cpus"]
-        num_gpus = task_options["num_gpus"]
-        accelerator_type = task_options["accelerator_type"]
-        resources = task_options["resources"]
-        memory = task_options["memory"]
-        object_store_memory = task_options["object_store_memory"]
         runtime_env = parse_runtime_env(task_options["runtime_env"])
         placement_group = task_options["placement_group"]
         placement_group_bundle_index = task_options["placement_group_bundle_index"]
@@ -246,21 +235,7 @@ class RemoteFunction:
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
 
-        # TODO(suquark): cleanup "resources_from_resource_arguments" later.
-        resources = ray._private.utils.resources_from_resource_arguments(
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            accelerator_type,
-            num_cpus,
-            num_gpus,
-            memory,
-            object_store_memory,
-            resources,
-            accelerator_type,
-        )
+        resources = ray._private.utils.resources_from_ray_options(task_options)
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -352,4 +327,4 @@ class RemoteFunction:
 
         from ray.experimental.dag.function_node import FunctionNode
 
-        return FunctionNode(self._function, args, kwargs, {})
+        return FunctionNode(self._function, args, kwargs, self._default_options)

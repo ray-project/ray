@@ -41,12 +41,6 @@ void AddActorInfo(const ray::gcs::GcsActor *actor,
   mutable_actor_died_error_ctx->set_actor_id(actor->GetActorID().Binary());
 }
 
-const ray::rpc::ActorDeathCause GenActorDeathCause(const std::string &error_msg) {
-  ray::rpc::ActorDeathCause death_cause;
-  death_cause.mutable_runtime_env_failed_context()->set_error_message(error_msg);
-  return death_cause;
-}
-
 const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor,
                                                  const std::string ip_address,
                                                  const NodeID &node_id) {
@@ -1069,15 +1063,22 @@ void GcsActorManager::OnActorSchedulingFailed(
   }
 
   std::string error_msg;
+  ray::rpc::ActorDeathCause death_cause;
   switch (failure_type) {
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED:
     error_msg =
         "Could not create the actor because its associated placement group was removed.";
+    death_cause.mutable_actor_unschedulable_context()->set_error_message(error_msg);
     break;
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED:
     error_msg = absl::StrCat(
         "Could not create the actor because its associated runtime env failed to be "
         "created.\n",
+        scheduling_failure_message);
+    death_cause.mutable_runtime_env_failed_context()->set_error_message(error_msg);
+    break;
+  case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE:
+    death_cause.mutable_actor_unschedulable_context()->set_error_message(
         scheduling_failure_message);
     break;
   default:
@@ -1087,7 +1088,7 @@ void GcsActorManager::OnActorSchedulingFailed(
     break;
   }
 
-  DestroyActor(actor->GetActorID(), GenActorDeathCause(error_msg));
+  DestroyActor(actor->GetActorID(), death_cause);
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

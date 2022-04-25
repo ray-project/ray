@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
 import ray.internal.storage as storage
+from ray.internal.storage import _load_class
 import ray.node
 import ray.job_config
 import ray._private.parameter
@@ -714,6 +715,7 @@ def init(
     _metrics_export_port: Optional[int] = None,
     _system_config: Optional[Dict[str, str]] = None,
     _tracing_startup_hook: Optional[Callable] = None,
+    _node_name: str = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -835,6 +837,8 @@ def init(
             (optional) additional instruments. See more at
             docs.ray.io/tracing.html. It is currently under active development,
             and the API is subject to change.
+        _node_name (str): User-provided node name or identifier. Defaults to
+            the node IP address.
 
     Returns:
         If the provided address includes a protocol, for example by prepending
@@ -915,6 +919,11 @@ def init(
     except ImportError:
         logger.debug("Could not import resource module (on Windows)")
         pass
+
+    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+        runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env
+        )
 
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         if runtime_env:
@@ -1015,6 +1024,7 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
             tracing_startup_hook=_tracing_startup_hook,
+            node_name=_node_name,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
@@ -1049,6 +1059,11 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, "
                 "_enable_object_reconstruction must not be provided."
+            )
+        if _node_name is not None:
+            raise ValueError(
+                "_node_name cannot be configured when connecting to "
+                "an existing cluster."
             )
 
         # In this case, we only need to connect the node.
@@ -2112,7 +2127,6 @@ def _mode(worker=global_worker):
 
 
 def _make_remote(function_or_class, options):
-    # filter out placeholders in options
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
         ray_option_utils.validate_task_options(options, in_options=False)
         return ray.remote_function.RemoteFunction(
@@ -2246,6 +2260,8 @@ def remote(*args, **kwargs):
             "SPREAD": best effort spread scheduling;
             `PlacementGroupSchedulingStrategy`:
             placement group based scheduling.
+        _metadata: Extended options for Ray libraries. For example,
+            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):

@@ -11,6 +11,9 @@ logger.setLevel(logging.INFO)
 routes = optional_utils.ClassMethodRouteTable
 
 
+# NOTE (shrekris-anyscale): This class uses delayed imports for all
+# Ray Serve-related modules. That way, users can use the Ray dashboard for
+# non-Serve purposes without downloading Serve dependencies.
 class ServeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -30,10 +33,8 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/serve/deployments/status")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
-        from ray.serve.api import (
-            serve_application_status_to_schema,
-            get_deployment_statuses,
-        )
+        from ray.serve.api import get_deployment_statuses
+        from ray.serve.schema import serve_application_status_to_schema
 
         serve_application_status_schema = serve_application_status_to_schema(
             get_deployment_statuses()
@@ -55,7 +56,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray import serve
-        from ray.serve.api import internal_get_global_client
+        from ray.serve.context import get_global_client
         from ray.serve.application import Application
 
         app = Application.from_dict(await req.json())
@@ -68,7 +69,7 @@ class ServeHead(dashboard_utils.DashboardHeadModule):
         all_deployments = serve.list_deployments()
         all_names = set(all_deployments.keys())
         names_to_delete = all_names.difference(new_names)
-        internal_get_global_client().delete_deployments(names_to_delete)
+        get_global_client().delete_deployments(names_to_delete)
 
         return Response()
 

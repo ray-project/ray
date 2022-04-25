@@ -42,7 +42,10 @@ from ray.rllib.evaluation.metrics import (
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
+    MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer,
+)
+from ray.rllib.utils.replay_buffers import MultiAgentReplayBuffer
 from ray.rllib.execution.common import WORKER_UPDATE_TIMER
 from ray.rllib.execution.rollout_ops import (
     ConcatBatches,
@@ -848,6 +851,7 @@ class Trainer(Trainable):
         self._counters = defaultdict(int)
         self._episode_history = []
         self._episodes_to_be_collected = []
+        self._remote_workers_for_metrics = []
 
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[WorkerSet] = None
@@ -952,13 +956,13 @@ class Trainer(Trainable):
                 local_worker=True,
                 logdir=self.logdir,
             )
+            # By default, collect metrics for all remote workers.
+            self._remote_workers_for_metrics = self.workers.remote_workers()
 
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
-                # TODO: Ensure remote workers are initially in sync with the
-                # local worker.
-                # self.workers.sync_weights()
-                pass  # TODO: Uncommenting line above breaks tf2+eager_tracing for A3C.
+                # Ensure remote workers are initially in sync with the local worker.
+                self.workers.sync_weights()
             # LocalIterator-creating "execution plan".
             # Only call this once here to create `self.train_exec_impl`,
             # which is a ray.util.iter.LocalIterator that will be `next`'d
@@ -2719,15 +2723,10 @@ class Trainer(Trainable):
         if self.train_exec_impl is not None:
             self.train_exec_impl.shared_metrics.get().restore(state["train_exec_impl"])
 
-    @staticmethod
-    @Deprecated(error=True)
-    def with_updates(*args, **kwargs):
-        pass
-
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
         self, config: PartialTrainerConfigDict
-    ) -> Optional[MultiAgentReplayBuffer]:
+    ) -> Optional[Union[MultiAgentReplayBuffer, Legacy_MultiAgentReplayBuffer]]:
         """Create a MultiAgentReplayBuffer instance if necessary.
 
         Args:
@@ -2737,141 +2736,12 @@ class Trainer(Trainable):
             MultiAgentReplayBuffer instance based on trainer config.
             None, if local replay buffer is not needed.
         """
-        # Deprecation of old-style replay buffer args
-        # Warnings before checking of we need local buffer so that algorithms
-        # Without local buffer also get warned
-        deprecated_replay_buffer_keys = [
-            "prioritized_replay_alpha",
-            "prioritized_replay_beta",
-            "prioritized_replay_eps",
-            "learning_starts",
-        ]
-        for k in deprecated_replay_buffer_keys:
-            if config.get(k) is not None:
-                deprecation_warning(
-                    old="config[{}]".format(k),
-                    help="config['replay_buffer_config'][{}] should be used "
-                    "for Q-Learning algorithms. Ignore this warning if "
-                    "you are not using a Q-Learning algorithm and still "
-                    "provide {}."
-                    "".format(k, k),
-                    error=False,
-                )
-                # Copy values over to new location in config to support new
-                # and old configuration style
-                if config.get("replay_buffer_config") is not None:
-                    config["replay_buffer_config"][k] = config[k]
-
-        # Some agents do not need a replay buffer
-        if not config.get("replay_buffer_config") or config.get(
-            "no_local_replay_buffer", False
+        if not config.get("replay_buffer_config") or config["replay_buffer_config"].get(
+            "no_local_replay_buffer" or config.get("no_local_replay_buffer"), False
         ):
             return
 
-        replay_buffer_config = config["replay_buffer_config"]
-        assert (
-            "type" in replay_buffer_config
-        ), "Can not instantiate ReplayBuffer from config without 'type' key."
-
-        capacity = config.get("buffer_size", DEPRECATED_VALUE)
-        if capacity != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="config['buffer_size']",
-                help="Buffer size specified at new location config["
-                "'replay_buffer_config']["
-                "'capacity'] will be overwritten.",
-                error=False,
-            )
-            config["replay_buffer_config"]["capacity"] = capacity
-
-        # Check if old replay buffer should be instantiated
         buffer_type = config["replay_buffer_config"]["type"]
-        if not config["replay_buffer_config"].get("_enable_replay_buffer_api", False):
-            if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
-                # Prepend old-style buffers' path
-                assert buffer_type == "MultiAgentReplayBuffer", (
-                    "Without "
-                    "ReplayBuffer "
-                    "API, only "
-                    "MultiAgentReplayBuffer "
-                    "is supported!"
-                )
-                # Create valid full [module].[class] string for from_config
-                buffer_type = "ray.rllib.execution.MultiAgentReplayBuffer"
-            else:
-                assert buffer_type in [
-                    "ray.rllib.execution.MultiAgentReplayBuffer",
-                    MultiAgentReplayBuffer,
-                ], (
-                    "Without ReplayBuffer API, only "
-                    "MultiAgentReplayBuffer is supported!"
-                )
-
-            config["replay_buffer_config"]["type"] = buffer_type
-
-            # Remove from config so it's not passed into the buffer c'tor
-            config["replay_buffer_config"].pop("_enable_replay_buffer_api", None)
-
-            # We need to deprecate the old-style location of the following
-            # buffer arguments and make users put them into the
-            # "replay_buffer_config" field of their config.
-            config["replay_buffer_config"]["replay_batch_size"] = config[
-                "train_batch_size"
-            ]
-            config["replay_buffer_config"]["replay_mode"] = config["multiagent"][
-                "replay_mode"
-            ]
-            deprecation_warning(
-                old="config['multiagent']['replay_mode']",
-                new="config['replay_buffer_config']['replay_mode']",
-                error=False,
-            )
-
-            config["replay_buffer_config"]["replay_sequence_length"] = config.get(
-                "replay_sequence_length", 1
-            )
-            if config.get("replay_sequence_length"):
-                deprecation_warning(
-                    old="config['replay_sequence_length']",
-                    new="config['replay_buffer_config']['replay_sequence_length']",
-                    error=False,
-                )
-
-            config["replay_buffer_config"]["replay_burn_in"] = config.get(
-                "replay_burn_in", 0
-            )
-
-            if config.get("burn_in"):
-                deprecation_warning(
-                    old="config['burn_in']",
-                    help="Burn in specified at new location config["
-                    "'replay_buffer_config']["
-                    "'replay_burn_in'] will be overwritten.",
-                )
-                config["replay_buffer_config"]["replay_burn_in"] = config["burn_in"]
-
-            config["replay_buffer_config"]["replay_zero_init_states"] = config.get(
-                "replay_zero_init_states", True
-            )
-            if config.get("replay_zero_init_states"):
-                deprecation_warning(
-                    old="config['replay_zero_init_states']",
-                    new="config['replay_buffer_config']['replay_zero_init_states']",
-                    error=False,
-                )
-
-            # If no prioritized replay, old-style replay buffer should
-            # not be handed the following parameters:
-            if config.get("prioritized_replay", False) is False:
-                # This triggers non-prioritization in old-style replay buffer
-                config["replay_buffer_config"]["prioritized_replay_alpha"] = 0.0
-
-        else:
-            if isinstance(buffer_type, str) and buffer_type.find(".") == -1:
-                # Create valid full [module].[class] string for from_config
-                buffer_type = "ray.rllib.utils.replay_buffers." + buffer_type
-                config["replay_buffer_config"]["type"] = buffer_type
-
         return from_config(buffer_type, config["replay_buffer_config"])
 
     @DeveloperAPI
@@ -3011,7 +2881,7 @@ class Trainer(Trainable):
         # Collect rollout worker metrics.
         episodes, self._episodes_to_be_collected = collect_episodes(
             self.workers.local_worker(),
-            self.workers.remote_workers(),
+            self._remote_workers_for_metrics,
             self._episodes_to_be_collected,
             timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
         )
@@ -3077,10 +2947,6 @@ class Trainer(Trainable):
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
-
-    @Deprecated(new="Trainer.evaluate()", error=True)
-    def _evaluate(self) -> dict:
-        return self.evaluate()
 
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(

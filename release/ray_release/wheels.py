@@ -1,6 +1,7 @@
 import importlib
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -289,7 +290,10 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
         "pip uninstall -y ray", shell=True, env=os.environ, text=True
     )
     subprocess.check_output(
-        f"pip install -U {ray_wheels}", shell=True, env=os.environ, text=True
+        f"pip install -U {shlex.quote(ray_wheels)}",
+        shell=True,
+        env=os.environ,
+        text=True,
     )
     for module_name in RELOAD_MODULES:
         if module_name in sys.modules:

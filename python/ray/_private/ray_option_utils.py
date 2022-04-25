@@ -2,7 +2,10 @@
 from typing import Dict, Any, Callable, Tuple, Union, Optional
 from dataclasses import dataclass
 from ray.util.placement_group import PlacementGroup
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    NodeAffinitySchedulingStrategy,
+)
 
 
 @dataclass
@@ -85,7 +88,15 @@ _common_options = {
         "in 'resources' keyword",
     ),
     "runtime_env": Option((dict, type(None))),
-    "scheduling_strategy": Option((type(None), str, PlacementGroupSchedulingStrategy)),
+    "scheduling_strategy": Option(
+        (
+            type(None),
+            str,
+            PlacementGroupSchedulingStrategy,
+            NodeAffinitySchedulingStrategy,
+        )
+    ),
+    "_metadata": Option((dict, type(None))),
 }
 
 
