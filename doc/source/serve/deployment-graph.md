@@ -569,7 +569,3 @@ Potential Future improvements:
    - Leverage ray shared memory to reduce or eliminate intermediate data transfer
    - Static compute graph transformation, fusion and placement based on profiling
  - Better UX, such as visualization
-
-## Appendix: Bring Your Own DAGDriver
-
-To use it, you can
