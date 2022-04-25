@@ -36,7 +36,9 @@ logging.basicConfig(
 
 # This image will be used for both the Ray nodes and the autoscaler.
 # The CI should pass an image built from the test branch.
-RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:413fe0")
+RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:8c5fe4")
+# By default, use the same image for the autoscaler and Ray containers.
+AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
 PULL_POLICY = os.environ.get("PULL_POLICY", "Always")
 logger.info(f"Using image `{RAY_IMAGE}` for autoscaler and Ray nodes.")
@@ -91,41 +93,20 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Making sure RayCluster CRD has been registered.")
         wait_for_crd("rayclusters.ray.io")
 
-    def _get_ray_cr_config_file(self) -> str:
-        """Formats a RayCluster CR based on the example in the Ray documentation.
-
-        - Replaces Ray node and autoscaler images in example CR with the test image.
-        - Set image pull policies to IfNotPresent.
-        - Writes modified CR to temp file.
-        - Returns temp file's name.
-        """
-        # Set Ray and autoscaler images.
-        ray_cr_config_str = open(EXAMPLE_CLUSTER_PATH).read()
-        ray_images = [
-            word for word in ray_cr_config_str.split() if "rayproject/ray:" in word
-        ]
-        for ray_image in ray_images:
-            ray_cr_config_str = ray_cr_config_str.replace(ray_image, RAY_IMAGE)
-
-        # CI should set pull policies to IfNotPresent to ensure no issues using a local
-        # test image on kind.
-        ray_cr_config_str = ray_cr_config_str.replace("Always", PULL_POLICY)
-
-        raycluster_cr_file = tempfile.NamedTemporaryFile(delete=False)
-        raycluster_cr_file.write(ray_cr_config_str.encode())
-        raycluster_cr_file.close()
-        return raycluster_cr_file.name
-
     def _get_ray_cr_config(
         self, min_replicas=0, max_replicas=300, replicas=0
     ) -> Dict[str, Any]:
         """Get Ray CR config yaml.
 
-        Use configurable replica fields for a CPU workerGroup.
+        - Use configurable replica fields for a CPU workerGroup.
 
-        Also add a GPU-annotated group for testing GPU upscaling.
+        - Add a GPU-annotated group for testing GPU upscaling.
+
+        - Fill in Ray image, autoscaler image, and image pull policies from env variables.
         """
-        config = yaml.safe_load(open(self._get_ray_cr_config_file()).read())
+        with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
+            ray_cr_config_str = ray_cr_config_file.read()
+        config = yaml.safe_load(ray_cr_config_str)
         cpu_group = config["spec"]["workerGroupSpecs"][0]
         cpu_group["replicas"] = replicas
         cpu_group["minReplicas"] = min_replicas
@@ -141,6 +122,27 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         gpu_group["maxReplicas"] = 1
         gpu_group["groupName"] = "fake-gpu-group"
         config["spec"]["workerGroupSpecs"].append(gpu_group)
+
+        # Substitute images.
+        for group_spec in config["spec"]["workerGroupSpecs"] + [config["spec"]["headGroupSpec"]]:
+            containers = group_spec["template"]["spec"]["containers"]
+
+            # Will assume the example config maintains this invariant:
+            ray_container = containers[0]
+
+            ray_container["image"] = RAY_IMAGE
+
+            for container in containers:
+                container["imagePullPolicy"] = PULL_POLICY
+
+        head_containers = config["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
+        autoscaler_container = [
+            container for container in head_containers if container["name"] == "autoscaler"
+        ].pop()
+        autoscaler_container["image"] = AUTOSCALER_IMAGE
+
+
+
 
         return config
 
