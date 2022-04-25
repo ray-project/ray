@@ -1,7 +1,4 @@
-import io
 import os
-import logging
-from contextlib import redirect_stderr
 
 import requests
 import pytest
@@ -47,7 +44,7 @@ def test_serve_metrics_for_successful_connection(serve_instance):
             # gauge
             "serve_replica_processing_queries",
             # handle
-            "serve_handle_request_counter"
+            "serve_handle_request_counter",
         ]
         for metric in expected_metrics:
             # For the final error round
@@ -65,35 +62,8 @@ def test_serve_metrics_for_successful_connection(serve_instance):
         verify_metrics(do_assert=True)
 
 
-def test_deployment_logger(serve_instance):
-    # Tests that deployment tag and replica tag appear in Serve log output.
-    logger = logging.getLogger("ray")
-
-    @serve.deployment(name="counter")
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def __call__(self, request):
-            self.count += 1
-            logger.info(f"count: {self.count}")
-
-    Counter.deploy()
-    f = io.StringIO()
-    with redirect_stderr(f):
-        requests.get("http://127.0.0.1:8000/counter/")
-
-        def counter_log_success():
-            s = f.getvalue()
-            return "deployment" in s and "replica" in s and "count" in s
-
-        wait_for_condition(counter_log_success)
-
-
 def test_http_metrics(serve_instance):
-    expected_metrics = [
-        "serve_num_http_requests", "serve_num_http_error_requests"
-    ]
+    expected_metrics = ["serve_num_http_requests", "serve_num_http_error_requests"]
 
     def verify_metrics(expected_metrics, do_assert=False):
         try:
@@ -116,7 +86,8 @@ def test_http_metrics(serve_instance):
             verify_metrics,
             retry_interval_ms=1000,
             timeout=10,
-            expected_metrics=expected_metrics)
+            expected_metrics=expected_metrics,
+        )
     except RuntimeError:
         verify_metrics(expected_metrics, True)
 
@@ -139,7 +110,8 @@ def test_http_metrics(serve_instance):
             verify_metrics,
             retry_interval_ms=1000,
             timeout=10,
-            expected_metrics=expected_metrics)
+            expected_metrics=expected_metrics,
+        )
     except RuntimeError:
         verify_metrics(expected_metrics, True)
 
@@ -158,19 +130,19 @@ def test_http_metrics(serve_instance):
             elif "serve_num_deployment_http_error_requests" in metrics:
                 # deployment A should have error count 2
                 if do_assert:
-                    assert "deployment=\"A\"" in metrics and "2.0" in metrics
-                if "deployment=\"A\"" not in metrics or "2.0" not in metrics:
+                    assert 'deployment="A"' in metrics and "2.0" in metrics
+                if 'deployment="A"' not in metrics or "2.0" not in metrics:
                     return False
         return True
 
     # There is a latency in updating the counter
     try:
-        wait_for_condition(
-            verify_error_count, retry_interval_ms=1000, timeout=10)
+        wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=10)
     except RuntimeError:
         verify_error_count(do_assert=True)
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

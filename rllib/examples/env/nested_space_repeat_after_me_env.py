@@ -17,10 +17,8 @@ class NestedSpaceRepeatAfterMeEnv(gym.Env):
 
     def __init__(self, config):
         self.observation_space = config.get(
-            "space", Tuple([Discrete(2),
-                            Dict({
-                                "a": Box(-1.0, 1.0, (2, ))
-                            })]))
+            "space", Tuple([Discrete(2), Dict({"a": Box(-1.0, 1.0, (2,))})])
+        )
         self.action_space = self.observation_space
         self.flattened_action_space = flatten_space(self.action_space)
         self.episode_len = config.get("episode_len", 100)
@@ -33,8 +31,9 @@ class NestedSpaceRepeatAfterMeEnv(gym.Env):
         self.steps += 1
         action = tree.flatten(action)
         reward = 0.0
-        for a, o, space in zip(action, self.current_obs_flattened,
-                               self.flattened_action_space):
+        for a, o, space in zip(
+            action, self.current_obs_flattened, self.flattened_action_space
+        ):
             # Box: -abs(diff).
             if isinstance(space, gym.spaces.Box):
                 reward -= np.sum(np.abs(a - o))

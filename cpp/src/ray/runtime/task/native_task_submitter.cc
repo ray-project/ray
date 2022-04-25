@@ -25,9 +25,20 @@ using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
-  auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-      invocation.remote_function_holder.function_name);
-  return RayFunction(ray::Language::CPP, function_descriptor);
+  if (invocation.remote_function_holder.lang_type == LangType::CPP) {
+    auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
+        invocation.remote_function_holder.function_name);
+    return RayFunction(ray::Language::CPP, function_descriptor);
+  } else if (invocation.remote_function_holder.lang_type == LangType::PYTHON) {
+    auto function_descriptor = FunctionDescriptorBuilder::BuildPython(
+        invocation.remote_function_holder.module_name,
+        invocation.remote_function_holder.class_name,
+        invocation.remote_function_holder.function_name,
+        "");
+    return RayFunction(ray::Language::PYTHON, function_descriptor);
+  } else {
+    throw RayException("not supported yet");
+  }
 }
 
 template <typename T>
@@ -66,8 +77,13 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
           bundle_id.second);
       placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
     }
-    return_refs = core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args,
-                                         options, 1, false, scheduling_strategy, "");
+    return_refs = core_worker.SubmitTask(BuildRayFunction(invocation),
+                                         invocation.args,
+                                         options,
+                                         1,
+                                         false,
+                                         scheduling_strategy,
+                                         "");
   }
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs.value()) {
@@ -98,20 +114,21 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  ray::core::ActorCreationOptions actor_options{create_options.max_restarts,
-                                                /*max_task_retries=*/0,
-                                                create_options.max_concurrency,
-                                                create_options.resources,
-                                                resources,
-                                                /*dynamic_worker_options=*/{},
-                                                /*is_detached=*/false,
-                                                name,
-                                                ray_namespace,
-                                                /*is_asyncio=*/false,
-                                                scheduling_strategy};
+  ray::core::ActorCreationOptions actor_options{
+      create_options.max_restarts,
+      /*max_task_retries=*/0,
+      create_options.max_concurrency,
+      create_options.resources,
+      resources,
+      /*dynamic_worker_options=*/{},
+      /*is_detached=*/std::make_optional<bool>(false),
+      name,
+      ray_namespace,
+      /*is_asyncio=*/false,
+      scheduling_strategy};
   ActorID actor_id;
-  auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
-                                        actor_options, "", &actor_id);
+  auto status = core_worker.CreateActor(
+      BuildRayFunction(invocation), invocation.args, actor_options, "", &actor_id);
   if (!status.ok()) {
     throw RayException("Create actor error");
   }
@@ -139,8 +156,10 @@ ActorID NativeTaskSubmitter::GetActor(const std::string &actor_name) const {
 ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
     const ray::PlacementGroupCreationOptions &create_options) {
   auto options = ray::core::PlacementGroupCreationOptions(
-      create_options.name, (ray::core::PlacementStrategy)create_options.strategy,
-      create_options.bundles, false);
+      create_options.name,
+      (ray::core::PlacementStrategy)create_options.strategy,
+      create_options.bundles,
+      false);
   ray::PlacementGroupID placement_group_id;
   auto status = CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
       options, &placement_group_id);

@@ -1,53 +1,20 @@
 import collections
 
-from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar
+from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
 
 from ray.data.block import Block, BlockAccessor
+from ray.data.row import TableRow
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.size_estimator import SizeEstimator
 
-T = TypeVar("T")
+if TYPE_CHECKING:
+    from ray.data.impl.sort import SortKeyT
 
-# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
-# e.g. [("column1", "ascending"), ("column2", "descending")]
-SortKeyT = List[Tuple[str, str]]
-GroupKeyT = Union[None, str]
+T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
 MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
-
-
-class TableRow:
-    def __init__(self, row: Any):
-        self._row = row
-
-    def as_pydict(self) -> dict:
-        raise NotImplementedError
-
-    def keys(self) -> Iterator[str]:
-        return self.as_pydict().keys()
-
-    def values(self) -> Iterator[Any]:
-        return self.as_pydict().values()
-
-    def items(self) -> Iterator[Tuple[str, Any]]:
-        return self.as_pydict().items()
-
-    def __getitem__(self, key: str) -> Any:
-        raise NotImplementedError
-
-    def __eq__(self, other: Any) -> bool:
-        return self.as_pydict() == other
-
-    def __str__(self):
-        return str(self.as_pydict())
-
-    def __repr__(self):
-        return str(self)
-
-    def __len__(self):
-        raise NotImplementedError
 
 
 class TableBlockBuilder(BlockBuilder[T]):
@@ -69,7 +36,8 @@ class TableBlockBuilder(BlockBuilder[T]):
         if not isinstance(item, dict):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
-                "got {} (type {}).".format(item, type(item)))
+                "got {} (type {}).".format(item, type(item))
+            )
         for key, value in item.items():
             self._columns[key].append(value)
         self._num_rows += 1
@@ -132,6 +100,9 @@ class TableBlockAccessor(BlockAccessor):
     def _create_table_row(self, row: Any) -> TableRow:
         raise NotImplementedError
 
+    def to_block(self) -> Block:
+        return self._table
+
     def iter_rows(self) -> Iterator[TableRow]:
         outer = self
 
@@ -146,7 +117,8 @@ class TableBlockAccessor(BlockAccessor):
                 self._cur += 1
                 if self._cur < outer.num_rows():
                     row = outer._create_table_row(
-                        outer.slice(self._cur, self._cur + 1, copy=False))
+                        outer.slice(self._cur, self._cur + 1, copy=False)
+                    )
                     return row
                 raise StopIteration
 
@@ -158,25 +130,29 @@ class TableBlockAccessor(BlockAccessor):
     def zip(self, other: "Block[T]") -> "Block[T]":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
-            raise ValueError("Cannot zip {} with block of type {}".format(
-                type(self), type(other)))
+            raise ValueError(
+                "Cannot zip {} with block of type {}".format(type(self), type(other))
+            )
         if acc.num_rows() != self.num_rows():
             raise ValueError(
                 "Cannot zip self (length {}) with block of length {}".format(
-                    self.num_rows(), acc.num_rows()))
+                    self.num_rows(), acc.num_rows()
+                )
+            )
         return self._zip(acc)
 
     @staticmethod
     def _empty_table() -> Any:
         raise NotImplementedError
 
-    def _sample(self, n_samples: int, key: SortKeyT) -> Any:
+    def _sample(self, n_samples: int, key: "SortKeyT") -> Any:
         raise NotImplementedError
 
-    def sample(self, n_samples: int, key: SortKeyT) -> Any:
+    def sample(self, n_samples: int, key: "SortKeyT") -> Any:
         if key is None or callable(key):
             raise NotImplementedError(
-                f"Table sort key must be a column name, was: {key}")
+                f"Table sort key must be a column name, was: {key}"
+            )
         if self.num_rows() == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling table.select() will raise an error.

@@ -18,12 +18,22 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "train_gpu_connect")
 
-    runtime_env = {"env_vars": {"RXGB_PLACEMENT_GROUP_TIMEOUT_S": "1200"}}
+    # Manually set NCCL_SOCKET_IFNAME to "ens3" so NCCL training works on
+    # anyscale_default_cloud.
+    # See https://github.com/pytorch/pytorch/issues/68893 for more details.
+    # Passing in runtime_env to ray.init() will also set it for all the
+    # workers.
+    runtime_env = {
+        "env_vars": {
+            "RXGB_PLACEMENT_GROUP_TIMEOUT_S": "1200",
+            "NCCL_SOCKET_IFNAME": "ens3",
+        }
+    }
 
     if addr.startswith("anyscale://"):
         ray.init(address=addr, job_name=job_name, runtime_env=runtime_env)
     else:
-        ray.init(address="auto")
+        ray.init(address="auto", runtime_env=runtime_env)
 
     from xgboost_ray import RayParams
     from ray.util.xgboost.release_test_util import train_ray, get_parquet_files
@@ -33,7 +43,8 @@ if __name__ == "__main__":
         max_actor_restarts=2,
         num_actors=4,
         cpus_per_actor=4,
-        gpus_per_actor=1)
+        gpus_per_actor=1,
+    )
 
     @ray.remote
     def ray_get_parquet_files():
@@ -57,8 +68,7 @@ if __name__ == "__main__":
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/train_gpu_connect.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/train_gpu_connect.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

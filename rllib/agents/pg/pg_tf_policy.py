@@ -19,8 +19,11 @@ tf1, tf, tfv = try_import_tf()
 
 
 def pg_tf_loss(
-        policy: Policy, model: ModelV2, dist_class: Type[ActionDistribution],
-        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    policy: Policy,
+    model: ModelV2,
+    dist_class: Type[ActionDistribution],
+    train_batch: SampleBatch,
+) -> Union[TensorType, List[TensorType]]:
     """The basic policy gradients loss function.
 
     Args:
@@ -42,16 +45,16 @@ def pg_tf_loss(
     # Calculate the vanilla PG loss based on:
     # L = -E[ log(pi(a|s)) * A]
     loss = -tf.reduce_mean(
-        action_dist.logp(train_batch[SampleBatch.ACTIONS]) * tf.cast(
-            train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32))
+        action_dist.logp(train_batch[SampleBatch.ACTIONS])
+        * tf.cast(train_batch[Postprocessing.ADVANTAGES], dtype=tf.float32)
+    )
 
     policy.policy_loss = loss
 
     return loss
 
 
-def pg_loss_stats(policy: Policy,
-                  train_batch: SampleBatch) -> Dict[str, TensorType]:
+def pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Returns the calculated loss in a stats dict.
 
     Args:
@@ -75,4 +78,5 @@ PGTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
     postprocess_fn=post_process_advantages,
     stats_fn=pg_loss_stats,
-    loss_fn=pg_tf_loss)
+    loss_fn=pg_tf_loss,
+)

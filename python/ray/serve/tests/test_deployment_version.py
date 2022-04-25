@@ -104,9 +104,9 @@ def test_user_config_nested():
 
 
 def test_user_config_nested_in_hashable():
-    v1 = DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}], ))
-    v2 = DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}], ))
-    v3 = DeploymentVersion("1", ([{"1": "2"}, {"1": "3"}], ))
+    v1 = DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}],))
+    v2 = DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}],))
+    v3 = DeploymentVersion("1", ([{"1": "2"}, {"1": "3"}],))
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -117,11 +117,12 @@ def test_user_config_nested_in_hashable():
 def test_hash_consistent_across_processes(serve_instance):
     @ray.remote
     def get_version():
-        return DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}], ))
+        return DeploymentVersion("1", ([{"1": "2"}, {"1": "2"}],))
 
     assert len(set(ray.get([get_version.remote() for _ in range(100)]))) == 1
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

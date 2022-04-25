@@ -18,14 +18,17 @@ if __name__ == "__main__":
     config = sac.DEFAULT_CONFIG.copy()
 
     # Add a new RE3UpdateCallbacks
-    config["callbacks"] = MultiCallbacks([
-        config["callbacks"],
-        partial(
-            RE3UpdateCallbacks,
-            embeds_dim=128,
-            beta_schedule="linear_decay",
-            k_nn=50),
-    ])
+    config["callbacks"] = MultiCallbacks(
+        [
+            config["callbacks"],
+            partial(
+                RE3UpdateCallbacks,
+                embeds_dim=128,
+                beta_schedule="linear_decay",
+                k_nn=50,
+            ),
+        ]
+    )
     config["env"] = "LunarLanderContinuous-v2"
     config["seed"] = 12345
     # Add type as RE3 in the exploration_config parameter
@@ -33,7 +36,7 @@ if __name__ == "__main__":
         "type": "RE3",
         "sub_exploration": {
             "type": "StochasticSampling",
-        }
+        },
     }
 
     num_iterations = 2000

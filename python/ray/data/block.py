@@ -1,6 +1,17 @@
+from dataclasses import dataclass
 import time
-from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
-    Optional, TYPE_CHECKING
+from typing import (
+    TypeVar,
+    List,
+    Generic,
+    Iterator,
+    Tuple,
+    Any,
+    Union,
+    Optional,
+    Callable,
+    TYPE_CHECKING,
+)
 
 import numpy as np
 
@@ -9,7 +20,7 @@ if TYPE_CHECKING:
     import pyarrow
     from ray.data.impl.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
-    from ray.data.grouped_dataset import GroupKeyT
+    from ray.data import Dataset
 
 import ray
 from ray.types import ObjectRef
@@ -21,11 +32,55 @@ U = TypeVar("U")
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
+# A function that extracts a concrete value from a record in a Dataset, used
+# in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
+# It can either be None (intepreted as the identity function), the name
+# of a Dataset column, or a lambda function that extracts the desired value
+# from the object.
+KeyFn = Union[None, str, Callable[[T], Any]]
+
+
+def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
+    """Check the key function is valid on the given dataset."""
+    try:
+        fmt = ds._dataset_format()
+    except ValueError:
+        # Dataset is empty/cleared, validation not possible.
+        return
+    if isinstance(key, str):
+        if fmt == "simple":
+            raise ValueError(
+                "String key '{}' requires dataset format to be "
+                "'arrow' or 'pandas', was '{}'.".format(key, fmt)
+            )
+        # Raises KeyError if key is not present in the schema.
+        schema = ds.schema(fetch_if_missing=True)
+        if len(schema.names) > 0 and key not in schema.names:
+            raise ValueError(
+                "The column '{}' does not exist in the "
+                "schema '{}'.".format(key, schema)
+            )
+    elif key is None:
+        if fmt != "simple":
+            raise ValueError(
+                "The `None` key '{}' requires dataset format to be "
+                "'simple', was '{}'.".format(key, fmt)
+            )
+    elif callable(key):
+        if fmt != "simple":
+            raise ValueError(
+                "Callable key '{}' requires dataset format to be "
+                "'simple', was '{}'.".format(key, fmt)
+            )
+    else:
+        raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
+
+
 # Represents a batch of records to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table", bytes]
+Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -50,9 +105,6 @@ class BlockExecStats:
         node_id: A unique id for the node that computed this block.
     """
 
-    # Placeholder for block ops not yet instrumented.
-    TODO = None
-
     def __init__(self):
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
@@ -63,11 +115,13 @@ class BlockExecStats:
         return _BlockExecStatsBuilder()
 
     def __repr__(self):
-        return repr({
-            "wall_time_s": self.wall_time_s,
-            "cpu_time_s": self.cpu_time_s,
-            "node_id": self.node_id
-        })
+        return repr(
+            {
+                "wall_time_s": self.wall_time_s,
+                "cpu_time_s": self.cpu_time_s,
+                "node_id": self.node_id,
+            }
+        )
 
 
 class _BlockExecStatsBuilder:
@@ -89,6 +143,7 @@ class _BlockExecStatsBuilder:
 
 
 @DeveloperAPI
+@dataclass
 class BlockMetadata:
     """Metadata about the block.
 
@@ -101,16 +156,15 @@ class BlockMetadata:
         exec_stats: Execution stats for this block.
     """
 
-    def __init__(self, *, num_rows: Optional[int], size_bytes: Optional[int],
-                 schema: Union[type, "pyarrow.lib.Schema"],
-                 input_files: List[str], exec_stats: Optional[BlockExecStats]):
-        if input_files is None:
-            input_files = []
-        self.num_rows: Optional[int] = num_rows
-        self.size_bytes: Optional[int] = size_bytes
-        self.schema: Optional[Any] = schema
-        self.input_files: List[str] = input_files
-        self.exec_stats: Optional[BlockExecStats] = exec_stats
+    num_rows: Optional[int]
+    size_bytes: Optional[int]
+    schema: Optional[Union[type, "pyarrow.lib.Schema"]]
+    input_files: Optional[List[str]]
+    exec_stats: Optional[BlockExecStats]
+
+    def __post_init__(self):
+        if self.input_files is None:
+            self.input_files = []
 
 
 @DeveloperAPI
@@ -121,9 +175,10 @@ class BlockAccessor(Generic[T]):
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
 
-    There are two types of block accessors: ``SimpleBlockAccessor``, which
-    operates over a plain Python list, and ``ArrowBlockAccessor`` for
-    ``pyarrow.Table`` type blocks.
+    There are three types of block accessors: ``SimpleBlockAccessor``, which
+    operates over a plain Python list, ``ArrowBlockAccessor`` for
+    ``pyarrow.Table`` type blocks, ``PandasBlockAccessor`` for ``pandas.DataFrame``
+    type blocks.
     """
 
     def num_rows(self) -> int:
@@ -167,6 +222,10 @@ class BlockAccessor(Generic[T]):
         """Convert this block into an Arrow table."""
         raise NotImplementedError
 
+    def to_block(self) -> Block:
+        """Return the base block that this accessor wraps."""
+        raise NotImplementedError
+
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
         raise NotImplementedError
@@ -175,15 +234,17 @@ class BlockAccessor(Generic[T]):
         """Return the Python type or pyarrow schema of this block."""
         raise NotImplementedError
 
-    def get_metadata(self, input_files: List[str],
-                     exec_stats: Optional[BlockExecStats]) -> BlockMetadata:
+    def get_metadata(
+        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+    ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
             schema=self.schema(),
             input_files=input_files,
-            exec_stats=exec_stats)
+            exec_stats=exec_stats,
+        )
 
     def zip(self, other: "Block[T]") -> "Block[T]":
         """Zip this block with another block of the same type and size."""
@@ -199,45 +260,51 @@ class BlockAccessor(Generic[T]):
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
         import pyarrow
+        import pandas
 
         if isinstance(block, pyarrow.Table):
-            from ray.data.impl.arrow_block import \
-                ArrowBlockAccessor
+            from ray.data.impl.arrow_block import ArrowBlockAccessor
+
             return ArrowBlockAccessor(block)
+        elif isinstance(block, pandas.DataFrame):
+            from ray.data.impl.pandas_block import PandasBlockAccessor
+
+            return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
-            from ray.data.impl.arrow_block import \
-                ArrowBlockAccessor
+            from ray.data.impl.arrow_block import ArrowBlockAccessor
+
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            from ray.data.impl.simple_block import \
-                SimpleBlockAccessor
+            from ray.data.impl.simple_block import SimpleBlockAccessor
+
             return SimpleBlockAccessor(block)
         else:
-            raise TypeError("Not a block type: {}".format(block))
+            raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 
     def sample(self, n_samples: int, key: Any) -> "Block[T]":
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
-    def sort_and_partition(self, boundaries: List[T], key: Any,
-                           descending: bool) -> List["Block[T]"]:
+    def sort_and_partition(
+        self, boundaries: List[T], key: Any, descending: bool
+    ) -> List["Block[T]"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: "GroupKeyT", agg: "AggregateFn") -> Block[U]:
+    def combine(self, key: KeyFn, agg: "AggregateFn") -> Block[U]:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
     @staticmethod
     def merge_sorted_blocks(
-            blocks: List["Block[T]"], key: Any,
-            descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List["Block[T]"], key: Any, descending: bool
+    ) -> Tuple[Block[T], BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block], key: "GroupKeyT",
-            agg: "AggregateFn") -> Tuple[Block[U], BlockMetadata]:
+        blocks: List[Block], key: KeyFn, agg: "AggregateFn"
+    ) -> Tuple[Block[U], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

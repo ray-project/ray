@@ -6,8 +6,11 @@ from ray.rllib.agents.qmix.qmix_policy import QMixTorchPolicy
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
-    StoreToReplayBuffer
+from ray.rllib.execution.replay_ops import (
+    SimpleReplayBuffer,
+    Replay,
+    StoreToReplayBuffer,
+)
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
@@ -15,7 +18,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
-# yapf: disable
+# fmt: off
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
     # === QMix ===
@@ -34,8 +37,9 @@ DEFAULT_CONFIG = with_common_config({
         "type": "EpsilonGreedy",
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
-        "final_epsilon": 0.02,
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
+        "final_epsilon": 0.01,
+        # Timesteps over which to anneal epsilon.
+        "epsilon_timesteps": 40000,
 
         # For soft_q, use:
         # "exploration_config" = {
@@ -65,6 +69,9 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer in batches (not timesteps!).
     "buffer_size": 1000,
+    "replay_buffer_config": {
+        "no_local_replay_buffer": True,
+    },
     # === Optimization ===
     # Learning rate for RMSProp optimizer
     "lr": 0.0005,
@@ -91,8 +98,8 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
-    "min_iter_time_s": 1,
+    # Prevent reporting frequency from going lower than this time span.
+    "min_time_s_per_reporting": 1,
 
     # === Model ===
     "model": {
@@ -101,9 +108,14 @@ DEFAULT_CONFIG = with_common_config({
     },
     # Only torch supported so far.
     "framework": "torch",
+    # Experimental flag.
+    # If True, the execution plan API will not be used. Instead,
+    # a Trainer's `training_iteration` method will be called as-is each
+    # training iteration.
+    "_disable_execution_plan_api": False,
 })
 # __sphinx_doc_end__
-# yapf: enable
+# fmt: on
 
 
 class QMixTrainer(SimpleQTrainer):
@@ -114,41 +126,46 @@ class QMixTrainer(SimpleQTrainer):
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        # Call super's validation method.
         super().validate_config(config)
 
         if config["framework"] != "torch":
-            raise ValueError(
-                "Only `framework=torch` supported so far for QMixTrainer!")
+            raise ValueError("Only `framework=torch` supported so far for QMixTrainer!")
 
     @override(SimpleQTrainer)
-    def get_default_policy_class(self,
-                                 config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
         return QMixTorchPolicy
 
     @staticmethod
     @override(SimpleQTrainer)
-    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                       **kwargs) -> LocalIterator[dict]:
-        assert len(kwargs) == 0, (
-            "QMIX execution_plan does NOT take any additional parameters")
+    def execution_plan(
+        workers: WorkerSet, config: TrainerConfigDict, **kwargs
+    ) -> LocalIterator[dict]:
+        assert (
+            len(kwargs) == 0
+        ), "QMIX execution_plan does NOT take any additional parameters"
 
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
         replay_buffer = SimpleReplayBuffer(config["buffer_size"])
 
-        store_op = rollouts \
-            .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+        store_op = rollouts.for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
 
-        train_op = Replay(local_buffer=replay_buffer) \
+        train_op = (
+            Replay(local_buffer=replay_buffer)
             .combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"]
-            )) \
-            .for_each(TrainOneStep(workers)) \
-            .for_each(UpdateTargetNetwork(
-                workers, config["target_network_update_freq"]))
+                ConcatBatches(
+                    min_batch_size=config["train_batch_size"],
+                    count_steps_by=config["multiagent"]["count_steps_by"],
+                )
+            )
+            .for_each(TrainOneStep(workers))
+            .for_each(
+                UpdateTargetNetwork(workers, config["target_network_update_freq"])
+            )
+        )
 
         merged_op = Concurrently(
-            [store_op, train_op], mode="round_robin", output_indexes=[1])
+            [store_op, train_op], mode="round_robin", output_indexes=[1]
+        )
 
         return StandardMetricsReporting(merged_op, workers, config)

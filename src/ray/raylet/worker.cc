@@ -26,11 +26,15 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
-               const Language &language, rpc::WorkerType worker_type,
+Worker::Worker(const JobID &job_id,
+               const int runtime_env_hash,
+               const WorkerID &worker_id,
+               const Language &language,
+               rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
-               rpc::ClientCallManager &client_call_manager, StartupToken startup_token)
+               rpc::ClientCallManager &client_call_manager,
+               StartupToken startup_token)
     : worker_id_(worker_id),
       startup_token_(startup_token),
       language_(language),
@@ -72,16 +76,6 @@ void Worker::SetProcess(Process proc) {
 
 void Worker::SetStartupToken(StartupToken startup_token) {
   startup_token_ = startup_token;
-}
-
-Process Worker::GetShimProcess() const {
-  RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
-  return shim_proc_;
-}
-
-void Worker::SetShimProcess(Process proc) {
-  RAY_CHECK(shim_proc_.IsNull());  // this procedure should not be called multiple times
-  shim_proc_ = std::move(proc);
 }
 
 Language Worker::GetLanguage() const { return language_; }

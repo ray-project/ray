@@ -13,7 +13,8 @@ class TestReproducibility(unittest.TestCase):
         class PickLargest(gym.Env):
             def __init__(self):
                 self.observation_space = gym.spaces.Box(
-                    low=float("-inf"), high=float("inf"), shape=(4, ))
+                    low=float("-inf"), high=float("inf"), shape=(4,)
+                )
                 self.action_space = gym.spaces.Discrete(4)
 
             def reset(self, **kwargs):
@@ -34,7 +35,7 @@ class TestReproducibility(unittest.TestCase):
                 register_env("PickLargest", env_creator)
                 config = {
                     "seed": 666 if trial in [0, 1] else 999,
-                    "min_iter_time_s": 0,
+                    "min_time_s_per_reporting": 0,
                     "timesteps_per_iteration": 100,
                     "framework": fw,
                 }
@@ -69,4 +70,5 @@ class TestReproducibility(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

@@ -98,7 +98,9 @@ class ProcessFD {
   pid_t GetId() const;
 
   // Fork + exec combo. Returns -1 for the PID on failure.
-  static ProcessFD spawnvpe(const char *argv[], std::error_code &ec, bool decouple,
+  static ProcessFD spawnvpe(const char *argv[],
+                            std::error_code &ec,
+                            bool decouple,
                             const ProcessEnvironment &env) {
     ec = std::error_code();
     intptr_t fd;
@@ -191,8 +193,8 @@ class ProcessFD {
       // This is the spawned process. Any intermediate parent is now dead.
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
-        execvpe(argv[0], const_cast<char *const *>(argv),
-                const_cast<char *const *>(envp));
+        execvpe(
+            argv[0], const_cast<char *const *>(argv), const_cast<char *const *>(envp));
       }
       _exit(errno);  // fork() succeeded and exec() failed, so abort the child
     }
@@ -303,8 +305,12 @@ intptr_t ProcessFD::CloneFD() const {
 #ifdef _WIN32
     HANDLE handle;
     BOOL inheritable = FALSE;
-    fd = DuplicateHandle(GetCurrentProcess(), reinterpret_cast<HANDLE>(fd_),
-                         GetCurrentProcess(), &handle, 0, inheritable,
+    fd = DuplicateHandle(GetCurrentProcess(),
+                         reinterpret_cast<HANDLE>(fd_),
+                         GetCurrentProcess(),
+                         &handle,
+                         0,
+                         inheritable,
                          DUPLICATE_SAME_ACCESS)
              ? reinterpret_cast<intptr_t>(handle)
              : -1;
@@ -339,7 +345,10 @@ Process &Process::operator=(Process other) {
 
 Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
-Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool decouple,
+Process::Process(const char *argv[],
+                 void *io_service,
+                 std::error_code &ec,
+                 bool decouple,
                  const ProcessEnvironment &env) {
   (void)io_service;
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
@@ -555,10 +564,16 @@ pid_t GetParentPID() {
     if (HANDLE parent = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, ppid)) {
       long long me_created, parent_created;
       FILETIME unused;
-      if (GetProcessTimes(GetCurrentProcess(), reinterpret_cast<FILETIME *>(&me_created),
-                          &unused, &unused, &unused) &&
-          GetProcessTimes(parent, reinterpret_cast<FILETIME *>(&parent_created), &unused,
-                          &unused, &unused)) {
+      if (GetProcessTimes(GetCurrentProcess(),
+                          reinterpret_cast<FILETIME *>(&me_created),
+                          &unused,
+                          &unused,
+                          &unused) &&
+          GetProcessTimes(parent,
+                          reinterpret_cast<FILETIME *>(&parent_created),
+                          &unused,
+                          &unused,
+                          &unused)) {
         if (me_created >= parent_created) {
           // We verified the child is younger than the parent, so we know the parent
           // is still alive.

@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import logging
 from typing import Dict, Optional, TYPE_CHECKING
@@ -18,17 +19,29 @@ class MLflowLoggerUtil:
 
     def __init__(self):
         import mlflow
+
         self._mlflow = mlflow
         self.experiment_id = None
 
+    def __deepcopy__(self, memo=None):
+        # mlflow is a module, and thus cannot be copied
+        _mlflow = self._mlflow
+        self.__dict__.pop("_mlflow")
+        dict_copy = deepcopy(self.__dict__, memo)
+        copied_object = MLflowLoggerUtil()
+        copied_object.__dict__.update(dict_copy)
+        self._mlflow = _mlflow
+        copied_object._mlflow = _mlflow
+        return copied_object
+
     def setup_mlflow(
-            self,
-            tracking_uri: Optional[str] = None,
-            registry_uri: Optional[str] = None,
-            experiment_id: Optional[str] = None,
-            experiment_name: Optional[str] = None,
-            tracking_token=None,
-            create_experiment_if_not_exists: bool = True,
+        self,
+        tracking_uri: Optional[str] = None,
+        registry_uri: Optional[str] = None,
+        experiment_id: Optional[str] = None,
+        experiment_name: Optional[str] = None,
+        tracking_token=None,
+        create_experiment_if_not_exists: bool = True,
     ):
         """
         Sets up MLflow.
@@ -69,50 +82,68 @@ class MLflowLoggerUtil:
         self._mlflow.set_registry_uri(registry_uri)
 
         # First check experiment_id.
-        experiment_id = experiment_id if experiment_id is not None else \
-            os.environ.get("MLFLOW_EXPERIMENT_ID")
+        experiment_id = (
+            experiment_id
+            if experiment_id is not None
+            else os.environ.get("MLFLOW_EXPERIMENT_ID")
+        )
         if experiment_id is not None:
             from mlflow.exceptions import MlflowException
+
             try:
                 self._mlflow.get_experiment(experiment_id=experiment_id)
-                logger.debug(f"Experiment with provided id {experiment_id} "
-                             "exists. Setting that as the experiment.")
+                logger.debug(
+                    f"Experiment with provided id {experiment_id} "
+                    "exists. Setting that as the experiment."
+                )
                 self.experiment_id = experiment_id
                 return
             except MlflowException:
                 pass
 
         # Then check experiment_name.
-        experiment_name = experiment_name if experiment_name is not None else \
-            os.environ.get("MLFLOW_EXPERIMENT_NAME")
+        experiment_name = (
+            experiment_name
+            if experiment_name is not None
+            else os.environ.get("MLFLOW_EXPERIMENT_NAME")
+        )
         if experiment_name is not None and self._mlflow.get_experiment_by_name(
-                name=experiment_name):
-            logger.debug(f"Experiment with provided name {experiment_name} "
-                         "exists. Setting that as the experiment.")
+            name=experiment_name
+        ):
+            logger.debug(
+                f"Experiment with provided name {experiment_name} "
+                "exists. Setting that as the experiment."
+            )
             self.experiment_id = self._mlflow.get_experiment_by_name(
-                experiment_name).experiment_id
+                experiment_name
+            ).experiment_id
             return
 
         # An experiment with the provided id or name does not exist.
         # Create a new experiment if applicable.
         if experiment_name and create_experiment_if_not_exists:
-            logger.debug("Existing experiment not found. Creating new "
-                         f"experiment with name: {experiment_name}")
-            self.experiment_id = self._mlflow.create_experiment(
-                name=experiment_name)
+            logger.debug(
+                "Existing experiment not found. Creating new "
+                f"experiment with name: {experiment_name}"
+            )
+            self.experiment_id = self._mlflow.create_experiment(name=experiment_name)
             return
 
         if create_experiment_if_not_exists:
-            raise ValueError(f"Experiment with the provided experiment_id: "
-                             f"{experiment_id} does not exist and no "
-                             f"experiment_name provided. At least one of "
-                             f"these has to be provided.")
+            raise ValueError(
+                f"Experiment with the provided experiment_id: "
+                f"{experiment_id} does not exist and no "
+                f"experiment_name provided. At least one of "
+                f"these has to be provided."
+            )
         else:
-            raise ValueError(f"Experiment with the provided experiment_id: "
-                             f"{experiment_id} or experiment_name: "
-                             f"{experiment_name} does not exist. Please "
-                             f"create an MLflow experiment and provide "
-                             f"either its id or name.")
+            raise ValueError(
+                f"Experiment with the provided experiment_id: "
+                f"{experiment_id} or experiment_name: "
+                f"{experiment_name} does not exist. Please "
+                f"create an MLflow experiment and provide "
+                f"either its id or name."
+            )
 
     def _parse_dict(self, dict_to_log: Dict) -> Dict:
         """Parses provided dict to convert all values to float.
@@ -133,17 +164,20 @@ class MLflowLoggerUtil:
                 value = float(value)
                 new_dict[key] = value
             except (ValueError, TypeError):
-                logger.debug("Cannot log key {} with value {} since the "
-                             "value cannot be converted to float.".format(
-                                 key, value))
+                logger.debug(
+                    "Cannot log key {} with value {} since the "
+                    "value cannot be converted to float.".format(key, value)
+                )
                 continue
 
         return new_dict
 
-    def start_run(self,
-                  run_name: Optional[str] = None,
-                  tags: Optional[Dict] = None,
-                  set_active: bool = False) -> "Run":
+    def start_run(
+        self,
+        run_name: Optional[str] = None,
+        tags: Optional[Dict] = None,
+        set_active: bool = False,
+    ) -> "Run":
         """Starts a new run and possibly sets it as the active run.
 
         Args:
@@ -161,14 +195,15 @@ class MLflowLoggerUtil:
         from mlflow.utils.mlflow_tags import MLFLOW_RUN_NAME
 
         client = self._get_client()
+        tags = tags or {}
         tags[MLFLOW_RUN_NAME] = run_name
         run = client.create_run(experiment_id=self.experiment_id, tags=tags)
 
         return run
 
-    def _start_active_run(self,
-                          run_name: Optional[str] = None,
-                          tags: Optional[Dict] = None) -> "Run":
+    def _start_active_run(
+        self, run_name: Optional[str] = None, tags: Optional[Dict] = None
+    ) -> "Run":
         """Starts a run and sets it as the active run if one does not exist.
 
         If an active run already exists, then returns it.
@@ -177,7 +212,9 @@ class MLflowLoggerUtil:
         if active_run:
             return active_run
 
-        return self._mlflow.start_run(run_name=run_name, tags=tags)
+        return self._mlflow.start_run(
+            run_name=run_name, experiment_id=self.experiment_id, tags=tags
+        )
 
     def _run_exists(self, run_id: str) -> bool:
         """Check if run with the provided id exists."""
@@ -196,8 +233,7 @@ class MLflowLoggerUtil:
 
         from mlflow.tracking import MlflowClient
 
-        return MlflowClient(
-            tracking_uri=tracking_uri, registry_uri=registry_uri)
+        return MlflowClient(tracking_uri=tracking_uri, registry_uri=registry_uri)
 
     def log_params(self, params_to_log: Dict, run_id: Optional[str] = None):
         """Logs the provided parameters to the run specified by run_id.
@@ -220,10 +256,7 @@ class MLflowLoggerUtil:
             for key, value in params_to_log.items():
                 self._mlflow.log_param(key=key, value=value)
 
-    def log_metrics(self,
-                    step,
-                    metrics_to_log: Dict,
-                    run_id: Optional[str] = None):
+    def log_metrics(self, step, metrics_to_log: Dict, run_id: Optional[str] = None):
         """Logs the provided metrics to the run specified by run_id.
 
 
@@ -240,8 +273,7 @@ class MLflowLoggerUtil:
         if run_id and self._run_exists(run_id):
             client = self._get_client()
             for key, value in metrics_to_log.items():
-                client.log_metric(
-                    run_id=run_id, key=key, value=value, step=step)
+                client.log_metric(run_id=run_id, key=key, value=value, step=step)
 
         else:
             for key, value in metrics_to_log.items():
@@ -275,9 +307,14 @@ class MLflowLoggerUtil:
             run_id (Optional[str]): The ID of the run to terminate.
 
         """
-        if run_id and self._run_exists(run_id) and not (
+        if (
+            run_id
+            and self._run_exists(run_id)
+            and not (
                 self._mlflow.active_run()
-                and self._mlflow.active_run().info.run_id == run_id):
+                and self._mlflow.active_run().info.run_id == run_id
+            )
+        ):
             client = self._get_client()
             client.set_terminated(run_id=run_id, status=status)
         else:

@@ -1,9 +1,11 @@
 # coding: utf-8
 import signal
 from collections import Counter
+import multiprocessing
 import os
 import shutil
 import tempfile
+import threading
 import time
 from typing import List
 import unittest
@@ -11,11 +13,14 @@ import unittest
 import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch
+from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
+from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest import Searcher
 from ray.tune.trial import Trial
+from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
@@ -78,38 +83,44 @@ class TuneRestoreTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
 
 
+# Defining the callbacks at the file level, so they can be pickled and spawned
+# in a separate process.
+class SteppingCallback(Callback):
+    def __init__(self, driver_semaphore, trainer_semaphore):
+        self.driver_semaphore = driver_semaphore
+        self.trainer_semaphore = trainer_semaphore
+
+    def on_step_end(self, iteration, trials, **info):
+        self.driver_semaphore.release()  # Driver should continue
+        self.trainer_semaphore.acquire()  # Wait until released
+
+
+def _run(local_dir, driver_semaphore, trainer_semaphore):
+    def _train(config):
+        for i in range(7):
+            tune.report(val=i)
+
+    tune.run(
+        _train,
+        local_dir=local_dir,
+        name="interrupt",
+        callbacks=[SteppingCallback(driver_semaphore, trainer_semaphore)],
+    )
+
+
 class TuneInterruptionTest(unittest.TestCase):
-    def setUp(self) -> None:
-        # Wait up to five seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
-
     def testExperimentInterrupted(self):
-        import multiprocessing
-
-        trainer_semaphore = multiprocessing.Semaphore()
-        driver_semaphore = multiprocessing.Semaphore()
-
-        class SteppingCallback(Callback):
-            def on_step_end(self, iteration, trials, **info):
-                driver_semaphore.release()  # Driver should continue
-                trainer_semaphore.acquire()  # Wait until released
-
-        def _run(local_dir):
-            def _train(config):
-                for i in range(7):
-                    tune.report(val=i)
-
-            tune.run(
-                _train,
-                local_dir=local_dir,
-                name="interrupt",
-                callbacks=[SteppingCallback()])
-
         local_dir = tempfile.mkdtemp()
-        process = multiprocessing.Process(target=_run, args=(local_dir, ))
+        # Unix platforms may default to "fork", which is problematic with
+        # multithreading and GRPC. The child process should always be spawned.
+        mp_ctx = multiprocessing.get_context("spawn")
+        driver_semaphore = mp_ctx.Semaphore()
+        trainer_semaphore = mp_ctx.Semaphore()
+        process = mp_ctx.Process(
+            target=_run,
+            args=(local_dir, driver_semaphore, trainer_semaphore),
+            name="tune_interrupt",
+        )
         process.daemon = False
         process.start()
 
@@ -143,6 +154,30 @@ class TuneInterruptionTest(unittest.TestCase):
         self.assertNotEqual(last_mtime, new_mtime)
 
         shutil.rmtree(local_dir)
+
+    def testInterruptDisabledInWorkerThread(self):
+        # https://github.com/ray-project/ray/issues/22295
+        # This test will hang without the proper patch because tune.run will fail.
+
+        event = threading.Event()
+
+        def run_in_thread():
+            def _train(config):
+                for i in range(7):
+                    tune.report(val=i)
+
+            tune.run(
+                _train,
+            )
+            event.set()
+
+        thread = threading.Thread(target=run_in_thread)
+        thread.start()
+        event.wait()
+        thread.join()
+
+        ray.shutdown()
+        os.environ.pop("TUNE_DISABLE_SIGINT_HANDLER", None)
 
 
 class TuneFailResumeGridTest(unittest.TestCase):
@@ -189,25 +224,24 @@ class TuneFailResumeGridTest(unittest.TestCase):
             if not self._checked and iteration >= self._check_after:
                 for trial in trials:
                     if trial.status == Trial.PENDING:
-                        assert (trial.
-                                placement_group_factory.required_resources.get(
-                                    "CPU", 0) == self._expected_cpu)
+                        assert (
+                            trial.placement_group_factory.required_resources.get(
+                                "CPU", 0
+                            )
+                            == self._expected_cpu
+                        )
                 self._checked = True
 
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
-        # Wait up to 1.5 seconds for placement groups when starting a trial
-        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
-        # Block for results even when placement groups are pending
-        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         # Change back to local_mode=True after this is resolved:
         # https://github.com/ray-project/ray/issues/13932
         ray.init(local_mode=False, num_cpus=2)
 
         from ray.tune import register_trainable
+
         register_trainable("trainable", MyTrainableClass)
 
     def tearDown(self):
@@ -227,19 +261,15 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
-            tune.run(
-                "trainable",
-                callbacks=[self.FailureInjectorCallback()],
-                **config)
+            tune.run("trainable", callbacks=[self.FailureInjectorCallback()], **config)
 
         analysis = tune.run(
-            "trainable",
-            resume=True,
-            callbacks=[self.CheckStateCallback()],
-            **config)
+            "trainable", resume=True, callbacks=[self.CheckStateCallback()], **config
+        )
         assert len(analysis.trials) == 27
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert all(v == 9 for v in test_counter.values())
@@ -259,36 +289,34 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[
                     self.FailureInjectorCallback(),
-                    self.CheckTrialResourcesCallback(1)
+                    self.CheckTrialResourcesCallback(1),
                 ],
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             resources_per_trial={"cpu": 2},
             callbacks=[self.CheckTrialResourcesCallback(2)],
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 27
 
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
-        search_alg = BasicVariantGenerator(points_to_evaluate=[{
-            "test": -1,
-            "test2": -1
-        }, {
-            "test": -1
-        }, {
-            "test2": -1
-        }])
+        search_alg = BasicVariantGenerator(
+            points_to_evaluate=[{"test": -1, "test2": -1}, {"test": -1}, {"test2": -1}]
+        )
 
         config = dict(
             num_samples=3 + 3,  # 3 preset, 3 samples
@@ -299,20 +327,23 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[self.FailureInjectorCallback(5)],
                 search_alg=search_alg,
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=5)],
             search_alg=search_alg,
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 34
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert test_counter.pop(-1) == 4
@@ -324,14 +355,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
     def testFailResumeAfterPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
-        search_alg = BasicVariantGenerator(points_to_evaluate=[{
-            "test": -1,
-            "test2": -1
-        }, {
-            "test": -1
-        }, {
-            "test2": -1
-        }])
+        search_alg = BasicVariantGenerator(
+            points_to_evaluate=[{"test": -1, "test2": -1}, {"test": -1}, {"test2": -1}]
+        )
 
         config = dict(
             num_samples=3 + 3,  # 3 preset, 3 samples
@@ -342,21 +368,24 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
+            verbose=1,
+        )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[self.FailureInjectorCallback(15)],
                 search_alg=search_alg,
-                **config)
+                **config,
+            )
 
         analysis = tune.run(
             "trainable",
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=15)],
             search_alg=search_alg,
-            **config)
+            **config,
+        )
         assert len(analysis.trials) == 34
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert test_counter.pop(-1) == 4
@@ -379,19 +408,23 @@ class TuneFailResumeGridTest(unittest.TestCase):
                         "test": tune.grid_search([1, 2, 3]),
                     },
                     stop={"training_iteration": 1},
-                    local_dir=self.logdir))
+                    local_dir=self.logdir,
+                )
+            )
 
         with self.assertRaises(RuntimeError):
             tune.run(
                 experiments,
                 callbacks=[self.FailureInjectorCallback(10)],
-                fail_fast=True)
+                fail_fast=True,
+            )
 
         analysis = tune.run(
             experiments,
             resume=True,
             callbacks=[self.CheckStateCallback(expected_trials=10)],
-            fail_fast=True)
+            fail_fast=True,
+        )
         assert len(analysis.trials) == 18
 
     def testWarningLargeGrid(self):
@@ -407,14 +440,13 @@ class TuneFailResumeGridTest(unittest.TestCase):
             },
             stop={"training_iteration": 2},
             local_dir=self.logdir,
-            verbose=1)
-        with self.assertWarnsRegex(UserWarning,
-                                   "exceeds the serialization threshold"):
+            verbose=1,
+        )
+        with self.assertWarnsRegex(UserWarning, "exceeds the serialization threshold"):
             with self.assertRaises(RuntimeError):
                 tune.run(
-                    "trainable",
-                    callbacks=[self.FailureInjectorCallback(10)],
-                    **config)
+                    "trainable", callbacks=[self.FailureInjectorCallback(10)], **config
+                )
 
 
 class TuneExampleTest(unittest.TestCase):
@@ -428,6 +460,7 @@ class TuneExampleTest(unittest.TestCase):
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         from tensorflow.python.keras.datasets import cifar10
+
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
         validate_save_restore(Cifar10Model, use_object_store=True)
@@ -435,6 +468,7 @@ class TuneExampleTest(unittest.TestCase):
     def testPyTorchMNIST(self):
         from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
         from torchvision import datasets
+
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
@@ -482,7 +516,62 @@ class SearcherTest(unittest.TestCase):
         assert searcher_2.data == original_data
 
 
+class WorkingDirectoryTest(unittest.TestCase):
+    def testWorkingDir(self):
+        """Trainables should know the original working dir on driver through env
+        variable."""
+        working_dir = os.getcwd()
+
+        def f(config):
+            assert os.environ.get("TUNE_ORIG_WORKING_DIR") == working_dir
+
+        tune.run(f)
+
+
+class TrainableCrashWithFailFast(unittest.TestCase):
+    def test(self):
+        """Trainable crashes with fail_fast flag and the original crash message
+        should bubble up."""
+
+        def f(config):
+            tune.report({"a": 1})
+            time.sleep(0.1)
+            raise RuntimeError("Error happens in trainable!!")
+
+        with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
+            tune.run(f, fail_fast=TrialRunner.RAISE)
+
+
+# For some reason, different tests are coupled through tune.registry.
+# After running `ResourceExhaustedTest`, there is always a super huge `training_func` to
+# be put through GCS, which will fail subsequent tests.
+# tldr, make sure that this test is the last test in the file.
+class ResourceExhaustedTest(unittest.TestCase):
+    def test_resource_exhausted_info(self):
+        """This is to test if helpful information is displayed when
+        the objects captured in trainable/training function are too
+        large and RESOURCES_EXHAUSTED error of gRPC is triggered."""
+
+        # generate some random data to be captured implicitly in training func.
+        from sklearn.datasets import fetch_olivetti_faces
+
+        a_large_array = []
+        for i in range(10):
+            a_large_array.append(fetch_olivetti_faces())
+
+        def training_func(config):
+            for item in a_large_array:
+                assert item
+
+        with self.assertRaisesRegex(
+            TuneError,
+            "The Trainable/training function is too large for grpc resource limit.",
+        ):
+            tune.run(training_func)
+
+
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

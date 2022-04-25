@@ -17,7 +17,8 @@ namespace raylet {
 
 class MockTaskDependencyManagerInterface : public TaskDependencyManagerInterface {
  public:
-  MOCK_METHOD(bool, RequestTaskDependencies,
+  MOCK_METHOD(bool,
+              RequestTaskDependencies,
               (const TaskID &task_id,
                const std::vector<rpc::ObjectReference> &required_objects),
               (override));

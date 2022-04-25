@@ -20,13 +20,12 @@
 
 #include <errno.h>
 #include <string.h>
-
-#include "ray/util/logging.h"
-
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+#include "ray/util/logging.h"
 
 // This is necessary for Mac OS X, see http://www.apuebook.com/faqs2e.html
 // (10).

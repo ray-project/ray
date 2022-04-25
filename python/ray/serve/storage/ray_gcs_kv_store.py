@@ -1,13 +1,17 @@
+import io
+import logging
+from typing import Optional
+
 try:
     from google.cloud import storage
     from google.cloud.exceptions import NotFound
 except ImportError:
     storage = None
-import io
-from typing import Optional
 
+from ray.serve.constants import SERVE_LOGGER_NAME
 from ray.serve.storage.kv_store_base import KVStoreBase
-from ray.serve.utils import logger
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class RayGcsKVStore(KVStoreBase):
@@ -19,18 +23,20 @@ class RayGcsKVStore(KVStoreBase):
     """
 
     def __init__(
-            self,
-            namespace: str,
-            bucket="",
-            prefix="",
+        self,
+        namespace: str,
+        bucket="",
+        prefix="",
     ):
         self._namespace = namespace
         self._bucket = bucket
         self._prefix = prefix + "/" if prefix else ""
         if not storage:
-            raise ImportError("You tried to use RayGcsKVStore client without"
-                              "google-cloud-storage installed."
-                              "Please run `pip install google-cloud-storage`")
+            raise ImportError(
+                "You tried to use RayGcsKVStore client without"
+                "google-cloud-storage installed."
+                "Please run `pip install google-cloud-storage`"
+            )
         self._gcs = storage.Client()
         self._bucket = self._gcs.bucket(bucket)
 
@@ -55,8 +61,10 @@ class RayGcsKVStore(KVStoreBase):
             blob.upload_from_file(f, num_retries=5)
         except Exception as e:
             message = str(e)
-            logger.error(f"Encountered ClientError while calling put() "
-                         f"in RayExternalKVStore: {message}")
+            logger.error(
+                f"Encountered ClientError while calling put() "
+                f"in RayExternalKVStore: {message}"
+            )
             raise e
 
     def get(self, key: str) -> Optional[bytes]:
@@ -93,6 +101,8 @@ class RayGcsKVStore(KVStoreBase):
             blob = self._bucket.blob(blob_name=blob_name)
             blob.delete()
         except NotFound:
-            logger.error(f"Encountered ClientError while calling delete() "
-                         f"in RayExternalKVStore - "
-                         f"Blob {blob_name} was not found!")
+            logger.error(
+                f"Encountered ClientError while calling delete() "
+                f"in RayExternalKVStore - "
+                f"Blob {blob_name} was not found!"
+            )

@@ -23,7 +23,8 @@ parser.add_argument(
     "--smoke-test",
     action="store_true",
     default=False,
-    help="Finish quickly for training.")
+    help="Finish quickly for training.",
+)
 args = parser.parse_args()
 
 
@@ -38,32 +39,38 @@ def initialization_hook():
 
 
 def cifar_creator(config):
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])  # meanstd transformation
+    transform_train = transforms.Compose(
+        [
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ]
+    )  # meanstd transformation
 
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
+    transform_test = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ]
+    )
     train_dataset = CIFAR10(
-        root="~/data", train=True, download=True, transform=transform_train)
+        root="~/data", train=True, download=True, transform=transform_train
+    )
     validation_dataset = CIFAR10(
-        root="~/data", train=False, download=False, transform=transform_test)
+        root="~/data", train=False, download=False, transform=transform_test
+    )
 
     if config.get("test_mode"):
         train_dataset = Subset(train_dataset, list(range(64)))
         validation_dataset = Subset(validation_dataset, list(range(64)))
 
     train_loader = DataLoader(
-        train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+        train_dataset, batch_size=config[BATCH_SIZE], num_workers=2
+    )
     validation_loader = DataLoader(
-        validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+        validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2
+    )
     return train_loader, validation_loader
 
 
@@ -72,7 +79,8 @@ def optimizer_creator(model, config):
     return torch.optim.SGD(
         model.parameters(),
         lr=config.get("lr", 0.1),
-        momentum=config.get("momentum", 0.9))
+        momentum=config.get("momentum", 0.9),
+    )
 
 
 ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
@@ -82,7 +90,8 @@ CustomTrainingOperator = TrainingOperator.from_creators(
     model_creator=ResNet18,
     optimizer_creator=optimizer_creator,
     data_creator=cifar_creator,
-    loss_creator=nn.CrossEntropyLoss)
+    loss_creator=nn.CrossEntropyLoss,
+)
 
 TorchTrainable = TorchTrainer.as_trainable(
     training_operator_cls=CustomTrainingOperator,
@@ -106,7 +115,8 @@ pbt_scheduler = PopulationBasedTraining(
         "lr": lambda: np.random.uniform(0.001, 1),
         # allow perturbations within this set of categorical values
         "momentum": [0.8, 0.9, 0.99],
-    })
+    },
+)
 
 reporter = CLIReporter()
 reporter.add_metric_column("val_loss", "loss")
@@ -119,16 +129,14 @@ analysis = tune.run(
         "lr": tune.choice([0.001, 0.01, 0.1]),
         "momentum": 0.8,
         "head_location": None,
-        "worker_locations": None
+        "worker_locations": None,
     },
     max_failures=-1,  # used for fault tolerance
     checkpoint_freq=2,  # used for fault tolerance
     progress_reporter=reporter,
     scheduler=pbt_scheduler,
-    callbacks=[
-        FailureInjectorCallback(time_between_checks=90),
-        ProgressCallback()
-    ],
-    stop={"training_iteration": 1} if args.smoke_test else None)
+    callbacks=[FailureInjectorCallback(time_between_checks=90), ProgressCallback()],
+    stop={"training_iteration": 1} if args.smoke_test else None,
+)
 
 print(analysis.get_best_config(metric="val_loss", mode="min"))

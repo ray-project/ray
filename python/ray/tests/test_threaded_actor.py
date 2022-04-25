@@ -12,7 +12,8 @@ import ray._private.test_utils as test_utils
 
 def ensure_cpu_returned(expected_cpus):
     test_utils.wait_for_condition(
-        lambda: (available_resources().get("CPU", 0) == expected_cpus))
+        lambda: (available_resources().get("CPU", 0) == expected_cpus)
+    )
 
 
 def test_threaded_actor_basic(shutdown_only):
@@ -46,12 +47,13 @@ def test_threaded_actor_basic(shutdown_only):
 
 def test_threaded_actor_api_thread_safe(shutdown_only):
     """Test if Ray APIs are thread safe
-        when they are used within threaded actor.
+    when they are used within threaded actor.
     """
     ray.init(
         num_cpus=8,
         # from 1024 bytes, the return obj will go to the plasma store.
-        _system_config={"max_direct_call_object_size": 1024})
+        _system_config={"max_direct_call_object_size": 1024},
+    )
 
     @ray.remote
     def in_memory_return(i):
@@ -89,12 +91,12 @@ def test_threaded_actor_api_thread_safe(shutdown_only):
 
     # Test in-memory return obj
     seqnos = ray.get(
-        [a.in_memory_return_test.remote(seqno) for seqno in range(max_seq)])
+        [a.in_memory_return_test.remote(seqno) for seqno in range(max_seq)]
+    )
     assert sorted(seqnos) == list(range(max_seq))
 
     # Test plasma return obj
-    real = ray.get(
-        [a.plasma_return_test.remote(seqno) for seqno in range(max_seq)])
+    real = ray.get([a.plasma_return_test.remote(seqno) for seqno in range(max_seq)])
     expected = [np.zeros(8 * 1024 * i, dtype=np.uint8) for i in range(max_seq)]
     for r, e in zip(real, expected):
         assert np.array_equal(r, e)
@@ -104,8 +106,7 @@ def test_threaded_actor_api_thread_safe(shutdown_only):
 
 
 def test_threaded_actor_creation_and_kill(ray_start_cluster):
-    """Test the scenario where the threaded actors are created and killed.
-    """
+    """Test the scenario where the threaded actors are created and killed."""
     cluster = ray_start_cluster
     NUM_CPUS_PER_NODE = 3
     NUM_NODES = 2
@@ -172,14 +173,12 @@ def test_threaded_actor_creation_and_kill(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 2
-    }], indirect=True)
-def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
-                                                log_pubsub, error_pubsub):
+@pytest.mark.parametrize("ray_start_cluster_head", [{"num_cpus": 2}], indirect=True)
+def test_threaded_actor_integration_test_stress(
+    ray_start_cluster_head, log_pubsub, error_pubsub
+):
     """This is a sanity test that checks threaded actors are
-        working with the nightly stress test.
+    working with the nightly stress test.
     """
     cluster = ray_start_cluster_head
     p = log_pubsub
@@ -211,17 +210,14 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
         def __init__(self, num_children, death_probability=0.95):
             self.death_probability = death_probability
             self.children = [
-                Child.options(
-                    max_concurrency=max_concurrency).remote(death_probability)
+                Child.options(max_concurrency=max_concurrency).remote(death_probability)
                 for _ in range(num_children)
             ]
 
         def ping(self, num_pings):
             children_outputs = []
             for _ in range(num_pings):
-                children_outputs += [
-                    child.ping.remote() for child in self.children
-                ]
+                children_outputs += [child.ping.remote() for child in self.children]
             try:
                 ray.get(children_outputs)
             except Exception:
@@ -230,12 +226,13 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
 
         def kill(self):
             # Clean up children.
-            ray.get(
-                [child.__ray_terminate__.remote() for child in self.children])
+            ray.get([child.__ray_terminate__.remote() for child in self.children])
 
     parents = [
         Parent.options(max_concurrency=max_concurrency).remote(
-            num_children, death_probability) for _ in range(num_parents)
+            num_children, death_probability
+        )
+        for _ in range(num_parents)
     ]
 
     start = time.time()
@@ -250,13 +247,12 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
             parent_index = np.random.randint(len(parents))
             parents[parent_index].kill.remote()
             parents[parent_index] = Parent.options(
-                max_concurrency=max_concurrency).remote(
-                    num_children, death_probability)
+                max_concurrency=max_concurrency
+            ).remote(num_children, death_probability)
         loop_times.append(time.time() - loop_start)
     result = {}
     print("Finished in: {}s".format(time.time() - start))
-    print("Average iteration time: {}s".format(
-        sum(loop_times) / len(loop_times)))
+    print("Average iteration time: {}s".format(sum(loop_times) / len(loop_times)))
     print("Max iteration time: {}s".format(max(loop_times)))
     print("Min iteration time: {}s".format(min(loop_times)))
     result["total_time"] = time.time() - start
@@ -271,7 +267,9 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
     # Make sure parents are still scheduleable.
     parents = [
         Parent.options(max_concurrency=max_concurrency).remote(
-            num_children, death_probability) for _ in range(num_parents)
+            num_children, death_probability
+        )
+        for _ in range(num_parents)
     ]
     ray.get([parent.ping.remote(10) for parent in parents])
     """
@@ -281,15 +279,15 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
     logs = test_utils.get_log_message(p, timeout=20)
     for log in logs:
         assert "SIG" not in log, "There's the segfault or SIGBART reported."
-        assert "Check failed" not in log, (
-            "There's the check failure reported.")
+        assert "Check failed" not in log, "There's the check failure reported."
 
     # Get error messages for 10 seconds.
     errors = test_utils.get_error_message(e, timeout=10)
     for error in errors:
         print(error)
-        assert "You can ignore this message if" not in error.error_message, (
-            "Resource deadlock warning shouldn't be printed, but it did.")
+        assert (
+            "You can ignore this message if" not in error.error_message
+        ), "Resource deadlock warning shouldn't be printed, but it did."
 
 
 if __name__ == "__main__":

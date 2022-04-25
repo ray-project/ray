@@ -46,6 +46,7 @@ enum TablePrefix {
   PLACEMENT_GROUP_SCHEDULE = 18;
   PLACEMENT_GROUP = 19;
   KV = 20;
+  ACTOR_TASK_SPEC = 21;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -81,57 +82,6 @@ message ObjectTableData {
   // The node manager ID that this object appeared on or was evicted by.
   bytes manager = 1;
 }
-
-message ActorDeathCause {
-  oneof context {
-    CreationTaskFailureContext creation_task_failure_context = 1;
-    ActorDeathRuntimeEnvFailedContext runtime_env_failed_context = 2;
-    ActorDeathWorkerDiedContext worker_died_context = 3;
-    ActorDeathNodeDiedContext node_died_context = 4;
-    ActorDeathOwnerDiedContext owner_died_context = 5;
-    ActorDeathKilledByApplicationContext killed_by_app_context = 6;
-    ActorDeathOutOfScopeContext out_of_scope_context = 7;
-  }
-}
-// ---Actor death contexts start----
-
-// Indicates that this actor is marked as DEAD due to actor creation task failure.
-// TODO(sang): Refactor it to ActorInitError
-message CreationTaskFailureContext {
-  // The exception thrown in creation task.
-  RayException creation_task_exception = 1;
-}
-
-// Indicates that this actor is marked as DEAD due to runtime environment setup failure.
-message ActorDeathRuntimeEnvFailedContext {
-  // TODO(sang,lixin) Get this error message from agent.
-  string error_message = 1;
-}
-
-message ActorDeathWorkerDiedContext {
-  string error_message = 1;
-}
-
-message ActorDeathNodeDiedContext {
-  string error_message = 1;
-}
-
-message ActorDeathOwnerDiedContext {
-  // The id of the dead owner.
-  bytes owner_id = 1;
-  string error_message = 2;
-  // The exit type of dead owner.
-  WorkerExitType owner_worker_exit_type = 3;
-}
-
-message ActorDeathKilledByApplicationContext {
-  string error_message = 1;
-}
-
-message ActorDeathOutOfScopeContext {
-  string error_message = 1;
-}
-// ---Actor death contexts end----
 
 message ActorTableData {
   // State of an actor.
@@ -177,13 +127,13 @@ message ActorTableData {
   string name = 12;
   // Last timestamp that the actor state was updated.
   double timestamp = 13;
-  // The task specification of this actor's creation task.
-  TaskSpec task_spec = 14;
   // Resource mapping ids acquired by the leased worker. This field is only set when this
   // actor already has a leased worker.
   repeated ResourceMapEntry resource_mapping = 15;
   // The process id of this actor.
   uint32 pid = 16;
+  // The function descriptor of the actor creation task.
+  FunctionDescriptor function_descriptor = 17;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 19;
   // The unix ms timestamp the actor was started at.
@@ -199,6 +149,8 @@ message ActorTableData {
   string class_name = 23;
   // Contains metadata about why the actor is dead.
   ActorDeathCause death_cause = 24;
+  // Quantities of the different resources required by this actor.
+  map<string, double> required_resources = 28;
 }
 
 message ErrorTableData {
@@ -293,6 +245,9 @@ message GcsNodeInfo {
 
   // The total resources of this node.
   map<string, double> resources_total = 11;
+
+  // The user-provided identifier or name for this node.
+  string node_name = 12;
 }
 
 message HeartbeatTableData {
@@ -301,6 +256,11 @@ message HeartbeatTableData {
 }
 
 message JobConfig {
+  enum ActorLifetime {
+    DETACHED = 0;
+    NON_DETACHED = 1;
+  }
+
   // The number of java workers per worker process.
   uint32 num_java_workers_per_process = 1;
   // The jvm options for java workers of the job.
@@ -315,6 +275,10 @@ message JobConfig {
   string ray_namespace = 5;
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 6;
+  // The default lifetime of actors in this job.
+  // If the lifetime of an actor is not specified explicitly at runtime, this
+  // default value will be applied.
+  ActorLifetime default_actor_lifetime = 7;
 }
 
 message JobTableData {

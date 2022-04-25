@@ -28,7 +28,8 @@ class GcsServerAddressUpdater {
   /// \param raylet_ip_address Raylet ip address.
   /// \param port Port to connect raylet.
   /// \param address to store gcs server address.
-  GcsServerAddressUpdater(const std::string raylet_ip_address, const int port,
+  GcsServerAddressUpdater(const std::string raylet_ip_address,
+                          const int port,
                           std::function<void(std::string, int)> update_func);
 
   ~GcsServerAddressUpdater();
@@ -37,13 +38,13 @@ class GcsServerAddressUpdater {
   /// Update gcs server address.
   void UpdateGcsServerAddress();
 
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  rpc::ClientCallManager client_call_manager_;
   /// A client connection to the raylet.
-  std::shared_ptr<raylet::RayletClient> raylet_client_;
+  raylet::RayletClient raylet_client_;
   std::function<void(std::string, int)> update_func_;
   instrumented_io_context updater_io_service_;
-  std::unique_ptr<std::thread> updater_thread_;
-  std::unique_ptr<PeriodicalRunner> updater_runner_;
+  PeriodicalRunner updater_runner_;
+  std::thread updater_thread_;
   int32_t failed_ping_count_ = 0;
 };
 

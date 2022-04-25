@@ -113,12 +113,9 @@ public class NamespaceTest {
       builder.redirectError(ProcessBuilder.Redirect.INHERIT);
       driver = builder.start();
       // Wait for driver to start.
-      TimeUnit.SECONDS.sleep(3);
+      driver.waitFor(10, TimeUnit.SECONDS);
       runnable.run();
     } finally {
-      if (driver != null) {
-        driver.waitFor(1, TimeUnit.SECONDS);
-      }
       Ray.shutdown();
     }
   }

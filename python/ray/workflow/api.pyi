@@ -1,4 +1,4 @@
-# yapf: disable
+# fmt: off
 from typing import Callable, Generic, Optional, TypeVar, Union, overload, Any
 from types import FunctionType
 
@@ -7,6 +7,8 @@ from ray.workflow.storage import Storage
 
 from ray.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
 from ray.workflow.common import WorkflowStatus
+
+from ray.experimental.dag import DAGNode
 
 T0 = TypeVar("T0")
 T1 = TypeVar("T1")
@@ -101,9 +103,9 @@ def resume_all(include_failed: bool) -> List[str]: ...
 
 def get_status(workflow_id: str) -> WorkflowStatus: ...
 
-def wait_for_event(event_listener_type: EventListenerType, *args, **kwargs) -> Workflow: ...
+def wait_for_event(event_listener_type: EventListenerType, *args, **kwargs) -> DAGNode: ...
 
-def sleep(duration: float) -> Workflow: ...
+def sleep(duration: float) -> DAGNode: ...
 
 @overload
 def get_metadata(workflow_id: str) -> Dict[str, Any]: ...

@@ -10,42 +10,33 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Create fake data.")
     parser.add_argument(
-        "filename", type=str, default="/data/parted.parquet/", help="ray/dask")
+        "filename", type=str, default="/data/parted.parquet/", help="ray/dask"
+    )
     parser.add_argument(
-        "-r",
-        "--num-rows",
-        required=False,
-        type=int,
-        default=1e8,
-        help="num rows")
+        "-r", "--num-rows", required=False, type=int, default=1e8, help="num rows"
+    )
     parser.add_argument(
         "-p",
         "--num-partitions",
         required=False,
         type=int,
         default=100,
-        help="num partitions")
+        help="num partitions",
+    )
     parser.add_argument(
         "-c",
         "--num-cols",
         required=False,
         type=int,
         default=4,
-        help="num columns (features)")
+        help="num columns (features)",
+    )
     parser.add_argument(
-        "-C",
-        "--num-classes",
-        required=False,
-        type=int,
-        default=2,
-        help="num classes")
+        "-C", "--num-classes", required=False, type=int, default=2, help="num classes"
+    )
     parser.add_argument(
-        "-s",
-        "--seed",
-        required=False,
-        type=int,
-        default=1234,
-        help="random seed")
+        "-s", "--seed", required=False, type=int, default=1234, help="random seed"
+    )
 
     args = parser.parse_args()
 
@@ -58,4 +49,5 @@ if __name__ == "__main__":
         num_rows=int(args.num_rows),
         num_partitions=int(args.num_partitions),
         num_features=int(args.num_cols),
-        num_classes=int(args.num_classes))
+        num_classes=int(args.num_classes),
+    )

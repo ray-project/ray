@@ -17,7 +17,8 @@ if __name__ == "__main__":
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for training.")
+        help="Finish quickly for training.",
+    )
     args = parser.parse_args()
 
     # Get path of this very script to look for yaml files.
@@ -26,7 +27,8 @@ if __name__ == "__main__":
 
     yaml_files = abs_yaml_path.rglob("*.yaml")
     yaml_files = sorted(
-        map(lambda path: str(path.absolute()), yaml_files), reverse=True)
+        map(lambda path: str(path.absolute()), yaml_files), reverse=True
+    )
 
     # Run all tests in the found yaml files.
     results = run_learning_tests_from_yaml(
@@ -35,8 +37,9 @@ if __name__ == "__main__":
         smoke_test=args.smoke_test,
     )
 
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/rllib_stress_tests.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/rllib_stress_tests.json"
+    )
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
 

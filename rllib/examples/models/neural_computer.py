@@ -38,8 +38,7 @@ class DNCMemory(TorchModelV2, nn.Module):
         "nonlinearity": "tanh",
         # Observation goes through this torch.nn.Module before
         # feeding to the DNC
-        "preprocessor": torch.nn.Sequential(
-            torch.nn.Linear(64, 64), torch.nn.Tanh()),
+        "preprocessor": torch.nn.Sequential(torch.nn.Linear(64, 64), torch.nn.Tanh()),
         # Input size to the preprocessor
         "preprocessor_input_size": 64,
         # The output size of the preprocessor
@@ -57,24 +56,26 @@ class DNCMemory(TorchModelV2, nn.Module):
     ]
 
     def __init__(
-            self,
-            obs_space: gym.spaces.Space,
-            action_space: gym.spaces.Space,
-            num_outputs: int,
-            model_config: ModelConfigDict,
-            name: str,
-            **custom_model_kwargs,
+        self,
+        obs_space: gym.spaces.Space,
+        action_space: gym.spaces.Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+        **custom_model_kwargs,
     ):
         nn.Module.__init__(self)
-        super(DNCMemory, self).__init__(obs_space, action_space, num_outputs,
-                                        model_config, name)
+        super(DNCMemory, self).__init__(
+            obs_space, action_space, num_outputs, model_config, name
+        )
         self.num_outputs = num_outputs
         self.obs_dim = gym.spaces.utils.flatdim(obs_space)
         self.act_dim = gym.spaces.utils.flatdim(action_space)
 
         self.cfg = dict(self.DEFAULT_CONFIG, **custom_model_kwargs)
-        assert (self.cfg["num_layers"] == 1
-                ), "num_layers != 1 has not been implemented yet"
+        assert (
+            self.cfg["num_layers"] == 1
+        ), "num_layers != 1 has not been implemented yet"
         self.cur_val = None
 
         self.preprocessor = torch.nn.Sequential(
@@ -100,10 +101,8 @@ class DNCMemory(TorchModelV2, nn.Module):
 
     def get_initial_state(self) -> List[TensorType]:
         ctrl_hidden = [
-            torch.zeros(self.cfg["num_hidden_layers"],
-                        self.cfg["hidden_size"]),
-            torch.zeros(self.cfg["num_hidden_layers"],
-                        self.cfg["hidden_size"]),
+            torch.zeros(self.cfg["num_hidden_layers"], self.cfg["hidden_size"]),
+            torch.zeros(self.cfg["num_hidden_layers"], self.cfg["hidden_size"]),
         ]
         m = self.cfg["nr_cells"]
         r = self.cfg["read_heads"]
@@ -128,28 +127,30 @@ class DNCMemory(TorchModelV2, nn.Module):
         return self.cur_val
 
     def unpack_state(
-            self,
-            state: List[TensorType],
-    ) -> Tuple[List[Tuple[TensorType, TensorType]], Dict[str, TensorType],
-               TensorType]:
+        self,
+        state: List[TensorType],
+    ) -> Tuple[List[Tuple[TensorType, TensorType]], Dict[str, TensorType], TensorType]:
         """Given a list of tensors, reformat for self.dnc input"""
         assert len(state) == 9, "Failed to verify unpacked state"
-        ctrl_hidden: List[Tuple[TensorType, TensorType]] = [(
-            state[0].permute(1, 0, 2).contiguous(),
-            state[1].permute(1, 0, 2).contiguous(),
-        )]
+        ctrl_hidden: List[Tuple[TensorType, TensorType]] = [
+            (
+                state[0].permute(1, 0, 2).contiguous(),
+                state[1].permute(1, 0, 2).contiguous(),
+            )
+        ]
         read_vecs: TensorType = state[2]
         memory: List[TensorType] = state[3:]
         memory_dict: OrderedDict[str, TensorType] = OrderedDict(
-            zip(self.MEMORY_KEYS, memory))
+            zip(self.MEMORY_KEYS, memory)
+        )
 
         return ctrl_hidden, memory_dict, read_vecs
 
     def pack_state(
-            self,
-            ctrl_hidden: List[Tuple[TensorType, TensorType]],
-            memory_dict: Dict[str, TensorType],
-            read_vecs: TensorType,
+        self,
+        ctrl_hidden: List[Tuple[TensorType, TensorType]],
+        memory_dict: Dict[str, TensorType],
+        read_vecs: TensorType,
     ) -> List[TensorType]:
         """Given the dnc output, pack it into a list of tensors
         for rllib state. Order is ctrl_hidden, read_vecs, memory_dict"""
@@ -176,18 +177,21 @@ class DNCMemory(TorchModelV2, nn.Module):
                 assert s_ctrl_hidden[i][j].shape == ctrl_hidden[i][j].shape, (
                     "Controller state mismatch: got "
                     f"{s_ctrl_hidden[i][j].shape} should be "
-                    f"{ctrl_hidden[i][j].shape}")
+                    f"{ctrl_hidden[i][j].shape}"
+                )
 
         for k in memory_dict:
             assert s_memory_dict[k].shape == memory_dict[k].shape, (
                 "Memory state mismatch at key "
                 f"{k}: got {s_memory_dict[k].shape} should be "
-                f"{memory_dict[k].shape}")
+                f"{memory_dict[k].shape}"
+            )
 
         assert s_read_vecs.shape == read_vecs.shape, (
             "Read state mismatch: got "
             f"{s_read_vecs.shape} should be "
-            f"{read_vecs.shape}")
+            f"{read_vecs.shape}"
+        )
 
     def build_dnc(self, device_idx: Union[int, None]) -> None:
         self.dnc = self.cfg["dnc_model"](
@@ -203,10 +207,10 @@ class DNCMemory(TorchModelV2, nn.Module):
         )
 
     def forward(
-            self,
-            input_dict: Dict[str, TensorType],
-            state: List[TensorType],
-            seq_lens: TensorType,
+        self,
+        input_dict: Dict[str, TensorType],
+        state: List[TensorType],
+        seq_lens: TensorType,
     ) -> Tuple[TensorType, List[TensorType]]:
 
         flat = input_dict["obs_flat"]

@@ -21,11 +21,10 @@ class SimpleCorridor(gym.Env):
         self.end_pos = config["corridor_length"]
         self.cur_pos = 0
         self.action_space = gym.spaces.Discrete(2)  # left and right
-        self.observation_space = gym.spaces.Box(0.0, self.end_pos, shape=(1, ))
+        self.observation_space = gym.spaces.Box(0.0, self.end_pos, shape=(1,))
 
     def reset(self):
-        """Resets the episode and returns the initial observation of the new one.
-        """
+        """Resets the episode and returns the initial observation of the new one."""
         self.cur_pos = 0
         # Return initial observation.
         return [self.cur_pos]
@@ -61,7 +60,8 @@ trainer = PPOTrainer(
         },
         # Parallelize environment rollouts.
         "num_workers": 3,
-    })
+    }
+)
 
 # Train for n iterations and report results (mean episode rewards).
 # Since we have to move at least 19 times in the env to reach the goal and

@@ -19,9 +19,18 @@ import numpy as np
 
 class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
-    def on_postprocess_trajectory(self, *, worker, episode, agent_id,
-                                  policy_id, policies, postprocessed_batch,
-                                  original_batches, **kwargs):
+    def on_postprocess_trajectory(
+        self,
+        *,
+        worker,
+        episode,
+        agent_id,
+        policy_id,
+        policies,
+        postprocessed_batch,
+        original_batches,
+        **kwargs
+    ):
         super().on_postprocess_trajectory(
             worker=worker,
             episode=episode,
@@ -30,22 +39,27 @@ class MyCallbacks(DefaultCallbacks):
             policies=policies,
             postprocessed_batch=postprocessed_batch,
             original_batches=original_batches,
-            **kwargs)
+            **kwargs
+        )
 
         if policies[policy_id].config.get("use_adapted_gae", False):
             policy = policies[policy_id]
-            assert policy.config["use_gae"], \
-                "Can't use adapted gae without use_gae=True!"
+            assert policy.config[
+                "use_gae"
+            ], "Can't use adapted gae without use_gae=True!"
 
             info_dicts = postprocessed_batch[SampleBatch.INFOS]
-            assert np.all(["d_ts" in info_dict for info_dict in info_dicts]), \
-                "Info dicts in sample batch must contain data 'd_ts' \
+            assert np.all(
+                ["d_ts" in info_dict for info_dict in info_dicts]
+            ), "Info dicts in sample batch must contain data 'd_ts' \
                 (=ts[i+1]-ts[i] length of time steps)!"
 
             d_ts = np.array(
-                [np.float(info_dict.get("d_ts")) for info_dict in info_dicts])
-            assert np.all([e.is_integer() for e in d_ts]), \
-                "Elements of 'd_ts' (length of time steps) must be integer!"
+                [np.float(info_dict.get("d_ts")) for info_dict in info_dicts]
+            )
+            assert np.all(
+                [e.is_integer() for e in d_ts]
+            ), "Elements of 'd_ts' (length of time steps) must be integer!"
 
             # Trajectory is actually complete -> last r=0.0.
             if postprocessed_batch[SampleBatch.DONES][-1]:
@@ -57,37 +71,42 @@ class MyCallbacks(DefaultCallbacks):
                 # input_dict.
                 # Create an input dict according to the Model's requirements.
                 input_dict = postprocessed_batch.get_single_step_input_dict(
-                    policy.model.view_requirements, index="last")
+                    policy.model.view_requirements, index="last"
+                )
                 last_r = policy._value(**input_dict)
 
             gamma = policy.config["gamma"]
             lambda_ = policy.config["lambda"]
 
-            vpred_t = np.concatenate([
-                postprocessed_batch[SampleBatch.VF_PREDS],
-                np.array([last_r])
-            ])
-            delta_t = (postprocessed_batch[SampleBatch.REWARDS] +
-                       gamma**d_ts * vpred_t[1:] - vpred_t[:-1])
+            vpred_t = np.concatenate(
+                [postprocessed_batch[SampleBatch.VF_PREDS], np.array([last_r])]
+            )
+            delta_t = (
+                postprocessed_batch[SampleBatch.REWARDS]
+                + gamma ** d_ts * vpred_t[1:]
+                - vpred_t[:-1]
+            )
             # This formula for the advantage is an adaption of
             # "Generalized Advantage Estimation"
             # (https://arxiv.org/abs/1506.02438) which accounts for time steps
             # of irregular length (see proposal here ).
             # NOTE: last time step delta is not required
-            postprocessed_batch[Postprocessing.ADVANTAGES] = \
-                generalized_discount_cumsum(
-                    delta_t, d_ts[:-1], gamma * lambda_)
+            postprocessed_batch[
+                Postprocessing.ADVANTAGES
+            ] = generalized_discount_cumsum(delta_t, d_ts[:-1], gamma * lambda_)
             postprocessed_batch[Postprocessing.VALUE_TARGETS] = (
-                postprocessed_batch[Postprocessing.ADVANTAGES] +
-                postprocessed_batch[SampleBatch.VF_PREDS]).astype(np.float32)
+                postprocessed_batch[Postprocessing.ADVANTAGES]
+                + postprocessed_batch[SampleBatch.VF_PREDS]
+            ).astype(np.float32)
 
-            postprocessed_batch[Postprocessing.ADVANTAGES] = \
-                postprocessed_batch[Postprocessing.ADVANTAGES].astype(
-                    np.float32)
+            postprocessed_batch[Postprocessing.ADVANTAGES] = postprocessed_batch[
+                Postprocessing.ADVANTAGES
+            ].astype(np.float32)
 
 
-def generalized_discount_cumsum(x: np.ndarray, deltas: np.ndarray,
-                                gamma: float) -> np.ndarray:
+def generalized_discount_cumsum(
+    x: np.ndarray, deltas: np.ndarray, gamma: float
+) -> np.ndarray:
     """Calculates the 'time-dependent' discounted cumulative sum over a
     (reward) sequence `x`.
 
@@ -124,7 +143,8 @@ def generalized_discount_cumsum(x: np.ndarray, deltas: np.ndarray,
     reversed_y = np.empty_like(x)
     reversed_y[0] = reversed_x[0]
     for i in range(1, x.size):
-        reversed_y[i] = \
-            reversed_x[i] + gamma**reversed_deltas[i-1] * reversed_y[i-1]
+        reversed_y[i] = (
+            reversed_x[i] + gamma ** reversed_deltas[i - 1] * reversed_y[i - 1]
+        )
 
     return reversed_y[::-1]

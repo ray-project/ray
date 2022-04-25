@@ -3,8 +3,7 @@ import unittest
 import ray
 import ray.rllib.agents.sac as sac
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -70,4 +69,5 @@ class TestRNNSAC(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

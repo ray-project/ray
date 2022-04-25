@@ -12,19 +12,22 @@ import ray.ray_constants as ray_constants
 @pytest.mark.skip(reason="No reconstruction for objects placed in plasma yet")
 @pytest.mark.parametrize(
     "ray_start_cluster",
-    [{
-        # Force at least one task per node.
-        "num_cpus": 1,
-        "num_nodes": 4,
-        "object_store_memory": 1000 * 1024 * 1024,
-        "_system_config": {
-            # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10,
-            "object_manager_pull_timeout_ms": 1000,
-            "object_manager_push_timeout_ms": 1000,
-        },
-    }],
-    indirect=True)
+    [
+        {
+            # Force at least one task per node.
+            "num_cpus": 1,
+            "num_nodes": 4,
+            "object_store_memory": 1000 * 1024 * 1024,
+            "_system_config": {
+                # Raylet codepath is not stable with a shorter timeout.
+                "num_heartbeats_timeout": 10,
+                "object_manager_pull_timeout_ms": 1000,
+                "object_manager_push_timeout_ms": 1000,
+            },
+        }
+    ],
+    indirect=True,
+)
 def test_object_reconstruction(ray_start_cluster):
     cluster = ray_start_cluster
 
@@ -73,12 +76,10 @@ def test_object_reconstruction(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 4,
-        "num_nodes": 3,
-        "do_init": True
-    }],
-    indirect=True)
+    "ray_start_cluster",
+    [{"num_cpus": 4, "num_nodes": 3, "do_init": True}],
+    indirect=True,
+)
 def test_actor_creation_node_failure(ray_start_cluster):
     # TODO(swang): Refactor test_raylet_failed, etc to reuse the below code.
     cluster = ray_start_cluster
@@ -108,7 +109,8 @@ def test_actor_creation_node_failure(ray_start_cluster):
             # reconstruction for any actor creation tasks that were forwarded
             # to nodes that then failed.
             ready, _ = ray.wait(
-                children_out, num_returns=len(children_out), timeout=5 * 60.0)
+                children_out, num_returns=len(children_out), timeout=5 * 60.0
+            )
             assert len(ready) == len(children_out)
 
             # Replace any actors that died.
@@ -122,40 +124,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
         cluster.remove_node(get_other_nodes(cluster, True)[-1])
 
 
-def test_driver_lives_sequential(ray_start_regular):
-    ray.worker._global_node.kill_raylet()
-    ray.worker._global_node.kill_log_monitor()
-    if not sys.platform.startswith("win"):
-        # fails on windows.
-        ray.worker._global_node.kill_monitor()
-    ray.worker._global_node.kill_gcs_server()
-
-    # If the driver can reach the tearDown method, then it is still alive.
-
-
-def test_driver_lives_parallel(ray_start_regular):
-    all_processes = ray.worker._global_node.all_processes
-
-    process_infos = (all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] +
-                     all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
-                     all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
-                     all_processes[ray_constants.PROCESS_TYPE_MONITOR])
-    assert len(process_infos) == 4
-
-    # Kill all the components in parallel.
-    for process_info in process_infos:
-        process_info.process.terminate()
-
-    time.sleep(0.1)
-    for process_info in process_infos:
-        process_info.process.kill()
-
-    for process_info in process_infos:
-        process_info.process.wait()
-
-    # If the driver can reach the tearDown method, then it is still alive.
-
-
 if __name__ == "__main__":
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

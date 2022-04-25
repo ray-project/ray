@@ -20,6 +20,7 @@ In this guide, we cover examples for the following use cases:
 * How do I :ref:`monitor <train-monitoring>` my training?
 * How do I run my training on pre-emptible instances
   (:ref:`fault tolerance <train-fault-tolerance>`)?
+* How do I :ref:`profile <train-profiling>` my training?
 * How do I use Ray Train to :ref:`train with a large dataset <train-datasets>`?
 * How do I :ref:`tune <train-tune>` my Ray Train model?
 
@@ -60,12 +61,14 @@ Update training function
 First, you'll want to update your training function to support distributed
 training.
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     Ray Train will set up your distributed process group for you and also provides utility methods
     to automatically prepare your model and data for distributed training.
+
+    .. note::
+       Ray Train will still work even if you don't use the ``prepare_model`` and ``prepare_data_loader`` utilities below,
+       and instead handle the logic directly inside your training function.
 
     First, use the ``prepare_model`` function to automatically move your model to the right device and wrap it in
     ``DistributedDataParallel``
@@ -75,6 +78,7 @@ training.
         import torch
         from torch.nn.parallel import DistributedDataParallel
         +from ray import train
+        +import ray.train.torch
 
 
         def train_func():
@@ -102,6 +106,7 @@ training.
         import torch
         from torch.utils.data import DataLoader, DistributedSampler
         +from ray import train
+        +import ray.train.torch
 
 
         def train_func():
@@ -111,16 +116,24 @@ training.
 
             ...
 
-        -   data_loader = DataLoader(my_dataset, sampler=DistributedSampler(dataset))
+        -   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size, sampler=DistributedSampler(dataset))
 
-        +   data_loader = DataLoader(my_dataset)
+        +   data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
         +   data_loader = train.torch.prepare_data_loader(data_loader)
 
             for X, y in data_loader:
         -       X = X.to_device(device)
         -       y = y.to_device(device)
 
-  .. group-tab:: TensorFlow
+    .. tip::
+       Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
+       The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+
+        .. code-block::
+
+            global_batch_size = worker_batch_size * train.world_size()
+
+.. tabbed:: TensorFlow
 
     .. note::
        The current TensorFlow implementation supports
@@ -155,9 +168,9 @@ training.
     .. code-block:: diff
 
         -batch_size = worker_batch_size
-        +batch_size = worker_batch_size * num_workers
+        +batch_size = worker_batch_size * train.world_size()
 
-  .. group-tab:: Horovod
+.. tabbed:: Horovod
 
     If you have a training function that already runs with the `Horovod Ray
     Executor <https://horovod.readthedocs.io/en/stable/ray_include.html#horovod-ray-executor>`_,
@@ -173,36 +186,41 @@ The ``Trainer`` is the primary Ray Train class that is used to manage state and
 execute training. You can create a simple ``Trainer`` for the backend of choice
 with one of the following:
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     .. code-block:: python
 
         from ray.train import Trainer
         trainer = Trainer(backend="torch", num_workers=2)
 
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="torch", num_workers=2, use_gpu=True)
 
-  .. group-tab:: TensorFlow
+
+.. tabbed:: TensorFlow
 
     .. code-block:: python
 
         from ray.train import Trainer
         trainer = Trainer(backend="tensorflow", num_workers=2)
 
-  .. group-tab:: Horovod
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="tensorflow", num_workers=2, use_gpu=True)
+
+.. tabbed:: Horovod
 
     .. code-block:: python
 
         from ray.train import Trainer
         trainer = Trainer(backend="horovod", num_workers=2)
 
+        # For GPU Training, set `use_gpu` to True.
+        # trainer = Trainer(backend="horovod", num_workers=2, use_gpu=True)
+
 To customize the ``backend`` setup, you can replace the string argument with a
 :ref:`train-api-backend-config` object.
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     .. code-block:: python
 
@@ -212,7 +230,7 @@ To customize the ``backend`` setup, you can replace the string argument with a
         trainer = Trainer(backend=TorchConfig(...), num_workers=2)
 
 
-  .. group-tab:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
 
@@ -221,7 +239,7 @@ To customize the ``backend`` setup, you can replace the string argument with a
 
         trainer = Trainer(backend=TensorflowConfig(...), num_workers=2)
 
-  .. group-tab:: Horovod
+.. tabbed:: Horovod
 
     .. code-block:: python
 
@@ -401,7 +419,7 @@ You may want to plug in your training code with your favorite experiment managem
 Ray Train provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
 (the values passed into ``train.report(...)``).
 
-Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainCallback`` interface.
+Ray Train contains built-in callbacks for popular tracking frameworks, or you can implement your own callback via the ``TrainingCallback`` interface.
 
 .. _train-builtin-callbacks:
 
@@ -410,11 +428,13 @@ Built-in Callbacks
 
 The following ``TrainingCallback``\s are available and will log the intermediate results of the training run.
 
-1. :ref:`train-api-json-logger-callback`
-2. :ref:`train-api-tbx-logger-callback`
-3. :ref:`train-api-mlflow-logger-callback`
+1. :ref:`train-api-print-callback`
+2. :ref:`train-api-json-logger-callback`
+3. :ref:`train-api-tbx-logger-callback`
+4. :ref:`train-api-mlflow-logger-callback`
+5. :ref:`train-api-torch-tensorboard-profiler-callback`
 
-Example: Logging to MLflow and Tensorboard
+Example: Logging to MLflow and TensorBoard
 ++++++++++++++++++++++++++++++++++++++++++
 
 **Step 1: Install the necessary packages**
@@ -482,7 +502,6 @@ A simple example for creating a callback that will print out results:
     # [{'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0014500617980957031, '_training_iteration': 3}, {'epoch': 2, '_timestamp': 1630471763, '_time_this_iter_s': 0.0015292167663574219, '_training_iteration': 3}]
     trainer.shutdown()
 
-
 ..
     Advanced Customization
     ~~~~~~~~~~~~~~~~~~~~~~
@@ -504,7 +523,7 @@ Here is an example:
 .. code-block:: python
 
     from ray import train
-    from train.train import Trainer, TrainingCallback
+    from ray.train import Trainer, TrainingCallback
     from typing import List, Dict
 
     import torch
@@ -557,9 +576,7 @@ The latest saved checkpoint can be accessed through the ``Trainer``'s
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
 appropriately in distributed training.
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     .. code-block:: python
         :emphasize-lines: 37, 38, 39
@@ -614,7 +631,7 @@ appropriately in distributed training.
         # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([0.1533])), ('weight', tensor([[0.4529, 0.4618, 0.2730, 0.0190]]))]), '_timestamp': 1639117274}
 
 
-  .. group-tab:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
         :emphasize-lines: 24
@@ -743,9 +760,7 @@ Checkpoints can be loaded into the training function in 2 steps:
 2. The checkpoint to start training with can be bootstrapped by passing in a
    ``checkpoint`` to ``trainer.run()``.
 
-.. tabs::
-
-  .. group-tab:: PyTorch
+.. tabbed:: PyTorch
 
     .. code-block:: python
         :emphasize-lines: 24, 26, 27, 30, 31, 35
@@ -810,7 +825,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         print(trainer.latest_checkpoint)
         # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([-0.3304])), ('weight', tensor([[-0.0197, -0.3704,  0.2944,  0.3117]]))]), '_timestamp': 1639117865}
 
-  .. group-tab:: TensorFlow
+.. tabbed:: TensorFlow
 
     .. code-block:: python
         :emphasize-lines: 16, 22, 23, 26, 27, 30
@@ -908,6 +923,133 @@ number of retries is configurable through the ``max_retries`` argument of the
 
 .. TODO.
 
+.. _train-profiling:
+
+Profiling
+---------
+
+Ray Train comes with an integration with `PyTorch Profiler <https://pytorch.org/blog/introducing-pytorch-profiler-the-new-and-improved-performance-tool/>`_.
+Specifically, it comes with a :ref:`TorchWorkerProfiler <train-api-torch-worker-profiler>` utility class and :ref:`train-api-torch-tensorboard-profiler-callback`  callback
+that allow you to use the PyTorch Profiler as you would in a non-distributed PyTorch script, and synchronize the generated Tensorboard traces onto
+the disk that from which your script was executed from.
+
+**Step 1: Update training function with** ``TorchWorkerProfiler``
+
+.. code-block:: bash
+
+    from ray.train.torch import TorchWorkerProfiler
+
+    def train_func():
+        twp = TorchWorkerProfiler()
+        with profile(..., on_trace_ready=twp.trace_handler) as p:
+            ...
+            profile_results = twp.get_and_clear_profile_traces()
+            train.report(..., **profile_results)
+        ...
+
+**Step 2: Run training function with** ``TorchTensorboardProfilerCallback``
+
+.. code-block:: python
+
+    from ray.train import Trainer
+    from ray.train.callbacks import TorchTensorboardProfilerCallback
+
+    trainer = Trainer(backend="torch", num_workers=2)
+    trainer.start()
+    trainer.run(train_func, callbacks=[TorchTensorboardProfilerCallback()])
+    trainer.shutdown()
+
+
+**Step 3: Visualize the logs**
+
+.. code-block:: bash
+
+    # Navigate to the run directory of the trainer.
+    # For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001/pytorch_profiler`
+    $ cd <TRAINER_RUN_DIR>/pytorch_profiler
+
+    # Install the PyTorch Profiler TensorBoard Plugin.
+    $ pip install torch_tb_profiler
+
+    # Star the TensorBoard UI.
+    $ tensorboard --logdir .
+
+    # View the PyTorch Profiler traces.
+    $ open http://localhost:6006/#pytorch_profiler
+
+.. _torch-amp:
+
+Automatic Mixed Precision
+-------------------------
+
+Automatic mixed precision (AMP) lets you train your models faster by using a lower
+precision datatype for operations like linear layers and convolutions.
+
+.. tabbed:: PyTorch
+
+    You can train your Torch model with AMP by:
+
+    1. Adding ``train.torch.accelerate(amp=True)`` to the top of your training function.
+    2. Wrapping your optimizer with ``train.torch.prepare_optimizer``.
+    3. Replacing your backward call with ``train.torch.backward``.
+
+    .. code-block:: diff
+
+        def train_func():
+        +   train.torch.accelerate(amp=True)
+
+            model = NeuralNetwork()
+            model = train.torch.prepare_model(model)
+
+            data_loader = DataLoader(my_dataset, batch_size=worker_batch_size)
+            data_loader = train.torch.prepare_data_loader(data_loader)
+
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+        +   optimizer = train.torch.prepare_optimizer(optimizer)
+
+            model.train()
+            for epoch in range(90):
+                for images, targets in dataloader:
+                    optimizer.zero_grad()
+
+                    outputs = model(images)
+                    loss = torch.nn.functional.cross_entropy(outputs, targets)
+
+        -           loss.backward()
+        +           train.torch.backward(loss)
+                    optimizer.step()
+            ...
+
+
+.. note:: The performance of AMP varies based on GPU architecture, model type,
+        and data shape. For certain workflows, AMP may perform worse than
+        full-precision training.
+
+.. _train-reproducibility:
+
+Reproducibility
+---------------
+
+.. tabbed:: PyTorch
+
+    To limit sources of nondeterministic behavior, add
+    ``train.torch.enable_reproducibility()`` to the top of your training
+    function. `
+
+    .. code-block:: diff
+
+        def train_func():
+        +   train.torch.enable_reproducibility()
+
+            model = NeuralNetwork()
+            model = train.torch.prepare_model(model)
+
+            ...
+
+    .. warning:: ``train.torch.enable_reproducibility()`` can't guarantee
+        completely reproducible results across executions. To learn more, read
+        the `PyTorch notes on randomness <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+
 .. _train-datasets:
 
 Distributed Data Ingest (Ray Datasets)
@@ -923,7 +1065,7 @@ Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support 
    worker will only load its assigned shard into memory rather than the entire ``Dataset``.
 3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
    can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
-   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline` for more information.
+   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline-api` for more information.
 
 To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Underneath the hood, Ray Train will automatically shard the given dataset.
 
@@ -934,14 +1076,14 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
     already sharded.
 
     .. code-block:: python
+        :emphasize-lines: 1, 6
+
+        from ray.train.tensorflow import prepare_dataset_shard
 
         def train_func():
             ...
-            tf_dataset = ray.train.get_dataset_shard().to_tf()
-            options = tf.data.Options()
-            options.experimental_distribute.auto_shard_policy = \
-                tf.data.experimental.AutoShardPolicy.OFF
-            tf_dataset = tf_dataset.with_options(options)
+            tf_dataset = ray.train.get_dataset_shard().to_tf(...)
+            tf_dataset = prepare_dataset_shard(tf_dataset)
 
 
 **Simple Dataset Example**
@@ -993,10 +1135,10 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
 Pipelined Execution
 ~~~~~~~~~~~~~~~~~~~
-For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline>`.
+For pipelined execution, you just need to convert your :ref:`Dataset <datasets>` into a :ref:`DatasetPipeline <dataset-pipeline-api>`.
 All operations after this conversion will be executed in a pipelined fashion.
 
-See :ref:`dataset-pipeline` for more semantics on pipelining.
+See :ref:`dataset-pipeline-api` for more semantics on pipelining.
 
 Example: Per-Epoch Shuffle Pipeline
 +++++++++++++++++++++++++++++++++++
@@ -1102,7 +1244,7 @@ A couple caveats:
 * You should **not** call ``tune.report`` or ``tune.checkpoint_dir`` in your
   training function. Functional parity is achieved through ``train.report``,
   ``train.save_checkpoint``, and ``train.load_checkpoint``. This allows you to go
-  from Ray Train to Ray Train+RayTune without changing any code in the training
+  from Ray Train to Ray Train + Ray Tune without changing any code in the training
   function.
 
 

@@ -2,7 +2,6 @@ from collections import defaultdict
 import threading
 import traceback
 
-import redis
 import grpc
 
 import ray
@@ -34,18 +33,16 @@ class ImportThread:
         self.worker = worker
         self.mode = mode
         self.gcs_client = worker.gcs_client
-        if worker.gcs_pubsub_enabled:
-            self.subscriber = worker.gcs_function_key_subscriber
-            self.subscriber.subscribe()
-        else:
-            self.subscriber = worker.redis_client.pubsub()
-            self.subscriber.subscribe(
-                b"__keyspace@0__:" + ray._private.function_manager.
-                make_exports_prefix(self.worker.current_job_id.binary()))
+        self.subscriber = worker.gcs_function_key_subscriber
+        self.subscriber.subscribe()
+        self.exception_type = grpc.RpcError
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
+        self.t = None
         # Keep track of the number of imports that we've imported.
         self.num_imported = 0
+        # Protect writes to self.num_imported.
+        self._lock = threading.Lock()
 
     def start(self):
         """Start the import thread."""
@@ -57,7 +54,8 @@ class ImportThread:
 
     def join_import_thread(self):
         """Wait for the thread to exit."""
-        self.t.join()
+        if self.t:
+            self.t.join()
 
     def _run(self):
         try:
@@ -66,22 +64,12 @@ class ImportThread:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
                     return
-
-                if self.worker.gcs_pubsub_enabled:
-                    key = self.subscriber.poll()
-                    if key is None:
-                        # subscriber has closed.
-                        break
-                else:
-                    msg = self.subscriber.get_message()
-                    if msg is None:
-                        self.threads_stopped.wait(timeout=0.01)
-                        continue
-                    if msg["type"] == "subscribe":
-                        continue
-
+                key = self.subscriber.poll()
+                if key is None:
+                    # subscriber has closed.
+                    break
                 self._do_importing()
-        except (OSError, redis.exceptions.ConnectionError, grpc.RpcError) as e:
+        except (OSError, self.exception_type) as e:
             logger.error(f"ImportThread: {e}")
         finally:
             # Close the Redis / GCS subscriber to avoid leaking file
@@ -90,29 +78,39 @@ class ImportThread:
 
     def _do_importing(self):
         while True:
-            export_key = ray._private.function_manager.make_export_key(
-                self.num_imported + 1, self.worker.current_job_id.binary())
-            key = self.gcs_client.internal_kv_get(
-                export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-            if key is not None:
-                self._process_key(key)
-                self.num_imported += 1
-            else:
-                break
+            with self._lock:
+                export_key = ray._private.function_manager.make_export_key(
+                    self.num_imported + 1, self.worker.current_job_id
+                )
+                key = self.gcs_client.internal_kv_get(
+                    export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
+                )
+                if key is not None:
+                    self._process_key(key)
+                    self.num_imported += 1
+                else:
+                    break
 
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""
         if key.startswith(b"RemoteFunction"):
             collision_identifier, function_name = self._internal_kv_multiget(
-                key, ["collision_identifier", "function_name"])
-            return (collision_identifier,
-                    ray._private.utils.decode(function_name.encode()),
-                    "remote function")
+                key, ["collision_identifier", "function_name"]
+            )
+            return (
+                collision_identifier,
+                ray._private.utils.decode(function_name.encode()),
+                "remote function",
+            )
         elif key.startswith(b"ActorClass"):
             collision_identifier, class_name = self._internal_kv_multiget(
-                key, ["collision_identifier", "class_name"])
-            return collision_identifier, ray._private.utils.decode(
-                class_name.encode()), "actor"
+                key, ["collision_identifier", "class_name"]
+            )
+            return (
+                collision_identifier,
+                ray._private.utils.decode(class_name.encode()),
+                "actor",
+            )
 
     def _process_key(self, key):
         """Process the given export key from redis."""
@@ -123,13 +121,17 @@ class ImportThread:
             # of many times. TODO(rkn): We may want to push this to the driver
             # through Redis so that it can be displayed in the dashboard more
             # easily.
-            if (key.startswith(b"RemoteFunction")
-                    or key.startswith(b"ActorClass")):
-                collision_identifier, name, import_type = (
-                    self._get_import_info_for_collision_detection(key))
+            if key.startswith(b"RemoteFunction") or key.startswith(b"ActorClass"):
+                (
+                    collision_identifier,
+                    name,
+                    import_type,
+                ) = self._get_import_info_for_collision_detection(key)
                 self.imported_collision_identifiers[collision_identifier] += 1
-                if (self.imported_collision_identifiers[collision_identifier]
-                        == ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD):
+                if (
+                    self.imported_collision_identifiers[collision_identifier]
+                    == ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD
+                ):
                     logger.warning(
                         "The %s '%s' has been exported %s times. It's "
                         "possible that this warning is accidental, but this "
@@ -139,21 +141,23 @@ class ImportThread:
                         "performance issue and can be resolved by defining "
                         "the remote function on the driver instead. See "
                         "https://github.com/ray-project/ray/issues/6240 for "
-                        "more discussion.", import_type, name,
-                        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
+                        "more discussion.",
+                        import_type,
+                        name,
+                        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD,
+                    )
 
-        if key.startswith(b"RemoteFunction"):
+        if key.startswith(b"RemoteFunction:"):
             # TODO (Alex): There's a race condition here if the worker is
             # shutdown before the function finished registering (because core
             # worker's global worker is unset before shutdown and is needed
             # for profiling).
             # with profiling.profile("register_remote_function"):
-            (self.worker.function_actor_manager.
-             fetch_and_register_remote_function(key))
-        elif key.startswith(b"FunctionsToRun"):
+            (self.worker.function_actor_manager.fetch_and_register_remote_function(key))
+        elif key.startswith(b"FunctionsToRun:"):
             with profiling.profile("fetch_and_run_function"):
                 self.fetch_and_execute_function_to_run(key)
-        elif key.startswith(b"ActorClass"):
+        elif key.startswith(b"ActorClass:"):
             # Keep track of the fact that this actor class has been
             # exported so that we know it is safe to turn this worker
             # into an actor of that class.
@@ -171,8 +175,8 @@ class ImportThread:
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
         (job_id, serialized_function) = self._internal_kv_multiget(
-            key, ["job_id", "function"])
-
+            key, ["job_id", "function"]
+        )
         if self.worker.mode == ray.SCRIPT_MODE:
             return
 
@@ -193,11 +197,13 @@ class ImportThread:
                 self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
-                job_id=ray.JobID(job_id))
+                job_id=ray.JobID(job_id),
+            )
 
     def _internal_kv_multiget(self, key, fields):
         vals = self.gcs_client.internal_kv_get(
-            key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+            key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE
+        )
         if vals is None:
             vals = {}
         else:

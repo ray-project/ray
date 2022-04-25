@@ -24,6 +24,7 @@ class D4RLReader(InputReader):
             ioctx: Current IO context object.
         """
         import d4rl
+
         self.env = gym.make(inputs)
         self.dataset = convert_to_batch(d4rl.qlearning_dataset(self.env))
         assert self.dataset.count >= 1

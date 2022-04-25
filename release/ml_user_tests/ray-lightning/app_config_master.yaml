@@ -5,11 +5,16 @@ debian_packages:
 
 python:
   pip_packages:
-    - git+https://github.com/ray-project/ray_lightning#ray_lightning
     - tblib
+    # Need to have in pip_packages so it is installed on the driver.
+    - git+https://github.com/ray-project/ray_lightning#ray_lightning
   conda_packages: []
 
 post_build_cmds:
   - pip uninstall -y ray || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  # Upgrade the Ray Lightning version in post build commands, otherwise it will be cached in the Anyscale Docker image.
+  - echo {{ env["TIMESTAMP"] }}
+  - pip uninstall ray_lightning -y # Uninstall first so pip does a reinstall.
+  - pip3 install -U --no-cache-dir git+https://github.com/ray-project/ray_lightning#ray_lightning

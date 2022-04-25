@@ -21,11 +21,12 @@ from typing import List, Any, Callable, TypeVar, Tuple, Union
 import numpy as np
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block, BlockMetadata, BlockAccessor, BlockExecStats
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.impl.shuffle import ShuffleOp
 
 T = TypeVar("T")
 
@@ -35,8 +36,37 @@ T = TypeVar("T")
 SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 
-def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
-                      num_reducers: int) -> List[T]:
+class SortOp(ShuffleOp):
+    @staticmethod
+    def map(
+        idx: int,
+        block: Block,
+        output_num_blocks: int,
+        boundaries: List[T],
+        key: SortKeyT,
+        descending: bool,
+    ) -> List[Union[BlockMetadata, Block]]:
+        stats = BlockExecStats.builder()
+        out = BlockAccessor.for_block(block).sort_and_partition(
+            boundaries, key, descending
+        )
+        meta = BlockAccessor.for_block(block).get_metadata(
+            input_files=None, exec_stats=stats.build()
+        )
+        return [meta] + out
+
+    @staticmethod
+    def reduce(
+        key: SortKeyT, descending: bool, *mapper_outputs: List[Block]
+    ) -> (Block, BlockMetadata):
+        return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
+            mapper_outputs, key, descending
+        )
+
+
+def sample_boundaries(
+    blocks: List[ObjectRef[Block]], key: SortKeyT, num_reducers: int
+) -> List[T]:
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
     partition the domain into ranges with approximately equally many elements.
@@ -49,9 +79,7 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
 
     sample_block = cached_remote_fn(_sample_block)
 
-    sample_results = [
-        sample_block.remote(block, n_samples, key) for block in blocks
-    ]
+    sample_results = [sample_block.remote(block, n_samples, key) for block in blocks]
     sample_bar = ProgressBar("Sort Sample", len(sample_results))
     sample_bar.block_until_complete(sample_results)
     sample_bar.close()
@@ -75,11 +103,15 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
     return ret[1:]
 
 
-def sort_impl(blocks: BlockList, key: SortKeyT,
-              descending: bool = False) -> BlockList:
-    blocks = blocks.get_blocks()
-    if len(blocks) == 0:
-        return BlockList([], [])
+# Note: currently the map_groups() API relies on this implementation
+# to partition the same key into the same block.
+def sort_impl(
+    blocks: BlockList, clear_input_blocks: bool, key: SortKeyT, descending: bool = False
+) -> Tuple[BlockList, dict]:
+    stage_info = {}
+    blocks_list = blocks.get_blocks()
+    if len(blocks_list) == 0:
+        return BlockList([], []), stage_info
 
     if isinstance(key, str):
         key = [(key, "descending" if descending else "ascending")]
@@ -87,49 +119,23 @@ def sort_impl(blocks: BlockList, key: SortKeyT,
     if isinstance(key, list):
         descending = key[0][1] == "descending"
 
-    num_mappers = len(blocks)
+    num_mappers = len(blocks_list)
+    # Use same number of output partitions.
     num_reducers = num_mappers
-    boundaries = sample_boundaries(blocks, key, num_reducers)
+    # TODO(swang): sample_boundaries could be fused with a previous stage.
+    boundaries = sample_boundaries(blocks_list, key, num_reducers)
     if descending:
         boundaries.reverse()
 
-    sort_block = cached_remote_fn(_sort_block).options(
-        num_returns=num_reducers)
-    merge_sorted_blocks = cached_remote_fn(_merge_sorted_blocks, num_returns=2)
-
-    map_results = np.empty((num_mappers, num_reducers), dtype=object)
-    for i, block in enumerate(blocks):
-        map_results[i, :] = sort_block.remote(block, boundaries, key,
-                                              descending)
-    map_bar = ProgressBar("Sort Map", len(map_results))
-    map_bar.block_until_complete([ret[0] for ret in map_results])
-    map_bar.close()
-
-    reduce_results = []
-    for j in range(num_reducers):
-        ret = merge_sorted_blocks.remote(key, descending,
-                                         *map_results[:, j].tolist())
-        reduce_results.append(ret)
-    merge_bar = ProgressBar("Sort Merge", len(reduce_results))
-    merge_bar.block_until_complete([ret[0] for ret in reduce_results])
-    merge_bar.close()
-
-    blocks = [b for b, _ in reduce_results]
-    metadata = ray.get([m for _, m in reduce_results])
-    return BlockList(blocks, metadata)
+    shuffle_op = SortOp(
+        map_args=[boundaries, key, descending], reduce_args=[key, descending]
+    )
+    return shuffle_op.execute(
+        blocks,
+        num_reducers,
+        clear_input_blocks,
+    )
 
 
 def _sample_block(block: Block[T], n_samples: int, key: SortKeyT) -> Block[T]:
     return BlockAccessor.for_block(block).sample(n_samples, key)
-
-
-def _sort_block(block, boundaries, key, descending):
-    return BlockAccessor.for_block(block).sort_and_partition(
-        boundaries, key, descending)
-
-
-def _merge_sorted_blocks(key, descending, *blocks: List[Block[T]]) -> Block[T]:
-    if len(blocks) == 1:
-        blocks = blocks[0]  # Python weirdness
-    return BlockAccessor.for_block(blocks[0]).merge_sorted_blocks(
-        list(blocks), key, descending)

@@ -28,7 +28,8 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> &profiler,
   rpc_event_.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
 }
 
-Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
+Profiler::Profiler(WorkerContext &worker_context,
+                   const std::string &node_ip_address,
                    instrumented_io_context &io_service,
                    const std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service),
@@ -39,7 +40,8 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
   rpc_profile_data_->set_component_id(worker_context.GetWorkerID().Binary());
   rpc_profile_data_->set_node_ip_address(node_ip_address);
   periodical_runner_.RunFnPeriodically(
-      [this] { FlushEvents(); }, 1000,
+      [this] { FlushEvents(); },
+      1000,
       "CoreWorker.deadline_timer.flush_profiling_events");
 }
 

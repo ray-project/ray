@@ -4,10 +4,17 @@ from ray.rllib.utils.typing import Dict, SampleBatchType
 from ray.util.iter_metrics import MetricsContext
 
 # Backward compatibility.
-from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS,\
-    NUM_TARGET_UPDATES, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
-    WORKER_UPDATE_TIMER, GRAD_WAIT_TIMER, SAMPLE_TIMER, LEARN_ON_BATCH_TIMER, \
-    LOAD_BATCH_TIMER  # noqa
+from ray.rllib.utils.metrics import (  # noqa: F401
+    LAST_TARGET_UPDATE_TS,
+    NUM_TARGET_UPDATES,
+    APPLY_GRADS_TIMER,
+    COMPUTE_GRADS_TIMER,
+    WORKER_UPDATE_TIMER,
+    GRAD_WAIT_TIMER,
+    SAMPLE_TIMER,
+    LEARN_ON_BATCH_TIMER,
+    LOAD_BATCH_TIMER,
+)
 
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
 AGENT_STEPS_SAMPLED_COUNTER = "num_agent_steps_sampled"
@@ -21,8 +28,10 @@ AGENT_STEPS_TRAINED_COUNTER = "num_agent_steps_trained"
 # Asserts that an object is a type of SampleBatch.
 def _check_sample_batch_type(batch: SampleBatchType) -> None:
     if not isinstance(batch, (SampleBatch, MultiAgentBatch)):
-        raise ValueError("Expected either SampleBatch or MultiAgentBatch, "
-                         "got {}: {}".format(type(batch), batch))
+        raise ValueError(
+            "Expected either SampleBatch or MultiAgentBatch, "
+            "got {}: {}".format(type(batch), batch)
+        )
 
 
 # Returns pipeline global vars that should be periodically sent to each worker.

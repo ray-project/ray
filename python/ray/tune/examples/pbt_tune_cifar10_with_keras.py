@@ -55,14 +55,16 @@ class Cifar10Model(Trainable):
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal",
+        )(y)
         y = Convolution2D(
             filters=64,
             kernel_size=3,
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal",
+        )(y)
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
         y = Convolution2D(
@@ -71,14 +73,16 @@ class Cifar10Model(Trainable):
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal",
+        )(y)
         y = Convolution2D(
             filters=128,
             kernel_size=3,
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal",
+        )(y)
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
         y = Convolution2D(
@@ -87,20 +91,21 @@ class Cifar10Model(Trainable):
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal",
+        )(y)
         y = Convolution2D(
             filters=256,
             kernel_size=3,
             strides=1,
             padding="same",
             activation="relu",
-            kernel_initializer="he_normal")(y)
+            kernel_initializer="he_normal",
+        )(y)
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
         y = Flatten()(y)
         y = Dropout(self.config.get("dropout", 0.5))(y)
-        y = Dense(
-            units=10, activation="softmax", kernel_initializer="he_normal")(y)
+        y = Dense(units=10, activation="softmax", kernel_initializer="he_normal")(y)
 
         model = Model(inputs=x, outputs=y, name="model1")
         return model
@@ -111,12 +116,11 @@ class Cifar10Model(Trainable):
         model = self._build_model(x_train.shape[1:])
 
         opt = tf.keras.optimizers.Adadelta(
-            lr=self.config.get("lr", 1e-4),
-            decay=self.config.get("decay", 1e-4))
+            lr=self.config.get("lr", 1e-4), decay=self.config.get("decay", 1e-4)
+        )
         model.compile(
-            loss="categorical_crossentropy",
-            optimizer=opt,
-            metrics=["accuracy"])
+            loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"]
+        )
         self.model = model
 
     def step(self):
@@ -152,9 +156,8 @@ class Cifar10Model(Trainable):
         batch_size = self.config.get("batch_size", 64)
         gen = aug_gen.flow(x_train, y_train, batch_size=batch_size)
         self.model.fit_generator(
-            generator=gen,
-            epochs=self.config.get("epochs", 1),
-            validation_data=None)
+            generator=gen, epochs=self.config.get("epochs", 1), validation_data=None
+        )
 
         # loss, accuracy
         _, accuracy = self.model.evaluate(x_test, y_test, verbose=0)
@@ -180,18 +183,19 @@ class Cifar10Model(Trainable):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--smoke-test", action="store_true", help="Finish quickly for testing")
+        "--smoke-test", action="store_true", help="Finish quickly for testing"
+    )
     args, _ = parser.parse_known_args()
 
     space = {
         "epochs": 1,
         "batch_size": 64,
-        "lr": tune.grid_search([10**-4, 10**-5]),
+        "lr": tune.grid_search([10 ** -4, 10 ** -5]),
         "decay": tune.sample_from(lambda spec: spec.config.lr / 100.0),
         "dropout": tune.grid_search([0.25, 0.5]),
     }
     if args.smoke_test:
-        space["lr"] = 10**-4
+        space["lr"] = 10 ** -4
         space["dropout"] = 0.5
 
     pbt = PopulationBasedTraining(
@@ -199,16 +203,14 @@ if __name__ == "__main__":
         perturbation_interval=10,
         hyperparam_mutations={
             "dropout": lambda _: np.random.uniform(0, 1),
-        })
+        },
+    )
 
     analysis = tune.run(
         Cifar10Model,
         name="pbt_cifar10",
         scheduler=pbt,
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": 1
-        },
+        resources_per_trial={"cpu": 1, "gpu": 1},
         stop={
             "mean_accuracy": 0.80,
             "training_iteration": 30,

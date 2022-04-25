@@ -21,18 +21,20 @@ def conda_env(env_name):
         # Clean up created conda env upon test exit to prevent leaking
         del os.environ["JOB_COMPATIBILITY_TEST_TEMP_ENV"]
         subprocess.run(
-            f"conda env remove -y --name {env_name}",
-            shell=True,
-            stdout=subprocess.PIPE)
+            f"conda env remove -y --name {env_name}", shell=True, stdout=subprocess.PIPE
+        )
 
 
 def _compatibility_script_path(file_name: str) -> str:
     return os.path.join(
-        os.path.dirname(__file__), "backwards_compatibility_scripts",
-        file_name)
+        os.path.dirname(__file__), "backwards_compatibility_scripts", file_name
+    )
 
 
 class TestBackwardsCompatibility:
+    # TODO (architkulkarni): Reenable test after #22368 is merged, and make the
+    # it backwards compatibility script install the commit from #22368.
+    @pytest.mark.skip("#22368 breaks backwards compatibility of the package REST API.")
     def test_cli(self):
         """
         1) Create a new conda environment with ray version X installed
@@ -48,8 +50,7 @@ class TestBackwardsCompatibility:
             shell_cmd = f"{_compatibility_script_path('test_backwards_compatibility.sh')}"  # noqa: E501
 
             try:
-                subprocess.check_output(
-                    shell_cmd, shell=True, stderr=subprocess.STDOUT)
+                subprocess.check_output(shell_cmd, shell=True, stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 logger.error(str(e))
                 logger.error(e.stdout.decode())

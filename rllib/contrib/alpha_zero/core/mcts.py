@@ -19,11 +19,12 @@ class Node:
 
         self.action_space_size = self.env.action_space.n
         self.child_total_value = np.zeros(
-            [self.action_space_size], dtype=np.float32)  # Q
-        self.child_priors = np.zeros(
-            [self.action_space_size], dtype=np.float32)  # P
+            [self.action_space_size], dtype=np.float32
+        )  # Q
+        self.child_priors = np.zeros([self.action_space_size], dtype=np.float32)  # P
         self.child_number_visits = np.zeros(
-            [self.action_space_size], dtype=np.float32)  # N
+            [self.action_space_size], dtype=np.float32
+        )  # N
         self.valid_actions = obs["action_mask"].astype(np.bool)
 
         self.reward = reward
@@ -54,8 +55,11 @@ class Node:
         return self.child_total_value / (1 + self.child_number_visits)
 
     def child_U(self):
-        return math.sqrt(self.number_visits) * self.child_priors / (
-            1 + self.child_number_visits)
+        return (
+            math.sqrt(self.number_visits)
+            * self.child_priors
+            / (1 + self.child_number_visits)
+        )
 
     def best_action(self):
         """
@@ -89,7 +93,8 @@ class Node:
                 reward=reward,
                 done=done,
                 obs=obs,
-                mcts=self.mcts)
+                mcts=self.mcts,
+            )
         return self.children[action]
 
     def backup(self, value):
@@ -125,12 +130,12 @@ class MCTS:
             if leaf.done:
                 value = leaf.reward
             else:
-                child_priors, value = self.model.compute_priors_and_value(
-                    leaf.obs)
+                child_priors, value = self.model.compute_priors_and_value(leaf.obs)
                 if self.add_dirichlet_noise:
                     child_priors = (1 - self.dir_epsilon) * child_priors
                     child_priors += self.dir_epsilon * np.random.dirichlet(
-                        [self.dir_noise] * child_priors.size)
+                        [self.dir_noise] * child_priors.size
+                    )
 
                 leaf.expand(child_priors)
             leaf.backup(value)
@@ -138,7 +143,8 @@ class MCTS:
         # Tree policy target (TPT)
         tree_policy = node.child_number_visits / node.number_visits
         tree_policy = tree_policy / np.max(
-            tree_policy)  # to avoid overflows when computing softmax
+            tree_policy
+        )  # to avoid overflows when computing softmax
         tree_policy = np.power(tree_policy, self.temperature)
         tree_policy = tree_policy / np.sum(tree_policy)
         if self.exploit:
@@ -147,6 +153,5 @@ class MCTS:
             action = np.argmax(tree_policy)
         else:
             # otherwise sample an action according to tree policy probabilities
-            action = np.random.choice(
-                np.arange(node.action_space_size), p=tree_policy)
+            action = np.random.choice(np.arange(node.action_space_size), p=tree_policy)
         return tree_policy, action, node.children[action]

@@ -5,18 +5,32 @@ import os
 from contextlib import contextmanager
 import pytest
 import tempfile
+import socket
 import subprocess
 import json
 import time
 from pathlib import Path
+from unittest import mock
+import shutil
+import platform
+from tempfile import gettempdir
 
 import ray
-from ray.cluster_utils import (Cluster, AutoscalingCluster,
-                               cluster_not_supported)
-from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
-from ray._private.test_utils import (init_error_pubsub, init_log_pubsub,
-                                     setup_tls, teardown_tls,
-                                     get_and_run_node_killer)
+import ray.ray_constants as ray_constants
+from ray.cluster_utils import Cluster, AutoscalingCluster, cluster_not_supported
+from ray._private.runtime_env.pip import PipProcessor
+from ray._private.services import (
+    REDIS_EXECUTABLE,
+    _start_redis_instance,
+    wait_for_redis_to_start,
+)
+from ray._private.test_utils import (
+    init_error_pubsub,
+    init_log_pubsub,
+    setup_tls,
+    teardown_tls,
+    get_and_run_node_killer,
+)
 import ray.util.client.server.server as ray_client_server
 
 
@@ -46,6 +60,36 @@ def get_default_fixture_ray_kwargs():
         "_system_config": system_config,
     }
     return ray_kwargs
+
+
+@pytest.fixture
+def external_redis(request, monkeypatch):
+    # Setup external Redis and env var for initialization.
+    param = getattr(request, "param", {})
+    external_redis_ports = param.get("external_redis_ports")
+    if external_redis_ports is None:
+        with socket.socket() as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+        external_redis_ports = [port]
+    else:
+        del param["external_redis_ports"]
+    processes = []
+    for port in external_redis_ports:
+        temp_dir = ray._private.utils.get_ray_temp_dir()
+        port, proc = _start_redis_instance(
+            REDIS_EXECUTABLE,
+            temp_dir,
+            port,
+            password=ray_constants.REDIS_DEFAULT_PASSWORD,
+        )
+        processes.append(proc)
+        wait_for_redis_to_start("127.0.0.1", port, ray_constants.REDIS_DEFAULT_PASSWORD)
+    address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
+    monkeypatch.setenv("RAY_REDIS_ADDRESS", address_str)
+    yield None
+    for proc in processes:
+        proc.process.terminate()
 
 
 @contextmanager
@@ -85,6 +129,16 @@ def ray_start_regular(request):
         yield res
 
 
+# We can compose external_redis and ray_start_regular instead of creating this
+# separate fixture, if there is a good way to ensure external_redis runs before
+# ray_start_regular.
+@pytest.fixture
+def ray_start_regular_with_external_redis(request, external_redis):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
 @pytest.fixture(scope="module")
 def ray_start_regular_shared(request):
     param = getattr(request, "param", {})
@@ -92,12 +146,7 @@ def ray_start_regular_shared(request):
         yield res
 
 
-@pytest.fixture(
-    scope="module", params=[{
-        "local_mode": True
-    }, {
-        "local_mode": False
-    }])
+@pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
 def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
@@ -120,7 +169,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    if cluster_not_supported:
+    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
+    if cluster_not_supported_:
         pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
@@ -161,6 +211,14 @@ def ray_start_cluster(request):
 
 
 @pytest.fixture
+def ray_start_cluster_enabled(request):
+    param = getattr(request, "param", {})
+    param["skip_cluster"] = False
+    with _ray_start_cluster(**param) as res:
+        yield res
+
+
+@pytest.fixture
 def ray_start_cluster_init(request):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, **param) as res:
@@ -169,6 +227,16 @@ def ray_start_cluster_init(request):
 
 @pytest.fixture
 def ray_start_cluster_head(request):
+    param = getattr(request, "param", {})
+    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+        yield res
+
+
+# We can compose external_redis and ray_start_cluster_head instead of creating
+# this separate fixture, if there is a good way to ensure external_redis runs
+# before ray_start_cluster_head.
+@pytest.fixture
+def ray_start_cluster_head_with_external_redis(request, external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
@@ -200,15 +268,18 @@ def ray_start_object_store_memory(request):
 @pytest.fixture
 def call_ray_start(request):
     parameter = getattr(
-        request, "param", "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0")
+        request,
+        "param",
+        "ray start --head --num-cpus=1 --min-worker-port=0 "
+        "--max-worker-port=0 --port 0",
+    )
     command_args = parameter.split(" ")
     out = ray._private.utils.decode(
-        subprocess.check_output(command_args, stderr=subprocess.STDOUT))
+        subprocess.check_output(command_args, stderr=subprocess.STDOUT)
+    )
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
-    address_location = (
-        out.find(redis_substring_prefix) + len(redis_substring_prefix))
+    address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
     address = out[address_location:]
     address = address.split("'")[0]
 
@@ -226,8 +297,7 @@ def call_ray_start_with_external_redis(request):
     port_list = ports.split(",")
     for port in port_list:
         temp_dir = ray._private.utils.get_ray_temp_dir()
-        _start_redis_instance(
-            REDIS_EXECUTABLE, temp_dir, int(port), password="123")
+        _start_redis_instance(REDIS_EXECUTABLE, temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
     subprocess.call(cmd.split(" "))
@@ -257,11 +327,10 @@ def call_ray_stop_only():
 # Used to test both Ray Client and non-Ray Client codepaths.
 # Usage: In your test, call `ray.init(address)`.
 @pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster, request):
+def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
-
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
@@ -313,6 +382,13 @@ def set_enable_auto_connect(enable_auto_connect: str = "0"):
         del os.environ["RAY_ENABLE_AUTO_CONNECT"]
 
 
+@pytest.fixture
+def enable_mac_large_object_store():
+    os.environ["RAY_ENABLE_MAC_LARGE_OBJECT_STORE"] = "1"
+    yield
+    del os.environ["RAY_ENABLE_MAC_LARGE_OBJECT_STORE"]
+
+
 @pytest.fixture()
 def two_node_cluster():
     system_config = {
@@ -322,7 +398,8 @@ def two_node_cluster():
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
     cluster = ray.cluster_utils.Cluster(
-        head_node_args={"_system_config": system_config})
+        head_node_args={"_system_config": system_config}
+    )
     for _ in range(2):
         remote_node = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
@@ -368,9 +445,12 @@ spill_local_path = "/tmp/spill"
 # -- Spilling configs --
 file_system_object_spilling_config = {
     "type": "filesystem",
-    "params": {
-        "directory_path": spill_local_path
-    }
+    "params": {"directory_path": spill_local_path},
+}
+
+buffer_object_spilling_config = {
+    "type": "filesystem",
+    "params": {"directory_path": spill_local_path, "buffer_size": 1_000_000},
 }
 
 # Since we have differet protocol for a local external storage (e.g., fs)
@@ -378,36 +458,48 @@ file_system_object_spilling_config = {
 # This mocks the distributed fs with cluster utils.
 mock_distributed_fs_object_spilling_config = {
     "type": "mock_distributed_fs",
-    "params": {
-        "directory_path": spill_local_path
-    }
+    "params": {"directory_path": spill_local_path},
 }
 smart_open_object_spilling_config = {
     "type": "smart_open",
-    "params": {
-        "uri": f"s3://{bucket_name}/"
-    }
+    "params": {"uri": f"s3://{bucket_name}/"},
+}
+ray_storage_object_spilling_config = {
+    "type": "ray_storage",
+    # Force the storage config so we don't need to patch each test to separately
+    # configure the storage param under this.
+    "params": {"_force_storage_for_testing": spill_local_path},
+}
+buffer_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
+}
+multi_smart_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {"uri": [f"s3://{bucket_name}/{i}" for i in range(3)]},
 }
 
 unstable_object_spilling_config = {
     "type": "unstable_fs",
     "params": {
         "directory_path": spill_local_path,
-    }
+    },
 }
 slow_object_spilling_config = {
     "type": "slow_fs",
     "params": {
         "directory_path": spill_local_path,
-    }
+    },
 }
 
 
 def create_object_spilling_config(request, tmp_path):
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
-    if (request.param["type"] == "filesystem"
-            or request.param["type"] == "mock_distributed_fs"):
+    if (
+        request.param["type"] == "filesystem"
+        or request.param["type"] == "mock_distributed_fs"
+    ):
         request.param["params"]["directory_path"] = str(temp_folder)
     return json.dumps(request.param), temp_folder
 
@@ -416,9 +508,21 @@ def create_object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
+    ],
+)
+def fs_only_object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
+        ray_storage_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
         # smart_open_object_spilling_config,
-    ])
+    ],
+)
 def object_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
@@ -427,24 +531,29 @@ def object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
-        mock_distributed_fs_object_spilling_config
-    ])
+        mock_distributed_fs_object_spilling_config,
+    ],
+)
 def multi_node_object_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
 
 @pytest.fixture(
-    scope="function", params=[
+    scope="function",
+    params=[
         unstable_object_spilling_config,
-    ])
+    ],
+)
 def unstable_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
 
 @pytest.fixture(
-    scope="function", params=[
+    scope="function",
+    params=[
         slow_object_spilling_config,
-    ])
+    ],
+)
 def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
@@ -453,11 +562,13 @@ def _ray_start_chaos_cluster(request):
     param = getattr(request, "param", {})
     kill_interval = param.pop("kill_interval", None)
     config = param.pop("_system_config", {})
-    config.update({
-        "num_heartbeats_timeout": 10,
-        "raylet_heartbeat_period_milliseconds": 100,
-        "task_retry_delay_ms": 100,
-    })
+    config.update(
+        {
+            "num_heartbeats_timeout": 10,
+            "raylet_heartbeat_period_milliseconds": 100,
+            "task_retry_delay_ms": 100,
+        }
+    )
     # Config of workers that are re-started.
     head_resources = param.pop("head_resources")
     worker_node_types = param.pop("worker_node_types")
@@ -465,7 +576,8 @@ def _ray_start_chaos_cluster(request):
         head_resources,
         worker_node_types,
         idle_timeout_minutes=10,  # Don't take down nodes.
-        **param)
+        **param,
+    )
     cluster.start(_system_config=config)
     ray.init("auto")
     nodes = ray.nodes()
@@ -481,8 +593,9 @@ def _ray_start_chaos_cluster(request):
         killed = ray.get(node_killer.get_total_killed_nodes.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
-        assert died.issubset(killed), (f"Raylets {died - killed} that "
-                                       "we did not kill crashed")
+        assert died.issubset(
+            killed
+        ), f"Raylets {died - killed} that we did not kill crashed"
 
     ray.shutdown()
     cluster.shutdown()
@@ -490,7 +603,119 @@ def _ray_start_chaos_cluster(request):
 
 @pytest.fixture
 def ray_start_chaos_cluster(request):
-    """Returns the cluster and chaos thread.
-    """
+    """Returns the cluster and chaos thread."""
     for x in _ray_start_chaos_cluster(request):
         yield x
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def runtime_env_disable_URI_cache():
+    with mock.patch.dict(
+        os.environ,
+        {
+            "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PIP_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
+            "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
+        },
+    ):
+        print(
+            "URI caching disabled (conda, pip, working_dir, py_modules cache "
+            "size set to 0)."
+        )
+        yield
+
+
+# Use to create virtualenv that clone from current python env.
+# The difference between this fixture and `pytest_virtual.virtual` is that
+# `pytest_virtual.virtual` will not inherit current python env's site-package.
+# Note: Can't use in virtualenv, this must be noted when testing locally.
+@pytest.fixture(scope="function")
+def cloned_virtualenv():
+    # Lazy import pytest_virtualenv,
+    # aviod import `pytest_virtualenv` in test case `Minimal install`
+    from pytest_virtualenv import VirtualEnv
+
+    if PipProcessor._is_in_virtualenv():
+        raise RuntimeError("Forbid the use of this fixture in virtualenv")
+
+    venv = VirtualEnv(
+        args=[
+            "--system-site-packages",
+            "--reset-app-data",
+            "--no-periodic-update",
+            "--no-download",
+        ],
+    )
+    yield venv
+    venv.teardown()
+
+
+@pytest.fixture
+def set_runtime_env_retry_times(request):
+    runtime_env_retry_times = getattr(request, "param", "0")
+    try:
+        os.environ["RUNTIME_ENV_RETRY_TIMES"] = runtime_env_retry_times
+        yield runtime_env_retry_times
+    finally:
+        del os.environ["RUNTIME_ENV_RETRY_TIMES"]
+
+
+@pytest.fixture
+def listen_port(request):
+    port = getattr(request, "param", 0)
+    try:
+        sock = socket.socket()
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
+        sock.bind(("127.0.0.1", port))
+        yield port
+    finally:
+        sock.close()
+
+
+@pytest.fixture
+def set_bad_runtime_env_cache_ttl_seconds(request):
+    ttl = getattr(request, "param", "0")
+    os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"] = ttl
+    yield ttl
+    del os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"]
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    # execute all other hooks to obtain the report object
+    outcome = yield
+    rep = outcome.get_result()
+
+    # We temporarily restrict to Linux until we have artifact dirs
+    # for Windows and Mac
+    if platform.system() != "Linux":
+        return
+
+    # Only archive failed tests after the "call" phase of the test
+    if rep.when != "call" or not rep.failed:
+        return
+
+    # Get dir to write zipped logs to
+    archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
+
+    if not archive_dir:
+        return
+
+    if not os.path.exists(archive_dir):
+        os.makedirs(archive_dir)
+
+    # Get logs dir from the latest ray session
+    tmp_dir = gettempdir()
+    logs_dir = os.path.join(tmp_dir, "ray", "session_latest", "logs")
+
+    if not os.path.exists(logs_dir):
+        return
+
+    # Write zipped logs to logs archive dir
+    test_name = rep.nodeid.replace(os.sep, "::")
+    output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
+    shutil.make_archive(output_file, "zip", logs_dir)

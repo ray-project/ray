@@ -20,7 +20,7 @@ CONFIGS = {
         "explore": False,
         "observation_filter": "MeanStdFilter",
         "num_workers": 2,
-        "min_iter_time_s": 1,
+        "min_time_s_per_reporting": 1,
         "optimizer": {
             "num_replay_buffer_shards": 1,
         },
@@ -61,13 +61,16 @@ CONFIGS = {
 
 def export_test(alg_name, failures, framework="tf"):
     def valid_tf_model(model_dir):
-        return os.path.exists(os.path.join(model_dir, "saved_model.pb")) \
-            and os.listdir(os.path.join(model_dir, "variables"))
+        return os.path.exists(os.path.join(model_dir, "saved_model.pb")) and os.listdir(
+            os.path.join(model_dir, "variables")
+        )
 
     def valid_tf_checkpoint(checkpoint_dir):
-        return os.path.exists(os.path.join(checkpoint_dir, "model.meta")) \
-            and os.path.exists(os.path.join(checkpoint_dir, "model.index")) \
+        return (
+            os.path.exists(os.path.join(checkpoint_dir, "model.meta"))
+            and os.path.exists(os.path.join(checkpoint_dir, "model.index"))
             and os.path.exists(os.path.join(checkpoint_dir, "checkpoint"))
+        )
 
     cls = get_trainer_class(alg_name)
     config = CONFIGS[alg_name].copy()
@@ -81,8 +84,9 @@ def export_test(alg_name, failures, framework="tf"):
         res = algo.train()
         print("current status: " + str(res))
 
-    export_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
-                              "export_dir_%s" % alg_name)
+    export_dir = os.path.join(
+        ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
+    )
     print("Exporting model ", alg_name, export_dir)
     algo.export_policy_model(export_dir)
     if framework == "tf" and not valid_tf_model(export_dir):
@@ -97,16 +101,14 @@ def export_test(alg_name, failures, framework="tf"):
         shutil.rmtree(export_dir)
 
         print("Exporting default policy", alg_name, export_dir)
-        algo.export_model([ExportFormat.CHECKPOINT, ExportFormat.MODEL],
-                          export_dir)
-        if not valid_tf_model(os.path.join(export_dir, ExportFormat.MODEL)) \
-                or not valid_tf_checkpoint(
-                    os.path.join(export_dir, ExportFormat.CHECKPOINT)):
+        algo.export_model([ExportFormat.CHECKPOINT, ExportFormat.MODEL], export_dir)
+        if not valid_tf_model(
+            os.path.join(export_dir, ExportFormat.MODEL)
+        ) or not valid_tf_checkpoint(os.path.join(export_dir, ExportFormat.CHECKPOINT)):
             failures.append(alg_name)
 
         # Test loading the exported model.
-        model = tf.saved_model.load(
-            os.path.join(export_dir, ExportFormat.MODEL))
+        model = tf.saved_model.load(os.path.join(export_dir, ExportFormat.MODEL))
         assert model
 
         shutil.rmtree(export_dir)
@@ -153,4 +155,5 @@ class TestExport(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

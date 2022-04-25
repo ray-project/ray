@@ -47,7 +47,7 @@ class CurriculumCapableEnv(TaskSettableEnv):
         # Level 1: x1
         # Level 2: x10
         # Level 3: x100, etc..
-        r *= 10**(self.cur_level - 1)
+        r *= 10 ** (self.cur_level - 1)
         if self._timesteps >= self.max_timesteps:
             d = True
         return s, r, d, i
@@ -70,6 +70,5 @@ class CurriculumCapableEnv(TaskSettableEnv):
 
     def _make_lake(self):
         self.frozen_lake = gym.make(
-            "FrozenLake-v1",
-            desc=self.MAPS[self.cur_level - 1],
-            is_slippery=False)
+            "FrozenLake-v1", desc=self.MAPS[self.cur_level - 1], is_slippery=False
+        )

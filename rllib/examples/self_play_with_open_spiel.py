@@ -39,7 +39,8 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--num-workers", type=int, default=2)
 parser.add_argument(
@@ -47,35 +48,32 @@ parser.add_argument(
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.")
+    "Trainer state.",
+)
 parser.add_argument(
-    "--env",
-    type=str,
-    default="connect_four",
-    choices=["markov_soccer", "connect_four"])
+    "--env", type=str, default="connect_four", choices=["markov_soccer", "connect_four"]
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=200,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=200, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=10000000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=10000000, help="Number of timesteps to train."
+)
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
     default=0.95,
     help="Win-rate at which we setup another opponent by freezing the "
     "current main policy and playing against a uniform distribution "
-    "of previously frozen 'main's from here on.")
+    "of previously frozen 'main's from here on.",
+)
 parser.add_argument(
     "--num-episodes-human-play",
     type=int,
     default=10,
     help="How many episodes to play against the user on the command "
-    "line after training has finished.")
+    "line after training has finished.",
+)
 args = parser.parse_args()
 
 
@@ -138,9 +136,13 @@ class SelfPlayCallback(DefaultCallbacks):
                 # agent_id = [0|1] -> policy depends on episode ID
                 # This way, we make sure that both policies sometimes play
                 # (start player) and sometimes agent1 (player to move 2nd).
-                return "main" if episode.episode_id % 2 == agent_id \
-                    else "main_v{}".format(np.random.choice(
-                        list(range(1, self.current_opponent + 1))))
+                return (
+                    "main"
+                    if episode.episode_id % 2 == agent_id
+                    else "main_v{}".format(
+                        np.random.choice(list(range(1, self.current_opponent + 1)))
+                    )
+                )
 
             new_policy = trainer.add_policy(
                 policy_id=new_pol_id,
@@ -166,8 +168,7 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
-    register_env("open_spiel_env",
-                 lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
+    register_env("open_spiel_env", lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
     def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         # agent_id = [0|1] -> policy depends on episode ID
@@ -263,10 +264,8 @@ if __name__ == "__main__":
                 if player_id == human_player:
                     action = ask_user_for_action(time_step)
                 else:
-                    obs = np.array(
-                        time_step.observations["info_state"][player_id])
-                    action = trainer.compute_single_action(
-                        obs, policy_id="main")
+                    obs = np.array(time_step.observations["info_state"][player_id])
+                    action = trainer.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a
                     # random one.
                     legal = time_step.observations["legal_actions"][player_id]

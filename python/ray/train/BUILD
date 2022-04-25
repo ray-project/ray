@@ -40,6 +40,15 @@ py_test(
 )
 
 py_test(
+    name = "torch_tensorboard_profiler_example",
+    size = "small",
+    main = "examples/torch_tensorboard_profiler_example.py",
+    srcs = ["examples/torch_tensorboard_profiler_example.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "transformers_example",
     size = "large",
     main = "examples/transformers/transformers_example.py",
@@ -119,9 +128,25 @@ py_test(
 )
 
 py_test(
+    name = "test_minimal",
+    size = "small",
+    srcs = ["tests/test_minimal.py"],
+    tags = ["team:ml", "exclusive", "minimal"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_results_preprocessors",
+    size = "small",
+    srcs = ["tests/test_results_preprocessors.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )

@@ -17,8 +17,10 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
+#include "ray/common/placement_group.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -29,13 +31,6 @@ enum CommitState {
   PREPARED,
   /// Resources are COMMITTED.
   COMMITTED
-};
-
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
 };
 
 struct BundleTransactionState {
@@ -63,7 +58,8 @@ class PlacementGroupResourceManager {
   /// CPU_group_i). This is phase two of 2PC.
   ///
   /// \param bundle_spec Specification of bundle whose resources will be commited.
-  virtual void CommitBundle(const BundleSpecification &bundle_spec) = 0;
+  virtual void CommitBundles(
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
 
   /// Return back all the bundle resource.
   ///
@@ -89,24 +85,18 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// Create a new placement group resource manager.
   ///
   /// \param cluster_resource_scheduler_: The resource allocator of new scheduler.
-  /// \param update_resources: Called when a new custom resource is created.
-  /// \param delete_resources: Called when a custom resource is deleted.
   NewPlacementGroupResourceManager(
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-      std::function<
-          void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
-          update_resources,
-      std::function<void(const std::vector<std::string> &resource_names)>
-          delete_resources);
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler);
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
-  bool PrepareBundles(
-      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs);
+  bool PrepareBundles(const std::vector<std::shared_ptr<const BundleSpecification>>
+                          &bundle_specs) override;
 
-  void CommitBundle(const BundleSpecification &bundle_spec);
+  void CommitBundles(const std::vector<std::shared_ptr<const BundleSpecification>>
+                         &bundle_specs) override;
 
-  void ReturnBundle(const BundleSpecification &bundle_spec);
+  void ReturnBundle(const BundleSpecification &bundle_spec) override;
 
   const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
     return cluster_resource_scheduler_;
@@ -114,13 +104,6 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
  private:
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-
-  /// Called when a new custom resource is created.
-  std::function<void(const ray::gcs::NodeResourceInfoAccessor::ResourceMap &resources)>
-      update_resources_;
-
-  /// Called when a custom resource is deleted.
-  std::function<void(const std::vector<std::string> &resource_names)> delete_resources_;
 
   /// Tracking placement group bundles and their states. This mapping is the source of
   /// truth for the new scheduler.
@@ -130,9 +113,16 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// Lock the required resources from local available resources. Note that this is phase
   /// one of 2PC, it will not convert placement group resource(like CPU -> CPU_group_i).
   ///
-  /// \param bundle_spec Specification of bundle whose resources will be prepared.
+  /// \param bundle_spec Specification of a bundle whose resources will be prepared.
   /// \return bool True if the bundle successfully reserved resources, otherwise false.
   bool PrepareBundle(const BundleSpecification &bundle_spec);
+
+  /// Convert the normal original resources that were locked in the preparation phase
+  /// to the placement group customer resources.
+  ///
+  /// \param bundle_spec Specification of a bundle whose resources have been locked
+  /// successfully before.
+  void CommitBundle(const BundleSpecification &bundle_spec);
 };
 
 }  // namespace raylet

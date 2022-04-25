@@ -60,6 +60,21 @@ class CoreWorker;
 /// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
 /// associated to the only worker. Then no need to call `SetCurrentThreadWorkerId` in
 /// your own threads. Currently a Python worker process starts only 1 worker.
+///
+/// How does core worker process dealloation work?
+///
+/// For an individual core worker thread's shutdown process, please check core_worker.h.
+/// For the core worker process, it has 2 ways to properly shutdown the worker.
+///
+/// If it is a driver:
+///     If the core worker is initialized at a driver, ShutdownDriver must be called.
+///     before deallocating the core worker process.
+///
+/// If it is a worker:
+///    If the core worker is initialized at a worker, it is expected to be shutdown
+///    when the task execution loop is terminated from each core worker instance.
+///    Core worker ensures this by having a strong check there.
+///
 class CoreWorkerProcess {
  public:
   ///
@@ -97,6 +112,7 @@ class CoreWorkerProcess {
   ///
 
   /// Shutdown the driver completely at the process level.
+  /// It must be only used by drivers, not workers.
   static void Shutdown();
 
   ///
@@ -180,7 +196,7 @@ class CoreWorkerProcessImpl {
   const WorkerID global_worker_id_;
 
   /// Map from worker ID to worker.
-  std::unordered_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<WorkerID, std::shared_ptr<CoreWorker>> workers_ GUARDED_BY(mutex_);
 
   /// To protect access to workers_ and global_worker_
   mutable absl::Mutex mutex_;

@@ -40,7 +40,7 @@ class GroupAgentsWrapper(MultiAgentEnv):
             act_space (Space): Optional action space for the grouped env.
                 Must be a tuple space.
         """
-
+        super().__init__()
         self.env = env
         self.groups = groups
         self.agent_id_to_group = {}
@@ -48,12 +48,15 @@ class GroupAgentsWrapper(MultiAgentEnv):
             for agent_id in agent_ids:
                 if agent_id in self.agent_id_to_group:
                     raise ValueError(
-                        "Agent id {} is in multiple groups".format(agent_id))
+                        "Agent id {} is in multiple groups".format(agent_id)
+                    )
                 self.agent_id_to_group[agent_id] = group_id
         if obs_space is not None:
             self.observation_space = obs_space
         if act_space is not None:
             self.action_space = act_space
+        for group_id in groups.keys():
+            self._agent_ids.add(group_id)
 
     def seed(self, seed=None):
         if not hasattr(self.env, "seed"):
@@ -95,8 +98,11 @@ class GroupAgentsWrapper(MultiAgentEnv):
         out = {}
         for agent_id, value in items.items():
             if agent_id in self.groups:
-                assert len(value) == len(self.groups[agent_id]), \
-                    (agent_id, value, self.groups)
+                assert len(value) == len(self.groups[agent_id]), (
+                    agent_id,
+                    value,
+                    self.groups,
+                )
                 for a, v in zip(self.groups[agent_id], value):
                     out[a] = v
             else:
@@ -117,7 +123,9 @@ class GroupAgentsWrapper(MultiAgentEnv):
                     else:
                         raise ValueError(
                             "Missing member of group {}: {}: {}".format(
-                                group_id, a, items))
+                                group_id, a, items
+                            )
+                        )
                 grouped_items[group_id] = agg_fn(group_out)
             else:
                 grouped_items[agent_id] = item

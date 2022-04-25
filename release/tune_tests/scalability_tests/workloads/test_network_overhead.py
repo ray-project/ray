@@ -35,7 +35,8 @@ def main(smoke_test: bool = False):
         trial_length_s=trial_length_s,
         max_runtime=max_runtime,
         resources_per_trial={"cpu": 2},  # One per node
-        sync_config=tune.SyncConfig(syncer="auto"))
+        sync_config=tune.SyncConfig(syncer="auto"),
+    )
 
 
 if __name__ == "__main__":
@@ -44,7 +45,8 @@ if __name__ == "__main__":
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for training.")
+        help="Finish quickly for training.",
+    )
     args = parser.parse_args()
 
     main(args.smoke_test)

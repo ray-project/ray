@@ -4,8 +4,13 @@ import time
 
 import ray
 
-from lightgbm_ray import train, RayDMatrix, RayFileType, \
-    RayParams, RayDeviceQuantileDMatrix
+from lightgbm_ray import (
+    train,
+    RayDMatrix,
+    RayFileType,
+    RayParams,
+    RayDeviceQuantileDMatrix,
+)
 from lightgbm_ray.tune import _TuneLGBMRank0Mixin
 from lightgbm.callback import CallbackEnv
 
@@ -61,15 +66,17 @@ class TrackingCallback(_TuneLGBMRank0Mixin):
     order = 1
 
 
-def train_ray(path,
-              num_workers,
-              num_boost_rounds,
-              num_files=0,
-              regression=False,
-              use_gpu=False,
-              ray_params=None,
-              lightgbm_params=None,
-              **kwargs):
+def train_ray(
+    path,
+    num_workers,
+    num_boost_rounds,
+    num_files=0,
+    regression=False,
+    use_gpu=False,
+    ray_params=None,
+    lightgbm_params=None,
+    **kwargs,
+):
     path = os.path.expanduser(path)
     if not os.path.exists(path):
         raise ValueError(f"Path does not exist: {path}")
@@ -84,6 +91,7 @@ def train_ray(path,
     if use_gpu:
         try:
             import cupy  # noqa: F401
+
             use_device_matrix = True
         except ImportError:
             use_device_matrix = False
@@ -94,29 +102,35 @@ def train_ray(path,
             num_actors=num_workers,
             label="labels",
             ignore=["partition"],
-            filetype=RayFileType.PARQUET)
+            filetype=RayFileType.PARQUET,
+        )
     else:
         dtrain = RayDMatrix(
             path,
             num_actors=num_workers,
             label="labels",
             ignore=["partition"],
-            filetype=RayFileType.PARQUET)
+            filetype=RayFileType.PARQUET,
+        )
 
     config = {"device": "cpu" if not use_gpu else "gpu"}
 
     if not regression:
         # Classification
-        config.update({
-            "objective": "binary",
-            "metric": ["binary_logloss", "binary_error"],
-        })
+        config.update(
+            {
+                "objective": "binary",
+                "metric": ["binary_logloss", "binary_error"],
+            }
+        )
     else:
         # Regression
-        config.update({
-            "objective": "regression",
-            "metric": ["l2", "rmse"],
-        })
+        config.update(
+            {
+                "objective": "regression",
+                "metric": ["l2", "rmse"],
+            }
+        )
 
     if lightgbm_params:
         config.update(lightgbm_params)
@@ -130,20 +144,27 @@ def train_ray(path,
         evals_result=evals_result,
         additional_results=additional_results,
         num_boost_round=num_boost_rounds,
-        ray_params=ray_params or RayParams(
+        ray_params=ray_params
+        or RayParams(
             max_actor_restarts=2,
             num_actors=num_workers,
             cpus_per_actor=2,
-            gpus_per_actor=0 if not use_gpu else 1),
+            gpus_per_actor=0 if not use_gpu else 1,
+        ),
         evals=[(dtrain, "train")],
-        **kwargs)
+        **kwargs,
+    )
     taken = time.time() - start
     print(f"TRAIN TIME TAKEN: {taken:.2f} seconds")
 
     out_file = os.path.expanduser(
-        "~/benchmark_{}.lgbm".format("cpu" if not use_gpu else "gpu"))
+        "~/benchmark_{}.lgbm".format("cpu" if not use_gpu else "gpu")
+    )
     bst.booster_.save_model(out_file)
 
-    print("Final training error: {:.4f}".format(evals_result["train"][
-        "binary_error" if not regression else "rmse"][-1]))
+    print(
+        "Final training error: {:.4f}".format(
+            evals_result["train"]["binary_error" if not regression else "rmse"][-1]
+        )
+    )
     return bst, additional_results, taken

@@ -81,28 +81,24 @@ parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 parser.add_argument("--no-custom-eval", action="store_true")
 parser.add_argument(
     "--as-test",
     action="store_true",
     help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.")
+    "be achieved within --stop-timesteps AND --stop-iters.",
+)
 parser.add_argument(
-    "--stop-iters",
-    type=int,
-    default=50,
-    help="Number of iterations to train.")
+    "--stop-iters", type=int, default=50, help="Number of iterations to train."
+)
 parser.add_argument(
-    "--stop-timesteps",
-    type=int,
-    default=20000,
-    help="Number of timesteps to train.")
+    "--stop-timesteps", type=int, default=20000, help="Number of timesteps to train."
+)
 parser.add_argument(
-    "--stop-reward",
-    type=float,
-    default=0.7,
-    help="Reward at which we stop training.")
+    "--stop-reward", type=float, default=0.7, help="Reward at which we stop training."
+)
 
 
 def custom_eval_function(trainer, eval_workers):
@@ -134,7 +130,8 @@ def custom_eval_function(trainer, eval_workers):
     # Collect the accumulated episodes on the workers, and then summarize the
     # episode stats into a metrics dict.
     episodes, _ = collect_episodes(
-        remote_workers=eval_workers.remote_workers(), timeout_seconds=99999)
+        remote_workers=eval_workers.remote_workers(), timeout_seconds=99999
+    )
     # You can compute metrics from the episodes manually, or use the
     # convenient `summarize_episodes()` utility:
     metrics = summarize_episodes(episodes)
@@ -163,26 +160,20 @@ if __name__ == "__main__":
             "corridor_length": 10,
         },
         "horizon": 20,
-
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-
         # Training rollouts will be collected using just the learner
         # process, but evaluation will be done in parallel with two
         # workers. Hence, this run will use 3 CPUs total (1 for the
         # learner + 2 more for evaluation workers).
         "num_workers": 0,
         "evaluation_num_workers": 2,
-
         # Optional custom eval function.
         "custom_eval_function": eval_fn,
-
         # Enable evaluation, once per training iteration.
         "evaluation_interval": 1,
-
         # Run 10 episodes each time evaluation runs.
         "evaluation_duration": 10,
-
         # Override the env config for evaluation.
         "evaluation_config": {
             "env_config": {

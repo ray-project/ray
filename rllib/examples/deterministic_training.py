@@ -6,16 +6,17 @@ import argparse
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.env_using_remote_actor import \
-    CartPoleWithRemoteParamServer, ParameterStorage
+from ray.rllib.examples.env.env_using_remote_actor import (
+    CartPoleWithRemoteParamServer,
+    ParameterStorage,
+)
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument(
-    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+parser.add_argument("--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2)
@@ -40,7 +41,6 @@ if __name__ == "__main__":
         "framework": args.framework,
         # Make sure every environment gets a fixed seed.
         "seed": args.seed,
-
         # Simplify to run this example script faster.
         "train_batch_size": 100,
         "sgd_minibatch_size": 10,
@@ -64,5 +64,6 @@ if __name__ == "__main__":
         # iterations).
         check(
             results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-            results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"])
+            results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+        )
     ray.shutdown()

@@ -17,11 +17,24 @@ result = trainer.run(
     train_func,
     callbacks=[
         MLflowLoggerCallback(experiment_name="train_experiment"),
-        TBXLoggerCallback()
-    ])
+        TBXLoggerCallback(),
+    ],
+)
 
 # Print the latest run directory and keep note of it.
 # For example: /home/ray_results/train_2021-09-01_12-00-00/run_001
 print("Run directory:", trainer.latest_run_dir)
 
 trainer.shutdown()
+
+# How to visualize the logs
+
+# Navigate to the run directory of the trainer.
+# For example `cd /home/ray_results/train_2021-09-01_12-00-00/run_001`
+# $ cd <TRAINER_RUN_DIR>
+#
+# # View the MLflow UI.
+# $ mlflow ui
+#
+# # View the tensorboard UI.
+# $ tensorboard --logdir .

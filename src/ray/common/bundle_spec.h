@@ -65,7 +65,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// Return the resources that are to be acquired by this bundle.
   ///
   /// \return The resources that will be acquired by this bundle.
-  const ResourceSet &GetRequiredResources() const;
+  const ResourceRequest &GetRequiredResources() const;
 
   /// Get all placement group bundle resource labels.
   const absl::flat_hash_map<std::string, double> &GetFormattedResources() const {
@@ -81,7 +81,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// Field storing unit resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
   /// instead of keeping shared pointers here.
-  std::shared_ptr<ResourceSet> unit_resource_;
+  std::shared_ptr<ResourceRequest> unit_resource_;
 
   /// When a bundle is assigned on a node, we'll add the following special resources on
   /// that node:
@@ -102,7 +102,8 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
                                          const BundleSpecification &bundle_spec);
 
 /// Return whether a formatted resource is a bundle of the given index.
-bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id,
+bool IsBundleIndex(const std::string &resource,
+                   const PlacementGroupID &group_id,
                    const int bundle_index);
 
 /// Return the original resource name of the placement group resource.

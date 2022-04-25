@@ -7,9 +7,8 @@ set -e
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
-JAVA_DIRS_PATH=('java' 'streaming/java')
+JAVA_DIRS_PATH=('java')
 RAY_JAVA_MODULES=('api' 'runtime')
-RAY_STREAMING_JAVA_MODULES=('streaming-api' 'streaming-runtime' 'streaming-state')
 JAR_BASE_DIR="$WORKSPACE_DIR"/.jar
 mkdir -p "$JAR_BASE_DIR"
 cd "$WORKSPACE_DIR/java"
@@ -47,9 +46,8 @@ build_jars() {
     echo "Finished building jars for $p"
   done
   copy_jars "$JAR_DIR"
-  # ray runtime jar and streaming runtime jar are in a dir specifed by maven-jar-plugin
+  # ray runtime jar is in a dir specifed by maven-jar-plugin
   cp -f "$WORKSPACE_DIR"/build/java/ray*.jar "$JAR_DIR"
-  cp -f "$WORKSPACE_DIR"/streaming/build/java/streaming*.jar "$JAR_DIR"
   echo "Finished building jar for $platform"
 }
 
@@ -59,12 +57,8 @@ copy_jars() {
   for module in "${RAY_JAVA_MODULES[@]}"; do
     cp -f "$WORKSPACE_DIR"/java/"$module"/target/*jar "$JAR_DIR"
   done
-  for module in "${RAY_STREAMING_JAVA_MODULES[@]}"; do
-    cp -f "$WORKSPACE_DIR"/streaming/java/"$module"/target/*jar "$JAR_DIR"
-  done
-  # ray runtime jar and streaming runtime jar are in a dir specifed by maven-jar-plugin
+  # ray runtime jar is in a dir specifed by maven-jar-plugin
   cp -f "$WORKSPACE_DIR"/build/java/ray*.jar "$JAR_DIR"
-  cp -f "$WORKSPACE_DIR"/streaming/build/java/streaming*.jar "$JAR_DIR"
 }
 
 # This function assuem all dependencies are installed already.
@@ -85,7 +79,7 @@ build_jars_multiplatform() {
       return
     fi
   fi
-  if download_jars "ray-runtime-$version.jar" "streaming-runtime-$version.jar"; then
+  if download_jars "ray-runtime-$version.jar"; then
     prepare_native
     build_jars multiplatform false
   else
@@ -137,11 +131,6 @@ prepare_native() {
     mkdir -p "$native_dir"
     rm -rf "$native_dir"
     mv "native/$os" "$native_dir"
-    jar xf "streaming-runtime-$version.jar" "native/$os"
-    local native_dir="$WORKSPACE_DIR/streaming/java/streaming-runtime/native_dependencies/native/$os"
-    mkdir -p "$native_dir"
-    rm -rf "$native_dir"
-    mv "native/$os" "$native_dir"
   done
 }
 
@@ -151,7 +140,6 @@ native_files_exist() {
   for os in 'darwin' 'linux'; do
     native_dirs=()
     native_dirs+=("$WORKSPACE_DIR/java/runtime/native_dependencies/native/$os")
-    native_dirs+=("$WORKSPACE_DIR/streaming/java/streaming-runtime/native_dependencies/native/$os")
     for native_dir in "${native_dirs[@]}"; do
       if [ ! -d "$native_dir" ]; then
         echo "$native_dir doesn't exist"
@@ -178,10 +166,6 @@ deploy_jars() {
     (
       cd "$WORKSPACE_DIR/java"
       mvn -T16 install deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease -Dgpg.skip="${GPG_SKIP:-true}"
-    )
-    (
-      cd "$WORKSPACE_DIR/streaming/java"
-      mvn -T16 deploy -Dmaven.test.skip=true -Dcheckstyle.skip -Prelease -Dgpg.skip="${GPG_SKIP:-true}"
     )
     echo "Finished deploying jars"
   else

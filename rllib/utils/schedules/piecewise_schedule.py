@@ -13,12 +13,15 @@ def _linear_interpolation(left, right, alpha):
 
 
 class PiecewiseSchedule(Schedule):
-    def __init__(self,
-                 endpoints: List[Tuple[int, float]],
-                 framework: Optional[str] = None,
-                 interpolation: Callable[[TensorType, TensorType, TensorType],
-                                         TensorType] = _linear_interpolation,
-                 outside_value: Optional[float] = None):
+    def __init__(
+        self,
+        endpoints: List[Tuple[int, float]],
+        framework: Optional[str] = None,
+        interpolation: Callable[
+            [TensorType, TensorType, TensorType], TensorType
+        ] = _linear_interpolation,
+        outside_value: Optional[float] = None,
+    ):
         """Initializes a PiecewiseSchedule instance.
 
         Args:
@@ -65,18 +68,17 @@ class PiecewiseSchedule(Schedule):
 
     @override(Schedule)
     def _tf_value_op(self, t: TensorType) -> TensorType:
-        assert self.outside_value is not None, \
-            "tf-version of PiecewiseSchedule requires `outside_value` to be " \
+        assert self.outside_value is not None, (
+            "tf-version of PiecewiseSchedule requires `outside_value` to be "
             "provided!"
+        )
 
-        endpoints = tf.cast(
-            tf.stack([e[0] for e in self.endpoints] + [-1]), tf.int64)
+        endpoints = tf.cast(tf.stack([e[0] for e in self.endpoints] + [-1]), tf.int64)
 
         # Create all possible interpolation results.
         results_list = []
         for (l_t, l), (r_t, r) in zip(self.endpoints[:-1], self.endpoints[1:]):
-            alpha = tf.cast(t - l_t, tf.float32) / \
-                    tf.cast(r_t - l_t, tf.float32)
+            alpha = tf.cast(t - l_t, tf.float32) / tf.cast(r_t - l_t, tf.float32)
             results_list.append(self.interpolation(l, r, alpha))
         # If t does not belong to any of the pieces, return `outside_value`.
         results_list.append(self.outside_value)
@@ -88,11 +90,12 @@ class PiecewiseSchedule(Schedule):
             return tf.logical_not(
                 tf.logical_or(
                     tf.equal(endpoints[i + 1], -1),
-                    tf.logical_and(endpoints[i] <= x, x < endpoints[i + 1])))
+                    tf.logical_and(endpoints[i] <= x, x < endpoints[i + 1]),
+                )
+            )
 
         def _body(i, x):
             return (i + 1, t)
 
-        idx_and_t = tf.while_loop(_cond, _body,
-                                  [tf.constant(0, dtype=tf.int64), t])
+        idx_and_t = tf.while_loop(_cond, _body, [tf.constant(0, dtype=tf.int64), t])
         return results_list[idx_and_t[0]]

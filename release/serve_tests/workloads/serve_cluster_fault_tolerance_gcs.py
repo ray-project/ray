@@ -7,18 +7,23 @@ it's Job Manager's responsibility, and only re-deploy to the same cluster
 with remote checkpoint.
 """
 
-import os
+
+import logging
 import time
 import uuid
 
 import click
 import requests
-from ray.serve.utils import logger
 from serve_test_cluster_utils import setup_local_single_node_cluster
-from serve_test_utils import save_test_results
+from serve_test_utils import (
+    save_test_results,
+    is_smoke_test,
+)
 
 import ray
 from ray import serve
+
+logger = logging.getLogger(__file__)
 
 # Deployment configs
 DEFAULT_NUM_REPLICAS = 4
@@ -29,8 +34,7 @@ def request_with_retries(endpoint, timeout=3):
     start = time.time()
     while True:
         try:
-            return requests.get(
-                "http://127.0.0.1:8000" + endpoint, timeout=timeout)
+            return requests.get("http://127.0.0.1:8000" + endpoint, timeout=timeout)
         except requests.RequestException:
             if time.time() - start > timeout:
                 raise TimeoutError
@@ -46,14 +50,16 @@ def main():
     namespace = uuid.uuid4().hex
 
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
-    if smoke_test == "1":
+    if is_smoke_test():
         checkpoint_path = "file://checkpoint.db"
     else:
-        checkpoint_path = "gs://kazi_test/test/fault-tolerant-test-checkpoint"  # noqa: E501
+        checkpoint_path = (
+            "gs://kazi_test/test/fault-tolerant-test-checkpoint"  # noqa: E501
+        )
 
     _, cluster = setup_local_single_node_cluster(
-        1, checkpoint_path=checkpoint_path, namespace=namespace)
+        1, checkpoint_path=checkpoint_path, namespace=namespace
+    )
 
     # Deploy for the first time
     @serve.deployment(name="echo", num_replicas=DEFAULT_NUM_REPLICAS)
@@ -76,22 +82,25 @@ def main():
     # Kill current cluster, recover from remote checkpoint and ensure endpoint
     # is still available with expected results
 
-    ray.kill(serve.api._global_client._controller, no_restart=True)
+    ray.kill(serve.context._global_client._controller, no_restart=True)
     ray.shutdown()
     cluster.shutdown()
-    serve.api._set_global_client(None)
+    serve.context.set_global_client(None)
 
     # Start another ray cluster with same namespace to resume from previous
     # checkpoints with no new deploy() call.
     setup_local_single_node_cluster(
-        1, checkpoint_path=checkpoint_path, namespace=namespace)
+        1, checkpoint_path=checkpoint_path, namespace=namespace
+    )
 
     for _ in range(5):
         response = request_with_retries("/echo/", timeout=3)
         assert response.text == "hii"
 
-    logger.info("Deployment recovery from Google Cloud Storage checkpoint "
-                "is successful with working endpoint.")
+    logger.info(
+        "Deployment recovery from Google Cloud Storage checkpoint "
+        "is successful with working endpoint."
+    )
 
     # Delete dangling checkpoints. If script failed before this step, it's up
     # to the TTL policy on GCS to clean up, but won't lead to collision with
@@ -105,10 +114,9 @@ def main():
 
     # Save results
     save_test_results(
-        {
-            "result": "success"
-        },
-        default_output_file="/tmp/serve_cluster_fault_tolerance.json")
+        {"result": "success"},
+        default_output_file="/tmp/serve_cluster_fault_tolerance.json",
+    )
 
 
 if __name__ == "__main__":
@@ -116,4 +124,5 @@ if __name__ == "__main__":
     import sys
 
     import pytest
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

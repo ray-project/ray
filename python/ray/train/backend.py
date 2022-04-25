@@ -6,16 +6,18 @@ from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 import ray
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
-from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, TRAIN_ENABLE_WORKER_SPREAD_ENV
+from ray.train.constants import (
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
+)
 from ray.train.session import TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
 from ray.train.utils import RayDataset, check_for_failure, Singleton
 from ray.train.worker_group import WorkerGroup
 from ray.util.annotations import DeveloperAPI
-from ray.util.placement_group import get_current_placement_group, \
-    remove_placement_group
+from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
 T = TypeVar("T")
 
@@ -30,7 +32,7 @@ class BackendConfig:
 
     @property
     def backend_cls(self):
-        raise NotImplementedError
+        return Backend
 
 
 @DeveloperAPI
@@ -47,26 +49,13 @@ class Backend(metaclass=Singleton):
 
     share_cuda_visible_devices: bool = False
 
-    def on_start(self, worker_group: WorkerGroup,
-                 backend_config: BackendConfig):
+    def on_start(self, worker_group: WorkerGroup, backend_config: BackendConfig):
         """Logic for starting this backend."""
         pass
 
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: BackendConfig):
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: BackendConfig):
         """Logic for shutting down the backend."""
         pass
-
-    def handle_failure(self, worker_group: WorkerGroup,
-                       failed_worker_indexes: List[int],
-                       backend_config: BackendConfig):
-        """Logic for handling failures.
-
-        By default, restart all workers.
-        """
-        worker_group.shutdown()
-        worker_group.start()
-        self.on_start(worker_group, backend_config)
 
     @staticmethod
     def encode_data(data_dict: Dict) -> EncodedData:
@@ -120,13 +109,14 @@ class BackendExecutor:
     """
 
     def __init__(
-            self,
-            backend_config: BackendConfig,
-            num_workers: int = 1,
-            num_cpus_per_worker: float = 1,
-            num_gpus_per_worker: float = 0,
-            additional_resources_per_worker: Optional[Dict[str, float]] = None,
-            max_retries: int = 3):
+        self,
+        backend_config: BackendConfig,
+        num_workers: int = 1,
+        num_cpus_per_worker: float = 1,
+        num_gpus_per_worker: float = 0,
+        additional_resources_per_worker: Optional[Dict[str, float]] = None,
+        max_retries: int = 3,
+    ):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
@@ -143,11 +133,13 @@ class BackendExecutor:
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
 
-    def start(self,
-              initialization_hook: Optional[Callable[[], None]] = None,
-              train_cls: Optional[Type] = None,
-              train_cls_args: Optional[Tuple] = None,
-              train_cls_kwargs: Optional[Dict] = None):
+    def start(
+        self,
+        initialization_hook: Optional[Callable[[], None]] = None,
+        train_cls: Optional[Type] = None,
+        train_cls_args: Optional[Tuple] = None,
+        train_cls_kwargs: Optional[Dict] = None,
+    ):
         """Starts the worker group."""
         self._create_placement_group()
         placement_group = self._placement_group or "default"
@@ -155,27 +147,33 @@ class BackendExecutor:
             num_workers=self._num_workers,
             num_cpus_per_worker=self._num_cpus_per_worker,
             num_gpus_per_worker=self._num_gpus_per_worker,
-            additional_resources_per_worker=self.
-            _additional_resources_per_worker,
+            additional_resources_per_worker=self._additional_resources_per_worker,
             actor_cls=train_cls,
             actor_cls_args=train_cls_args,
             actor_cls_kwargs=train_cls_kwargs,
-            placement_group=placement_group)
+            placement_group=placement_group,
+        )
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
 
             share_cuda_visible_devices_enabled = bool(
-                env_integer(ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-                            self._backend.share_cuda_visible_devices))
+                env_integer(
+                    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+                    self._backend.share_cuda_visible_devices,
+                )
+            )
 
-            if (self._num_gpus_per_worker > 0
-                    and share_cuda_visible_devices_enabled):
+            if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
                 self._share_cuda_visible_devices()
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
+            logger.warning(
+                "Failure occurred during startup. Restarting all workers and "
+                "attempting to startup again."
+            )
             self._increment_failures()
             self._restart()
 
@@ -193,28 +191,29 @@ class BackendExecutor:
         self._placement_group.
         """
         current_placement_group = get_current_placement_group()
-        should_capture_child_tasks_in_placement_group = \
-            ray.worker.global_worker \
-            .should_capture_child_tasks_in_placement_group
-        should_create_placement_group = \
-            current_placement_group is None or \
-            not should_capture_child_tasks_in_placement_group
+        should_capture_child_tasks_in_placement_group = (
+            ray.worker.global_worker.should_capture_child_tasks_in_placement_group
+        )
+        should_create_placement_group = (
+            current_placement_group is None
+            or not should_capture_child_tasks_in_placement_group
+        )
 
         if should_create_placement_group:
-            additional_resources_per_worker = \
+            additional_resources_per_worker = (
                 self._additional_resources_per_worker or {}
+            )
             bundle = {
                 "CPU": self._num_cpus_per_worker,
                 "GPU": self._num_gpus_per_worker,
-                **additional_resources_per_worker
+                **additional_resources_per_worker,
             }
             bundles = [bundle.copy() for _ in range(self._num_workers)]
 
             use_spread = bool(env_integer(TRAIN_ENABLE_WORKER_SPREAD_ENV, 0))
             strategy = "SPREAD" if use_spread else "PACK"
 
-            placement_group = ray.util.placement_group(
-                bundles, strategy=strategy)
+            placement_group = ray.util.placement_group(bundles, strategy=strategy)
             logger.debug("Waiting for placement group to start.")
             timeout = env_integer(TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
             ready, _ = ray.wait([placement_group.ready()], timeout=timeout)
@@ -222,12 +221,17 @@ class BackendExecutor:
                 logger.debug("Placement group has started.")
             else:
                 raise TimeoutError(
-                    "Placement group creation timed out. Make sure "
-                    "your cluster either has enough resources or use "
-                    "an autoscaling cluster. Current resources "
-                    "available: {}, resources requested by the "
-                    "placement group: {}".format(ray.available_resources(),
-                                                 placement_group.bundle_specs))
+                    "Placement group creation timed out. Make sure your "
+                    "cluster either has enough resources or use an "
+                    "autoscaling cluster. If you are running on a cluster, "
+                    "make sure you specify an address in `ray.init()`, for example, "
+                    '`ray.init("auto")`. You can also increase the timeout by setting '
+                    "the TRAIN_PLACEMENT_GROUP_TIMEOUT_S environment variable. "
+                    "Current resources available: {}, resources requested by the "
+                    "placement group: {}".format(
+                        ray.available_resources(), placement_group.bundle_specs
+                    )
+                )
             self._placement_group = placement_group
 
     def _share_cuda_visible_devices(self):
@@ -255,8 +259,9 @@ class BackendExecutor:
 
         """
 
-        node_ids_and_gpu_ids = [(w.metadata.node_id, w.metadata.gpu_ids)
-                                for w in self.worker_group.workers]
+        node_ids_and_gpu_ids = [
+            (w.metadata.node_id, w.metadata.gpu_ids) for w in self.worker_group.workers
+        ]
 
         node_id_to_worker_id = defaultdict(set)
         node_id_to_gpu_ids = defaultdict(set)
@@ -274,8 +279,8 @@ class BackendExecutor:
 
             for worker_id in node_id_to_worker_id[node_id]:
                 futures.append(
-                    self.worker_group.execute_single_async(
-                        worker_id, set_gpu_ids))
+                    self.worker_group.execute_single_async(worker_id, set_gpu_ids)
+                )
         ray.get(futures)
 
     def _create_local_rank_map(self) -> Dict:
@@ -318,13 +323,21 @@ class BackendExecutor:
         def split_dataset(dataset_or_pipeline):
             actors = [worker.actor for worker in self.worker_group.workers]
             return dataset_or_pipeline.split(
-                len(self.worker_group), equal=True, locality_hints=actors)
+                len(self.worker_group), equal=True, locality_hints=actors
+            )
 
         if isinstance(dataset_or_dict, dict):
             # Return a smaller dict for each shard.
             dataset_shards = [{} for _ in range(len(self.worker_group))]
+            # TODO(amog): Update Backend to accept a generic function with logic on
+            #  how to split dataset, instead of having to support _NO-SHARD in key.
             for key, dataset in dataset_or_dict.items():
-                split_datasets = split_dataset(dataset)
+                if "_NO-SHARD" in key:
+                    # Do not shard this dataset.
+                    split_datasets = [dataset] * len(self.worker_group)
+                    key = key.replace("_NO-SHARD", "")
+                else:
+                    split_datasets = split_dataset(dataset)
                 assert len(split_datasets) == len(self.worker_group)
                 for i in range(len(split_datasets)):
                     dataset_shards[i][key] = split_datasets[i]
@@ -334,10 +347,11 @@ class BackendExecutor:
             return split_dataset(dataset_or_dict)
 
     def start_training(
-            self,
-            train_func: Callable[[], T],
-            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
-            checkpoint: Optional[Dict] = None) -> None:
+        self,
+        train_func: Callable[[], T],
+        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
+        checkpoint: Optional[Dict] = None,
+    ) -> None:
         """Executes a training function on all workers in a separate thread.
 
         ``finish_training`` should be called after this.
@@ -359,11 +373,19 @@ class BackendExecutor:
                 is ``None`` then no checkpoint will be loaded.
         """
         use_detailed_autofilled_metrics = env_integer(
-            ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
+            ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
+        )
 
         # First initialize the session.
-        def initialize_session(train_func, world_rank, local_rank, world_size,
-                               checkpoint, dataset_shard, encode_data_fn):
+        def initialize_session(
+            train_func,
+            world_rank,
+            local_rank,
+            world_size,
+            checkpoint,
+            dataset_shard,
+            encode_data_fn,
+        ):
             try:
                 init_session(
                     training_func=train_func,
@@ -373,14 +395,15 @@ class BackendExecutor:
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
-                    detailed_autofilled_metrics=use_detailed_autofilled_metrics
+                    detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                 )
             except ValueError:
                 raise TrainBackendError(
                     "Attempting to start training but a "
                     "previous training run is still ongoing. "
                     "You must call `finish_training` before "
-                    "calling `start_training` again.")
+                    "calling `start_training` again."
+                )
 
         if self.dataset_shards is None:
             self.dataset_shards = self._get_dataset_shards(dataset)
@@ -399,7 +422,9 @@ class BackendExecutor:
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
-                    encode_data_fn=self._backend.encode_data))
+                    encode_data_fn=self._backend.encode_data,
+                )
+            )
 
         self.get_with_failure_handling(futures)
 
@@ -428,10 +453,12 @@ class BackendExecutor:
                 result = session.get_next()
             except RuntimeError:
                 # Training thread has not been started yet.
-                raise TrainBackendError("`get_next_results` has been called "
-                                        "before `start_training`. Please call "
-                                        "`start_training` before "
-                                        "`get_next_results`.")
+                raise TrainBackendError(
+                    "`get_next_results` has been called "
+                    "before `start_training`. Please call "
+                    "`start_training` before "
+                    "`get_next_results`."
+                )
 
             return result
 
@@ -446,27 +473,30 @@ class BackendExecutor:
                 raise RuntimeError(
                     "Some workers returned results while "
                     "others didn't. Make sure that "
-                    "`train.report()` and `train.checkpoint()` "
+                    "`train.report()` and `train.save_checkpoint()` "
                     "are called the same number of times on all "
-                    "workers.")
+                    "workers."
+                )
             else:
                 # Return None if all results are None.
                 return None
         first_result = results[0]
         result_type = first_result.type
         if any(r.type != result_type for r in results):
-            raise RuntimeError("Some workers returned results with "
-                               "different types. Make sure `train.report()` "
-                               "and `train.save_checkpoint()` are called the "
-                               "same number of times and in the same order on "
-                               "each worker.")
+            raise RuntimeError(
+                "Some workers returned results with "
+                "different types. Make sure `train.report()` "
+                "and `train.save_checkpoint()` are called the "
+                "same number of times and in the same order on "
+                "each worker."
+            )
         return results
 
     def pause_reporting(self):
-        """ Disable workers from enqueuing results from `train.report()`.
+        """Disable workers from enqueuing results from `train.report()`.
 
-            Note: Already reported results may still be enqueued at this point,
-                  and should be handled appropriately.
+        Note: Already reported results may still be enqueued at this point,
+              and should be handled appropriately.
         """
 
         def pause_session_reporting():
@@ -520,18 +550,16 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success, failed_worker_indexes = check_for_failure(remote_values)
+        success = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)
         else:
             self._increment_failures()
-            try:
-                self._backend.handle_failure(self.worker_group,
-                                             failed_worker_indexes,
-                                             self._backend_config)
-            except RayActorError as exc:
-                logger.exception(str(exc))
-                self._restart()
+            logger.warning(
+                "Failure identified during training. Restarting all workers and "
+                "continuing training from latest checkpoint."
+            )
+            self._restart()
             raise TrainingWorkerError
 
     def shutdown(self):
@@ -539,8 +567,10 @@ class BackendExecutor:
         try:
             self._backend.on_shutdown(self.worker_group, self._backend_config)
         except RayActorError:
-            logger.warning("Graceful shutdown of backend failed. This is "
-                           "expected if one of the workers has crashed.")
+            logger.warning(
+                "Graceful shutdown of backend failed. This is "
+                "expected if one of the workers has crashed."
+            )
         self.worker_group.shutdown()
         self.worker_group = InactiveWorkerGroup()
 
@@ -567,12 +597,13 @@ class BackendExecutor:
     def _increment_failures(self):
         self._num_failures += 1
         if self._num_failures >= self._max_failures:
-            raise RuntimeError("Training has failed even after "
-                               f"{self._num_failures} "
-                               "attempts. You can change the number of max "
-                               "failure attempts by setting the "
-                               "`max_retries` arg in your `Trainer`.") \
-                from None
+            raise RuntimeError(
+                "Training has failed even after "
+                f"{self._num_failures} "
+                "attempts. You can change the number of max "
+                "failure attempts by setting the "
+                "`max_retries` arg in your `Trainer`."
+            ) from None
 
     def get_worker_group(self):
         return self.worker_group
@@ -585,7 +616,7 @@ class InactiveWorkerGroupError(Exception):
     """Raised when underlying worker group is inactive."""
 
 
-class InactiveWorkerGroup():
+class InactiveWorkerGroup:
     # TODO: fix inheritence. perhaps create WorkerGroupInterface.
 
     # Need to define getstate and setstate so that getattr does not screwup
@@ -604,12 +635,14 @@ class InactiveWorkerGroup():
 
 
 def _get_session(method_name: str):
-    try:
-        # Get the session for this worker.
-        return get_session()
-    except ValueError:
+    # Get the session for this worker.
+    session = get_session()
+    if not session:
         # Session is not initialized yet.
-        raise TrainBackendError(f"`{method_name}` has been called "
-                                "before `start_training`. Please call "
-                                "`start_training` before "
-                                f"`{method_name}`.")
+        raise TrainBackendError(
+            f"`{method_name}` has been called "
+            "before `start_training`. Please call "
+            "`start_training` before "
+            f"`{method_name}`."
+        )
+    return session

@@ -3,8 +3,12 @@ import unittest
 
 import ray
 import ray.rllib.agents.dqn as dqn
-from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import (
+    check,
+    check_compute_single_action,
+    check_train_results,
+    framework_iterator,
+)
 
 
 class TestDQN(unittest.TestCase):
@@ -79,10 +83,7 @@ class TestDQN(unittest.TestCase):
 
             # Low softmax temperature. Behaves like argmax
             # (but no epsilon exploration).
-            config["exploration_config"] = {
-                "type": "SoftQ",
-                "temperature": 0.000001
-            }
+            config["exploration_config"] = {"type": "SoftQ", "temperature": 0.000001}
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v1")
             # Due to the low temp, always expect the same action.
             actions = [trainer.compute_single_action(obs)]
@@ -124,4 +125,5 @@ class TestDQN(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

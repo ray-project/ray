@@ -52,9 +52,6 @@ class WorkerInterface {
   /// Return the worker process's startup token
   virtual StartupToken GetStartupToken() const = 0;
   virtual void SetProcess(Process proc) = 0;
-  /// Return the worker shim process.
-  virtual Process GetShimProcess() const = 0;
-  virtual void SetShimProcess(Process proc) = 0;
   virtual Language GetLanguage() const = 0;
   virtual const std::string IpAddress() const = 0;
   /// Connect this worker's gRPC client.
@@ -126,10 +123,15 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
-         const Language &language, rpc::WorkerType worker_type,
-         const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager, StartupToken startup_token);
+  Worker(const JobID &job_id,
+         const int runtime_env_hash,
+         const WorkerID &worker_id,
+         const Language &language,
+         rpc::WorkerType worker_type,
+         const std::string &ip_address,
+         std::shared_ptr<ClientConnection> connection,
+         rpc::ClientCallManager &client_call_manager,
+         StartupToken startup_token);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   rpc::WorkerType GetWorkerType() const;
@@ -145,9 +147,6 @@ class Worker : public WorkerInterface {
   /// Return the worker process's startup token
   StartupToken GetStartupToken() const;
   void SetProcess(Process proc);
-  /// Return this worker shim process.
-  Process GetShimProcess() const;
-  void SetShimProcess(Process proc);
   Language GetLanguage() const;
   const std::string IpAddress() const;
   /// Connect this worker's gRPC client.
@@ -228,9 +227,6 @@ class Worker : public WorkerInterface {
   Process proc_;
   /// The worker's process's startup_token
   StartupToken startup_token_;
-  /// The worker's shim process. The shim process PID is the same with worker process PID,
-  /// except starting worker process in container.
-  Process shim_proc_;
   /// The language type of this worker.
   Language language_;
   /// The type of the worker.

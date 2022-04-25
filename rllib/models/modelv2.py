@@ -5,19 +5,16 @@ from gym.spaces import Space
 import numpy as np
 from typing import Dict, List, Any, Union
 
-from ray.rllib.models.preprocessors import get_preprocessor, \
-    RepeatedValuesPreprocessor
+from ray.rllib.models.preprocessors import get_preprocessor, RepeatedValuesPreprocessor
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
-    TensorType
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.typing import ModelConfigDict, ModelInputDict, \
-    TensorStructType
+from ray.rllib.utils.typing import ModelConfigDict, ModelInputDict, TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -35,8 +32,15 @@ class ModelV2:
             \-> value_function() -> V(s)
     """
 
-    def __init__(self, obs_space: Space, action_space: Space, num_outputs: int,
-                 model_config: ModelConfigDict, name: str, framework: str):
+    def __init__(
+        self,
+        obs_space: Space,
+        action_space: Space,
+        num_outputs: int,
+        model_config: ModelConfigDict,
+        name: str,
+        framework: str,
+    ):
         """Initializes a ModelV2 instance.
 
         This method should create any variables used by the model.
@@ -78,18 +82,25 @@ class ModelV2:
             of an RNN, if applicable.
 
         Examples:
-            >>> def get_initial_state(self):
-            >>>    return [
-            >>>        np.zeros(self.cell_size, np.float32),
-            >>>        np.zeros(self.cell_size, np.float32),
-            >>>    ]
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2): # doctest: +SKIP
+            ...     # ...
+            ...     def get_initial_state(self):
+            ...         return [
+            ...             np.zeros(self.cell_size, np.float32),
+            ...             np.zeros(self.cell_size, np.float32),
+            ...         ]
         """
         return []
 
     @PublicAPI
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
-                seq_lens: TensorType) -> (TensorType, List[TensorType]):
+    def forward(
+        self,
+        input_dict: Dict[str, TensorType],
+        state: List[TensorType],
+        seq_lens: TensorType,
+    ) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         Any complex observations (dicts, tuples, etc.) will be unpacked by
@@ -116,10 +127,14 @@ class ModelV2:
             [BATCH, num_outputs] and the list of new RNN state(s) if any.
 
         Examples:
-            >>> def forward(self, input_dict, state, seq_lens):
-            >>>     model_out, self._value_out = self.base_model(
-            ...         input_dict["obs"])
-            >>>     return model_out, state
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2): # doctest: +SKIP
+            ...     # ...
+            >>>     def forward(self, input_dict, state, seq_lens):# doctest: +SKIP
+            >>>         model_out, self._value_out = self.base_model(# doctest: +SKIP
+            ...             input_dict["obs"])# doctest: +SKIP
+            >>>         return model_out, state# doctest: +SKIP
         """
         raise NotImplementedError
 
@@ -137,9 +152,9 @@ class ModelV2:
         raise NotImplementedError
 
     @PublicAPI
-    def custom_loss(self, policy_loss: TensorType,
-                    loss_inputs: Dict[str, TensorType]) -> \
-            Union[List[TensorType], TensorType]:
+    def custom_loss(
+        self, policy_loss: TensorType, loss_inputs: Dict[str, TensorType]
+    ) -> Union[List[TensorType], TensorType]:
         """Override to customize the loss function used to optimize this model.
 
         This can be used to incorporate self-supervised losses (by defining
@@ -172,10 +187,11 @@ class ModelV2:
         return {}
 
     def __call__(
-            self,
-            input_dict: Union[SampleBatch, ModelInputDict],
-            state: List[Any] = None,
-            seq_lens: TensorType = None) -> (TensorType, List[TensorType]):
+        self,
+        input_dict: Union[SampleBatch, ModelInputDict],
+        state: List[Any] = None,
+        seq_lens: TensorType = None,
+    ) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
         This is the method used by RLlib to execute the forward pass. It calls
@@ -229,11 +245,11 @@ class ModelV2:
         # original obs).
         else:
             restored["obs"] = restore_original_dimensions(
-                input_dict["obs"], self.obs_space, self.framework)
+                input_dict["obs"], self.obs_space, self.framework
+            )
             try:
                 if len(input_dict["obs"].shape) > 2:
-                    restored["obs_flat"] = flatten(input_dict["obs"],
-                                                   self.framework)
+                    restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
                 else:
                     restored["obs_flat"] = input_dict["obs"]
             except AttributeError:
@@ -247,16 +263,15 @@ class ModelV2:
             input_dict.deleted_keys = restored.deleted_keys
             input_dict.added_keys = restored.added_keys - {"obs_flat"}
 
-        if ((not isinstance(res, list) and not isinstance(res, tuple))
-                or len(res) != 2):
+        if (not isinstance(res, list) and not isinstance(res, tuple)) or len(res) != 2:
             raise ValueError(
                 "forward() must return a tuple of (output, state) tensors, "
-                "got {}".format(res))
+                "got {}".format(res)
+            )
         outputs, state_out = res
 
         if not isinstance(state_out, list):
-            raise ValueError(
-                "State output is not a list: {}".format(state_out))
+            raise ValueError("State output is not a list: {}".format(state_out))
 
         self._last_output = outputs
         return outputs, state_out if len(state_out) > 0 else (state or [])
@@ -268,10 +283,11 @@ class ModelV2:
             h5_file: The h5 file name to import weights from.
 
         Example:
-            >>> trainer = MyTrainer()
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5")
-            >>> for _ in range(10):
-            >>>     trainer.train()
+            >>> from ray.rllib.agents.ppo import PPOTrainer
+            >>> trainer = PPOTrainer(...)  # doctest: +SKIP
+            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> for _ in range(10): # doctest: +SKIP
+            >>>     trainer.train() # doctest: +SKIP
         """
         raise NotImplementedError
 
@@ -286,8 +302,9 @@ class ModelV2:
         return NullContextManager()
 
     @PublicAPI
-    def variables(self, as_dict: bool = False
-                  ) -> Union[List[TensorType], Dict[str, TensorType]]:
+    def variables(
+        self, as_dict: bool = False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Returns the list (or a dict) of variables for this model.
 
         Args:
@@ -302,7 +319,7 @@ class ModelV2:
 
     @PublicAPI
     def trainable_variables(
-            self, as_dict: bool = False
+        self, as_dict: bool = False
     ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Returns the list of trainable variables for this model.
 
@@ -327,8 +344,9 @@ class ModelV2:
         return self.time_major is True
 
     @Deprecated(new="ModelV2.__call__()", error=False)
-    def from_batch(self, train_batch: SampleBatch,
-                   is_training: bool = True) -> (TensorType, List[TensorType]):
+    def from_batch(
+        self, train_batch: SampleBatch, is_training: bool = True
+    ) -> (TensorType, List[TensorType]):
         """Convenience function that calls this model with a tensor batch.
 
         All this does is unpack the tensor batch to call this model with the
@@ -342,8 +360,7 @@ class ModelV2:
         while "state_in_{}".format(i) in input_dict:
             states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        ret = self.__call__(input_dict, states,
-                            input_dict.get(SampleBatch.SEQ_LENS))
+        ret = self.__call__(input_dict, states, input_dict.get(SampleBatch.SEQ_LENS))
         return ret
 
 
@@ -360,9 +377,9 @@ def flatten(obs: TensorType, framework: str) -> TensorType:
 
 
 @DeveloperAPI
-def restore_original_dimensions(obs: TensorType,
-                                obs_space: Space,
-                                tensorlib: Any = tf) -> TensorStructType:
+def restore_original_dimensions(
+    obs: TensorType, obs_space: Space, tensorlib: Any = tf
+) -> TensorStructType:
     """Unpacks Dict and Tuple space observations into their original form.
 
     This is needed since we flatten Dict and Tuple observations in transit
@@ -398,8 +415,7 @@ def restore_original_dimensions(obs: TensorType,
 _cache = {}
 
 
-def _unpack_obs(obs: TensorType, space: Space,
-                tensorlib: Any = tf) -> TensorStructType:
+def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStructType:
     """Unpack a flattened Dict or Tuple observation array/tensor.
 
     Args:
@@ -412,6 +428,12 @@ def _unpack_obs(obs: TensorType, space: Space,
     """
 
     if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
+        # Already unpacked?
+        if (isinstance(space, gym.spaces.Tuple) and isinstance(obs, (list, tuple))) or (
+            isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)
+        ):
+            return obs
+        # Unpack using preprocessor
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -419,47 +441,56 @@ def _unpack_obs(obs: TensorType, space: Space,
             # Make an attempt to cache the result, if enough space left.
             if len(_cache) < 999:
                 _cache[id(space)] = prep
-        # Already unpacked?
-        if (isinstance(space, gym.spaces.Tuple) and
-                isinstance(obs, (list, tuple))) or \
-                (isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)):
-            return obs
-        elif len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+        if len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
             raise ValueError(
                 "Expected flattened obs shape of [..., {}], got {}".format(
-                    prep.shape[0], obs.shape))
+                    prep.shape[0], obs.shape
+                )
+            )
         offset = 0
         if tensorlib == tf:
-            batch_dims = [
-                v if isinstance(v, int) else v.value for v in obs.shape[:-1]
-            ]
-            batch_dims = [-1 if v is None else v for v in batch_dims]
+
+            def get_value(v):
+                if v is None:
+                    return -1
+                elif isinstance(v, int):
+                    return v
+                elif v.value is None:
+                    return -1
+                else:
+                    return v.value
+
+            batch_dims = [get_value(v) for v in obs.shape[:-1]]
         else:
             batch_dims = list(obs.shape[:-1])
         if isinstance(space, gym.spaces.Tuple):
-            assert len(prep.preprocessors) == len(space.spaces), \
-                (len(prep.preprocessors) == len(space.spaces))
+            assert len(prep.preprocessors) == len(space.spaces), len(
+                prep.preprocessors
+            ) == len(space.spaces)
             u = []
             for p, v in zip(prep.preprocessors, space.spaces):
-                obs_slice = obs[..., offset:offset + p.size]
+                obs_slice = obs[..., offset : offset + p.size]
                 offset += p.size
                 u.append(
                     _unpack_obs(
-                        tensorlib.reshape(obs_slice,
-                                          batch_dims + list(p.shape)),
+                        tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
                         v,
-                        tensorlib=tensorlib))
+                        tensorlib=tensorlib,
+                    )
+                )
         elif isinstance(space, gym.spaces.Dict):
-            assert len(prep.preprocessors) == len(space.spaces), \
-                (len(prep.preprocessors) == len(space.spaces))
+            assert len(prep.preprocessors) == len(space.spaces), len(
+                prep.preprocessors
+            ) == len(space.spaces)
             u = OrderedDict()
             for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
-                obs_slice = obs[..., offset:offset + p.size]
+                obs_slice = obs[..., offset : offset + p.size]
                 offset += p.size
                 u[k] = _unpack_obs(
                     tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
                     v,
-                    tensorlib=tensorlib)
+                    tensorlib=tensorlib,
+                )
         # Repeated space.
         else:
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
@@ -468,12 +499,11 @@ def _unpack_obs(obs: TensorType, space: Space,
             lengths = obs[..., 0]
             # [B, ..., 1 + max_len * child_sz] -> [B, ..., max_len, child_sz]
             with_repeat_dim = tensorlib.reshape(
-                obs[..., 1:], batch_dims + [space.max_len, child_size])
+                obs[..., 1:], batch_dims + [space.max_len, child_size]
+            )
             # Retry the unpack, dropping the List container space.
-            u = _unpack_obs(
-                with_repeat_dim, space.child_space, tensorlib=tensorlib)
-            return RepeatedValues(
-                u, lengths=lengths, max_len=prep._obs_space.max_len)
+            u = _unpack_obs(with_repeat_dim, space.child_space, tensorlib=tensorlib)
+            return RepeatedValues(u, lengths=lengths, max_len=prep._obs_space.max_len)
         return u
     else:
         return obs

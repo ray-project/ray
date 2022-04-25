@@ -27,7 +27,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         def save_checkpoint(self, checkpoint_dir):
             checkpoint_path = os.path.join(
-                checkpoint_dir, "checkpoint-{}".format(self._iteration))
+                checkpoint_dir, "checkpoint-{}".format(self._iteration)
+            )
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(self.state, f)
             return checkpoint_path
@@ -53,27 +54,29 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         print("looking for", self.MockTrainable._name)
         print("in", os.listdir(absoulte_exp_dir))
         trial_dirname = next(
-            (child_dir for child_dir in os.listdir(absoulte_exp_dir)
-             if (os.path.isdir(os.path.join(absoulte_exp_dir, child_dir))
-                 and child_dir.startswith(self.MockTrainable._name))))
+            (
+                child_dir
+                for child_dir in os.listdir(absoulte_exp_dir)
+                if (
+                    os.path.isdir(os.path.join(absoulte_exp_dir, child_dir))
+                    and child_dir.startswith(self.MockTrainable._name)
+                )
+            )
+        )
 
         trial_absolute_dir = os.path.join(absoulte_exp_dir, trial_dirname)
 
         return trial_dirname, trial_absolute_dir
 
     def _train(self, exp_name, local_dir, absolute_local_dir):
-        trial, = tune.run(
+        (trial,) = tune.run(
             self.MockTrainable,
             name=exp_name,
-            stop={
-                "training_iteration": 1
-            },
+            stop={"training_iteration": 1},
             checkpoint_freq=1,
             local_dir=local_dir,
-            config={
-                "env": "CartPole-v0",
-                "log_level": "DEBUG"
-            }).trials
+            config={"env": "CartPole-v0", "log_level": "DEBUG"},
+        ).trials
 
         exp_dir = os.path.join(absolute_local_dir, exp_name)
         _, abs_trial_dir = self._get_trial_dir(exp_dir)
@@ -87,33 +90,32 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(abs_trial_dir))
         self.assertTrue(
             os.path.isfile(
-                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint-1")))
+                os.path.join(abs_trial_dir, "checkpoint_000001/checkpoint-1")
+            )
+        )
 
     def _restore(self, exp_name, local_dir, absolute_local_dir):
         trial_name, abs_trial_dir = self._get_trial_dir(
-            os.path.join(absolute_local_dir, exp_name))
+            os.path.join(absolute_local_dir, exp_name)
+        )
 
         checkpoint_path = os.path.join(
-            local_dir, exp_name, trial_name,
-            "checkpoint_000001/checkpoint-1")  # Relative checkpoint path
+            local_dir, exp_name, trial_name, "checkpoint_000001/checkpoint-1"
+        )  # Relative checkpoint path
 
         # The file tune would find. The absolute checkpoint path.
         tune_find_file = os.path.abspath(os.path.expanduser(checkpoint_path))
         self.assertTrue(
-            os.path.isfile(tune_find_file),
-            "{} is not exist!".format(tune_find_file))
+            os.path.isfile(tune_find_file), "{} is not exist!".format(tune_find_file)
+        )
 
-        trial, = tune.run(
+        (trial,) = tune.run(
             self.MockTrainable,
             name=exp_name,
-            stop={
-                "training_iteration": 2
-            },  # train one more iteration.
+            stop={"training_iteration": 2},  # train one more iteration.
             restore=checkpoint_path,  # Restore the checkpoint
-            config={
-                "env": "CartPole-v0",
-                "log_level": "DEBUG"
-            }).trials
+            config={"env": "CartPole-v0", "log_level": "DEBUG"},
+        ).trials
         self.assertIsNone(trial.error_file)
 
     def testDottedRelativePath(self):
@@ -179,4 +181,5 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

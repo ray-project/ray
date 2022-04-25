@@ -6,6 +6,7 @@ import ray
 import pytest
 import grpc
 from grpc._channel import _InactiveRpcError
+import numpy as np
 import psutil
 import subprocess
 
@@ -17,9 +18,12 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray._private.test_utils import (init_error_pubsub, get_error_message,
-                                     run_string_as_driver, wait_for_condition)
-from ray._private.gcs_utils import use_gcs_for_bootstrap
+from ray._private.test_utils import (
+    init_error_pubsub,
+    get_error_message,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray.exceptions import LocalRayletDiedError
 import ray.experimental.internal_kv as internal_kv
 
@@ -53,6 +57,7 @@ def test_retry_system_level_error(ray_start_regular):
         count = counter.increment.remote()
         if ray.get(count) == 1:
             import os
+
             os._exit(0)
         else:
             return 1
@@ -167,12 +172,15 @@ if __name__ == "__main__":
     # Wait for the task to finish before exiting the driver.
     ray.get(a.invoke.remote())
     print("success")
-""".format(address)
+""".format(
+        address
+    )
 
     out = run_string_as_driver(driver_script)
     assert "success" in out
 
     import time
+
     time.sleep(5)
 
     # connect to the cluster
@@ -253,16 +261,19 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 0,
-        "_system_config": {
-            "num_heartbeats_timeout": 10,
-            "raylet_heartbeat_period_milliseconds": 100
+    "ray_start_cluster_head",
+    [
+        {
+            "num_cpus": 0,
+            "_system_config": {
+                "num_heartbeats_timeout": 10,
+                "raylet_heartbeat_period_milliseconds": 100,
+            },
         }
-    }],
-    indirect=True)
-def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
-                                              error_pubsub):
+    ],
+    indirect=True,
+)
+def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubsub):
     """
     Prepare the cluster.
     """
@@ -295,7 +306,8 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
         print(f"Sending a shutdown request to {ip}:{port}")
         try:
             stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+            )
         except _InactiveRpcError:
             assert not graceful
 
@@ -305,8 +317,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
     ip = worker.node_ip_address
     kill_raylet(ip, worker_node_port, graceful=False)
     p = error_pubsub
-    errors = get_error_message(
-        p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=10)
+    errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=10)
     # Should print the heartbeat messages.
     assert "has missed too many heartbeats from it" in errors[0].error_message
     # NOTE the killed raylet is a zombie since the
@@ -332,8 +343,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
     kill_raylet(ip, worker_node_port, graceful=True)
     p = error_pubsub
     # Error shouldn't be printed to the driver.
-    errors = get_error_message(
-        p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
+    errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
     # Error messages shouldn't be published.
     assert len(errors) == 0
     try:
@@ -349,14 +359,18 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 0,
-        "_system_config": {
-            "num_heartbeats_timeout": 10,
-            "raylet_heartbeat_period_milliseconds": 100
+    "ray_start_cluster_head",
+    [
+        {
+            "num_cpus": 0,
+            "_system_config": {
+                "num_heartbeats_timeout": 10,
+                "raylet_heartbeat_period_milliseconds": 100,
+            },
         }
-    }],
-    indirect=True)
+    ],
+    indirect=True,
+)
 def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     """
     Prepare the cluster.
@@ -385,14 +399,8 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     Test batch drain.
     """
     # Prepare requests.
-    if use_gcs_for_bootstrap():
-        gcs_server_addr = cluster.gcs_address
-    else:
-        redis_cli = ray._private.services.create_redis_client(
-            cluster.redis_address,
-            password=ray_constants.REDIS_DEFAULT_PASSWORD)
-        gcs_server_addr = redis_cli.get("GcsServerAddress").decode()
-    options = (("grpc.enable_http_proxy", 0), )
+    gcs_server_addr = cluster.gcs_address
+    options = (("grpc.enable_http_proxy", 0),)
     channel = grpc.insecure_channel(gcs_server_addr, options)
     stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
     r = gcs_service_pb2.DrainNodeRequest()
@@ -403,8 +411,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
 
     p = error_pubsub
     # Error shouldn't be printed to the driver.
-    errors = get_error_message(
-        p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
+    errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
     assert len(errors) == 0
     # There should be only a head node since we drained worker nodes.
     # NOTE: In the current implementation we kill nodes when draining them.
@@ -422,8 +429,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
         stub.DrainNode(r)
     p = error_pubsub
     # Error shouldn't be printed to the driver.
-    errors = get_error_message(
-        p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
+    errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)
     assert len(errors) == 0
     """
     Make sure the GCS states are updated properly.
@@ -450,8 +456,8 @@ def test_worker_start_timeout(monkeypatch, ray_start_cluster):
         # this delay will make worker start slow
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "InternalKVGcsService.grpc_server.InternalKVGet"
-            "=2000000:2000000")
+            "InternalKVGcsService.grpc_server.InternalKVGet=2000000:2000000",
+        )
         m.setenv("RAY_worker_register_timeout_seconds", "1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4, object_store_memory=1e9)
@@ -469,11 +475,13 @@ ray.get(task.remote(), timeout=3)
             run_string_as_driver(script)
 
         # make sure log is correct
-        assert ("The process is still alive, probably "
-                "it's hanging during start") in e.value.output.decode()
+        assert (
+            "The process is still alive, probably it's hanging during start"
+        ) in e.value.output.decode()
         # worker will be killed so it won't try to register to raylet
-        assert ("Received a register request from an "
-                "unknown worker shim process") not in e.value.output.decode()
+        assert (
+            "Received a register request from an unknown worker shim process"
+        ) not in e.value.output.decode()
 
 
 def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
@@ -500,6 +508,71 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
     head.kill_raylet()
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
+
+
+def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
+    """Test that locality-ware scheduling can handle dead nodes."""
+    # Create a cluster with 4 nodes.
+    config = {
+        "num_heartbeats_timeout": 5,
+        "raylet_heartbeat_period_milliseconds": 50,
+    }
+    cluster = Cluster()
+    cluster.add_node(num_cpus=4, resources={"node1": 1}, _system_config=config)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    node2 = cluster.add_node(num_cpus=4, resources={"node2": 1})
+    node3 = cluster.add_node(num_cpus=4, resources={"node3": 1})
+    node4 = cluster.add_node(num_cpus=4, resources={"node4": 1})
+    cluster.wait_for_nodes()
+
+    # Create 2 objects on node 2.
+    @ray.remote(resources={"node2": 0.1})
+    def create_object():
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
+
+    obj1 = create_object.remote()
+    obj2 = create_object.remote()
+
+    # Push these 2 objects to other nodes.
+    # node2 will have obj1 and obj2.
+    # node3 will have obj1.
+    # node4 will have obj2.
+    @ray.remote
+    class MyActor:
+        def __init__(self, obj_refs):
+            # Note, we need to keep obj_refs to prevent the objects from
+            # being garbage collected.
+            self.obj_refs = obj_refs
+            self.obj = ray.get(obj_refs)
+
+        def ready(self):
+            return True
+
+    actors = [
+        MyActor.options(resources={"node2": 0.1}).remote([obj1, obj2]),
+        MyActor.options(resources={"node3": 0.1}).remote([obj1]),
+        MyActor.options(resources={"node4": 0.1}).remote([obj2]),
+    ]
+
+    assert all(ray.get(actor.ready.remote()) is True for actor in actors)
+
+    # This function requires obj1 and obj2.
+    @ray.remote
+    def func(obj1, obj2):
+        return ray.worker.global_worker.node.unique_id
+
+    # This function should be scheduled to node2. As node2 has both objects.
+    assert ray.get(func.remote(obj1, obj2)) == node2.unique_id
+
+    # Kill node2, and re-schedule the function.
+    # It should be scheduled to either node3 or node4.
+    node2.kill_raylet()
+    # Waits for the driver to receive the NodeRemoved notification.
+    time.sleep(1)
+    target_node = ray.get(func.remote(obj1, obj2))
+    assert target_node == node3.unique_id or target_node == node4.unique_id
 
 
 if __name__ == "__main__":

@@ -22,8 +22,9 @@ if __name__ == "__main__":
     result = {
         "time_taken": taken,
     }
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/train_tensorflow_mnist_test.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/train_tensorflow_mnist_test.json"
+    )
 
     with open(test_output_json, "wt") as f:
         json.dump(result, f)

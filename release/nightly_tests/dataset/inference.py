@@ -16,14 +16,17 @@ import numpy as np
 
 class Preprocessor:
     def __init__(self):
-        self.torch_transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        self.torch_transform = transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Lambda(lambda t: t[:3, ...]),  # remove alpha channel
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
 
     def __call__(self, img_bytes):
         try:
@@ -48,8 +51,7 @@ class ImageModel:
 
 def get_paths(bucket, path, max_files=100 * 1000):
     s3 = boto3.resource("s3")
-    s3_objects = s3.Bucket(bucket).objects.filter(
-        Prefix=path).limit(max_files).all()
+    s3_objects = s3.Bucket(bucket).objects.filter(Prefix=path).limit(max_files).all()
     materialized = [(obj.bucket_name, obj.key) for obj in tqdm(s3_objects)]
     return materialized
 
@@ -81,7 +83,8 @@ print("Downloading...")
 ds = ray.data.read_binary_files(
     "s3://anyscale-data/small-images/",
     parallelism=1000,
-    ray_remote_args={"num_cpus": 0.5})
+    ray_remote_args={"num_cpus": 0.5},
+)
 # Do a blocking map so that we can measure the download time.
 ds = ds.map(lambda x: x)
 
@@ -90,8 +93,7 @@ print("Preprocessing...")
 ds = ds.map(preprocess)
 end_preprocess_time = time.time()
 print("Inferring...")
-ds = ds.map_batches(
-    infer, num_gpus=0.25, batch_format="pandas", compute="actors")
+ds = ds.map_batches(infer, num_gpus=0.25, batch_format="pandas", compute="actors")
 
 end_time = time.time()
 

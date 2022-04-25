@@ -14,15 +14,18 @@ import ray
 from ray import tune
 from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.env.simple_rpg import SimpleRPG
-from ray.rllib.examples.models.simple_rpg_model import CustomTorchRPGModel, \
-    CustomTFRPGModel
+from ray.rllib.examples.models.simple_rpg_model import (
+    CustomTorchRPGModel,
+    CustomTFRPGModel,
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf2",
-    help="The DL framework specifier.")
+    help="The DL framework specifier.",
+)
 
 if __name__ == "__main__":
     ray.init()

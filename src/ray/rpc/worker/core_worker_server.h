@@ -29,7 +29,6 @@ namespace rpc {
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_CORE_WORKER_RPC_HANDLERS                                         \
   RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, -1)                       \
-  RPC_SERVICE_HANDLER(CoreWorkerService, StealTasks, -1)                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete, -1) \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, -1)                \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope, -1)         \
@@ -45,14 +44,12 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, SpillObjects, -1)                   \
   RPC_SERVICE_HANDLER(CoreWorkerService, RestoreSpilledObjects, -1)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, DeleteSpilledObjects, -1)           \
-  RPC_SERVICE_HANDLER(CoreWorkerService, AddSpilledUrl, -1)                  \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady, -1)              \
   RPC_SERVICE_HANDLER(CoreWorkerService, Exit, -1)                           \
   RPC_SERVICE_HANDLER(CoreWorkerService, AssignObjectOwner, -1)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(StealTasks)                     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
@@ -68,7 +65,6 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddSpilledUrl)                  \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)                           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)

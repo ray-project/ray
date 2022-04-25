@@ -5,8 +5,15 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, \
-    BlockPartition, BlockPartitionMetadata, MaybeBlockPartition, BlockExecStats
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    T,
+    BlockPartition,
+    BlockPartitionMetadata,
+    MaybeBlockPartition,
+)
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.delegating_block_builder import DelegatingBlockBuilder
@@ -25,10 +32,12 @@ class Datasource(Generic[T]):
 
     See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
     of how to implement readable and writable datasources.
+
+    Datasource instances must be serializable, since ``prepare_read()`` and
+    ``do_write()`` are called in remote tasks.
     """
 
-    def prepare_read(self, parallelism: int,
-                     **read_args) -> List["ReadTask[T]"]:
+    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask[T]"]:
         """Return the list of tasks needed to perform a read.
 
         Args:
@@ -42,9 +51,12 @@ class Datasource(Generic[T]):
         """
         raise NotImplementedError
 
-    def do_write(self, blocks: List[ObjectRef[Block]],
-                 metadata: List[BlockMetadata],
-                 **write_args) -> List[ObjectRef[WriteResult]]:
+    def do_write(
+        self,
+        blocks: List[ObjectRef[Block]],
+        metadata: List[BlockMetadata],
+        **write_args,
+    ) -> List[ObjectRef[WriteResult]]:
         """Launch Ray tasks for writing blocks out to the datasource.
 
         Args:
@@ -58,8 +70,7 @@ class Datasource(Generic[T]):
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[WriteResult],
-                          **kwargs) -> None:
+    def on_write_complete(self, write_results: List[WriteResult], **kwargs) -> None:
         """Callback for when a write job completes.
 
         This can be used to "commit" a write output. This method must
@@ -72,8 +83,9 @@ class Datasource(Generic[T]):
         """
         pass
 
-    def on_write_failed(self, write_results: List[ObjectRef[WriteResult]],
-                        error: Exception, **kwargs) -> None:
+    def on_write_failed(
+        self, write_results: List[ObjectRef[WriteResult]], error: Exception, **kwargs
+    ) -> None:
         """Callback for when a write job fails.
 
         This is called on a best-effort basis on write failures.
@@ -108,8 +120,9 @@ class ReadTask(Callable[[], BlockPartition]):
     contents of the block itself.
     """
 
-    def __init__(self, read_fn: Callable[[], Iterable[Block]],
-                 metadata: BlockPartitionMetadata):
+    def __init__(
+        self, read_fn: Callable[[], Iterable[Block]], metadata: BlockPartitionMetadata
+    ):
         self._metadata = metadata
         self._read_fn = read_fn
 
@@ -123,17 +136,17 @@ class ReadTask(Callable[[], BlockPartition]):
             DeprecationWarning(
                 "Read function must return Iterable[Block], got {}. "
                 "Probably you need to return `[block]` instead of "
-                "`block`.".format(result))
+                "`block`.".format(result)
+            )
 
         if context.block_splitting_enabled:
             partition: BlockPartition = []
             for block in result:
                 metadata = BlockAccessor.for_block(block).get_metadata(
-                    input_files=self._metadata.input_files,
-                    exec_stats=BlockExecStats.TODO)
+                    input_files=self._metadata.input_files, exec_stats=None
+                )  # No exec stats for the block splits.
                 assert context.block_owner
-                partition.append((ray.put(block, _owner=context.block_owner),
-                                  metadata))
+                partition.append((ray.put(block, _owner=context.block_owner), metadata))
             if len(partition) == 0:
                 raise ValueError("Read task must return non-empty list.")
             return partition
@@ -148,16 +161,20 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
     """An example datasource that generates ranges of numbers from [0..n).
 
     Examples:
-        >>> source = RangeDatasource()
-        >>> ray.data.read_datasource(source, n=10).take()
-        ... [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        >>> import ray
+        >>> from ray.data.datasource import RangeDatasource
+        >>> source = RangeDatasource() # doctest: +SKIP
+        >>> ray.data.read_datasource(source, n=10).take() # doctest: +SKIP
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     """
 
-    def prepare_read(self,
-                     parallelism: int,
-                     n: int,
-                     block_format: str = "list",
-                     tensor_shape: Tuple = (1, )) -> List[ReadTask]:
+    def prepare_read(
+        self,
+        parallelism: int,
+        n: int,
+        block_format: str = "list",
+        tensor_shape: Tuple = (1,),
+    ) -> List[ReadTask]:
         read_tasks: List[ReadTask] = []
         block_size = max(1, n // parallelism)
 
@@ -166,12 +183,16 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         def make_block(start: int, count: int) -> Block:
             if block_format == "arrow":
                 return pyarrow.Table.from_arrays(
-                    [np.arange(start, start + count)], names=["value"])
+                    [np.arange(start, start + count)], names=["value"]
+                )
             elif block_format == "tensor":
                 tensor = TensorArray(
-                    np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                    np.ones(tensor_shape, dtype=np.int64)
+                    * np.expand_dims(
                         np.arange(start, start + count),
-                        tuple(range(1, 1 + len(tensor_shape)))))
+                        tuple(range(1, 1 + len(tensor_shape))),
+                    )
+                )
                 return pyarrow.Table.from_pydict({"value": tensor})
             else:
                 return list(builtins.range(start, start + count))
@@ -182,15 +203,19 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
             if block_format == "arrow":
                 _check_pyarrow_version()
                 import pyarrow
+
                 schema = pyarrow.Table.from_pydict({"value": [0]}).schema
             elif block_format == "tensor":
                 _check_pyarrow_version()
                 from ray.data.extensions import TensorArray
                 import pyarrow
+
                 tensor = TensorArray(
-                    np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                        np.arange(0, 10), tuple(
-                            range(1, 1 + len(tensor_shape)))))
+                    np.ones(tensor_shape, dtype=np.int64)
+                    * np.expand_dims(
+                        np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
+                    )
+                )
                 schema = pyarrow.Table.from_pydict({"value": tensor}).schema
             elif block_format == "list":
                 schema = int
@@ -201,10 +226,11 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 size_bytes=8 * count,
                 schema=schema,
                 input_files=None,
-                exec_stats=None)
+                exec_stats=None,
+            )
             read_tasks.append(
-                ReadTask(
-                    lambda i=i, count=count: [make_block(i, count)], meta))
+                ReadTask(lambda i=i, count=count: [make_block(i, count)], meta)
+            )
             i += block_size
 
         return read_tasks
@@ -214,9 +240,11 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """An example implementation of a writable datasource for testing.
 
     Examples:
-        >>> output = DummyOutputDatasource()
-        >>> ray.data.range(10).write_datasource(output)
-        >>> assert output.num_ok == 1
+        >>> import ray
+        >>> from ray.data.datasource import DummyOutputDatasource
+        >>> output = DummyOutputDatasource() # doctest: +SKIP
+        >>> ray.data.range(10).write_datasource(output) # doctest: +SKIP
+        >>> assert output.num_ok == 1 # doctest: +SKIP
     """
 
     def __init__(self):
@@ -245,9 +273,12 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         self.num_ok = 0
         self.num_failed = 0
 
-    def do_write(self, blocks: List[ObjectRef[Block]],
-                 metadata: List[BlockMetadata],
-                 **write_args) -> List[ObjectRef[WriteResult]]:
+    def do_write(
+        self,
+        blocks: List[ObjectRef[Block]],
+        metadata: List[BlockMetadata],
+        **write_args,
+    ) -> List[ObjectRef[WriteResult]]:
         tasks = []
         for b in blocks:
             tasks.append(self.data_sink.write.remote(b))
@@ -257,8 +288,9 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
         assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
-    def on_write_failed(self, write_results: List[ObjectRef[WriteResult]],
-                        error: Exception) -> None:
+    def on_write_failed(
+        self, write_results: List[ObjectRef[WriteResult]], error: Exception
+    ) -> None:
         self.num_failed += 1
 
 
@@ -266,14 +298,18 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
     """An example datasource that generates rows with random int64 columns.
 
     Examples:
-        >>> source = RandomIntRowDatasource()
-        >>> ray.data.read_datasource(source, n=10, num_columns=2).take()
-        ... {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
-        ... {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
+        >>> import ray
+        >>> from ray.data.datasource import RandomIntRowDatasource
+        >>> source = RandomIntRowDatasource() # doctest: +SKIP
+        >>> ray.data.read_datasource( # doctest: +SKIP
+        ...     source, n=10, num_columns=2).take()
+        {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
+        {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
 
-    def prepare_read(self, parallelism: int, n: int,
-                     num_columns: int) -> List[ReadTask]:
+    def prepare_read(
+        self, parallelism: int, n: int, num_columns: int
+    ) -> List[ReadTask]:
         _check_pyarrow_version()
         import pyarrow
 
@@ -283,14 +319,14 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         def make_block(count: int, num_columns: int) -> Block:
             return pyarrow.Table.from_arrays(
                 np.random.randint(
-                    np.iinfo(np.int64).max,
-                    size=(num_columns, count),
-                    dtype=np.int64),
-                names=[f"c_{i}" for i in range(num_columns)])
+                    np.iinfo(np.int64).max, size=(num_columns, count), dtype=np.int64
+                ),
+                names=[f"c_{i}" for i in range(num_columns)],
+            )
 
         schema = pyarrow.Table.from_pydict(
-            {f"c_{i}": [0]
-             for i in range(num_columns)}).schema
+            {f"c_{i}": [0] for i in range(num_columns)}
+        ).schema
 
         i = 0
         while i < n:
@@ -299,12 +335,17 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
                 num_rows=count,
                 size_bytes=8 * count * num_columns,
                 schema=schema,
-                input_files=None)
+                input_files=None,
+                exec_stats=None,
+            )
             read_tasks.append(
                 ReadTask(
                     lambda count=count, num_columns=num_columns: [
-                        make_block(count, num_columns)],
-                    meta))
+                        make_block(count, num_columns)
+                    ],
+                    meta,
+                )
+            )
             i += block_size
 
         return read_tasks

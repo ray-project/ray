@@ -17,8 +17,9 @@ namespace gcs {
 
 class MockNodeScorer : public NodeScorer {
  public:
-  MOCK_METHOD(double, Score,
-              (const ResourceSet &required_resources,
+  MOCK_METHOD(double,
+              Score,
+              (const ResourceRequest &required_resources,
                const SchedulingResources &node_resources),
               (override));
 };
@@ -31,8 +32,9 @@ namespace gcs {
 
 class MockLeastResourceScorer : public LeastResourceScorer {
  public:
-  MOCK_METHOD(double, Score,
-              (const ResourceSet &required_resources,
+  MOCK_METHOD(double,
+              Score,
+              (const ResourceRequest &required_resources,
                const SchedulingResources &node_resources),
               (override));
 };

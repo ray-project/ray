@@ -45,6 +45,7 @@ def validate_epoch(dataloader, model, loss_fn):
             loss += loss_fn(pred, y).item()
     loss /= num_batches
     import copy
+
     model_copy = copy.deepcopy(model)
     result = {"model": model_copy.cpu().state_dict(), "loss": loss}
     return result
@@ -60,10 +61,8 @@ def train_func(config):
 
     train_dataset = LinearDataset(2, 5, size=data_size)
     val_dataset = LinearDataset(2, 5, size=val_size)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size)
-    validation_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=batch_size)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size)
+    validation_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size)
 
     train_loader = train.torch.prepare_data_loader(train_loader)
     validation_loader = train.torch.prepare_data_loader(validation_loader)
@@ -87,15 +86,12 @@ def train_func(config):
 
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
-    trainer = Trainer(
-        backend="torch", num_workers=num_workers, use_gpu=use_gpu)
+    trainer = Trainer(backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer.start()
     results = trainer.run(
-        train_func,
-        config,
-        callbacks=[JsonLoggerCallback(),
-                   TBXLoggerCallback()])
+        train_func, config, callbacks=[JsonLoggerCallback(), TBXLoggerCallback()]
+    )
     trainer.shutdown()
 
     print(results)
@@ -105,27 +101,27 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--address",
-        required=False,
-        type=str,
-        help="the address to use for Ray")
+        "--address", required=False, type=str, help="the address to use for Ray"
+    )
     parser.add_argument(
         "--num-workers",
         "-n",
         type=int,
         default=2,
-        help="Sets number of workers for training.")
+        help="Sets number of workers for training.",
+    )
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        help="Whether to use GPU for training.")
+        "--use-gpu", action="store_true", help="Whether to use GPU for training."
+    )
     parser.add_argument(
-        "--epochs", type=int, default=3, help="Number of epochs to train for.")
+        "--epochs", type=int, default=3, help="Number of epochs to train for."
+    )
     parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
-        help="Finish quickly for testing.")
+        help="Finish quickly for testing.",
+    )
 
     args, _ = parser.parse_known_args()
 
@@ -137,6 +133,5 @@ if __name__ == "__main__":
     else:
         ray.init(address=args.address)
         train_linear(
-            num_workers=args.num_workers,
-            use_gpu=args.use_gpu,
-            epochs=args.epochs)
+            num_workers=args.num_workers, use_gpu=args.use_gpu, epochs=args.epochs
+        )

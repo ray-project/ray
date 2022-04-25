@@ -14,8 +14,9 @@ torch, nn = try_import_torch()
 class MultiHeadAttention(nn.Module):
     """A multi-head attention layer described in [1]."""
 
-    def __init__(self, in_dim: int, out_dim: int, num_heads: int,
-                 head_dim: int, **kwargs):
+    def __init__(
+        self, in_dim: int, out_dim: int, num_heads: int, head_dim: int, **kwargs
+    ):
         """
         in_dim (int): Dimension of input
         out_dim (int): Dimension of output
@@ -28,10 +29,12 @@ class MultiHeadAttention(nn.Module):
         self._num_heads = num_heads
         self._head_dim = head_dim
         self._qkv_layer = SlimFC(
-            in_size=in_dim, out_size=3 * num_heads * head_dim, use_bias=False)
+            in_size=in_dim, out_size=3 * num_heads * head_dim, use_bias=False
+        )
 
         self._linear_layer = SlimFC(
-            in_size=num_heads * head_dim, out_size=out_dim, use_bias=False)
+            in_size=num_heads * head_dim, out_size=out_dim, use_bias=False
+        )
 
     def forward(self, inputs: TensorType) -> TensorType:
         L = list(inputs.size())[1]  # length of segment
@@ -48,14 +51,14 @@ class MultiHeadAttention(nn.Module):
         values = torch.reshape(values, [-1, L, H, D])
 
         score = torch.einsum("bihd,bjhd->bijh", queries, keys)
-        score = score / D**0.5
+        score = score / D ** 0.5
 
         # causal mask of the same length as the sequence
         mask = sequence_mask(torch.arange(1, L + 1), dtype=score.dtype)
         mask = mask[None, :, :, None]
         mask = mask.float()
 
-        masked_score = score * mask + 1e30 * (mask - 1.)
+        masked_score = score * mask + 1e30 * (mask - 1.0)
         wmat = nn.functional.softmax(masked_score, dim=2)
 
         out = torch.einsum("bijh,bjhd->bihd", wmat, values)

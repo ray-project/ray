@@ -22,7 +22,7 @@ class ConfusionMatrix(object):
         with torch.no_grad():
             k = (a >= 0) & (a < n)
             inds = n * a[k].to(torch.int64) + b[k]
-            self.mat += torch.bincount(inds, minlength=n**2).reshape(n, n)
+            self.mat += torch.bincount(inds, minlength=n ** 2).reshape(n, n)
 
     def reset(self):
         self.mat.zero_()
@@ -44,22 +44,25 @@ class ConfusionMatrix(object):
 
     def __str__(self):
         acc_global, acc, iu = self.compute()
-        return ('global correct: {:.1f}\n'
-                'average row correct: {}\n'
-                'IoU: {}\n'
-                'mean IoU: {:.1f}').format(
-                    acc_global.item() * 100,
-                    [f'{i:.1f}' for i in (acc * 100).tolist()],
-                    [f'{i:.1f}' for i in (iu * 100).tolist()],
-                    iu.mean().item() * 100)
+        return (
+            "global correct: {:.1f}\n"
+            "average row correct: {}\n"
+            "IoU: {}\n"
+            "mean IoU: {:.1f}"
+        ).format(
+            acc_global.item() * 100,
+            [f"{i:.1f}" for i in (acc * 100).tolist()],
+            [f"{i:.1f}" for i in (iu * 100).tolist()],
+            iu.mean().item() * 100,
+        )
 
 
 def cat_list(images, fill_value=0):
     max_size = tuple(max(s) for s in zip(*[img.shape for img in images]))
-    batch_shape = (len(images), ) + max_size
+    batch_shape = (len(images),) + max_size
     batched_imgs = images[0].new(*batch_shape).fill_(fill_value)
     for img, pad_img in zip(images, batched_imgs):
-        pad_img[..., :img.shape[-2], :img.shape[-1]].copy_(img)
+        pad_img[..., : img.shape[-2], : img.shape[-1]].copy_(img)
     return batched_imgs
 
 

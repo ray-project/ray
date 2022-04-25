@@ -16,13 +16,11 @@ def test_shuffle():
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_shuffle_hang():
     try:
-        shuffle.run(
-            object_store_memory=1e9, num_partitions=200, partition_size=10e6)
+        shuffle.run(object_store_memory=1e9, num_partitions=200, partition_size=10e6)
     finally:
         ray.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_shuffle_no_streaming():
     try:
         shuffle.run(no_streaming=True)
@@ -46,10 +44,8 @@ def test_shuffle_multi_node_no_streaming(ray_start_cluster):
         cluster.add_node(num_cpus=2, object_store_memory=1e9)
 
     shuffle.run(
-        ray_address="auto",
-        num_partitions=200,
-        partition_size=10e6,
-        no_streaming=True)
+        ray_address="auto", num_partitions=200, partition_size=10e6, no_streaming=True
+    )
 
 
 if __name__ == "__main__":

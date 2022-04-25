@@ -14,14 +14,14 @@ prelude_commands: &prelude_commands |-
     export RAY_DEFAULT_BUILD="1"
     export LC_ALL="en_US.UTF-8"
     export LANG="en_US.UTF-8"
-    powershell ci/travis/fix-windows-container-networking.ps1
-    cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    powershell ci/pipeline/fix-windows-container-networking.ps1
+    cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
 upload_wheels_if_needed: &upload_wheels_if_needed |-
     if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     pip install -q docker aws_requests_auth boto3
-    python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
-    if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+    python .buildkite/copy_files.py --destination branch_wheels --path python/dist
+    if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path python/dist; fi
 
 
 steps:
@@ -29,18 +29,18 @@ steps:
   parallelism: 6
   commands:
     - *prelude_commands
-    - . ./ci/travis/ci.sh init
-    - . ./ci/travis/ci.sh build
-    - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/travis/ci.sh test_core; fi
+    # conda init should be moved to the docker image setup
+    - conda init
+    - . ./ci/ci.sh init
+    - . ./ci/ci.sh build
+    - if [ "${BUILDKITE_PARALLEL_JOB}" = "0" ]; then . ./ci/ci.sh test_core; fi
     # The next command will be sharded into $parallelism shards.
-    - . ./ci/travis/ci.sh test_python
+    - . ./ci/ci.sh test_python
 
-# Doesn't quite work.
-# /c/Install/ray/ci/travis/../../python/build-wheel-windows.sh: line 75: RUNNER_TOOL_CACHE: unbound variable
-# - label: ":windows: Wheels"
-#   commands:
-#     - *prelude_commands
-#     - export WINDOWS_WHEELS="1"
-#     - . ./ci/travis/ci.sh init
-#     - . ./ci/travis/ci.sh build
-#     - *upload_wheels_if_needed
+- label: ":windows: Wheels"
+  commands:
+    - *prelude_commands
+    - export WINDOWS_WHEELS="1"
+    - . ./ci/ci.sh init
+    - . ./ci/ci.sh build
+    - *upload_wheels_if_needed

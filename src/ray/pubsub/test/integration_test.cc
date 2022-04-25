@@ -32,44 +32,48 @@
 namespace ray {
 namespace pubsub {
 
-// Implements PublisherService for handling subscriber polling.
-class PublisherServiceImpl final : public rpc::PublisherService::CallbackService {
+// Implements SubscriberService for handling subscriber polling.
+class SubscriberServiceImpl final : public rpc::SubscriberService::CallbackService {
  public:
-  explicit PublisherServiceImpl(std::unique_ptr<Publisher> publisher)
+  explicit SubscriberServiceImpl(std::unique_ptr<Publisher> publisher)
       : publisher_(std::move(publisher)) {}
 
   grpc::ServerUnaryReactor *PubsubLongPolling(
-      grpc::CallbackServerContext *context, const rpc::PubsubLongPollingRequest *request,
+      grpc::CallbackServerContext *context,
+      const rpc::PubsubLongPollingRequest *request,
       rpc::PubsubLongPollingReply *reply) override {
-    const auto subscriber_id = UniqueID::FromBinary(request->subscriber_id());
     auto *reactor = context->DefaultReactor();
-    publisher_->ConnectToSubscriber(
-        subscriber_id, reply,
-        [reactor](ray::Status status, std::function<void()> success_cb,
-                  std::function<void()> failure_cb) {
-          // Long polling should always succeed.
-          RAY_CHECK_OK(status);
-          RAY_CHECK(success_cb == nullptr);
-          RAY_CHECK(failure_cb == nullptr);
-          reactor->Finish(grpc::Status::OK);
-        });
+    publisher_->ConnectToSubscriber(*request,
+                                    reply,
+                                    [reactor](ray::Status status,
+                                              std::function<void()> success_cb,
+                                              std::function<void()> failure_cb) {
+                                      // Long polling should always succeed.
+                                      RAY_CHECK_OK(status);
+                                      RAY_CHECK(success_cb == nullptr);
+                                      RAY_CHECK(failure_cb == nullptr);
+                                      reactor->Finish(grpc::Status::OK);
+                                    });
     return reactor;
   }
 
   // For simplicity, all work is done on the GRPC thread.
   grpc::ServerUnaryReactor *PubsubCommandBatch(
-      grpc::CallbackServerContext *context, const rpc::PubsubCommandBatchRequest *request,
+      grpc::CallbackServerContext *context,
+      const rpc::PubsubCommandBatchRequest *request,
       rpc::PubsubCommandBatchReply *reply) override {
     const auto subscriber_id = UniqueID::FromBinary(request->subscriber_id());
     auto *reactor = context->DefaultReactor();
     for (const auto &command : request->commands()) {
       if (command.has_unsubscribe_message()) {
-        publisher_->UnregisterSubscription(command.channel_type(), subscriber_id,
+        publisher_->UnregisterSubscription(command.channel_type(),
+                                           subscriber_id,
                                            command.key_id().empty()
                                                ? std::nullopt
                                                : std::make_optional(command.key_id()));
       } else if (command.has_subscribe_message()) {
-        publisher_->RegisterSubscription(command.channel_type(), subscriber_id,
+        publisher_->RegisterSubscription(command.channel_type(),
+                                         subscriber_id,
                                          command.key_id().empty()
                                              ? std::nullopt
                                              : std::make_optional(command.key_id()));
@@ -95,7 +99,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
  public:
   explicit CallbackSubscriberClient(const std::string &address) {
     auto channel = grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
-    stub_ = rpc::PublisherService::NewStub(std::move(channel));
+    stub_ = rpc::SubscriberService::NewStub(std::move(channel));
   }
 
   ~CallbackSubscriberClient() final = default;
@@ -105,12 +109,12 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
       const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubLongPollingReply;
-    stub_->async()->PubsubLongPolling(context, &request, reply,
-                                      [callback, context, reply](grpc::Status s) {
-                                        callback(GrpcStatusToRayStatus(s), *reply);
-                                        delete reply;
-                                        delete context;
-                                      });
+    stub_->async()->PubsubLongPolling(
+        context, &request, reply, [callback, context, reply](grpc::Status s) {
+          callback(GrpcStatusToRayStatus(s), *reply);
+          delete reply;
+          delete context;
+        });
   }
 
   void PubsubCommandBatch(
@@ -118,16 +122,16 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
       const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) final {
     auto *context = new grpc::ClientContext;
     auto *reply = new rpc::PubsubCommandBatchReply;
-    stub_->async()->PubsubCommandBatch(context, &request, reply,
-                                       [callback, context, reply](grpc::Status s) {
-                                         callback(GrpcStatusToRayStatus(s), *reply);
-                                         delete reply;
-                                         delete context;
-                                       });
+    stub_->async()->PubsubCommandBatch(
+        context, &request, reply, [callback, context, reply](grpc::Status s) {
+          callback(GrpcStatusToRayStatus(s), *reply);
+          delete reply;
+          delete context;
+        });
   }
 
  private:
-  std::unique_ptr<rpc::PublisherService::Stub> stub_;
+  std::unique_ptr<rpc::SubscriberService::Stub> stub_;
 };
 
 class IntegrationTest : public ::testing::Test {
@@ -166,12 +170,12 @@ class IntegrationTest : public ::testing::Test {
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
-    publisher_service_ = std::make_unique<PublisherServiceImpl>(std::move(publisher));
+    subscriber_service_ = std::make_unique<SubscriberServiceImpl>(std::move(publisher));
 
     grpc::EnableDefaultHealthCheckService(true);
     grpc::ServerBuilder builder;
     builder.AddListeningPort(address_, grpc::InsecureServerCredentials());
-    builder.RegisterService(publisher_service_.get());
+    builder.RegisterService(subscriber_service_.get());
     server_ = builder.BuildAndStart();
   }
 
@@ -195,7 +199,7 @@ class IntegrationTest : public ::testing::Test {
   rpc::Address address_proto_;
   IOServicePool io_service_ = IOServicePool(3);
   std::unique_ptr<PeriodicalRunner> periodic_runner_;
-  std::unique_ptr<PublisherServiceImpl> publisher_service_;
+  std::unique_ptr<SubscriberServiceImpl> subscriber_service_;
   std::unique_ptr<grpc::Server> server_;
 };
 
@@ -208,8 +212,10 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   std::vector<rpc::ActorTableData> actors_1;
   auto subscriber_1 = CreateSubscriber();
   subscriber_1->Subscribe(
-      std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_ACTOR_CHANNEL,
-      address_proto_, subscribed_actor,
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_ACTOR_CHANNEL,
+      address_proto_,
+      subscribed_actor,
       /*subscribe_done_callback=*/
       [&counter](Status status) {
         RAY_CHECK_OK(status);
@@ -226,7 +232,8 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   std::vector<rpc::ActorTableData> actors_2;
   auto subscriber_2 = CreateSubscriber();
   subscriber_2->SubscribeChannel(
-      std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_ACTOR_CHANNEL,
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_ACTOR_CHANNEL,
       address_proto_,
       /*subscribe_done_callback=*/
       [&counter](Status status) {
@@ -253,7 +260,7 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   msg.set_key_id(subscribed_actor);
   *msg.mutable_actor_message() = actor_data;
 
-  publisher_service_->GetPublisher().Publish(msg);
+  subscriber_service_->GetPublisher().Publish(msg);
 
   absl::MutexLock lock(&mu);
 
@@ -276,12 +283,12 @@ TEST_F(IntegrationTest, SubscribersToOneIDAndAllIDs) {
   EXPECT_EQ(actors_1[0].actor_id(), actor_data.actor_id());
   EXPECT_EQ(actors_2[0].actor_id(), actor_data.actor_id());
 
-  subscriber_1->Unsubscribe(rpc::ChannelType::GCS_ACTOR_CHANNEL, address_proto_,
-                            subscribed_actor);
+  subscriber_1->Unsubscribe(
+      rpc::ChannelType::GCS_ACTOR_CHANNEL, address_proto_, subscribed_actor);
   subscriber_2->UnsubscribeChannel(rpc::ChannelType::GCS_ACTOR_CHANNEL, address_proto_);
 
   // Flush all the inflight long polling.
-  publisher_service_->GetPublisher().UnregisterAll();
+  subscriber_service_->GetPublisher().UnregisterAll();
 
   // Waiting here is necessary to avoid invalid memory access during shutdown.
   // TODO(mwtian): cancel inflight polls during subscriber shutdown, and remove the

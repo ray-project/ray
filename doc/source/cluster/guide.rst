@@ -2,8 +2,8 @@
 
 .. _deployment-guide:
 
-Ray Deployment Guide
-====================
+Cluster Deployment Guide
+========================
 
 This page provides an overview of how to deploy a multi-node Ray cluster, including how to:
 
@@ -90,17 +90,21 @@ utilization (starting from the smallest node).
 Deploying an application
 ------------------------
 
-The recommended way of connecting to a Ray cluster is to use the
-``ray.init("ray://<host>:<port>")`` API and connect via the :ref:`Ray Client<ray-client>`.
+To submit an application to the Ray cluster, use the Ray :ref:`Job submission interface <jobs-overview>`.
 
-.. note::
+.. code:: bash
 
-  Using ``ray.init("ray://<host>:<port>")`` is generally a best practice because it allows
-  you to test your code locally, and deploy to a cluster with **no code
-  changes**.
+  export RAY_ADDRESS=<your_cluster_address>:8265
+  ray job submit ... -- "python script.py"
 
-To connect via Ray Client, set the ``RAY_ADDRESS`` environment variable to the
-address of the Ray client server.
+
+To interactively connect to a Ray cluster, connect via the :ref:`Ray Client<ray-client>`.
+
+.. code-block:: python
+
+  # outside python, set the ``RAY_ADDRESS`` environment variable to the address of the Ray client server
+  ray.init("ray://<host>:<port>")
+
 
 :ref:`Learn more about setting up the Ray client server here <Ray-client>`.
 
@@ -225,7 +229,7 @@ architecture means that the head node will have extra stress due to GCS.
   at least as good as an r5dn.16xlarge on AWS EC2.
 * Set ``resources: {"CPU": 0}`` on the head node. (For Ray clusters deployed using Helm,
   set ``rayResources: {"CPU": 0}``.) Due to the heavy networking
-  load (and the GCS and redis processes), we recommend setting the number of
+  load (and the GCS and dashboard processes), we recommend setting the number of
   CPUs to 0 on the head node to avoid scheduling additional tasks on it.
 
 Configuring the autoscaler

@@ -10,16 +10,20 @@ from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Fork API is not supported on Windows")
+    sys.platform == "win32", reason="Fork API is not supported on Windows"
+)
 def test_fork_process_in_runtime_env(ray_start_cluster):
     cluster = ray_start_cluster
     directory = os.path.dirname(os.path.realpath(__file__))
     setup_worker_path = os.path.join(directory, "mock_setup_worker.py")
     cluster.add_node(num_cpus=1, setup_worker_path=setup_worker_path)
     job_config = ray.job_config.JobConfig(
-        runtime_env={"env_vars": {
-            "a": "b",
-        }})
+        runtime_env={
+            "env_vars": {
+                "a": "b",
+            }
+        }
+    )
     ray.init(address=cluster.address, job_config=job_config)
 
     @ray.remote
@@ -43,16 +47,19 @@ def test_fork_process_in_runtime_env(ray_start_cluster):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="Fork API is not supported on Windows")
+    sys.platform == "win32", reason="Fork API is not supported on Windows"
+)
 def test_fork_process_job_config_from_env_var(ray_start_cluster):
 
-    os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
-        "runtime_env": {
-            "env_vars": {
-                "a": "b",
+    os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps(
+        {
+            "runtime_env": {
+                "env_vars": {
+                    "a": "b",
+                }
             }
         }
-    })
+    )
     cluster = ray_start_cluster
     directory = os.path.dirname(os.path.realpath(__file__))
     setup_worker_path = os.path.join(directory, "mock_setup_worker.py")

@@ -1,5 +1,14 @@
-from typing import (Any, Callable, Dict, List, TYPE_CHECKING, Type, Union,
-                    Optional)
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    TYPE_CHECKING,
+    Type,
+    Union,
+    Optional,
+    Tuple,
+)
 
 import distutils
 import logging
@@ -13,15 +22,22 @@ from shlex import quote
 
 import ray
 import yaml
+from ray.ml.utils.remote_storage import get_fs_and_path, fs_hint
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.checkpoint_manager import Checkpoint
+from ray.tune.checkpoint_manager import _TuneCheckpoint
 from ray.tune.result import NODE_IP
 from ray.util import get_node_ip_address
 from ray.util.debug import log_once
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
-from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
-                                  get_cloud_sync_client, NOOP)
+from ray.tune.sync_client import (
+    CommandBasedClient,
+    get_sync_client,
+    get_cloud_sync_client,
+    NOOP,
+    SyncClient,
+    RemoteTaskClient,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -33,7 +49,8 @@ logger = logging.getLogger(__name__)
 SYNC_PERIOD = 300
 
 CLOUD_CHECKPOINTING_URL = (
-    "https://docs.ray.io/en/master/tune/user-guide.html#using-cloud-storage")
+    "https://docs.ray.io/en/master/tune/user-guide.html#using-cloud-storage"
+)
 _log_sync_warned = False
 _syncers = {}
 
@@ -41,6 +58,22 @@ _syncers = {}
 def wait_for_sync():
     for syncer in _syncers.values():
         syncer.wait()
+
+
+def validate_upload_dir(sync_config: "SyncConfig"):
+    if sync_config.upload_dir:
+        exc = None
+        try:
+            fs, _ = get_fs_and_path(sync_config.upload_dir)
+        except ImportError as e:
+            fs = None
+            exc = e
+        if not fs:
+            raise ValueError(
+                f"Could not identify external storage filesystem for "
+                f"upload dir `{sync_config.upload_dir}`. "
+                f"Hint: {fs_hint(sync_config.upload_dir)}"
+            ) from exc
 
 
 def set_sync_periods(sync_config: "SyncConfig"):
@@ -52,13 +85,14 @@ def set_sync_periods(sync_config: "SyncConfig"):
 def validate_sync_config(sync_config: "SyncConfig"):
     if sync_config.node_sync_period >= 0 or sync_config.cloud_sync_period >= 0:
         # Until fully deprecated, try to consolidate
-        if (sync_config.node_sync_period >= 0
-                and sync_config.cloud_sync_period >= 0):
-            sync_period = min(sync_config.node_sync_period,
-                              sync_config.cloud_sync_period)
+        if sync_config.node_sync_period >= 0 and sync_config.cloud_sync_period >= 0:
+            sync_period = min(
+                sync_config.node_sync_period, sync_config.cloud_sync_period
+            )
         else:
-            sync_period = max(sync_config.node_sync_period,
-                              sync_config.cloud_sync_period)
+            sync_period = max(
+                sync_config.node_sync_period, sync_config.cloud_sync_period
+            )
 
         sync_config.sync_period = sync_period
         sync_config.node_sync_period = -1
@@ -70,7 +104,8 @@ def validate_sync_config(sync_config: "SyncConfig"):
             "deprecated. Pass the `sync_period` property instead. "
             "\nFor now, the lower of the two values (if provided) will "
             f"be used as the sync_period. This value is: {sync_period}",
-            DeprecationWarning)
+            DeprecationWarning,
+        )
 
     if sync_config.sync_to_cloud or sync_config.sync_to_driver:
         if bool(sync_config.upload_dir):
@@ -91,16 +126,18 @@ def validate_sync_config(sync_config: "SyncConfig"):
             "are synced to cloud or not. Syncing to driver is "
             "automatically disabled if an `upload_dir` is given."
             f"\nFor now, as the upload dir is {help}, the respective "
-            f"syncer is used. This value is: {syncer}", DeprecationWarning)
+            f"syncer is used. This value is: {syncer}",
+            DeprecationWarning,
+        )
 
 
-def log_sync_template(options=""):
+def get_rsync_template_if_available(options: str = ""):
     """Template enabling syncs between driver and worker when possible.
     Requires ray cluster to be started with the autoscaler. Also requires
     rsync to be installed.
 
     Args:
-        options (str): Additional rsync options.
+        options: Additional rsync options.
 
     Returns:
         Sync template with source and target parameters. None if rsync
@@ -114,13 +151,13 @@ def log_sync_template(options=""):
     ssh_key = get_ssh_key()
     if ssh_key is None:
         if not _log_sync_warned:
-            logger.debug("Log sync requires cluster to be setup with "
-                         "`ray up`.")
+            logger.debug("Log sync requires cluster to be setup with `ray up`.")
             _log_sync_warned = True
         return None
 
     rsh = "ssh -i {ssh_key} -o ConnectTimeout=120s -o StrictHostKeyChecking=no"
     rsh = rsh.format(ssh_key=quote(ssh_key))
+    options += " --exclude='checkpoint_tmp*'"
     template = "rsync {options} -savz -e {rsh} {{source}} {{target}}"
     return template.format(options=options, rsh=quote(rsh))
 
@@ -135,10 +172,10 @@ class SyncConfig:
     happens via this remote storage.
 
     Args:
-        upload_dir (str): Optional URI to sync training results and checkpoints
+        upload_dir: Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
             Specifying this will enable cloud-based checkpointing.
-        syncer (None|func|str): Function for syncing the local_dir to and
+        syncer: Function for syncing the local_dir to and
             from remote storage. If string, then it must be a string template
             that includes ``{source}`` and ``{target}`` for the syncer to run.
             If not provided, it defaults to rsync for non cloud-based storage,
@@ -146,16 +183,17 @@ class SyncConfig:
             storage.
             If set to ``None``, no syncing will take place.
             Defaults to ``"auto"`` (auto detect).
-        sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
+        sync_on_checkpoint: Force sync-down of trial checkpoint to
             driver (only non cloud-storage).
             If set to False, checkpoint syncing from worker to driver
             is asynchronous and best-effort. This does not affect persistent
             storage syncing. Defaults to True.
-        sync_period (int): Syncing period for syncing between nodes.
+        sync_period: Syncing period for syncing between nodes.
 
     """
+
     upload_dir: Optional[str] = None
-    syncer: Union[None, str] = "auto"
+    syncer: Optional[str] = "auto"
 
     sync_on_checkpoint: bool = True
     sync_period: int = 300
@@ -171,44 +209,45 @@ class SyncConfig:
 
 
 class Syncer:
-    def __init__(self, local_dir, remote_dir, sync_client=NOOP):
+    def __init__(self, local_dir: str, remote_dir: str, sync_client: SyncClient = NOOP):
         """Syncs between two directories with the sync_function.
 
         Arguments:
-            local_dir (str): Directory to sync. Uniquely identifies the syncer.
-            remote_dir (str): Remote directory to sync with.
-            sync_client (SyncClient): Client for syncing between local_dir and
+            local_dir: Directory to sync. Uniquely identifies the syncer.
+            remote_dir: Remote directory to sync with.
+            sync_client: Client for syncing between local_dir and
                 remote_dir. Defaults to a Noop.
         """
-        self._local_dir = (os.path.join(local_dir, "")
-                           if local_dir else local_dir)
+        self._local_dir = os.path.join(local_dir, "") if local_dir else local_dir
         self._remote_dir = remote_dir
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
         self.sync_client = sync_client
 
-    def sync_up_if_needed(self,
-                          sync_period: int,
-                          exclude: Optional[List] = None):
-        """Syncs up if time since last sync up is greather than sync_period.
+    @property
+    def _pass_ip_path_tuples(self) -> False:
+        """Return True if the sync client expects (ip, path) tuples instead
+        of rsync strings (user@ip:/path/)."""
+        return isinstance(self.sync_client, RemoteTaskClient)
+
+    def sync_up_if_needed(self, sync_period: int, exclude: Optional[List] = None):
+        """Syncs up if time since last sync up is greater than sync_period.
 
         Args:
-            sync_period (int): Time period between subsequent syncs.
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            sync_period: Time period between subsequent syncs.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
         """
 
         if time.time() - self.last_sync_up_time > sync_period:
             self.sync_up(exclude)
 
-    def sync_down_if_needed(self,
-                            sync_period: int,
-                            exclude: Optional[List] = None):
-        """Syncs down if time since last sync down is greather than sync_period.
+    def sync_down_if_needed(self, sync_period: int, exclude: Optional[List] = None):
+        """Syncs down if time since last sync down is greater than sync_period.
 
         Args:
-            sync_period (int): Time period between subsequent syncs.
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            sync_period: Time period between subsequent syncs.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
         """
         if time.time() - self.last_sync_down_time > sync_period:
@@ -218,7 +257,7 @@ class Syncer:
         """Attempts to start the sync-up to the remote path.
 
         Args:
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
@@ -228,7 +267,8 @@ class Syncer:
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
                 result = self.sync_client.sync_up(
-                    self._local_dir, self._remote_path, exclude=exclude)
+                    self._local_dir, self._remote_path, exclude=exclude
+                )
                 self.last_sync_up_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
@@ -238,7 +278,7 @@ class Syncer:
         """Attempts to start the sync-down from the remote path.
 
         Args:
-            exclude (List[str]): Pattern of files to exclude, e.g.
+            exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
@@ -248,7 +288,8 @@ class Syncer:
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
                 result = self.sync_client.sync_down(
-                    self._remote_path, self._local_dir, exclude=exclude)
+                    self._remote_path, self._local_dir, exclude=exclude
+                )
                 self.last_sync_down_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
@@ -256,8 +297,10 @@ class Syncer:
 
     def validate_hosts(self, source, target):
         if not (source and target):
-            logger.debug("Source or target is empty, skipping log sync for "
-                         "{}".format(self._local_dir))
+            logger.debug(
+                "Source or target is empty, skipping log sync for "
+                "{}".format(self._local_dir)
+            )
             return False
         return True
 
@@ -274,7 +317,7 @@ class Syncer:
         self.sync_client.close()
 
     @property
-    def _remote_path(self):
+    def _remote_path(self) -> Optional[Union[str, Tuple[str, str]]]:
         return self._remote_dir
 
 
@@ -285,12 +328,12 @@ class CloudSyncer(Syncer):
         super(CloudSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
     def sync_up_if_needed(self, exclude: Optional[List] = None):
-        return super(CloudSyncer, self).sync_up_if_needed(
-            SYNC_PERIOD, exclude=exclude)
+        return super(CloudSyncer, self).sync_up_if_needed(SYNC_PERIOD, exclude=exclude)
 
     def sync_down_if_needed(self, exclude: Optional[List] = None):
         return super(CloudSyncer, self).sync_down_if_needed(
-            SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude
+        )
 
 
 class NodeSyncer(Syncer):
@@ -308,26 +351,22 @@ class NodeSyncer(Syncer):
     def has_remote_target(self):
         """Returns whether the Syncer has a remote target."""
         if not self.worker_ip:
-            logger.debug("Worker IP unknown, skipping sync for %s",
-                         self._local_dir)
+            logger.debug("Worker IP unknown, skipping sync for %s", self._local_dir)
             return False
         if self.worker_ip == self.local_ip:
-            logger.debug("Worker IP is local IP, skipping sync for %s",
-                         self._local_dir)
+            logger.debug("Worker IP is local IP, skipping sync for %s", self._local_dir)
             return False
         return True
 
     def sync_up_if_needed(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_up_if_needed(
-            SYNC_PERIOD, exclude=exclude)
+        return super(NodeSyncer, self).sync_up_if_needed(SYNC_PERIOD, exclude=exclude)
 
     def sync_down_if_needed(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_down_if_needed(
-            SYNC_PERIOD, exclude=exclude)
+        return super(NodeSyncer, self).sync_down_if_needed(SYNC_PERIOD, exclude=exclude)
 
     def sync_up_to_new_location(self, worker_ip):
         if worker_ip != self.worker_ip:
@@ -336,7 +375,8 @@ class NodeSyncer(Syncer):
             self.reset()
             if not self.sync_up():
                 logger.warning(
-                    "Sync up to new location skipped. This should not occur.")
+                    "Sync up to new location skipped. This should not occur."
+                )
         else:
             logger.warning("Sync attempted to same IP %s.", worker_ip)
 
@@ -348,27 +388,30 @@ class NodeSyncer(Syncer):
     def sync_down(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
-        logger.debug("Syncing from %s to %s", self._remote_path,
-                     self._local_dir)
+        logger.debug("Syncing from %s to %s", self._remote_path, self._local_dir)
         return super(NodeSyncer, self).sync_down(exclude=exclude)
 
     @property
-    def _remote_path(self):
+    def _remote_path(self) -> Optional[Union[str, Tuple[str, str]]]:
         ssh_user = get_ssh_user()
         global _log_sync_warned
         if not self.has_remote_target():
             return None
         if ssh_user is None:
             if not _log_sync_warned:
-                logger.error("Syncer requires cluster to be setup with "
-                             "`ray up`.")
+                logger.error("Syncer requires cluster to be setup with `ray up`.")
                 _log_sync_warned = True
             return None
+        if self._pass_ip_path_tuples:
+            return self.worker_ip, self._remote_dir
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
-def get_cloud_syncer(local_dir, remote_dir=None,
-                     sync_function=None) -> CloudSyncer:
+def get_cloud_syncer(
+    local_dir: str,
+    remote_dir: Optional[str] = None,
+    sync_function: Optional[Union[Callable, str]] = None,
+) -> CloudSyncer:
     """Returns a Syncer.
 
     This syncer is in charge of syncing the local_dir with upload_dir.
@@ -380,10 +423,10 @@ def get_cloud_syncer(local_dir, remote_dir=None,
     return a CloudSyncer with default templates for s3/gs/hdfs.
 
     Args:
-        local_dir (str): Source directory for syncing.
-        remote_dir (str): Target directory for syncing. If not provided, a
+        local_dir: Source directory for syncing.
+        remote_dir: Target directory for syncing. If not provided, a
             no-op Syncer is returned.
-        sync_function (func | str): Function for syncing the local_dir to
+        sync_function: Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
             syncer to run. If not provided, it defaults
             to standard S3, gsutil or HDFS sync commands.
@@ -417,16 +460,21 @@ def get_cloud_syncer(local_dir, remote_dir=None,
     return _syncers[key]
 
 
-def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
+def get_node_syncer(
+    local_dir: str,
+    remote_dir: Optional[str] = None,
+    sync_function: Optional[Union[Callable, str, bool, Type[Syncer]]] = None,
+):
     """Returns a NodeSyncer.
 
     Args:
-        local_dir (str): Source directory for syncing.
-        remote_dir (str): Target directory for syncing. If not provided, a
+        local_dir: Source directory for syncing.
+        remote_dir: Target directory for syncing. If not provided, a
             noop Syncer is returned.
-        sync_function (func|str|bool): Function for syncing the local_dir to
+        sync_function: Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
-            syncer to run. If True or not provided, it defaults rsync. If
+            syncer to run. If True or not provided, it defaults rsync
+            (if available) or otherwise remote-task based syncing. If
             False, a noop Syncer is returned.
     """
     if sync_function == "auto":
@@ -434,28 +482,33 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
 
     key = (local_dir, remote_dir)
     if key in _syncers:
+        # Get cached syncer
         return _syncers[key]
     elif isclass(sync_function) and issubclass(sync_function, Syncer):
+        # Type[Syncer]
         _syncers[key] = sync_function(local_dir, remote_dir, None)
         return _syncers[key]
     elif not remote_dir or sync_function is False:
+        # Do not sync trials if no remote dir specified or syncer=False
         sync_client = NOOP
     elif sync_function and sync_function is not True:
+        # String or callable (for function syncers)
         sync_client = get_sync_client(sync_function)
     else:
-        sync = log_sync_template()
-        if sync:
-            sync_client = CommandBasedClient(sync, sync)
+        # sync_function=True or sync_function=None --> default
+        rsync_function_str = get_rsync_template_if_available()
+        if rsync_function_str:
+            sync_client = CommandBasedClient(rsync_function_str, rsync_function_str)
             sync_client.set_logdir(local_dir)
         else:
-            sync_client = NOOP
+            sync_client = RemoteTaskClient()
 
     _syncers[key] = NodeSyncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
 
 
 class SyncerCallback(Callback):
-    def __init__(self, sync_function: Union[None, bool, Callable]):
+    def __init__(self, sync_function: Optional[Union[bool, Callable]]):
         self._sync_function = sync_function
         self._syncers: Dict["Trial", NodeSyncer] = {}
 
@@ -466,12 +519,11 @@ class SyncerCallback(Callback):
 
     def _create_trial_syncer(self, trial: "Trial"):
         return get_node_syncer(
-            trial.logdir,
-            remote_dir=trial.logdir,
-            sync_function=self._sync_function)
+            trial.logdir, remote_dir=trial.logdir, sync_function=self._sync_function
+        )
 
-    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: Checkpoint):
-        if checkpoint.storage == Checkpoint.MEMORY:
+    def _sync_trial_checkpoint(self, trial: "Trial", checkpoint: _TuneCheckpoint):
+        if checkpoint.storage == _TuneCheckpoint.MEMORY:
             return
 
         trial_syncer = self._get_trial_syncer(trial)
@@ -487,21 +539,23 @@ class SyncerCallback(Callback):
                 # Errors occurring during this wait are not fatal for this
                 # checkpoint, so it should just be logged.
                 logger.error(
-                    "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait - %s", trial, str(e))
+                    f"Trial {trial}: An error occurred during the "
+                    f"checkpoint pre-sync wait: {e}"
+                )
             # Force sync down and wait before tracking the new checkpoint.
             try:
                 if trial_syncer.sync_down():
                     trial_syncer.wait()
                 else:
                     logger.error(
-                        "Trial %s: Checkpoint sync skipped. "
-                        "This should not happen.", trial)
+                        f"Trial {trial}: Checkpoint sync skipped. "
+                        f"This should not happen."
+                    )
             except TuneError as e:
                 if trial.uses_cloud_checkpointing:
                     # Even though rsync failed the trainable can restore
                     # from remote durable storage.
-                    logger.error("Trial %s: Sync error - %s", trial, str(e))
+                    logger.error(f"Trial {trial}: Sync error: {e}")
                 else:
                     # If the trainable didn't have remote storage to upload
                     # to then this checkpoint may have been lost, so we
@@ -509,29 +563,39 @@ class SyncerCallback(Callback):
                     raise e
             if not trial.uses_cloud_checkpointing:
                 if not os.path.exists(checkpoint.value):
-                    raise TuneError("Trial {}: Checkpoint path {} not "
-                                    "found after successful sync down. "
-                                    "Are you running on a Kubernetes or "
-                                    "managed cluster? rsync will not function "
-                                    "due to a lack of SSH functionality. "
-                                    "You'll need to use cloud-checkpointing "
-                                    "if that's the case, see instructions "
-                                    "here: {} .".format(
-                                        trial, checkpoint.value,
-                                        CLOUD_CHECKPOINTING_URL))
+                    raise TuneError(
+                        "Trial {}: Checkpoint path {} not "
+                        "found after successful sync down. "
+                        "Are you running on a Kubernetes or "
+                        "managed cluster? rsync will not function "
+                        "due to a lack of SSH functionality. "
+                        "You'll need to use cloud-checkpointing "
+                        "if that's the case, see instructions "
+                        "here: {} .".format(
+                            trial, checkpoint.value, CLOUD_CHECKPOINTING_URL
+                        )
+                    )
 
-    def on_trial_start(self, iteration: int, trials: List["Trial"],
-                       trial: "Trial", **info):
+    def on_trial_start(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         self._get_trial_syncer(trial)
 
-    def on_trial_result(self, iteration: int, trials: List["Trial"],
-                        trial: "Trial", result: Dict, **info):
+    def on_trial_result(
+        self,
+        iteration: int,
+        trials: List["Trial"],
+        trial: "Trial",
+        result: Dict,
+        **info,
+    ):
         trial_syncer = self._get_trial_syncer(trial)
         trial_syncer.set_worker_ip(result.get(NODE_IP))
         trial_syncer.sync_down_if_needed()
 
-    def on_trial_complete(self, iteration: int, trials: List["Trial"],
-                          trial: "Trial", **info):
+    def on_trial_complete(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
         trial_syncer = self._get_trial_syncer(trial)
         if NODE_IP in trial.last_result:
             trainable_ip = trial.last_result[NODE_IP]
@@ -541,14 +605,20 @@ class SyncerCallback(Callback):
         trial_syncer.sync_down_if_needed()
         trial_syncer.close()
 
-    def on_checkpoint(self, iteration: int, trials: List["Trial"],
-                      trial: "Trial", checkpoint: Checkpoint, **info):
+    def on_checkpoint(
+        self,
+        iteration: int,
+        trials: List["Trial"],
+        trial: "Trial",
+        checkpoint: _TuneCheckpoint,
+        **info,
+    ):
         self._sync_trial_checkpoint(trial, checkpoint)
 
 
 def detect_cluster_syncer(
-        sync_config: Optional[SyncConfig],
-        cluster_config_file: str = "~/ray_bootstrap_config.yaml"
+    sync_config: Optional[SyncConfig],
+    cluster_config_file: str = "~/ray_bootstrap_config.yaml",
 ) -> Union[bool, Type, NodeSyncer]:
     """Detect cluster Syncer given SyncConfig.
 
@@ -590,19 +660,24 @@ def detect_cluster_syncer(
             "Detected docker autoscaling environment. Using `DockerSyncer` "
             "as sync client. If this is not correct or leads to errors, "
             "please pass a `syncer` parameter in the `SyncConfig` to "
-            "`tune.run().` to manually configure syncing behavior.")
+            "`tune.run().` to manually configure syncing behavior."
+        )
         return DockerSyncer
 
     if config.get("provider", {}).get("type", "") == "kubernetes":
         from ray.tune.integration.kubernetes import (
-            NamespacedKubernetesSyncer, try_import_kubernetes)
+            NamespacedKubernetesSyncer,
+            try_import_kubernetes,
+        )
+
         if not try_import_kubernetes():
             logger.warning(
                 "Detected Ray autoscaling environment on Kubernetes, "
                 "but Kubernetes Python CLI is not installed. "
                 "Checkpoint syncing may not work properly across "
                 "multiple pods. Be sure to install 'kubernetes' on "
-                "each container.")
+                "each container."
+            )
 
         namespace = config["provider"].get("namespace", "ray")
         logger.debug(
@@ -610,7 +685,8 @@ def detect_cluster_syncer(
             f"`NamespacedKubernetesSyncer` with namespace `{namespace}` "
             f"as sync client. If this is not correct or leads to errors, "
             f"please pass a `syncer` parameter in the `SyncConfig` "
-            f"to `tune.run()` to manually configure syncing behavior..")
+            f"to `tune.run()` to manually configure syncing behavior.."
+        )
         return NamespacedKubernetesSyncer(namespace)
 
     return _syncer

@@ -2,15 +2,17 @@ import json
 import logging
 import os
 import warnings
+import traceback
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
+from ray.ml.checkpoint import Checkpoint
 from ray.tune.cloud import TrialCheckpoint
 from ray.util.debug import log_once
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
-from ray.tune.utils.util import is_nan_or_inf
+from ray.tune.utils.util import is_nan_or_inf, is_nan
 
 try:
     import pandas as pd
@@ -20,11 +22,19 @@ except ImportError:
     DataFrame = None
 
 from ray.tune.error import TuneError
-from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
-    EXPR_RESULT_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
+from ray.tune.result import (
+    DEFAULT_METRIC,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+    EXPR_PARAM_FILE,
+    CONFIG_PREFIX,
+    TRAINING_ITERATION,
+)
 from ray.tune.trial import Trial
-from ray.tune.trial_runner import (find_newest_experiment_checkpoint,
-                                   load_trials_from_experiment_checkpoint)
+from ray.tune.trial_runner import (
+    find_newest_experiment_checkpoint,
+    load_trials_from_experiment_checkpoint,
+)
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
@@ -57,22 +67,24 @@ class ExperimentAnalysis:
             in the respective functions.
 
     Example:
-        >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
-        >>> analysis = ExperimentAnalysis(
-        >>>     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
+        >>> from ray import tune
+        >>> tune.run( # doctest: +SKIP
+        ...     my_trainable, name="my_exp", local_dir="~/tune_results")
+        >>> analysis = ExperimentAnalysis( # doctest: +SKIP
+        ...     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
     """
 
-    def __init__(self,
-                 experiment_checkpoint_path: str,
-                 trials: Optional[List[Trial]] = None,
-                 default_metric: Optional[str] = None,
-                 default_mode: Optional[str] = None,
-                 sync_config: Optional[SyncConfig] = None):
-        experiment_checkpoint_path = os.path.expanduser(
-            experiment_checkpoint_path)
+    def __init__(
+        self,
+        experiment_checkpoint_path: str,
+        trials: Optional[List[Trial]] = None,
+        default_metric: Optional[str] = None,
+        default_mode: Optional[str] = None,
+        sync_config: Optional[SyncConfig] = None,
+    ):
+        experiment_checkpoint_path = os.path.expanduser(experiment_checkpoint_path)
 
-        latest_checkpoint = self._get_latest_checkpoint(
-            experiment_checkpoint_path)
+        latest_checkpoint = self._get_latest_checkpoint(experiment_checkpoint_path)
 
         self._experiment_states = []
         for path in latest_checkpoint:
@@ -83,11 +95,9 @@ class ExperimentAnalysis:
         self._checkpoints = []
         for experiment_state in self._experiment_states:
             if "checkpoints" not in experiment_state:
-                raise TuneError(
-                    "Experiment state invalid; no checkpoints found.")
+                raise TuneError("Experiment state invalid; no checkpoints found.")
             self._checkpoints += [
-                json.loads(cp, cls=TuneFunctionDecoder)
-                if isinstance(cp, str) else cp
+                json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
                 for cp in experiment_state["checkpoints"]
             ]
         self.trials = trials
@@ -97,8 +107,7 @@ class ExperimentAnalysis:
 
         self.default_metric = default_metric
         if default_mode and default_mode not in ["min", "max"]:
-            raise ValueError(
-                "`default_mode` has to be None or one of [min, max]")
+            raise ValueError("`default_mode` has to be None or one of [min, max]")
         self.default_mode = default_mode
         self._file_type = self._validate_filetype(None)
 
@@ -109,45 +118,51 @@ class ExperimentAnalysis:
         if not pd:
             logger.warning(
                 "pandas not installed. Run `pip install pandas` for "
-                "ExperimentAnalysis utilities.")
+                "ExperimentAnalysis utilities."
+            )
         else:
             self.fetch_trial_dataframes()
 
         self._local_base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(experiment_checkpoint_path), ".."))
+            os.path.join(os.path.dirname(experiment_checkpoint_path), "..")
+        )
         self._sync_config = sync_config
+
+        # If True, will return a legacy TrialCheckpoint class.
+        # If False, will just return a Checkpoint class.
+        self._legacy_checkpoint = True
 
     def _parse_cloud_path(self, local_path: str):
         """Convert local path into cloud storage path"""
         if not self._sync_config or not self._sync_config.upload_dir:
             return None
 
-        return local_path.replace(self._local_base_dir,
-                                  self._sync_config.upload_dir)
+        return local_path.replace(self._local_base_dir, self._sync_config.upload_dir)
 
-    def _get_latest_checkpoint(self,
-                               experiment_checkpoint_path: str) -> List[str]:
+    def _get_latest_checkpoint(self, experiment_checkpoint_path: str) -> List[str]:
         if os.path.isdir(experiment_checkpoint_path):
             # Case 1: Dir specified, find latest checkpoint.
             latest_checkpoint = find_newest_experiment_checkpoint(
-                experiment_checkpoint_path)
+                experiment_checkpoint_path
+            )
             if not latest_checkpoint:
                 latest_checkpoint = []
                 for fname in os.listdir(experiment_checkpoint_path):
                     fname = os.path.join(experiment_checkpoint_path, fname)
-                    latest_checkpoint_subdir = (
-                        find_newest_experiment_checkpoint(fname))
+                    latest_checkpoint_subdir = find_newest_experiment_checkpoint(fname)
                     if latest_checkpoint_subdir:
                         latest_checkpoint.append(latest_checkpoint_subdir)
             if not latest_checkpoint:
                 raise ValueError(
                     f"The directory `{experiment_checkpoint_path}` does not "
-                    f"contain a Ray Tune experiment checkpoint.")
+                    f"contain a Ray Tune experiment checkpoint."
+                )
         elif not os.path.isfile(experiment_checkpoint_path):
             # Case 2: File specified, but does not exist.
             raise ValueError(
                 f"The file `{experiment_checkpoint_path}` does not "
-                f"exist and cannot be loaded for experiment analysis.")
+                f"exist and cannot be loaded for experiment analysis."
+            )
         else:
             # Case 3: File specified, use as latest checkpoint.
             latest_checkpoint = experiment_checkpoint_path
@@ -170,7 +185,8 @@ class ExperimentAnalysis:
                 "To fetch the `best_trial`, pass a `metric` and `mode` "
                 "parameter to `tune.run()`. Alternatively, use the "
                 "`get_best_trial(metric, mode)` method to set the metric "
-                "and mode explicitly.")
+                "and mode explicitly."
+            )
         return self.get_best_trial(self.default_metric, self.default_mode)
 
     @property
@@ -188,11 +204,12 @@ class ExperimentAnalysis:
                 "To fetch the `best_config`, pass a `metric` and `mode` "
                 "parameter to `tune.run()`. Alternatively, use the "
                 "`get_best_config(metric, mode)` method to set the metric "
-                "and mode explicitly.")
+                "and mode explicitly."
+            )
         return self.get_best_config(self.default_metric, self.default_mode)
 
     @property
-    def best_checkpoint(self) -> TrialCheckpoint:
+    def best_checkpoint(self) -> Checkpoint:
         """Get the checkpoint path of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
@@ -202,22 +219,25 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`TrialCheckpoint <ray.tune.cloud.TrialCheckpoint>` object.
+            :class:`Checkpoint <ray.ml.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
                 "To fetch the `best_checkpoint`, pass a `metric` and `mode` "
                 "parameter to `tune.run()`. Alternatively, use the "
                 "`get_best_checkpoint(trial, metric, mode)` method to set the "
-                "metric and mode explicitly.")
+                "metric and mode explicitly."
+            )
         best_trial = self.best_trial
         if not best_trial:
             raise ValueError(
                 f"No best trial found. Please check if you specified the "
                 f"correct default metric ({self.default_metric}) and mode "
-                f"({self.default_mode}).")
-        return self.get_best_checkpoint(best_trial, self.default_metric,
-                                        self.default_mode)
+                f"({self.default_mode})."
+            )
+        return self.get_best_checkpoint(
+            best_trial, self.default_metric, self.default_mode
+        )
 
     @property
     def best_logdir(self) -> str:
@@ -234,7 +254,8 @@ class ExperimentAnalysis:
                 "To fetch the `best_logdir`, pass a `metric` and `mode` "
                 "parameter to `tune.run()`. Alternatively, use the "
                 "`get_best_logdir(metric, mode, scope)` method to set the "
-                "metric and mode explicitly.")
+                "metric and mode explicitly."
+            )
         return self.get_best_logdir(self.default_metric, self.default_mode)
 
     @property
@@ -251,7 +272,8 @@ class ExperimentAnalysis:
         if not self.default_metric or not self.default_mode:
             raise ValueError(
                 "To fetch the `best_result`, pass a `metric` and `mode` "
-                "parameter to `tune.run()`.")
+                "parameter to `tune.run()`."
+            )
         best_logdir = self.best_logdir
         return self.trial_dataframes[best_logdir]
 
@@ -270,7 +292,8 @@ class ExperimentAnalysis:
                 "To fetch the `best_result`, pass a `metric` and `mode` "
                 "parameter to `tune.run()`. Alternatively, use "
                 "`get_best_trial(metric, mode).last_result` to set "
-                "the metric and mode explicitly and fetch the last result.")
+                "the metric and mode explicitly and fetch the last result."
+            )
         return self.best_trial.last_result
 
     def _delimiter(self):
@@ -281,7 +304,8 @@ class ExperimentAnalysis:
                 "Dataframes will use '/' instead of '.' to delimit "
                 "nested result keys in future versions of Ray. For forward "
                 "compatibility, set the environment variable "
-                "TUNE_RESULT_DELIM='/'")
+                "TUNE_RESULT_DELIM='/'"
+            )
         return delimiter
 
     @property
@@ -295,11 +319,12 @@ class ExperimentAnalysis:
         `get_best_trial(metric, mode, scope).last_result` instead.
         """
         if not pd:
-            raise ValueError("`best_result_df` requires pandas. Install with "
-                             "`pip install pandas`.")
+            raise ValueError(
+                "`best_result_df` requires pandas. Install with "
+                "`pip install pandas`."
+            )
 
-        best_result = flatten_dict(
-            self.best_result, delimiter=self._delimiter())
+        best_result = flatten_dict(self.best_result, delimiter=self._delimiter())
         return pd.DataFrame.from_records([best_result], index="trial_id")
 
     @property
@@ -311,23 +336,25 @@ class ExperimentAnalysis:
     def results_df(self) -> DataFrame:
         """Get all the last results as a pandas dataframe."""
         if not pd:
-            raise ValueError("`results_df` requires pandas. Install with "
-                             "`pip install pandas`.")
+            raise ValueError(
+                "`results_df` requires pandas. Install with `pip install pandas`."
+            )
         return pd.DataFrame.from_records(
             [
                 flatten_dict(trial.last_result, delimiter=self._delimiter())
                 for trial in self.trials
             ],
-            index="trial_id")
+            index="trial_id",
+        )
 
     @property
     def trial_dataframes(self) -> Dict[str, DataFrame]:
         """List of all dataframes of the trials."""
         return self._trial_dataframes
 
-    def dataframe(self,
-                  metric: Optional[str] = None,
-                  mode: Optional[str] = None) -> DataFrame:
+    def dataframe(
+        self, metric: Optional[str] = None, mode: Optional[str] = None
+    ) -> DataFrame:
         """Returns a pandas.DataFrame object constructed from the trials.
 
         This function will look through all observed results of each trial
@@ -338,9 +365,8 @@ class ExperimentAnalysis:
         ``metric=None`` or ``mode=None``, the last result will be returned.
 
         Args:
-            metric (str): Key for trial info to order on.
-                If None, uses last result.
-            mode (None|str): One of [None, "min", "max"].
+            metric: Key for trial info to order on. If None, uses last result.
+            mode: One of [None, "min", "max"].
 
         Returns:
             pd.DataFrame: Constructed from a result dict of each trial.
@@ -354,7 +380,8 @@ class ExperimentAnalysis:
         if mode and not metric:
             raise ValueError(
                 "If a `mode` is passed to `ExperimentAnalysis.dataframe(),"
-                " you'll also have to pass a `metric`!")
+                " you'll also have to pass a `metric`!"
+            )
 
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)
@@ -364,15 +391,14 @@ class ExperimentAnalysis:
                 rows[path].update(logdir=path)
         return pd.DataFrame(list(rows.values()))
 
-    def get_trial_checkpoints_paths(self,
-                                    trial: Trial,
-                                    metric: Optional[str] = None
-                                    ) -> List[Tuple[str, Number]]:
+    def get_trial_checkpoints_paths(
+        self, trial: Trial, metric: Optional[str] = None
+    ) -> List[Tuple[str, Number]]:
         """Gets paths and metrics of all persistent checkpoints of a trial.
 
         Args:
-            trial (Trial): The log directory of a trial, or a trial instance.
-            metric (str): key for trial info to return, e.g. "mean_accuracy".
+            trial: The log directory of a trial, or a trial instance.
+            metric: key for trial info to return, e.g. "mean_accuracy".
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
 
@@ -389,38 +415,46 @@ class ExperimentAnalysis:
             # Join with trial dataframe to get metrics.
             trial_df = self.trial_dataframes[trial_dir]
             path_metric_df = chkpt_df.merge(
-                trial_df, on="training_iteration", how="inner")
+                trial_df, on="training_iteration", how="inner"
+            )
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
             # Support metrics given as paths, e.g.
             # "info/learner/default_policy/policy_loss".
-            return [(c.value, unflattened_lookup(metric, c.result))
-                    for c in checkpoints]
+            return [
+                (c.value, unflattened_lookup(metric, c.result)) for c in checkpoints
+            ]
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
     def get_best_checkpoint(
-            self,
-            trial: Trial,
-            metric: Optional[str] = None,
-            mode: Optional[str] = None) -> Optional[TrialCheckpoint]:
+        self, trial: Trial, metric: Optional[str] = None, mode: Optional[str] = None
+    ) -> Optional[Checkpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
+        Any checkpoints with an associated metric value of ``nan`` will be filtered out.
+
         Args:
-            trial (Trial): The log directory of a trial, or a trial instance.
-            metric (str): key of trial info to return, e.g. "mean_accuracy".
+            trial: The log directory of a trial, or a trial instance.
+            metric: key of trial info to return, e.g. "mean_accuracy".
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
 
         Returns:
-            :class:`TrialCheckpoint <ray.tune.cloud.TrialCheckpoint>` object.
+            :class:`Checkpoint <ray.ml.Checkpoint>` object.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)
 
         checkpoint_paths = self.get_trial_checkpoints_paths(trial, metric)
+
+        # Filter out nan. Sorting nan values leads to undefined behavior.
+        checkpoint_paths = [
+            (path, metric) for path, metric in checkpoint_paths if not is_nan(metric)
+        ]
+
         if not checkpoint_paths:
             logger.error(f"No checkpoints have been found for trial {trial}.")
             return None
@@ -429,14 +463,32 @@ class ExperimentAnalysis:
         best_path_metrics = sorted(checkpoint_paths, key=lambda x: a * x[1])
 
         best_path, best_metric = best_path_metrics[0]
-        return TrialCheckpoint(
-            local_path=best_path, cloud_path=self._parse_cloud_path(best_path))
+        cloud_path = self._parse_cloud_path(best_path)
+
+        if self._legacy_checkpoint:
+            return TrialCheckpoint(local_path=best_path, cloud_path=cloud_path)
+
+        if cloud_path:
+            # Prefer cloud path over local path for downsteam processing
+            return Checkpoint.from_uri(cloud_path)
+        elif os.path.exists(best_path):
+            return Checkpoint.from_directory(best_path)
+        else:
+            logger.error(
+                f"No checkpoint locations for {trial} available on "
+                f"this node. To avoid this, you "
+                f"should enable checkpoint synchronization with the"
+                f"`sync_config` argument in Ray Tune. "
+                f"The checkpoint may be available on a different node - "
+                f"please check this location on worker nodes: {best_path}"
+            )
+            return None
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
         """Returns a list of all configurations.
 
         Args:
-            prefix (bool): If True, flattens the config dict
+            prefix: If True, flattens the config dict
                 and prepends `config/`.
 
         Returns:
@@ -456,15 +508,16 @@ class ExperimentAnalysis:
                 fail_count += 1
 
         if fail_count:
-            logger.warning(
-                "Couldn't read config from {} paths".format(fail_count))
+            logger.warning("Couldn't read config from {} paths".format(fail_count))
         return self._configs
 
-    def get_best_trial(self,
-                       metric: Optional[str] = None,
-                       mode: Optional[str] = None,
-                       scope: str = "last",
-                       filter_nan_and_inf: bool = True) -> Optional[Trial]:
+    def get_best_trial(
+        self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        scope: str = "last",
+        filter_nan_and_inf: bool = True,
+    ) -> Optional[Trial]:
         """Retrieve the best trial object.
 
         Compares all trials' scores on ``metric``.
@@ -474,10 +527,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -487,23 +540,29 @@ class ExperimentAnalysis:
                 `metric` and compare across trials based on `mode=[min,max]`.
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
-            filter_nan_and_inf (bool): If True (default), NaN or infinite
+            filter_nan_and_inf: If True (default), NaN or infinite
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
+        if len(self.trials) == 1:
+            return self.trials[0]
+
         metric = self._validate_metric(metric)
         mode = self._validate_mode(mode)
 
         if scope not in ["all", "last", "avg", "last-5-avg", "last-10-avg"]:
             raise ValueError(
                 "ExperimentAnalysis: attempting to get best trial for "
-                "metric {} for scope {} not in [\"all\", \"last\", \"avg\", "
-                "\"last-5-avg\", \"last-10-avg\"]. "
+                'metric {} for scope {} not in ["all", "last", "avg", '
+                '"last-5-avg", "last-10-avg"]. '
                 "If you didn't pass a `metric` parameter to `tune.run()`, "
                 "you have to pass one when fetching the best trial.".format(
-                    metric, scope))
+                    metric, scope
+                )
+            )
         best_trial = None
         best_metric_score = None
+
         for trial in self.trials:
             if metric not in trial.metric_analysis:
                 continue
@@ -531,13 +590,16 @@ class ExperimentAnalysis:
         if not best_trial:
             logger.warning(
                 "Could not find best trial. Did you pass the correct `metric` "
-                "parameter?")
+                "parameter?"
+            )
         return best_trial
 
-    def get_best_config(self,
-                        metric: Optional[str] = None,
-                        mode: Optional[str] = None,
-                        scope: str = "last") -> Optional[Dict]:
+    def get_best_config(
+        self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        scope: str = "last",
+    ) -> Optional[Dict]:
         """Retrieve the best config corresponding to the trial.
 
         Compares all trials' scores on `metric`.
@@ -547,10 +609,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -564,10 +626,12 @@ class ExperimentAnalysis:
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.config if best_trial else None
 
-    def get_best_logdir(self,
-                        metric: Optional[str] = None,
-                        mode: Optional[str] = None,
-                        scope: str = "last") -> Optional[str]:
+    def get_best_logdir(
+        self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        scope: str = "last",
+    ) -> Optional[str]:
         """Retrieve the logdir corresponding to the best trial.
 
         Compares all trials' scores on `metric`.
@@ -577,10 +641,10 @@ class ExperimentAnalysis:
         ``mode`` parameters to ``tune.run()``.
 
         Args:
-            metric (str): Key for trial info to order on. Defaults to
+            metric: Key for trial info to order on. Defaults to
                 ``self.default_metric``.
-            mode (str): One of [min, max]. Defaults to ``self.default_mode``.
-            scope (str): One of [all, last, avg, last-5-avg, last-10-avg].
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
                 If `scope=last`, only look at each trial's final step for
                 `metric`, and compare across trials based on `mode=[min,max]`.
                 If `scope=avg`, consider the simple average over all steps
@@ -594,10 +658,7 @@ class ExperimentAnalysis:
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.logdir if best_trial else None
 
-    def get_last_checkpoint(self,
-                            trial=None,
-                            metric="training_iteration",
-                            mode="max"):
+    def get_last_checkpoint(self, trial=None, metric="training_iteration", mode="max"):
         """Gets the last persistent checkpoint path of the provided trial,
         i.e., with the highest "training_iteration".
 
@@ -605,12 +666,12 @@ class ExperimentAnalysis:
         provided metric and mode (defaults to max. training iteration).
 
         Args:
-            trial (Trial): The log directory or an instance of a trial.
-            If None, load the latest trial automatically.
-            metric (str): If no trial is specified, use this metric to identify
-            the best trial and load the last checkpoint from this trial.
-            mode (str): If no trial is specified, use the metric and this mode
-            to identify the best trial and load the last checkpoint from it.
+            trial: The log directory or an instance of a trial.
+                If None, load the latest trial automatically.
+            metric: If no trial is specified, use this metric to identify
+                the best trial and load the last checkpoint from this trial.
+            mode: If no trial is specified, use the metric and this mode
+                to identify the best trial and load the last checkpoint from it.
 
         Returns:
             Path for last checkpoint of trial
@@ -636,15 +697,14 @@ class ExperimentAnalysis:
                     df = pd.json_normalize(json_list, sep="/")
                 elif self._file_type == "csv":
                     df = pd.read_csv(
-                        os.path.join(path, EXPR_PROGRESS_FILE),
-                        dtype=force_dtype)
+                        os.path.join(path, EXPR_PROGRESS_FILE), dtype=force_dtype
+                    )
                 self.trial_dataframes[path] = df
             except Exception:
                 fail_count += 1
 
         if fail_count:
-            logger.debug(
-                "Couldn't read results from {} paths".format(fail_count))
+            logger.debug("Couldn't read results from {} paths".format(fail_count))
         return self.trial_dataframes
 
     def stats(self) -> Dict:
@@ -657,8 +717,9 @@ class ExperimentAnalysis:
             return self._experiment_states[0]["stats"]
         else:
             return {
-                experiment_state["runner_data"]["_session_str"]:
-                experiment_state["stats"]
+                experiment_state["runner_data"]["_session_str"]: experiment_state[
+                    "stats"
+                ]
                 for experiment_state in self._experiment_states
             }
 
@@ -683,8 +744,9 @@ class ExperimentAnalysis:
             return self._experiment_states[0]["runner_data"]
         else:
             return {
-                experiment_state["runner_data"]["_session_str"]:
-                experiment_state["runner_data"]
+                experiment_state["runner_data"]["_session_str"]: experiment_state[
+                    "runner_data"
+                ]
                 for experiment_state in self._experiment_states
             }
 
@@ -692,24 +754,26 @@ class ExperimentAnalysis:
         if self.trials:
             _trial_paths = [t.logdir for t in self.trials]
         else:
-            logger.info("No `self.trials`. Drawing logdirs from checkpoint "
-                        "file. This may result in some information that is "
-                        "out of sync, as checkpointing is periodic.")
-            _trial_paths = [
-                checkpoint["logdir"] for checkpoint in self._checkpoints
-            ]
+            logger.info(
+                "No `self.trials`. Drawing logdirs from checkpoint "
+                "file. This may result in some information that is "
+                "out of sync, as checkpointing is periodic."
+            )
+            _trial_paths = [checkpoint["logdir"] for checkpoint in self._checkpoints]
             self.trials = []
             for experiment_state in self._experiment_states:
                 try:
                     self.trials += load_trials_from_experiment_checkpoint(
-                        experiment_state, stub=True)
-                except Exception as e:
+                        experiment_state, stub=True
+                    )
+                except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
                         f"This means your experiment checkpoint is likely "
                         f"faulty or incomplete, and you won't have access "
                         f"to all analysis methods. "
-                        f"Observed error: {e}")
+                        f"Observed error:\n{traceback.format_exc()}"
+                    )
 
         if not _trial_paths:
             raise TuneError("No trials found.")
@@ -717,29 +781,30 @@ class ExperimentAnalysis:
 
     def _validate_filetype(self, file_type: Optional[str] = None):
         if file_type not in {None, "json", "csv"}:
-            raise ValueError(
-                "`file_type` has to be None or one of [json, csv].")
+            raise ValueError("`file_type` has to be None or one of [json, csv].")
         return file_type or DEFAULT_FILE_TYPE
 
     def _validate_metric(self, metric: str) -> str:
         if not metric and not self.default_metric:
             raise ValueError(
                 "No `metric` has been passed and  `default_metric` has "
-                "not been set. Please specify the `metric` parameter.")
+                "not been set. Please specify the `metric` parameter."
+            )
         return metric or self.default_metric
 
     def _validate_mode(self, mode: str) -> str:
         if not mode and not self.default_mode:
             raise ValueError(
                 "No `mode` has been passed and  `default_mode` has "
-                "not been set. Please specify the `mode` parameter.")
+                "not been set. Please specify the `mode` parameter."
+            )
         if mode and mode not in ["min", "max"]:
             raise ValueError("If set, `mode` has to be one of [min, max]")
         return mode or self.default_mode
 
-    def _retrieve_rows(self,
-                       metric: Optional[str] = None,
-                       mode: Optional[str] = None) -> Dict[str, Any]:
+    def _retrieve_rows(
+        self, metric: Optional[str] = None, mode: Optional[str] = None
+    ) -> Dict[str, Any]:
         assert mode is None or mode in ["max", "min"]
         assert not mode or metric
         rows = {}
@@ -755,10 +820,27 @@ class ExperimentAnalysis:
             except TypeError:
                 # idx is nan
                 logger.warning(
-                    "Warning: Non-numerical value(s) encountered for {}".
-                    format(path))
+                    "Warning: Non-numerical value(s) encountered for {}".format(path)
+                )
 
         return rows
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Ensure that trials are marked as stubs when pickling,
+        so that they can be loaded later without the trainable
+        being registered.
+        """
+        state = self.__dict__.copy()
+
+        def make_stub_if_needed(trial: Trial) -> Trial:
+            if trial.stub:
+                return trial
+            trial_copy = Trial(trial.trainable_name, stub=True)
+            trial_copy.__setstate__(trial.__getstate__())
+            return trial_copy
+
+        state["trials"] = [make_stub_if_needed(t) for t in state["trials"]]
+        return state
 
 
 @Deprecated
@@ -767,5 +849,6 @@ class Analysis(ExperimentAnalysis):
         if log_once("durable_deprecated"):
             logger.warning(
                 "DeprecationWarning: The `Analysis` class is being "
-                "deprecated. Please use `ExperimentAnalysis` instead.")
+                "deprecated. Please use `ExperimentAnalysis` instead."
+            )
         super().__init__(*args, **kwargs)

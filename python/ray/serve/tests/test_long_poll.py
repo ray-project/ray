@@ -7,7 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
-from ray.serve.long_poll import (LongPollClient, LongPollHost, UpdatedObject)
+from ray.serve.long_poll import LongPollClient, LongPollHost, UpdatedObject
 
 
 def test_host_standalone(serve_instance):
@@ -108,11 +108,13 @@ async def test_client(serve_instance):
         callback_results["key_2"] = result
 
     client = LongPollClient(
-        host, {
+        host,
+        {
             "key_1": key_1_callback,
             "key_2": key_2_callback,
         },
-        call_in_event_loop=asyncio.get_event_loop())
+        call_in_event_loop=asyncio.get_event_loop(),
+    )
 
     while len(client.object_snapshots) == 0:
         time.sleep(0.1)
@@ -144,10 +146,12 @@ async def test_client_threadsafe(serve_instance):
         e.set()
 
     _ = LongPollClient(
-        host, {
+        host,
+        {
             "key_1": key_1_callback,
         },
-        call_in_event_loop=asyncio.get_event_loop())
+        call_in_event_loop=asyncio.get_event_loop(),
+    )
 
     await e.wait()
 

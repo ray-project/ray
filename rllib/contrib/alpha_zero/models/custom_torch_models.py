@@ -17,14 +17,15 @@ def convert_to_tensor(arr):
 
 
 class ActorCriticModel(TorchModelV2, nn.Module, ABC):
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        TorchModelV2.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
         nn.Module.__init__(self)
 
         self.preprocessor = get_preprocessor(obs_space.original_space)(
-            obs_space.original_space)
+            obs_space.original_space
+        )
 
         self.shared_layers = None
         self.actor_layers = None
@@ -68,10 +69,10 @@ class Flatten(nn.Module):
 
 
 class ConvNetModel(ActorCriticModel):
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        ActorCriticModel.__init__(self, obs_space, action_space, num_outputs,
-                                  model_config, name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        ActorCriticModel.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
 
         in_channels = model_config["custom_model_config"]["in_channels"]
         feature_dim = model_config["custom_model_config"]["feature_dim"]
@@ -79,31 +80,36 @@ class ConvNetModel(ActorCriticModel):
         self.shared_layers = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=4, stride=2),
             nn.Conv2d(32, 64, kernel_size=2, stride=1),
-            nn.Conv2d(64, 64, kernel_size=2, stride=1), Flatten(),
-            nn.Linear(1024, feature_dim))
+            nn.Conv2d(64, 64, kernel_size=2, stride=1),
+            Flatten(),
+            nn.Linear(1024, feature_dim),
+        )
 
         self.actor_layers = nn.Sequential(
-            nn.Linear(in_features=feature_dim, out_features=action_space.n))
+            nn.Linear(in_features=feature_dim, out_features=action_space.n)
+        )
 
         self.critic_layers = nn.Sequential(
-            nn.Linear(in_features=feature_dim, out_features=1))
+            nn.Linear(in_features=feature_dim, out_features=1)
+        )
 
         self._value_out = None
 
 
 class DenseModel(ActorCriticModel):
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        ActorCriticModel.__init__(self, obs_space, action_space, num_outputs,
-                                  model_config, name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        ActorCriticModel.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
 
         self.shared_layers = nn.Sequential(
             nn.Linear(
-                in_features=obs_space.original_space["obs"].shape[0],
-                out_features=256), nn.Linear(
-                    in_features=256, out_features=256))
+                in_features=obs_space.original_space["obs"].shape[0], out_features=256
+            ),
+            nn.Linear(in_features=256, out_features=256),
+        )
         self.actor_layers = nn.Sequential(
-            nn.Linear(in_features=256, out_features=action_space.n))
-        self.critic_layers = nn.Sequential(
-            nn.Linear(in_features=256, out_features=1))
+            nn.Linear(in_features=256, out_features=action_space.n)
+        )
+        self.critic_layers = nn.Sequential(nn.Linear(in_features=256, out_features=1))
         self._value_out = None

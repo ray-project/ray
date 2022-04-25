@@ -19,9 +19,11 @@ torch, _ = try_import_torch()
 
 
 def pg_torch_loss(
-        policy: Policy, model: ModelV2,
-        dist_class: Type[TorchDistributionWrapper],
-        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+    policy: Policy,
+    model: ModelV2,
+    dist_class: Type[TorchDistributionWrapper],
+    train_batch: SampleBatch,
+) -> Union[TensorType, List[TensorType]]:
     """The basic policy gradients loss function.
 
     Args:
@@ -45,8 +47,7 @@ def pg_torch_loss(
     log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
 
     # Final policy loss.
-    policy_loss = -torch.mean(
-        log_probs * train_batch[Postprocessing.ADVANTAGES])
+    policy_loss = -torch.mean(log_probs * train_batch[Postprocessing.ADVANTAGES])
 
     # Store values for stats function in model (tower), such that for
     # multi-GPU, we do not override them during the parallel loss phase.
@@ -55,8 +56,7 @@ def pg_torch_loss(
     return policy_loss
 
 
-def pg_loss_stats(policy: Policy,
-                  train_batch: SampleBatch) -> Dict[str, TensorType]:
+def pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """Returns the calculated loss in a stats dict.
 
     Args:
@@ -68,12 +68,11 @@ def pg_loss_stats(policy: Policy,
     """
 
     return {
-        "policy_loss": torch.mean(
-            torch.stack(policy.get_tower_stats("policy_loss"))),
+        "policy_loss": torch.mean(torch.stack(policy.get_tower_stats("policy_loss"))),
     }
 
 
-# Build a child class of `TFPolicy`, given the extra options:
+# Build a child class of `TorchPolicy`, given the extra options:
 # - trajectory post-processing function (to calculate advantages)
 # - PG loss function
 PGTorchPolicy = build_policy_class(

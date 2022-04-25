@@ -97,6 +97,8 @@ message GetNamedActorInfoReply {
   GcsStatus status = 1;
   // Data of actor.
   ActorTableData actor_table_data = 2;
+  // The task specification of this actor's creation task.
+  TaskSpec task_spec = 3;
 }
 
 message ListNamedActorsRequest {
@@ -186,6 +188,7 @@ message CheckAliveRequest {
 
 message CheckAliveReply {
   GcsStatus status = 1;
+  string ray_version = 2;
 }
 
 message GetInternalConfigRequest {
@@ -203,20 +206,6 @@ message GetResourcesRequest {
 message GetResourcesReply {
   GcsStatus status = 1;
   map<string, ResourceTableData> resources = 2;
-}
-
-message UpdateResourcesRequest {
-  bytes node_id = 1;
-  map<string, ResourceTableData> resources = 2;
-}
-
-message UpdateResourcesReply {
-  GcsStatus status = 1;
-}
-
-message DeleteResourcesRequest {
-  bytes node_id = 1;
-  repeated string resource_name_list = 2;
 }
 
 message DeleteResourcesReply {
@@ -452,6 +441,7 @@ message DrainNodeReply {
 
 message InternalKVGetRequest {
   bytes key = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVGetReply {
@@ -463,6 +453,7 @@ message InternalKVPutRequest {
   bytes key = 1;
   bytes value = 2;
   bool overwrite = 3;
+  bytes namespace = 4;
 }
 
 message InternalKVPutReply {
@@ -472,6 +463,8 @@ message InternalKVPutReply {
 
 message InternalKVDelRequest {
   bytes key = 1;
+  bytes namespace = 2;
+  bool del_by_prefix = 3;
 }
 
 message InternalKVDelReply {
@@ -481,6 +474,7 @@ message InternalKVDelReply {
 
 message InternalKVExistsRequest {
   bytes key = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVExistsReply {
@@ -490,6 +484,7 @@ message InternalKVExistsReply {
 
 message InternalKVKeysRequest {
   bytes prefix = 1;
+  bytes namespace = 2;
 }
 
 message InternalKVKeysReply {
@@ -567,10 +562,6 @@ message GetAllResourceUsageReply {
 service NodeResourceInfoGcsService {
   // Get node's resources from GCS Service.
   rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
-  // Update resources of a node in GCS Service.
-  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
-  // Delete resources of a node in GCS Service.
-  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
   // Get available resources of all nodes.
   rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
       returns (GetAllAvailableResourcesReply);

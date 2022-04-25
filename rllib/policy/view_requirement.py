@@ -18,20 +18,23 @@ class ViewRequirement:
     options to build the view.
 
     Examples:
+        >>> from ray.rllib.models.modelv2 import ModelV2
         >>> # The default ViewRequirement for a Model is:
-        >>> req = [ModelV2].view_requirements
-        >>> print(req)
+        >>> req = ModelV2(...).view_requirements # doctest: +SKIP
+        >>> print(req) # doctest: +SKIP
         {"obs": ViewRequirement(shift=0)}
     """
 
-    def __init__(self,
-                 data_col: Optional[str] = None,
-                 space: gym.Space = None,
-                 shift: Union[int, str, List[int]] = 0,
-                 index: Optional[int] = None,
-                 batch_repeat_value: int = 1,
-                 used_for_compute_actions: bool = True,
-                 used_for_training: bool = True):
+    def __init__(
+        self,
+        data_col: Optional[str] = None,
+        space: gym.Space = None,
+        shift: Union[int, str, List[int]] = 0,
+        index: Optional[int] = None,
+        batch_repeat_value: int = 1,
+        used_for_compute_actions: bool = True,
+        used_for_training: bool = True,
+    ):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -64,8 +67,11 @@ class ViewRequirement:
                 final train batch.
         """
         self.data_col = data_col
-        self.space = space if space is not None else gym.spaces.Box(
-            float("-inf"), float("inf"), shape=())
+        self.space = (
+            space
+            if space is not None
+            else gym.spaces.Box(float("-inf"), float("inf"), shape=())
+        )
 
         self.shift = shift
         if isinstance(self.shift, (list, tuple)):

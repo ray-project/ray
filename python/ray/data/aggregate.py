@@ -1,20 +1,39 @@
 import math
-from typing import Callable, Optional, Union, Any, List
+from typing import Callable, Optional, List, TYPE_CHECKING
 
 from ray.util.annotations import PublicAPI
-from ray.data.block import T, U, KeyType, AggType
+from ray.data.block import (
+    T,
+    U,
+    Block,
+    BlockAccessor,
+    KeyType,
+    AggType,
+    KeyFn,
+    _validate_key_fn,
+)
+from ray.data.impl.null_aggregate import (
+    _null_wrap_init,
+    _null_wrap_merge,
+    _null_wrap_accumulate_block,
+    _null_wrap_finalize,
+)
 
-AggregateOnT = Union[Callable[[T], Any], str]
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class AggregateFn(object):
-    def __init__(self,
-                 init: Callable[[KeyType], AggType],
-                 accumulate: Callable[[AggType, T], AggType],
-                 merge: Callable[[AggType, AggType], AggType],
-                 finalize: Callable[[AggType], U] = lambda a: a,
-                 name: Optional[str] = None):
+    def __init__(
+        self,
+        init: Callable[[KeyType], AggType],
+        merge: Callable[[AggType, AggType], AggType],
+        accumulate_row: Callable[[AggType, T], AggType] = None,
+        accumulate_block: Callable[[AggType, Block[T]], AggType] = None,
+        finalize: Callable[[AggType], U] = lambda a: a,
+        name: Optional[str] = None,
+    ):
         """Defines an aggregate function in the accumulator style.
 
         Aggregates a collection of inputs of type T into
@@ -23,93 +42,180 @@ class AggregateFn(object):
         for more details about accumulator-based aggregation.
 
         Args:
-            init: This is called once for each group
-                to return the empty accumulator.
+            init: This is called once for each group to return the empty accumulator.
                 For example, an empty accumulator for a sum would be 0.
-            accumulate: This is called once per row of the same group.
-                This combines the accumulator and the row,
-                returns the updated accumulator.
             merge: This may be called multiple times, each time to merge
                 two accumulators into one.
+            accumulate_row: This is called once per row of the same group.
+                This combines the accumulator and the row, returns the updated
+                accumulator. Exactly one of accumulate_row and accumulate_block must
+                be provided.
+            accumulate_block: This is used to calculate the aggregation for a
+                single block, and is vectorized alternative to accumulate_row. This will
+                be given a base accumulator and the entire block, allowing for
+                vectorized accumulation of the block. Exactly one of accumulate_row and
+                accumulate_block must be provided.
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
             name: The name of the aggregation. This will be used as the output
                 column name in the case of Arrow dataset.
         """
+        if (accumulate_row is None and accumulate_block is None) or (
+            accumulate_row is not None and accumulate_block is not None
+        ):
+            raise ValueError(
+                "Exactly one of accumulate_row or accumulate_block must be provided."
+            )
+        if accumulate_block is None:
+
+            def accumulate_block(a: AggType, block: Block[T]) -> AggType:
+                block_acc = BlockAccessor.for_block(block)
+                for r in block_acc.iter_rows():
+                    a = accumulate_row(a, r)
+                return a
+
         self.init = init
-        self.accumulate = accumulate
         self.merge = merge
+        self.accumulate_block = accumulate_block
         self.finalize = finalize
         self.name = name
 
+    def _validate(self, ds: "Dataset") -> None:
+        """Raise an error if this cannot be applied to the given dataset."""
+        pass
 
+
+class _AggregateOnKeyBase(AggregateFn):
+    def _set_key_fn(self, on: KeyFn):
+        self._key_fn = on
+
+    def _validate(self, ds: "Dataset") -> None:
+        _validate_key_fn(ds, self._key_fn)
+
+
+@PublicAPI
 class Count(AggregateFn):
     """Defines count aggregation."""
 
     def __init__(self):
         super().__init__(
             init=lambda k: 0,
-            accumulate=lambda a, r: a + 1,
+            accumulate_block=(
+                lambda a, block: a + BlockAccessor.for_block(block).num_rows()
+            ),
             merge=lambda a1, a2: a1 + a2,
-            name="count()")
+            name="count()",
+        )
 
 
-class Sum(AggregateFn):
+@PublicAPI
+class Sum(_AggregateOnKeyBase):
     """Defines sum aggregation."""
 
-    def __init__(self, on: Optional[AggregateOnT] = None):
-        on_fn = _to_on_fn(on)
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+        self._set_key_fn(on)
+
+        null_merge = _null_wrap_merge(ignore_nulls, lambda a1, a2: a1 + a2)
+
         super().__init__(
-            init=lambda k: 0,
-            accumulate=lambda a, r: a + on_fn(r),
-            merge=lambda a1, a2: a1 + a2,
-            name=(f"sum({str(on)})"))
+            init=_null_wrap_init(lambda k: 0),
+            merge=null_merge,
+            accumulate_block=_null_wrap_accumulate_block(
+                ignore_nulls,
+                lambda block: BlockAccessor.for_block(block).sum(on, ignore_nulls),
+                null_merge,
+            ),
+            finalize=_null_wrap_finalize(lambda a: a),
+            name=(f"sum({str(on)})"),
+        )
 
 
-class Min(AggregateFn):
+@PublicAPI
+class Min(_AggregateOnKeyBase):
     """Defines min aggregation."""
 
-    def __init__(self, on: Optional[AggregateOnT] = None):
-        on_fn = _to_on_fn(on)
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+        self._set_key_fn(on)
+
+        null_merge = _null_wrap_merge(ignore_nulls, min)
+
         super().__init__(
-            init=lambda k: None,
-            accumulate=(
-                lambda a, r: (on_fn(r) if a is None else min(a, on_fn(r)))),
-            merge=lambda a1, a2: min(a1, a2),
-            name=(f"min({str(on)})"))
+            init=_null_wrap_init(lambda k: float("inf")),
+            merge=null_merge,
+            accumulate_block=_null_wrap_accumulate_block(
+                ignore_nulls,
+                lambda block: BlockAccessor.for_block(block).min(on, ignore_nulls),
+                null_merge,
+            ),
+            finalize=_null_wrap_finalize(lambda a: a),
+            name=(f"min({str(on)})"),
+        )
 
 
-class Max(AggregateFn):
+@PublicAPI
+class Max(_AggregateOnKeyBase):
     """Defines max aggregation."""
 
-    def __init__(self, on: Optional[AggregateOnT] = None):
-        on_fn = _to_on_fn(on)
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+        self._set_key_fn(on)
+
+        null_merge = _null_wrap_merge(ignore_nulls, max)
+
         super().__init__(
-            init=lambda k: None,
-            accumulate=(
-                lambda a, r: (on_fn(r) if a is None else max(a, on_fn(r)))),
-            merge=lambda a1, a2: max(a1, a2),
-            name=(f"max({str(on)})"))
+            init=_null_wrap_init(lambda k: float("-inf")),
+            merge=null_merge,
+            accumulate_block=_null_wrap_accumulate_block(
+                ignore_nulls,
+                lambda block: BlockAccessor.for_block(block).max(on, ignore_nulls),
+                null_merge,
+            ),
+            finalize=_null_wrap_finalize(lambda a: a),
+            name=(f"max({str(on)})"),
+        )
 
 
-class Mean(AggregateFn):
+@PublicAPI
+class Mean(_AggregateOnKeyBase):
     """Defines mean aggregation."""
 
-    def __init__(self, on: Optional[AggregateOnT] = None):
-        on_fn = _to_on_fn(on)
+    def __init__(self, on: Optional[KeyFn] = None, ignore_nulls: bool = True):
+        self._set_key_fn(on)
+
+        null_merge = _null_wrap_merge(
+            ignore_nulls, lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]]
+        )
+
+        def vectorized_mean(block: Block[T]) -> AggType:
+            block_acc = BlockAccessor.for_block(block)
+            count = block_acc.count(on)
+            if count == 0 or count is None:
+                # Empty or all null.
+                return None
+            sum_ = block_acc.sum(on, ignore_nulls)
+            if sum_ is None:
+                # ignore_nulls=False and at least one null.
+                return None
+            return [sum_, count]
+
         super().__init__(
-            init=lambda k: [0, 0],
-            accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],
-            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
-            finalize=lambda a: a[0] / a[1],
-            name=(f"mean({str(on)})"))
+            init=_null_wrap_init(lambda k: [0, 0]),
+            merge=null_merge,
+            accumulate_block=_null_wrap_accumulate_block(
+                ignore_nulls,
+                vectorized_mean,
+                null_merge,
+            ),
+            finalize=_null_wrap_finalize(lambda a: a[0] / a[1]),
+            name=(f"mean({str(on)})"),
+        )
 
 
-class Std(AggregateFn):
+@PublicAPI
+class Std(_AggregateOnKeyBase):
     """Defines standard deviation aggregation.
 
     Uses Welford's online method for an accumulator-style computation of the
-    standard deviation. This method was chosen due to it's numerical
+    standard deviation. This method was chosen due to its numerical
     stability, and it being computable in a single pass.
     This may give different (but more accurate) results than NumPy, Pandas,
     and sklearn, which use a less numerically stable two-pass algorithm.
@@ -117,23 +223,13 @@ class Std(AggregateFn):
     https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
     """
 
-    def __init__(self, on: Optional[AggregateOnT] = None, ddof: int = 1):
-        on_fn = _to_on_fn(on)
-
-        def accumulate(a: List[float], r: float):
-            # Accumulates the current count, the current mean, and the sum of
-            # squared differences from the current mean (M2).
-            M2, mean, count = a
-            # Select the data on which we want to calculate the standard
-            # deviation.
-            val = on_fn(r)
-
-            count += 1
-            delta = val - mean
-            mean += delta / count
-            delta2 = val - mean
-            M2 += delta * delta2
-            return [M2, mean, count]
+    def __init__(
+        self,
+        on: Optional[KeyFn] = None,
+        ddof: int = 1,
+        ignore_nulls: bool = True,
+    ):
+        self._set_key_fn(on)
 
         def merge(a: List[float], b: List[float]):
             # Merges two accumulations into one.
@@ -149,7 +245,23 @@ class Std(AggregateFn):
             # exact comparison tests to fail.
             mean = (mean_a * count_a + mean_b * count_b) / count
             # Update the sum of squared differences.
-            M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
+            M2 = M2_a + M2_b + (delta ** 2) * count_a * count_b / count
+            return [M2, mean, count]
+
+        null_merge = _null_wrap_merge(ignore_nulls, merge)
+
+        def vectorized_std(block: Block[T]) -> AggType:
+            block_acc = BlockAccessor.for_block(block)
+            count = block_acc.count(on)
+            if count == 0 or count is None:
+                # Empty or all null.
+                return None
+            sum_ = block_acc.sum(on, ignore_nulls)
+            if sum_ is None:
+                # ignore_nulls=False and at least one null.
+                return None
+            mean = sum_ / count
+            M2 = block_acc.sum_of_squared_diffs_from_mean(on, ignore_nulls, mean)
             return [M2, mean, count]
 
         def finalize(a: List[float]):
@@ -161,14 +273,19 @@ class Std(AggregateFn):
             return math.sqrt(M2 / (count - ddof))
 
         super().__init__(
-            init=lambda k: [0, 0, 0],
-            accumulate=accumulate,
-            merge=merge,
-            finalize=finalize,
-            name=(f"std({str(on)})"))
+            init=_null_wrap_init(lambda k: [0, 0, 0]),
+            merge=null_merge,
+            accumulate_block=_null_wrap_accumulate_block(
+                ignore_nulls,
+                vectorized_std,
+                null_merge,
+            ),
+            finalize=_null_wrap_finalize(finalize),
+            name=(f"std({str(on)})"),
+        )
 
 
-def _to_on_fn(on: Optional[AggregateOnT]):
+def _to_on_fn(on: Optional[KeyFn]):
     if on is None:
         return lambda r: r
     elif isinstance(on, str):

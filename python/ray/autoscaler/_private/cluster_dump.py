@@ -17,17 +17,14 @@ import ray  # noqa: F401
 from ray.autoscaler._private.cli_logger import cli_logger
 
 from ray.autoscaler._private.providers import _get_node_provider
-from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD, \
-    NODE_KIND_WORKER
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD, NODE_KIND_WORKER
 
 # Import psutil after ray so the packaged version is used.
 import psutil
 
 MAX_PARALLEL_SSH_WORKERS = 8
 DEFAULT_SSH_USER = "ubuntu"
-DEFAULT_SSH_KEYS = [
-    "~/ray_bootstrap_key.pem", "~/.ssh/ray-autoscaler_2_us-west-2.pem"
-]
+DEFAULT_SSH_KEYS = ["~/ray_bootstrap_key.pem", "~/.ssh/ray-autoscaler_2_us-west-2.pem"]
 
 
 class CommandFailed(RuntimeError):
@@ -43,13 +40,15 @@ class RemoteCommandFailed(CommandFailed):
 
 
 class GetParameters:
-    def __init__(self,
-                 logs: bool = True,
-                 debug_state: bool = True,
-                 pip: bool = True,
-                 processes: bool = True,
-                 processes_verbose: bool = True,
-                 processes_list: Optional[List[Tuple[str, bool]]] = None):
+    def __init__(
+        self,
+        logs: bool = True,
+        debug_state: bool = True,
+        pip: bool = True,
+        processes: bool = True,
+        processes_verbose: bool = True,
+        processes_list: Optional[List[Tuple[str, bool]]] = None,
+    ):
         self.logs = logs
         self.debug_state = debug_state
         self.pip = pip
@@ -61,12 +60,14 @@ class GetParameters:
 class Node:
     """Node (as in "machine")"""
 
-    def __init__(self,
-                 host: str,
-                 ssh_user: str = "ubuntu",
-                 ssh_key: str = "~/ray_bootstrap_key.pem",
-                 docker_container: Optional[str] = None,
-                 is_head: bool = False):
+    def __init__(
+        self,
+        host: str,
+        ssh_user: str = "ubuntu",
+        ssh_key: str = "~/ray_bootstrap_key.pem",
+        docker_container: Optional[str] = None,
+        is_head: bool = False,
+    ):
         self.host = host
         self.ssh_user = ssh_user
         self.ssh_key = ssh_key
@@ -84,8 +85,7 @@ class Archive:
     """
 
     def __init__(self, file: Optional[str] = None):
-        self.file = file or tempfile.mktemp(
-            prefix="ray_logs_", suffix=".tar.gz")
+        self.file = file or tempfile.mkstemp(prefix="ray_logs_", suffix=".tar.gz")[1]
         self.tar = None
         self._lock = threading.Lock()
 
@@ -136,8 +136,7 @@ class Archive:
             @staticmethod
             def add(path: str, arcname: Optional[str] = None):
                 path = os.path.abspath(path)
-                arcname = arcname or os.path.join(subdir,
-                                                  os.path.relpath(path, root))
+                arcname = arcname or os.path.join(subdir, os.path.relpath(path, root))
 
                 self._lock.acquire()
                 self.tar.add(path, arcname=arcname)
@@ -152,9 +151,10 @@ class Archive:
 
 
 def get_local_ray_logs(
-        archive: Archive,
-        exclude: Optional[Sequence[str]] = None,
-        session_log_dir: str = "/tmp/ray/session_latest") -> Archive:
+    archive: Archive,
+    exclude: Optional[Sequence[str]] = None,
+    session_log_dir: str = "/tmp/ray/session_latest",
+) -> Archive:
     """Copy local log files into an archive.
 
     Args:
@@ -188,9 +188,9 @@ def get_local_ray_logs(
     return archive
 
 
-def get_local_debug_state(archive: Archive,
-                          session_dir: str = "/tmp/ray/session_latest"
-                          ) -> Archive:
+def get_local_debug_state(
+    archive: Archive, session_dir: str = "/tmp/ray/session_latest"
+) -> Archive:
     """Copy local log files into an archive.
 
     Args:
@@ -245,9 +245,11 @@ def get_local_pip_packages(archive: Archive):
     return archive
 
 
-def get_local_ray_processes(archive: Archive,
-                            processes: Optional[List[Tuple[str, bool]]] = None,
-                            verbose: bool = False):
+def get_local_ray_processes(
+    archive: Archive,
+    processes: Optional[List[Tuple[str, bool]]] = None,
+    verbose: bool = False,
+):
     """Get the status of all the relevant ray processes.
     Args:
         archive (Archive): Archive object to add process info files to.
@@ -263,6 +265,7 @@ def get_local_ray_processes(archive: Archive,
     if not processes:
         # local import to avoid circular dependencies
         from ray.autoscaler._private.constants import RAY_PROCESSES
+
         processes = RAY_PROCESSES
 
     process_infos = []
@@ -270,13 +273,19 @@ def get_local_ray_processes(archive: Archive,
         try:
             with process.oneshot():
                 cmdline = " ".join(process.cmdline())
-                process_infos.append(({
-                    "executable": cmdline
-                    if verbose else cmdline.split("--", 1)[0][:-1],
-                    "name": process.name(),
-                    "pid": process.pid,
-                    "status": process.status(),
-                }, process.cmdline()))
+                process_infos.append(
+                    (
+                        {
+                            "executable": cmdline
+                            if verbose
+                            else cmdline.split("--", 1)[0][:-1],
+                            "name": process.name(),
+                            "pid": process.pid,
+                            "status": process.status(),
+                        },
+                        process.cmdline(),
+                    )
+                )
         except Exception as exc:
             raise LocalCommandFailed(exc) from exc
 
@@ -287,8 +296,7 @@ def get_local_ray_processes(archive: Archive,
                 corpus = process_dict["name"]
             else:
                 corpus = subprocess.list2cmdline(cmdline)
-            if keyword in corpus and process_dict["pid"] \
-               not in relevant_processes:
+            if keyword in corpus and process_dict["pid"] not in relevant_processes:
                 relevant_processes[process_dict["pid"]] = process_dict
 
     with tempfile.NamedTemporaryFile("wt") as fp:
@@ -339,7 +347,8 @@ def get_all_local_data(archive: Archive, parameters: GetParameters):
             get_local_ray_processes(
                 archive=archive,
                 processes=parameters.processes_list,
-                verbose=parameters.processes_verbose)
+                verbose=parameters.processes_verbose,
+            )
         except LocalCommandFailed as exc:
             cli_logger.error(exc)
 
@@ -355,10 +364,9 @@ def _wrap(items: List[str], quotes="'"):
     return f"{quotes}{' '.join(items)}{quotes}"
 
 
-def create_and_get_archive_from_remote_node(remote_node: Node,
-                                            parameters: GetParameters,
-                                            script_path: str = "ray"
-                                            ) -> Optional[str]:
+def create_and_get_archive_from_remote_node(
+    remote_node: Node, parameters: GetParameters, script_path: str = "ray"
+) -> Optional[str]:
     """Create an archive containing logs on a remote node and transfer.
 
     This will call ``ray local-dump --stream`` on the remote
@@ -393,24 +401,22 @@ def create_and_get_archive_from_remote_node(remote_node: Node,
 
     collect_cmd = [script_path, "local-dump", "--stream"]
     collect_cmd += ["--logs"] if parameters.logs else ["--no-logs"]
-    collect_cmd += ["--debug-state"] if parameters.debug_state else [
-        "--no-debug-state"
-    ]
+    collect_cmd += ["--debug-state"] if parameters.debug_state else ["--no-debug-state"]
     collect_cmd += ["--pip"] if parameters.pip else ["--no-pip"]
-    collect_cmd += ["--processes"] if parameters.processes else [
-        "--no-processes"
-    ]
+    collect_cmd += ["--processes"] if parameters.processes else ["--no-processes"]
     if parameters.processes:
-        collect_cmd += ["--processes-verbose"] \
-            if parameters.processes_verbose else ["--no-proccesses-verbose"]
+        collect_cmd += (
+            ["--processes-verbose"]
+            if parameters.processes_verbose
+            else ["--no-proccesses-verbose"]
+        )
 
-    cmd += ["/bin/bash", "-c", _wrap(collect_cmd, quotes="\"")]
+    cmd += ["/bin/bash", "-c", _wrap(collect_cmd, quotes='"')]
 
     cat = "node" if not remote_node.is_head else "head"
 
     cli_logger.print(f"Collecting data from remote node: {remote_node.host}")
-    tmp = tempfile.mktemp(
-        prefix=f"ray_{cat}_{remote_node.host}_", suffix=".tar.gz")
+    tmp = tempfile.mkstemp(prefix=f"ray_{cat}_{remote_node.host}_", suffix=".tar.gz")[1]
     with open(tmp, "wb") as fp:
         try:
             subprocess.check_call(cmd, stdout=fp, stderr=sys.stderr)
@@ -423,7 +429,8 @@ def create_and_get_archive_from_remote_node(remote_node: Node,
 
 
 def create_and_add_remote_data_to_local_archive(
-        archive: Archive, remote_node: Node, parameters: GetParameters):
+    archive: Archive, remote_node: Node, parameters: GetParameters
+):
     """Create and get data from remote node and add to local archive.
 
     Args:
@@ -447,8 +454,9 @@ def create_and_add_remote_data_to_local_archive(
     return archive
 
 
-def create_and_add_local_data_to_local_archive(archive: Archive,
-                                               parameters: GetParameters):
+def create_and_add_local_data_to_local_archive(
+    archive: Archive, parameters: GetParameters
+):
     """Create and get data from this node and add to archive.
 
     Args:
@@ -464,8 +472,7 @@ def create_and_add_local_data_to_local_archive(archive: Archive,
     if not archive.is_open:
         archive.open()
 
-    with archive.subdir(
-            "", root=os.path.dirname(local_data_archive.file)) as sd:
+    with archive.subdir("", root=os.path.dirname(local_data_archive.file)) as sd:
         sd.add(local_data_archive.file, arcname="local_node.tar.gz")
 
     os.remove(local_data_archive.file)
@@ -473,9 +480,9 @@ def create_and_add_local_data_to_local_archive(archive: Archive,
     return archive
 
 
-def create_archive_for_remote_nodes(archive: Archive,
-                                    remote_nodes: Sequence[Node],
-                                    parameters: GetParameters):
+def create_archive_for_remote_nodes(
+    archive: Archive, remote_nodes: Sequence[Node], parameters: GetParameters
+):
     """Create an archive combining data from the remote nodes.
 
     This will parallelize calls to get data from remote nodes.
@@ -498,14 +505,15 @@ def create_archive_for_remote_nodes(archive: Archive,
                 create_and_add_remote_data_to_local_archive,
                 archive=archive,
                 remote_node=remote_node,
-                parameters=parameters)
+                parameters=parameters,
+            )
 
     return archive
 
 
-def create_archive_for_local_and_remote_nodes(archive: Archive,
-                                              remote_nodes: Sequence[Node],
-                                              parameters: GetParameters):
+def create_archive_for_local_and_remote_nodes(
+    archive: Archive, remote_nodes: Sequence[Node], parameters: GetParameters
+):
     """Create an archive combining data from the local and remote nodes.
 
     This will parallelize calls to get data from remote nodes.
@@ -529,8 +537,9 @@ def create_archive_for_local_and_remote_nodes(archive: Archive,
 
     create_archive_for_remote_nodes(archive, remote_nodes, parameters)
 
-    cli_logger.print(f"Collected data from local node and {len(remote_nodes)} "
-                     f"remote nodes.")
+    cli_logger.print(
+        f"Collected data from local node and {len(remote_nodes)} " f"remote nodes."
+    )
     return archive
 
 
@@ -538,7 +547,7 @@ def create_archive_for_local_and_remote_nodes(archive: Archive,
 # Ray cluster info
 ###
 def get_info_from_ray_cluster_config(
-        cluster_config: str
+    cluster_config: str,
 ) -> Tuple[List[str], str, str, Optional[str], Optional[str]]:
     """Get information from Ray cluster config.
 
@@ -554,8 +563,9 @@ def get_info_from_ray_cluster_config(
     """
     from ray.autoscaler._private.commands import _bootstrap_config
 
-    cli_logger.print(f"Retrieving cluster information from ray cluster file: "
-                     f"{cluster_config}")
+    cli_logger.print(
+        f"Retrieving cluster information from ray cluster file: " f"{cluster_config}"
+    )
 
     cluster_config = os.path.expanduser(cluster_config)
 
@@ -563,12 +573,8 @@ def get_info_from_ray_cluster_config(
     config = _bootstrap_config(config, no_config_cache=True)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
-    head_nodes = provider.non_terminated_nodes({
-        TAG_RAY_NODE_KIND: NODE_KIND_HEAD
-    })
-    worker_nodes = provider.non_terminated_nodes({
-        TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-    })
+    head_nodes = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
+    worker_nodes = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     hosts = [provider.external_ip(node) for node in head_nodes + worker_nodes]
     ssh_user = config["auth"]["ssh_user"]
@@ -585,11 +591,11 @@ def get_info_from_ray_cluster_config(
 
 
 def _info_from_params(
-        cluster: Optional[str] = None,
-        host: Optional[str] = None,
-        ssh_user: Optional[str] = None,
-        ssh_key: Optional[str] = None,
-        docker: Optional[str] = None,
+    cluster: Optional[str] = None,
+    host: Optional[str] = None,
+    ssh_user: Optional[str] = None,
+    ssh_key: Optional[str] = None,
+    docker: Optional[str] = None,
 ):
     """Parse command line arguments.
 
@@ -599,9 +605,11 @@ def _info_from_params(
         bootstrap_config = os.path.expanduser("~/ray_bootstrap_config.yaml")
         if os.path.exists(bootstrap_config):
             cluster = bootstrap_config
-            cli_logger.warning(f"Detected cluster config file at {cluster}. "
-                               f"If this is incorrect, specify with "
-                               f"`ray cluster-dump <config>`")
+            cli_logger.warning(
+                f"Detected cluster config file at {cluster}. "
+                f"If this is incorrect, specify with "
+                f"`ray cluster-dump <config>`"
+            )
     elif cluster:
         cluster = os.path.expanduser(cluster)
 
@@ -617,19 +625,21 @@ def _info_from_params(
 
         if not hosts:
             raise LocalCommandFailed(
-                f"Invalid cluster file or cluster has no running nodes: "
-                f"{cluster}")
+                f"Invalid cluster file or cluster has no running nodes: " f"{cluster}"
+            )
     elif host:
         hosts = host.split(",")
     else:
         raise LocalCommandFailed(
-            "You need to either specify a `<cluster_config>` or `--host`.")
+            "You need to either specify a `<cluster_config>` or `--host`."
+        )
 
     if not ssh_user:
         ssh_user = DEFAULT_SSH_USER
         cli_logger.warning(
             f"Using default SSH user `{ssh_user}`. "
-            f"If this is incorrect, specify with `--ssh-user <user>`")
+            f"If this is incorrect, specify with `--ssh-user <user>`"
+        )
 
     if not ssh_key:
         for cand_key in DEFAULT_SSH_KEYS:
@@ -638,7 +648,8 @@ def _info_from_params(
                 ssh_key = cand_key_file
                 cli_logger.warning(
                     f"Auto detected SSH key file: {ssh_key}. "
-                    f"If this is incorrect, specify with `--ssh-key <key>`")
+                    f"If this is incorrect, specify with `--ssh-key <key>`"
+                )
                 break
 
     return cluster, hosts, ssh_user, ssh_key, docker, cluster_name

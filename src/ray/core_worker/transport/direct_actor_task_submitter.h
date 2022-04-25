@@ -48,10 +48,13 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
                                         int32_t max_pending_calls,
                                         bool execute_out_of_order = false) = 0;
-  virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
+  virtual void ConnectActor(const ActorID &actor_id,
+                            const rpc::Address &address,
                             int64_t num_restarts) = 0;
-  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                               const rpc::ActorDeathCause *death_cause = nullptr) = 0;
+  virtual void DisconnectActor(const ActorID &actor_id,
+                               int64_t num_restarts,
+                               bool dead,
+                               const rpc::ActorDeathCause &death_cause) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
@@ -64,8 +67,10 @@ class CoreWorkerDirectActorTaskSubmitter
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   CoreWorkerDirectActorTaskSubmitter(
-      rpc::CoreWorkerClientPool &core_worker_client_pool, CoreWorkerMemoryStore &store,
-      TaskFinisherInterface &task_finisher, ActorCreatorInterface &actor_creator,
+      rpc::CoreWorkerClientPool &core_worker_client_pool,
+      CoreWorkerMemoryStore &store,
+      TaskFinisherInterface &task_finisher,
+      ActorCreatorInterface &actor_creator,
       std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
       instrumented_io_context &io_service)
       : core_worker_client_pool_(core_worker_client_pool),
@@ -84,7 +89,8 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
-  void AddActorQueueIfNotExists(const ActorID &actor_id, int32_t max_pending_calls,
+  void AddActorQueueIfNotExists(const ActorID &actor_id,
+                                int32_t max_pending_calls,
                                 bool execute_out_of_order = false);
 
   /// Submit a task to an actor for execution.
@@ -110,7 +116,8 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] num_restarts How many times this actor has been restarted
   /// before. If we've already seen a later incarnation of the actor, we will
   /// ignore the command to connect.
-  void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
+  void ConnectActor(const ActorID &actor_id,
+                    const rpc::Address &address,
                     int64_t num_restarts);
 
   /// Disconnect from a failed actor.
@@ -122,8 +129,10 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
   /// \param[in] death_cause Context about why this actor is dead.
-  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                       const rpc::ActorDeathCause *death_cause = nullptr);
+  void DisconnectActor(const ActorID &actor_id,
+                       int64_t num_restarts,
+                       bool dead,
+                       const rpc::ActorDeathCause &death_cause);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
@@ -159,8 +168,9 @@ class CoreWorkerDirectActorTaskSubmitter
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
-    /// Only applies when state=DEAD.
-    std::unique_ptr<rpc::ActorDeathCause> death_cause = nullptr;
+    /// The reason why this actor is dead.
+    /// If the context is not set, it means the actor is not dead.
+    rpc::ActorDeathCause death_cause;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
@@ -189,7 +199,7 @@ class CoreWorkerDirectActorTaskSubmitter
 
     /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
     /// without replies.
-    std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+    absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
         inflight_task_callbacks;
 
     /// The max number limit of task capacity used for back pressure.
@@ -220,7 +230,8 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
   /// \return Void.
-  void PushActorTask(ClientQueue &queue, const TaskSpecification &task_spec,
+  void PushActorTask(ClientQueue &queue,
+                     const TaskSpecification &task_spec,
                      bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
@@ -241,7 +252,7 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Fail all in-flight tasks.
   void FailInflightTasks(
-      const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
 
   /// Whether the specified actor is alive.

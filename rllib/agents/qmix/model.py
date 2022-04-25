@@ -12,10 +12,10 @@ torch, nn = try_import_torch()
 class RNNModel(TorchModelV2, nn.Module):
     """The default RNN model for QMIX."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        TorchModelV2.__init__(
+            self, obs_space, action_space, num_outputs, model_config, name
+        )
         nn.Module.__init__(self)
         self.preprocessing_network = None
         if isinstance(obs_space, Tuple):
@@ -40,8 +40,7 @@ class RNNModel(TorchModelV2, nn.Module):
     def get_initial_state(self):
         # Place hidden states on same device as model.
         return [
-            self.fc1.weight.new(self.n_agents,
-                                self.rnn_hidden_dim).zero_().squeeze(0)
+            self.fc1.weight.new(self.n_agents, self.rnn_hidden_dim).zero_().squeeze(0)
         ]
 
     @override(ModelV2)

@@ -32,40 +32,29 @@ class InMemoryStoreClient : public StoreClient {
   explicit InMemoryStoreClient(instrumented_io_context &main_io_service)
       : main_io_service_(main_io_service) {}
 
-  Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &data, const StatusCallback &callback) override;
+  Status AsyncPut(const std::string &table_name,
+                  const std::string &key,
+                  const std::string &data,
+                  const StatusCallback &callback) override;
 
-  Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
-                           const std::string &index_key, const std::string &data,
-                           const StatusCallback &callback) override;
-
-  Status AsyncGet(const std::string &table_name, const std::string &key,
+  Status AsyncGet(const std::string &table_name,
+                  const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
-
-  Status AsyncGetByIndex(const std::string &table_name, const std::string &index_key,
-                         const MapCallback<std::string, std::string> &callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
                      const MapCallback<std::string, std::string> &callback) override;
 
-  Status AsyncDelete(const std::string &table_name, const std::string &key,
-                     const StatusCallback &callback) override;
+  Status AsyncMultiGet(const std::string &table_name,
+                       const std::vector<std::string> &keys,
+                       const MapCallback<std::string, std::string> &callback) override;
 
-  Status AsyncDeleteWithIndex(const std::string &table_name, const std::string &key,
-                              const std::string &index_key,
-                              const StatusCallback &callback) override;
+  Status AsyncDelete(const std::string &table_name,
+                     const std::string &key,
+                     const StatusCallback &callback) override;
 
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
                           const StatusCallback &callback) override;
-
-  Status AsyncBatchDeleteWithIndex(const std::string &table_name,
-                                   const std::vector<std::string> &keys,
-                                   const std::vector<std::string> &index_keys,
-                                   const StatusCallback &callback) override;
-
-  Status AsyncDeleteByIndex(const std::string &table_name, const std::string &index_key,
-                            const StatusCallback &callback) override;
 
   int GetNextJobID() override;
 
@@ -75,9 +64,6 @@ class InMemoryStoreClient : public StoreClient {
     absl::Mutex mutex_;
     // Mapping from key to data.
     absl::flat_hash_map<std::string, std::string> records_ GUARDED_BY(mutex_);
-    // Mapping from index key to keys.
-    absl::flat_hash_map<std::string, std::vector<std::string>> index_keys_
-        GUARDED_BY(mutex_);
   };
 
   std::shared_ptr<InMemoryStoreClient::InMemoryTable> GetOrCreateTable(

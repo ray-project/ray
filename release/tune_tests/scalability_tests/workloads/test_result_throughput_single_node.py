@@ -36,7 +36,8 @@ def main():
         num_samples=num_samples,
         results_per_second=results_per_second,
         trial_length_s=trial_length_s,
-        max_runtime=max_runtime)
+        max_runtime=max_runtime,
+    )
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ def tmp():
         yield f.name
 
 
-class TestIterLine():
+class TestIterLine:
     def test_invalid_type(self):
         with pytest.raises(TypeError, match="path must be a string"):
             next(file_tail_iterator(1))

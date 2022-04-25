@@ -2,8 +2,8 @@
 
 .. _ray-client:
 
-Ray Client
-==========
+Ray Client: Interactive Development
+===================================
 
 **What is the Ray Client?**
 
@@ -36,7 +36,7 @@ Client arguments
 Ray Client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Besides the address, Client mode currently accepts two other arguments:
 
 - ``namespace`` (optional): Sets the namespace for the session.
-- ``runtime_env`` (optional): Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
+- ``runtime_env`` (optional): Sets the `runtime environment <../ray-core/handling-dependencies.html#runtime-environments>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
 
 .. code-block:: python
 
@@ -56,9 +56,9 @@ When to use Ray Client
 
 Ray Client should be used when you want to connect a script or an interactive shell session to a **remote** cluster.
 
-* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray Client) if you've set up a remote cluster at ``<head_node_host>``. This will connect your local script or shell to the cluster. See the section on :ref:`using Ray Client<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
+* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray Client) if you've set up a remote cluster at ``<head_node_host>`` and you want to do interactive work. This will connect your local script or shell to the cluster. See the section on :ref:`using Ray Client<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
 * Use ``ray.init("localhost:<port>")`` (non-client connection, local address) if you're developing locally or on the head node of your cluster and you have already started the cluster (i.e. ``ray start --head`` has already been run)
-* Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to automatically create a local cluster and attach directly to it.
+* Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to automatically create a local cluster and attach directly to it OR if you are using Ray Job submission.
 
 .. _how-do-you-use-the-ray-client:
 
@@ -85,31 +85,30 @@ Ensure that the Ray Client port on the head node is reachable from your local ma
 This means opening that port up by configuring security groups or other access controls (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_)
 or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_).
 
-.. tabs::
-    .. group-tab:: AWS
+.. tabbed:: AWS
 
-        With the Ray cluster launcher, you can configure the security group
-        to allow inbound access by defining :ref:`cluster-configuration-security-group`
-        in your `cluster.yaml`.
+    With the Ray cluster launcher, you can configure the security group
+    to allow inbound access by defining :ref:`cluster-configuration-security-group`
+    in your `cluster.yaml`.
 
-        .. code-block:: yaml
+    .. code-block:: yaml
 
-            # An unique identifier for the head node and workers of this cluster.
-            cluster_name: minimal_security_group
+        # An unique identifier for the head node and workers of this cluster.
+        cluster_name: minimal_security_group
 
-            # Cloud-provider specific configuration.
-            provider:
-                type: aws
-                region: us-west-2
-                security_group:
-                    GroupName: ray_client_security_group
-                    IpPermissions:
-                          - FromPort: 10001
-                            ToPort: 10001
-                            IpProtocol: TCP
-                            IpRanges:
-                                # This will enable inbound access from ALL IPv4 addresses.
-                                - CidrIp: 0.0.0.0/0
+        # Cloud-provider specific configuration.
+        provider:
+            type: aws
+            region: us-west-2
+            security_group:
+                GroupName: ray_client_security_group
+                IpPermissions:
+                      - FromPort: 10001
+                        ToPort: 10001
+                        IpProtocol: TCP
+                        IpRanges:
+                            # This will enable inbound access from ALL IPv4 addresses.
+                            - CidrIp: 0.0.0.0/0
 
 Step 3: Run Ray code
 ~~~~~~~~~~~~~~~~~~~~
@@ -168,7 +167,7 @@ Then, you can connect to the Ray cluster **from another terminal** using  ``loca
 
    #....
 
-Connect to multiple ray clusters (Experimental)
+Connect to multiple Ray clusters (Experimental)
 -----------------------------------------------
 
 Ray Client allows connecting to multiple Ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
@@ -261,7 +260,7 @@ If you are using the ``nginx-ingress-controller``, you may be able to resolve th
 
 
 .. code-block:: yaml
-   
+
    metadata:
      annotations:
         nginx.ingress.kubernetes.io/server-snippet: |
@@ -272,7 +271,7 @@ Ray client logs
 ~~~~~~~~~~~~~~~
 
 Ray client logs can be found at ``/tmp/ray/session_latest/logs`` on the head node.
-   
+
 Uploads
 ~~~~~~~
 

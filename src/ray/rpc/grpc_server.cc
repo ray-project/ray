@@ -27,8 +27,10 @@
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name, const uint32_t port,
-                       bool listen_to_localhost_only, int num_threads,
+GrpcServer::GrpcServer(std::string name,
+                       const uint32_t port,
+                       bool listen_to_localhost_only,
+                       int num_threads,
                        int64_t keepalive_time_ms)
     : name_(std::move(name)),
       port_(port),

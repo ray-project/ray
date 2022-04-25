@@ -1,5 +1,0 @@
-This folder is WIP and will eventually contain all the revamped documentation source
-files.
-
-Some rst files for the new RLlib documentation have already moved into
-here, others are still residing directly under the main doc/source directory.

@@ -9,20 +9,20 @@ def override(cls):
             cls does not actually have the method, an error is raised.
 
     Examples:
-        >>> class TorchPolicy(Policy):
-        ... ...
+        >>> from ray.rllib.policy import Policy
+        >>> class TorchPolicy(Policy): # doctest: +SKIP
+        ...     ...
         ...     # Indicates that `TorchPolicy.loss()` overrides the parent
         ...     # Policy class' own `loss method. Leads to an error if Policy
         ...     # does not have a `loss` method.
-        ...     @override(Policy)
-        ...     def loss(self, model, action_dist, train_batch):
-        ...         # ...
+        ...     @override(Policy) # doctest: +SKIP
+        ...     def loss(self, model, action_dist, train_batch): # doctest: +SKIP
+        ...         ... # doctest: +SKIP
     """
 
     def check_override(method):
         if method.__name__ not in dir(cls):
-            raise NameError("{} does not override any method of {}".format(
-                method, cls))
+            raise NameError("{} does not override any method of {}".format(method, cls))
         return method
 
     return check_override
@@ -43,10 +43,11 @@ def PublicAPI(obj):
 
     Examples:
         >>> # Indicates that the `Trainer` class is exposed to end users
-        ... # of RLlib and will remain stable across RLlib releases.
-        ... @PublicAPI
-        ... class Trainer(tune.Trainable):
-        ... ...
+        >>> # of RLlib and will remain stable across RLlib releases.
+        >>> from ray import tune
+        >>> @PublicAPI # doctest: +SKIP
+        >>> class Trainer(tune.Trainable): # doctest: +SKIP
+        ...     ... # doctest: +SKIP
     """
 
     return obj
@@ -65,11 +66,12 @@ def DeveloperAPI(obj):
 
     Examples:
         >>> # Indicates that the `TorchPolicy` class is exposed to end users
-        ... # of RLlib and will remain (relatively) stable across RLlib
-        ... # releases.
-        ... @DeveloperAPI
-        ... class TorchPolicy(Policy):
-        ... ...
+        >>> # of RLlib and will remain (relatively) stable across RLlib
+        >>> # releases.
+        >>> from ray.rllib.policy import Policy
+        >>> @DeveloperAPI # doctest: +SKIP
+        ... class TorchPolicy(Policy): # doctest: +SKIP
+        ...     ... # doctest: +SKIP
     """
 
     return obj
@@ -87,14 +89,15 @@ def ExperimentalAPI(obj):
     assumed experimental as well.
 
     Examples:
-        >>> class TorchPolicy(Policy):
-        ...     ...
+        >>> from ray.rllib.policy import Policy
+        >>> class TorchPolicy(Policy): # doctest: +SKIP
+        ...     ... # doctest: +SKIP
         ...     # Indicates that the `TorchPolicy.loss` method is a new and
         ...     # experimental API and may change frequently in future
         ...     # releases.
-        ...     @ExperimentalAPI
-        ...     def loss(self, model, action_dist, train_batch):
-        ...         # ...
+        ...     @ExperimentalAPI # doctest: +SKIP
+        ...     def loss(self, model, action_dist, train_batch): # doctest: +SKIP
+        ...         ... # doctest: +SKIP
     """
 
     return obj
@@ -107,11 +110,13 @@ def OverrideToImplementCustomLogic(obj):
     `Policy.loss()`.
 
     Examples:
-        >>> @overrides(TorchPolicy)
-        ... @OverrideToImplementCustomLogic
-        ... def loss(self, ...):
+        >>> from ray.rllib.policy.torch_policy import TorchPolicy
+        >>> @overrides(TorchPolicy) # doctest: +SKIP
+        ... @OverrideToImplementCustomLogic # doctest: +SKIP
+        ... def loss(self, ...): # doctest: +SKIP
         ...     # implement custom loss function here ...
         ...     # ... w/o calling the corresponding `super().loss()` method.
+        ...     ... # doctest: +SKIP
     """
     return obj
 
@@ -127,11 +132,12 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
     `Trainer.setup()`.
 
     Examples:
-        >>> @overrides(Trainable)
-        ... @OverrideToImplementCustomLogic_CallToSuperRecommended
-        ... def setup(self, config):
+        >>> from ray import tune
+        >>> @overrides(tune.Trainable) # doctest: +SKIP
+        ... @OverrideToImplementCustomLogic_CallToSuperRecommended # doctest: +SKIP
+        ... def setup(self, config): # doctest: +SKIP
         ...     # implement custom setup logic here ...
-        ...     super().setup(config)
+        ...     super().setup(config) # doctest: +SKIP
         ...     # ... or here (after having called super()'s setup method.
     """
     return obj

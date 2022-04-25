@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.utils.annotations import override
@@ -34,6 +35,10 @@ class MockEnv2(gym.Env):
     configurable. Actions are ignored.
     """
 
+    metadata = {
+        "render.modes": ["rgb_array"],
+    }
+
     def __init__(self, episode_length):
         self.episode_length = episode_length
         self.i = 0
@@ -51,6 +56,12 @@ class MockEnv2(gym.Env):
 
     def seed(self, rng_seed):
         self.rng_seed = rng_seed
+
+    def render(self, mode="rgb_array"):
+        # Just generate a random image here for demonstration purposes.
+        # Also see `gym/envs/classic_control/cartpole.py` for
+        # an example on how to use a Viewer object.
+        return np.random.randint(0, 256, size=(300, 400, 3), dtype=np.uint8)
 
 
 class MockEnv3(gym.Env):
@@ -72,9 +83,7 @@ class MockEnv3(gym.Env):
 
     def step(self, action):
         self.i += 1
-        return self.i, self.i, self.i >= self.episode_length, {
-            "timestep": self.i
-        }
+        return self.i, self.i, self.i >= self.episode_length, {"timestep": self.i}
 
 
 class VectorizedMockEnv(VectorEnv):
@@ -88,7 +97,8 @@ class VectorizedMockEnv(VectorEnv):
         super().__init__(
             observation_space=gym.spaces.Discrete(1),
             action_space=gym.spaces.Discrete(2),
-            num_envs=num_envs)
+            num_envs=num_envs,
+        )
         self.envs = [MockEnv(episode_length) for _ in range(num_envs)]
 
     @override(VectorEnv)
@@ -128,7 +138,8 @@ class MockVectorEnv(VectorEnv):
         super().__init__(
             observation_space=self.env.observation_space,
             action_space=self.env.action_space,
-            num_envs=mocked_num_envs)
+            num_envs=mocked_num_envs,
+        )
         self.episode_len = episode_length
         self.ts = 0
 

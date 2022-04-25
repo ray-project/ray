@@ -11,7 +11,7 @@ from ray.rllib.utils.images import resize
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 
 ATARI_OBS_SHAPE = (210, 160, 3)
-ATARI_RAM_OBS_SHAPE = (128, )
+ATARI_RAM_OBS_SHAPE = (128,)
 
 # Only validate env observations vs the observation space every n times in a
 # Preprocessor.
@@ -34,6 +34,7 @@ class Preprocessor:
         self._obs_space = obs_space
         if not options:
             from ray.rllib.models.catalog import MODEL_DEFAULTS
+
             self._options = MODEL_DEFAULTS.copy()
         else:
             self._options = options
@@ -52,32 +53,38 @@ class Preprocessor:
         """Returns the preprocessed observation."""
         raise NotImplementedError
 
-    def write(self, observation: TensorType, array: np.ndarray,
-              offset: int) -> None:
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
         """Alternative to transform for more efficient flattening."""
-        array[offset:offset + self._size] = self.transform(observation)
+        array[offset : offset + self._size] = self.transform(observation)
 
     def check_shape(self, observation: Any) -> None:
         """Checks the shape of the given observation."""
         if self._i % OBS_VALIDATION_INTERVAL == 0:
             # Convert lists to np.ndarrays.
             if type(observation) is list and isinstance(
-                    self._obs_space, gym.spaces.Box):
+                self._obs_space, gym.spaces.Box
+            ):
                 observation = np.array(observation).astype(np.float32)
             if not self._obs_space.contains(observation):
                 observation = convert_element_to_space_type(
-                    observation, self._obs_for_type_matching)
+                    observation, self._obs_for_type_matching
+                )
             try:
                 if not self._obs_space.contains(observation):
                     raise ValueError(
                         "Observation ({} dtype={}) outside given space ({})!",
-                        observation, observation.dtype if isinstance(
-                            self._obs_space,
-                            gym.spaces.Box) else None, self._obs_space)
+                        observation,
+                        observation.dtype
+                        if isinstance(self._obs_space, gym.spaces.Box)
+                        else None,
+                        self._obs_space,
+                    )
             except AttributeError:
                 raise ValueError(
                     "Observation for a Box/MultiBinary/MultiDiscrete space "
-                    "should be an np.array, not a Python list.", observation)
+                    "should be an np.array, not a Python list.",
+                    observation,
+                )
         self._i += 1
 
     @property
@@ -88,11 +95,15 @@ class Preprocessor:
     @property
     @PublicAPI
     def observation_space(self) -> gym.Space:
-        obs_space = gym.spaces.Box(-1., 1., self.shape, dtype=np.float32)
+        obs_space = gym.spaces.Box(-1.0, 1.0, self.shape, dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
         # automatically in modelv2.py
-        classes = (DictFlatteningPreprocessor, OneHotPreprocessor,
-                   RepeatedValuesPreprocessor, TupleFlatteningPreprocessor)
+        classes = (
+            DictFlatteningPreprocessor,
+            OneHotPreprocessor,
+            RepeatedValuesPreprocessor,
+            TupleFlatteningPreprocessor,
+        )
         if isinstance(self, classes):
             obs_space.original_space = self._obs_space
         return obs_space
@@ -143,7 +154,7 @@ class GenericPixelPreprocessor(Preprocessor):
 class AtariRamPreprocessor(Preprocessor):
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
-        return (128, )
+        return (128,)
 
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
@@ -164,9 +175,9 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         if isinstance(obs_space, gym.spaces.Discrete):
-            return (self._obs_space.n, )
+            return (self._obs_space.n,)
         else:
-            return (np.sum(self._obs_space.nvec), )
+            return (np.sum(self._obs_space.nvec),)
 
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
@@ -180,9 +191,8 @@ class OneHotPreprocessor(Preprocessor):
         return arr
 
     @override(Preprocessor)
-    def write(self, observation: TensorType, array: np.ndarray,
-              offset: int) -> None:
-        array[offset:offset + self.size] = self.transform(observation)
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
+        array[offset : offset + self.size] = self.transform(observation)
 
 
 class NoPreprocessor(Preprocessor):
@@ -196,10 +206,8 @@ class NoPreprocessor(Preprocessor):
         return observation
 
     @override(Preprocessor)
-    def write(self, observation: TensorType, array: np.ndarray,
-              offset: int) -> None:
-        array[offset:offset + self._size] = np.array(
-            observation, copy=False).ravel()
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
+        array[offset : offset + self._size] = np.array(observation, copy=False).ravel()
 
     @property
     @override(Preprocessor)
@@ -229,7 +237,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
                 preprocessor = None
                 size += int(np.product(space.shape))
             self.preprocessors.append(preprocessor)
-        return (size, )
+        return (size,)
 
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
@@ -239,8 +247,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
         return array
 
     @override(Preprocessor)
-    def write(self, observation: TensorType, array: np.ndarray,
-              offset: int) -> None:
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
         assert len(observation) == len(self.preprocessors), observation
         for o, p in zip(observation, self.preprocessors):
             p.write(o, array, offset)
@@ -268,7 +275,7 @@ class DictFlatteningPreprocessor(Preprocessor):
                 preprocessor = None
                 size += int(np.product(space.shape))
             self.preprocessors.append(preprocessor)
-        return (size, )
+        return (size,)
 
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
@@ -278,12 +285,13 @@ class DictFlatteningPreprocessor(Preprocessor):
         return array
 
     @override(Preprocessor)
-    def write(self, observation: TensorType, array: np.ndarray,
-              offset: int) -> None:
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
         if not isinstance(observation, OrderedDict):
             observation = OrderedDict(sorted(observation.items()))
-        assert len(observation) == len(self.preprocessors), \
-            (len(observation), len(self.preprocessors))
+        assert len(observation) == len(self.preprocessors), (
+            len(observation),
+            len(self.preprocessors),
+        )
         for o, p in zip(observation.values(), self.preprocessors):
             p.write(o, array, offset)
             offset += p.size
@@ -296,11 +304,12 @@ class RepeatedValuesPreprocessor(Preprocessor):
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         assert isinstance(self._obs_space, Repeated)
         child_space = obs_space.child_space
-        self.child_preprocessor = get_preprocessor(child_space)(child_space,
-                                                                self._options)
+        self.child_preprocessor = get_preprocessor(child_space)(
+            child_space, self._options
+        )
         # The first slot encodes the list length.
         size = 1 + self.child_preprocessor.size * obs_space.max_len
-        return (size, )
+        return (size,)
 
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
@@ -314,14 +323,17 @@ class RepeatedValuesPreprocessor(Preprocessor):
         return array
 
     @override(Preprocessor)
-    def write(self, observation: TensorType, array: np.ndarray,
-              offset: int) -> None:
+    def write(self, observation: TensorType, array: np.ndarray, offset: int) -> None:
         if not isinstance(observation, (list, np.ndarray)):
-            raise ValueError("Input for {} must be list type, got {}".format(
-                self, observation))
+            raise ValueError(
+                "Input for {} must be list type, got {}".format(self, observation)
+            )
         elif len(observation) > self._obs_space.max_len:
-            raise ValueError("Input {} exceeds max len of space {}".format(
-                observation, self._obs_space.max_len))
+            raise ValueError(
+                "Input {} exceeds max len of space {}".format(
+                    observation, self._obs_space.max_len
+                )
+            )
         # The first slot encodes the list length.
         array[offset] = len(observation)
         for i, elem in enumerate(observation):

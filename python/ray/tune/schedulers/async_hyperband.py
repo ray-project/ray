@@ -23,33 +23,35 @@ class AsyncHyperBandScheduler(FIFOScheduler):
     See https://arxiv.org/abs/1810.05934
 
     Args:
-        time_attr (str): A training result attr to use for comparing time.
+        time_attr: A training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
-        metric (str): The training result objective value attribute. Stopping
+        metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
-        mode (str): One of {min, max}. Determines whether objective is
+        mode: One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        max_t (float): max time units per trial. Trials will be stopped after
+        max_t: max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
-        grace_period (float): Only stop trials at least this old in time.
+        grace_period: Only stop trials at least this old in time.
             The units are the same as the attribute named by `time_attr`.
-        reduction_factor (float): Used to set halving rate and amount. This
+        reduction_factor: Used to set halving rate and amount. This
             is simply a unit-less scalar.
-        brackets (int): Number of brackets. Each bracket has a different
+        brackets: Number of brackets. Each bracket has a different
             halving rate, specified by the reduction factor.
     """
 
-    def __init__(self,
-                 time_attr: str = "training_iteration",
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 max_t: int = 100,
-                 grace_period: int = 1,
-                 reduction_factor: float = 4,
-                 brackets: int = 1):
+    def __init__(
+        self,
+        time_attr: str = "training_iteration",
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        max_t: int = 100,
+        grace_period: int = 1,
+        reduction_factor: float = 4,
+        brackets: int = 1,
+    ):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t >= grace_period, "grace_period must be <= max_t!"
         assert grace_period > 0, "grace_period must be positive!"
@@ -66,8 +68,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
         # Tracks state for new trial add
         self._brackets = [
-            _Bracket(grace_period, max_t, reduction_factor, s)
-            for s in range(brackets)
+            _Bracket(grace_period, max_t, reduction_factor, s) for s in range(brackets)
         ]
         self._counter = 0  # for
         self._num_stopped = 0
@@ -75,13 +76,14 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         self._mode = mode
         self._metric_op = None
         if self._mode == "max":
-            self._metric_op = 1.
+            self._metric_op = 1.0
         elif self._mode == "min":
-            self._metric_op = -1.
+            self._metric_op = -1.0
         self._time_attr = time_attr
 
-    def set_search_properties(self, metric: Optional[str],
-                              mode: Optional[str]) -> bool:
+    def set_search_properties(
+        self, metric: Optional[str], mode: Optional[str], **spec
+    ) -> bool:
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -93,9 +95,9 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             self._mode = mode
 
         if self._mode == "max":
-            self._metric_op = 1.
+            self._metric_op = 1.0
         elif self._mode == "min":
-            self._metric_op = -1.
+            self._metric_op = -1.0
 
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
@@ -103,24 +105,26 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
-                     trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
                 "`mode` ({}) parameter. Either pass these parameters when "
                 "instantiating the scheduler, or pass them as parameters "
-                "to `tune.run()`".format(self.__class__.__name__, self._metric,
-                                         self._mode))
+                "to `tune.run()`".format(
+                    self.__class__.__name__, self._metric, self._mode
+                )
+            )
 
         sizes = np.array([len(b._rungs) for b in self._brackets])
-        probs = np.e**(sizes - sizes.max())
+        probs = np.e ** (sizes - sizes.max())
         normalized = probs / probs.sum()
         idx = np.random.choice(len(self._brackets), p=normalized)
         self._trial_info[trial.trial_id] = self._brackets[idx]
 
-    def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial, result: Dict) -> str:
+    def on_trial_result(
+        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+    ) -> str:
         action = TrialScheduler.CONTINUE
         if self._time_attr not in result or self._metric not in result:
             return action
@@ -128,23 +132,25 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             action = TrialScheduler.STOP
         else:
             bracket = self._trial_info[trial.trial_id]
-            action = bracket.on_result(trial, result[self._time_attr],
-                                       self._metric_op * result[self._metric])
+            action = bracket.on_result(
+                trial, result[self._time_attr], self._metric_op * result[self._metric]
+            )
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
         return action
 
-    def on_trial_complete(self, trial_runner: "trial_runner.TrialRunner",
-                          trial: Trial, result: Dict):
+    def on_trial_complete(
+        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+    ):
         if self._time_attr not in result or self._metric not in result:
             return
         bracket = self._trial_info[trial.trial_id]
-        bracket.on_result(trial, result[self._time_attr],
-                          self._metric_op * result[self._metric])
+        bracket.on_result(
+            trial, result[self._time_attr], self._metric_op * result[self._metric]
+        )
         del self._trial_info[trial.trial_id]
 
-    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner",
-                        trial: Trial):
+    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         del self._trial_info[trial.trial_id]
 
     def debug_string(self) -> str:
@@ -163,36 +169,39 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         self.__dict__.update(save_object)
 
 
-class _Bracket():
+class _Bracket:
     """Bookkeeping system to track the cutoffs.
 
     Rungs are created in reversed order so that we can more easily find
     the correct rung corresponding to the current iteration of the result.
 
     Example:
-        >>> b = _Bracket(1, 10, 2, 0)
-        >>> b.on_result(trial1, 1, 2)  # CONTINUE
-        >>> b.on_result(trial2, 1, 4)  # CONTINUE
-        >>> b.cutoff(b._rungs[-1][1]) == 3.0  # rungs are reversed
-        >>> b.on_result(trial3, 1, 1)  # STOP
-        >>> b.cutoff(b._rungs[3][1]) == 2.0
+        >>> trial1, trial2, trial3 = ... # doctest: +SKIP
+        >>> b = _Bracket(1, 10, 2, 0) # doctest: +SKIP
+        >>> # CONTINUE
+        >>> b.on_result(trial1, 1, 2) # doctest: +SKIP
+        >>> # CONTINUE
+        >>> b.on_result(trial2, 1, 4) # doctest: +SKIP
+        >>> # rungs are reversed
+        >>> b.cutoff(b._rungs[-1][1]) == 3.0 # doctest: +SKIP
+         # STOP
+        >>> b.on_result(trial3, 1, 1) # doctest: +SKIP
+        >>> b.cutoff(b._rungs[3][1]) == 2.0 # doctest: +SKIP
     """
 
-    def __init__(self, min_t: int, max_t: int, reduction_factor: float,
-                 s: int):
+    def __init__(self, min_t: int, max_t: int, reduction_factor: float, s: int):
         self.rf = reduction_factor
         MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
-        self._rungs = [(min_t * self.rf**(k + s), {})
-                       for k in reversed(range(MAX_RUNGS))]
+        self._rungs = [
+            (min_t * self.rf ** (k + s), {}) for k in reversed(range(MAX_RUNGS))
+        ]
 
-    def cutoff(self, recorded) -> Union[None, int, float, complex, np.ndarray]:
+    def cutoff(self, recorded) -> Optional[Union[int, float, complex, np.ndarray]]:
         if not recorded:
             return None
-        return np.nanpercentile(
-            list(recorded.values()), (1 - 1 / self.rf) * 100)
+        return np.nanpercentile(list(recorded.values()), (1 - 1 / self.rf) * 100)
 
-    def on_result(self, trial: Trial, cur_iter: int,
-                  cur_rew: Optional[float]) -> str:
+    def on_result(self, trial: Trial, cur_iter: int, cur_rew: Optional[float]) -> str:
         action = TrialScheduler.CONTINUE
         for milestone, recorded in self._rungs:
             if cur_iter < milestone or trial.trial_id in recorded:
@@ -202,8 +211,10 @@ class _Bracket():
                 if cutoff is not None and cur_rew < cutoff:
                     action = TrialScheduler.STOP
                 if cur_rew is None:
-                    logger.warning("Reward attribute is None! Consider"
-                                   " reporting using a different field.")
+                    logger.warning(
+                        "Reward attribute is None! Consider"
+                        " reporting using a different field."
+                    )
                 else:
                     recorded[trial.trial_id] = cur_rew
                 break
@@ -211,18 +222,19 @@ class _Bracket():
 
     def debug_str(self) -> str:
         # TODO: fix up the output for this
-        iters = " | ".join([
-            "Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
-            for milestone, recorded in self._rungs
-        ])
+        iters = " | ".join(
+            [
+                "Iter {:.3f}: {}".format(milestone, self.cutoff(recorded))
+                for milestone, recorded in self._rungs
+            ]
+        )
         return "Bracket: " + iters
 
 
 ASHAScheduler = AsyncHyperBandScheduler
 
 if __name__ == "__main__":
-    sched = AsyncHyperBandScheduler(
-        grace_period=1, max_t=10, reduction_factor=2)
+    sched = AsyncHyperBandScheduler(grace_period=1, max_t=10, reduction_factor=2)
     print(sched.debug_string())
     bracket = sched._brackets[0]
     print(bracket.cutoff({str(i): i for i in range(20)}))
