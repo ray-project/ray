@@ -15,10 +15,12 @@ from ray.data.datasource.file_based_datasource import (
     DefaultFileMetadataProvider,
     FileBasedDatasource,
     _S3FileSystemWrapper,
+    FastFileMetadataProvider,
 )
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     DefaultParquetMetadataProvider,
     ParquetDatasource,
@@ -42,10 +44,12 @@ __all__ = [
     "DefaultFileMetadataProvider",
     "DefaultParquetMetadataProvider",
     "DummyOutputDatasource",
+    "FastFileMetadataProvider",
     "FileBasedDatasource",
     "FileMetadataProvider",
     "JSONDatasource",
     "NumpyDatasource",
+    "ParquetBaseDatasource",
     "ParquetDatasource",
     "ParquetMetadataProvider",
     "PartitionStyle",

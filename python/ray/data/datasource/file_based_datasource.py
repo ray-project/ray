@@ -166,7 +166,7 @@ class BaseFileMetadataProvider(FileMetadataProvider):
 
          Also returns a sidecar of file sizes.
 
-        The input paths will be normalized for compatibility with the input
+        The input paths must be normalized for compatibility with the input
         filesystem prior to invocation.
 
          Args:
@@ -220,6 +220,13 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
     ) -> Tuple[List[str], List[Optional[int]]]:
         from pyarrow.fs import FileType
 
+        if len(paths) > 1:
+            logger.warning(
+                f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
+                f"operation on some cloud storage services. If the specified paths "
+                f"all point to files and never directories, try rerunning this read "
+                f"with `meta_provider=FastFileMetadataProvider()`."
+            )
         expanded_paths = []
         file_infos = []
         for path in paths:
@@ -235,6 +242,32 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
                 raise FileNotFoundError(path)
         file_sizes = [file_info.size for file_info in file_infos]
         return expanded_paths, file_sizes
+
+
+class FastFileMetadataProvider(DefaultFileMetadataProvider):
+    """Fast Metadata provider for FileBasedDatasource implementations.
+
+    Offers improved performance vs. DefaultFileMetadataProvider by skipping directory
+    path expansion and file size collection. While this performance improvement may be
+    negligible for local filesystems, it can be substantial for cloud storage service
+    providers.
+
+    This should only be used when all input paths are known to be files.
+    """
+
+    def expand_paths(
+        self,
+        paths: List[str],
+        filesystem: "pyarrow.fs.FileSystem",
+    ) -> Tuple[List[str], List[Optional[int]]]:
+        logger.warning(
+            f"Skipping expansion of {len(paths)} path(s). If your paths contain "
+            f"directories or if file size collection is required, try rerunning this "
+            f"read with `meta_provider=DefaultFileMetadataProvider()`."
+        )
+        import numpy as np
+
+        return paths, np.empty(len(paths), dtype=object)
 
 
 @DeveloperAPI
@@ -318,7 +351,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                     # Non-Snappy compression, pass as open_input_stream() arg so Arrow
                     # can take care of streaming decompression for us.
                     open_stream_args["compression"] = compression
-                with fs.open_input_stream(read_path, **open_stream_args) as f:
+                with self._open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         output_buffer.add_block(data)
                         if output_buffer.has_next():
@@ -367,6 +400,21 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _read_file()."
+        )
+
+    def _open_input_source(
+        self,
+        filesystem: "pyarrow.fs.FileSystem",
+        path: str,
+        **open_args,
+    ) -> "pyarrow.NativeFile":
+        """Opens a source path for reading and returns the associated Arrow
+        NativeFile.
+
+        This method should be implemented by subclasses.
+        """
+        raise NotImplementedError(
+            "Subclasses of FileBasedDatasource must implement _open_input_source()."
         )
 
     def do_write(

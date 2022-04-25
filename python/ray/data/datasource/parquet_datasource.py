@@ -1,6 +1,6 @@
 import logging
 import itertools
-from typing import Any, Callable, Dict, Optional, List, Union, Iterator, TYPE_CHECKING
+from typing import Any, Callable, Optional, List, Union, Iterator, TYPE_CHECKING
 
 import numpy as np
 from ray.util.annotations import DeveloperAPI
@@ -10,14 +10,11 @@ if TYPE_CHECKING:
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import (
-    FileBasedDatasource,
-    _resolve_paths_and_filesystem,
-    _resolve_kwargs,
-)
+from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
+from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.output_buffer import BlockOutputBuffer
@@ -161,8 +158,13 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             return _fetch_metadata(pieces)
 
 
-class ParquetDatasource(FileBasedDatasource):
+class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
+
+    The primary difference from ParquetBaseDatasource is that this uses
+    PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
+    automatic Arrow dataset schema inference and row count collection at the
+    cost of some potential performance and/or compatibility penalties.
 
     Examples:
         >>> import ray
@@ -303,21 +305,6 @@ class ParquetDatasource(FileBasedDatasource):
             _deregister_parquet_file_fragment_serialization()
 
         return read_tasks
-
-    def _write_block(
-        self,
-        f: "pyarrow.NativeFile",
-        block: BlockAccessor,
-        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args,
-    ):
-        import pyarrow.parquet as pq
-
-        writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
-        pq.write_table(block.to_arrow(), f, **writer_args)
-
-    def _file_format(self) -> str:
-        return "parquet"
 
 
 def _fetch_metadata_remotely(

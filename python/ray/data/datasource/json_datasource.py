@@ -31,12 +31,20 @@ class JSONDatasource(FileBasedDatasource):
         )
         return json.read_json(f, read_options=read_options, **reader_args)
 
+    def _open_input_source(
+        self,
+        filesystem: "pyarrow.fs.FileSystem",
+        path: str,
+        **open_args,
+    ) -> "pyarrow.NativeFile":
+        return filesystem.open_input_stream(path, **open_args)
+
     def _write_block(
         self,
         f: "pyarrow.NativeFile",
         block: BlockAccessor,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
-        **writer_args
+        **writer_args,
     ):
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         orient = writer_args.pop("orient", "records")
