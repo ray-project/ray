@@ -1,10 +1,11 @@
 import inspect
 import logging
 from pathlib import Path
-from typing import Dict, Callable, Optional, Union
+from typing import Dict, Callable, List, Optional, Union, TYPE_CHECKING
 
 import ray
 from ray import tune
+from ray.actor import ActorHandle
 from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.ml.trainer import Trainer
 from ray.ml.config import ScalingConfig, RunConfig
@@ -17,6 +18,9 @@ from ray.train.checkpoint import TuneCheckpointManager
 from ray.train.utils import construct_train_func
 from ray.train.dataset_spec import _RayDatasetSpec
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -293,27 +297,8 @@ class DataParallelTrainer(Trainer):
         else:
             resume_checkpoint_dict = None
 
-        def dataset_split_fn(dataset_dict, training_worker_handles):
-            dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
-
-            for key, dataset in dataset_dict.items():
-                if key == TRAIN_DATASET_KEY:
-                    dataset_splits = dataset.split(
-                        len(training_worker_handles),
-                        equal=True,
-                        locality_hints=training_worker_handles,
-                    )
-                else:
-                    # Only shard the training dataset.
-                    dataset_splits = [dataset] * training_worker_handles
-
-                for i in range(len(dataset_splits)):
-                    dataset_dict_splits[i][key] = dataset_splits[i]
-
-            return dataset_dict_splits
-
         dataset_spec = _RayDatasetSpec(
-            dataset_or_dict=self.datasets, dataset_split_fn=dataset_split_fn
+            dataset_or_dict=self.datasets, dataset_split_fn=default_dataset_split_fn
         )
 
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
@@ -358,3 +343,37 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
         raise NotImplementedError
+
+
+def default_dataset_split_fn(
+    dataset_dict: Dict[str, "Dataset"], training_worker_handles: List[ActorHandle]
+) -> List[Dict[str, "Dataset"]]:
+    """Defines splitting logic of Datasets passed into ``DataParallelTrainer``.
+
+    By default only training dataset will be split. All other datasets will be
+
+    Args:
+        dataset_dict: A dictionary of Datasets.
+        training_worker_handles: The actor handles of the training workers to use for
+            locality hints.
+
+    Returns:
+        A list of dataset dictionaries for each training worker.
+    """
+    dataset_dict_splits = [{} for _ in range(len(training_worker_handles))]
+
+    for key, dataset in dataset_dict.items():
+        if key == TRAIN_DATASET_KEY:
+            dataset_splits = dataset.split(
+                len(training_worker_handles),
+                equal=True,
+                locality_hints=training_worker_handles,
+            )
+        else:
+            # Only shard the training dataset.
+            dataset_splits = [dataset] * training_worker_handles
+
+        for i in range(len(dataset_splits)):
+            dataset_dict_splits[i][key] = dataset_splits[i]
+
+    return dataset_dict_splits

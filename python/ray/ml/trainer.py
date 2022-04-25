@@ -259,7 +259,7 @@ class Trainer(abc.ABC):
         the "train" key), and the preprocessor has not yet
         been fit, then it will be fit on the train dataset.
 
-        Then, the all Trainer's datasets will be transformed by the preprocessor.
+        Then, all Trainer's datasets will be transformed by the preprocessor.
 
         The transformed datasets will be set back in the ``self.datasets`` attribute
         of the Trainer to be used when overriding ``training_loop``.
