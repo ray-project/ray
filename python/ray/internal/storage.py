@@ -298,7 +298,7 @@ class KVClient:
                 # TODO(suquark): There might be a corner case: the capped path exists
                 # locally and is a symlink. Then pathlib resolves it to the unwanted
                 # physical path. This could be a security attack.
-                # Here we has to make sure it does not exist locally.
+                # Here we must make sure it does not exist locally.
                 # This may add overhead and we may implement our resolving function
                 # later.
                 cap_str = f"/{uuid.uuid4().hex}/"
