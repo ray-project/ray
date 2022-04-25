@@ -68,7 +68,9 @@ class Rendezvous:
             redisStore = pygloo.rendezvous.RedisStore(
                 self._redis_ip_address, int(self._redis_port)
             )
-            redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
+            redis_password = ray.worker._global_node.redis_password
+            if redis_password is None or len(redis_password) == 0:
+                redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)
             self._store = redisStore
         elif store_type == "file":

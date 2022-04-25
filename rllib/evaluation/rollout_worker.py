@@ -1522,7 +1522,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"
                         " no PolicySpec objects found in the pickled policy "
-                        "state. Will not add `{pid}`, but ignore it for now."
+                        f"state. Will not add `{pid}`, but ignore it for now."
                     )
                 else:
                     self.add_policy(
