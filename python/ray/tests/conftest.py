@@ -738,7 +738,7 @@ def append_short_test_summary(rep):
     if not os.path.exists(header_file):
         with open(header_file, "wt") as fp:
             test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
-            fp.write(f"## Pytest failures for: {test_label}\n\n")
+            fp.write(f"### Pytest failures for: {test_label}\n\n")
 
     # Use `wt` here to overwrite so we only have one result per test (exclude retries)
     with open(summary_file, "wt") as fp:
@@ -751,7 +751,7 @@ def _get_markdown_annotation(rep) -> str:
     markdown = ""
 
     # Header: Main error message
-    markdown += f"### {rep.nodeid}\n\n"
+    markdown += f"#### {rep.nodeid}\n\n"
     markdown += "<details>\n"
     markdown += f"<summary>{main_loc.message}</summary>\n\n"
 
@@ -763,7 +763,7 @@ def _get_markdown_annotation(rep) -> str:
     markdown += f"Link to test: [{test_path}:{test_lineno}]({test_url})\n\n"
 
     # Print main traceback
-    markdown += "#### Traceback\n\n"
+    markdown += "##### Traceback\n\n"
     markdown += "```\n"
     markdown += str(main_tb)
     markdown += "\n```\n\n"
