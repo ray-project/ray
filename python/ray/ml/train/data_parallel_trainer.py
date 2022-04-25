@@ -298,7 +298,7 @@ class DataParallelTrainer(Trainer):
             resume_checkpoint_dict = None
 
         dataset_spec = _RayDatasetSpec(
-            dataset_or_dict=self.datasets, dataset_split_fn=default_dataset_split_fn
+            dataset_or_dict=self.datasets, dataset_split_fn=_default_dataset_split_fn
         )
 
         # TODO(amog): Have TrainingIterator also accept a checkpoint ObjectRef instead
@@ -345,12 +345,14 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         raise NotImplementedError
 
 
-def default_dataset_split_fn(
+def _default_dataset_split_fn(
     dataset_dict: Dict[str, "Dataset"], training_worker_handles: List[ActorHandle]
 ) -> List[Dict[str, "Dataset"]]:
     """Defines splitting logic of Datasets passed into ``DataParallelTrainer``.
 
-    By default only training dataset will be split. All other datasets will be
+    By default only training dataset will be split. All other datasets will not be
+    split and passed through directly to the training workers. This is because
+    validation implementation is often done on just the rank 0 worker.
 
     Args:
         dataset_dict: A dictionary of Datasets.
