@@ -22,7 +22,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     flag_file = tmp_path / "flag"
     flag_file.touch()
 
-    @workflow.step
+    @ray.remote
     def long_running(i):
         lock = FileLock(tmp_file)
         with lock.acquire():
@@ -33,7 +33,10 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
                 raise ValueError()
         return 100
 
-    outputs = [long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)]
+    outputs = [
+        workflow.create(long_running.bind(i)).run_async(workflow_id=str(i))
+        for i in range(100)
+    ]
     # Test list all, it should list all jobs running
     all_tasks = workflow.list_all()
     assert len(all_tasks) == 100

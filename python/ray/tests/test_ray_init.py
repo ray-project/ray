@@ -254,6 +254,10 @@ def test_env_var_no_override():
             assert ray.get_runtime_context().namespace == "argumentName"
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="Flaky when run on windows CI",
+)
 @pytest.mark.parametrize("input", [None, "auto"])
 def test_ray_address(input, call_ray_start):
     address = call_ray_start

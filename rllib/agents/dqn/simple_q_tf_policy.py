@@ -56,12 +56,20 @@ class TargetNetworkMixin:
 
         self.update_target = do_update
 
+    @property
+    def q_func_vars(self):
+        if not hasattr(self, "_q_func_vars"):
+            self._q_func_vars = self.model.variables()
+        return self._q_func_vars
+
+    @property
+    def target_q_func_vars(self):
+        if not hasattr(self, "_target_q_func_vars"):
+            self._target_q_func_vars = self.target_model.variables()
+        return self._target_q_func_vars
+
     @override(TFPolicy)
     def variables(self):
-        if not hasattr(self, "q_func_vars"):
-            self.q_func_vars = self.model.variables()
-        if not hasattr(self, "target_q_func_vars"):
-            self.target_q_func_vars = self.target_model.variables()
         return self.q_func_vars + self.target_q_func_vars
 
 

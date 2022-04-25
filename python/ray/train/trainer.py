@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime
 import logging
 import os
@@ -148,6 +149,10 @@ class Trainer:
                 "GPU training, make sure to set `use_gpu` to True "
                 "when instantiating your Trainer."
             )
+
+        if resources_per_worker is not None:
+            # Copy this parameter to avoid mutating the user input
+            resources_per_worker = copy.deepcopy(resources_per_worker)
 
         self._num_workers = num_workers
         self._use_gpu = use_gpu
@@ -687,6 +692,13 @@ class TrainingIterator:
             return func()
         except TrainingWorkerError:
             # Workers have already been restarted.
+            logger.info(
+                "Workers have been successfully restarted. Resuming "
+                "training from latest checkpoint."
+            )
+            logger.debug(
+                f"Latest checkpoint: {self._checkpoint_manager.latest_checkpoint}"
+            )
             self._start_training(
                 self._train_func,
                 self._run_dir,

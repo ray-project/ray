@@ -1,5 +1,5 @@
-from typing import Any, Dict, List, Union
-import threading
+from typing import Dict, List, Union
+from collections import OrderedDict
 
 from ray.experimental.dag import (
     DAGNode,
@@ -9,7 +9,7 @@ from ray.experimental.dag import (
 )
 from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.input_node import InputNode
-from ray.serve.api import Deployment
+from ray.serve.deployment import Deployment
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_node import DeploymentNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
@@ -22,69 +22,52 @@ class DeploymentNameGenerator(object):
     monotonic increasing id to it.
     """
 
-    __lock = threading.Lock()
-    __shared_state = dict()
+    def __init__(self):
+        self.name_to_suffix: Dict[str, int] = dict()
 
-    @classmethod
-    def get_deployment_name(cls, dag_node: Union[ClassNode, FunctionNode]):
+    def get_deployment_name(self, dag_node: Union[ClassNode, FunctionNode]):
         assert isinstance(dag_node, (ClassNode, FunctionNode)), (
             "get_deployment_name() should only be called on ClassNode or "
             "FunctionNode instances."
         )
-        with cls.__lock:
-            deployment_name = (
-                dag_node.get_options().get("name", None) or dag_node._body.__name__
-            )
-            if deployment_name not in cls.__shared_state:
-                cls.__shared_state[deployment_name] = 0
-                return deployment_name
-            else:
-                cls.__shared_state[deployment_name] += 1
-                suffix_num = cls.__shared_state[deployment_name]
 
-                return f"{deployment_name}_{suffix_num}"
+        deployment_name = (
+            dag_node.get_options().get("name", None) or dag_node._body.__name__
+        )
+        if deployment_name not in self.name_to_suffix:
+            self.name_to_suffix[deployment_name] = 0
+            return deployment_name
+        else:
+            self.name_to_suffix[deployment_name] += 1
+            suffix_num = self.name_to_suffix[deployment_name]
 
-    @classmethod
-    def reset(cls):
-        with cls.__lock:
-            cls.__shared_state = dict()
+            return f"{deployment_name}_{suffix_num}"
 
+    def reset(self):
+        self.name_to_suffix = dict()
 
-def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
-    """
-    In Ray DAG building we pass full ray_actor_options regardless if a field
-    was explicitly set. Since some values are invalid, we need to remove them
-    from ray_actor_options.
-    """
-    # TODO: (jiaodong) Revisit when we implement build() when user explicitly
-    # pass default value
-    ray_actor_options = {k: v for k, v in ray_actor_options.items() if v}
-    if ray_actor_options.get("placement_group") == "default":
-        del ray_actor_options["placement_group"]
-    if ray_actor_options.get("placement_group_bundle_index") == -1:
-        del ray_actor_options["placement_group_bundle_index"]
-    if ray_actor_options.get("max_pending_calls") == -1:
-        del ray_actor_options["max_pending_calls"]
+    def __enter__(self):
+        return self
 
-    return ray_actor_options
+    def __exit__(self, *args):
+        self.reset()
 
 
-def transform_ray_dag_to_serve_dag(dag_node):
+def transform_ray_dag_to_serve_dag(
+    dag_node: DAGNode, deployment_name_generator: DeploymentNameGenerator
+):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
-    ray decorated body passed in, ans ClassMethodNode to DeploymentMethodNode.
+    ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
     """
     if isinstance(dag_node, ClassNode):
-        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
-        ray_actor_options = _remove_non_default_ray_actor_options(
-            dag_node.get_options()
-        )
+        deployment_name = deployment_name_generator.get_deployment_name(dag_node)
         return DeploymentNode(
             dag_node._body,
             deployment_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
-            ray_actor_options,
+            dag_node.get_options(),
             # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )
@@ -108,7 +91,7 @@ def transform_ray_dag_to_serve_dag(dag_node):
         # TODO (jiaodong): We do not convert ray function to deployment function
         # yet, revisit this later
     ) and dag_node.get_other_args_to_resolve().get("is_from_serve_deployment"):
-        deployment_name = DeploymentNameGenerator.get_deployment_name(dag_node)
+        deployment_name = deployment_name_generator.get_deployment_name(dag_node)
         return DeploymentFunctionNode(
             dag_node._body,
             deployment_name,
@@ -132,10 +115,10 @@ def extract_deployments_from_serve_dag(
     Args:
         serve_dag_root (DAGNode): Transformed serve dag root node.
     Returns:
-        List[Deployment]: List of deployment python objects fetched from serve
-            dag.
+        deployments (List[Deployment]): List of deployment python objects
+            fetched from serve dag.
     """
-    deployments = {}
+    deployments = OrderedDict()
 
     def extractor(dag_node):
         if isinstance(dag_node, (DeploymentNode, DeploymentFunctionNode)):
@@ -174,3 +157,41 @@ def get_pipeline_input_node(serve_dag_root_node: DAGNode):
     )
 
     return input_nodes[0]
+
+
+def process_ingress_deployment_in_serve_dag(
+    deployments: List[Deployment],
+) -> List[Deployment]:
+    """Mark the last fetched deployment in a serve dag as exposed with default
+    prefix.
+    """
+    if len(deployments) == 0:
+        return deployments
+
+    # Last element of the list is the root deployment if it's applicable type
+    # that wraps an deployment, given Ray DAG traversal is done bottom-up.
+    ingress_deployment = deployments[-1]
+    if ingress_deployment.route_prefix in [None, f"/{ingress_deployment.name}"]:
+        # Override default prefix to "/" on the ingress deployment, if user
+        # didn't provide anything in particular.
+        new_ingress_deployment = ingress_deployment.options(route_prefix="/")
+        deployments[-1] = new_ingress_deployment
+
+    # Erase all non ingress deployment route prefix
+    for i, deployment in enumerate(deployments[:-1]):
+        if (
+            deployment.route_prefix is not None
+            and deployment.route_prefix != f"/{deployment.name}"
+        ):
+            raise ValueError(
+                "Route prefix is only configurable on the ingress deployment. "
+                "Please do not set non-default route prefix: "
+                f"{deployment.route_prefix} on non-ingress deployment of the "
+                "serve DAG. "
+            )
+        else:
+            # Earse all default prefix to None for non-ingress deployments to
+            # disable HTTP
+            deployments[i] = deployment.options(route_prefix=None)
+
+    return deployments

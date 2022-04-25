@@ -299,7 +299,6 @@ class KubernetesOperatorTest(unittest.TestCase):
 
                 @ray.remote
                 class Test:
-                    @ray.method()
                     def method(self):
                         return "success"
 

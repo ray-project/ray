@@ -8,7 +8,14 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve.utils import ServeEncoder, get_deployment_import_path
+from ray.serve.utils import ServeEncoder, get_deployment_import_path, node_id_to_ip_addr
+
+
+def test_node_id_to_ip_addr():
+    assert node_id_to_ip_addr("node:127.0.0.1-0") == "127.0.0.1"
+    assert node_id_to_ip_addr("127.0.0.1-0") == "127.0.0.1"
+    assert node_id_to_ip_addr("127.0.0.1") == "127.0.0.1"
+    assert node_id_to_ip_addr("node:127.0.0.1") == "127.0.0.1"
 
 
 def test_bytes_encoder():
@@ -39,7 +46,44 @@ class DecoratedActor:
         return "reached decorated_actor"
 
 
+def gen_func():
+    @serve.deployment
+    def f():
+        pass
+
+    return f
+
+
+def gen_class():
+    @serve.deployment
+    class A:
+        pass
+
+    return A
+
+
 class TestGetDeploymentImportPath:
+    def test_invalid_inline_defined(self):
+        @serve.deployment
+        def inline_f():
+            pass
+
+        with pytest.raises(RuntimeError, match="must be importable"):
+            get_deployment_import_path(inline_f, enforce_importable=True)
+
+        with pytest.raises(RuntimeError, match="must be importable"):
+            get_deployment_import_path(gen_func(), enforce_importable=True)
+
+        @serve.deployment
+        class InlineCls:
+            pass
+
+        with pytest.raises(RuntimeError, match="must be importable"):
+            get_deployment_import_path(InlineCls, enforce_importable=True)
+
+        with pytest.raises(RuntimeError, match="must be importable"):
+            get_deployment_import_path(gen_class(), enforce_importable=True)
+
     def test_get_import_path_basic(self):
         d = decorated_f.options()
 

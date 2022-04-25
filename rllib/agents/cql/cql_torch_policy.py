@@ -4,6 +4,7 @@ PyTorch policy class used for CQL.
 import numpy as np
 import gym
 import logging
+import tree
 from typing import Dict, List, Tuple, Type, Union
 
 import ray
@@ -42,34 +43,37 @@ MEAN_MIN = -9.0
 MEAN_MAX = 9.0
 
 
+def _repeat_tensor(t: TensorType, n: int):
+    # Insert new dimension at posotion 1 into tensor t
+    t_rep = t.unsqueeze(1)
+    # Repeat tensor t_rep along new dimension n times
+    t_rep = torch.repeat_interleave(t_rep, n, dim=1)
+    # Merge new dimension into batch dimension
+    t_rep = t_rep.view(-1, *t.shape[1:])
+    return t_rep
+
+
 # Returns policy tiled actions and log probabilities for CQL Loss
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
-    obs_temp = (
-        obs.unsqueeze(1)
-        .repeat(1, num_repeat, 1)
-        .view(obs.shape[0] * num_repeat, obs.shape[1])
-    )
-    logits = model.get_policy_output(obs_temp)
+    batch_size = tree.flatten(obs)[0].shape[0]
+    obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
+    logits, _ = model.get_action_model_outputs(obs_temp)
     policy_dist = action_dist(logits, model)
     actions, logp_ = policy_dist.sample_logp()
     logp = logp_.unsqueeze(-1)
-    return actions, logp.view(obs.shape[0], num_repeat, 1)
+    return actions, logp.view(batch_size, num_repeat, 1)
 
 
 def q_values_repeat(model, obs, actions, twin=False):
     action_shape = actions.shape[0]
-    obs_shape = obs.shape[0]
+    obs_shape = tree.flatten(obs)[0].shape[0]
     num_repeat = int(action_shape / obs_shape)
-    obs_temp = (
-        obs.unsqueeze(1)
-        .repeat(1, num_repeat, 1)
-        .view(obs.shape[0] * num_repeat, obs.shape[1])
-    )
+    obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
     if not twin:
-        preds_ = model.get_q_values(obs_temp, actions)
+        preds_, _ = model.get_q_values(obs_temp, actions)
     else:
-        preds_ = model.get_twin_q_values(obs_temp, actions)
-    preds = preds_.view(obs.shape[0], num_repeat, 1)
+        preds_, _ = model.get_twin_q_values(obs_temp, actions)
+    preds = preds_.view(obs_shape, num_repeat, 1)
     return preds
 
 
@@ -116,9 +120,8 @@ def cql_loss(
     )
 
     action_dist_class = _get_dist_class(policy, policy.config, policy.action_space)
-    action_dist_t = action_dist_class(
-        model.get_policy_output(model_out_t), policy.model
-    )
+    action_dist_inputs_t, _ = model.get_action_model_outputs(model_out_t)
+    action_dist_t = action_dist_class(action_dist_inputs_t, model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
     log_pis_t = torch.unsqueeze(log_pis_t, -1)
 
@@ -126,7 +129,8 @@ def cql_loss(
     # Alpha Loss
     alpha_loss = -(model.log_alpha * (log_pis_t + model.target_entropy).detach()).mean()
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
+    batch_size = tree.flatten(obs)[0].shape[0]
+    if batch_size == policy.config["train_batch_size"]:
         policy.alpha_optim.zero_grad()
         alpha_loss.backward()
         policy.alpha_optim.step()
@@ -134,9 +138,9 @@ def cql_loss(
     # Policy Loss (Either Behavior Clone Loss or SAC Loss)
     alpha = torch.exp(model.log_alpha)
     if policy.cur_iter >= bc_iters:
-        min_q = model.get_q_values(model_out_t, policy_t)
+        min_q, _ = model.get_q_values(model_out_t, policy_t)
         if twin_q:
-            twin_q_ = model.get_twin_q_values(model_out_t, policy_t)
+            twin_q_, _ = model.get_twin_q_values(model_out_t, policy_t)
             min_q = torch.min(min_q, twin_q_)
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
@@ -144,7 +148,7 @@ def cql_loss(
         actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
         # actor_loss = -bc_logp.mean()
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
+    if batch_size == policy.config["train_batch_size"]:
         policy.actor_optim.zero_grad()
         actor_loss.backward(retain_graph=True)
         policy.actor_optim.step()
@@ -152,23 +156,22 @@ def cql_loss(
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
-    action_dist_tp1 = action_dist_class(
-        model.get_policy_output(model_out_tp1), policy.model
-    )
+    action_dist_inputs_tp1, _ = model.get_action_model_outputs(model_out_tp1)
+    action_dist_tp1 = action_dist_class(action_dist_inputs_tp1, model)
     policy_tp1, _ = action_dist_tp1.sample_logp()
 
-    q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
+    q_t, _ = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
     q_t_selected = torch.squeeze(q_t, dim=-1)
     if twin_q:
-        twin_q_t = model.get_twin_q_values(
+        twin_q_t, _ = model.get_twin_q_values(
             model_out_t, train_batch[SampleBatch.ACTIONS]
         )
         twin_q_t_selected = torch.squeeze(twin_q_t, dim=-1)
 
     # Target q network evaluation.
-    q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
+    q_tp1, _ = target_model.get_q_values(target_model_out_tp1, policy_tp1)
     if twin_q:
-        twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1, policy_tp1)
+        twin_q_tp1, _ = target_model.get_twin_q_values(target_model_out_tp1, policy_tp1)
         # Take min over both twin-NNs.
         q_tp1 = torch.min(q_tp1, twin_q_tp1)
 
@@ -263,7 +266,7 @@ def cql_loss(
     if twin_q:
         critic_loss.append(critic_loss_2 + min_qf2_loss)
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
+    if batch_size == policy.config["train_batch_size"]:
         policy.critic_optims[0].zero_grad()
         critic_loss[0].backward(retain_graph=True)
         policy.critic_optims[0].step()
@@ -297,7 +300,7 @@ def cql_loss(
         model.tower_stats["alpha_prime_value"] = alpha_prime
         model.tower_stats["alpha_prime_loss"] = alpha_prime_loss
 
-        if obs.shape[0] == policy.config["train_batch_size"]:
+        if batch_size == policy.config["train_batch_size"]:
             policy.alpha_prime_optim.zero_grad()
             alpha_prime_loss.backward()
             policy.alpha_prime_optim.step()

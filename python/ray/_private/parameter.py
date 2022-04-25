@@ -92,6 +92,9 @@ class RayParams:
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        storage: Specify a URI for persistent cluster-wide storage. This storage path
+            must be accessible by all nodes of the cluster, otherwise an error will be
+            raised.
         runtime_env_dir_name (str): If provided, specifies the directory that
             will be created in the session dir to hold runtime_env files.
         include_log_monitor (bool): If True, then start a log monitor to
@@ -132,6 +135,7 @@ class RayParams:
         node_manager_port=0,
         gcs_server_port=None,
         node_ip_address=None,
+        node_name=None,
         raylet_ip_address=None,
         min_worker_port=None,
         max_worker_port=None,
@@ -155,6 +159,7 @@ class RayParams:
         plasma_store_socket_name=None,
         raylet_socket_name=None,
         temp_dir=None,
+        storage=None,
         runtime_env_dir_name=None,
         include_log_monitor=None,
         autoscaling_config=None,
@@ -182,6 +187,7 @@ class RayParams:
         self.node_manager_port = node_manager_port
         self.gcs_server_port = gcs_server_port
         self.node_ip_address = node_ip_address
+        self.node_name = node_name
         self.raylet_ip_address = raylet_ip_address
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port
@@ -204,6 +210,9 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
+        self.storage = storage or os.environ.get(
+            ray_constants.RAY_STORAGE_ENVIRONMENT_VARIABLE
+        )
         self.runtime_env_dir_name = (
             runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME
         )

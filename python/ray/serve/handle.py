@@ -48,25 +48,31 @@ class RayServeHandle:
     an HTTP deployment.
 
     Example:
-       >>> handle = serve_client.get_handle("my_deployment")
-       >>> handle
-       RayServeSyncHandle(deployment_name="my_deployment")
-       >>> handle.remote(my_request_content)
-       ObjectRef(...)
-       >>> ray.get(handle.remote(...))
-       # result
-       >>> ray.get(handle.remote(let_it_crash_request))
-       # raises RayTaskError Exception
-
-       >>> async_handle = serve_client.get_handle("my_deployment", sync=False)
-       >>> async_handle
-       RayServeHandle(deployment="my_deployment")
-       >>> await async_handle.remote(my_request_content)
-       ObjectRef(...)
-       >>> ray.get(await async_handle.remote(...))
-       # result
-       >>> ray.get(await async_handle.remote(let_it_crash_request))
-       # raises RayTaskError Exception
+        >>> import ray
+        >>> serve_client = ... # doctest: +SKIP
+        >>> handle = serve_client.get_handle("my_deployment") # doctest: +SKIP
+        >>> handle # doctest: +SKIP
+        RayServeSyncHandle(deployment_name="my_deployment")
+        >>> my_request_content = ... # doctest: +SKIP
+        >>> handle.remote(my_request_content) # doctest: +SKIP
+        ObjectRef(...)
+        >>> ray.get(handle.remote(...)) # doctest: +SKIP
+        # result
+        >>> let_it_crash_request = ... # doctest: +SKIP
+        >>> ray.get(handle.remote(let_it_crash_request)) # doctest: +SKIP
+        # raises RayTaskError Exception
+        >>> async_handle = serve_client.get_handle( # doctest: +SKIP
+        ...     "my_deployment", sync=False)
+        >>> async_handle  # doctest: +SKIP
+        RayServeHandle(deployment="my_deployment")
+        >>> await async_handle.remote(my_request_content) # doctest: +SKIP
+        ObjectRef(...)
+        >>> ray.get(await async_handle.remote(...)) # doctest: +SKIP
+        # result
+        >>> ray.get( # doctest: +SKIP
+        ...     await async_handle.remote(let_it_crash_request)
+        ... )
+        # raises RayTaskError Exception
     """
 
     def __init__(
@@ -315,7 +321,7 @@ def serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
     if SERVE_HANDLE_JSON_KEY not in d:
         raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")
 
-    return serve.api.internal_get_global_client().get_handle(
+    return serve.context.get_global_client().get_handle(
         d["deployment_name"],
         sync=d[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC,
         missing_ok=True,

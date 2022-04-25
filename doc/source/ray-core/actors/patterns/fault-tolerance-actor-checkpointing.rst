@@ -1,13 +1,14 @@
 Pattern: Fault Tolerance with Actor Checkpointing
 =================================================
 
-Ray offers support for task and actor `fault tolerance <https://docs.ray.io/en/latest/fault-tolerance.html>`__. Specifically for actors, you can specify max_restarts to automatically enable restart for Ray actors. This means when your actor or the node hosting that actor crashed, the actor will be automatically reconstructed. However, this doesn’t provide ways for you to restore application level states in your actor. You checkpoint your actor periodically and read from the checkpoint if possible.
+Ray offers support for task and actor `fault tolerance <https://docs.ray.io/en/latest/ray-core/actors/fault-tolerance.html>`__. Specifically for actors, you can specify max_restarts to automatically enable restart for Ray actors. This means when your actor or the node hosting that actor crashed, the actor will be automatically reconstructed. However, this doesn’t provide ways for you to restore application level states in your actor. You checkpoint your actor periodically and read from the checkpoint if possible.
 
 There are several ways to checkpoint:
-- Write the state to local disk. This can cause troubles when actors are instantiated in multi-node clusters.
-- Write the state to local disk and use cluster launcher to sync file across cluster
-- Write the state to ray internal kv store. (this is an experimental feature and not suitable for large files)
-- Write the state to a Ray actor placed on head node (using custom resource constraints)
+
+- Write the state to local disk. This can cause trouble when actors are instantiated in multi-node clusters.
+- Write the state to local disk and use cluster launcher to sync file across cluster.
+- Write the state to Ray internal kv store. (This is an experimental feature and not suitable for large files).
+- Write the state to a Ray actor placed on head node (using custom resource constraints).
 
 
 Code example

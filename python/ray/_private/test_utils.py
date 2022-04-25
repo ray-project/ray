@@ -55,8 +55,10 @@ class RayTestTimeoutException(Exception):
     pass
 
 
-def make_global_state_accessor(address_info):
-    gcs_options = GcsClientOptions.from_gcs_address(address_info["gcs_address"])
+def make_global_state_accessor(ray_context):
+    gcs_options = GcsClientOptions.from_gcs_address(
+        ray_context.address_info["gcs_address"]
+    )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
     return global_state_accessor
@@ -1205,7 +1207,15 @@ def check_spilled_mb(address, spilled=None, restored=None, fallback=None):
             if "Restored" in s:
                 return False
         if spilled:
-            if "Spilled {} MiB".format(spilled) not in s:
+            if not isinstance(spilled, list):
+                spilled_lst = [spilled]
+            else:
+                spilled_lst = spilled
+            found = False
+            for n in spilled_lst:
+                if "Spilled {} MiB".format(n) in s:
+                    found = True
+            if not found:
                 return False
         else:
             if "Spilled" in s:

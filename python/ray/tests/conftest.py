@@ -11,6 +11,9 @@ import json
 import time
 from pathlib import Path
 from unittest import mock
+import shutil
+import platform
+from tempfile import gettempdir
 
 import ray
 import ray.ray_constants as ray_constants
@@ -324,10 +327,10 @@ def call_ray_stop_only():
 # Used to test both Ray Client and non-Ray Client codepaths.
 # Usage: In your test, call `ray.init(address)`.
 @pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster, request):
+def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
-    cluster = ray_start_cluster
+    cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4)
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
@@ -461,6 +464,12 @@ smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
 }
+ray_storage_object_spilling_config = {
+    "type": "ray_storage",
+    # Force the storage config so we don't need to patch each test to separately
+    # configure the storage param under this.
+    "params": {"_force_storage_for_testing": spill_local_path},
+}
 buffer_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
@@ -499,6 +508,17 @@ def create_object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
+    ],
+)
+def fs_only_object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
+        ray_storage_object_spilling_config,
         # TODO(sang): Add a mock dependency to test S3.
         # smart_open_object_spilling_config,
     ],
@@ -654,3 +674,48 @@ def listen_port(request):
         yield port
     finally:
         sock.close()
+
+
+@pytest.fixture
+def set_bad_runtime_env_cache_ttl_seconds(request):
+    ttl = getattr(request, "param", "0")
+    os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"] = ttl
+    yield ttl
+    del os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"]
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    # execute all other hooks to obtain the report object
+    outcome = yield
+    rep = outcome.get_result()
+
+    # We temporarily restrict to Linux until we have artifact dirs
+    # for Windows and Mac
+    if platform.system() != "Linux":
+        return
+
+    # Only archive failed tests after the "call" phase of the test
+    if rep.when != "call" or not rep.failed:
+        return
+
+    # Get dir to write zipped logs to
+    archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
+
+    if not archive_dir:
+        return
+
+    if not os.path.exists(archive_dir):
+        os.makedirs(archive_dir)
+
+    # Get logs dir from the latest ray session
+    tmp_dir = gettempdir()
+    logs_dir = os.path.join(tmp_dir, "ray", "session_latest", "logs")
+
+    if not os.path.exists(logs_dir):
+        return
+
+    # Write zipped logs to logs archive dir
+    test_name = rep.nodeid.replace(os.sep, "::")
+    output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
+    shutil.make_archive(output_file, "zip", logs_dir)

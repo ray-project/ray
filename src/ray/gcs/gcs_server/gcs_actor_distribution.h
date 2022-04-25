@@ -22,16 +22,14 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
-
-using ClusterResourceScheduler = gcs::GcsResourceScheduler;
 
 /// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a
 /// worker process.
@@ -43,24 +41,17 @@ class GcsActorWorkerAssignment
   ///
   /// \param node_id ID of node on which this gcs actor worker assignment is allocated.
   /// \param acquired_resources Resources owned by this gcs actor worker assignment.
-  /// \param is_shared A flag to represent that whether the worker process can be shared.
   GcsActorWorkerAssignment(const NodeID &node_id,
-                           const ResourceRequest &acquired_resources,
-                           bool is_shared);
-
+                           const ResourceRequest &acquired_resources);
   const NodeID &GetNodeID() const;
 
   const ResourceRequest &GetResources() const;
-
-  bool IsShared() const;
 
  private:
   /// ID of node on which this actor worker assignment is allocated.
   const NodeID node_id_;
   /// Resources owned by this actor worker assignment.
   const ResourceRequest acquired_resources_;
-  /// A flag to represent that whether the worker process can be shared.
-  const bool is_shared_;
 };
 
 /// GcsBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is
@@ -125,25 +116,22 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
                               const rpc::RequestWorkerLeaseReply &reply) override;
 
  private:
-  /// Select an existing or allocate a new actor worker assignment for the actor.
-  std::unique_ptr<GcsActorWorkerAssignment> SelectOrAllocateActorWorkerAssignment(
-      std::shared_ptr<GcsActor> actor, bool need_sole_actor_worker_assignment);
-
   /// Allocate a new actor worker assignment.
   ///
-  /// \param required_resources The resources that the worker required.
-  /// \param is_shared If the worker is shared by multiple actors or not.
   /// \param task_spec The specification of the task.
-  std::unique_ptr<GcsActorWorkerAssignment> AllocateNewActorWorkerAssignment(
-      const ResourceRequest &required_resources,
-      bool is_shared,
+  std::unique_ptr<GcsActorWorkerAssignment> AllocateActorWorkerAssignment(
       const TaskSpecification &task_spec);
 
+  /// TODO(Chong-Li): This is to accommodate the Raylet scheduling's behavior (different
+  /// resources for scheduling and allocation). We need to unify these two at the end.
   /// Allocate resources for the actor.
   ///
-  /// \param required_resources The resources to be allocated.
-  /// \return ID of the node from which the resources are allocated.
-  scheduling::NodeID AllocateResources(const ResourceRequest &required_resources);
+  /// \param required_placement_resources The required resources of the task for
+  /// scheduling. \param required_resources The required resources of the task for
+  /// allocation. \return ID of the node from which the resources are allocated.
+  scheduling::NodeID AllocateResources(
+      const ResourceRequest &required_placement_resources,
+      const ResourceRequest &required_resources);
 
   scheduling::NodeID GetHighestScoreNodeResource(
       const ResourceRequest &required_resources) const;
@@ -165,7 +153,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// The resource changed listeners.
   std::vector<std::function<void()>> resource_changed_listeners_;
 
-  /// Gcs resource scheduler
+  /// Cluster resource scheduler
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
   /// Normal task resources changed callback.

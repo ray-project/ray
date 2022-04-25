@@ -7,7 +7,7 @@ import ray
 from ray import tune
 from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.ml.trainer import Trainer
-from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
+from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
@@ -81,35 +81,38 @@ class DataParallelTrainer(Trainer):
             # Returns the rank of the worker on the current node.
             train.get_local_rank()
 
-    How do I use ``DataParallelTrainer`` or any of its subclasses?
+    **How do I use ``DataParallelTrainer`` or any of its subclasses?**
 
-        Example:
-            .. code-block:: python
+    Example:
 
-                import ray
-                from ray import train
+    .. code-block:: python
 
-                def train_loop_for_worker():
-                    dataset_shard_for_this_worker = train.get_dataset_shard("train")
+        import ray
+        from ray import train
 
-                    assert len(dataset_shard_for_this_worker) == 1
+        def train_loop_for_worker():
+            dataset_shard_for_this_worker = train.get_dataset_shard("train")
 
-                train_dataset = ray.data.from_items([1, 2, 3])
-                assert len(train_dataset) == 3
-                trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
-                    datasets={"train": train_dataset})
-                result = trainer.fit()
+            assert len(dataset_shard_for_this_worker) == 1
 
-    How do I develop on top of ``DataParallelTrainer``?
+        train_dataset = ray.data.from_items([1, 2, 3])
+        assert len(train_dataset) == 3
+        trainer = DataParallelTrainer(scaling_config={"num_workers": 3},
+            datasets={"train": train_dataset})
+        result = trainer.fit()
+
+    **How do I develop on top of ``DataParallelTrainer``?**
 
     In many cases, using DataParallelTrainer directly is sufficient to execute
     functions on multiple actors.
 
     However, you may want to subclass ``DataParallelTrainer`` and create a custom
     Trainer for the following 2 use cases:
-        1. You want to do data parallel training, but want to have a predefined
-        ``training_loop_per_worker``.
-        2. You want to implement a custom :ref:`Training backend
+
+      - **Use Case 1:** You want to do data parallel training, but want to have
+        a predefined ``training_loop_per_worker``.
+
+      - **Use Case 2:** You want to implement a custom :ref:`Training backend
         <train-api-backend-interfaces>` that automatically handles
         additional setup or teardown logic on each actor, so that the users of this
         new trainer do not have to implement this logic. For example, a
@@ -178,8 +181,17 @@ class DataParallelTrainer(Trainer):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+    ]
+
     def __init__(
         self,
+        *,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
@@ -192,19 +204,13 @@ class DataParallelTrainer(Trainer):
         if not ray.is_initialized():
             ray.init()
 
-        if (
-            "GPU" in ray.available_resources()
-            and scaling_config.num_gpus_per_worker <= 0
-        ):
-            logger.info(
-                "GPUs are detected in your Ray cluster, but GPU "
-                "training is not enabled for Ray Train. To enable "
-                "GPU training, make sure to set `use_gpu` to True "
-                "when instantiating your Trainer."
-            )
-
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
+
+        backend_config = (
+            backend_config if backend_config is not None else BackendConfig()
+        )
+        self.backend_config = backend_config
 
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
@@ -213,6 +219,20 @@ class DataParallelTrainer(Trainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    def _validate_attributes(self):
+        super()._validate_attributes()
+
+        if (
+            not self.scaling_config.get("use_gpu", False)
+            and "GPU" in ray.available_resources()
+        ):
+            logger.info(
+                "GPUs are detected in your Ray cluster, but GPU "
+                "training is not enabled for this trainer. To enable "
+                "GPU training, make sure to set `use_gpu` to True "
+                "in your scaling config."
+            )
 
         if "num_workers" not in self.scaling_config:
             raise ValueError("You must specify the 'num_workers' in scaling_config.")
@@ -223,18 +243,24 @@ class DataParallelTrainer(Trainer):
                 f"integer. Received {self.scaling_config['num_workers']}"
             )
 
-        num_params = len(inspect.signature(self.train_loop_per_worker).parameters)
+        self._validate_train_loop_per_worker(
+            self.train_loop_per_worker, "train_loop_per_worker"
+        )
+
+    def _validate_train_loop_per_worker(
+        self, train_loop_per_worker: Callable, fn_name: str
+    ) -> None:
+        num_params = len(inspect.signature(train_loop_per_worker).parameters)
         if num_params > 1:
             raise ValueError(
-                f"train_loop_per_worker should take in 0 or 1 arguments, "
+                f"{fn_name} should take in 0 or 1 arguments, "
                 f"but it accepts {num_params} arguments instead."
             )
 
-        backend_config = backend_config if backend_config else BackendConfig()
-        self.backend_config = backend_config
-
     def training_loop(self) -> None:
-        scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
+        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
+            self.scaling_config
+        )
 
         train_loop_per_worker = construct_train_func(
             self.train_loop_per_worker,

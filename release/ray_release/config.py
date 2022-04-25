@@ -2,6 +2,7 @@ import copy
 import datetime
 import json
 import os
+import re
 from typing import Dict, List, Optional
 
 import jinja2
@@ -9,7 +10,7 @@ import jsonschema
 import yaml
 
 from ray_release.anyscale_util import find_cloud_by_name
-from ray_release.exception import ReleaseTestConfigError
+from ray_release.exception import ReleaseTestConfigError, ReleaseTestCLIError
 from ray_release.logger import logger
 from ray_release.util import deep_update
 
@@ -133,11 +134,10 @@ def find_test(test_collection: List[Test], test_name: str) -> Optional[Test]:
 
 def as_smoke_test(test: Test) -> Test:
     if "smoke_test" not in test:
-        logger.warning(
+        raise ReleaseTestCLIError(
             f"Requested smoke test, but test with name {test['name']} does "
             f"not have any smoke test configuration."
         )
-        return test
 
     smoke_test_config = test.pop("smoke_test")
     new_test = deep_update(test, smoke_test_config)
@@ -194,6 +194,12 @@ def load_test_cluster_env(test: Test, ray_wheels_url: str) -> Optional[Dict]:
     env = get_test_environment()
 
     commit = env.get("RAY_COMMIT", None)
+
+    if not commit:
+        match = re.search(r"/([a-f0-9]{40})/", ray_wheels_url)
+        if match:
+            commit = match.group(1)
+
     env["RAY_WHEELS_SANITY_CHECK"] = get_wheels_sanity_check(commit)
     env["RAY_WHEELS"] = ray_wheels_url
 

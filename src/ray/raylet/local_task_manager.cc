@@ -228,6 +228,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
         }
+        num_unschedulable_task_spilled_++;
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
@@ -244,9 +245,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         // it.
         std::string allocated_instances_serialized_json = "{}";
         if (RayConfig::instance().worker_resource_limits_enabled()) {
-          allocated_instances_serialized_json =
-              cluster_resource_scheduler_->GetLocalResourceManager()
-                  .SerializedTaskResourceInstances(allocated_instances);
+          allocated_instances_serialized_json = allocated_instances->SerializeAsJson();
         }
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
@@ -316,19 +315,30 @@ void LocalTaskManager::SpillWaitingTasks() {
     // pulled).  If this is true, then we should force the task onto a remote
     // feasible node, even if we have enough resources available locally for
     // placement.
-    bool force_spillback = task_dependency_manager_.TaskDependenciesBlocked(task_id);
+    bool task_dependencies_blocked =
+        task_dependency_manager_.TaskDependenciesBlocked(task_id);
     RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
-                   << " to remote node. Force spillback? " << force_spillback;
+                   << " to remote node. Dependencies blocked? "
+                   << task_dependencies_blocked;
     bool is_infeasible;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
-    auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-        (*it)->task.GetTaskSpecification(),
-        /*prioritize_local_node*/ true,
-        /*exclude_local_node*/ force_spillback,
-        /*requires_object_store_memory*/ true,
-        &is_infeasible);
+    scheduling::NodeID scheduling_node_id;
+    if (!task.GetTaskSpecification().IsSpreadSchedulingStrategy()) {
+      scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
+          task.GetTaskSpecification(),
+          /*prioritize_local_node*/ true,
+          /*exclude_local_node*/ task_dependencies_blocked,
+          /*requires_object_store_memory*/ true,
+          &is_infeasible);
+    } else {
+      // If scheduling strategy is spread, we prefer honoring spread decision
+      // and waiting for task dependencies to be pulled
+      // locally than spilling back and causing uneven spread.
+      scheduling_node_id = scheduling::NodeID(self_node_id_.Binary());
+    }
+
     if (!scheduling_node_id.IsNil() &&
         scheduling_node_id.Binary() != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
@@ -337,6 +347,7 @@ void LocalTaskManager::SpillWaitingTasks() {
         task_dependency_manager_.RemoveTaskDependencies(
             task.GetTaskSpecification().TaskId());
       }
+      num_waiting_task_spilled_++;
       waiting_tasks_index_.erase(task_id);
       it = waiting_task_queue_.erase(it);
     } else {
@@ -851,41 +862,21 @@ void LocalTaskManager::Dispatch(
   } else {
     allocated_resources = worker->GetAllocatedInstances();
   }
-  auto predefined_resources = allocated_resources->predefined_resources;
   ::ray::rpc::ResourceMapEntry *resource;
-  for (size_t res_idx = 0; res_idx < predefined_resources.size(); res_idx++) {
+  for (auto &resource_id : allocated_resources->ResourceIds()) {
     bool first = true;  // Set resource name only if at least one of its
                         // instances has available capacity.
-    for (size_t inst_idx = 0; inst_idx < predefined_resources[res_idx].size();
-         inst_idx++) {
-      if (predefined_resources[res_idx][inst_idx] > 0.) {
+    auto instances = allocated_resources->Get(resource_id);
+    for (size_t inst_idx = 0; inst_idx < instances.size(); inst_idx++) {
+      if (instances[inst_idx] > 0.) {
         if (first) {
           resource = reply->add_resource_mapping();
-          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
-                                 .GetResourceNameFromIndex(res_idx));
+          resource->set_name(resource_id.Binary());
           first = false;
         }
         auto rid = resource->add_resource_ids();
         rid->set_index(inst_idx);
-        rid->set_quantity(predefined_resources[res_idx][inst_idx].Double());
-      }
-    }
-  }
-  auto custom_resources = allocated_resources->custom_resources;
-  for (auto it = custom_resources.begin(); it != custom_resources.end(); ++it) {
-    bool first = true;  // Set resource name only if at least one of its
-                        // instances has available capacity.
-    for (size_t inst_idx = 0; inst_idx < it->second.size(); inst_idx++) {
-      if (it->second[inst_idx] > 0.) {
-        if (first) {
-          resource = reply->add_resource_mapping();
-          resource->set_name(cluster_resource_scheduler_->GetClusterResourceManager()
-                                 .GetResourceNameFromIndex(it->first));
-          first = false;
-        }
-        auto rid = resource->add_resource_ids();
-        rid->set_index(inst_idx);
-        rid->set_quantity(it->second[inst_idx].Double());
+        rid->set_quantity(instances[inst_idx].Double());
       }
     }
   }
@@ -938,7 +929,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
     if (worker->IsBlocked()) {
       // If the worker is blocked, its CPU instances have already been released. We clear
       // the CPU instances to avoid double freeing.
-      allocated_instances->ClearCPUInstances();
+      allocated_instances->Remove(ResourceID::CPU());
     }
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         worker->GetAllocatedInstances());
@@ -951,7 +942,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
     if (worker->IsBlocked()) {
       // If the worker is blocked, its CPU instances have already been released. We clear
       // the CPU instances to avoid double freeing.
-      lifetime_allocated_instances->ClearCPUInstances();
+      lifetime_allocated_instances->Remove(ResourceID::CPU());
     }
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         worker->GetLifetimeAllocatedInstances());
@@ -966,11 +957,11 @@ bool LocalTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
   }
 
   if (worker->GetAllocatedInstances() != nullptr) {
-    auto cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
-    if (cpu_instances.size() > 0) {
+    if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
+      auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
       std::vector<double> overflow_cpu_instances =
           cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
-              scheduling::kCPUResource, cpu_instances);
+              ResourceID::CPU(), cpu_instances);
       for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
         RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
       }
@@ -988,13 +979,13 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
     return false;
   }
   if (worker->GetAllocatedInstances() != nullptr) {
-    auto cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
-    if (cpu_instances.size() > 0) {
+    if (worker->GetAllocatedInstances()->Has(ResourceID::CPU())) {
+      auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(ResourceID::CPU());
       // Important: we allow going negative here, since otherwise you can use infinite
       // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
       // negative, at most one task can "borrow" this worker's resources.
       cluster_resource_scheduler_->GetLocalResourceManager().SubtractResourceInstances(
-          scheduling::kCPUResource, cpu_instances, /*allow_going_negative=*/true);
+          ResourceID::CPU(), cpu_instances, /*allow_going_negative=*/true);
       worker->MarkUnblocked();
       return true;
     }
@@ -1002,8 +993,8 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
   return false;
 }
 
-ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
-  absl::flat_hash_map<std::string, FixedPoint> total_normal_task_resources;
+ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
+  ResourceRequest total_normal_task_resources;
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
@@ -1019,22 +1010,10 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_request = allocated_instances->ToResourceRequest();
-      for (size_t i = 0; i < resource_request.predefined_resources.size(); i++) {
-        if (resource_request.predefined_resources[i] > 0) {
-          total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
-              resource_request.predefined_resources[i];
-        }
-      }
-      for (auto &entry : resource_request.custom_resources) {
-        if (entry.second > 0) {
-          total_normal_task_resources[scheduling::ResourceID(entry.first).Binary()] +=
-              entry.second;
-        }
-      }
+      total_normal_task_resources += allocated_instances->ToResourceRequest();
     }
   }
-  return ResourceSet(total_normal_task_resources);
+  return total_normal_task_resources;
 }
 
 uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
@@ -1059,6 +1038,10 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
   buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
   buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
+  buffer << "Number of total spilled tasks: " << num_task_spilled_ << "\n";
+  buffer << "Number of spilled waiting tasks: " << num_waiting_task_spilled_ << "\n";
+  buffer << "Number of spilled unschedulable tasks: " << num_unschedulable_task_spilled_
+         << "\n";
   buffer << "Resource usage {\n";
 
   // Calculates how much resources are occupied by tasks or actors.

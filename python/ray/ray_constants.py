@@ -67,6 +67,11 @@ DEFAULT_PORT = 6379
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
 RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
 RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
+RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
+# Hook for running a user-specified runtime-env hook. This hook will be called
+# unconditionally given the runtime_env dict passed for ray.init. It must return
+# a rewritten runtime_env dict. Example: "your.module.runtime_env_hook".
+RAY_RUNTIME_ENV_HOOK = "RAY_RUNTIME_ENV_HOOK"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -176,7 +181,7 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # Number of attempts to ping the Redis server. See
 # `services.py::wait_for_redis_to_start()` and
 # `services.py::create_redis_client()`
-START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
+START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
@@ -306,6 +311,10 @@ SETUP_WORKER_FILENAME = "setup_worker.py"
 # Directory name where runtime_env resources will be created & cached.
 DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
 
+# The timeout seconds for the creation of runtime env,
+# dafault timeout is 10 minutes
+DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS = 600
+
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
@@ -328,3 +337,5 @@ KV_NAMESPACE_CLUSTER = b"cluster"
 KV_NAMESPACE_PACKAGE = None
 KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
+
+LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]

@@ -1,4 +1,4 @@
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Optional
 import sklearn.datasets
 import sklearn.metrics
 import os
@@ -161,7 +161,7 @@ def tune_xgboost(use_class_trainable=True):
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
-    ) -> Union[None, PlacementGroupFactory, Resources]:
+    ) -> Optional[Union[PlacementGroupFactory, Resources]]:
         """This is a basic example of a resource allocating function.
 
         The function naively balances available CPUs over live trials.
@@ -176,12 +176,11 @@ def tune_xgboost(use_class_trainable=True):
         robust approach.
 
         Args:
-            trial_runner (TrialRunner): Trial runner for this Tune run.
+            trial_runner: Trial runner for this Tune run.
                 Can be used to obtain information about other trials.
-            trial (Trial): The trial to allocate new resources to.
-            result (Dict[str, Any]): The latest results of trial.
-            scheduler (ResourceChangingScheduler): The scheduler calling
-                the function.
+            trial: The trial to allocate new resources to.
+            result: The latest results of trial.
+            scheduler: The scheduler calling the function.
         """
 
         # Get base trial resources as defined in
