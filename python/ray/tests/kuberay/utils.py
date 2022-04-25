@@ -7,8 +7,10 @@ import logging
 import pathlib
 import subprocess
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 import yaml
+
+import ray
 
 logger = logging.getLogger(__name__)
 
@@ -273,8 +275,8 @@ def _get_service_port(service: str, namespace: str, target_port: int) -> int:
 
 
 @contextlib.contextmanager
-def kubectl_port_forward(service: str, namespace: str, target_port: int,
-                         local_port: Optional[int] = None):
+def _kubectl_port_forward(service: str, namespace: str, target_port: int,
+                          local_port: Optional[int] = None) -> Generator[int, None, None]:
     """Context manager which creates a kubectl port-forward process targeting a
     K8s service.
 
@@ -286,6 +288,9 @@ def kubectl_port_forward(service: str, namespace: str, target_port: int,
         target_port: The port targeted by the service.
         local_port: Forward from this port. Optional. By default, uses the port exposed
         by the service.
+
+    Yields:
+        The local address. The service can then be accessed at 127.0.0.1:<local_port>.
     """
     # First, figure out which port the service exposes for the given target port.
     service_port = _get_service_port(service, namespace, target_port)
@@ -306,6 +311,17 @@ def kubectl_port_forward(service: str, namespace: str, target_port: int,
     atexit.register(terminate_process)
 
     try:
-        yield
+        yield local_port
     finally:
         terminate_process()
+
+
+@contextlib.contextmanager
+def ray_client_port_forward(head_service: str,
+                            namespace: str = "default",
+                            ray_client_port: int = 10001):
+    with _kubectl_port_forward(service=head_service,
+                               namespace=namespace,
+                               target_port=ray_client_port) as local_port:
+        with ray.init(f"127.0.0.1:{local_port}"):
+            yield

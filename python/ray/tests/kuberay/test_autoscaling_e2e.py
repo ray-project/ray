@@ -14,12 +14,15 @@ from ray.tests.kuberay.utils import (
     get_pod,
     get_pod_names,
     get_raycluster,
+    ray_client_port_forward,
     kubectl_exec_python_script,
     wait_for_pods,
     wait_for_pod_to_start,
     wait_for_ray_health,
     wait_for_crd,
 )
+
+from ray.tests.kuberay import scripts
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -317,12 +320,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # Submit two {"Custom2": 3} bundles to upscale two workers with 5
         # Custom2 capacity each.
         logger.info("Scaling up workers with request for custom resources.")
-        kubectl_exec_python_script(
-            script_name="scale_up_custom.py",
-            pod=head_pod,
-            container="ray-head",
-            namespace="default",
-        )
+        # Use Ray client to validate that it works against KubeRay.
+        with ray_client_port_forward(head_service="raycluster-complete-head-svc"):
+            scripts.scale_up_custom.scale_up_custom()
         logger.info("Confirming two workers have scaled up.")
         wait_for_pods(goal_num_pods=3, namespace="default")
 
