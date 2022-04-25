@@ -2007,7 +2007,7 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
             dataset_factory=dataset,
         )
 
-        
+
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """A writable datasource that logs node IDs of write tasks, for testing."""
 
