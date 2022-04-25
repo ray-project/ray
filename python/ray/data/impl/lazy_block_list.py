@@ -261,6 +261,11 @@ class LazyBlockList(BlockList):
         self._cached_metadata = metadata
         return block_refs, metadata
 
+    def compute_to_blocklist(self) -> BlockList:
+        """Launch all tasks and return a concrete BlockList."""
+        blocks, metadata = self._get_blocks_with_metadata()
+        return BlockList(blocks, metadata)
+
     def compute_first_block(self):
         """Kick off computation for the first block in the list.
 

@@ -169,7 +169,7 @@ class DDPPOTrainer(PPOTrainer):
         # Must have `num_workers` >= 1.
         if config["num_workers"] < 1:
             raise ValueError(
-                "Due to its ditributed, decentralized nature, "
+                "Due to its distributed, decentralized nature, "
                 "DD-PPO requires `num_workers` to be >= 1!"
             )
 
@@ -208,6 +208,7 @@ class DDPPOTrainer(PPOTrainer):
 
         # Initialize torch process group for
         if self.config["_disable_execution_plan_api"] is True:
+            self._curr_learner_info = {}
             ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
             port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
@@ -247,15 +248,15 @@ class DDPPOTrainer(PPOTrainer):
         # - Build info dict using a LearnerInfoBuilder object.
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
         steps_this_iter = 0
-        for worker, result in sample_and_update_results.items():
-            # TODO: Add an inner loop over (>1) results here once APEX has been merged!
-            steps_this_iter += result["env_steps"]
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
-            self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
-            self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
-            self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
-            self._timers[LEARN_ON_BATCH_TIMER].push(result["learn_on_batch_time"])
-            self._timers[SAMPLE_TIMER].push(result["sample_time"])
+        for worker, results in sample_and_update_results.items():
+            for result in results:
+                steps_this_iter += result["env_steps"]
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
+                self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
+                self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
+                self._counters[NUM_ENV_STEPS_TRAINED] += result["env_steps"]
+                self._timers[LEARN_ON_BATCH_TIMER].push(result["learn_on_batch_time"])
+                self._timers[SAMPLE_TIMER].push(result["sample_time"])
             # Add partial learner info to builder object.
             learner_info_builder.add_learn_on_batch_results_multi_agent(result["info"])
 
@@ -278,7 +279,10 @@ class DDPPOTrainer(PPOTrainer):
                 ray.get(first_worker.get_weights.remote())
             )
         # Return merged laarner into results.
-        return learner_info_builder.finalize()
+        new_learner_info = learner_info_builder.finalize()
+        if new_learner_info:
+            self._curr_learner_info = new_learner_info
+        return self._curr_learner_info
 
     @staticmethod
     def _sample_and_train_torch_distributed(worker: RolloutWorker):

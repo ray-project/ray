@@ -851,6 +851,7 @@ class Trainer(Trainable):
         self._counters = defaultdict(int)
         self._episode_history = []
         self._episodes_to_be_collected = []
+        self._remote_workers_for_metrics = []
 
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[WorkerSet] = None
@@ -955,6 +956,8 @@ class Trainer(Trainable):
                 local_worker=True,
                 logdir=self.logdir,
             )
+            # By default, collect metrics for all remote workers.
+            self._remote_workers_for_metrics = self.workers.remote_workers()
 
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
@@ -2878,7 +2881,7 @@ class Trainer(Trainable):
         # Collect rollout worker metrics.
         episodes, self._episodes_to_be_collected = collect_episodes(
             self.workers.local_worker(),
-            self.workers.remote_workers(),
+            self._remote_workers_for_metrics,
             self._episodes_to_be_collected,
             timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
         )
