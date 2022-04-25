@@ -163,6 +163,19 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   UpdateNodeResourceUsage(node_id, data);
 }
 
+void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
+  NodeID node_id = NodeID::FromBinary(data.node_id());
+  auto iter = node_resource_usages_.find(node_id);
+  if (iter == node_resource_usages_.end()) {
+    iter = node_resource_usages_.emplace(node_id, rpc::ResourcesData()).first;
+  }
+
+  if (resources.resource_load_changed()) {
+    (*iter->second.mutable_resource_load()) = resources.resource_load();
+  }
+  (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
+}
+
 void GcsResourceManager::HandleReportResourceUsage(
     const rpc::ReportResourceUsageRequest &request,
     rpc::ReportResourceUsageReply *reply,
@@ -225,9 +238,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
-    auto resources_data = std::make_shared<rpc::ResourcesData>();
-    resources_data->CopyFrom(resources);
-    node_resource_usages_[node_id] = *resources_data;
+    node_resource_usages_[node_id].CopyFrom(resources_data);
   } else {
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
