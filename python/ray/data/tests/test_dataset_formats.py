@@ -16,8 +16,6 @@ from functools import partial
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.datasource import DummyOutputDatasource, SimpleTorchDatasource
-from ray.data.block import BlockAccessor
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource import (
@@ -26,6 +24,7 @@ from ray.data.datasource import (
     PathPartitionFilter,
     PathPartitionEncoder,
     PartitionStyle,
+    SimpleTorchDatasource,
     WriteResult,
 )
 from ray.data.impl.arrow_block import ArrowRow
