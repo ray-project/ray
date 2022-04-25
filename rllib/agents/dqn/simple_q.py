@@ -34,12 +34,13 @@ from ray.rllib.execution.train_ops import (
     UpdateTargetNetwork,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
-    NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -224,7 +225,7 @@ class SimpleQTrainer(Trainer):
         )
 
         for batch in new_sample_batches:
-            # Update counters
+            # Update sampling step counters.
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer
@@ -240,6 +241,10 @@ class SimpleQTrainer(Trainer):
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # Update train step counters.
+        self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
+        self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
 
         # Update target network every `target_network_update_freq` steps.
         cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
