@@ -8,7 +8,7 @@ metadata:
     # An unique identifier for the head node and workers of this cluster.
   name: raycluster-complete
 spec:
-  rayVersion: '1.11.0'
+  rayVersion: '1.12.0'
   enableInTreeAutoscaling: false
   ######################headGroupSpecs#################################
   # head group template and specs, (perhaps 'group' is not needed in the name)
@@ -59,8 +59,15 @@ spec:
         containers:
         # The Ray head pod
         - name: ray-head
-          image: rayproject/ray:1.11.0
+          image: rayproject/ray:1.12.0
           imagePullPolicy: Always
+          ports:
+          - containerPort: 6379
+            name: gcs
+          - containerPort: 8265
+            name: dashboard
+          - containerPort: 10001
+            name: client
           env:
           - name: CPU_REQUEST
             valueFrom:
@@ -86,13 +93,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: status.podIP
-          ports:
-          - containerPort: 6379
-            name: gcs
-          - containerPort: 8265
-            name: dashboard
-          - containerPort: 10001
-            name: client
           lifecycle:
             preStop:
               exec:
@@ -109,8 +109,12 @@ spec:
               name: ray-logs
         # The Ray autoscaler sidecar to the head pod
         - name: autoscaler
-          # TODO: Use released Ray version starting with Ray 1.12.0.
-          image: rayproject/ray:413fe0
+          # The autoscaler image used carries the latest improvements to KubeRay autoscaling
+          # support.
+          # It is confirmed (via kuberay/test_autoscaling_e2e.py) to be compatible with all
+          # Ray versions since Ray 1.11.0.
+          # TODO: Use released Ray version when autoscaling support is stable.
+          image: rayproject/ray:8c5fe4
           imagePullPolicy: Always
           env:
           - name: RAY_CLUSTER_NAMESPACE
