@@ -102,8 +102,9 @@ class TestRNNSequencing(unittest.TestCase):
 
         B, T, F = np.random.choice(list(range(8, 32)), size=3, replace=False)
 
-        inputs_numpy = np.repeat(np.arange(B * T)[:, np.newaxis], repeats=F,
-                                 axis=-1).astype(np.int64)
+        inputs_numpy = np.repeat(
+            np.arange(B * T)[:, np.newaxis], repeats=F, axis=-1
+        ).astype(np.int64)
         check(inputs_numpy.shape, (B * T, F))
 
         time_shift_diff_batch_major = np.ones(shape=(B, T - 1, F), dtype=np.int64)
