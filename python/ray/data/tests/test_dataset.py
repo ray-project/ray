@@ -1731,8 +1731,9 @@ def test_to_tf_feature_columns_dict_with_label(ray_start_regular_shared):
     assert np.array_equal(labels1, np.array([9]))
 
 
+@pytest.mark.parametrize("use_torchdata", [False, True])
 @pytest.mark.parametrize("pipelined", [False, True])
-def test_to_torch(ray_start_regular_shared, pipelined):
+def test_to_torch(ray_start_regular_shared, use_torchdata, pipelined):
     import torch
 
     df1 = pd.DataFrame(
@@ -1745,7 +1746,10 @@ def test_to_torch(ray_start_regular_shared, pipelined):
     df = pd.concat([df1, df2, df3])
     ds = ray.data.from_pandas([df1, df2, df3])
     ds = maybe_pipeline(ds, pipelined)
-    torch_dp = ds.to_torch(label_column="label", batch_size=3)
+    if use_torchdata:
+        torch_dp = ds.to_torch_datapipe(label_column="label", batch_size=3)
+    else:
+        torch_dp = ds.to_torch(label_column="label", batch_size=3)
 
     num_epochs = 1 if pipelined else 2
     for _ in range(num_epochs):
@@ -1756,11 +1760,12 @@ def test_to_torch(ray_start_regular_shared, pipelined):
         assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
+@pytest.mark.parametrize("use_torchdata", [False, True])
 @pytest.mark.parametrize("input", ["single", "list", "dict"])
 @pytest.mark.parametrize("force_dtype", [False, True])
 @pytest.mark.parametrize("label_type", [None, "squeezed", "unsqueezed"])
 def test_to_torch_feature_columns(
-    ray_start_regular_shared, input, force_dtype, label_type
+    ray_start_regular_shared, use_torchdata, input, force_dtype, label_type
 ):
     import torch
 
@@ -1806,14 +1811,24 @@ def test_to_torch_feature_columns(
     label_column = None if label_type is None else "label"
     unsqueeze_label_tensor = label_type == "unsqueezed"
 
-    torch_dp = ds.to_torch(
-        label_column=label_column,
-        feature_columns=feature_columns,
-        feature_column_dtypes=feature_column_dtypes,
-        label_column_dtype=label_column_dtype,
-        unsqueeze_label_tensor=unsqueeze_label_tensor,
-        batch_size=3,
-    )
+    if use_torchdata:
+        torch_dp = ds.to_torch_datapipe(
+            label_column=label_column,
+            feature_columns=feature_columns,
+            feature_column_dtypes=feature_column_dtypes,
+            label_column_dtype=label_column_dtype,
+            unsqueeze_label_tensor=unsqueeze_label_tensor,
+            batch_size=3,
+        )
+    else:
+        torch_dp = ds.to_torch(
+            label_column=label_column,
+            feature_columns=feature_columns,
+            feature_column_dtypes=feature_column_dtypes,
+            label_column_dtype=label_column_dtype,
+            unsqueeze_label_tensor=unsqueeze_label_tensor,
+            batch_size=3,
+        )
     iterations = []
 
     for batch in iter(torch_dp):

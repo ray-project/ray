@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 from ray.data.impl.block_batching import BatchType
 from ray.ml.utils.torch_utils import convert_pandas_to_torch_tensor
 
-
 import torch
 from torchdata.datapipes import functional_datapipe
 from torchdata.datapipes.iter import IterDataPipe

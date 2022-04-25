@@ -53,7 +53,7 @@ _PER_DATASET_OUTPUT_OPS = [
 ]
 
 # Operations that operate over the stream of output batches from the pipeline.
-_OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_tf"]
+_OUTPUT_ITER_OPS = ["take", "take_all", "show", "to_torch", "to_tf"]
 
 
 @PublicAPI
@@ -684,7 +684,7 @@ class DatasetPipeline(Generic[T]):
         self._dataset_iter = None
         return iter
 
-    def to_torch(
+    def to_torch_datapipe(
         self,
         *,
         label_column: Optional[str] = None,
