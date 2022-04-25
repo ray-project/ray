@@ -72,12 +72,12 @@ From Torch or TensorFlow
 
 .. tabbed:: PyTorch
 
-    If you're using a Torch dataset, you can create a Dataset using 
+    If you already have a Torch dataset available, you can create a Ray Dataset using
     :py:class:`~ray.data.datasource.SimpleTorchDatasource`.
 
     .. warning::
         :py:class:`~ray.data.datasource.SimpleTorchDatasource` doesn't support parallel
-        reads. You should only use this datasource for small datasets like MNIST or 
+        reads. You should only use this datasource for small datasets like MNIST or
         CIFAR.
 
     .. code-block:: python
@@ -85,7 +85,7 @@ From Torch or TensorFlow
         import ray.data
         from ray.data.datasource import SimpleTorchDatasource
         import torchvision
-    
+
         dataset_factory = lambda: torchvision.datasets.MNIST("data", download=True)
         dataset = ray.data.read_datasource(
             SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
@@ -94,16 +94,16 @@ From Torch or TensorFlow
         # (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
 
 .. tabbed:: TensorFlow
-    
-    If you're using a TensorFlow dataset, you can create a Dataset using 
-    :py:class:`SimpleTensorFlowDatasource`.
+
+    If you already have a TensorFlow dataset available, you can create a Ray Dataset
+    using :py:class:`SimpleTensorFlowDatasource`.
 
     .. warning::
         :py:class:`SimpleTensorFlowDatasource` doesn't support parallel reads. You
         should only use this datasource for small datasets like MNIST or CIFAR.
 
     .. code-block:: python
-        
+
         import ray.data
         from ray.data.datasource import SimpleTensorFlowDatasource
         import tensorflow_datasets as tfds
