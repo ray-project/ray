@@ -68,6 +68,7 @@ class _TrialCheckpoint(os.PathLike):
             f">"
         )
 
+
 # Deprecated: Remove in Ray > 1.13
 @Deprecated
 class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
