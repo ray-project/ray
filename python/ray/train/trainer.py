@@ -14,12 +14,11 @@ from ray.train.backend import (
     TrainingWorkerError,
 )
 from ray.train.callbacks.callback import TrainingCallback
+from ray.train.dataset_spec import RayDataset, _RayDatasetSpec
 from ray.train.session import TrainingResultType
 from ray.train.utils import (
-    RayDataset,
     construct_train_func,
     ActorWrapper,
-    _RayDatasetSpec,
 )
 from ray.train.checkpoint import (
     CheckpointStrategy,
