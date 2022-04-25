@@ -15,12 +15,8 @@ from ray.train.backend import (
 )
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.session import TrainingResultType
-from ray.train.utils import (
-    RayDataset,
-    construct_train_func,
-    ActorWrapper,
-    _RayDatasetSpec,
-)
+from ray.train.utils import construct_train_func, ActorWrapper
+from ray.train.dataset_spec import RayDataset
 from ray.train.checkpoint import (
     CheckpointStrategy,
     TuneCheckpointManager,
@@ -325,14 +321,12 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
-        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
-
         try:
             iterator = TrainingIterator(
                 backend_executor=self._backend_executor,
                 backend_config=self._backend_config,
                 train_func=train_func,
-                dataset_spec=dataset_spec,
+                dataset=dataset,
                 checkpoint_manager=self.checkpoint_manager,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
@@ -404,14 +398,12 @@ class Trainer:
 
         train_func = construct_train_func(train_func, config)
 
-        dataset_spec = _RayDatasetSpec(dataset_or_dict=dataset)
-
         return TrainingIterator(
             backend_executor=self._backend_executor,
             backend_config=self._backend_config,
             train_func=train_func,
             run_dir=self.latest_run_dir,
-            dataset_spec=dataset_spec,
+            dataset=dataset,
             checkpoint_manager=self.checkpoint_manager,
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
@@ -643,7 +635,7 @@ class TrainingIterator:
         backend_executor: Union[BackendExecutor, ActorWrapper],
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-        dataset_spec: _RayDatasetSpec,
+        dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path]],
         checkpoint_strategy: Optional[CheckpointStrategy],
@@ -652,14 +644,14 @@ class TrainingIterator:
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
-        self._dataset_spec = dataset_spec
+        self._dataset = dataset
         self._run_dir = run_dir
         self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
-            dataset_spec=self._dataset_spec,
+            dataset=dataset,
             checkpoint=checkpoint,
             checkpoint_strategy=checkpoint_strategy,
         )
@@ -674,7 +666,7 @@ class TrainingIterator:
         self,
         train_func,
         run_dir,
-        dataset_spec,
+        dataset,
         checkpoint,
         checkpoint_strategy,
         latest_checkpoint_id=None,
@@ -687,9 +679,7 @@ class TrainingIterator:
         checkpoint_dict = self._checkpoint_manager._load_checkpoint(checkpoint)
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
-                train_func=train_func,
-                dataset_config=dataset_spec,
-                checkpoint=checkpoint_dict,
+                train_func=train_func, dataset=dataset, checkpoint=checkpoint_dict
             )
         )
 
@@ -708,7 +698,7 @@ class TrainingIterator:
             self._start_training(
                 self._train_func,
                 self._run_dir,
-                self._dataset_spec,
+                self._dataset,
                 self._checkpoint_manager.latest_checkpoint,
                 self._checkpoint_strategy,
                 latest_checkpoint_id=self._checkpoint_manager.latest_checkpoint_id,
