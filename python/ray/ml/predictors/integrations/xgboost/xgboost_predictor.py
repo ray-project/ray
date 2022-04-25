@@ -1,6 +1,5 @@
 from typing import Optional, List, Union, Dict, Any
 import os
-import shutil
 import numpy as np
 import pandas as pd
 
@@ -40,16 +39,15 @@ class XGBoostPredictor(Predictor):
                 ``XGBoostTrainer`` run.
 
         """
-        path = checkpoint.to_directory()
-        bst = xgboost.Booster()
-        bst.load_model(os.path.join(path, MODEL_KEY))
-        preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
-        if os.path.exists(preprocessor_path):
-            with open(preprocessor_path, "rb") as f:
-                preprocessor = cpickle.load(f)
-        else:
-            preprocessor = None
-        shutil.rmtree(path)
+        with checkpoint.as_directory() as path:
+            bst = xgboost.Booster()
+            bst.load_model(os.path.join(path, MODEL_KEY))
+            preprocessor_path = os.path.join(path, PREPROCESSOR_KEY)
+            if os.path.exists(preprocessor_path):
+                with open(preprocessor_path, "rb") as f:
+                    preprocessor = cpickle.load(f)
+            else:
+                preprocessor = None
         return XGBoostPredictor(model=bst, preprocessor=preprocessor)
 
     def predict(
