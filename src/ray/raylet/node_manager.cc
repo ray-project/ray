@@ -1683,6 +1683,13 @@ void NodeManager::HandleRequestResourceReport(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void NodeManager::HandleGetResourceLoad(
+    const rpc::GetResourceLoadRequest &request,
+    rpc::GetResourceLoadReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleReportWorkerBacklog(
     const rpc::ReportWorkerBacklogRequest &request,
     rpc::ReportWorkerBacklogReply *reply,

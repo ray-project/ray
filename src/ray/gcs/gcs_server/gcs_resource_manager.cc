@@ -170,10 +170,10 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
     iter = node_resource_usages_.emplace(node_id, rpc::ResourcesData()).first;
   }
 
-  if (resources.resource_load_changed()) {
-    (*iter->second.mutable_resource_load()) = resources.resource_load();
+  if (data.resource_load_changed()) {
+    (*iter->second.mutable_resource_load()) = data.resource_load();
   }
-  (*iter->second.mutable_resource_load_by_shape()) = resources.resource_load_by_shape();
+  (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
@@ -238,7 +238,7 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
-    node_resource_usages_[node_id].CopyFrom(resources_data);
+    node_resource_usages_[node_id].CopyFrom(resources);
   } else {
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
