@@ -78,8 +78,8 @@ async def generate_logs_stream(num_chunks: int):
         yield StreamLogReply(data=data.encode())
 
 
-async def wait_for_1_second():
-    await asyncio.sleep(1)
+async def wait_for_500_ms():
+    await asyncio.sleep(0.5)
 
 
 async def raise_timeout():
@@ -185,7 +185,7 @@ async def test_log_manager_wait_for_client(logs_manager):
         assert str(e) == "timed out"
 
     # Check that logs manager waits for client to initialize
-    logs_client.wait_until_initialized.side_effect = wait_for_1_second
+    logs_client.wait_until_initialized.side_effect = wait_for_500_ms
     start_time = time.time()
     try:
         await logs_manager.list_logs("1", [])
