@@ -194,14 +194,14 @@ async def test_log_manager_wait_for_client(logs_manager):
         await logs_manager.list_logs("1", [])
     except Exception:
         pass
-    assert time.time() - start_time > 1
+    assert time.time() - start_time > 0.5
 
     start_time = time.time()
     try:
         await logs_manager.resolve_node_id(NodeIdentifiers())
     except Exception:
         pass
-    assert time.time() - start_time > 1
+    assert time.time() - start_time > 0.5
 
     start_time = time.time()
     try:
@@ -214,7 +214,7 @@ async def test_log_manager_wait_for_client(logs_manager):
         )
     except Exception:
         pass
-    assert time.time() - start_time > 1
+    assert time.time() - start_time > 0.5
 
 
 # Integration tests
