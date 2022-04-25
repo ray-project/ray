@@ -1,8 +1,10 @@
 """Utilities for e2e tests of KubeRay/Ray integration.
 For consistency, all K8s interactions use kubectl through subprocess calls.
 """
+import atexit
+import contextlib
 import logging
-from pathlib import Path
+import pathlib
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
@@ -223,7 +225,7 @@ def kubectl_exec_python_script(
         return_out: If True, stdout will be redirected to the function's output.
             Otherwise, stdout will not be redirected and `None` will be returned.
     """
-    script_path = Path(__file__).resolve().parent / "scripts" / script_name
+    script_path = pathlib.Path(__file__).resolve().parent / "scripts" / script_name
     script_string = open(script_path).read()
     return kubectl_exec(
         ["python", "-c", script_string], pod, namespace, container, return_out
@@ -243,3 +245,59 @@ def get_raycluster(raycluster: str, namespace: str) -> Dict[str, Any]:
         .strip()
     )
     return yaml.safe_load(get_raycluster_output)
+
+
+def get_service_port(service: str, namespace: str, target_port: str) -> str:
+    """Given a K8s service and a port targetted by the service, returns the
+    corresponding service port.
+
+    Args:
+        service: Name of a K8s service.
+        namespace: Namespace to which the service belongs.
+        target_port: Port targeted by the service.
+
+    Returns:
+        The port exposed by the service.
+    """
+    service_port = subprocess.check_output(
+        [
+            "lalalalalalalalalalalalalalalala"
+        ]
+    ).decode().strip()
+    return service_port
+
+
+@contextlib.contextmanager
+def kubectl_port_forward(service: str, namespace: str, service_port: str,
+                         local_port: Optional[str] = None):
+    """Context manager which creates a kubectl port-forward process targeting a
+    K8s service.
+
+    Terminates the port-forwarding process upon exit.
+
+    Args:
+        service: Name of a K8s service.
+        namespace: Namespace to which the service belongs.
+        service_port: Target this port of the service.
+        local_port: Forward from this port. Optional. By default, uses `service_port`.
+    """
+    if not local_port:
+        local_port = service_port
+
+    process = subprocess.Popen(
+        [
+            "kubectl", "-n", namespace, "port-forward", f"service/{service}",
+            f"{local_port}:{service_port}"
+        ]
+    )
+
+    def terminate_process():
+        process.terminate()
+
+    # Try to clean up in case of interrupt.
+    atexit.register(terminate_process)
+
+    try:
+        yield
+    finally:
+        terminate_process()
