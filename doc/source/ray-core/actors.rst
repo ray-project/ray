@@ -351,4 +351,5 @@ More about Ray Actors
     actors/fault-tolerance.rst
     actors/scheduling.rst
     actors/task-orders.rst
+    actors/out-of-band-communication.rst
     actors/patterns/index.rst
