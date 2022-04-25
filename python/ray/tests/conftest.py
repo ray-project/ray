@@ -11,6 +11,9 @@ import json
 import time
 from pathlib import Path
 from unittest import mock
+import shutil
+import platform
+from tempfile import gettempdir
 
 import ray
 import ray.ray_constants as ray_constants
@@ -679,3 +682,40 @@ def set_bad_runtime_env_cache_ttl_seconds(request):
     os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"] = ttl
     yield ttl
     del os.environ["BAD_RUNTIME_ENV_CACHE_TTL_SECONDS"]
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    # execute all other hooks to obtain the report object
+    outcome = yield
+    rep = outcome.get_result()
+
+    # We temporarily restrict to Linux until we have artifact dirs
+    # for Windows and Mac
+    if platform.system() != "Linux":
+        return
+
+    # Only archive failed tests after the "call" phase of the test
+    if rep.when != "call" or not rep.failed:
+        return
+
+    # Get dir to write zipped logs to
+    archive_dir = os.environ.get("RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR")
+
+    if not archive_dir:
+        return
+
+    if not os.path.exists(archive_dir):
+        os.makedirs(archive_dir)
+
+    # Get logs dir from the latest ray session
+    tmp_dir = gettempdir()
+    logs_dir = os.path.join(tmp_dir, "ray", "session_latest", "logs")
+
+    if not os.path.exists(logs_dir):
+        return
+
+    # Write zipped logs to logs archive dir
+    test_name = rep.nodeid.replace(os.sep, "::")
+    output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
+    shutil.make_archive(output_file, "zip", logs_dir)
