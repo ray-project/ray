@@ -843,7 +843,7 @@ class ExperimentAnalysis:
         return state
 
 
-# Remove in Ray > 1.13
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 class Analysis(ExperimentAnalysis):
     def __init__(self, *args, **kwargs):

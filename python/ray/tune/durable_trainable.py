@@ -9,7 +9,7 @@ from ray.util.annotations import Deprecated
 logger = logging.getLogger(__name__)
 
 
-# Remove in Ray > 1.13
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 class DurableTrainable(Trainable):
     _sync_function_tpl = None
@@ -25,7 +25,7 @@ class DurableTrainable(Trainable):
         )
 
 
-# Remove in Ray > 1.13
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 def durable(trainable: Union[str, Type[Trainable], Callable]):
     raise DeprecationWarning(

@@ -525,10 +525,10 @@ class Quantized(Sampler):
         return list(quantized)
 
 
-# Remove in Ray > 1.13
+# Deprecated: Remove in Ray > 1.13
 def function(func):
     raise DeprecationWarning(
-        "wrapping {} with tune.function() is no " "longer needed".format(func)
+        "wrapping {} with tune.function() is no longer needed".format(func)
     )
 
 

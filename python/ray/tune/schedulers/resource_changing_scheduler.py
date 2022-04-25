@@ -582,7 +582,7 @@ _DistributeResourcesDefault = DistributeResources(add_bundles=False)
 _DistributeResourcesDistributedDefault = DistributeResources(add_bundles=True)
 
 
-# Remove in Ray > 1.13
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 def evenly_distribute_cpus_gpus(
     trial_runner: "trial_runner.TrialRunner",
@@ -630,7 +630,7 @@ def evenly_distribute_cpus_gpus(
     )
 
 
-# Remove in Ray > 1.13
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 def evenly_distribute_cpus_gpus_distributed(
     trial_runner: "trial_runner.TrialRunner",

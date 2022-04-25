@@ -384,7 +384,7 @@ def run(
     all_start = time.time()
 
     if loggers:
-        # Remove in Ray > 1.13
+        # Deprecated: Remove in Ray > 1.13
         raise DeprecationWarning(
             "The `loggers` argument is deprecated. Please pass the respective "
             "`LoggerCallback` classes to the `callbacks` argument instead. "

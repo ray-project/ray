@@ -68,8 +68,7 @@ class _TrialCheckpoint(os.PathLike):
             f">"
         )
 
-
-# Remove in Ray > 1.13
+# Deprecated: Remove in Ray > 1.13
 @Deprecated
 class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
     def __init__(
@@ -145,7 +144,7 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
         local_path: Optional[str] = None,
         overwrite: bool = False,
     ) -> str:
-        # Remove whole class in Ray > 1.13
+        # Deprecated: Remove whole class in Ray > 1.13
         raise DeprecationWarning(
             "`checkpoint.download()` is deprecated and will be removed in "
             "the future. Please use `checkpoint.to_directory()` instead."
@@ -157,14 +156,14 @@ class TrialCheckpoint(Checkpoint, _TrialCheckpoint):
         local_path: Optional[str] = None,
         clean_before: bool = False,
     ):
-        # Remove whole class in Ray > 1.13
+        # Deprecated: Remove whole class in Ray > 1.13
         raise DeprecationWarning(
             "`checkpoint.upload()` is deprecated and will be removed in "
             "the future. Please use `checkpoint.to_uri()` instead."
         )
 
     def save(self, path: Optional[str] = None, force_download: bool = False):
-        # Remove whole class in Ray > 1.13
+        # Deprecated: Remove whole class in Ray > 1.13
         raise DeprecationWarning(
             "`checkpoint.save()` is deprecated and will be removed in "
             "the future. Please use `checkpoint.to_directory()` or"

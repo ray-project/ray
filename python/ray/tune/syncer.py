@@ -97,7 +97,7 @@ def validate_sync_config(sync_config: "SyncConfig"):
         sync_config.node_sync_period = -1
         sync_config.cloud_sync_period = -1
 
-        # Remove in Ray > 1.13
+        # Deprecated: Remove in Ray > 1.13
         raise DeprecationWarning(
             "The `node_sync_period` and "
             "`cloud_sync_period` properties of `tune.SyncConfig` are "
@@ -118,7 +118,7 @@ def validate_sync_config(sync_config: "SyncConfig"):
         sync_config.sync_to_cloud = None
         sync_config.sync_to_driver = None
 
-        # Remove in Ray > 1.13
+        # Deprecated: Remove in Ray > 1.13
         raise DeprecationWarning(
             "The `sync_to_cloud` and `sync_to_driver` properties of "
             "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
@@ -198,7 +198,7 @@ class SyncConfig:
     sync_period: int = 300
 
     # Deprecated arguments
-    # Remove in Ray > 1.13
+    # Deprecated: Remove in Ray > 1.13
     sync_to_cloud: Any = None
     sync_to_driver: Any = None
     node_sync_period: int = -1
