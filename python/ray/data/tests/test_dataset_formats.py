@@ -1978,7 +1978,6 @@ def test_tensorflow_datasource(ray_start_regular_shared):
     import tensorflow_datasets as tfds
 
     tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
-    expected_data = list(tf_dataset)
 
     def dataset_factory():
         return tfds.load("mnist", split=["train"], as_supervised=True)[0]
@@ -1990,6 +1989,7 @@ def test_tensorflow_datasource(ray_start_regular_shared):
     assert ray_dataset.num_blocks() == 1
 
     actual_data = ray_dataset.take_all()
+    expected_data = list(tf_dataset)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
         expected_data, actual_data
     ):
