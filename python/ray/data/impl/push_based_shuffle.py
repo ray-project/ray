@@ -1,7 +1,6 @@
 import logging
 import math
 from typing import Callable, List, Optional, Dict, Any, Tuple, TypeVar, Union
-from collections import defaultdict
 
 import ray
 from ray.types import ObjectRef
@@ -203,7 +202,7 @@ class PushBasedShufflePlan(ShuffleOp):
         # This is a map from merge task index to a nested list of merge results
         # (ObjectRefs). Each merge task index corresponds to a partition of P
         # final reduce tasks.
-        all_merge_results = defaultdict(list)
+        all_merge_results = [[] for _ in range(schedule.num_merge_tasks_per_round)]
         shuffle_map_metadata = []
         shuffle_merge_metadata = []
         map_bar = ProgressBar("Shuffle Map", position=0, total=len(input_blocks_list))
@@ -358,7 +357,7 @@ class PushBasedShufflePlan(ShuffleOp):
         Returns list of [BlockMetadata, O1, O2, O3, ...output_num_blocks].
         """
         assert (
-            len(set(len(mapper_outputs) for mapper_outputs in all_mapper_outputs)) == 1
+            len({len(mapper_outputs) for mapper_outputs in all_mapper_outputs}) == 1
         ), "Received different number of map inputs"
         stats = BlockExecStats.builder()
         merged_outputs = []
