@@ -65,14 +65,17 @@ class SimpleQConfig(TrainerConfig):
     """Defines a SimpleQTrainer configuration class from which a SimpleQTrainer can be built.
     
     Example:
-        >>> replay_config = {
-                "capacity": 50000,
-                "replay_batch_size": 32,
-                "replay_sequence_length": 1
-        >>> }
-        >>> config = SimpleQConfig().training(replay_buffer_config=replay_config)
-                        .resources(num_gpus=1)\
-                        .rollouts(num_rollout_workers=3)
+        >>> config = SimpleQConfig()
+        >>> print(config.replay_buffer_config)
+        >>> replay_config = config.replay_buffer_config.update(
+        >>>     {
+        >>>         "capacity":  40000,
+        >>>         "replay_batch_size": 64,
+        >>>     }
+        >>> )
+        >>> config.training(replay_buffer_config=replay_config)
+                  .resources(num_gpus=1)\
+                  .rollouts(num_rollout_workers=3)
 
     Example:
         >>> config = SimpleQConfig()
@@ -86,22 +89,28 @@ class SimpleQConfig(TrainerConfig):
         >>> )
 
     Example:
-        >>> explore_config = {
-                "initial_epsilon": 1.5,
-                "final_epsilon": 0.01,
-                "epsilon_timesteps": 5000
-        >>> }
-        >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)
+        >>> config = SimpleQConfig()
+        >>> print(config.exploration_config)
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "initial_epsilon": 1.5,
+        >>>         "final_epsilon": 0.01,
+        >>>         "epsilon_timesteps": 5000
+        >>>     }
+        >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
         >>>             .exploration(exploration_config=explore_config)\
         >>>             .training(learning_starts=200)
 
     Example:
-        >>> explore_config = {
-                "type": "softq"
-                "temperature": [1.0]
-        >>> }
-        >>> config = SimpleQConfig().training(lr_schedule=[[1, 1e-3], [500, 5e-3]])
-        >>>             .exploration(exploration_config=explore_config)\
+        >>> config = SimpleQConfig()
+        >>> print(config.exploration_config)
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "type": "softq"
+        >>>         "temperature": [1.0]
+        >>>     }
+        >>> config = SimpleQConfig().training(lr_schedule=[[1, 1e-3], [500, 5e-3]])\
+        >>>             .exploration(exploration_config=explore_config)
     """
 
     def __init__(self):
@@ -116,11 +125,12 @@ class SimpleQConfig(TrainerConfig):
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
             "_enable_replay_buffer_api": True,
+            "learning_starts": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
             "replay_batch_size": 32,
             "replay_sequence_length": 1,
-        },
+        }
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
@@ -140,7 +150,7 @@ class SimpleQConfig(TrainerConfig):
 
         # `exploration()`
         self.exploration_config = {
-            "type": "epsilongreedy",
+            "type": "EpsilonGreedy",
             "initial_epsilon": 1.0,
             "final_epsilon": 0.02,
             "epsilon_timesteps": 10000
@@ -159,6 +169,8 @@ class SimpleQConfig(TrainerConfig):
    
     @override(TrainerConfig)
     def training(
+        self,
+        *,
         timesteps_per_iteration: Optional[int] = None,
         target_network_update_freq: Optional[int] = None,
         replay_buffer_config: Optional[dict] = None,
@@ -167,13 +179,33 @@ class SimpleQConfig(TrainerConfig):
         adam_epsilon: Optional[float] = None,
         grad_clip: Optional[int] = None,
         learning_starts: Optional[int] = None,
+        **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.
 
         Args:
             timesteps_per_iteration: Minimum env steps to optimize for per train call. This value does not affect learning, only the length of iterations.
             target_network_update_freq: Update the target network every `target_network_update_freq` steps.
-            replay_buffer_config: Size of the replay buffer. Note that if async_updates is set, then
+            replay_buffer_config: Replay buffer config.
+                Examples:
+                    {
+                        "_enable_replay_buffer_api": True,
+                        "learning_starts": 1000,
+                        "type": "MultiAgentReplayBuffer",
+                        "capacity": 50000,
+                        "replay_batch_size": 32,
+                        "replay_sequence_length": 1,
+                    }
+                    - OR -
+                    {
+                        "_enable_replay_buffer_api": True,
+                        "type": "MultiAgentPrioritizedReplayBuffer",
+                        "capacity": 50000,
+                        "prioritized_replay_alpha": 0.6,
+                        "prioritized_replay_beta": 0.4,
+                        "prioritized_replay_eps": 1e-6,
+                        "replay_sequence_length": 1,
+                    }
             store_buffer_in_checkpoints: Set this to True, if you want the contents of your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
                     - This is True AND restoring from a checkpoint that contains no buffer data.
@@ -193,7 +225,7 @@ class SimpleQConfig(TrainerConfig):
         if target_network_update_freq is not None:
             self.target_network_update_freq = target_network_update_freq
         if replay_buffer_config is not None:
-            self.replay_buffer_config.update(replay_buffer_config)
+            self.replay_buffer_config = replay_buffer_config
         if store_buffer_in_checkpoints is not None:
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
         if lr_schedule is not None:
@@ -205,7 +237,7 @@ class SimpleQConfig(TrainerConfig):
         if learning_starts is not None:
             self.learning_starts = learning_starts
 
-# Deprecated: Use ray.rllib.agents.dqn.SimpleQConfig instead!
+# Deprecated: Use ray.rllib.agents.dqn.simple_q.SimpleQConfig instead!
 class _deprecated_default_config(dict):
     def __init__(self):
         super().__init__(
@@ -223,6 +255,7 @@ class _deprecated_default_config(dict):
                     "prioritized_replay": DEPRECATED_VALUE,
                     "replay_buffer_config": {
                         "_enable_replay_buffer_api": True,
+                        "learning_starts": 1000,
                         "type": "MultiAgentReplayBuffer",
                         "capacity": 50000,
                         "replay_batch_size": 32,

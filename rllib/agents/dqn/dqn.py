@@ -10,15 +10,17 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 """  # noqa: E501
 
 import logging
-from typing import List, Optional, Type
+from typing import List, Optional, Callable, Type, Union
 
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import (
     SimpleQTrainer,
+    SimpleQConfig,
     DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG,
 )
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.trainer_config import TrainerConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -27,6 +29,9 @@ from ray.rllib.execution.rollout_ops import (
     ParallelRollouts,
     synchronous_parallel_sample,
 )
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.policy.sample_batch import MultiAgentBatch 
+from ray.rllib.policy.policy import Policy
 from ray.rllib.execution.train_ops import (
     TrainOneStep,
     UpdateTargetNetwork,
@@ -64,91 +69,243 @@ from ray.rllib.execution.common import (
 
 logger = logging.getLogger(__name__)
 
-# fmt: off
-# __sphinx_doc_begin__
-DEFAULT_CONFIG = Trainer.merge_trainer_configs(
-    SIMPLEQ_DEFAULT_CONFIG,
-    {
-        # === Model ===
-        # Number of atoms for representing the distribution of return. When
-        # this is greater than 1, distributional Q-learning is used.
-        # the discrete supports are bounded by v_min and v_max
-        "num_atoms": 1,
-        "v_min": -10.0,
-        "v_max": 10.0,
-        # Whether to use noisy network
-        "noisy": False,
-        # control the initial value of noisy nets
-        "sigma0": 0.5,
-        # Whether to use dueling dqn
-        "dueling": True,
-        # Dense-layer setup for each the advantage branch and the value branch
-        # in a dueling architecture.
-        "hiddens": [256],
-        # Whether to use double dqn
-        "double_q": True,
-        # N-step Q learning
-        "n_step": 1,
 
-        # === Replay buffer ===
-        # Deprecated, use capacity in replay_buffer_config instead.
-        "buffer_size": DEPRECATED_VALUE,
-        "replay_buffer_config": {
-            # Enable the new ReplayBuffer API.
+class DQNConfig(SimpleQConfig):
+    """Defines a DQNTrainer configuration class from which a DQNTrainer can be built.
+    
+    Example:
+        >>> config = DQNConfig() 
+        >>> print(config.replay_buffer_config)
+        >>> replay_config = config.replay_buffer_config.update(
+        >>>     {
+        >>>         "capacity": 60000,
+        >>>         "prioritized_replay_alpha": 0.5,
+        >>>         "prioritized_replay_beta": 0.5,
+        >>>         "prioritized_replay_eps": 3e-6,
+        >>>     }
+        >>> )
+        >>> config.training(replay_buffer_config=replay_config)\
+        >>>       .resources(num_gpus=1)\
+        >>>       .rollouts(num_rollout_workers=3)
+                  .environment("CartPole-v1")
+        >>> trainer = DQNTrainer(config=config)
+        >>> while True:
+        >>>     trainer.train()
+
+    Example:
+        >>> config = DQNConfig()
+        >>> print(config.num_atoms)
+        >>> config.training(num_atoms=tune.grid_search(list(range(1,11)))
+        >>> config.environment(env="CartPole-v1")
+        >>> tune.run(
+        >>>     "DQN",
+        >>>     stop={"episode_reward_mean":200},
+        >>>     config=config.to_dict()
+        >>> )
+
+    Example:
+        >>> config = DQNConfig()
+        >>> print(config.exploration_config)
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "initial_epsilon": 1.5,
+        >>>         "final_epsilon": 0.01,
+        >>>         "epsilone_timesteps": 5000,
+        >>>     }
+        >>> )
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
+        >>>       .exploration(exploration_config=explore_config)
+
+    Example:
+        >>> config = DQNConfig()
+        >>> print(config.exploration_config)
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "type": "softq"
+        >>>         "temperature": [1.0]
+        >>>     }
+        >>> )
+        >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
+        >>>       .exploration(exploration_config=explore_config)
+    """
+
+    def __init__(self):
+        """Initializes a DQNConfig instance."""
+        SimpleQConfig.__init__(self)
+        super(SimpleQConfig, self).__init__(trainer_class=DQNTrainer)
+
+        # DQN specific
+        # fmt: off
+        # __sphinx_doc_begin__
+        #
+        self.num_atoms = 1
+        self.v_min = -10.0
+        self.v_max = 10.0
+        self.noisy = False
+        self.sigma0 = 0.5
+        self.dueling = True
+        self.hiddens = [256]
+        self.double_q = True
+        self.n_step = 1
+        self.before_learn_on_batch = None
+        self.training_intensity = None
+        self.worker_side_prioritization = False
+
+        # Changes to SimpleQConfig default 
+        self.replay_buffer_config = {
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
-            # Size of the replay buffer. Note that if async_updates is set,
-            # then each worker will have a replay buffer of this size.
             "capacity": 50000,
             "prioritized_replay_alpha": 0.6,
-            # Beta parameter for sampling from prioritized replay buffer.
             "prioritized_replay_beta": 0.4,
-            # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            # The number of continuous environment steps to replay at once. This may
-            # be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
         },
-        # Set this to True, if you want the contents of your buffer(s) to be
-        # stored in any saved checkpoints as well.
-        # Warnings will be created if:
-        # - This is True AND restoring from a checkpoint that contains no buffer
-        #   data.
-        # - This is False AND restoring from a checkpoint that does contain
-        #   buffer data.
-        "store_buffer_in_checkpoints": False,
+        self._disable_execution_plan_api = True
 
+    @override(SimpleQConfig)
+    def training(
+        num_atoms: Optional[int] = None,
+        v_min: Optional[float] = None,
+        v_max: Optional[float] = None,
+        noisy: Optional[bool] = None,
+        sigma0: Optional[float] = None,
+        dueling: Optional[bool] = None,
+        hiddens: Optional[int] = None,
+        double_q: Optional[bool] = None,
+        n_step: Optional[int] = None,
+        before_learn_on_batch: Callable[[Type[MultiAgentBatch],List[Type[Policy]],Type[int]], Type[MultiAgentBatch]] = None,
+        training_intensity: Optional[float] = None,
+        worker_side_prioritization: Optional[bool] = None,
+        replay_buffer_config: Optional[dict] = None,
+    ) -> "DQNConfig":
+        """Sets the training related configuration.
 
-        # Callback to run before learning on a multi-agent batch of
-        # experiences.
-        "before_learn_on_batch": None,
+        Args:
+            num_atoms: Number of atoms for representing the distribution of return.
+                When this is greater than 1, distributional Q-learning is used.
+            v_min: Minimum value estimation
+            v_max: Maximum value estimation
+            noisy: Whether to use noisy network to aid exploration. This adds parametric noise to the model weights.
+            sigma0: Control the initial parameter noise for noisy nets 
+            dueling: Whether to use dueling dqn
+            hiddens: Dense-layer setup for each the advantage branch and the value branch
+            double_q: Whether to use double dqn
+            n_step: N-step Q-learning
+            before_learn_on_batch: Callback to run before learning on a multi-agent batch of experiences
+            training_intensity: The intensity with which to update the model (vs collecting samples from the env).
+                If None, uses "natural" values of:
+                    `train_batch_size` / (`rollout_fragment_length` x `num_workers` x `num_envs_per_worker`).
+                If provided, will make sure that the ratio between ts inserted into and sampled from th buffer matches the given values.
+                    Example:
+                        training_intensity=1000.0
+                        train_batch_size=250
+                        rollout_fragment_length=1
+                        num_workers=1 (or 0)
+                        num_envs_per_worker=1
+                        -> natural value = 250 / 1 = 250.0
+                        -> will make sure that replay+train op will be executed 4x asoften as rollout+insert op (4 * 250 = 1000).
+                        See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
+            worker_side_prioritization: Whether to compute priorities on workers.
+            replay_buffer_config: Replay buffer config.
+                Examples:
+                    {
+                        "_enable_replay_buffer_api": True,
+                        "learning_starts": 1000,
+                        "type": "MultiAgentReplayBuffer",
+                        "capacity": 50000,
+                        "replay_batch_size": 32,
+                        "replay_sequence_length": 1,
+                    }
+                    - OR -
+                    {
+                        "_enable_replay_buffer_api": True,
+                        "type": "MultiAgentPrioritizedReplayBuffer",
+                        "capacity": 50000,
+                        "prioritized_replay_alpha": 0.6,
+                        "prioritized_replay_beta": 0.4,
+                        "prioritized_replay_eps": 1e-6,
+                        "replay_sequence_length": 1,
+                    }
+        Returns:
+            This updated TrainerConfig object.
+        """
+        # Pass kwargs onto super's `training()` method.
+        super().training(**kwargs)
+        
+        if num_atoms is not None:
+            self.num_atoms = num_atoms
+        if v_min is not None:
+            self.v_min = v_min
+        if v_max is not None:
+            self.v_max = v_max
+        if noisy is not None:
+            self.noisy = noisy
+        if sigma0 is not None:
+            self.sigma0 = sigma0
+        if dueling is not None:
+            self.dueling = dueling
+        if hiddens is not None:
+            self.hiddens = hiddens
+        if double_q is not None:
+            self.double_q = double_q
+        if n_step is not None:
+            self.n_step = n_step
+        if before_learn_on_batch is not None:
+            self.before_learn_on_batch = before_learn_on_batch
+        if training_intensity is not None:
+            self.training_intensity = training_intensity
+        if worker_side_prioritization is not None:
+            self.worker_side_priorizatiion = worker_side_prioritization
+        if replay_buffer_config is not None:
+            self.replay_buffer_config = replay_buffer_config
 
-        # The intensity with which to update the model (vs collecting samples
-        # from the env). If None, uses the "natural" value of:
-        # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-        # `num_envs_per_worker`).
-        # If provided, will make sure that the ratio between ts inserted into
-        # and sampled from the buffer matches the given value.
-        # Example:
-        #   training_intensity=1000.0
-        #   train_batch_size=250 rollout_fragment_length=1
-        #   num_workers=1 (or 0) num_envs_per_worker=1
-        #   -> natural value = 250 / 1 = 250.0
-        #   -> will make sure that replay+train op will be executed 4x as
-        #      often as rollout+insert op (4 * 250 = 1000).
-        # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further
-        # details.
-        "training_intensity": None,
+#Deprecated: Use ray.rllib.agents.dqn.DQNConfig instead!
+class _deprecated_default_config(dict):
+    def __init__(self):
+        super().__init__(
+            Trainer.merge_trainer_configs(
+                SIMPLEQ_DEFAULT_CONFIG,
+                {
+                    # DQN specific keys:
+                    "num_atoms": 1,
+                    "v_min": -10.0,
+                    "v_max": 10.0,
+                    "noisy": False,
+                    "sigma0": 0.5,
+                    "dueling": True,
+                    "hiddens": [256],
+                    "double_q": True,
+                    "n_step": 1,
+                    "before_learn_on_batch": None,
+                    "training_intensity": None,
+                    "worker_side_prioritization": False,
+                    # Changes to SimpleQConfig default: 
+                    "replay_buffer_config": {
+                        "_enable_replay_buffer_api": True,
+                        "type": "MultiAgentPrioritizedReplayBuffer",
+                        "capacity": 50000,
+                        "prioritized_replay_alpha": 0.6,
+                        "prioritized_replay_beta": 0.4,
+                        "prioritized_replay_eps": 1e-6,
+                        "replay_sequence_length": 1,
+                    },
+                    "_disable_execution_plan_api": True,
+                },
+                _allow_unknown_configs=True,
+            )
+        )
+>>>>>>> simple q and dqn
 
-        # === Parallelism ===
-        # Whether to compute priorities on workers.
-        "worker_side_prioritization": False,
-    },
-    _allow_unknown_configs=True,
-)
-# __sphinx_doc_end__
-# fmt: on
+    @Deprecated(
+        old="ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG",
+        new="ray.rllib.agents.dqn.dqn.DQNConfig(...)",
+        error=False,
+    )
+    def __getitem__(self, item):
+        return super().__getitem__(item)
 
+DEFAULT_CONFIG = _deprecated_default_config()
 
 def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
@@ -176,10 +333,18 @@ class DQNTrainer(SimpleQTrainer):
     @classmethod
     @override(SimpleQTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
+        return DQNConfig().to_dict()
 
     @override(SimpleQTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        """Validates the Trainer's config dict.
+
+        Args:
+            config (TrainerConfigDict): The Trainer's config to check.
+
+        Raises:
+            ValueError: In case something is wrong with the config.
+        """
         # Call super's validation method.
         super().validate_config(config)
 
@@ -191,7 +356,7 @@ class DQNTrainer(SimpleQTrainer):
     def get_default_policy_class(
         self, config: TrainerConfigDict
     ) -> Optional[Type[Policy]]:
-        if config["framework"] == "torch":
+        if  config["framework"] == "torch":
             return DQNTorchPolicy
         else:
             return DQNTFPolicy
