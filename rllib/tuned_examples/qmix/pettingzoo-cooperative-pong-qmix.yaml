@@ -8,3 +8,4 @@ pettingzoo-cooperative-pong-qmix:
     config:
         # QMIX only supports torch for now.
         framework: torch
+        _disable_preprocessor_api: true

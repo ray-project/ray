@@ -427,9 +427,10 @@ qmix-pettingzoo-cooperative-pong-v5:
         timesteps_total: 100000
     stop:
         time_total_s: 3600
-    config:
-        # QMIX only supports torch for now.
+    # QMIX only supports torch for now.
     frameworks: ["torch"]
+    config:
+        _disable_preprocessor_api: true
 
 
 # Expect roughly 1000 reward after 1h on 1GPU
