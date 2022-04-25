@@ -654,9 +654,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     "_disable_action_flattening": False,
     # Experimental flag.
     # If True, the execution plan API will not be used. Instead,
-    # a Trainer's `training_iteration` method will be called as-is each
+    # a Trainer's `training_iteration()` method will be called on each
     # training iteration.
-    "_disable_execution_plan_api": False,
+    "_disable_execution_plan_api": True,
 
     # If True, disable the environment pre-checking module.
     "disable_env_checking": False,

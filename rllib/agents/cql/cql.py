@@ -53,6 +53,8 @@ CQL_DEFAULT_CONFIG = merge_dicts(
             "type": "MultiAgentReplayBuffer",
             "capacity": int(1e6),
         },
+        # Use `execution_plan` instead of `training_iteration`.
+        "_disable_execution_plan_api": False,
     })
 # __sphinx_doc_end__
 # fmt: on

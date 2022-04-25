@@ -60,12 +60,6 @@ DEFAULT_CONFIG = with_common_config({
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
-
-    # Use the Trainer's `training_iteration` function instead of `execution_plan`.
-    # Fixes a severe performance problem with A3C. Setting this to True leads to a
-    # speedup of up to 3x for a large number of workers and heavier
-    # gradient computations (e.g. ray/rllib/tuned_examples/a3c/pong-a3c.yaml)).
-    "_disable_execution_plan_api": True,
 })
 # __sphinx_doc_end__
 # fmt: on

@@ -125,8 +125,6 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # TODO: Find a way to support None again as a means to replay
         #  proceeding as fast as possible.
         "training_intensity": 1,
-        # Use `training_iteration` instead of `execution_plan` by default.
-        "_disable_execution_plan_api": True,
     },
 )
 # __sphinx_doc_end__

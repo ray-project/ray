@@ -109,7 +109,6 @@ class PPOConfig(TrainerConfig):
         self.train_batch_size = 4000
         self.lr = 5e-5
         self.model["vf_share_layers"] = False
-        self._disable_execution_plan_api = True
 
     @override(TrainerConfig)
     def training(
@@ -231,7 +230,6 @@ class _deprecated_default_config(dict):
                     "model": {
                         "vf_share_layers": False,
                     },
-                    "_disable_execution_plan_api": True,
                 }
             )
         )

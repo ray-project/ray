@@ -13,9 +13,6 @@ DEFAULT_CONFIG = with_common_config({
 
     # Experimental: By default, switch off preprocessors for PG.
     "_disable_preprocessor_api": True,
-
-    # Use new `training_iteration` API (instead of `execution_plan` method).
-    "_disable_execution_plan_api": True,
 })
 
 # __sphinx_doc_end__

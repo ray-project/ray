@@ -125,6 +125,9 @@ DEFAULT_CONFIG = with_common_config({
 
     # DEPRECATED:
     "num_data_loader_buffers": DEPRECATED_VALUE,
+
+    # Use `execution_plan` instead of `training_iteration`.
+    "_disable_execution_plan_api": False,
 })
 # __sphinx_doc_end__
 # fmt: on

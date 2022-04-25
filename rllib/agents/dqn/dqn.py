@@ -142,12 +142,6 @@ DEFAULT_CONFIG = Trainer.merge_trainer_configs(
         # === Parallelism ===
         # Whether to compute priorities on workers.
         "worker_side_prioritization": False,
-
-        # Experimental flag.
-        # If True, the execution plan API will not be used. Instead,
-        # a Trainer's `training_iteration` method will be called as-is each
-        # training iteration.
-        "_disable_execution_plan_api": True,
     },
     _allow_unknown_configs=True,
 )
