@@ -7,7 +7,7 @@ from ray.tune.logger import Logger, LoggerCallback
 from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
 from ray.tune.trial import Trial
 from ray.util.annotations import Deprecated
-#from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
