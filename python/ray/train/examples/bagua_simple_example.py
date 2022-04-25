@@ -4,6 +4,8 @@ import torch.nn as nn
 import ray.train as train
 from ray.train import Trainer
 
+from bagua.torch_api.algorithms import gradient_allreduce
+
 
 class LinearDataset(torch.utils.data.Dataset):
     """y = a * x + b"""
@@ -63,8 +65,9 @@ def train_func(config):
     model = nn.Linear(1, hidden_size)
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    model = train.bagua.prepare_model(model, optimizer)
-
+    model = train.bagua.prepare_model(
+        model, [optimizer], gradient_allreduce.GradientAllReduceAlgorithm()
+    )
     loss_fn = nn.MSELoss()
     results = []
 
@@ -92,5 +95,5 @@ if __name__ == "__main__":
     import ray
 
     ray.init()
-    train_linear(num_workers=1, use_gpu=True, epochs=10)
+    train_linear(num_workers=2, use_gpu=True, epochs=3)
     ray.shutdown()

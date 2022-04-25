@@ -199,6 +199,7 @@ class BaguaBackend(TorchBackend):
             )
             backend_config.master_addr = master_addr
             backend_config.master_port = str(master_port)
+            backend_config.nnodes = str(len(worker_group))
 
             def set_env_vars(world_size, config):
                 # Follow the env setup of bagua.distributed.launch.
@@ -280,7 +281,7 @@ def get_device() -> torch.device:
 @PublicAPI(stability="beta")
 def prepare_model(
     model: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
+    optimizers: torch.optim.Optimizer,
     algorithm: bagua.torch_api.algorithms.Algorithm,
     process_group: Optional[bagua.torch_api.communication.BaguaProcessGroup] = None,
     do_flatten: bool = True,
@@ -308,7 +309,9 @@ def prepare_model(
             The flatten operation will reset data pointer of
             bucket tensors so that they can use faster code paths. Defaults to True.
     """
-    return get_accelerator(BaguaAccelerator).prepare_model(model, optimizer, algorithm)
+    return get_accelerator(BaguaAccelerator).prepare_model(
+        model, optimizers, algorithm, process_group, do_flatten
+    )
 
 
 @PublicAPI(stability="beta")
