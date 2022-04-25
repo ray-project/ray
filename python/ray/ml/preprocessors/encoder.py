@@ -20,7 +20,6 @@ class OrdinalEncoder(Preprocessor):
 
     def __init__(self, columns: List[str]):
         # TODO: allow user to specify order of values within each column.
-        super().__init__()
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -40,7 +39,8 @@ class OrdinalEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Encoder columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return f"OrdinalEncoder(columns={self.columns}, stats={stats})"
 
 
 class OneHotEncoder(Preprocessor):
@@ -59,7 +59,6 @@ class OneHotEncoder(Preprocessor):
 
     def __init__(self, columns: List[str]):
         # TODO: add `drop` parameter.
-        super().__init__()
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -80,7 +79,8 @@ class OneHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Encoder columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return f"OneHotEncoder(columns={self.columns}, stats={stats})"
 
 
 class LabelEncoder(Preprocessor):
@@ -96,7 +96,6 @@ class LabelEncoder(Preprocessor):
     """
 
     def __init__(self, label_column: str):
-        super().__init__()
         self.label_column = label_column
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -114,7 +113,8 @@ class LabelEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Encoder label column={self.label_column} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return f"LabelEncoder(label_column={self.label_column}, stats={stats})"
 
 
 class Categorizer(Preprocessor):
