@@ -12,7 +12,7 @@ from ray.train.constants import (
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
-from ray.train.dataset_spec import _RayDatasetSpec
+from ray.train.impl.dataset_spec import _RayDatasetSpec
 from ray.train.session import TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
 from ray.train.utils import check_for_failure, Singleton
