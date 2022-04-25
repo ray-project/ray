@@ -10,11 +10,17 @@ import snappy
 from fsspec.implementations.local import LocalFileSystem
 from pytest_lazyfixture import lazy_fixture
 from io import BytesIO
+from functools import partial
 
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.datasource import DummyOutputDatasource
+from ray.data.datasource import (
+    DummyOutputDatasource,
+    PathPartitionFilter,
+    PathPartitionEncoder,
+    PartitionStyle,
+)
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import PARALLELIZE_META_FETCH_THRESHOLD
@@ -26,6 +32,25 @@ def maybe_pipeline(ds, enabled):
         return ds.window(blocks_per_window=1)
     else:
         return ds
+
+
+@ray.remote
+class Counter:
+    def __init__(self):
+        self.count = 0
+
+    def increment(self):
+        self.count += 1
+
+    def get(self):
+        return self.count
+
+    def reset(self):
+        self.count = 0
+
+
+def df_to_csv(dataframe, path, **kwargs):
+    dataframe.to_csv(path, **kwargs)
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
@@ -769,6 +794,63 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert str(ds.take(2)) == "[{'value': array([0])}, {'value': array([1])}]"
 
 
+def test_numpy_read_partitioned_with_filter(
+    ray_start_regular_shared,
+    tmp_path,
+    write_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    def df_to_np(dataframe, path, **kwargs):
+        np.save(path, dataframe.to_numpy(dtype=np.dtype(np.int8)), **kwargs)
+
+    df = pd.DataFrame({"one": [1, 1, 1, 3, 3, 3], "two": [0, 1, 2, 3, 4, 5]})
+    partition_keys = ["one"]
+    kept_file_counter = Counter.remote()
+    skipped_file_counter = Counter.remote()
+
+    def skip_unpartitioned(kv_dict):
+        keep = bool(kv_dict)
+        counter = kept_file_counter if keep else skipped_file_counter
+        ray.get(counter.increment.remote())
+        return keep
+
+    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
+        base_dir = os.path.join(tmp_path, style.value)
+        partition_path_encoder = PathPartitionEncoder.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+        )
+        write_partitioned_df(
+            df,
+            partition_keys,
+            partition_path_encoder,
+            df_to_np,
+        )
+        df_to_np(df, os.path.join(base_dir, "test.npy"))
+        partition_path_filter = PathPartitionFilter.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filter_fn=skip_unpartitioned,
+        )
+        ds = ray.data.read_numpy(base_dir, partition_filter=partition_path_filter)
+
+        vals = [[1, 0], [1, 1], [1, 2], [3, 3], [3, 4], [3, 5]]
+        val_str = "".join([f"{{'value': array({v}, dtype=int8)}}, " for v in vals])[:-2]
+        assert_base_partitioned_ds(
+            ds,
+            schema="{value: <ArrowTensorType: shape=(2,), dtype=int8>}",
+            sorted_values=f"[[{val_str}]]",
+            ds_take_transform_fn=lambda taken: [taken],
+            sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
+        )
+        assert ray.get(kept_file_counter.get.remote()) == 2
+        assert ray.get(skipped_file_counter.get.remote()) == 1
+        ray.get(kept_file_counter.reset.remote())
+        ray.get(skipped_file_counter.reset.remote())
+
+
 @pytest.mark.parametrize(
     "fs,data_path,endpoint_url",
     [
@@ -855,6 +937,58 @@ def test_read_text(ray_start_regular_shared, tmp_path):
     assert ds.count() == 5
 
 
+def test_read_text_partitioned_with_filter(
+    ray_start_regular_shared,
+    tmp_path,
+    write_base_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    def df_to_text(dataframe, path, **kwargs):
+        dataframe.to_string(path, index=False, header=False, **kwargs)
+
+    partition_keys = ["one"]
+    kept_file_counter = Counter.remote()
+    skipped_file_counter = Counter.remote()
+
+    def skip_unpartitioned(kv_dict):
+        keep = bool(kv_dict)
+        counter = kept_file_counter if keep else skipped_file_counter
+        ray.get(counter.increment.remote())
+        return keep
+
+    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
+        base_dir = os.path.join(tmp_path, style.value)
+        partition_path_encoder = PathPartitionEncoder.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+        )
+        write_base_partitioned_df(
+            partition_keys,
+            partition_path_encoder,
+            df_to_text,
+        )
+        df_to_text(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.txt"))
+        partition_path_filter = PathPartitionFilter.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filter_fn=skip_unpartitioned,
+        )
+        ds = ray.data.read_text(base_dir, partition_filter=partition_path_filter)
+        assert_base_partitioned_ds(
+            ds,
+            schema="<class 'str'>",
+            num_computed=None,
+            sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
+            ds_take_transform_fn=lambda t: t,
+        )
+        assert ray.get(kept_file_counter.get.remote()) == 2
+        assert ray.get(skipped_file_counter.get.remote()) == 1
+        ray.get(kept_file_counter.reset.remote())
+        ray.get(skipped_file_counter.reset.remote())
+
+
 def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_binary_snappy")
     os.mkdir(path)
@@ -878,6 +1012,68 @@ def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
         snappy.stream_compress(bytes, f)
     ds = ray.data.read_binary_files(path)
     assert sorted(ds.take()) == [byte_str]
+
+
+def test_read_binary_snappy_partitioned_with_filter(
+    ray_start_regular_shared,
+    tmp_path,
+    write_base_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    def df_to_binary(dataframe, path, **kwargs):
+        with open(path, "wb") as f:
+            df_string = dataframe.to_string(index=False, header=False, **kwargs)
+            byte_str = df_string.encode()
+            bytes = BytesIO(byte_str)
+            snappy.stream_compress(bytes, f)
+
+    partition_keys = ["one"]
+    kept_file_counter = Counter.remote()
+    skipped_file_counter = Counter.remote()
+
+    def skip_unpartitioned(kv_dict):
+        keep = bool(kv_dict)
+        counter = kept_file_counter if keep else skipped_file_counter
+        ray.get(counter.increment.remote())
+        return keep
+
+    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
+        base_dir = os.path.join(tmp_path, style.value)
+        partition_path_encoder = PathPartitionEncoder.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+        )
+        write_base_partitioned_df(
+            partition_keys,
+            partition_path_encoder,
+            df_to_binary,
+        )
+        df_to_binary(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.snappy"))
+        partition_path_filter = PathPartitionFilter.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filter_fn=skip_unpartitioned,
+        )
+        ds = ray.data.read_binary_files(
+            base_dir,
+            partition_filter=partition_path_filter,
+            arrow_open_stream_args=dict(compression="snappy"),
+        )
+        assert_base_partitioned_ds(
+            ds,
+            count=2,
+            num_rows=2,
+            schema="<class 'bytes'>",
+            num_computed=None,
+            sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
+            ds_take_transform_fn=lambda t: t,
+        )
+        assert ray.get(kept_file_counter.get.remote()) == 2
+        assert ray.get(skipped_file_counter.get.remote()) == 1
+        ray.get(kept_file_counter.reset.remote())
+        ray.get(skipped_file_counter.reset.remote())
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -1075,6 +1271,79 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+def test_json_read_partitioned_with_filter(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+    write_base_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    def df_to_json(dataframe, path, **kwargs):
+        dataframe.to_json(path, **kwargs)
+
+    storage_options = (
+        {}
+        if endpoint_url is None
+        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    )
+    file_writer_fn = partial(
+        df_to_json,
+        orient="records",
+        lines=True,
+        storage_options=storage_options,
+    )
+    partition_keys = ["one"]
+    kept_file_counter = Counter.remote()
+    skipped_file_counter = Counter.remote()
+
+    def skip_unpartitioned(kv_dict):
+        keep = bool(kv_dict)
+        counter = kept_file_counter if keep else skipped_file_counter
+        ray.get(counter.increment.remote())
+        return keep
+
+    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
+        base_dir = os.path.join(data_path, style.value)
+        partition_path_encoder = PathPartitionEncoder.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filesystem=fs,
+        )
+        write_base_partitioned_df(
+            partition_keys,
+            partition_path_encoder,
+            file_writer_fn,
+        )
+        file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
+        partition_path_filter = PathPartitionFilter.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filter_fn=skip_unpartitioned,
+            filesystem=fs,
+        )
+        ds = ray.data.read_json(
+            base_dir,
+            partition_filter=partition_path_filter,
+            filesystem=fs,
+        )
+        assert_base_partitioned_ds(ds)
+        assert ray.get(kept_file_counter.get.remote()) == 2
+        assert ray.get(skipped_file_counter.get.remote()) == 1
+        ray.get(kept_file_counter.reset.remote())
+        ray.get(skipped_file_counter.reset.remote())
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
 def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     if endpoint_url is None:
         storage_options = {}
@@ -1225,6 +1494,11 @@ def test_json_write_block_path_provider(
             lazy_fixture("s3_path_with_space"),
             lazy_fixture("s3_server"),
         ),
+        (
+            lazy_fixture("s3_fs_with_special_chars"),
+            lazy_fixture("s3_path_with_special_chars"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -1343,6 +1617,241 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_csv_read_partitioned_hive_implicit(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+    write_base_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    storage_options = (
+        {}
+        if endpoint_url is None
+        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    )
+    partition_keys = ["one"]
+    partition_path_encoder = PathPartitionEncoder.of(
+        base_dir=data_path,
+        field_names=partition_keys,
+        filesystem=fs,
+    )
+    write_base_partitioned_df(
+        partition_keys,
+        partition_path_encoder,
+        partial(df_to_csv, storage_options=storage_options, index=False),
+    )
+    ds = ray.data.read_csv(
+        data_path,
+        partition_filter=PathPartitionFilter.of(None, filesystem=fs),
+        filesystem=fs,
+    )
+    assert_base_partitioned_ds(ds)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_csv_read_partitioned_styles_explicit(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+    write_base_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    storage_options = (
+        {}
+        if endpoint_url is None
+        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    )
+    partition_keys = ["one"]
+    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
+        base_dir = os.path.join(data_path, style.value)
+        partition_path_encoder = PathPartitionEncoder.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filesystem=fs,
+        )
+        write_base_partitioned_df(
+            partition_keys,
+            partition_path_encoder,
+            partial(df_to_csv, storage_options=storage_options, index=False),
+        )
+        partition_path_filter = PathPartitionFilter.of(
+            None,
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filesystem=fs,
+        )
+        ds = ray.data.read_csv(
+            base_dir,
+            partition_filter=partition_path_filter,
+            filesystem=fs,
+        )
+        assert_base_partitioned_ds(ds)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_csv_read_partitioned_with_filter(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+    write_base_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    storage_options = (
+        {}
+        if endpoint_url is None
+        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    )
+    partition_keys = ["one"]
+    file_writer_fn = partial(df_to_csv, storage_options=storage_options, index=False)
+    kept_file_counter = Counter.remote()
+    skipped_file_counter = Counter.remote()
+
+    def skip_unpartitioned(kv_dict):
+        keep = bool(kv_dict)
+        counter = kept_file_counter if keep else skipped_file_counter
+        ray.get(counter.increment.remote())
+        return keep
+
+    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
+        base_dir = os.path.join(data_path, style.value)
+        partition_path_encoder = PathPartitionEncoder.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filesystem=fs,
+        )
+        write_base_partitioned_df(
+            partition_keys,
+            partition_path_encoder,
+            file_writer_fn,
+        )
+        file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.csv"))
+        partition_path_filter = PathPartitionFilter.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filesystem=fs,
+            filter_fn=skip_unpartitioned,
+        )
+        ds = ray.data.read_csv(
+            base_dir,
+            partition_filter=partition_path_filter,
+            filesystem=fs,
+        )
+        assert_base_partitioned_ds(ds)
+        assert ray.get(kept_file_counter.get.remote()) == 2
+        assert ray.get(skipped_file_counter.get.remote()) == 1
+        ray.get(kept_file_counter.reset.remote())
+        ray.get(skipped_file_counter.reset.remote())
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
+def test_csv_read_partitioned_with_filter_multikey(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+    write_base_partitioned_df,
+    assert_base_partitioned_ds,
+):
+    storage_options = (
+        {}
+        if endpoint_url is None
+        else dict(client_kwargs=dict(endpoint_url=endpoint_url))
+    )
+    partition_keys = ["one", "two"]
+    file_writer_fn = partial(df_to_csv, storage_options=storage_options, index=False)
+    kept_file_counter = Counter.remote()
+    skipped_file_counter = Counter.remote()
+
+    def keep_expected_partitions(kv_dict):
+        keep = bool(kv_dict) and (
+            (kv_dict["one"] == "1" and kv_dict["two"] in {"a", "b", "c"})
+            or (kv_dict["one"] == "3" and kv_dict["two"] in {"e", "f", "g"})
+        )
+        counter = kept_file_counter if keep else skipped_file_counter
+        ray.get(counter.increment.remote())
+        return keep
+
+    for i, style in enumerate([PartitionStyle.HIVE, PartitionStyle.DIRECTORY]):
+        base_dir = os.path.join(data_path, style.value)
+        partition_path_encoder = PathPartitionEncoder.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filesystem=fs,
+        )
+        write_base_partitioned_df(
+            partition_keys,
+            partition_path_encoder,
+            file_writer_fn,
+        )
+        df = pd.DataFrame({"1": [1]})
+        file_writer_fn(df, os.path.join(data_path, f"test{i}.csv"))
+        partition_path_filter = PathPartitionFilter.of(
+            style=style,
+            base_dir=base_dir,
+            field_names=partition_keys,
+            filesystem=fs,
+            filter_fn=keep_expected_partitions,
+        )
+        ds = ray.data.read_csv(
+            data_path,
+            partition_filter=partition_path_filter,
+            filesystem=fs,
+        )
+        assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
+        assert ray.get(kept_file_counter.get.remote()) == 6
+        if i == 0:
+            # expect to skip 1 unpartitioned files in the parent of the base directory
+            assert ray.get(skipped_file_counter.get.remote()) == 1
+        else:
+            # expect to skip 2 unpartitioned files in the parent of the base directory
+            # plus 6 unpartitioned files in the base directory's sibling directories
+            assert ray.get(skipped_file_counter.get.remote()) == 8
+        ray.get(kept_file_counter.reset.remote())
+        ray.get(skipped_file_counter.reset.remote())
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_special_chars"),
+            lazy_fixture("s3_path_with_special_chars"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
