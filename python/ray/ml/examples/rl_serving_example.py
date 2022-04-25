@@ -71,7 +71,14 @@ if __name__ == "__main__":
     env = gym.make("CartPole-v0")
     obs = env.reset()
 
-    actions = predictor.predict(obs)
-    print("ACTIONS", actions)
+    reward = 0.0
+    for i in range(200):
+        action = predictor.predict([obs])
+        obs, rew, done, _ = env.step(action[0])
+        reward += rew
+        if done:
+            break
+
+    print("EVAL", reward)
 
     serve_rl_model(checkpoint)

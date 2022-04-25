@@ -75,7 +75,11 @@ class RLPredictor(Predictor):
             obs = data.to_numpy()
         elif isinstance(data, np.ndarray):
             obs = data.squeeze()
+        elif isinstance(data, list):
+            obs = np.array(data)
         else:
             raise RuntimeError("Invalid data type:", type(data))
-        action = self.trainer.compute_single_action(obs)
-        return action
+
+        policy = self.trainer.get_policy()
+        actions, _outs, _info = policy.compute_actions(obs)
+        return actions
