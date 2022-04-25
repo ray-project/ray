@@ -49,7 +49,7 @@ def validate_epoch(dataloader, model, loss_fn):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    result = {"loss": loss}
+    result = {"val_loss": loss}
     return result
 
 
@@ -89,9 +89,10 @@ def training_loop(config):
 
     for epoch_idx in range(2):
         train_epoch(train_loader, model, criterion, optimizer)
-        validation_loss = validate_epoch(validation_loader, model, criterion, optimizer)
+        validation_loss = validate_epoch(validation_loader, model, criterion)
 
-        train.report(loss=validation_loss)
+        train.save_checkpoint(model_state_dict=model.module.state_dict())
+        train.report(**validation_loss)
 
 
 def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
@@ -125,11 +126,14 @@ def get_remote_model(remote_model_checkpoint_path):
 
 
 def get_model(model_checkpoint_path):
-    model_state = torch.load(model_checkpoint_path)
+    checkpoint_dict = Trainer.load_checkpoint_from_path(
+        model_checkpoint_path + "/checkpoint"
+    )
+    model_state = checkpoint_dict["model_state_dict"]
 
     model = ResNet18(None)
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
-    model.load_state_dict(model_state["models"][0])
+    model.load_state_dict(model_state)
 
     return model
 
