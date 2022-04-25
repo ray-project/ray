@@ -57,7 +57,7 @@ do
     echo "========================================================================================="
     printf "\n\n\n"
 
-    export RAY_ADDRESS=127.0.0.1:8265
+    export RAY_ADDRESS="http://127.0.0.1:8265"
 
     cleanup () {
         unset RAY_ADDRESS
