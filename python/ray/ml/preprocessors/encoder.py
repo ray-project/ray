@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional, Union
 
 import pandas as pd
 
@@ -117,10 +117,65 @@ class LabelEncoder(Preprocessor):
         return f"<Encoder label column={self.label_column} stats={self.stats_}>"
 
 
+class Categorizer(Preprocessor):
+    """Transform Dataset columns to Categorical data type.
+
+    Note that in case of automatic inferrence, you will most
+    likely want to run this preprocessor on the entire dataset
+    before splitting it (eg. into train and test sets), so
+    that all the categories are inferred. There is no risk
+    of data leakage when using this preprocessor.
+
+    Args:
+        columns: The columns which data type to change. Can be
+            either a list of columns, in which case the categories
+            will be inferred automatically from the data, or
+            a dict of `column:pd.CategoricalDtype or None` -
+            if specified, the dtype will be applied, and if not,
+            it will be automatically inferred.
+    """
+
+    def __init__(
+        self, columns: Union[List[str], Dict[str, Optional[pd.CategoricalDtype]]]
+    ):
+        self.columns = columns
+
+    def _fit(self, dataset: Dataset) -> Preprocessor:
+        columns_to_get = (
+            self.columns
+            if isinstance(self.columns, list)
+            else [
+                column for column in self.columns.keys() if self.columns[column] is None
+            ]
+        )
+        if columns_to_get:
+            unique_indices = _get_unique_value_indices(
+                dataset, *columns_to_get, drop_na_values=True, key_format="{0}"
+            )
+            unique_indices = {
+                column: pd.CategoricalDtype(values_indices.keys())
+                for column, values_indices in unique_indices.items()
+            }
+        else:
+            unique_indices = {}
+        if isinstance(self.columns, dict):
+            unique_indices = {**self.columns, **unique_indices}
+        self.stats_: Dict[str, pd.CategoricalDtype] = unique_indices
+        return self
+
+    def _transform_pandas(self, df: pd.DataFrame):
+        df = df.astype(self.stats_)
+        return df
+
+    def __repr__(self):
+        return f"<Categorizer columns={self.columns} stats={self.stats_}>"
+
+
 def _get_unique_value_indices(
     dataset: Dataset,
     *columns: str,
     drop_na_values: bool = False,
+    key_format: str = "unique_values({0})",
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
     columns = list(columns)
@@ -146,7 +201,7 @@ def _get_unique_value_indices(
                 )
 
     unique_values_with_indices = {
-        f"unique_values({column})": {
+        key_format.format(column): {
             k: j for j, k in enumerate(sorted(final_uniques[column]))
         }
         for column in columns
