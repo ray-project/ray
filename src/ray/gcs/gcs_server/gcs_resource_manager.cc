@@ -163,11 +163,6 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   UpdateNodeResourceUsage(node_id, data);
 }
 
-void GcsResourceManager::HandleReportResourceLoad(
-    const rpc::ReportResourceLoadRequest &request,
-    rpc::ReportResourceLoadReply *reply,
-    rpc::SendReplyCallback send_reply_callback) override {}
-
 void GcsResourceManager::HandleReportResourceUsage(
     const rpc::ReportResourceUsageRequest &request,
     rpc::ReportResourceUsageReply *reply,

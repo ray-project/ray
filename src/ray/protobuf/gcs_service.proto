@@ -228,14 +228,6 @@ message ReportResourceUsageReply {
   GcsStatus status = 1;
 }
 
-message ReportResourceLoadRequest {
-  ResourceLoad load = 1;
-}
-
-message ReportResourceLoadReply {
-  GcsStatus status = 1;
-}
-
 // Service for heartbeat info access.
 service HeartbeatInfoGcsService {
   // Report heartbeat of a node to GCS Service.
@@ -575,8 +567,6 @@ service NodeResourceInfoGcsService {
       returns (GetAllAvailableResourcesReply);
   // Report resource usage of a node to GCS Service.
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
-  // Report resource load of a node to GCS Service.
-  rpc ReportResourceLoad(ReportResourceLoadRequest) returns (ReportResourceLoadReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
 }
