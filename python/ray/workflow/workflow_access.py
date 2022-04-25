@@ -382,6 +382,9 @@ class WorkflowManagementActor:
         logger.info(f"Workflow job [id={workflow_id}] succeeded.")
         self._workflow_outputs.pop(workflow_id, None)
 
+    def ready(self) -> None:
+        """A no-op to make sure the actor is ready."""
+
 
 def init_management_actor() -> None:
     """Initialize WorkflowManagementActor"""
@@ -396,7 +399,7 @@ def init_management_actor() -> None:
             lifetime="detached",
         ).remote()
         # No-op to ensure the actor is created before the driver exits.
-        ray.get(actor.get_running_workflow.remote())
+        ray.get(actor.ready.remote())
 
 
 def get_management_actor() -> "ActorHandle":

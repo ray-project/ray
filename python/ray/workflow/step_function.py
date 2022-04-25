@@ -54,9 +54,9 @@ class WorkflowStepFunction:
             flattened_args = signature.flatten_args(self._func_signature, args, kwargs)
 
             def prepare_inputs():
-                from ray.workflow.api import ensure_workflow_initialized
+                from ray.workflow.api import _ensure_workflow_initialized
 
-                ensure_workflow_initialized()
+                _ensure_workflow_initialized()
                 return serialization_context.make_workflow_inputs(flattened_args)
 
             nonlocal step_options

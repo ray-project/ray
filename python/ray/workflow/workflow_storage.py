@@ -94,9 +94,9 @@ class WorkflowStorage:
         self._storage = storage.get_client(os.path.join(WORKFLOW_ROOT, workflow_id))
         self._workflow_id = workflow_id
 
-        from ray.workflow.api import ensure_workflow_initialized
+        from ray.workflow.api import _ensure_workflow_initialized
 
-        ensure_workflow_initialized()
+        _ensure_workflow_initialized()
 
     def load_step_output(self, step_id: StepID) -> Any:
         """Load the output of the workflow step from checkpoint.

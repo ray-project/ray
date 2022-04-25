@@ -554,9 +554,9 @@ class Workflow(Generic[T]):
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
-        from ray.workflow.api import ensure_workflow_initialized
+        from ray.workflow.api import _ensure_workflow_initialized
 
-        ensure_workflow_initialized()
+        _ensure_workflow_initialized()
 
         self._step_id = None
         return run(self, workflow_id, metadata)
