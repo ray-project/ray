@@ -41,7 +41,6 @@ import ray.autoscaler._private.aws.config as aws_config
 from ray.cluster_utils import cluster_not_supported
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
-import ray._private.usage.usage_lib as ray_usage_lib
 
 boto3_list = [
     {
