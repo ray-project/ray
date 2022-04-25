@@ -738,7 +738,9 @@ def append_short_test_summary(rep):
     if not os.path.exists(header_file):
         with open(header_file, "wt") as fp:
             test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
-            fp.write(f"### Pytest failures for: {test_label}\n\n")
+            job_id = os.environ.get("BUILDKITE_JOB_ID")
+
+            fp.write(f"### Pytest failures for: [{test_label}](#{job_id})\n\n")
 
     # Use `wt` here to overwrite so we only have one result per test (exclude retries)
     with open(summary_file, "wt") as fp:
