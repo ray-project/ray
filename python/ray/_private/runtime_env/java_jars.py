@@ -197,7 +197,6 @@ class JavaJarsManager:
     ):
         if uris is None:
             return
-        module_dirs = []
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)
             if not module_dir.exists():
@@ -206,6 +205,4 @@ class JavaJarsManager:
                     "not exist on the cluster. Something may have gone wrong while "
                     "downloading, unpacking or installing the py_modules files."
                 )
-            module_dirs.append(str(module_dir))
-            logger.info("========type is %s", type(module_dir))
             context.java_jars.append(str(module_dir))
