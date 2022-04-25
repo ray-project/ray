@@ -142,7 +142,7 @@ class StoreClientTestBase : public ::testing::Test {
   }
 
   void GetKeys() {
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 100; i++) {
       auto key = keys_.at(std::rand() % keys_.size()).Binary();
       auto prefix = key.substr(0, std::rand() % key.size());
       RAY_LOG(INFO) << "key is: " << key << ", prefix is: " << prefix;

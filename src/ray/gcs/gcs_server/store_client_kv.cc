@@ -59,7 +59,7 @@ void StoreClientInternalKV::Del(const std::string &table_name,
           callback(0);
           return;
         }
-        RAY_CHECK_OK(delegate_->AsyncBatchDelete(table_name, keys, callback));
+        RAY_CHECK_OK(delegate_->AsyncBatchDelete(table_name, keys, std::move(callback)));
       }));
 }
 
