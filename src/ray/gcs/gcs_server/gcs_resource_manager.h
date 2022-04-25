@@ -132,9 +132,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
- private:
-  /// Update the resource loads
+  /// Update the resource loads.
+  ///
+  /// \param data The resource load reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
+
+ private:
 
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;

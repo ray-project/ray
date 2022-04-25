@@ -167,7 +167,8 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
-    iter = node_resource_usages_.emplace(node_id, rpc::ResourcesData()).first;
+    // It will happen when the node has been deleted or hasn't been added.
+    return;
   }
 
   if (data.resource_load_changed()) {
@@ -283,6 +284,7 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
     RAY_LOG(WARNING) << "The registered node " << NodeID::FromBinary(node.node_id())
                      << " doesn't set the total resources.";
   }
+  node_resource_usages_.emplace(NodeID::FromBinary(node.node_id(), rpc::ResourcesData()));
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
