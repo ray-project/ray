@@ -151,6 +151,8 @@ class GcsActor {
   ResourceRequest *GetMutableAcquiredResources();
   bool GetGrantOrReject() const;
   void SetGrantOrReject(bool grant_or_reject);
+  const rpc::RequestWorkerLeaseReply &GetRequestWorkerLeaseReply() const;
+  rpc::RequestWorkerLeaseReply *GetMutableRequestWorkerLeaseReply();
 
  private:
   /// The actor meta data which contains the task specification as well as the state of
@@ -161,6 +163,7 @@ class GcsActor {
   ResourceRequest acquired_resources_;
   /// Whether the actor's target node only grants or rejects the lease request.
   bool grant_or_reject_ = false;
+  rpc::RequestWorkerLeaseReply reply_;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;

@@ -190,6 +190,14 @@ void GcsActor::SetGrantOrReject(bool grant_or_reject) {
   grant_or_reject_ = grant_or_reject;
 }
 
+const rpc::RequestWorkerLeaseReply &GcsActor::GetRequestWorkerLeaseReply() const {
+  return reply_;
+}
+
+rpc::RequestWorkerLeaseReply *GcsActor::GetMutableRequestWorkerLeaseReply() {
+  return &reply_;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
@@ -1440,7 +1448,8 @@ bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
 }
 
 size_t GcsActorManager::GetPendingActorsCount() const {
-    return gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size()}
+  return gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size();
+}
 
 std::string GcsActorManager::DebugString() const {
   uint64_t num_named_actors = 0;

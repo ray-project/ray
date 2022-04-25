@@ -251,7 +251,7 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
 
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
+    const std::shared_ptr<NodeResources> &last_reported_resources) {
   if (scheduler_resource_reporter_) {
     scheduler_resource_reporter_->FillResourceUsage(data, last_reported_resources);
   }
@@ -359,6 +359,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
       node_info_ptr->node_manager_address());
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+
   send_reply_callback();
 }
 

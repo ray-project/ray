@@ -273,15 +273,18 @@ void GcsServer::InitClusterResourceScheduler() {
 
 void GcsServer::InitClusterTaskManager() {
   RAY_CHECK(cluster_resource_scheduler_);
-  cluster_task_manager_ =
-      std::make_shared<ClusterTaskManager>(local_node_id_,
-                                           cluster_resource_scheduler_,
-                                           /*get_node_info=*/
-                                           nullptr,
-                                           /*announce_infeasible_task=*/
-                                           nullptr,
-                                           /*local_task_manager=*/
-                                           nullptr);
+  cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
+      local_node_id_,
+      cluster_resource_scheduler_,
+      /*get_node_info=*/
+      [this](const NodeID &node_id) {
+        auto node = gcs_node_manager_->GetAliveNode(node_id);
+        return node.has_value() ? node.value().get() : nullptr;
+      },
+      /*announce_infeasible_task=*/
+      nullptr,
+      /*local_task_manager=*/
+      nullptr);
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {

@@ -57,11 +57,11 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
 }
 
 void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
-  rpc::RequestWorkerLeaseReply reply;
-  auto send_reply_callback = [this, actor, &reply](Status status,
-                                                   std::function<void()> success,
-                                                   std::function<void()> failure) {
-    const auto &retry_at_raylet_address = reply.retry_at_raylet_address();
+  auto send_reply_callback = [this, actor](Status status,
+                                           std::function<void()> success,
+                                           std::function<void()> failure) {
+    const auto &retry_at_raylet_address =
+        actor->GetRequestWorkerLeaseReply().retry_at_raylet_address();
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
     auto node = gcs_node_manager_.GetAliveNode(node_id);
@@ -86,11 +86,12 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   };
 
   // Queue and schedule the actor locally (gcs).
-  cluster_task_manager_->QueueAndScheduleTask(actor->GetCreationTaskSpecification(),
-                                              /*grant_or_reject*/ false,
-                                              /*is_selected_based_on_locality*/ false,
-                                              &reply,
-                                              send_reply_callback);
+  cluster_task_manager_->QueueAndScheduleTask(
+      actor->GetCreationTaskSpecification(),
+      /*grant_or_reject*/ false,
+      /*is_selected_based_on_locality*/ false,
+      /*reply*/ actor->GetMutableRequestWorkerLeaseReply(),
+      send_reply_callback);
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
