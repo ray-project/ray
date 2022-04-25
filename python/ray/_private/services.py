@@ -573,6 +573,8 @@ def create_redis_client(redis_address, password=None):
             return cli
         except Exception:
             create_redis_client.instances.pop(redis_address)
+            if i >= num_retries - 1:
+                break
             # Wait a little bit.
             time.sleep(delay)
             # Make sure the retry interval doesn't increase too large.
