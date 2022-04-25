@@ -67,3 +67,23 @@ Finally, you can create a ``Dataset`` from existing data in the Ray object store
     dask_df = dd.from_pandas(pdf, npartitions=10)
     ds = ray.data.from_dask(dask_df)
 
+From Torch datasets
+---------------------------------------
+
+If you're using a Torch dataset, you can create a Dataset using 
+``SimpleTorchDatasource``.
+
+.. warning::
+    ``SimpleTorchDatasource`` doesn't support parallel reads. You should only use
+    this datasource for small datasets like MNIST or CIFAR.
+
+.. code-block:: python
+
+    dataset_factory = lambda: torchvision.datasets.MNIST("data", download=True)
+    dataset = ray.data.read_datasource(
+        SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
+    )
+    dataset.take(1)
+    # (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
+
+
