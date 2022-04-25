@@ -19,6 +19,8 @@ def update_priorities_in_replay_buffer(
     The `abs(TD-error)` from the loss (inside `train_results`) is used as new
     priorities for the row-indices that were sampled for the train batch.
 
+    Don't do anything if the given buffer does not support prioritized replay.
+
     Args:
         replay_buffer: The replay buffer, whose priority values to update. This may also
             be a buffer that does not support priorities.
