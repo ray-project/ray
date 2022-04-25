@@ -215,7 +215,6 @@ class RuntimeEnvAgent(
         )
         self._logger = default_logger
 
-    # 这个函数是干嘛的？
     def uris_parser(self, runtime_env):
         result = list()
         uri = self._working_dir_manager.get_uri(runtime_env)
@@ -272,7 +271,7 @@ class RuntimeEnvAgent(
         return self._per_job_logger_cache[job_id]
 
     async def GetOrCreateRuntimeEnv(self, request, context):
-        self._logger.info(
+        self._logger.debug(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
             f"{request.serialized_runtime_env}."

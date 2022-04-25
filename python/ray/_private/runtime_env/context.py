@@ -55,7 +55,6 @@ class RuntimeEnvContext:
         elif language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
-            my_log("It's Java language")
             executable = f"java"
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
             class_path_args = ["-cp", ray_jars + ":" + str(":".join(self.java_jars))]
@@ -68,10 +67,6 @@ class RuntimeEnvContext:
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
 
-        my_log("======================456")
-        my_log(command_str)
-        my_log("======================789")
-        my_log(self.java_jars)
         if sys.platform == "win32":
             os.system(command_str)
         else:

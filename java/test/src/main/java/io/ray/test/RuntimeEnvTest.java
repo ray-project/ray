@@ -172,24 +172,6 @@ public class RuntimeEnvTest {
     }
   }
 
-  public void testJarsInJob() {
-//    System.setProperty("ray.job.runtime-env.jars", "[\"http://a.jar\", \"http://b.jar\"]");
-    try {
-      Ray.init();
-//      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().addEnvVar("KEY1", "C").build();
-
-
-      /// value of KEY1 is overwritten to `C` and KEY2s is extended from job config.
-      String val =
-        Ray.task(RuntimeEnvTest::getEnvVar, "KEY1").remote().get();
-      Assert.assertEquals(val, "C");
-      val = Ray.task(RuntimeEnvTest::getEnvVar, "KEY2").remote().get();
-      Assert.assertEquals(val, "B");
-    } finally {
-      Ray.shutdown();
-    }
-  }
-
   public void testJarsInActor() {
     try {
       Ray.init();
