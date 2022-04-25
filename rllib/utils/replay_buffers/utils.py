@@ -66,5 +66,6 @@ def update_priorities_in_replay_buffer(
                 assert len(batch_indices) == len(td_error)
             prio_dict[policy_id] = (batch_indices, td_error)
 
-        # Make the actual buffer API call to update the priority weights on all# policies.
+        # Make the actual buffer API call to update the priority weights on all
+        # policies.
         replay_buffer.update_priorities(prio_dict)
