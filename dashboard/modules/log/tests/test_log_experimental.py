@@ -2,6 +2,8 @@
 import json
 import os
 import requests
+import asyncio
+import time
 
 from unittest.mock import MagicMock, AsyncMock
 from typing import List
@@ -76,6 +78,14 @@ async def generate_logs_stream(num_chunks: int):
         yield StreamLogReply(data=data.encode())
 
 
+async def wait_for_1_second():
+    await asyncio.sleep(1)
+
+
+async def raise_timeout():
+    raise ValueError("timed out")
+
+
 @pytest.mark.asyncio
 async def test_logs_manager_list_logs(logs_manager):
     logs_client = logs_manager.logs_client
@@ -103,7 +113,6 @@ async def test_logs_manager_stream_log(logs_manager):
     logs_client.get_all_registered_nodes = MagicMock()
     logs_client.get_all_registered_nodes.return_value = ["1", "2"]
     logs_client.ip_to_node_id = MagicMock()
-    logs_client.ip_to_node_id.return_value = "1"
     logs_client.stream_log.return_value = generate_logs_stream(10)
 
     # Test file_name, media_type="file", node_id
@@ -126,27 +135,85 @@ async def test_logs_manager_stream_log(logs_manager):
         interval=0.5
     )
 
-    # # Test pid, media_type = "stream", node_ip
-    # stream_options = LogStreamOptions(media_type="stream", lines=10, interval=0.5)
-    # node_identifiers = NodeIdentifiers(node_ip="1")
-    # file_identifiers = FileIdentifiers(pid="10")
-    # log_args = LogIdentifiers(file=file_identifiers, node=node_identifiers)
-    # logs_client.list_logs.side_effect = [
-    #     generate_list_logs(["raylet.out", "gcs_server.out", "worker-0-0-10.out"]),
-    # ]
-    #
-    # stream = await logs_manager.create_log_stream(
-    #     identifiers=identifiers, stream_options=stream_options)
-    # i = 0
-    # async for chunk in stream:
-    #     assert chunk.data.decode("utf-8") == generate_logs_stream_chunk(index=i)
-    #     i += 1
-    #
-    # # Test actor_id
-    # stream_options = LogStreamOptions(media_type="stream", lines=10, interval=0.5)
-    # node_identifiers = NodeIdentifiers()
-    # file_identifiers = FileIdentifiers(actor_id="100")
-    # log_args = LogIdentifiers(file=file_identifiers, node=node_identifiers)
+    # Test pid, media_type = "stream", node_ip
+    logs_client.ip_to_node_id.return_value = "1"
+    stream_options = LogStreamOptions(media_type="stream", lines=100, interval=0.5)
+    node_identifiers = NodeIdentifiers(node_ip="1")
+    file_identifiers = FileIdentifiers(pid="10")
+    identifiers = LogIdentifiers(file=file_identifiers, node=node_identifiers)
+    logs_client.list_logs.side_effect = [
+        generate_list_logs(["raylet.out", "gcs_server.out", "worker-0-0-10.out"]),
+    ]
+    stream = await logs_manager.create_log_stream(
+        identifiers=identifiers, stream_options=stream_options)
+    i = 0
+    async for chunk in stream:
+        assert chunk.data.decode("utf-8") == generate_logs_stream_chunk(index=i)
+        i += 1
+    logs_client.stream_log.assert_awaited_with(
+        node_id="1",
+        log_file_name="worker-0-0-10.out",
+        keep_alive=True,
+        lines=100,
+        interval=0.5
+    )
+
+    # Currently cannot test actor_id with AsyncMock
+
+
+@pytest.mark.asyncio
+async def test_log_manager_wait_for_client(logs_manager):
+    # Check that logs manager raises error if client does not initialize
+    logs_client = logs_manager.logs_client
+    logs_client.wait_until_initialized.side_effect = raise_timeout
+    with pytest.raises(ValueError) as e:
+        await logs_manager.list_logs("1", [])
+        assert str(e) == "timed out"
+
+    with pytest.raises(ValueError) as e:
+        await logs_manager.resolve_node_id(NodeIdentifiers())
+        assert str(e) == "timed out"
+
+    with pytest.raises(ValueError) as e:
+        await logs_manager.create_log_stream(
+            identifiers=LogIdentifiers(
+                file=FileIdentifiers(),
+                node=NodeIdentifiers(),
+            ),
+            stream_options=LogStreamOptions(media_type="file", lines=10, interval=0.5)
+        )
+        assert str(e) == "timed out"
+
+    # Check that logs manager waits for client to initialize
+    logs_client.wait_until_initialized.side_effect = wait_for_1_second
+    start_time = time.time()
+    try:
+        await logs_manager.list_logs("1", [])
+    except Exception:
+        pass
+    assert time.time() - start_time > 1
+
+    start_time = time.time()
+    try:
+        await logs_manager.resolve_node_id(NodeIdentifiers())
+    except Exception:
+        pass
+    assert time.time() - start_time > 1
+
+    start_time = time.time()
+    try:
+        await logs_manager.create_log_stream(
+            identifiers=LogIdentifiers(
+                file=FileIdentifiers(),
+                node=NodeIdentifiers(),
+            ),
+            stream_options=LogStreamOptions(media_type="file", lines=10, interval=0.5)
+        )
+    except Exception:
+        pass
+    assert time.time() - start_time > 1
+
+# Integration tests
 
 
 def test_logs_list(ray_start_with_dashboard):

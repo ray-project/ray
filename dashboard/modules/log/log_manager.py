@@ -94,15 +94,15 @@ class LogsManager:
         """
         response = {}
         tasks = []
+
+        async def fill_response_for_node_id(node_id: str):
+            reply = await self.client.list_logs(node_id, timeout=None)
+            response[node_id] = self._list_logs_single_node(
+                reply.log_files, filters
+            )
         for node_id_it in self.client.get_all_registered_nodes():
             if node_id is None or node_id == node_id_it:
-
-                async def coro():
-                    reply = await self.client.list_logs(node_id_it, timeout=None)
-                    response[node_id_it] = self._list_logs_single_node(
-                        reply.log_files, filters
-                    )
-                tasks.append(coro())
+                tasks.append(fill_response_for_node_id(node_id_it))
         await asyncio.gather(*tasks)
         return response
 
