@@ -20,6 +20,15 @@ public class RuntimeEnvTest {
     public int getPid() {
       return SystemUtil.pid();
     }
+
+    public boolean findClass(String className) {
+      try {
+        Class.forName(className);
+      } catch (ClassNotFoundException e) {
+        return false;
+      }
+      return true;
+    }
   }
 
   public void testPerJobEnvVars() {
@@ -187,12 +196,12 @@ public class RuntimeEnvTest {
       final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder()
         .addJars(
           ImmutableList.of(
-            "https://raylet.cn-hangzhou-alipay-b.oss-cdn.aliyun-inc.com/systemjobs/common-libs-actor-optimizes-1.1.3.jar",
             "https://raylet.cn-hangzhou-alipay-b.oss-cdn.aliyun-inc.com/systemjobs/actor-observer-tmp.jar"
           )).build();
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
-      int pid = actor1.task(A::getPid).remote().get();
-      System.out.println(pid);
+      boolean ret = actor1.task(A::findClass, "io.ray.actorobserver.event.ActorStateEvent").remote().get();
+      Assert.assertTrue(ret);
+      System.out.println(ret);
     } finally {
       Ray.shutdown();
     }
