@@ -1874,7 +1874,7 @@ def hide_exception_stacktrace(func):
         type=bool,
         default=False,
         is_flag=True,
-        help="Shows full stacktrace for CLI exceptions."
+        help="Shows full stacktrace for CLI exceptions.",
     )
     @functools.wraps(func)
     def inner(show_stacktrace: bool, *args, **kwargs):
@@ -1885,6 +1885,7 @@ def hide_exception_stacktrace(func):
                 print(f"Client Error ({e.__class__.__name__}): ", e)
         else:
             return func(*args, **kwargs)
+
     return inner
 
 

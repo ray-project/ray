@@ -1,4 +1,3 @@
-
 import json
 import os
 import requests
@@ -42,8 +41,9 @@ def test_logs_tail():
                 f.write(f"Message 日志 {i:4}\n")
         file = open(FILE_NAME, "rb")
         text, byte_pos = tail_file(file, 100)
-        assert byte_pos == TOTAL_LINES * \
-            len("Message 日志 1000\n".encode(encoding="utf-8"))
+        assert byte_pos == TOTAL_LINES * len(
+            "Message 日志 1000\n".encode(encoding="utf-8")
+        )
         lines = text.decode("utf-8").split("\n")
         assert len(lines) == 100
         assert lines[0] == "Message 日志  900"
@@ -53,6 +53,7 @@ def test_logs_tail():
     finally:
         if os.path.exists(FILE_NAME):
             os.remove(FILE_NAME)
+
 
 # Unit Tests (LogsManager)
 
@@ -122,7 +123,8 @@ async def test_logs_manager_stream_log(logs_manager):
     identifiers = LogIdentifiers(file=file_identifiers, node=node_identifiers)
 
     stream = await logs_manager.create_log_stream(
-        identifiers=identifiers, stream_options=stream_options)
+        identifiers=identifiers, stream_options=stream_options
+    )
     i = 0
     async for chunk in stream:
         assert chunk.data.decode("utf-8") == generate_logs_stream_chunk(index=i)
@@ -132,7 +134,7 @@ async def test_logs_manager_stream_log(logs_manager):
         log_file_name="raylet.out",
         keep_alive=False,
         lines=10,
-        interval=0.5
+        interval=0.5,
     )
 
     # Test pid, media_type = "stream", node_ip
@@ -145,7 +147,8 @@ async def test_logs_manager_stream_log(logs_manager):
         generate_list_logs(["raylet.out", "gcs_server.out", "worker-0-0-10.out"]),
     ]
     stream = await logs_manager.create_log_stream(
-        identifiers=identifiers, stream_options=stream_options)
+        identifiers=identifiers, stream_options=stream_options
+    )
     i = 0
     async for chunk in stream:
         assert chunk.data.decode("utf-8") == generate_logs_stream_chunk(index=i)
@@ -155,7 +158,7 @@ async def test_logs_manager_stream_log(logs_manager):
         log_file_name="worker-0-0-10.out",
         keep_alive=True,
         lines=100,
-        interval=0.5
+        interval=0.5,
     )
 
     # Currently cannot test actor_id with AsyncMock
@@ -180,7 +183,7 @@ async def test_log_manager_wait_for_client(logs_manager):
                 file=FileIdentifiers(),
                 node=NodeIdentifiers(),
             ),
-            stream_options=LogStreamOptions(media_type="file", lines=10, interval=0.5)
+            stream_options=LogStreamOptions(media_type="file", lines=10, interval=0.5),
         )
         assert str(e) == "timed out"
 
@@ -207,11 +210,12 @@ async def test_log_manager_wait_for_client(logs_manager):
                 file=FileIdentifiers(),
                 node=NodeIdentifiers(),
             ),
-            stream_options=LogStreamOptions(media_type="file", lines=10, interval=0.5)
+            stream_options=LogStreamOptions(media_type="file", lines=10, interval=0.5),
         )
     except Exception:
         pass
     assert time.time() - start_time > 1
+
 
 # Integration tests
 

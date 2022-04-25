@@ -97,19 +97,15 @@ class LogsManager:
 
         async def fill_response_for_node_id(node_id: str):
             reply = await self.client.list_logs(node_id, timeout=None)
-            response[node_id] = self._list_logs_single_node(
-                reply.log_files, filters
-            )
+            response[node_id] = self._list_logs_single_node(reply.log_files, filters)
+
         for node_id_it in self.client.get_all_registered_nodes():
             if node_id is None or node_id == node_id_it:
                 tasks.append(fill_response_for_node_id(node_id_it))
         await asyncio.gather(*tasks)
         return response
 
-    async def _resolve_file_and_node(
-        self,
-        args: LogIdentifiers
-    ):
+    async def _resolve_file_and_node(self, args: LogIdentifiers):
         node_id = await self.resolve_node_id(args.node)
         log_file_name = args.file.log_file_name
 
@@ -139,8 +135,10 @@ class LogsManager:
             pid = args.file.pid
             if pid is not None:
                 if node_id is None:
-                    raise ValueError("Node identifiers (node_ip, node_id) not provided "
-                                     f"with pid: {pid}. ")
+                    raise ValueError(
+                        "Node identifiers (node_ip, node_id) not provided "
+                        f"with pid: {pid}. "
+                    )
                 index = await self.list_logs(node_id, [pid])
                 for file in index[node_id]["worker_outs"]:
                     if file.split(".")[0].split("-")[3] == pid:
@@ -148,7 +146,8 @@ class LogsManager:
                         break
                 if log_file_name is None:
                     raise ValueError(
-                        f"Worker with pid {pid} not found on node {node_id}")
+                        f"Worker with pid {pid} not found on node {node_id}"
+                    )
 
         # node_id and log_file_name need to be known by this point
         if node_id is None or node_id not in self.client.get_all_registered_nodes():

@@ -135,7 +135,8 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
         """
         filters = req.query.get("filters", "").split(",")
         node_id = await self.logs_manager.resolve_node_id(
-                to_schema(req, NodeIdentifiers))
+            to_schema(req, NodeIdentifiers)
+        )
         response = await self.logs_manager.list_logs(node_id, filters)
         return aiohttp.web.json_response(response)
 
@@ -150,7 +151,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
 
         stream = await self.logs_manager.create_log_stream(
             identifiers=to_schema(req, LogIdentifiers),
-            stream_options=to_schema(req, LogStreamOptions)
+            stream_options=to_schema(req, LogStreamOptions),
         )
 
         response = aiohttp.web.StreamResponse()
@@ -165,9 +166,7 @@ class LogHeadV1(dashboard_utils.DashboardHeadModule):
             return response
         except Exception as e:
             logger.exception(str(e))
-            await response.write(
-                b"Closing HTTP stream due to internal server error:\n"
-            )
+            await response.write(b"Closing HTTP stream due to internal server error:\n")
             await response.write(str(e).encode())
             await response.write_eof()
             return response

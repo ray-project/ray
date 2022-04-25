@@ -30,8 +30,10 @@ class LogsGrpcClient:
             if self._agent_stubs != {}:
                 return
             await asyncio.sleep(POLL_SLEEP_TIME)
-        raise ValueError("Could not connect to agents via gRPC after "
-                         f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds.")
+        raise ValueError(
+            "Could not connect to agents via gRPC after "
+            f"{POLL_SLEEP_TIME * POLL_RETRIES} seconds."
+        )
 
     def register_agent_client(self, node_id, address: str, port: int):
         options = (("grpc.enable_http_proxy", 0),)
@@ -75,7 +77,7 @@ class LogsGrpcClient:
         log_file_name: str,
         keep_alive: bool,
         lines: int,
-        interval: float
+        interval: float,
     ):
         stub = self._agent_stubs.get(node_id)
         if not stub:
