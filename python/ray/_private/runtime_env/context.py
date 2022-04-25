@@ -67,8 +67,6 @@ class RuntimeEnvContext:
 
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
-        my_log("=========123")
-        my_log(command_str)
         if sys.platform == "win32":
             os.system(command_str)
         else:

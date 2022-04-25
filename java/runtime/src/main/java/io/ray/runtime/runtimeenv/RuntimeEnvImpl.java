@@ -4,7 +4,6 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.util.JsonFormat;
 import io.ray.api.runtimeenv.RuntimeEnv;
 import io.ray.runtime.generated.RuntimeEnvCommon;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,7 +32,7 @@ public class RuntimeEnvImpl implements RuntimeEnv {
     String serializedRuntimeEnv = "{}";
 
     RuntimeEnvCommon.RuntimeEnv.Builder protoRuntimeEnvBuilder =
-      RuntimeEnvCommon.RuntimeEnv.newBuilder();
+        RuntimeEnvCommon.RuntimeEnv.newBuilder();
     JsonFormat.Printer printer = JsonFormat.printer();
     if (!envVars.isEmpty()) {
       protoRuntimeEnvBuilder.putAllEnvVars(envVars);

@@ -424,13 +424,10 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
       if (language == Language::JAVA) {
-          std::string debug_info;
-          debug_info.append("java command:");
-          for (const auto &arg : worker_command_args) {
-            debug_info.append(" ").append(arg);
-          }
-          RAY_LOG(INFO) << "===================java worker command: " << debug_info;
-        // Remove ["java" -"cp" "xxx"]
+        // Due to the prepared command for java is
+        // [pythone_executable, setup_worker, "java", "-cp", "path_to_jars"]
+        // therefore we need to remove the ["java", "-cp", "path_to_jars"] because
+        // we should change the class path in setup worker.
         worker_command_args.erase(worker_command_args.begin() + 2,
                                     worker_command_args.begin() + 5); 
       }                        
@@ -441,16 +438,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
           worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
         if (language == Language::PYTHON) {
           worker_command_args.erase(worker_command_args.begin() + 1,
-                                    worker_command_args.begin() + 2);
-        } else if (language == Language::JAVA) {
-          std::string debug_info;
-          debug_info.append("java command:");
-          for (const auto &arg : worker_command_args) {
-            debug_info.append(" ").append(arg);
-          }
-          RAY_LOG(INFO) << "===================java worker command: " << debug_info;
-          // Erase the python executable as well for other languages.
-          worker_command_args.erase(worker_command_args.begin(),
                                     worker_command_args.begin() + 2);
         } else {
           // Erase the python executable as well for other languages.

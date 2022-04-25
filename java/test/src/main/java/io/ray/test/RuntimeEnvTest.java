@@ -175,13 +175,15 @@ public class RuntimeEnvTest {
   public void testJarsInActor() {
     try {
       Ray.init();
-      final RuntimeEnv runtimeEnv = new RuntimeEnv.Builder()
-        .addJars(
-          ImmutableList.of(
-            "https://raylet.cn-hangzhou-alipay-b.oss-cdn.aliyun-inc.com/systemjobs/actor-observer-tmp.jar"
-          )).build();
+      final RuntimeEnv runtimeEnv =
+          new RuntimeEnv.Builder()
+              .addJars(
+                  ImmutableList.of(
+                      "https://raylet.cn-hangzhou-alipay-b.oss-cdn.aliyun-inc.com/systemjobs/actor-observer-tmp.jar"))
+              .build();
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
-      boolean ret = actor1.task(A::findClass, "io.ray.actorobserver.event.ActorStateEvent").remote().get();
+      boolean ret =
+          actor1.task(A::findClass, "io.ray.actorobserver.event.ActorStateEvent").remote().get();
       Assert.assertTrue(ret);
       System.out.println(ret);
     } finally {
