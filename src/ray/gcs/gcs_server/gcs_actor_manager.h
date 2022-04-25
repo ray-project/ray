@@ -500,6 +500,17 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   const GcsActor *GetActor(const ActorID &actor_id) const;
 
+  /// Remove a pending actor.
+  ///
+  /// \param actor The actor to be removed.
+  /// \return True if the actor was successfully found and removed. Otherwise, return
+  /// false.
+  bool RemovePendingActor(std::shared_ptr<GcsActor> actor);
+
+  /// Get the total count of pending actors.
+  /// \return The total count of pending actors in all pending queues.
+  size_t GetPendingActorsCount() const;
+
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
   /// messages from a driver/worker caused by some network problems.

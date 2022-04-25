@@ -61,13 +61,11 @@ class ClusterTaskManagerInterface {
   ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleTask(
-      const RayTask &task,
-      bool grant_or_reject,
-      bool is_selected_based_on_locality,
-      rpc::RequestWorkerLeaseReply *reply,
-      rpc::SendReplyCallback send_reply_callback,
-      std::function<void(const NodeID &node_id)> node_found_callback = nullptr) = 0;
+  virtual void QueueAndScheduleTask(const RayTask &task,
+                                    bool grant_or_reject,
+                                    bool is_selected_based_on_locality,
+                                    rpc::RequestWorkerLeaseReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) = 0;
 
   /// Return if any tasks are pending resource acquisition.
   ///

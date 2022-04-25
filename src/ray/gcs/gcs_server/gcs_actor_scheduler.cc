@@ -57,7 +57,13 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
 }
 
 void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
-  auto callback = [this, actor](const NodeID &node_id) {
+  rpc::RequestWorkerLeaseReply reply;
+  auto send_reply_callback = [this, actor, &reply](Status status,
+                                                   std::function<void()> success,
+                                                   std::function<void()> failure) {
+    const auto &retry_at_raylet_address = reply.retry_at_raylet_address();
+    RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
+    auto node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
     auto node = gcs_node_manager_.GetAliveNode(node_id);
     RAY_CHECK(node.has_value());
 
@@ -83,9 +89,8 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
   cluster_task_manager_->QueueAndScheduleTask(actor->GetCreationTaskSpecification(),
                                               /*grant_or_reject*/ false,
                                               /*is_selected_based_on_locality*/ false,
-                                              /*reply*/ nullptr,
-                                              /*send_reply_callback*/ nullptr,
-                                              /*node_selected_callback*/ callback);
+                                              &reply,
+                                              send_reply_callback);
 }
 
 void GcsActorScheduler::ScheduleByRaylet(std::shared_ptr<GcsActor> actor) {
@@ -598,7 +603,7 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
         node_to_actors_when_leasing_.erase(iter);
       }
 
-      if (reply.rejected()) {
+      if (reply.rejected() && RayConfig::instance().gcs_actor_scheduling_enabled()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
                       << actor->GetActorID()
                       << " as the resources are seized by normal tasks, job id = "

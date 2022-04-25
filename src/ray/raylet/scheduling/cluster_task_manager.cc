@@ -49,17 +49,13 @@ void ClusterTaskManager::QueueAndScheduleTask(
     bool grant_or_reject,
     bool is_selected_based_on_locality,
     rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback,
-    std::function<void(const NodeID &node_id)> node_selected_callback) {
+    rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
-  auto callback = node_selected_callback
-                      ? node_selected_callback
-                      : [send_reply_callback](const NodeID &node_id) {
-                          send_reply_callback(Status::OK(), nullptr, nullptr);
-                        };
   auto work = std::make_shared<internal::Work>(
-      task, grant_or_reject, is_selected_based_on_locality, reply, callback);
+      task, grant_or_reject, is_selected_based_on_locality, reply, [send_reply_callback] {
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
@@ -75,14 +71,12 @@ namespace {
 void ReplyCancelled(const internal::Work &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
-  if (work.reply) {  // We are scheduling the task at Raylet.
-    auto reply = work.reply;
-    auto callback = work.callback;
-    reply->set_canceled(true);
-    reply->set_failure_type(failure_type);
-    reply->set_scheduling_failure_message(scheduling_failure_message);
-    callback(NodeID::Nil());
-  }
+  auto reply = work.reply;
+  auto callback = work.callback;
+  reply->set_canceled(true);
+  reply->set_failure_type(failure_type);
+  reply->set_scheduling_failure_message(scheduling_failure_message);
+  callback();
 }
 }  // namespace
 
@@ -339,7 +333,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
 
   if (work->grant_or_reject) {
     work->reply->set_rejected(true);
-    send_reply_callback(NodeID::Nil());
+    send_reply_callback();
     return;
   }
   if (internal_stats_) {
@@ -356,21 +350,16 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
                    << " on a remote node that are no longer available";
   }
 
-  if (work->reply) {  // We are scheduling the task at Raylet.
-    auto node_info_ptr = get_node_info_(spillback_to);
-    RAY_CHECK(node_info_ptr)
-        << "Spilling back to a node manager, but no GCS info found for node "
-        << spillback_to;
-    auto reply = work->reply;
-    reply->mutable_retry_at_raylet_address()->set_ip_address(
-        node_info_ptr->node_manager_address());
-    reply->mutable_retry_at_raylet_address()->set_port(
-        node_info_ptr->node_manager_port());
-    reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
-    send_reply_callback(NodeID::Nil());
-  } else {  // We are scheduling the (actor creation) task at GCS.
-    work->callback(spillback_to);
-  }
+  auto node_info_ptr = get_node_info_(spillback_to);
+  RAY_CHECK(node_info_ptr)
+      << "Spilling back to a node manager, but no GCS info found for node "
+      << spillback_to;
+  auto reply = work->reply;
+  reply->mutable_retry_at_raylet_address()->set_ip_address(
+      node_info_ptr->node_manager_address());
+  reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
+  reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+  send_reply_callback();
 }
 
 std::shared_ptr<ClusterResourceScheduler>

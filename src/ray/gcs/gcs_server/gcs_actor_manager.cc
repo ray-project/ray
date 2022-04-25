@@ -1399,23 +1399,12 @@ void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &a
   if (!canceled_actor_id.IsNil()) {
     // The actor was being scheduled and has now been canceled.
     RAY_CHECK(canceled_actor_id == actor_id);
-  } else {
-    auto pending_it = std::find_if(pending_actors_.begin(),
-                                   pending_actors_.end(),
-                                   [actor_id](const std::shared_ptr<GcsActor> &actor) {
-                                     return actor->GetActorID() == actor_id;
-                                   });
-
-    // The actor was pending scheduling. Remove it from the queue.
-    if (pending_it != pending_actors_.end()) {
-      pending_actors_.erase(pending_it);
-    } else if (!gcs_actor_scheduler_->RemovePendingActor(actor)) {
-      // When actor creation request of this actor id is pending in raylet,
-      // it doesn't responds, and the actor should be still in leasing state.
-      // NOTE: We will cancel outstanding lease request by calling
-      // `raylet_client->CancelWorkerLease`.
-      gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
-    }
+  } else if (!RemovePendingActor(actor)) {
+    // When actor creation request of this actor id is pending in raylet,
+    // it doesn't responds, and the actor should be still in leasing state.
+    // NOTE: We will cancel outstanding lease request by calling
+    // `raylet_client->CancelWorkerLease`.
+    gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
   }
 }
 
@@ -1432,6 +1421,26 @@ const GcsActor *GcsActorManager::GetActor(const ActorID &actor_id) const {
 
   return nullptr;
 }
+
+bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
+  const auto &actor_id = actor->GetActorID();
+  auto pending_it = std::find_if(pending_actors_.begin(),
+                                 pending_actors_.end(),
+                                 [actor_id](const std::shared_ptr<GcsActor> &actor) {
+                                   return actor->GetActorID() == actor_id;
+                                 });
+
+  // The actor was pending scheduling. Remove it from the queue.
+  if (pending_it != pending_actors_.end()) {
+    pending_actors_.erase(pending_it);
+  } else if (!gcs_actor_scheduler_->RemovePendingActor(actor)) {
+    return false;
+  }
+  return true;
+}
+
+size_t GcsActorManager::GetPendingActorsCount() const {
+    return gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size()}
 
 std::string GcsActorManager::DebugString() const {
   uint64_t num_named_actors = 0;
@@ -1457,8 +1466,7 @@ std::string GcsActorManager::DebugString() const {
          << "\n- Destroyed actors count: " << destroyed_actors_.size()
          << "\n- Named actors count: " << num_named_actors
          << "\n- Unresolved actors count: " << unresolved_actors_.size()
-         << "\n- Pending actors count: "
-         << gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size()
+         << "\n- Pending actors count: " << GetPendingActorsCount()
          << "\n- Created actors count: " << created_actors_.size()
          << "\n- owners_: " << owners_.size()
          << "\n- actor_to_register_callbacks_: " << actor_to_register_callbacks_.size()
@@ -1472,8 +1480,7 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(created_actors_.size(), "Created");
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
-  ray::stats::STATS_gcs_actors_count.Record(
-      gcs_actor_scheduler_->GetPendingActorsCount() + pending_actors_.size(), "Pending");
+  ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
 }
 
 }  // namespace gcs
