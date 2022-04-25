@@ -12,7 +12,7 @@
 set -e
 if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summaries)" ]; then
     echo "+++ :rotating_light: :rotating_light: :rotating_light: Failing test short summaries"
-    cat /tmp/artifacts/test-summaries/*.txt
+    cat /tmp/artifacts/test-summaries/*.txt | buildkite-agent annotate --job "${BUILDKITE_JOB_ID}" --append --style error
 
     # Remove test summaries files (don't actually upload as artifacts)
     # This has to be done with docker to avoid permission issues
