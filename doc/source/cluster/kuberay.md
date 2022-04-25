@@ -57,6 +57,12 @@ ray.init("auto")
 ray.autoscaler.sdk.request_resources(num_cpus=4)
 ```
 
+> **_NOTE:_**  The example config ray-cluster.complete.yaml specifies rayproject/ray:8c5fe4
+> as the Ray autoscaler image. This image carries the latest improvements to KubeRay autoscaling
+> support. This autoscaler image is confirmed to be compatible with Ray versions >= 1.11.0
+> Once Ray autoscaler support is stable, the recommended pattern will be to use the same
+> Ray version in the autoscaler and Ray containers.
+
 ## Uninstalling the KubeRay operator
 
 You can uninstall the KubeRay operator using
