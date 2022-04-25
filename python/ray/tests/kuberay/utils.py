@@ -247,9 +247,9 @@ def get_raycluster(raycluster: str, namespace: str) -> Dict[str, Any]:
     return yaml.safe_load(get_raycluster_output)
 
 
-def get_service_port(service: str, namespace: str, target_port: str) -> str:
+def _get_service_port(service: str, namespace: str, target_port: int) -> int:
     """Given a K8s service and a port targetted by the service, returns the
-    corresponding service port.
+    corresponding port exposed by the service.
 
     Args:
         service: Name of a K8s service.
@@ -257,19 +257,24 @@ def get_service_port(service: str, namespace: str, target_port: str) -> str:
         target_port: Port targeted by the service.
 
     Returns:
-        The port exposed by the service.
+        service_port: The port exposed by the service.
     """
-    service_port = subprocess.check_output(
+    service_str = subprocess.check_output(
         [
-            "lalalalalalalalalalalalalalalala"
+            "kubectl", "-n", namespace, "get", "service", service, "-o", "yaml"
         ]
     ).decode().strip()
+    service_dict = yaml.safe_load(service_str)
+    service_ports: List = service_dict["spec"]["ports"]
+    matching_ports = [port for port in service_ports if port["targetPort"] == target_port]
+    assert matching_ports
+    service_port = matching_ports[0]["port"]
     return service_port
 
 
 @contextlib.contextmanager
-def kubectl_port_forward(service: str, namespace: str, service_port: str,
-                         local_port: Optional[str] = None):
+def kubectl_port_forward(service: str, namespace: str, target_port: int,
+                         local_port: Optional[int] = None):
     """Context manager which creates a kubectl port-forward process targeting a
     K8s service.
 
@@ -278,9 +283,12 @@ def kubectl_port_forward(service: str, namespace: str, service_port: str,
     Args:
         service: Name of a K8s service.
         namespace: Namespace to which the service belongs.
-        service_port: Target this port of the service.
-        local_port: Forward from this port. Optional. By default, uses `service_port`.
+        target_port: The port targeted by the service.
+        local_port: Forward from this port. Optional. By default, uses the port exposed
+        by the service.
     """
+    # First, figure out which port the service exposes for the given target port.
+    service_port = _get_service_port(service, namespace, target_port)
     if not local_port:
         local_port = service_port
 
