@@ -475,10 +475,6 @@ class HyperOptSearch(Searcher):
                         [
                             HyperOptSearch.convert_search_space(category, prefix=par)
                             if isinstance(category, dict)
-                            else HyperOptSearch.convert_search_space(
-                                dict(enumerate(category)), prefix=f"{par}/{i}"
-                            )
-                            if isinstance(category, list)
                             else resolve_value(f"{par}/{i}", category)
                             if isinstance(category, Domain)
                             else category
