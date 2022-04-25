@@ -6,7 +6,7 @@ import ray
 from ray import workflow
 from ray.workflow.storage.debug import DebugStorage
 from ray.workflow.workflow_storage import STEP_OUTPUTS_METADATA
-from ray.workflow.workflow_storage import asyncio_run
+from ray.workflow.common import asyncio_run
 from ray.workflow.storage.filesystem import FilesystemStorageImpl
 from ray.workflow.tests.utils import _alter_storage
 
