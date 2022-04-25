@@ -15,8 +15,7 @@ from ray.ml.checkpoint import Checkpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train.backend import BackendExecutor
 from ray.train.checkpoint import TuneCheckpointManager
-from ray.train.utils import construct_train_func
-from ray.train.dataset_spec import _RayDatasetSpec
+from ray.train.utils import construct_train_func, _RayDatasetSpec
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
