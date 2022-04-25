@@ -442,7 +442,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
         } else {
           // Erase the python executable as well for other languages.
           worker_command_args.erase(worker_command_args.begin(),
-                                    worker_command_args.begin() + 2); 
+                                    worker_command_args.begin() + 2);
         }
       }
     }

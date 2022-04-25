@@ -324,7 +324,6 @@ class RuntimeEnv(dict):
         self,
         *,
         py_modules: Optional[List[str]] = None,
-        # java_jars: Option[List[str]] = None,
         working_dir: Optional[str] = None,
         pip: Optional[List[str]] = None,
         conda: Optional[Union[Dict[str, str], str]] = None,
@@ -339,8 +338,6 @@ class RuntimeEnv(dict):
         runtime_env = kwargs
         if py_modules is not None:
             runtime_env["py_modules"] = py_modules
-        # if java_jars is not None:
-            # runtime_env["java_jars"] = java_jars
         if working_dir is not None:
             runtime_env["working_dir"] = working_dir
         if pip is not None:
