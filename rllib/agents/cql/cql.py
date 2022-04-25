@@ -90,12 +90,11 @@ class CQLTrainer(SACTrainer):
 
         # Add the entire dataset to Replay Buffer (global variable)
         reader = self.workers.local_worker().input_reader
-        replay_buffer = self.local_replay_buffer
 
         # For d4rl, add the D4RLReaders' dataset to the buffer.
         if isinstance(self.config["input"], str) and "d4rl" in self.config["input"]:
             dataset = reader.dataset
-            replay_buffer.add_batch(dataset)
+            self.local_replay_buffer.add(dataset)
         # For a list of files, add each file's entire content to the buffer.
         elif isinstance(reader, ShuffledInput):
             num_batches = 0
@@ -113,10 +112,10 @@ class CQLTrainer(SACTrainer):
                         [obs[1:], np.zeros_like(obs[0:1])]
                     )
                     batch[SampleBatch.DONES][-1] = True
-                replay_buffer.add_batch(batch)
+                self.local_replay_buffer.add(batch)
             print(
                 f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
-                f" replay buffer, which has capacity {replay_buffer.capacity}."
+                f" replay buffer, which has capacity {self.local_replay_buffer.capacity}."
             )
         else:
             raise ValueError(
@@ -164,7 +163,7 @@ class CQLTrainer(SACTrainer):
     def training_iteration(self) -> ResultDict:
 
         # Sample training batch from replay buffer.
-        train_batch = self.local_replay_buffer.replay()
+        train_batch = self.local_replay_buffer.sample(self.config["train_batch_size"])
 
         # Old-style replay buffers return None if learning has not started
         if not train_batch:
