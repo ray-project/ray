@@ -589,7 +589,7 @@ def _validate(obs_space, action_space):
                 action_space.spaces[0]
             )
         )
-    if len({str(x) for x in obs_space.original_space.spaces}) > 1:
+    if len({str(x) for x in obs_space.spaces}) > 1:
         raise ValueError(
             "Implementation limitation: observations of grouped agents "
             "must be homogeneous, got {}".format(

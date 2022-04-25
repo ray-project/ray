@@ -58,6 +58,10 @@ class GroupAgentsWrapper(MultiAgentEnv):
         for group_id in groups.keys():
             self._agent_ids.add(group_id)
 
+        # TODO (avnishn): Remove this after making petting zoo env compatible with
+        #  check_env.
+        self._skip_env_checking = True
+
     def seed(self, seed=None):
         if not hasattr(self.env, "seed"):
             # This is a silent fail. However, OpenAI gyms also silently fail

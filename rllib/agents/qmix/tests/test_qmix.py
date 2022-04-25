@@ -114,14 +114,14 @@ class TestQMix(unittest.TestCase):
     #TODO: move this learning test into a yaml and add to weekly regression
     def test_qmix_on_pettingzoo_env(self):
         from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv, ParallelPettingZooEnv
-        from pettingzoo.butterfly import cooperative_pong_v4
+        from pettingzoo.butterfly import cooperative_pong_v5
         from gym.spaces import Tuple
         #from pettingzoo.butterfly import pistonball_v4
         #from pettingzoo.mpe import simple_spread_v2
         from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0, resize_v0, frame_stack_v1
 
         def env_creator(config):
-            env = cooperative_pong_v4.parallel_env()
+            env = cooperative_pong_v5.parallel_env()
             env = dtype_v0(env, dtype=np.float32)
             env = resize_v0(env, 140, 240)
             env = color_reduction_v0(env, mode="R")
@@ -150,7 +150,7 @@ class TestQMix(unittest.TestCase):
 
         config = {
             "buffer_size": 10,
-            "_disable_preprocessor_api": True,
+            #"_disable_preprocessor_api": True,
         }
         trainer = QMixTrainer(env="coop_pong", config=config)
         trainer.train()
