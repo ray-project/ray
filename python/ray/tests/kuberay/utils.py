@@ -318,10 +318,19 @@ def _kubectl_port_forward(service: str, namespace: str, target_port: int,
 
 @contextlib.contextmanager
 def ray_client_port_forward(head_service: str,
-                            namespace: str = "default",
+                            k8s_namespace: str = "default",
+                            ray_namespace: Optional[str] = None,
                             ray_client_port: int = 10001):
+    """Context manager which manages a Ray client connection using kubectl port-forward.
+
+    Args:
+        head_service: The name of the Ray head K8s service.
+        k8s_namespace: K8s namespace the Ray cluster belongs to.
+        ray_namespace: The Ray namespace to connect to.
+        ray_client_port: The port on which the Ray head is running the Ray client server.
+    """
     with _kubectl_port_forward(service=head_service,
-                               namespace=namespace,
+                               namespace=k8s_namespace,
                                target_port=ray_client_port) as local_port:
-        with ray.init(f"127.0.0.1:{local_port}"):
+        with ray.init(f"ray://127.0.0.1:{local_port}", namespace=ray_namespace):
             yield

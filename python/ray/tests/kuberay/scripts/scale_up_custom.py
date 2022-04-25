@@ -1,7 +1,7 @@
 import ray
 
 
-def scale_up_custom():
+def main():
     """Submits custom resource request.
     """
     # Workers and head are annotated as having 5 "Custom2" capacity each,
@@ -14,4 +14,4 @@ def scale_up_custom():
 
 if __name__ == "__main__":
     ray.init("auto")
-    scale_up_custom()
+    main()
