@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <google/protobuf/util/message_differencer.h>
+
 #include <cstddef>
 #include <string>
 #include <unordered_map>
@@ -25,24 +27,39 @@
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
+#include "ray/util/container_util.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
+
 namespace ray {
+inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
+                       const ray::rpc::SchedulingStrategy &rhs) {
+  return google::protobuf::util::MessageDifferencer::Equals(lhs, rhs);
+}
+
 typedef int SchedulingClass;
 
 struct SchedulingClassDescriptor {
  public:
-  explicit SchedulingClassDescriptor(ResourceSet rs, FunctionDescriptor fd, int64_t d)
-      : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
+  explicit SchedulingClassDescriptor(ResourceSet rs,
+                                     FunctionDescriptor fd,
+                                     int64_t d,
+                                     rpc::SchedulingStrategy scheduling_strategy)
+      : resource_set(std::move(rs)),
+        function_descriptor(std::move(fd)),
+        depth(d),
+        scheduling_strategy(std::move(scheduling_strategy)) {}
   ResourceSet resource_set;
   FunctionDescriptor function_descriptor;
   int64_t depth;
+  rpc::SchedulingStrategy scheduling_strategy;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     return depth == other.depth && resource_set == other.resource_set &&
-           function_descriptor == other.function_descriptor;
+           function_descriptor == other.function_descriptor &&
+           scheduling_strategy == other.scheduling_strategy;
   }
 
   std::string DebugString() const {
@@ -50,6 +67,7 @@ struct SchedulingClassDescriptor {
     buffer << "{"
            << "depth=" << depth << " "
            << "function_descriptor=" << function_descriptor->ToString() << " "
+           << "scheduling_strategy=" << scheduling_strategy.DebugString() << " "
            << "resource_set="
            << "{";
     for (const auto &pair : resource_set.GetResourceMap()) {
@@ -63,11 +81,34 @@ struct SchedulingClassDescriptor {
 
 namespace std {
 template <>
+struct hash<ray::rpc::SchedulingStrategy> {
+  size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
+    size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
+    if (scheduling_strategy.scheduling_strategy_case() ==
+        ray::rpc::SchedulingStrategy::kNodeAffinitySchedulingStrategy) {
+      hash ^= std::hash<std::string>()(
+          scheduling_strategy.node_affinity_scheduling_strategy().node_id());
+      hash ^= scheduling_strategy.node_affinity_scheduling_strategy().soft();
+    } else if (scheduling_strategy.scheduling_strategy_case() ==
+               ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
+      hash ^= std::hash<std::string>()(
+          scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
+      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
+                  .placement_group_bundle_index();
+      hash ^= scheduling_strategy.placement_group_scheduling_strategy()
+                  .placement_group_capture_child_tasks();
+    }
+    return hash;
+  }
+};
+
+template <>
 struct hash<ray::SchedulingClassDescriptor> {
   size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
     size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
     hash ^= sched_cls.function_descriptor->Hash();
     hash ^= sched_cls.depth;
+    hash ^= std::hash<ray::rpc::SchedulingStrategy>()(sched_cls.scheduling_strategy);
     return hash;
   }
 };
@@ -87,7 +128,8 @@ struct ConcurrencyGroup {
 
   ConcurrencyGroup() = default;
 
-  ConcurrencyGroup(const std::string &name, uint32_t max_concurrency,
+  ConcurrencyGroup(const std::string &name,
+                   uint32_t max_concurrency,
                    const std::vector<ray::FunctionDescriptor> &fds)
       : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
 
@@ -159,6 +201,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string SerializedRuntimeEnv() const;
 
+  rpc::RuntimeEnvConfig RuntimeEnvConfig() const;
+
   bool HasRuntimeEnv() const;
 
   int GetRuntimeEnvHash() const;
@@ -201,6 +245,14 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that will be acquired during the execution of this
   /// task.
   const ResourceSet &GetRequiredResources() const;
+
+  const rpc::SchedulingStrategy &GetSchedulingStrategy() const;
+
+  bool IsNodeAffinitySchedulingStrategy() const;
+
+  NodeID GetNodeAffinitySchedulingStrategyNodeId() const;
+
+  bool GetNodeAffinitySchedulingStrategySoft() const;
 
   /// Return the resources that are required for a task to be placed on a node.
   /// This will typically be the same as the resources acquired during execution
@@ -308,6 +360,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool ExecuteOutOfOrder() const;
 
+  bool IsSpreadSchedulingStrategy() const;
+
  private:
   void ComputeResources();
 
@@ -341,8 +395,14 @@ class WorkerCacheKey {
   ///
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
+  /// worker. \param is_actor Whether the worker will be an actor. This is set when
+  ///         task type isolation between workers is enabled.
+  /// worker. \param iis_gpu Whether the worker will be using GPUs. This is set when
+  ///         resource type isolation between workers is enabled.
   WorkerCacheKey(const std::string serialized_runtime_env,
-                 const absl::flat_hash_map<std::string, double> &required_resources);
+                 const absl::flat_hash_map<std::string, double> &required_resources,
+                 bool is_actor,
+                 bool is_gpu);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -368,6 +428,10 @@ class WorkerCacheKey {
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
   const absl::flat_hash_map<std::string, double> required_resources;
+  /// Whether the worker is for an actor.
+  const bool is_actor;
+  /// Whether the worker is to use a GPU.
+  const bool is_gpu;
   /// The cached hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;

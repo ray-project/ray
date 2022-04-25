@@ -8,7 +8,7 @@ from typing import Optional
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, SMALL_NUMBER
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import override, DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import TensorType, List, Union, Tuple, ModelConfigDict
@@ -27,7 +27,6 @@ class TFActionDistribution(ActionDistribution):
         self.sample_op = self._build_sample_op()
         self.sampled_action_logp_op = self.logp(self.sample_op)
 
-    @DeveloperAPI
     def _build_sample_op(self) -> TensorType:
         """Implement this instead of sample(), to enable op reuse.
 
@@ -50,7 +49,6 @@ class TFActionDistribution(ActionDistribution):
 class Categorical(TFActionDistribution):
     """Categorical distribution for discrete action spaces."""
 
-    @DeveloperAPI
     def __init__(
         self, inputs: List[TensorType], model: ModelV2 = None, temperature: float = 1.0
     ):
@@ -98,6 +96,7 @@ class Categorical(TFActionDistribution):
         return action_space.n
 
 
+@DeveloperAPI
 class MultiCategorical(TFActionDistribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
@@ -138,7 +137,7 @@ class MultiCategorical(TFActionDistribution):
         if isinstance(actions, tf.Tensor):
             if isinstance(self.action_space, gym.spaces.Box):
                 actions = tf.reshape(
-                    actions, [-1, int(np.product(self.action_space.shape))]
+                    actions, [-1, int(np.prod(self.action_space.shape))]
                 )
             elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
                 actions.set_shape((None, len(self.cats)))
@@ -186,12 +185,57 @@ class MultiCategorical(TFActionDistribution):
             high_ = np.max(action_space.high)
             assert np.all(action_space.low == low_)
             assert np.all(action_space.high == high_)
-            np.product(action_space.shape) * (high_ - low_ + 1)
+            np.prod(action_space.shape, dtype=np.int32) * (high_ - low_ + 1)
         # MultiDiscrete space.
         else:
+            # nvec is already integer, so no casting needed.
             return np.sum(action_space.nvec)
 
 
+@ExperimentalAPI
+class SlateMultiCategorical(Categorical):
+    """MultiCategorical distribution for MultiDiscrete action spaces.
+
+    The action space must be uniform, meaning all nvec items have the same size, e.g.
+    MultiDiscrete([10, 10, 10]), where 10 is the number of candidates to pick from
+    and 3 is the slate size (pick 3 out of 10). When picking candidates, no candidate
+    must be picked more than once.
+    """
+
+    def __init__(
+        self,
+        inputs: List[TensorType],
+        model: ModelV2 = None,
+        temperature: float = 1.0,
+        action_space: Optional[gym.spaces.MultiDiscrete] = None,
+        all_slates=None,
+    ):
+        assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
+        # Allow softmax formula w/ temperature != 1.0:
+        # Divide inputs by temperature.
+        super().__init__(inputs / temperature, model)
+        self.action_space = action_space
+        # Assert uniformness of the action space (all discrete buckets have the same
+        # size).
+        assert isinstance(self.action_space, gym.spaces.MultiDiscrete) and all(
+            n == self.action_space.nvec[0] for n in self.action_space.nvec
+        )
+        self.all_slates = all_slates
+
+    @override(ActionDistribution)
+    def deterministic_sample(self) -> TensorType:
+        # Get a sample from the underlying Categorical (batch of ints).
+        sample = super().deterministic_sample()
+        # Use the sampled ints to pick the actual slates.
+        return tf.gather(self.all_slates, sample)
+
+    @override(ActionDistribution)
+    def logp(self, x: TensorType) -> TensorType:
+        # TODO: Implement.
+        return tf.ones_like(self.inputs[:, 0])
+
+
+@DeveloperAPI
 class GumbelSoftmax(TFActionDistribution):
     """GumbelSoftmax distr. (for differentiable sampling in discr. actions
 
@@ -209,7 +253,6 @@ class GumbelSoftmax(TFActionDistribution):
     Variables (Maddison et al, 2017) https://arxiv.org/abs/1611.00712
     """
 
-    @DeveloperAPI
     def __init__(
         self, inputs: List[TensorType], model: ModelV2 = None, temperature: float = 1.0
     ):
@@ -264,6 +307,7 @@ class GumbelSoftmax(TFActionDistribution):
         return action_space.n
 
 
+@DeveloperAPI
 class DiagGaussian(TFActionDistribution):
     """Action distribution where each vector element is a gaussian.
 
@@ -332,9 +376,10 @@ class DiagGaussian(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
+@DeveloperAPI
 class SquashedGaussian(TFActionDistribution):
     """A tanh-squashed Gaussian distribution defined by: mean, std, low, high.
 
@@ -430,9 +475,10 @@ class SquashedGaussian(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
+@DeveloperAPI
 class Beta(TFActionDistribution):
     """
     A Beta distribution is defined on the interval [0, 1] and parameterized by
@@ -485,9 +531,10 @@ class Beta(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
+        return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
+@DeveloperAPI
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
 
@@ -512,9 +559,10 @@ class Deterministic(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape)
+        return np.prod(action_space.shape, dtype=np.int32)
 
 
+@DeveloperAPI
 class MultiActionDistribution(TFActionDistribution):
     """Action distribution that operates on a set of actions.
 
@@ -611,9 +659,10 @@ class MultiActionDistribution(TFActionDistribution):
 
     @override(ActionDistribution)
     def required_model_output_shape(self, action_space, model_config):
-        return np.sum(self.input_lens)
+        return np.sum(self.input_lens, dtype=np.int32)
 
 
+@DeveloperAPI
 class Dirichlet(TFActionDistribution):
     """Dirichlet distribution for continuous actions that are between
     [0,1] and sum to 1.
@@ -667,4 +716,4 @@ class Dirichlet(TFActionDistribution):
     def required_model_output_shape(
         action_space: gym.Space, model_config: ModelConfigDict
     ) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape)
+        return np.prod(action_space.shape, dtype=np.int32)

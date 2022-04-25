@@ -24,7 +24,8 @@ using ray::core::TaskOptions;
 
 std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
                                                std::shared_ptr<LocalMemoryBuffer> buffer,
-                                               RayFunction &function, int return_num) {
+                                               RayFunction &function,
+                                               int return_num) {
   std::unordered_map<std::string, double> resources;
   std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
   TaskOptions options{name, return_num, resources};
@@ -52,5 +53,20 @@ std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
   }
   return result.value();
 }
+
+const ray::stats::TagKeyType TagRegister(const std::string tag_name) {
+  return ray::stats::TagKeyType::Register(tag_name);
+}
+
+const ActorID &GetCurrentActorID() {
+  return CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
+}
+
+bool IsInitialized() { return CoreWorkerProcess::IsInitialized(); }
+
+void SetCurrentThreadWorker(const WorkerID &worker_id) {
+  CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
+}
+
 }  // namespace internal
 }  // namespace ray

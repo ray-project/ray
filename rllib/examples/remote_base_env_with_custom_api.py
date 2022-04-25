@@ -60,6 +60,7 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
     """
 
     def __init__(self, config=None):
+        super().__init__()
         self.action_space = gym.spaces.Box(0, 1, shape=(1,))
         self.observation_space = gym.spaces.Box(0, 1, shape=(2,))
         self.task = 1

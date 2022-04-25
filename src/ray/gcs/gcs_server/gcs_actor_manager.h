@@ -45,10 +45,22 @@ class GcsActor {
   explicit GcsActor(rpc::ActorTableData actor_table_data)
       : actor_table_data_(std::move(actor_table_data)) {}
 
+  /// Create a GcsActor by actor_table_data and task_spec.
+  /// This is only for ALIVE actors.
+  ///
+  /// \param actor_table_data Data of the actor (see gcs.proto).
+  /// \param task_spec Task spec of the actor.
+  explicit GcsActor(rpc::ActorTableData actor_table_data, rpc::TaskSpec task_spec)
+      : actor_table_data_(std::move(actor_table_data)),
+        task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
+    RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
+  }
+
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace) {
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace)
+      : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -59,17 +71,25 @@ class GcsActor {
     auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
 
+    actor_table_data_.mutable_function_descriptor()->CopyFrom(
+        task_spec.function_descriptor());
+
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
     actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
     actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
-    actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
     actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
+
+    // Set required resources.
+    auto resource_map =
+        GetCreationTaskSpecification().GetRequiredResources().GetResourceMap();
+    actor_table_data_.mutable_required_resources()->insert(resource_map.begin(),
+                                                           resource_map.end());
 
     const auto &function_descriptor = task_spec.function_descriptor();
     switch (function_descriptor.function_descriptor_case()) {
@@ -127,6 +147,7 @@ class GcsActor {
   const rpc::ActorTableData &GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
+  rpc::TaskSpec *GetMutableTaskSpec();
 
   std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
 
@@ -136,6 +157,7 @@ class GcsActor {
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
+  const std::unique_ptr<rpc::TaskSpec> task_spec_;
   // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
   std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
 };
@@ -198,7 +220,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       boost::asio::io_context &io_context,
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
+      std::shared_ptr<GcsPublisher> gcs_publisher,
+      RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
@@ -302,7 +325,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param exit_type exit reason of the dead worker.
   /// \param creation_task_exception if this arg is set, this worker is died because of an
   /// exception thrown in actor's creation task.
-  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
+  void OnWorkerDead(const NodeID &node_id,
+                    const WorkerID &worker_id,
                     const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
                     const rpc::RayException *creation_task_exception = nullptr);
@@ -389,7 +413,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
-  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause,
+  void DestroyActor(const ActorID &actor_id,
+                    const rpc::ActorDeathCause &death_cause,
                     bool force_kill = true);
 
   /// Get unresolved actors that were submitted from the specified node.
@@ -408,7 +433,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   /// \param death_cause Context about why this actor is dead. Should only be set when
   /// need_reschedule=false.
-  void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+  void ReconstructActor(const ActorID &actor_id,
+                        bool need_reschedule,
                         const rpc::ActorDeathCause &death_cause);
 
   /// Remove the specified actor from `unresolved_actors_`.
@@ -434,7 +460,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
-                                   bool force_kill = true, bool no_restart = true);
+                                   bool force_kill = true,
+                                   bool no_restart = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.

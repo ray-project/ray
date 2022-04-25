@@ -472,7 +472,7 @@ Then, in your program, you'll need to connect to this cluster via ``ray.init``:
 
 .. code-block:: python
 
-    ray.init(address="auto")  # or a specific redis address of the form "ip-address:port"
+    ray.init(address="auto")  # or a specific Ray address of the form "ip-address:port"
 
 After connecting, you can scale up the number of workers seamlessly across multiple nodes:
 

@@ -3,7 +3,6 @@ import pytest
 import ray
 import re
 from filelock import FileLock
-from pathlib import Path
 from ray._private.test_utils import run_string_as_driver, SignalActor
 from ray import workflow
 from ray.tests.conftest import *  # noqa
@@ -48,7 +47,7 @@ def test_step_resources(workflow_start_regular, tmp_path):
     # sent from worker to raylet.
     signal_actor = SignalActor.remote()
 
-    @workflow.step
+    @ray.remote
     def step_run():
         ray.wait([signal_actor.send.remote()])
         with FileLock(lock_path):
@@ -60,7 +59,7 @@ def test_step_resources(workflow_start_regular, tmp_path):
 
     lock = FileLock(lock_path)
     lock.acquire()
-    ret = step_run.options(num_cpus=2).step().run_async()
+    ret = workflow.create(step_run.options(num_cpus=2).bind()).run_async()
     ray.wait([signal_actor.wait.remote()])
     obj = remote_run.remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
@@ -71,11 +70,11 @@ def test_step_resources(workflow_start_regular, tmp_path):
 
 
 def test_get_output_1(workflow_start_regular, tmp_path):
-    @workflow.step
+    @ray.remote
     def simple(v):
         return v
 
-    assert 0 == simple.step(0).run("simple")
+    assert 0 == workflow.create(simple.bind(0)).run("simple")
     assert 0 == ray.get(workflow.get_output("simple"))
 
 
@@ -83,13 +82,13 @@ def test_get_output_2(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
 
-    @workflow.step
+    @ray.remote
     def simple(v):
         with FileLock(lock_path):
             return v
 
     lock.acquire()
-    obj = simple.step(0).run_async("simple")
+    obj = workflow.create(simple.bind(0)).run_async("simple")
     obj2 = workflow.get_output("simple")
     lock.release()
     assert ray.get([obj, obj2]) == [0, 0]
@@ -101,7 +100,7 @@ def test_get_output_3(workflow_start_regular, tmp_path):
     error_flag = tmp_path / "error"
     error_flag.touch()
 
-    @workflow.step
+    @ray.remote
     def incr():
         v = int(cnt_file.read_text())
         cnt_file.write_text(str(v + 1))
@@ -110,7 +109,7 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        incr.options(max_retries=1).step().run("incr")
+        workflow.create(incr.options(max_retries=0).bind()).run("incr")
 
     assert cnt_file.read_text() == "1"
 
@@ -211,18 +210,18 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
 
 
 def test_get_named_step_default(workflow_start_regular, tmp_path):
-    @workflow.step
+    @ray.remote
     def factorial(n, r=1):
         if n == 1:
             return r
-        return factorial.step(n - 1, r * n)
+        return workflow.continuation(factorial.bind(n - 1, r * n))
 
     import math
 
-    assert math.factorial(5) == factorial.step(5).run("factorial")
+    assert math.factorial(5) == workflow.create(factorial.bind(5)).run("factorial")
     for i in range(5):
         step_name = (
-            "test_basic_workflows_2." "test_get_named_step_default.locals.factorial"
+            "test_basic_workflows_2.test_get_named_step_default.locals.factorial"
         )
         if i != 0:
             step_name += "_" + str(i)
@@ -248,16 +247,16 @@ def test_get_named_step_duplicate(workflow_start_regular):
 
 
 def test_no_init(shutdown_only):
-    @workflow.step
+    @ray.remote
     def f():
         pass
 
     fail_wf_init_error_msg = re.escape(
-        "`workflow.init()` must be called prior to using " "the workflows API."
+        "`workflow.init()` must be called prior to using the workflows API."
     )
 
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
-        f.step().run()
+        workflow.create(f.bind()).run()
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
         workflow.list_all()
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
@@ -266,71 +265,6 @@ def test_no_init(shutdown_only):
         workflow.cancel("wf")
     with pytest.raises(RuntimeError, match=fail_wf_init_error_msg):
         workflow.get_actor("wf")
-
-
-def test_wf_run(workflow_start_regular, tmp_path):
-    counter = tmp_path / "counter"
-    counter.write_text("0")
-
-    @workflow.step
-    def f():
-        v = int(counter.read_text()) + 1
-        counter.write_text(str(v))
-
-    f.step().run("abc")
-    assert counter.read_text() == "1"
-    # This will not rerun the job from beginning
-    f.step().run("abc")
-    assert counter.read_text() == "1"
-
-
-def test_wf_no_run():
-    @workflow.step
-    def f1():
-        pass
-
-    f1.step()
-
-    @workflow.step
-    def f2(*w):
-        pass
-
-    f = f2.step(*[f1.step() for _ in range(10)])
-
-    with pytest.raises(Exception):
-        f.run()
-
-
-def test_dedupe_indirect(workflow_start_regular, tmp_path):
-    counter = Path(tmp_path) / "counter.txt"
-    lock = Path(tmp_path) / "lock.txt"
-    counter.write_text("0")
-
-    @workflow.step
-    def incr():
-        with FileLock(str(lock)):
-            c = int(counter.read_text())
-            c += 1
-            counter.write_text(f"{c}")
-
-    @workflow.step
-    def identity(a):
-        return a
-
-    @workflow.step
-    def join(*a):
-        return counter.read_text()
-
-    # Here a is passed to two steps and we need to ensure
-    # it's only executed once
-    a = incr.step()
-    i1 = identity.step(a)
-    i2 = identity.step(a)
-    assert "1" == join.step(i1, i2).run()
-    assert "2" == join.step(i1, i2).run()
-    # pass a multiple times
-    assert "3" == join.step(a, a, a, a).run()
-    assert "4" == join.step(a, a, a, a).run()
 
 
 if __name__ == "__main__":

@@ -10,10 +10,41 @@
     margin: auto;
 }
 
+/* Hide confusing "<-" back arrow in navigation for larger displays */
+@media (min-width: 768px) {
+    #navbar-toggler {
+        display: none;
+    }
+}
+
+/* Make navigation scrollable on mobile, by making algolia not overflow */
+@media (max-width: 768px) {
+    #site-navigation {
+        overflow-y: scroll;
+    }
+
+    .algolia-autocomplete .ds-dropdown-menu{
+        min-width: 250px;
+    }
+}
+
 /* sphinx-panels overrides the content width to 1140 for large displays.*/
 @media (min-width: 1200px) {
     .container, .container-lg, .container-md, .container-sm, .container-xl {
         max-width: 1400px !important;
+    }
+}
+
+.bottom-right-promo-banner {
+    position: fixed;
+    bottom: 100px;
+    right: 20px;
+    width: 270px;
+}
+
+@media (max-width: 1500px) {
+    .bottom-right-promo-banner {
+        display: none;
     }
 }
 

@@ -29,8 +29,10 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
-    const rpc::Address &caller_address, const TaskSpecification &spec,
-    const std::string &call_site, int max_retries) {
+    const rpc::Address &caller_address,
+    const TaskSpecification &spec,
+    const std::string &call_site,
+    int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries";
 
@@ -75,7 +77,10 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       // language frontend. Note that the language bindings should set
       // skip_adding_local_ref=True to avoid double referencing the object.
       reference_counter_->AddOwnedObject(return_id,
-                                         /*inner_ids=*/{}, caller_address, call_site, -1,
+                                         /*inner_ids=*/{},
+                                         caller_address,
+                                         call_site,
+                                         -1,
                                          /*is_reconstructable=*/is_reconstructable,
                                          /*add_local_ref=*/true);
     }
@@ -114,9 +119,9 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       return false;
     }
 
-    if (!it->second.pending) {
+    if (!it->second.IsPending()) {
       resubmit = true;
-      it->second.pending = true;
+      it->second.status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
       num_pending_tasks_++;
 
       // The task is pending again, so it's no longer counted as lineage. If
@@ -193,7 +198,7 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   if (it == submissible_tasks_.end()) {
     return false;
   }
-  return it->second.pending;
+  return it->second.IsPending();
 }
 
 size_t TaskManager::NumSubmissibleTasks() const {
@@ -308,7 +313,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.num_successful_executions++;
 
-    it->second.pending = false;
+    it->second.status = rpc::TaskStatus::FINISHED;
     num_pending_tasks_--;
 
     // A finished task can only be re-executed if it has some number of
@@ -351,7 +356,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to retry task that was not pending " << task_id;
-    RAY_CHECK(it->second.pending)
+    RAY_CHECK(it->second.IsPending())
         << "Tried to retry task that was not pending " << task_id;
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
@@ -378,7 +383,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   }
 }
 
-void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+void TaskManager::FailPendingTask(const TaskID &task_id,
+                                  rpc::ErrorType error_type,
                                   const Status *status,
                                   const rpc::RayErrorInfo *ray_error_info,
                                   bool mark_task_object_failed) {
@@ -393,7 +399,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to fail task that was not pending " << task_id;
-    RAY_CHECK(it->second.pending)
+    RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
     submissible_tasks_.erase(it);
@@ -419,7 +425,9 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
 
   // The worker failed to execute the task, so it cannot be borrowing any
   // objects.
-  RemoveFinishedTaskReferences(spec, /*release_lineage=*/true, rpc::Address(),
+  RemoveFinishedTaskReferences(spec,
+                               /*release_lineage=*/true,
+                               rpc::Address(),
                                ReferenceCounter::ReferenceTableProto());
   if (mark_task_object_failed) {
     MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
@@ -428,7 +436,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
   ShutdownIfNeeded();
 }
 
-bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
+                                         rpc::ErrorType error_type,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
                                          bool mark_task_object_failed) {
@@ -469,12 +478,15 @@ void TaskManager::OnTaskDependenciesInlined(
   reference_counter_->UpdateSubmittedTaskReferences(
       /*return_ids=*/{},
       /*argument_ids_to_add=*/contained_ids,
-      /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
+      /*argument_ids_to_remove=*/inlined_dependency_ids,
+      &deleted);
   in_memory_store_->Delete(deleted);
 }
 
 void TaskManager::RemoveFinishedTaskReferences(
-    TaskSpecification &spec, bool release_lineage, const rpc::Address &borrower_addr,
+    TaskSpecification &spec,
+    bool release_lineage,
+    const rpc::Address &borrower_addr,
     const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
@@ -502,9 +514,12 @@ void TaskManager::RemoveFinishedTaskReferences(
   }
 
   std::vector<ObjectID> deleted;
-  reference_counter_->UpdateFinishedTaskReferences(return_ids, plasma_dependencies,
-                                                   release_lineage, borrower_addr,
-                                                   borrowed_refs, &deleted);
+  reference_counter_->UpdateFinishedTaskReferences(return_ids,
+                                                   plasma_dependencies,
+                                                   release_lineage,
+                                                   borrower_addr,
+                                                   borrowed_refs,
+                                                   &deleted);
   in_memory_store_->Delete(deleted);
 }
 
@@ -529,7 +544,7 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
                  << it->second.reconstructable_return_ids.size()
                  << " plasma returns in scope";
 
-  if (it->second.reconstructable_return_ids.empty() && !it->second.pending) {
+  if (it->second.reconstructable_return_ids.empty() && !it->second.IsPending()) {
     // If the task can no longer be retried, decrement the lineage ref count
     // for each of the task's args.
     for (size_t i = 0; i < it->second.spec.NumArgs(); i++) {
@@ -592,11 +607,68 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
   std::vector<TaskID> ret_vec;
   absl::MutexLock lock(&mu_);
   for (auto it : submissible_tasks_) {
-    if ((it.second.pending) && (it.second.spec.ParentTaskId() == parent_task_id)) {
+    if (it.second.IsPending() && (it.second.spec.ParentTaskId() == parent_task_id)) {
       ret_vec.push_back(it.first);
     }
   }
   return ret_vec;
+}
+
+void TaskManager::AddTaskStatusInfo(rpc::CoreWorkerStats *stats) const {
+  absl::MutexLock lock(&mu_);
+  for (int64_t i = 0; i < stats->object_refs_size(); i++) {
+    auto ref = stats->mutable_object_refs(i);
+    const auto obj_id = ObjectID::FromBinary(ref->object_id());
+    const auto task_id = obj_id.TaskId();
+    const auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      continue;
+    }
+    ref->set_task_status(it->second.status);
+    ref->set_attempt_number(it->second.spec.AttemptNumber());
+  }
+}
+
+void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
+  absl::MutexLock lock(&mu_);
+  auto it = submissible_tasks_.find(task_id);
+  if (it == submissible_tasks_.end()) {
+    return;
+  }
+  if (it->second.status == rpc::TaskStatus::WAITING_FOR_DEPENDENCIES) {
+    it->second.status = rpc::TaskStatus::SCHEDULED;
+  }
+}
+
+void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply) const {
+  absl::MutexLock lock(&mu_);
+  for (const auto &task_it : submissible_tasks_) {
+    const auto &task_entry = task_it.second;
+    auto entry = reply->add_task_info_entries();
+    const auto &task_spec = task_entry.spec;
+    const auto &task_state = task_entry.status;
+    rpc::TaskType type;
+    if (task_spec.IsNormalTask()) {
+      type = rpc::TaskType::NORMAL_TASK;
+    } else if (task_spec.IsActorCreationTask()) {
+      type = rpc::TaskType::ACTOR_CREATION_TASK;
+    } else {
+      RAY_CHECK(task_spec.IsActorTask());
+      type = rpc::TaskType::ACTOR_TASK;
+    }
+    entry->set_type(type);
+    entry->set_name(task_spec.GetName());
+    entry->set_language(task_spec.GetLanguage());
+    entry->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+    entry->set_scheduling_state(task_state);
+    entry->set_job_id(task_spec.JobId().Binary());
+    entry->set_task_id(task_spec.TaskId().Binary());
+    entry->set_parent_task_id(task_spec.ParentTaskId().Binary());
+    const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+    entry->mutable_required_resources()->insert(resources_map.begin(),
+                                                resources_map.end());
+    entry->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+  }
 }
 
 }  // namespace core

@@ -3,6 +3,7 @@ package io.ray.api.options;
 import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimeenv.RuntimeEnv;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -10,6 +11,9 @@ import java.util.Map;
 
 /** The options for creating actor. */
 public class ActorCreationOptions extends BaseTaskOptions {
+  public static final int NO_RESTART = 0;
+  public static final int INFINITE_RESTART = -1;
+
   public final String name;
   public ActorLifetime lifetime;
   public final int maxRestarts;
@@ -18,6 +22,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final PlacementGroup group;
   public final int bundleIndex;
   public final List<ConcurrencyGroup> concurrencyGroups;
+  public final String serializedRuntimeEnv;
   public final int maxPendingCalls;
 
   private ActorCreationOptions(
@@ -30,6 +35,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
       PlacementGroup group,
       int bundleIndex,
       List<ConcurrencyGroup> concurrencyGroups,
+      String serializedRuntimeEnv,
       int maxPendingCalls) {
     super(resources);
     this.name = name;
@@ -40,6 +46,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroups = concurrencyGroups;
+    this.serializedRuntimeEnv = serializedRuntimeEnv;
     this.maxPendingCalls = maxPendingCalls;
   }
 
@@ -54,6 +61,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private PlacementGroup group;
     private int bundleIndex;
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
+    private RuntimeEnv runtimeEnv = null;
     private int maxPendingCalls = -1;
 
     /**
@@ -188,12 +196,18 @@ public class ActorCreationOptions extends BaseTaskOptions {
           group,
           bundleIndex,
           concurrencyGroups,
+          runtimeEnv != null ? runtimeEnv.toJsonBytes() : "",
           maxPendingCalls);
     }
 
     /** Set the concurrency groups for this actor. */
     public Builder setConcurrencyGroups(List<ConcurrencyGroup> concurrencyGroups) {
       this.concurrencyGroups = concurrencyGroups;
+      return this;
+    }
+
+    public Builder setRuntimeEnv(RuntimeEnv runtimeEnv) {
+      this.runtimeEnv = runtimeEnv;
       return this;
     }
   }

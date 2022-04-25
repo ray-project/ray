@@ -57,9 +57,10 @@ def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
     df = None
     max_retry = 3
     retry = 0
-    while not df and retry < max_retry:
+    while retry < max_retry:
         try:
             df = dd.read_parquet(filenames)
+            break
         except FileNotFoundError as e:
             print(f"Failed to load a file. {e}")
             # Wait a little bit before retrying.

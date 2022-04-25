@@ -5,6 +5,7 @@ from functools import partial
 import numpy as np
 import gym
 import logging
+import tree
 from typing import Dict, List, Type, Union
 
 import ray
@@ -46,30 +47,38 @@ MEAN_MIN = -9.0
 MEAN_MAX = 9.0
 
 
+def _repeat_tensor(t: TensorType, n: int):
+    # Insert new axis at position 1 into tensor t
+    t_rep = tf.expand_dims(t, 1)
+    # Repeat tensor t_rep along new axis n times
+    multiples = tf.concat([[1, n], tf.tile([1], tf.expand_dims(tf.rank(t) - 1, 0))], 0)
+    t_rep = tf.tile(t_rep, multiples)
+    # Merge new axis into batch axis
+    t_rep = tf.reshape(t_rep, tf.concat([[-1], tf.shape(t)[1:]], 0))
+    return t_rep
+
+
 # Returns policy tiled actions and log probabilities for CQL Loss
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
-    obs_temp = tf.reshape(
-        tf.tile(tf.expand_dims(obs, 1), [1, num_repeat, 1]), [-1, obs.shape[1]]
-    )
-    logits = model.get_policy_output(obs_temp)
+    batch_size = tf.shape(tree.flatten(obs)[0])[0]
+    obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
+    logits, _ = model.get_action_model_outputs(obs_temp)
     policy_dist = action_dist(logits, model)
     actions, logp_ = policy_dist.sample_logp()
     logp = tf.expand_dims(logp_, -1)
-    return actions, tf.reshape(logp, [tf.shape(obs)[0], num_repeat, 1])
+    return actions, tf.reshape(logp, [batch_size, num_repeat, 1])
 
 
 def q_values_repeat(model, obs, actions, twin=False):
     action_shape = tf.shape(actions)[0]
-    obs_shape = tf.shape(obs)[0]
+    obs_shape = tf.shape(tree.flatten(obs)[0])[0]
     num_repeat = action_shape // obs_shape
-    obs_temp = tf.reshape(
-        tf.tile(tf.expand_dims(obs, 1), [1, num_repeat, 1]), [-1, tf.shape(obs)[1]]
-    )
+    obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
     if not twin:
-        preds_ = model.get_q_values(obs_temp, actions)
+        preds_, _ = model.get_q_values(obs_temp, actions)
     else:
-        preds_ = model.get_twin_q_values(obs_temp, actions)
-    preds = tf.reshape(preds_, [tf.shape(obs)[0], num_repeat, 1])
+        preds_, _ = model.get_twin_q_values(obs_temp, actions)
+    preds = tf.reshape(preds_, [obs_shape, num_repeat, 1])
     return preds
 
 
@@ -111,7 +120,8 @@ def cql_loss(
     )
 
     action_dist_class = _get_dist_class(policy, policy.config, policy.action_space)
-    action_dist_t = action_dist_class(model.get_policy_output(model_out_t), model)
+    action_dist_inputs_t, _ = model.get_action_model_outputs(model_out_t)
+    action_dist_t = action_dist_class(action_dist_inputs_t, model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
     log_pis_t = tf.expand_dims(log_pis_t, -1)
 
@@ -124,9 +134,9 @@ def cql_loss(
     # Policy Loss (Either Behavior Clone Loss or SAC Loss)
     alpha = tf.math.exp(model.log_alpha)
     if policy.cur_iter >= bc_iters:
-        min_q = model.get_q_values(model_out_t, policy_t)
+        min_q, _ = model.get_q_values(model_out_t, policy_t)
         if twin_q:
-            twin_q_ = model.get_twin_q_values(model_out_t, policy_t)
+            twin_q_, _ = model.get_twin_q_values(model_out_t, policy_t)
             min_q = tf.math.minimum(min_q, twin_q_)
         actor_loss = tf.reduce_mean(tf.stop_gradient(alpha) * log_pis_t - min_q)
     else:
@@ -137,19 +147,20 @@ def cql_loss(
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
-    action_dist_tp1 = action_dist_class(model.get_policy_output(model_out_tp1), model)
+    action_dist_inputs_tp1, _ = model.get_action_model_outputs(model_out_tp1)
+    action_dist_tp1 = action_dist_class(action_dist_inputs_tp1, model)
     policy_tp1, _ = action_dist_tp1.sample_logp()
 
-    q_t = model.get_q_values(model_out_t, actions)
+    q_t, _ = model.get_q_values(model_out_t, actions)
     q_t_selected = tf.squeeze(q_t, axis=-1)
     if twin_q:
-        twin_q_t = model.get_twin_q_values(model_out_t, actions)
+        twin_q_t, _ = model.get_twin_q_values(model_out_t, actions)
         twin_q_t_selected = tf.squeeze(twin_q_t, axis=-1)
 
     # Target q network evaluation.
-    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1, policy_tp1)
+    q_tp1, _ = policy.target_model.get_q_values(target_model_out_tp1, policy_tp1)
     if twin_q:
-        twin_q_tp1 = policy.target_model.get_twin_q_values(
+        twin_q_tp1, _ = policy.target_model.get_twin_q_values(
             target_model_out_tp1, policy_tp1
         )
         # Take min over both twin-NNs.

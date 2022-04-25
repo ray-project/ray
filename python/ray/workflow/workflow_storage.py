@@ -20,6 +20,7 @@ from ray.workflow.common import (
     WorkflowRef,
     WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
+    asyncio_run,
 )
 from ray.workflow import workflow_context
 from ray.workflow import serialization
@@ -53,12 +54,6 @@ WORKFLOW_PROGRESS = "progress.json"
 # steps with a given name. This can be very expensive if there are too
 # many duplicates.
 DUPLICATE_NAME_COUNTER = "duplicate_name_counter"
-
-
-# TODO: Get rid of this and use asyncio.run instead once we don't support py36
-def asyncio_run(coro):
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(coro)
 
 
 @dataclass
@@ -305,12 +300,18 @@ class WorkflowStorage:
         if outer_most_step_id is None or outer_most_step_id == "":
             return
 
-        metadata = await self._get(
-            self._key_step_output_metadata(outer_most_step_id), True
-        )
-        if dynamic_output_step_id != metadata[
+        try:
+            metadata = await self._get(
+                self._key_step_output_metadata(outer_most_step_id), True
+            )
+        except KeyNotFoundError:
+            # This is because we skipped checkpointing of the
+            # step [id=outer_most_step_id]. Return a dummy
+            # metadata instead.
+            metadata = {}
+        if dynamic_output_step_id != metadata.get(
             "output_step_id"
-        ] and dynamic_output_step_id != metadata.get("dynamic_output_step_id"):
+        ) and dynamic_output_step_id != metadata.get("dynamic_output_step_id"):
             metadata["dynamic_output_step_id"] = dynamic_output_step_id
             await self._put(
                 self._key_step_output_metadata(outer_most_step_id), metadata, True

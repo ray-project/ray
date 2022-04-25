@@ -1,34 +1,49 @@
 """Example of using LinUCB on a RecSim environment. """
 
+import argparse
 from matplotlib import pyplot as plt
 import pandas as pd
 import time
 
 from ray import tune
-import ray.rllib.examples.env.recsim_recommender_system_envs  # noqa
+import ray.rllib.examples.env.recommender_system_envs_with_recsim  # noqa
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--framework",
+        choices=["tf2", "torch"],
+        default="torch",
+        help="The DL framework specifier.",
+    )
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+
     ray.init()
 
     config = {
         # "RecSim-v1" is a pre-registered RecSim env.
         # Alternatively, you can do:
-        # `from ray.rllib.examples.env.recsim_recommender_system_envs import ...`
+        # `from ray.rllib.examples.env.recommender_system_envs_with_recsim import ...`
         # - LongTermSatisfactionRecSimEnv
         # - InterestExplorationRecSimEnv
         # - InterestEvolutionRecSimEnv
         # Then: "env": [the imported RecSim class]
         "env": "RecSim-v1",
         "env_config": {
+            "num_candidates": 10,
+            "slate_size": 1,
             "convert_to_discrete_action_space": True,
             "wrap_for_bandits": True,
         },
+        "framework": args.framework,
+        "eager_tracing": (args.framework == "tf2"),
     }
 
     # Actual training_iterations will be 10 * timesteps_per_iteration
-    # (100 by default) = 2,000
-    training_iterations = 10
+    # (100 by default) = 500,000
+    training_iterations = 5000
 
     print("Running training for %s time steps" % training_iterations)
 

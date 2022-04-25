@@ -116,8 +116,8 @@ void TaskSpecification::ComputeResources() {
     const auto &resource_set = GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
-    auto sched_cls_desc =
-        SchedulingClassDescriptor(resource_set, function_descriptor, depth);
+    auto sched_cls_desc = SchedulingClassDescriptor(
+        resource_set, function_descriptor, depth, GetSchedulingStrategy());
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
@@ -164,6 +164,10 @@ std::string TaskSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
 }
 
+rpc::RuntimeEnvConfig TaskSpecification::RuntimeEnvConfig() const {
+  return message_->runtime_env_info().runtime_env_config();
+}
+
 bool TaskSpecification::HasRuntimeEnv() const {
   return !IsRuntimeEnvEmpty(SerializedRuntimeEnv());
 }
@@ -175,7 +179,12 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource};
+  WorkerCacheKey env = {
+      SerializedRuntimeEnv(),
+      required_resource,
+      IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types(),
+      GetRequiredResources().GetResource("GPU") > 0 &&
+          RayConfig::instance().isolate_workers_across_resource_types()};
   return env.IntHash();
 }
 
@@ -229,6 +238,26 @@ const std::vector<rpc::ObjectReference> TaskSpecification::ArgInlinedRefs(
 
 const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
+}
+
+const rpc::SchedulingStrategy &TaskSpecification::GetSchedulingStrategy() const {
+  return message_->scheduling_strategy();
+}
+
+bool TaskSpecification::IsNodeAffinitySchedulingStrategy() const {
+  return GetSchedulingStrategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kNodeAffinitySchedulingStrategy;
+}
+
+NodeID TaskSpecification::GetNodeAffinitySchedulingStrategyNodeId() const {
+  RAY_CHECK(IsNodeAffinitySchedulingStrategy());
+  return NodeID::FromBinary(
+      GetSchedulingStrategy().node_affinity_scheduling_strategy().node_id());
+}
+
+bool TaskSpecification::GetNodeAffinitySchedulingStrategySoft() const {
+  RAY_CHECK(IsNodeAffinitySchedulingStrategy());
+  return GetSchedulingStrategy().node_affinity_scheduling_strategy().soft();
 }
 
 std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
@@ -288,6 +317,11 @@ bool TaskSpecification::IsActorCreationTask() const {
 
 bool TaskSpecification::IsActorTask() const {
   return message_->type() == TaskType::ACTOR_TASK;
+}
+
+bool TaskSpecification::IsSpreadSchedulingStrategy() const {
+  return message_->scheduling_strategy().scheduling_strategy_case() ==
+         rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
 // === Below are getter methods specific to actor creation tasks.
@@ -447,9 +481,13 @@ std::string TaskSpecification::CallSiteString() const {
 
 WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
-    const absl::flat_hash_map<std::string, double> &required_resources)
+    const absl::flat_hash_map<std::string, double> &required_resources,
+    bool is_actor,
+    bool is_gpu)
     : serialized_runtime_env(serialized_runtime_env),
-      required_resources(std::move(required_resources)) {}
+      required_resources(std::move(required_resources)),
+      is_actor(is_actor),
+      is_gpu(is_gpu) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
@@ -457,7 +495,8 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty();
+  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
+         !is_gpu;
 }
 
 std::size_t WorkerCacheKey::Hash() const {
@@ -466,9 +505,15 @@ std::size_t WorkerCacheKey::Hash() const {
     if (EnvIsEmpty()) {
       // It's useful to have the same predetermined value for both unspecified and empty
       // runtime envs.
-      hash_ = 0;
+      if (is_actor) {
+        hash_ = 1;
+      } else {
+        hash_ = 0;
+      }
     } else {
       boost::hash_combine(hash_, serialized_runtime_env);
+      boost::hash_combine(hash_, is_actor);
+      boost::hash_combine(hash_, is_gpu);
 
       std::vector<std::pair<std::string, double>> resource_vars(
           required_resources.begin(), required_resources.end());

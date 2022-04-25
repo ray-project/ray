@@ -331,7 +331,7 @@ class TrainingOperator:
             if self._use_fp16 == "apex":
                 if not apex_amp:
                     raise ValueError(
-                        "apex library must be installed to " "use apex backend for fp16"
+                        "apex library must be installed to use apex backend for fp16"
                     )
                 logger.debug("Setting up Apex.")
                 self._amp = apex_amp
@@ -451,9 +451,7 @@ class TrainingOperator:
 
             if should_wrap_dataloader(self._train_loader):
                 if self._add_dist_sampler:
-                    logging.debug(
-                        "Wrapping train data loader with " "DistributedSampler."
-                    )
+                    logging.debug("Wrapping train data loader with DistributedSampler.")
                     self._train_loader = with_sampler(self._train_loader)
 
             if self._validation_loader is not None and should_wrap_dataloader(
@@ -461,7 +459,7 @@ class TrainingOperator:
             ):
                 if self._add_dist_sampler:
                     logging.debug(
-                        "Wrapping validation data loader with " "DistributedSampler."
+                        "Wrapping validation data loader with DistributedSampler."
                     )
                     self._validation_loader = with_sampler(self._validation_loader)
 

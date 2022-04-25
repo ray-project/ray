@@ -72,7 +72,7 @@ def pg_loss_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorT
     }
 
 
-# Build a child class of `TFPolicy`, given the extra options:
+# Build a child class of `TorchPolicy`, given the extra options:
 # - trajectory post-processing function (to calculate advantages)
 # - PG loss function
 PGTorchPolicy = build_policy_class(

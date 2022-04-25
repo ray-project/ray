@@ -50,7 +50,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             import modin.pandas as pd
         except ImportError:
             raise ImportError(
-                "Cannot convert from Modin because " "Modin is not installed."
+                "Cannot convert from Modin because Modin is not installed."
             ) from None
         if not isinstance(df, (pd.DataFrame, pd.Series)):
             raise ValueError("Must provide a modin.pandas DataFrame or Series")

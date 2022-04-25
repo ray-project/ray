@@ -1,8 +1,10 @@
 import glob
+import io
 import os
 import pickle
 import shutil
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -12,13 +14,14 @@ import yaml
 from collections import deque
 
 import ray
+from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune import TuneError
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
-from ray.tune.sync_client import NOOP
+from ray.tune.sync_client import NOOP, RemoteTaskClient
 from ray.tune.syncer import (
     CommandBasedClient,
     detect_cluster_syncer,
@@ -26,6 +29,7 @@ from ray.tune.syncer import (
     SyncerCallback,
 )
 from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -288,7 +292,7 @@ class TestSyncFunctionality(unittest.TestCase):
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
-                "local_target --only-show-errors",
+                "local_target --exact-timestamps --only-show-errors",
             )
 
             s3_client.sync_down(
@@ -299,7 +303,7 @@ class TestSyncFunctionality(unittest.TestCase):
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
-                "local_target --only-show-errors "
+                "local_target --exact-timestamps --only-show-errors "
                 "--exclude '*/checkpoint_*'",
             )
 
@@ -311,7 +315,7 @@ class TestSyncFunctionality(unittest.TestCase):
             self.assertEqual(
                 captured[0].strip(),
                 "aws s3 sync s3://test-bucket/test-dir/remote_source "
-                "local_target --only-show-errors "
+                "local_target --exact-timestamps --only-show-errors "
                 "--exclude '*/checkpoint_*' --exclude '*.big'",
             )
 
@@ -388,7 +392,10 @@ class TestSyncFunctionality(unittest.TestCase):
             )
             self.assertTrue(issubclass(syncer, DockerSyncer))
 
-    @patch("ray.tune.syncer.log_sync_template", lambda: "rsync {source} {target}")
+    @patch(
+        "ray.tune.syncer.get_rsync_template_if_available",
+        lambda: "rsync {source} {target}",
+    )
     def testNoSyncToDriver(self):
         """Test that sync to driver is disabled"""
 
@@ -414,6 +421,235 @@ class TestSyncFunctionality(unittest.TestCase):
         # Sync to driver is disabled, so this should be no-op
         trial_syncer = syncer_callback._get_trial_syncer(trial)
         self.assertEqual(trial_syncer.sync_client, NOOP)
+
+    def testSyncWaitRetry(self):
+        class CountingClient(CommandBasedClient):
+            def __init__(self, *args, **kwargs):
+                self._sync_ups = 0
+                self._sync_downs = 0
+                super(CountingClient, self).__init__(*args, **kwargs)
+
+            def _start_process(self, cmd):
+                if "UPLOAD" in cmd:
+                    self._sync_ups += 1
+                elif "DOWNLOAD" in cmd:
+                    self._sync_downs += 1
+                    if self._sync_downs == 1:
+                        self._last_cmd = "echo DOWNLOAD && true"
+                return super(CountingClient, self)._start_process(cmd)
+
+        client = CountingClient(
+            "echo UPLOAD {source} {target} && false",
+            "echo DOWNLOAD {source} {target} && false",
+            "echo DELETE {target}",
+        )
+
+        # Fail always
+        with self.assertRaisesRegex(TuneError, "Failed sync even after"):
+            client.sync_up("test_source", "test_target")
+            client.wait_or_retry(max_retries=3, backoff_s=0)
+
+        self.assertEquals(client._sync_ups, 3)
+
+        # Succeed after second try
+        client.sync_down("test_source", "test_target")
+        client.wait_or_retry(max_retries=3, backoff_s=0)
+
+        self.assertEquals(client._sync_downs, 2)
+
+    def testSyncBetweenNodesAndDelete(self):
+        temp_source = tempfile.mkdtemp()
+        temp_up_target = tempfile.mkdtemp()
+        temp_down_target = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_source)
+        self.addCleanup(shutil.rmtree, temp_up_target, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, temp_down_target)
+
+        os.makedirs(os.path.join(temp_source, "dir_level0", "dir_level1"))
+        with open(os.path.join(temp_source, "dir_level0", "file_level1.txt"), "w") as f:
+            f.write("Data\n")
+
+        def check_dir_contents(path: str):
+            assert os.path.exists(os.path.join(path, "dir_level0"))
+            assert os.path.exists(os.path.join(path, "dir_level0", "dir_level1"))
+            assert os.path.exists(os.path.join(path, "dir_level0", "file_level1.txt"))
+            with open(os.path.join(path, "dir_level0", "file_level1.txt"), "r") as f:
+                assert f.read() == "Data\n"
+
+        # Sanity check
+        check_dir_contents(temp_source)
+
+        sync_dir_between_nodes(
+            source_ip=ray.util.get_node_ip_address(),
+            source_path=temp_source,
+            target_ip=ray.util.get_node_ip_address(),
+            target_path=temp_up_target,
+        )
+
+        # Check sync up
+        check_dir_contents(temp_up_target)
+
+        # Max size exceeded
+        with self.assertRaises(RayTaskError):
+            sync_dir_between_nodes(
+                source_ip=ray.util.get_node_ip_address(),
+                source_path=temp_up_target,
+                target_ip=ray.util.get_node_ip_address(),
+                target_path=temp_down_target,
+                max_size_bytes=2,
+            )
+
+        assert not os.listdir(temp_down_target)
+
+        sync_dir_between_nodes(
+            source_ip=ray.util.get_node_ip_address(),
+            source_path=temp_up_target,
+            target_ip=ray.util.get_node_ip_address(),
+            target_path=temp_down_target,
+        )
+
+        # Check sync down
+        check_dir_contents(temp_down_target)
+
+        # Delete in some dir
+        delete_on_node(node_ip=ray.util.get_node_ip_address(), path=temp_up_target)
+
+        assert not os.path.exists(temp_up_target)
+
+    def testSyncRemoteTaskOnlyDifferences(self):
+        """Tests the RemoteTaskClient sync client.
+
+        In this test we generate a directory with multiple files.
+        We then use both ``sync_down`` and ``sync_up`` to synchronize
+        these to different directories (on the same node). We then assert
+        that the files have been transferred correctly.
+
+        We then edit one of the files and add another one. We then sync
+        up/down again. In this sync, we assert that only modified and new
+        files are transferred.
+        """
+        temp_source = tempfile.mkdtemp()
+        temp_up_target = tempfile.mkdtemp()
+        temp_down_target = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, temp_source)
+        self.addCleanup(shutil.rmtree, temp_up_target)
+        self.addCleanup(shutil.rmtree, temp_down_target)
+
+        os.makedirs(os.path.join(temp_source, "A", "a1"))
+        os.makedirs(os.path.join(temp_source, "A", "a2"))
+        os.makedirs(os.path.join(temp_source, "B", "b1"))
+        with open(os.path.join(temp_source, "level_0.txt"), "wt") as fp:
+            fp.write("Level 0\n")
+        with open(os.path.join(temp_source, "A", "level_a1.txt"), "wt") as fp:
+            fp.write("Level A1\n")
+        with open(os.path.join(temp_source, "A", "a1", "level_a2.txt"), "wt") as fp:
+            fp.write("Level A2\n")
+        with open(os.path.join(temp_source, "B", "level_b1.txt"), "wt") as fp:
+            fp.write("Level B1\n")
+
+        this_node_ip = ray.util.get_node_ip_address()
+
+        # Sync everything up
+        client = RemoteTaskClient(_store_remotes=True)
+        client.sync_up(source=temp_source, target=(this_node_ip, temp_up_target))
+        client.wait()
+
+        # Assume that we synced everything up to second level
+        self.assertTrue(
+            os.path.exists(os.path.join(temp_up_target, "A", "a1", "level_a2.txt")),
+            msg=f"Contents: {os.listdir(temp_up_target)}",
+        )
+        with open(os.path.join(temp_up_target, "A", "a1", "level_a2.txt"), "rt") as fp:
+            self.assertEqual(fp.read(), "Level A2\n")
+
+        # Sync everything down
+        client.sync_down(source=(this_node_ip, temp_source), target=temp_down_target)
+        client.wait()
+
+        # Assume that we synced everything up to second level
+        self.assertTrue(
+            os.path.exists(os.path.join(temp_down_target, "A", "a1", "level_a2.txt")),
+            msg=f"Contents: {os.listdir(temp_down_target)}",
+        )
+        with open(
+            os.path.join(temp_down_target, "A", "a1", "level_a2.txt"), "rt"
+        ) as fp:
+            self.assertEqual(fp.read(), "Level A2\n")
+
+        # Now, edit some stuff in our source. Then confirm only these
+        # edited files are synced
+        with open(os.path.join(temp_source, "A", "a1", "level_a2.txt"), "wt") as fp:
+            fp.write("Level X2\n")  # Same length
+        with open(os.path.join(temp_source, "A", "level_a1x.txt"), "wt") as fp:
+            fp.write("Level A1X\n")  # New file
+
+        # Sync up
+        client.sync_up(source=temp_source, target=(this_node_ip, temp_up_target))
+
+        # Hi-jack futures
+        files_stats = ray.get(client._stored_files_stats)
+        tarball = ray.get(client._stored_pack_actor_ref.get_full_data.remote())
+        client.wait()
+
+        # Existing file should have new content
+        with open(os.path.join(temp_up_target, "A", "a1", "level_a2.txt"), "rt") as fp:
+            self.assertEqual(fp.read(), "Level X2\n")
+
+        # New file should be there
+        with open(os.path.join(temp_up_target, "A", "level_a1x.txt"), "rt") as fp:
+            self.assertEqual(fp.read(), "Level A1X\n")
+
+        # Old file should be there
+        with open(os.path.join(temp_up_target, "B", "level_b1.txt"), "rt") as fp:
+            self.assertEqual(fp.read(), "Level B1\n")
+
+        # In the target dir, level_a1x was not contained
+        self.assertIn(os.path.join("A", "a1", "level_a2.txt"), files_stats)
+        self.assertNotIn(os.path.join("A", "level_a1x.txt"), files_stats)
+
+        # Inspect tarball
+        with tarfile.open(fileobj=io.BytesIO(tarball)) as tar:
+            files_in_tar = tar.getnames()
+            self.assertIn(os.path.join("A", "a1", "level_a2.txt"), files_in_tar)
+            self.assertIn(os.path.join("A", "level_a1x.txt"), files_in_tar)
+            self.assertNotIn(os.path.join("A", "level_a1.txt"), files_in_tar)
+            # 6 directories (including root) + 2 files
+            self.assertEqual(len(files_in_tar), 8, msg=str(files_in_tar))
+
+        # Sync down
+        client.sync_down(source=(this_node_ip, temp_source), target=temp_down_target)
+
+        # Hi-jack futures
+        files_stats = ray.get(client._stored_files_stats)
+        tarball = ray.get(client._stored_pack_actor_ref.get_full_data.remote())
+        client.wait()
+
+        # Existing file should have new content
+        with open(
+            os.path.join(temp_down_target, "A", "a1", "level_a2.txt"), "rt"
+        ) as fp:
+            self.assertEqual(fp.read(), "Level X2\n")
+
+        # New file should be there
+        with open(os.path.join(temp_down_target, "A", "level_a1x.txt"), "rt") as fp:
+            self.assertEqual(fp.read(), "Level A1X\n")
+
+        # Old file should be there
+        with open(os.path.join(temp_down_target, "B", "level_b1.txt"), "rt") as fp:
+            self.assertEqual(fp.read(), "Level B1\n")
+
+        # In the target dir, level_a1x was not contained
+        self.assertIn(os.path.join("A", "a1", "level_a2.txt"), files_stats)
+        self.assertNotIn(os.path.join("A", "level_a1x.txt"), files_stats)
+
+        # Inspect tarball
+        with tarfile.open(fileobj=io.BytesIO(tarball)) as tar:
+            files_in_tar = tar.getnames()
+            self.assertIn(os.path.join("A", "a1", "level_a2.txt"), files_in_tar)
+            self.assertIn(os.path.join("A", "level_a1x.txt"), files_in_tar)
+            self.assertNotIn(os.path.join("A", "level_a1.txt"), files_in_tar)
+            # 6 directories (including root) + 2 files
+            self.assertEqual(len(files_in_tar), 8, msg=str(files_in_tar))
 
 
 if __name__ == "__main__":

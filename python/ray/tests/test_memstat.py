@@ -6,6 +6,11 @@ import pytest
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.internal.internal_api import memory_summary
+from ray._private.test_utils import (
+    wait_for_condition,
+    Semaphore,
+)
+
 
 # RayConfig to enable recording call sites during ObjectRej creations.
 ray_config = {"record_ref_creation_sites": True}
@@ -36,6 +41,11 @@ STACK_TRACE = "stack trace"
 PID = "pid"
 OBJECT_SIZE = "object size"
 REFERENCE_TYPE = "reference type"
+
+# Task status.
+WAITING_FOR_DEPENDENCIES = "WAITING_FOR_DEPENDENCIES"
+SCHEDULED = "SCHEDULED"
+FINISHED = "FINISHED"
 
 
 def data_lines(memory_str):
@@ -307,6 +317,56 @@ def test_memory_used_output(ray_start_regular):
     print(info)
     assert count(info, "Plasma memory usage 8 MiB") == 1, info
     assert count(info, "8388861.0 B") == 2, info
+
+
+def test_task_status(ray_start_regular):
+    address = ray_start_regular["address"]
+
+    @ray.remote
+    def dep(sema, x=None):
+        ray.get(sema.acquire.remote())
+        return
+
+    # Filter out actor handle refs.
+    def filtered_summary():
+        return "\n".join(
+            [
+                line
+                for line in memory_summary(address, line_wrap=False).split("\n")
+                if "ACTOR_HANDLE" not in line
+            ]
+        )
+
+    sema = Semaphore.remote(value=0)
+    x = dep.remote(sema)
+    y = dep.remote(sema, x=x)
+    # x and its semaphore task are scheduled.
+    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 1)
+
+    z = dep.remote(sema, x=x)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 0)
+
+    sema.release.remote()
+    time.sleep(2)
+    wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 1)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
+    # y, z, and two semaphore tasks are scheduled.
+    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 4)
+
+    sema.release.remote()
+    wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 2)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
+    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 2)
+
+    sema.release.remote()
+    ray.get(y)
+    ray.get(z)
+    wait_for_condition(lambda: count(filtered_summary(), FINISHED) == 3)
+    wait_for_condition(lambda: count(filtered_summary(), WAITING_FOR_DEPENDENCIES) == 0)
+    wait_for_condition(lambda: count(filtered_summary(), SCHEDULED) == 0)
 
 
 if __name__ == "__main__":

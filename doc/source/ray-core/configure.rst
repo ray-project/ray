@@ -114,10 +114,9 @@ Head Node
 ~~~~~~~~~
 In addition to ports specified above, the head node needs to open several more ports.
 
-- ``--port``: Port of Redis. If `--address` is not specified, the head node will start a redis instance listening on this port. Default: 6379.
+- ``--port``: Port of Ray (GCS server). The head node will start a GCS server listening on this port. Default: 6379.
 - ``--ray-client-server-port``: Listening port for Ray Client Server. Default: 10001.
 - ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
-- ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
 
 - If ``--include-dashboard`` is true (the default), then the head node must open ``--dashboard-port``. Default: 8265.
 
@@ -158,53 +157,6 @@ and ``ray start``, it may become reachable again due to the dashboard
 restarting.
 
 If you don't want the dashboard, set ``--include-dashboard=false``.
-
-Redis Port Authentication
--------------------------
-
-Ray instances should run on a secure network without public facing ports.
-The most common threat for Ray instances is unauthorized access to Redis,
-which can be exploited to gain shell access and run arbitrary code.
-The best fix is to run Ray instances on a secure, trusted network.
-
-Running Ray on a secured network is not always feasible.
-To prevent exploits via unauthorized Redis access, Ray provides the option to
-password-protect Redis ports. While this is not a replacement for running Ray
-behind a firewall, this feature is useful for instances exposed to the internet
-where configuring a firewall is not possible. Because Redis is
-very fast at serving queries, the chosen password should be long.
-
-
-.. note:: The Redis passwords provided below may not contain spaces.
-
-Redis authentication is only supported on the raylet code path.
-
-To add authentication via the Python API, start Ray using:
-
-.. code-block:: python
-
-  ray.init(_redis_password="password")
-
-To add authentication via the CLI or to connect to an existing Ray instance with
-password-protected Redis ports:
-
-.. code-block:: bash
-
-  ray start [--head] --redis-password="password"
-
-While Redis port authentication may protect against external attackers,
-Ray does not encrypt traffic between nodes so man-in-the-middle attacks are
-possible for clusters on untrusted networks.
-
-One of most common attack with Redis is port-scanning attack. Attacker scans
-open port with unprotected redis instance and execute arbitrary code. Ray
-enables a default password for redis. Even though this does not prevent brute
-force password cracking, the default password should alleviate most of the
-port-scanning attack. Furthermore, redis and other ray services are bind
-to localhost when the ray is started using ``ray.init``.
-
-See the `Redis security documentation <https://redis.io/topics/security>`__
-for more information.
 
 TLS Authentication
 ------------------

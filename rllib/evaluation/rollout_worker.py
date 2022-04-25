@@ -1,6 +1,6 @@
 import copy
 import gym
-from gym.spaces import Box, Discrete, MultiDiscrete, Space
+from gym.spaces import Discrete, MultiDiscrete, Space
 import logging
 import numpy as np
 import platform
@@ -25,11 +25,9 @@ from ray import ObjectRef
 from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.utils import record_env_wrapper
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.evaluation.metrics import RolloutMetrics
@@ -43,11 +41,11 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils import force_list, merge_dicts
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, ExperimentalAPI
+from ray.rllib.utils import force_list, merge_dicts, check_env
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -135,22 +133,27 @@ class RolloutWorker(ParallelIteratorWorker):
 
     Examples:
         >>> # Create a rollout worker and using it to collect experiences.
-        >>> worker = RolloutWorker(
-        ...   env_creator=lambda _: gym.make("CartPole-v0"),
-        ...   policy_spec=PGTFPolicy)
-        >>> print(worker.sample())
+        >>> import gym
+        >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+        >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+        >>> worker = RolloutWorker( # doctest: +SKIP
+        ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+        ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+        >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
             "dones": [[...]], "new_obs": [[...]]})
-
         >>> # Creating a multi-agent rollout worker
-        >>> worker = RolloutWorker(
+        >>> from gym.spaces import Discrete, Box
+        >>> import random
+        >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
+        >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-        ...   policy_spec={
+        ...   policy_spec={ # doctest: +SKIP
         ...       # Use an ensemble of two policies for car agents
-        ...       "car_policy1":
+        ...       "car_policy1": # doctest: +SKIP
         ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.99}),
-        ...       "car_policy2":
+        ...       "car_policy2": # doctest: +SKIP
         ...         (PGTFPolicy, Box(...), Discrete(...), {"gamma": 0.95}),
         ...       # Use a single shared policy for all traffic lights
         ...       "traffic_light_policy":
@@ -159,7 +162,7 @@ class RolloutWorker(ParallelIteratorWorker):
         ...   policy_mapping_fn=lambda agent_id, episode, **kwargs:
         ...     random.choice(["car_policy1", "car_policy2"])
         ...     if agent_id.startswith("car_") else "traffic_light_policy")
-        >>> print(worker.sample())
+        >>> print(worker.sample()) # doctest: +SKIP
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
             "car_policy2": SampleBatch(...),
@@ -230,6 +233,7 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_config: Optional[PartialTrainerConfigDict] = None,
         worker_index: int = 0,
         num_workers: int = 0,
+        recreated_worker: bool = False,
         record_env: Union[bool, str] = False,
         log_dir: Optional[str] = None,
         log_level: Optional[str] = None,
@@ -251,6 +255,7 @@ class RolloutWorker(ParallelIteratorWorker):
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         policy=None,
         monitor_path=None,
+        disable_env_checking=False,
     ):
         """Initializes a RolloutWorker instance.
 
@@ -323,6 +328,11 @@ class RolloutWorker(ParallelIteratorWorker):
                 through EnvContext so that envs can be configured per worker.
             num_workers: For remote workers, how many workers altogether
                 have been created?
+            recreated_worker: Whether this worker is a recreated one. Workers are
+                recreated by a Trainer (via WorkerSet) in case
+                `recreate_failed_workers=True` and one of the original workers (or an
+                already recreated one) has failed. They don't differ from original
+                workers other than the value of this flag (`self.recreated_worker`).
             record_env: Write out episode stats and videos
                 using gym.wrappers.Monitor to this directory if specified. If
                 True, use the default output dir in ~/ray_results/.... If
@@ -365,6 +375,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 Env is created on this RolloutWorker.
             policy: Obsoleted arg. Use `policy_spec` instead.
             monitor_path: Obsoleted arg. Use `record_env` instead.
+            disable_env_checking: If True, disables the env checking module that
+                validates the properties of the passed environment.
         """
 
         # Deprecated args.
@@ -428,6 +440,7 @@ class RolloutWorker(ParallelIteratorWorker):
             vector_index=0,
             num_workers=num_workers,
             remote=remote_worker_envs,
+            recreated_worker=recreated_worker,
         )
         self.env_context = env_context
         self.policy_config: PartialTrainerConfigDict = policy_config
@@ -439,6 +452,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
+        self.recreated_worker: bool = recreated_worker
         model_config: ModelConfigDict = (
             model_config or self.policy_config.get("model") or {}
         )
@@ -463,6 +477,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.last_batch: Optional[SampleBatchType] = None
         self.global_vars: Optional[dict] = None
         self.fake_sampler: bool = fake_sampler
+        self._disable_env_checking: bool = disable_env_checking
 
         # Update the global seed for numpy/random/tf-eager/torch if we are not
         # the local worker, otherwise, this was already done in the Trainer
@@ -492,8 +507,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if self.env is not None:
             # Validate environment (general validation function).
-            _validate_env(self.env, env_context=self.env_context)
-            # Custom validation function given.
+            if not self._disable_env_checking:
+                check_env(self.env)
+            # Custom validation function given, typically a function attribute of the
+            # algorithm trainer.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
             # We can't auto-wrap a BaseEnv.
@@ -779,8 +796,14 @@ class RolloutWorker(ParallelIteratorWorker):
             A columnar batch of experiences (e.g., tensors).
 
         Examples:
-            >>> print(worker.sample())
-            SampleBatch({"obs": [1, 2, 3], "action": [0, 1, 0], ...})
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> print(worker.sample()) # doctest: +SKIP
+            SampleBatch({"obs": [...], "action": [...], ...})
         """
 
         if self.fake_sampler and self.last_batch is not None:
@@ -857,8 +880,14 @@ class RolloutWorker(ParallelIteratorWorker):
                 size of the collected batch.
 
         Examples:
-            >>> print(worker.sample_with_count())
-            (SampleBatch({"obs": [1, 2, 3], "action": [0, 1, 0], ...}), 3)
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> print(worker.sample_with_count()) # doctest: +SKIP
+            (SampleBatch({"obs": [...], "action": [...], ...}), 3)
         """
         batch = self.sample()
         return batch, batch.count
@@ -877,8 +906,14 @@ class RolloutWorker(ParallelIteratorWorker):
             Dictionary of extra metadata from compute_gradients().
 
         Examples:
-            >>> batch = worker.sample()
-            >>> info = worker.learn_on_batch(samples)
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> batch = worker.sample() # doctest: +SKIP
+            >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
         """
         if log_once("learn_on_batch"):
             logger.info(
@@ -886,8 +921,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     summarize(samples)
                 )
             )
+
+        info_out = {}
         if isinstance(samples, MultiAgentBatch):
-            info_out = {}
             builders = {}
             to_fetch = {}
             for pid, batch in samples.policy_batches.items():
@@ -905,11 +941,13 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out.update({pid: builders[pid].get(v) for pid, v in to_fetch.items()})
         else:
             if self.is_policy_to_train(DEFAULT_POLICY_ID, samples):
-                info_out = {
-                    DEFAULT_POLICY_ID: self.policy_map[
-                        DEFAULT_POLICY_ID
-                    ].learn_on_batch(samples)
-                }
+                info_out.update(
+                    {
+                        DEFAULT_POLICY_ID: self.policy_map[
+                            DEFAULT_POLICY_ID
+                        ].learn_on_batch(samples)
+                    }
+                )
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
@@ -985,8 +1023,14 @@ class RolloutWorker(ParallelIteratorWorker):
             compatible worker using the worker's `apply_gradients()` method.
 
         Examples:
-            >>> batch = worker.sample()
-            >>> grads, info = worker.compute_gradients(samples)
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> batch = worker.sample() # doctest: +SKIP
+            >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
@@ -1048,9 +1092,15 @@ class RolloutWorker(ParallelIteratorWorker):
                 structs.
 
         Examples:
-            >>> samples = worker.sample()
-            >>> grads, info = worker.compute_gradients(samples)
-            >>> worker.apply_gradients(grads)
+            >>> import gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
+            ...   policy_spec=PGTFPolicy) # doctest: +SKIP
+            >>> samples = worker.sample() # doctest: +SKIP
+            >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
+            >>> worker.apply_gradients(grads) # doctest: +SKIP
         """
         if log_once("apply_gradients"):
             logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
@@ -1455,9 +1505,12 @@ class RolloutWorker(ParallelIteratorWorker):
             objs: The byte sequence to restore this worker's state from.
 
         Examples:
-            >>> state = worker.save()
-            >>> new_worker = RolloutWorker(...)
-            >>> new_worker.restore(state)
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> state = worker.save() # doctest: +SKIP
+            >>> new_worker = RolloutWorker(...) # doctest: +SKIP
+            >>> new_worker.restore(state) # doctest: +SKIP
         """
         objs = pickle.loads(objs)
         self.sync_filters(objs["filters"])
@@ -1469,7 +1522,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         f"PolicyID '{pid}' was probably added on-the-fly (not"
                         " part of the static `multagent.policies` config) and"
                         " no PolicySpec objects found in the pickled policy "
-                        "state. Will not add `{pid}`, but ignore it for now."
+                        f"state. Will not add `{pid}`, but ignore it for now."
                     )
                 else:
                     self.add_policy(
@@ -1497,8 +1550,11 @@ class RolloutWorker(ParallelIteratorWorker):
             Dict mapping PolicyIDs to ModelWeights.
 
         Examples:
-            >>> weights = worker.get_weights()
-            >>> print(weights)
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> weights = worker.get_weights() # doctest: +SKIP
+            >>> print(weights) # doctest: +SKIP
             {"default_policy": {"layer1": array(...), "layer2": ...}}
         """
         if policies is None:
@@ -1523,9 +1579,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 worker to. If None, do not update the global_vars.
 
         Examples:
-            >>> weights = worker.get_weights()
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> weights = worker.get_weights() # doctest: +SKIP
             >>> # Set `global_vars` (timestep) as well.
-            >>> worker.set_weights(weights, {"timestep": 42})
+            >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
         """
         # If per-policy weights are object refs, `ray.get()` them first.
         if weights and isinstance(next(iter(weights.values())), ObjectRef):
@@ -1545,8 +1604,11 @@ class RolloutWorker(ParallelIteratorWorker):
             The current global_vars dict of this worker.
 
         Examples:
-            >>> global_vars = worker.get_global_vars()
-            >>> print(global_vars)
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> global_vars = worker.get_global_vars() # doctest: +SKIP
+            >>> print(global_vars) # doctest: +SKIP
             {"timestep": 424242}
         """
         return self.global_vars
@@ -1559,7 +1621,9 @@ class RolloutWorker(ParallelIteratorWorker):
             global_vars: The new global_vars dict.
 
         Examples:
-            >>> global_vars = worker.set_global_vars({"timestep": 4242})
+            >>> worker = ... # doctest: +SKIP
+            >>> global_vars = worker.set_global_vars( # doctest: +SKIP
+            ...     {"timestep": 4242})
         """
         self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
         self.global_vars = global_vars
@@ -1717,6 +1781,8 @@ class RolloutWorker(ParallelIteratorWorker):
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
+        disable_env_checking = self._disable_env_checking
+
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
             # vectorization.
@@ -1727,7 +1793,18 @@ class RolloutWorker(ParallelIteratorWorker):
             # Create the sub-env.
             env = env_creator(env_ctx)
             # Validate first.
-            _validate_env(env, env_context=env_ctx)
+            if not disable_env_checking:
+                if log_once("env_creator_warning"):
+                    logger.warning(
+                        "We've added a module for checking environments that "
+                        "are used in experiments. It will cause your "
+                        "environment to fail if your environment is not set up"
+                        "correctly. You can disable check env by setting "
+                        "`disable_env_checking` to True in your experiment config "
+                        "dictionary. You can run the environment checking module "
+                        "standalone by calling ray.rllib.utils.check_env(env)."
+                    )
+                check_env(env)
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)
@@ -1781,7 +1858,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_map[policy_id].import_model_from_h5(import_file)
 
     @Deprecated(
-        new="Trainer.get_policy().export_checkpoint([export_dir], " "[filename]?)",
+        new="Trainer.get_policy().export_checkpoint([export_dir], [filename]?)",
         error=False,
     )
     def export_policy_checkpoint(
@@ -1870,52 +1947,3 @@ def _determine_spaces_for_multi_agent_dict(
                 action_space=act_space
             )
     return multi_agent_dict
-
-
-def _validate_env(env: EnvType, env_context: EnvContext = None):
-    # Base message for checking the env for vector-index=0
-    msg = f"Validating sub-env at vector index={env_context.vector_index} ..."
-
-    allowed_types = [gym.Env, ExternalEnv, VectorEnv, BaseEnv, ray.actor.ActorHandle]
-    if not any(isinstance(env, tpe) for tpe in allowed_types):
-        # Allow this as a special case (assumed gym.Env).
-        # TODO: Disallow this early-out. Everything should conform to a few
-        #  supported classes, i.e. gym.Env/MultiAgentEnv/etc...
-        if hasattr(env, "observation_space") and hasattr(env, "action_space"):
-            logger.warning(msg + f" (warning; invalid env-type={type(env)})")
-            return
-        else:
-            logger.warning(msg + " (NOT OK)")
-            raise EnvError(
-                "Returned env should be an instance of gym.Env (incl. "
-                "MultiAgentEnv), ExternalEnv, VectorEnv, or BaseEnv. "
-                f"The provided env creator function returned {env} "
-                f"(type={type(env)})."
-            )
-
-    # Do some test runs with the provided env.
-    if isinstance(env, gym.Env) and not isinstance(env, MultiAgentEnv):
-        # Make sure the gym.Env has the two space attributes properly set.
-        assert hasattr(env, "observation_space") and hasattr(env, "action_space")
-        # Get a dummy observation by resetting the env.
-        dummy_obs = env.reset()
-        # Convert lists to np.ndarrays.
-        if type(dummy_obs) is list and isinstance(env.observation_space, Box):
-            dummy_obs = np.array(dummy_obs)
-        # Ignore float32/float64 diffs.
-        if (
-            isinstance(env.observation_space, Box)
-            and env.observation_space.dtype != dummy_obs.dtype
-        ):
-            dummy_obs = dummy_obs.astype(env.observation_space.dtype)
-        # Check, if observation is ok (part of the observation space). If not,
-        # error.
-        if not env.observation_space.contains(dummy_obs):
-            logger.warning(msg + " (NOT OK)")
-            raise EnvError(
-                f"Env's `observation_space` {env.observation_space} does not "
-                f"contain returned observation after a reset ({dummy_obs})!"
-            )
-
-    # Log that everything is ok.
-    logger.info(msg + " (ok)")

@@ -35,49 +35,6 @@ useful when filing `issues`_. The process to obtain a core dump is OS-specific,
 but usually involves running ``ulimit -c unlimited`` before starting Ray to
 allow core dump files to be written.
 
-Inspecting Redis shards
------------------------
-To inspect Redis, you can use the global state API. The easiest way to do this
-is to start or connect to a Ray cluster with ``ray.init()``, then query the API
-like so:
-
-.. code-block:: python
-
- ray.init()
- ray.nodes()
- # Returns current information about the nodes in the cluster, such as:
- # [{'ClientID': '2a9d2b34ad24a37ed54e4fcd32bf19f915742f5b',
- #   'IsInsertion': True,
- #   'NodeManagerAddress': '1.2.3.4',
- #   'NodeManagerPort': 43280,
- #   'ObjectManagerPort': 38062,
- #   'ObjectStoreSocketName': '/tmp/ray/session_2019-01-21_16-28-05_4216/sockets/plasma_store',
- #   'RayletSocketName': '/tmp/ray/session_2019-01-21_16-28-05_4216/sockets/raylet',
- #   'Resources': {'CPU': 8.0, 'GPU': 1.0}}]
-
-To inspect the primary Redis shard manually, you can also query with commands
-like the following.
-
-.. code-block:: python
-
- r_primary = ray.worker.global_worker.redis_client
- r_primary.keys("*")
-
-To inspect other Redis shards, you will need to create a new Redis client.
-For example (assuming the relevant IP address is ``127.0.0.1`` and the
-relevant port is ``1234``), you can do this as follows.
-
-.. code-block:: python
-
- import redis
- r = redis.StrictRedis(host='127.0.0.1', port=1234)
-
-You can find a list of the relevant IP addresses and ports by running
-
-.. code-block:: python
-
- r_primary.lrange('RedisShards', 0, -1)
-
 .. _backend-logging:
 
 Backend logging

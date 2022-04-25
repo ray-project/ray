@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 import pytest
 import tempfile
 import time
@@ -10,7 +11,11 @@ import math
 
 import ray
 from ray._private.test_utils import SignalActor
-from ray.util.multiprocessing import Pool, TimeoutError
+from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
+
+from ray.util.joblib import register_ray
+
+from joblib import parallel_backend, Parallel, delayed
 
 
 def teardown_function(function):
@@ -50,6 +55,14 @@ def pool_4_processes_python_multiprocessing_lib():
 @pytest.fixture
 def ray_start_1_cpu():
     address_info = ray.init(num_cpus=1)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_4_cpu():
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -370,9 +383,9 @@ def test_starmap(pool):
     assert pool.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Hangs in windows")
 def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib):
-    callback_queue = queue.Queue()
+    Queue = JoinableQueue if platform.system() == "Windows" else queue.Queue
+    callback_queue = Queue()
 
     def callback(result):
         callback_queue.put(result)
@@ -405,7 +418,7 @@ def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib
         for callback_type in test_callback_types:
             # Reinitialize queue to track number of callback calls made by
             # the current process_pool and callback_type in map_async
-            callback_queue = queue.Queue()
+            callback_queue = Queue()
 
             indices, error_indices = list(range(100)), []
             if callback_type == "error callback":
@@ -582,6 +595,37 @@ def test_deadlock_avoidance_in_recursive_tasks(ray_start_1_cpu):
 
     result = poolit_b()
     assert result == [[0.0, 1.0], [0.0, 1.0]]
+
+
+def test_task_to_actor_assignment(ray_start_4_cpu):
+
+    register_ray()
+
+    pause_time = 5
+
+    def worker_func(worker_id):
+        launch_time = time.time()
+        time.sleep(pause_time)
+        return worker_id, launch_time
+
+    num_workers = 4
+    output = []
+    with parallel_backend("ray", n_jobs=-1):
+        output = Parallel()(
+            delayed(worker_func)(worker_id) for worker_id in range(num_workers)
+        )
+
+    worker_ids = set()
+    launch_times = []
+    for worker_id, launch_time in output:
+        worker_ids.add(worker_id)
+        launch_times.append(launch_time)
+
+    assert len(worker_ids) == num_workers
+
+    for i in range(num_workers):
+        for j in range(i + 1, num_workers):
+            assert abs(launch_times[i] - launch_times[j]) < 1
 
 
 if __name__ == "__main__":

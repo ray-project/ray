@@ -25,7 +25,6 @@ import yaml
 import ray
 from ray.tune import run_experiments
 from ray.rllib import _register_all
-from ray.rllib.utils.deprecation import deprecation_warning
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -63,10 +62,6 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    # Error if deprecated --torch option used.
-    if args.torch:
-        deprecation_warning(old="--torch", new="--framework=torch", error=True)
 
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
@@ -112,8 +107,8 @@ if __name__ == "__main__":
             print(f"Skipping framework='{args.framework}' for QMIX.")
             continue
 
-        # Always run with eager-tracing when framework=tf2.
-        if args.framework in ["tf2", "tfe"]:
+        # Always run with eager-tracing when framework=tf2 if not in local-mode.
+        if args.framework in ["tf2", "tfe"] and not args.local_mode:
             exp["config"]["eager_tracing"] = True
 
         # Print out the actual config.

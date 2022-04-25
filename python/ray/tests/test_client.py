@@ -7,6 +7,7 @@ import queue
 import threading
 import _thread
 from unittest.mock import patch
+import numpy as np
 
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -478,16 +479,11 @@ def test_serializing_exceptions(ray_start_regular_shared):
 def test_invalid_task(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
-        @ray.remote(runtime_env="invalid value")
-        def f():
-            return 1
+        with pytest.raises(TypeError):
 
-        # No exception on making the remote call.
-        ref = f.remote()
-
-        # Exception during scheduling will be raised on ray.get()
-        with pytest.raises(Exception):
-            ray.get(ref)
+            @ray.remote(runtime_env="invalid value")
+            def f():
+                return 1
 
 
 def test_create_remote_before_start(ray_start_regular_shared):
@@ -587,7 +583,7 @@ def test_internal_kv(ray_start_regular_shared):
         assert ray._internal_kv_get("apple") == b"asdf"
         assert ray._internal_kv_list("a") == [b"apple"]
         ray._internal_kv_del("apple")
-        assert ray._internal_kv_get("apple") == b""
+        assert ray._internal_kv_get("apple") is None
 
 
 def test_startup_retry(ray_start_regular_shared):
@@ -778,6 +774,21 @@ def test_object_ref_release(call_ray_start):
     with disable_client_hook():
         ref_cnt = ray.util.client.ray.get_context().client_worker.reference_count
         assert all(v > 0 for v in ref_cnt.values())
+
+
+def test_empty_objects(ray_start_regular_shared):
+    """
+    Tests that client works with "empty" objects. Sanity check, since put requests
+    will fail if the serialized version of an object consists of zero bytes.
+    """
+    objects = [0, b"", "", [], np.array(()), {}, set(), None]
+    with ray_start_client_server() as ray:
+        for obj in objects:
+            ref = ray.put(obj)
+            if isinstance(obj, np.ndarray):
+                assert np.array_equal(ray.get(ref), obj)
+            else:
+                assert ray.get(ref) == obj
 
 
 if __name__ == "__main__":
