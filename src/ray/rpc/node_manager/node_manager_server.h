@@ -71,10 +71,9 @@ class NodeManagerServiceHandler {
       rpc::RequestResourceReportReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetResourceLoad(
-      const rpc::GetResourceLoadRequest &request,
-      rpc::GetResourceLoadReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+                                     rpc::GetResourceLoadReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRequestWorkerLease(const RequestWorkerLeaseRequest &request,
                                         RequestWorkerLeaseReply *reply,

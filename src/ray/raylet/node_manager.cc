@@ -1683,10 +1683,9 @@ void NodeManager::HandleRequestResourceReport(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleGetResourceLoad(
-    const rpc::GetResourceLoadRequest &request,
-    rpc::GetResourceLoadReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+                                        rpc::GetResourceLoadReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
