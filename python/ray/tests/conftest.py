@@ -697,17 +697,7 @@ def pytest_runtest_makereport(item, call):
 
 def append_short_test_summary(rep):
     """Writes a short summary txt for failed tests to be printed later."""
-
-    # Only record failed test summaries
-    if rep.when != "call" or not rep.failed:
-        return
-
-    # No failing test information
-    if rep.longrepr is None:
-        return
-
-    # No failing test information
-    if not hasattr(rep.longrepr, "chain"):
+    if rep.when != "call":
         return
 
     summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
@@ -718,17 +708,40 @@ def append_short_test_summary(rep):
     if not os.path.exists(summary_dir):
         os.makedirs(summary_dir)
 
-    summary_file = os.path.join(summary_dir, "test_summaries.txt")
+    test_name = rep.nodeid.replace(os.sep, "::")
 
-    write_header = False
-    if not os.path.exists(summary_file):
-        write_header = True
+    header_file = os.path.join(summary_dir, "000_header.txt")
+    summary_file = os.path.join(summary_dir, test_name + ".txt")
 
-    with open(summary_file, "at") as fp:
-        if write_header:
+    if rep.passed and os.path.exists(summary_file):
+        # The test succeeded after failing, thus it is flaky.
+        # We do not want to annotate flaky tests just now, so remove report.
+        os.remove(summary_file)
+
+        # If there is only the header file left, remove directory
+        if len(os.listdir(summary_dir)) <= 1:
+            shutil.rmtree(summary_dir)
+        return
+
+    # Only consider failed tests from now on
+    if not rep.failed:
+        return
+
+    # No failing test information
+    if rep.longrepr is None:
+        return
+
+    # No failing test information
+    if not hasattr(rep.longrepr, "chain"):
+        return
+
+    if not os.path.exists(header_file):
+        with open(header_file, "wt") as fp:
             test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
             fp.write(f"## Pytest failures for: {test_label}\n\n")
 
+    # Use `wt` here to overwrite so we only have one result per test (exclude retries)
+    with open(summary_file, "wt") as fp:
         fp.write(_get_markdown_annotation(rep))
 
 
@@ -753,7 +766,7 @@ def _get_markdown_annotation(rep) -> str:
     markdown += "#### Traceback\n\n"
     markdown += "```\n"
     markdown += str(main_tb)
-    markdown += "```\n\n"
+    markdown += "\n```\n\n"
 
     # Print link to test definition in github
     path, url = _get_repo_github_path_and_link(main_loc.path, main_loc.lineno)
