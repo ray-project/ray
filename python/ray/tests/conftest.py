@@ -725,9 +725,9 @@ def append_short_test_summary(rep):
         write_header = True
 
     with open(summary_file, "at") as fp:
-        test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
         if write_header:
-            fp.write(f"## Pytest failures for: {test_label}\n")
+            test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
+            fp.write(f"## Pytest failures for: {test_label}\n\n")
 
         fp.write(_get_markdown_annotation(rep))
 
@@ -738,28 +738,30 @@ def _get_markdown_annotation(rep) -> str:
     markdown = ""
 
     # Header: Main error message
-    markdown += f"### {rep.nodeid}"
-    markdown += "<details>"
-    markdown += f"<summary>{main_loc.message}</summary>\n"
+    markdown += f"### {rep.nodeid}\n\n"
+    markdown += "<details>\n"
+    markdown += f"<summary>{main_loc.message}</summary>\n\n"
 
     # Add link to test definition
     test_file, test_lineno, _test_node = rep.location
-    test_path, test_url = _get_repo_github_path_and_link(test_file, test_lineno)
-    markdown += f"Link to test: [{test_path}:{test_lineno}]({test_url})\n"
+    test_path, test_url = _get_repo_github_path_and_link(
+        os.path.abspath(test_file), test_lineno
+    )
+    markdown += f"Link to test: [{test_path}:{test_lineno}]({test_url})\n\n"
 
     # Print main traceback
-    markdown += "#### Traceback\n"
-    markdown += "```"
+    markdown += "#### Traceback\n\n"
+    markdown += "```\n"
     markdown += str(main_tb)
-    markdown += "```"
+    markdown += "```\n\n"
 
     # Print link to test definition in github
     path, url = _get_repo_github_path_and_link(main_loc.path, main_loc.lineno)
-    markdown += f"[{path}:{main_loc.lineno}]({url})\n"
+    markdown += f"[{path}:{main_loc.lineno}]({url})\n\n"
 
     # If this is a longer exception chain, users can expand the full traceback
     if len(rep.longrepr.chain) > 1:
-        markdown += "<details><summary>Full traceback</summary>\n"
+        markdown += "<details><summary>Full traceback</summary>\n\n"
 
         # Here we just print each traceback and the link to the respective
         # lines in GutHub
@@ -768,10 +770,10 @@ def _get_markdown_annotation(rep) -> str:
 
             markdown += "```\n"
             markdown += str(tb)
-            markdown += "\n```\n"
-            markdown += f"[{path}:{loc.lineno}]({url})\n"
+            markdown += "\n```\n\n"
+            markdown += f"[{path}:{loc.lineno}]({url})\n\n"
 
-        markdown += "</details>"
+        markdown += "</details>\n"
 
     markdown += "</details>\n\n"
     return markdown
