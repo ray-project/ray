@@ -5,6 +5,7 @@ from typing import Optional, Dict, Type, Union, Callable, Any
 import ray.cloudpickle as cpickle
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.config import ScalingConfig, RunConfig
+from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.trainer import Trainer, GenDataset
 from ray.rllib.agents.trainer import Trainer as RLlibTrainer
@@ -185,6 +186,7 @@ class RLTrainer(Trainer):
         param_dict = self._param_dict
         base_config = self._config
         trainer_cls = self.__class__
+        preprocessor = self.preprocessor
 
         if isinstance(self._algorithm, str):
             rllib_trainer = get_trainable_cls(self._algorithm)
@@ -226,6 +228,11 @@ class RLTrainer(Trainer):
                 config_path = os.path.join(checkpoint_dir, RL_CONFIG_FILE)
                 with open(config_path, "wb") as fp:
                     cpickle.dump(self.config, fp)
+
+                if preprocessor:
+                    preprocessor_path = os.path.join(checkpoint_dir, PREPROCESSOR_KEY)
+                    with open(preprocessor_path, "wb") as fp:
+                        cpickle.dump(preprocessor, fp)
 
                 return checkpoint_path
 

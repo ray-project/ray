@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import ray.cloudpickle as cpickle
 from ray.ml import Preprocessor, Checkpoint
+from ray.ml.constants import PREPROCESSOR_KEY
 from ray.ml.predictor import Predictor, DataBatchType
 from ray.ml.train.integrations.rl.rl_trainer import (
     RL_TRAINER_CLASS_FILE,
@@ -15,6 +16,15 @@ from ray.rllib.utils.typing import EnvType
 
 
 class RLPredictor(Predictor):
+    """A predictor for RLlib trainer checkpoints.
+
+    Args:
+        trainer: The RLlib trainer instance containing the policy on which to
+            perform inference on.
+        preprocessor: A preprocessor used to transform data batches prior
+            to prediction.
+    """
+
     def __init__(
         self,
         trainer: RLlibTrainer,
@@ -27,9 +37,22 @@ class RLPredictor(Predictor):
     def from_checkpoint(
         cls, checkpoint: Checkpoint, env: Optional[EnvType] = None, **kwargs
     ) -> "Predictor":
+        """Create RLPredictor from checkpoint.
+
+        This method requires that the checkpoint was created with the Ray AIR
+        RLTrainer.
+
+        Args:
+            checkpoint: The checkpoint to load the model and
+                preprocessor from.
+            env: Optional environment to instantiate the trainer with. If not given,
+                it is parsed from the saved trainer configuration instead.
+
+        """
         with checkpoint.as_directory() as checkpoint_path:
             trainer_class_path = os.path.join(checkpoint_path, RL_TRAINER_CLASS_FILE)
             config_path = os.path.join(checkpoint_path, RL_CONFIG_FILE)
+            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
 
             if not os.path.exists(trainer_class_path):
                 raise ValueError(
@@ -64,13 +87,22 @@ class RLPredictor(Predictor):
                     f"Found files: {list(os.listdir(checkpoint_path))}"
                 )
 
+            if os.path.exists(preprocessor_path):
+                with open(preprocessor_path, "rb") as fp:
+                    preprocessor = cpickle.load(fp)
+            else:
+                preprocessor = None
+
             config["evaluation_config"].pop("in_evaluation", None)
             trainer = trainer_cls(config=config, env=env)
             trainer.restore(checkpoint_data_path)
 
-            return RLPredictor(trainer=trainer)
+            return RLPredictor(trainer=trainer, preprocessor=preprocessor)
 
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
+
         if isinstance(data, pd.DataFrame):
             obs = data.to_numpy()
         elif isinstance(data, pd.Series):
