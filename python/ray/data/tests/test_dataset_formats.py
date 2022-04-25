@@ -1932,7 +1932,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ],
 )
 def test_csv_write_block_path_provider(
-    shutdown_only,
+    ray_start_regular_shared,
     fs,
     data_path,
     endpoint_url,
@@ -1969,6 +1969,24 @@ def test_csv_write_block_path_provider(
         ]
     )
     assert df.equals(ds_df)
+
+
+# NOTE: The last test using the shared ray_start_regular_shared cluster must use the
+# shutdown_only fixture so the shared cluster is shut down, otherwise the below
+# test_write_datasource_ray_remote_args test, which uses a cluster_utils cluster, will
+# fail with a double-init.
+def test_csv_read_no_header(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    file_path = os.path.join(tmp_path, "test.csv")
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df.to_csv(file_path, index=False, header=False)
+    ds = ray.data.read_csv(
+        file_path,
+        read_options=csv.ReadOptions(column_names=["one", "two"]),
+    )
+    out_df = ds.to_pandas()
+    assert df.equals(out_df)
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
