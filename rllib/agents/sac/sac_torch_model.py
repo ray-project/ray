@@ -10,7 +10,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.rllib.utils.typing import ModelConfigDict, TensorType, TensorStructType
 
 torch, nn = try_import_torch()
 
@@ -271,11 +271,16 @@ class SACTorchModel(TorchModelV2, nn.Module):
         # training).
         input_dict["is_training"] = True
 
-        out, _ = net(input_dict, [], None)
-        return out
+        return net(input_dict, [], None)
 
-    def get_policy_output(self, model_out: TensorType) -> TensorType:
-        """Returns policy outputs, given the output of self.__call__().
+    def get_action_model_outputs(
+        self,
+        model_out: TensorType,
+        state_in: List[TensorType] = None,
+        seq_lens: TensorType = None,
+    ) -> (TensorType, List[TensorType]):
+        """Returns distribution inputs and states given the output of
+        policy.model().
 
         For continuous action spaces, these will be the mean/stddev
         distribution inputs for the (SquashedGaussian) action distribution.
@@ -284,26 +289,41 @@ class SACTorchModel(TorchModelV2, nn.Module):
 
         Args:
             model_out (TensorType): Feature outputs from the model layers
-                (result of doing `self.__call__(obs)`).
+                (result of doing `model(obs)`).
+            state_in List(TensorType): State input for recurrent cells
+            seq_lens (TensorType): Sequence lengths of input- and state
+                sequences
 
         Returns:
             TensorType: Distribution inputs for sampling actions.
         """
-        # Model outs may come as original Tuple observations, concat them
-        # here if this is the case.
-        if isinstance(self.action_model.obs_space, Box):
-            if isinstance(model_out, (list, tuple)):
-                model_out = torch.cat(model_out, dim=-1)
-            elif isinstance(model_out, dict):
-                model_out = torch.cat(
+
+        def concat_obs_if_necessary(obs: TensorStructType):
+            """Concat model outs if they come as original tuple observations."""
+            if isinstance(obs, (list, tuple)):
+                obs = torch.cat(obs, dim=-1)
+            elif isinstance(obs, dict):
+                obs = torch.cat(
                     [
                         torch.unsqueeze(val, 1) if len(val.shape) == 1 else val
-                        for val in tree.flatten(model_out.values())
+                        for val in tree.flatten(obs.values())
                     ],
                     dim=-1,
                 )
-        out, _ = self.action_model({"obs": model_out}, [], None)
-        return out
+            return obs
+
+        if state_in is None:
+            state_in = []
+
+        if isinstance(model_out, dict) and "obs" in model_out:
+            # Model outs may come as original Tuple observations
+            if isinstance(self.action_model.obs_space, Box):
+                model_out["obs"] = concat_obs_if_necessary(model_out["obs"])
+            return self.action_model(model_out, state_in, seq_lens)
+        else:
+            if isinstance(self.action_model.obs_space, Box):
+                model_out = concat_obs_if_necessary(model_out)
+            return self.action_model({"obs": model_out}, state_in, seq_lens)
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""
