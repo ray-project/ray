@@ -430,8 +430,11 @@ build_wheels() {
 
         # Sync the directory to buildkite artifacts
         rm -rf /artifact-mount/.whl || true
-        cp -r .whl /artifact-mount/.whl
-        chmod -R 777 /artifact-mount/.whl
+
+        if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
+          cp -r .whl /artifact-mount/.whl
+          chmod -R 777 /artifact-mount/.whl
+        fi
 
         validate_wheels_commit_str
       fi
@@ -441,8 +444,11 @@ build_wheels() {
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
-      cp -r .whl /tmp/artifacts/.whl
-      chmod -R 777 /tmp/artifacts/.whl
+
+      if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
+        cp -r .whl /tmp/artifacts/.whl
+        chmod -R 777 /tmp/artifacts/.whl
+      fi
 
       validate_wheels_commit_str
       ;;

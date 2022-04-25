@@ -89,6 +89,9 @@ Aggregate API
 .. autoclass:: ray.data.aggregate.Std
     :members:
 
+.. autoclass:: ray.data.aggregate.AbsMax
+    :members:
+
 RandomAccessDataset API
 -----------------------
 
