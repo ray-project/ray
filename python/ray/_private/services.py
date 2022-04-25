@@ -556,7 +556,9 @@ def create_redis_client(redis_address, password=None):
     if not hasattr(create_redis_client, "instances"):
         create_redis_client.instances = {}
 
-    for _ in range(ray_constants.START_REDIS_WAIT_RETRIES):
+    num_retries = ray_constants.START_REDIS_WAIT_RETRIES
+    delay = 0.001
+    for i in range(num_retries):
         cli = create_redis_client.instances.get(redis_address)
         if cli is None:
             redis_ip_address, redis_port = extract_ip_port(
@@ -571,7 +573,10 @@ def create_redis_client(redis_address, password=None):
             return cli
         except Exception:
             create_redis_client.instances.pop(redis_address)
-            time.sleep(2)
+            # Wait a little bit.
+            time.sleep(delay)
+            # Make sure the retry interval doesn't increase too large.
+            delay = 1 if i >= 10 else delay * 2
 
     raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
@@ -863,7 +868,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
             time.sleep(delay)
             # Make sure the retry interval doesn't increase too large, which will
             # affect the delivery time of the Ray cluster.
-            delay = 1000 if i >= 10 else delay * 2
+            delay = 1 if i >= 10 else delay * 2
         else:
             break
     else:
