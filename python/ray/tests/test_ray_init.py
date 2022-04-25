@@ -382,6 +382,7 @@ def test_ray_init_using_hostname(ray_start_cluster):
 def test_redis_connect_backoff():
     from ray import ray_constants
     import time
+
     unreachable_address = "127.0.2.2:6377"
     redis_ip, redis_port = unreachable_address.split(":")
     wait_retries = ray_constants.START_REDIS_WAIT_RETRIES
@@ -396,8 +397,7 @@ def test_redis_connect_backoff():
 
         start = time.time()
         with pytest.raises(RuntimeError):
-            ray._private.services.create_redis_client(
-                redis_address=unreachable_address)
+            ray._private.services.create_redis_client(redis_address=unreachable_address)
         end = time.time()
         duration = end - start
         assert duration > 2 and duration < 4
