@@ -429,7 +429,7 @@ qmix-pettingzoo-cooperative-pong-v5:
         time_total_s: 3600
     config:
         # QMIX only supports torch for now.
-    frameworks: ["tf"]
+    frameworks: ["torch"]
 
 
 # Expect roughly 1000 reward after 1h on 1GPU
