@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/store_client/in_memory_store_client.h"
-
 #include "ray/gcs/store_client/observable_store_client.h"
+
+#include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
 namespace ray {
