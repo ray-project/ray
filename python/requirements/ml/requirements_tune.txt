@@ -35,6 +35,6 @@ scikit-optimize==0.8.1
 sigopt==7.5.0
 timm==0.4.5
 transformers==4.10.0
-wandb==0.12.5
+wandb==0.12.15
 xgboost==1.3.3
 zoopt==0.4.1
