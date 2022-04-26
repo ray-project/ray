@@ -6,7 +6,7 @@ import numpy as np
 import ray
 from ray.ml import Checkpoint
 from ray.ml.config import RunConfig
-from ray.ml.train.integrations.rl.rl_predictor import RLPredictor
+from ray.ml.predictors.integrations.rl.rl_predictor import RLPredictor
 from ray.ml.train.integrations.rl.rl_trainer import RLTrainer
 from ray.ml.result import Result
 from ray.rllib.agents.marwil import BCTrainer

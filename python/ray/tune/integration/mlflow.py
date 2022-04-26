@@ -3,10 +3,9 @@ import logging
 
 import ray
 from ray.tune.trainable import Trainable
-from ray.tune.logger import Logger, LoggerCallback
+from ray.tune.logger import LoggerCallback
 from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
 from ray.tune.trial import Trial
-from ray.util.annotations import Deprecated
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
@@ -134,22 +133,6 @@ class MLflowLoggerCallback(LoggerCallback):
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
         self.mlflow_util.end_run(run_id=run_id, status=status)
-
-
-@Deprecated
-class MLflowLogger(Logger):
-    """MLflow logger using the deprecated Logger API.
-
-    Requires the experiment configuration to have a MLflow Experiment ID
-    or manually set the proper environment variables.
-    """
-
-    def _init(self):
-        raise DeprecationWarning(
-            "The legacy MLflowLogger has been "
-            "deprecated. Use the MLflowLoggerCallback "
-            "instead."
-        )
 
 
 def mlflow_mixin(func: Callable):
