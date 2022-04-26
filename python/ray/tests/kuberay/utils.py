@@ -278,7 +278,7 @@ def _kubectl_port_forward(
         by the service.
 
     Yields:
-        The local address. The service can then be accessed at 127.0.0.1:<local_port>.
+        The local port. The service can then be accessed at 127.0.0.1:<local_port>.
     """
     # First, figure out which port the service exposes for the given target port.
     service_port = _get_service_port(service, namespace, target_port)
