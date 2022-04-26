@@ -247,11 +247,11 @@ class Dataset(Generic[T]):
             You can use ``map_batches`` to efficiently filter records.
 
             >>> import ray
-            >>> ds = ray.data.range(10000)
-            >>> ds.count()
+            >>> ds = ray.data.range(10000)  # doctest: +SKIP
+            >>> ds.count()  # doctest: +SKIP
             10000
-            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])
-            >>> ds.count()
+            >>> ds = ds.map_batches(lambda batch: [x for x in batch if x % 2 == 0])  # doctest: +SKIP  # noqa: #501
+            >>> ds.count()  # doctest: +SKIP
             5000
 
         Time complexity: O(dataset size / parallelism)
