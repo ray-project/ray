@@ -176,7 +176,7 @@ def start(
             )
         except ray.exceptions.GetTimeoutError:
             raise TimeoutError(
-                "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
+                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
 
     client = ServeControllerClient(
