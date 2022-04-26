@@ -15,17 +15,6 @@ tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
-OPTIMIZER_SHARED_CONFIGS = [
-    "buffer_size",
-    "prioritized_replay",
-    "prioritized_replay_alpha",
-    "prioritized_replay_beta",
-    "prioritized_replay_eps",
-    "rollout_fragment_length",
-    "train_batch_size",
-    "learning_starts",
-]
-
 # fmt: off
 # __sphinx_doc_begin__
 
@@ -96,6 +85,10 @@ DEFAULT_CONFIG = with_common_config({
         "_enable_replay_buffer_api": False,
         "type": "MultiAgentReplayBuffer",
         "capacity": int(1e6),
+        # Size of the replay buffer to reach before sample() returns a
+        # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+        # sample() will return None.
+        "min_buffer_size_for_sampling": 1500,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -105,6 +98,8 @@ DEFAULT_CONFIG = with_common_config({
     # - This is False AND restoring from a checkpoint that does contain
     #   buffer data.
     "store_buffer_in_checkpoints": False,
+    # Deprecated version of min_buffer_size_for_sampling
+    "learning_starts": DEPRECATED_VALUE,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
@@ -137,8 +132,6 @@ DEFAULT_CONFIG = with_common_config({
     },
     # If not None, clip gradients during optimization at this value.
     "grad_clip": None,
-    # Size of the replay buffer to reach before replay starts.
-    "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 1,

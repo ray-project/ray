@@ -26,7 +26,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
     def __init__(
         self,
         num_shards: int = 1,
-        learning_starts: int = 1000,
+        min_buffer_size_for_sampling: int = 1000,
         capacity: int = 10000,
         replay_batch_size: int = 1,
         prioritized_replay_alpha: float = 0.6,
@@ -43,7 +43,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         Args:
             num_shards: The number of buffer shards that exist in total
                 (including this one).
-            learning_starts: Number of timesteps after which a call to
+            min_buffer_size_for_sampling: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
             capacity: The capacity of the buffer. Note that when
@@ -80,7 +80,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
             )
             capacity = buffer_size
 
-        self.replay_starts = learning_starts // num_shards
+        self.replay_starts = min_buffer_size_for_sampling // num_shards
         self.capacity = capacity // num_shards
         self.replay_batch_size = replay_batch_size
         self.prioritized_replay_beta = prioritized_replay_beta

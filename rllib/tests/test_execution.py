@@ -209,7 +209,7 @@ class TestExecution(unittest.TestCase):
     def test_store_to_replay_local(self):
         buf = MultiAgentReplayBuffer(
             num_shards=1,
-            learning_starts=200,
+            min_buffer_size_for_sampling=200,
             capacity=1000,
             replay_batch_size=100,
             prioritized_replay_alpha=0.6,
@@ -233,7 +233,7 @@ class TestExecution(unittest.TestCase):
     def test_store_to_replay_actor(self):
         actor = ReplayActor.remote(
             num_shards=1,
-            learning_starts=200,
+            min_buffer_size_for_sampling=200,
             buffer_size=1000,
             replay_batch_size=100,
             prioritized_replay_alpha=0.6,

@@ -32,7 +32,8 @@ halfcheetah_cql:
         train_batch_size: 256
         target_network_update_freq: 0
         timesteps_per_iteration: 1000
-        learning_starts: 256
+        replay_buffer_config:
+          min_buffer_size_for_sampling: 256
         optimization:
             actor_learning_rate: 0.0001
             critic_learning_rate: 0.0003

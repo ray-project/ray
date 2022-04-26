@@ -36,7 +36,8 @@ atari-sac-tf-and-torch:
         # Paper uses 20k random timesteps, which is not exactly the same, but
         # seems to work nevertheless. We use 100k here for the longer Atari
         # runs (DQN style: filling up the buffer a bit before learning).
-        learning_starts: 100000
+        replay_buffer_config:
+          min_buffer_size_for_sampling: 100000
         optimization:
             actor_learning_rate: 0.0003
             critic_learning_rate: 0.0003

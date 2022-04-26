@@ -32,7 +32,8 @@ mspacman-sac-tf:
         timesteps_per_iteration: 4
         # Paper uses 20k random timesteps, which is not exactly the same, but
         # seems to work nevertheless.
-        learning_starts: 20000
+        replay_buffer_config:
+          min_buffer_size_for_sampling: 20000
         optimization:
             actor_learning_rate: 0.0003
             critic_learning_rate: 0.0003

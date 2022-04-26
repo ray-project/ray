@@ -28,6 +28,7 @@ from ray.util.iter import LocalIterator
 from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
 from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
 from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 torch, nn = try_import_torch()
 
@@ -62,7 +63,12 @@ DEFAULT_CONFIG = with_common_config({
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # IN case a buffer optimizer is used
-    "learning_starts": 1000,
+    # Size of the replay buffer to reach before sample() returns a
+    # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+    # sample() will return None.
+    "min_buffer_size_for_sampling": 1000,
+    # Deprecated version of min_buffer_size_for_sampling
+    "learning_starts": DEPRECATED_VALUE,
     # Size of the replay buffer in batches (not timesteps!).
     "buffer_size": 1000,
     # Stepsize of SGD
@@ -218,7 +224,7 @@ class AlphaZeroTrainer(Trainer):
 
             replay_op = (
                 Replay(local_buffer=replay_buffer)
-                .filter(WaitUntilTimestepsElapsed(config["learning_starts"]))
+                .filter(WaitUntilTimestepsElapsed(config["replay_buffer_config"]["min_buffer_size_for_sampling"]))
                 .combine(
                     ConcatBatches(
                         min_batch_size=config["train_batch_size"],

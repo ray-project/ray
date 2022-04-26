@@ -19,7 +19,8 @@ pendulum-ddpg-fake-gpus:
         buffer_size: 10000
         clip_rewards: false
         use_huber: true
-        learning_starts: 500
+        replay_buffer_config:
+          min_buffer_size_for_sampling: 500
         train_batch_size: 64
         num_workers: 0
         worker_side_prioritization: false

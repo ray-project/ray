@@ -38,7 +38,7 @@ if __name__ == "__main__":
     config["bc_iters"] = 0
     config["clip_actions"] = False
     config["normalize_actions"] = True
-    config["learning_starts"] = 256
+    config["min_buffer_size_for_sampling"] = 256
     config["rollout_fragment_length"] = 1
     config["prioritized_replay"] = False
     config["tau"] = 0.005

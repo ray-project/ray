@@ -22,7 +22,7 @@ if __name__ == "__main__":
             "num_gpus": 1,
             "num_workers": 2,
             "num_envs_per_worker": 8,
-            "learning_starts": 1000,
+            "min_buffer_size_for_sampling": 1000,
             "buffer_size": int(1e5),
             "compress_observations": True,
             "rollout_fragment_length": 20,

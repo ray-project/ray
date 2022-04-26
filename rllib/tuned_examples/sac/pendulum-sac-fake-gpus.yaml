@@ -25,7 +25,8 @@ pendulum-sac-fake-gpus:
           train_batch_size: 256
           target_network_update_freq: 1
           timesteps_per_iteration: 1000
-          learning_starts: 256
+          replay_buffer_config:
+            min_buffer_size_for_sampling: 256
           num_workers: 0
           metrics_smoothing_episodes: 5
 

@@ -90,6 +90,7 @@ DEFAULT_CONFIG = with_common_config({
     "buffer_size": DEPRECATED_VALUE,
     # The following values have moved because of the new ReplayBuffer API
     "prioritized_replay": DEPRECATED_VALUE,
+    # Deprecated version of min_buffer_size_for_sampling
     "learning_starts": DEPRECATED_VALUE,
     "replay_batch_size": DEPRECATED_VALUE,
     "replay_sequence_length": DEPRECATED_VALUE,
@@ -99,8 +100,10 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_config": {
         # Use the new ReplayBuffer API here
         "_enable_replay_buffer_api": True,
-        # Size of the replay buffer to reach before replay starts.
-        "learning_starts": 1000,
+        # Size of the replay buffer to reach before sample() returns a
+        # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+        # sample() will return None.
+        "min_buffer_size_for_sampling": 1000,
         "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
         "replay_batch_size": 32,

@@ -32,6 +32,7 @@ from ray.rllib.utils.typing import (
     TrainerConfigDict,
 )
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -82,9 +83,12 @@ DEFAULT_CONFIG = with_common_config({
     # uniformly from the buffer (`train_batch_size` samples) for
     # each training step.
     "replay_buffer_size": 10000,
-    # Number of steps to read before learning starts.
-    # This is the size of the replay buffer to reach before replay starts.
-    "learning_starts": 0,
+    # Size of the replay buffer to reach before sample() returns a
+    # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+    # sample() will return None.
+    "min_buffer_size_for_sampling": 0,
+    # Deprecated version of min_buffer_size_for_sampling
+    "learning_starts": DEPRECATED_VALUE,
 
     # A coeff to encourage higher action distribution entropy for exploration.
     "bc_logstd_coeff": 0.0,
@@ -135,7 +139,7 @@ class MARWILTrainer(Trainer):
         # in `execution_plan` (deprecated).
         if self.config["_disable_execution_plan_api"] is True:
             self.local_replay_buffer = MultiAgentReplayBuffer(
-                learning_starts=self.config["learning_starts"],
+                min_buffer_size_for_sampling=self.config["replay_buffer_config"]["min_buffer_size_for_sampling"],
                 capacity=self.config["replay_buffer_size"],
                 replay_batch_size=self.config["train_batch_size"],
                 replay_sequence_length=1,
@@ -187,7 +191,7 @@ class MARWILTrainer(Trainer):
 
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
         replay_buffer = MultiAgentReplayBuffer(
-            learning_starts=config["learning_starts"],
+            min_buffer_size_for_sampling=config["replay_buffer_config"]["min_buffer_size_for_sampling"],
             capacity=config["replay_buffer_size"],
             replay_batch_size=config["train_batch_size"],
             replay_sequence_length=1,

@@ -65,7 +65,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         storage_unit: str = "timesteps",
         num_shards: int = 1,
         replay_batch_size: int = 1,
-        learning_starts: int = 1000,
+        min_buffer_size_for_sampling: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
@@ -81,7 +81,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             storage_unit: Either 'timesteps', 'sequences' or
                 'episodes'. Specifies how experiences are stored. If they
                 are stored in episodes, replay_sequence_length is ignored.
-            learning_starts: Number of timesteps after which a call to
+            min_buffer_size_for_sampling: Number of timesteps after which a call to
                 `sample()` will yield samples (before that, `sample()` will
                 return an empty batch).
             capacity: Max number of total timesteps in all policy buffers.
@@ -123,7 +123,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
             self.underlying_buffer_call_args = {}
 
         self.replay_batch_size = replay_batch_size
-        self.replay_starts = learning_starts // num_shards
+        self.min_buffer_size_for_sampling = min_buffer_size_for_sampling // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
@@ -270,7 +270,7 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
-        if self._num_added < self.replay_starts:
+        if self._num_added < self.min_buffer_size_for_sampling:
             return MultiAgentBatch({}, 0)
         with self.replay_timer:
             # Lockstep mode: Sample from all policies at the same time an

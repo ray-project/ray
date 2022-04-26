@@ -156,7 +156,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
                 "num_gpus": 0,
                 "min_time_s_per_reporting": 1,
                 "explore": False,
-                "learning_starts": 1000,
+                "min_buffer_size_for_sampling": 1000,
                 "target_network_update_freq": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,

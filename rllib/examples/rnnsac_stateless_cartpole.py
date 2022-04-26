@@ -39,7 +39,7 @@ config = {
         "batch_mode": "complete_episodes",
         "prioritized_replay": False,
         "buffer_size": 100000,
-        "learning_starts": 1000,
+        "min_buffer_size_for_sampling": 1000,
         "train_batch_size": 480,
         "target_network_update_freq": 480,
         "tau": 0.3,

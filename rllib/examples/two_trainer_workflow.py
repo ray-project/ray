@@ -83,7 +83,7 @@ class MyTrainer(Trainer):
         super().setup(config)
         # Create local replay buffer.
         self.local_replay_buffer = MultiAgentReplayBuffer(
-            num_shards=1, learning_starts=1000, capacity=50000, replay_batch_size=64
+            num_shards=1, min_buffer_size_for_sampling=1000, capacity=50000, replay_batch_size=64
         )
 
     @override(Trainer)

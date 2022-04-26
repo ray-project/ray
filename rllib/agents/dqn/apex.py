@@ -69,6 +69,7 @@ from ray.rllib.utils.typing import (
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -100,6 +101,10 @@ APEX_DEFAULT_CONFIG = merge_dicts(
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
+            # Size of the replay buffer to reach before sample() returns a
+            # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+            # sample() will return None.
+            "min_buffer_size_for_sampling": 50000,
         },
         # Whether all shards of the replay buffer must be co-located
         # with the learner process (running the execution plan).
@@ -110,8 +115,8 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         # replay shards to be created on node(s) other than the one
         # on which the learner is located.
         "replay_buffer_shards_colocated_with_driver": True,
-        # Size of the replay buffer to reach before replay starts.
-        "learning_starts": 50000,
+        # Deprecated version of min_buffer_size_for_sampling
+        "learning_starts": DEPRECATED_VALUE,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,
@@ -187,7 +192,7 @@ class ApexTrainer(DQNTrainer):
         )
         replay_actor_args = [
             num_replay_buffer_shards,
-            self.config["learning_starts"],
+            self.config["min_buffer_size_for_sampling"],
             buffer_size,
             self.config["train_batch_size"],
             self.config["replay_buffer_config"]["prioritized_replay_alpha"],
@@ -283,7 +288,7 @@ class ApexTrainer(DQNTrainer):
         )
         replay_actor_args = [
             num_replay_buffer_shards,
-            config["learning_starts"],
+            config["min_buffer_size_for_sampling"],
             buffer_size,
             config["train_batch_size"],
             config["replay_buffer_config"]["prioritized_replay_alpha"],

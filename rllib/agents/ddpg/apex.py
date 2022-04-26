@@ -4,6 +4,7 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,  # see also the options in ddpg.py, which are also supported
@@ -29,8 +30,12 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         # replay shards to be created on node(s) other than the one
         # on which the learner is located.
         "replay_buffer_shards_colocated_with_driver": True,
-        # Size of a replay buffer to reach before replay starts.
-        "learning_starts": 50000,
+        # Size of the replay buffer to reach before sample() returns a
+        # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+        # sample() will return None.
+        "min_buffer_size_for_sampling": 50000,
+        # Deprecated version of min_buffer_size_for_sampling
+        "learning_starts": DEPRECATED_VALUE,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
         "target_network_update_freq": 500000,

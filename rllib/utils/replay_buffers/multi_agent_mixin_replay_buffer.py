@@ -76,7 +76,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         prioritized_replay_alpha: float = 0.6,
         prioritized_replay_beta: float = 0.4,
         prioritized_replay_eps: float = 1e-6,
-        learning_starts: int = 1000,
+        min_buffer_size_for_sampling: int = 1000,
         replay_batch_size: int = 1,
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
@@ -94,7 +94,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
                 are stored in episodes, replay_sequence_length is ignored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
-            learning_starts: Number of timesteps after which a call to
+            min_buffer_size_for_sampling: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
             capacity: The capacity of the buffer. Note that when
@@ -153,7 +153,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
             prioritized_replay_eps=prioritized_replay_eps,
             num_shards=num_shards,
             replay_mode="independent",
-            learning_starts=learning_starts,
+            min_buffer_size_for_sampling=min_buffer_size_for_sampling,
             replay_batch_size=replay_batch_size,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,

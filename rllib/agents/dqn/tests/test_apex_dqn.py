@@ -24,7 +24,7 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0
         config["num_gpus"] = 0
-        config["learning_starts"] = 1000
+        config["replay_buffer_config"]["min_buffer_size_for_sampling"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_time_s_per_reporting"] = 1
@@ -41,7 +41,7 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 3
         config["num_gpus"] = 0
-        config["learning_starts"] = 1000
+        config["replay_buffer_config"]["min_buffer_size_for_sampling"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_time_s_per_reporting"] = 1
@@ -78,7 +78,7 @@ class TestApexDQN(unittest.TestCase):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["num_gpus"] = 0
-        config["learning_starts"] = 10
+        config["replay_buffer_config"]["min_buffer_size_for_sampling"] = 10
         config["train_batch_size"] = 10
         config["rollout_fragment_length"] = 5
         config["replay_buffer_config"] = {

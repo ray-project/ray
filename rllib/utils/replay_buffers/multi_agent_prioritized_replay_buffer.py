@@ -35,7 +35,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
         storage_unit: str = "timesteps",
         num_shards: int = 1,
         replay_batch_size: int = 1,
-        learning_starts: int = 1000,
+        min_buffer_size_for_sampling: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_length: int = 1,
         replay_burn_in: int = 0,
@@ -56,7 +56,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
                 are stored in episodes, replay_sequence_length is ignored.
                 If they are stored in episodes, replay_sequence_length is
                 ignored.
-            learning_starts: Number of timesteps after which a call to
+            min_buffer_size_for_sampling: Number of timesteps after which a call to
                 `replay()` will yield samples (before that, `replay()` will
                 return None).
             capacity: The capacity of the buffer. Note that when
@@ -131,7 +131,7 @@ class MultiAgentPrioritizedReplayBuffer(MultiAgentReplayBuffer):
             **kwargs,
             underlying_buffer_config=prioritized_replay_buffer_config,
             replay_batch_size=replay_batch_size,
-            learning_starts=learning_starts,
+            min_buffer_size_for_sampling=min_buffer_size_for_sampling,
             replay_mode=replay_mode,
             replay_sequence_length=replay_sequence_length,
             replay_burn_in=replay_burn_in,

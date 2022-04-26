@@ -25,7 +25,7 @@ class TestSlateQ(unittest.TestCase):
         """Test whether a SlateQTrainer can be built with both frameworks."""
         config = {
             "env": InterestEvolutionRecSimEnv,
-            "learning_starts": 1000,
+            "min_buffer_size_for_sampling": 1000,
         }
 
         num_iterations = 1

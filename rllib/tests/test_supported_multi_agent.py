@@ -97,7 +97,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "num_gpus": 0,
                 "buffer_size": 1000,
                 "min_time_s_per_reporting": 1,
-                "learning_starts": 10,
+                "min_buffer_size_for_sampling": 10,
                 "target_network_update_freq": 100,
                 "optimizer": {
                     "num_replay_buffer_shards": 1,
@@ -114,7 +114,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "buffer_size": 1000,
                 "num_gpus": 0,
                 "min_time_s_per_reporting": 1,
-                "learning_starts": 10,
+                "min_buffer_size_for_sampling": 10,
                 "target_network_update_freq": 100,
                 "use_state_preprocessor": True,
             },
@@ -127,7 +127,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "timesteps_per_iteration": 1,
                 "buffer_size": 1000,
                 "use_state_preprocessor": True,
-                "learning_starts": 500,
+                "min_buffer_size_for_sampling": 500,
             },
         )
 

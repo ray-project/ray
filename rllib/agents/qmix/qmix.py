@@ -17,6 +17,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -71,6 +72,10 @@ DEFAULT_CONFIG = with_common_config({
     "buffer_size": 1000,
     "replay_buffer_config": {
         "no_local_replay_buffer": True,
+        # Size of the replay buffer to reach before sample() returns a
+        # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+        # sample() will return None.
+        "min_buffer_size_for_sampling": 1000,
     },
     # === Optimization ===
     # Learning rate for RMSProp optimizer
@@ -81,8 +86,6 @@ DEFAULT_CONFIG = with_common_config({
     "optim_eps": 0.00001,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 10,
-    # Size of the replay buffer to reach before replay starts.
-    "learning_starts": 1000,
     # Update the replay buffer with this many samples at once. Note that
     # this setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 4,
@@ -90,6 +93,8 @@ DEFAULT_CONFIG = with_common_config({
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     "train_batch_size": 32,
+    # Deprecated version of min_buffer_size_for_sampling
+    "learning_starts": DEPRECATED_VALUE,
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense

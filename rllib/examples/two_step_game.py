@@ -100,7 +100,7 @@ if __name__ == "__main__":
         obs_space = Discrete(6)
         act_space = TwoStepGame.action_space
         config = {
-            "learning_starts": 100,
+            "min_buffer_size_for_sampling": 100,
             "env_config": {
                 "actions_are_logits": True,
             },

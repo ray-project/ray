@@ -96,6 +96,10 @@ DEFAULT_CONFIG = with_common_config({
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
+        # Size of the replay buffer to reach before sample() returns a
+        # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+        # sample() will return None.
+        "min_buffer_size_for_sampling": 1500,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
     # stored in any saved checkpoints as well.
@@ -115,6 +119,8 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
+    # Deprecated version of min_buffer_size_for_sampling
+    "learning_starts": DEPRECATED_VALUE,
 
     # The intensity with which to update the model (vs collecting samples from
     # the env). If None, uses the "natural" value of:
@@ -150,8 +156,6 @@ DEFAULT_CONFIG = with_common_config({
     "l2_reg": 1e-6,
     # If not None, clip gradients during optimization at this value
     "grad_clip": None,
-    # Size of the replay buffer to reach before replay starts.
-    "learning_starts": 1500,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 1,

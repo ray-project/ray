@@ -14,7 +14,8 @@ cartpole-sac:
         n_step: 3
         prioritized_replay: true
         initial_alpha: 0.2
-        learning_starts: 256
+        replay_buffer_config:
+          min_buffer_size_for_sampling: 256
         clip_actions: false
         timesteps_per_iteration: 1000
         optimization:

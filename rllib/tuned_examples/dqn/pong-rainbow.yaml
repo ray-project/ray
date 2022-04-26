@@ -9,7 +9,8 @@ pong-deterministic-rainbow:
         gamma: 0.99
         lr: .0001
         hiddens: [512]
-        learning_starts: 10000
+        replay_buffer_config:
+          min_buffer_size_for_sampling: 10000
         buffer_size: 50000
         rollout_fragment_length: 4
         train_batch_size: 32

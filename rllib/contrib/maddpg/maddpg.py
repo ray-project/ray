@@ -102,8 +102,12 @@ DEFAULT_CONFIG = with_common_config({
     "actor_feature_reg": 0.001,
     # If not None, clip gradients during optimization at this value
     "grad_norm_clipping": 0.5,
-    # Size of the replay buffer to reach before replay starts.
-    "learning_starts": 1024 * 25,
+    # Size of the replay buffer to reach before sample() returns a
+    # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+    # sample() will return None.
+    "min_buffer_size_for_sampling": 1024 * 25,
+    # Deprecated version of min_buffer_size_for_sampling
+    "learning_starts": DEPRECATED_VALUE,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 100,

@@ -25,7 +25,7 @@ class TestApexDDPG(unittest.TestCase):
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_time_s_per_reporting"] = 1
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["min_buffer_size_for_sampling"] = 0
         config["optimizer"]["num_replay_buffer_shards"] = 1
         num_iterations = 1
         for _ in framework_iterator(config, with_eager_tracing=True):

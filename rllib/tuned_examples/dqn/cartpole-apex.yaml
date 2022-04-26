@@ -23,7 +23,8 @@ cartpole-apex-dqn-training-itr:
 
         min_time_s_per_reporting: 5
         target_network_update_freq: 500
-        learning_starts: 1000
+        replay_buffer_config:
+          min_buffer_size_for_sampling: 1000
         timesteps_per_iteration: 1000
         buffer_size: 20000
         training_intensity: 4

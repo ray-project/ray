@@ -52,7 +52,7 @@ class TestCQL(unittest.TestCase):
 
         config["num_workers"] = 0  # Run locally.
         config["twin_q"] = True
-        config["learning_starts"] = 0
+        config["replay_buffer_config"]["min_buffer_size_for_sampling"] = 0
         config["bc_iters"] = 2  # 2 BC iters, 2 CQL iters.
         config["rollout_fragment_length"] = 1
 

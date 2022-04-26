@@ -21,7 +21,8 @@ dueling-ddqn:
         lr: .0000625
         adam_epsilon: .00015
         hiddens: [512]
-        learning_starts: 20000
+        replay_buffer_config:
+          min_buffer_size_for_sampling: 20000
         buffer_size: 1000000
         rollout_fragment_length: 4
         train_batch_size: 32

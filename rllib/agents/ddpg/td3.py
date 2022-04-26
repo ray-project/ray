@@ -6,6 +6,7 @@ TD3 paper.
 from ray.rllib.agents.ddpg.ddpg import DDPGTrainer, DEFAULT_CONFIG as DDPG_CONFIG
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
     DDPG_CONFIG,
@@ -36,8 +37,14 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         },
         # other changes & things we want to keep fixed:
         # larger actor learning rate, no l2 regularisation, no Huber loss, etc.
-        # Size of the replay buffer to reach before replay starts.
-        "learning_starts": 10000,
+        "replay_buffer_config": {
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 50000,
+            # Size of the replay buffer to reach before sample() returns a
+            # batch. As long as the buffer's size is less than min_buffer_size_for_sampling,
+            # sample() will return None.
+            "min_buffer_size_for_sampling": 10000,
+        },
         "actor_hiddens": [400, 300],
         "critic_hiddens": [400, 300],
         "n_step": 1,
@@ -56,6 +63,8 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "prioritized_replay": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
+        # Deprecated version of min_buffer_size_for_sampling
+        "learning_starts": DEPRECATED_VALUE,
     },
 )
 
