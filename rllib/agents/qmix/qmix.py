@@ -11,10 +11,17 @@ from ray.rllib.execution.replay_ops import (
     Replay,
     StoreToReplayBuffer,
 )
-from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
-    synchronous_parallel_sample
-from ray.rllib.execution.train_ops import multi_gpu_train_one_step, \
-    train_one_step, TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.rollout_ops import (
+    ConcatBatches,
+    ParallelRollouts,
+    synchronous_parallel_sample,
+)
+from ray.rllib.execution.train_ops import (
+    multi_gpu_train_one_step,
+    train_one_step,
+    TrainOneStep,
+    UpdateTargetNetwork,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -22,9 +29,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
@@ -189,7 +194,11 @@ class QMixTrainer(SimpleQTrainer):
         train_batches = []
         while train_batch_size < self.config["train_batch_size"]:
             train_batches.append(self.local_replay_buffer.sample(num_items=1))
-            train_batch_size += train_batches[-1].agent_steps() if self._by_agent_steps else train_batches[-1].env_steps()
+            train_batch_size += (
+                train_batches[-1].agent_steps()
+                if self._by_agent_steps
+                else train_batches[-1].env_steps()
+            )
         train_batch = SampleBatch.concat_samples(train_batches)
 
         # Learn on the training batch.

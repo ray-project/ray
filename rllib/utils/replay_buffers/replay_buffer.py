@@ -329,7 +329,7 @@ class ReplayBuffer:
             **kwargs: Forward compatibility kwargs.
         """
         try:
-            assert batch.count > 0, batch#TODO
+            assert batch.count > 0, batch  # TODO
         except Exception as e:
             raise e
         warn_replay_capacity(item=batch, num_items=self.capacity / batch.count)
