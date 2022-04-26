@@ -13,12 +13,13 @@ import pytest
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.dataset import _sliding_window
+from ray.data.dataset import Dataset, _sliding_window
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.row import TableRow
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_builder import BlockBuilder
+from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.pandas_block import PandasRow
 from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.extensions.tensor_extension import (
@@ -34,6 +35,13 @@ from ray.data.tests.conftest import *  # noqa
 def maybe_pipeline(ds, enabled):
     if enabled:
         return ds.window(blocks_per_window=1)
+    else:
+        return ds
+
+
+def maybe_lazy(ds, enabled):
+    if enabled:
+        return ds._experimental_lazy()
     else:
         return ds
 
@@ -182,6 +190,56 @@ def test_transform_failure(shutdown_only):
 
     with pytest.raises(ray.exceptions.RayTaskError):
         ds.map(mapper)
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_dataset_lineage_serialization(shutdown_only, lazy):
+    ray.init()
+    ds = ray.data.range(10)
+    ds = maybe_lazy(ds, lazy)
+    ds = ds.map(lambda x: x + 1)
+    ds = ds.map(lambda x: x + 1)
+    ds = ds.random_shuffle()
+    epoch = ds._get_epoch()
+    uuid = ds._get_uuid()
+    plan_uuid = ds._plan._dataset_uuid
+    lazy = ds._lazy
+
+    serialized_ds = ds.serialize_lineage()
+    # Confirm that the original Dataset was properly copied before clearing/mutating.
+    in_blocks = ds._plan._in_blocks
+    # Should not raise.
+    in_blocks._check_if_cleared()
+    assert isinstance(in_blocks, LazyBlockList)
+    if lazy:
+        assert in_blocks._block_partition_refs[0] is not None
+    else:
+        assert ds._plan._snapshot_blocks is not None
+
+    ray.shutdown()
+    ray.init()
+
+    ds = Dataset.deserialize_lineage(serialized_ds)
+    # Check Dataset state.
+    assert ds._get_epoch() == epoch
+    assert ds._get_uuid() == uuid
+    assert ds._plan._dataset_uuid == plan_uuid
+    assert ds._lazy == lazy
+    # Check Dataset content.
+    assert ds.count() == 10
+    assert sorted(ds.take()) == list(range(2, 12))
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_dataset_lineage_serialization_in_memory(shutdown_only, lazy):
+    ray.init()
+    ds = ray.data.from_items(list(range(10)))
+    ds = maybe_lazy(ds, lazy)
+    ds = ds.map(lambda x: x + 1)
+    ds = ds.map(lambda x: x + 1)
+
+    with pytest.raises(ValueError):
+        ds.serialize_lineage()
 
 
 @pytest.mark.parametrize("pipelined", [False, True])

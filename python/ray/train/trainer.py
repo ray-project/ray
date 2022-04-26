@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime
 import logging
 import os
@@ -159,6 +160,10 @@ class Trainer:
                 "GPU training, make sure to set `use_gpu` to True "
                 "when instantiating your Trainer."
             )
+
+        if resources_per_worker is not None:
+            # Copy this parameter to avoid mutating the user input
+            resources_per_worker = copy.deepcopy(resources_per_worker)
 
         self._num_workers = num_workers
         self._use_gpu = use_gpu
