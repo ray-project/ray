@@ -3,7 +3,6 @@ from pathlib import Path
 import os
 import urllib
 import importlib
-import uuid
 
 from ray._private.client_mode_hook import client_mode_hook
 
@@ -286,29 +285,36 @@ class KVClient:
     def _resolve_path(self, path: str) -> str:
         from pyarrow.fs import LocalFileSystem
 
-        root = str(self.root)
-        full_path = str(self.root.joinpath(path))
-        cap_str = ""
-        if not isinstance(self.fs, LocalFileSystem):
-            # In this case, we are not a local file system. However, pathlib would
-            # still add prefix to the path as if it is a local path when resolving
-            # the path, even when the path does not exist at all. We prevent it by
-            # capping the path with "/".
-            if not root.startswith("/"):
-                # TODO(suquark): There might be a corner case: the capped path exists
-                # locally and is a symlink. Then pathlib resolves it to the unwanted
-                # physical path. This could be a security attack.
-                # Here we must make sure it does not exist locally.
-                # This may add overhead and we may implement our resolving function
-                # later.
-                cap_str = f"/{uuid.uuid4().hex}/"
-                root = cap_str + root
-                full_path = cap_str + full_path
-        root = Path(root).resolve()
-        joined = Path(full_path).resolve()
-        # Raises an error if the path is above the root (e.g., "../data" attack).
-        joined.relative_to(root)
-        return str(joined)[len(cap_str) :]
+        if isinstance(self.fs, LocalFileSystem):
+            joined = self.root.joinpath(path).resolve()
+            # Raises an error if the path is above the root (e.g., "../data" attack).
+            joined.relative_to(self.root.resolve())
+            return str(joined)
+
+        # In this case, we are not a local file system. However, pathlib would
+        # still add prefix to the path as if it is a local path when resolving
+        # the path, even when the path does not exist at all. If the path exists
+        # locally and is a symlink, then pathlib resolves it to the unwanted
+        # physical path. This could leak to an attack. Third, if the path was
+        # under Windows, "/" becomes "\", which is invalid for non-local stores.
+        # So we decide to resolve it mannually.
+        def _normalize_path(p: str) -> str:
+            # "////bucket//go/./foo///..//.././/bar/./" becomes "bucket/bar"
+            segments = []
+            for s in p.replace("\\", "/").split("/"):
+                if s == "..":
+                    if not segments:
+                        raise ValueError("Path goes beyond root.")
+                    segments.pop()
+                elif s not in (".", ""):
+                    segments.append(s)
+            return "/".join(segments)
+
+        root = _normalize_path(str(self.root))
+        joined = _normalize_path(str(self.root.joinpath(path)))
+        if not joined.startswith(root):
+            raise ValueError(f"{joined!r} does not start with {root!r}")
+        return joined
 
 
 def _init_storage(storage_uri: str, is_head: bool):
