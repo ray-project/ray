@@ -84,7 +84,6 @@ class TunerTest(unittest.TestCase):
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
-            # TODO(xwjiang): change when dataset out-of-band ser/des is landed.
             datasets={"train": gen_dataset_func_eager()},
         )
         # prep_v1 = StandardScaler(["worst radius", "worst area"])
@@ -93,14 +92,12 @@ class TunerTest(unittest.TestCase):
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
             },
-            # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
-            #  is resolved.
             # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-            # "datasets": {
-            #     "train": tune.choice(
-            #         [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
-            #     ),
-            # },
+            "datasets": {
+                "train": tune.choice(
+                    [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
+                ),
+            },
             "params": {
                 "objective": "binary:logistic",
                 "tree_method": "approx",
