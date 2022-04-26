@@ -11,6 +11,7 @@ from ray.data import from_pandas, read_datasource, Dataset, Datasource, ReadTask
 from ray.data.block import BlockMetadata
 from ray.ml.config import RunConfig
 from ray.ml.examples.pytorch.torch_linear_example import train_func as linear_train_func
+from ray.ml.preprocessors import StandardScaler
 from ray.ml.train.integrations.torch import TorchTrainer
 from ray.ml.train.integrations.xgboost import XGBoostTrainer
 from ray.ml.train import Trainer
@@ -86,13 +87,13 @@ class TunerTest(unittest.TestCase):
             params={},
             datasets={"train": gen_dataset_func_eager()},
         )
-        # prep_v1 = StandardScaler(["worst radius", "worst area"])
-        # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
+        prep_v1 = StandardScaler(["worst radius", "worst area"])
+        prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
             },
-            # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
+            "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
                 "train": tune.choice(
                     [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
@@ -115,7 +116,7 @@ class TunerTest(unittest.TestCase):
         )
         results = tuner.fit()
         assert not isinstance(results.get_best_result().checkpoint, TrialCheckpoint)
-        assert len(results) == 2
+        assert len(results) == 4
 
     def test_tuner_with_xgboost_trainer_driver_fail_and_resume(self):
         # So that we have some global checkpointing happening.
@@ -127,23 +128,22 @@ class TunerTest(unittest.TestCase):
         trainer = XGBoostTrainer(
             label_column="target",
             params={},
-            # TODO(xwjiang): change when dataset out-of-band ser/des is landed.
             datasets={"train": gen_dataset_func_eager()},
         )
-        # prep_v1 = StandardScaler(["worst radius", "worst area"])
-        # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
+        prep_v1 = StandardScaler(["worst radius", "worst area"])
+        prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
             },
             # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
             #  is resolved.
-            # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-            # "datasets": {
-            #     "train": tune.choice(
-            #         [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
-            #     ),
-            # },
+            "preprocessor": tune.grid_search([prep_v1, prep_v2]),
+            "datasets": {
+                "train": tune.choice(
+                    [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
+                ),
+            },
             "params": {
                 "objective": "binary:logistic",
                 "tree_method": "approx",
@@ -182,7 +182,7 @@ class TunerTest(unittest.TestCase):
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
         results = tuner.fit()
-        assert len(results) == 2
+        assert len(results) == 4
 
     def test_tuner_trainer_fail(self):
         trainer = DummyTrainer()
@@ -215,20 +215,10 @@ class TunerTest(unittest.TestCase):
             train_loop_config=config,
             scaling_config=scaling_config,
         )
-        # prep_v1 = StandardScaler(["worst radius", "worst area"])
-        # prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
                 "num_workers": tune.grid_search([1, 2]),
             },
-            # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
-            #  is resolved.
-            # "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-            # "datasets": {
-            #     "train": tune.choice(
-            #         [gen_dataset_func(), gen_dataset_func(do_shuffle=True)]
-            #     ),
-            # },
             "train_loop_config": {
                 "batch_size": tune.grid_search([4, 8]),
                 "epochs": tune.grid_search([5, 10]),
