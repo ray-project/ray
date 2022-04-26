@@ -179,7 +179,7 @@ public class RuntimeEnvTest {
           new RuntimeEnv.Builder()
               .addJars(
                   ImmutableList.of(
-                      "https://raylet.cn-hangzhou-alipay-b.oss-cdn.aliyun-inc.com/systemjobs/actor-observer-tmp.jar"))
+                      "https://ray-mobius-us.oss-us-west-1.aliyuncs.com/ci/linux/actor-observer-tmp.jar"))
               .build();
       ActorHandle<A> actor1 = Ray.actor(A::new).setRuntimeEnv(runtimeEnv).remote();
       boolean ret =
