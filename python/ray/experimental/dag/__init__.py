@@ -11,6 +11,7 @@ from ray.experimental.dag.constants import (
     PREV_CLASS_METHOD_CALL_KEY,
     DAGNODE_TYPE_KEY,
 )
+from ray.experimental.dag.vis_utils import plot
 
 __all__ = [
     "ClassNode",
@@ -23,4 +24,5 @@ __all__ = [
     "PARENT_CLASS_NODE_KEY",
     "PREV_CLASS_METHOD_CALL_KEY",
     "DAGNODE_TYPE_KEY",
+    "plot",
 ]
