@@ -150,6 +150,35 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
     )
 
 
+def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(100, parallelism=10).map(lambda x: x + 1)
+    dses = ds.split_at_indices([50])
+    dses = [ds.map(lambda x: x + 1) for ds in dses]
+    for ds_ in dses:
+        stats = canonicalize(ds_.stats())
+        assert (
+            stats
+            == """Stage N read->map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+
+Stage N split: N/N blocks split from parent in T
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+
+Stage N map: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+"""
+        )
+
+
 def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
     context = DatasetContext.get_current()
     context.optimize_fuse_stages = True
