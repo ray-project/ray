@@ -381,6 +381,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         _block_udf: Optional[Callable[[Block], Block]] = None,
+        ray_remote_args: Dict[str, Any] = None,
         **write_args,
     ) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
@@ -394,6 +395,9 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         if open_stream_args is None:
             open_stream_args = {}
+
+        if ray_remote_args is None:
+            ray_remote_args = {}
 
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
@@ -411,7 +415,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                     **write_args,
                 )
 
-        write_block = cached_remote_fn(write_block)
+        write_block = cached_remote_fn(write_block).options(**ray_remote_args)
 
         file_format = self._file_format()
         write_tasks = []

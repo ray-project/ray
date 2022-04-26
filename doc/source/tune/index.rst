@@ -10,14 +10,10 @@ Tune: Scalable Hyperparameter Tuning
     :align: center
 
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale.
-You can tune your favorite machine learning framework, :ref:`including PyTorch, XGBoost, TensorFlow and Keras <tune-guides>`,
-and choose among state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`,
-:ref:`BayesOptSearch <bayesopt>`, or :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
-Tune integrates with a wide range of hyperparameter optimization tools, like
-:ref:`Optuna, Hyperopt, Ax, and Nevergrad <tune-search-alg>`, to name a few.
+You can tune your favorite machine learning framework (:ref:`PyTorch <tune-pytorch-cifar-ref>`, :ref:`XGBoost <tune-xgboost-ref>`, :doc:`Scikit-Learn <examples/tune-sklearn>`, :doc:`TensorFlow and Keras <examples/tune_mnist_keras>`, and :doc:`more <examples/index>`) by running state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>` and :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
+Tune further integrates with a wide range of additional hyperparameter optimization tools, including :doc:`Ax <examples/ax_example>`, :doc:`BayesOpt <examples/bayesopt_example>`, :doc:`BOHB <examples/bohb_example>`, :doc:`Dragonfly <examples/dragonfly_example>`, :doc:`FLAML <examples/flaml_example>`, :doc:`HEBO <examples/hebo_example>`, :doc:`Hyperopt <examples/hyperopt_example>`, :doc:`Nevergrad <examples/nevergrad_example>`, :doc:`Optuna <examples/optuna_example>`, :doc:`SigOpt <examples/sigopt_example>`, :doc:`skopt <examples/skopt_example>`, and :doc:`ZOOpt <examples/zoopt_example>`.
 
-
-.. tabbed:: Examples
+.. tabbed:: Example
 
     Learn how to use Ray Tune for various machine learning frameworks in just a few steps.
     **Click on the tabs to see code examples**.
@@ -123,8 +119,8 @@ And you can move your models from training to serving on the same infrastructure
     **Examples**
     ^^^
 
-    In our examples you can find practical tutorials for
-    scikit-learn, Keras, TensorFlow, PyTorch, mlflow, and many more.
+    In our examples you can find practical tutorials for using frameworks such as
+    scikit-learn, Keras, TensorFlow, PyTorch, and mlflow, and state of the art search algorithm integrations.
 
     +++
     .. link-button:: tune-examples-ref
@@ -204,7 +200,7 @@ If you're new to Tune, you're probably wondering, "what makes Tune different?"
 
     In this situation, Tune actually allows you to power up your existing workflow.
     Tune's :ref:`Search Algorithms <tune-search-alg>` integrate with a variety of popular hyperparameter tuning
-    libraries (such as Nevergrad or HyperOpt) and allow you to seamlessly scale up your optimization
+    libraries (see :ref:`examples <tune-examples-ref>`) and allow you to seamlessly scale up your optimization
     process - without sacrificing performance.
 
 Projects using Tune
