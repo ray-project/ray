@@ -505,7 +505,7 @@ class Trainer:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
-            func (Callable): The function that should be executed on each
+            train_func (Callable): The function that should be executed on each
                 training worker.
             dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray p:ref:`Dataset <dataset-api>` or
@@ -687,7 +687,7 @@ class TrainingIterator:
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
-                dataset_config=dataset_spec,
+                dataset_spec=dataset_spec,
                 checkpoint=checkpoint_dict,
             )
         )
