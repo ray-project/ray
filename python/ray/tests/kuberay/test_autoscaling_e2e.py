@@ -100,7 +100,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         - Add a GPU-annotated group for testing GPU upscaling.
 
-        - Fill in Ray image, autoscaler image, and image pull policies from env variables.
+        - Fill in Ray image, autoscaler image, and image pull policies from env
+          variables.
         """
         with open(EXAMPLE_CLUSTER_PATH) as ray_cr_config_file:
             ray_cr_config_str = ray_cr_config_file.read()
