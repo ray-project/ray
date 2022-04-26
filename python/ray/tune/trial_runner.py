@@ -314,13 +314,6 @@ class TrialRunner:
 
         self._metric = metric
 
-        if "TRIALRUNNER_WALLTIME_LIMIT" in os.environ:
-            raise ValueError(
-                "The TRIALRUNNER_WALLTIME_LIMIT environment variable is "
-                "deprecated. "
-                "Use `tune.run(time_budget_s=limit)` instead."
-            )
-
         self._total_time = 0
         self._iteration = 0
         self._has_errored = False
