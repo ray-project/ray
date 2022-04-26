@@ -345,11 +345,12 @@ class RolloutWorker(ParallelIteratorWorker):
                 loading previous generated experiences.
             input_evaluation: How to evaluate the policy
                 performance. This only makes sense to set when the input is
-                reading offline data. The possible values include:
-                - "is": the step-wise importance sampling estimator.
-                - "wis": the weighted step-wise is estimator.
-                - "simulation": run the environment in the background, but
-                use this data for evaluation only and never for learning.
+                reading offline data. Available options:
+                - "simulation": Run the environment in the background, but use
+                this data for evaluation only and not for learning.
+                - Any subclass of OffPolicyEstimator, e.g.
+                ray.rllib.offline.is_estimator::ImportanceSamplingEstimator or your own
+                custom subclass.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
@@ -710,24 +711,40 @@ class RolloutWorker(ParallelIteratorWorker):
         )
         self.reward_estimators: List[OffPolicyEstimator] = []
         for method in input_evaluation:
+            if method == "is":
+                method = ImportanceSamplingEstimator
+                deprecation_warning(
+                    old="config.input_evaluation=[is]",
+                    new="from ray.rllib.offline.is_estimator import "
+                        f"{method.__name__}; config.input_evaluation="
+                        f"[{method.__name__}]",
+                    error=False,
+                )
+            elif method == "wis":
+                method = WeightedImportanceSamplingEstimator
+                deprecation_warning(
+                    old="config.input_evaluation=[is]",
+                    new="from ray.rllib.offline.wis_estimator import "
+                        f"{method.__name__}; config.input_evaluation="
+                        f"[{method.__name__}]",
+                    error=False,
+                )
+
             if method == "simulation":
                 logger.warning(
                     "Requested 'simulation' input evaluation method: "
                     "will discard all sampler outputs and keep only metrics."
                 )
                 sample_async = True
-            elif method == "is":
-                ise = ImportanceSamplingEstimator.create_from_io_context(
-                    self.io_context
-                )
-                self.reward_estimators.append(ise)
-            elif method == "wis":
-                wise = WeightedImportanceSamplingEstimator.create_from_io_context(
-                    self.io_context
-                )
-                self.reward_estimators.append(wise)
+            elif isinstance(method, type) and issubclass(method, OffPolicyEstimator):
+                self.reward_estimators.append(
+                    method.create_from_io_context(self.io_context))
             else:
-                raise ValueError("Unknown evaluation method: {}".format(method))
+                raise ValueError(
+                    f"Unknown evaluation method: {method}! Must be "
+                    "either `simulation` or a sub-class of ray.rllib.offline."
+                    "off_policy_estimator::OffPolicyEstimator"
+                )
 
         render = False
         if policy_config.get("render_env") is True and (

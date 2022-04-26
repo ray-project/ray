@@ -31,7 +31,7 @@ class ImportanceSamplingEstimator(OffPolicyEstimator):
             V_step_IS += p[t] * rewards[t] * self.gamma ** t
 
         estimation = OffPolicyEstimate(
-            "is",
+            "importance_sampling",
             {
                 "V_prev": V_prev,
                 "V_step_IS": V_step_IS,
