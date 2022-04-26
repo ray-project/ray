@@ -1006,6 +1006,8 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertEqual(config1, config2)
 
+        self.assertTrue(config1.get("a") in [(1, 2), (3, 4)])
+
     def testConvertHyperOptNested(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
 
