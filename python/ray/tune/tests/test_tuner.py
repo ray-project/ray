@@ -21,6 +21,20 @@ from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
+class DummyTrainer(Trainer):
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+        "trainer_resources",
+    ]
+
+    def training_loop(self) -> None:
+        raise RuntimeError("There is an error in trainer!")
+
+
 class TestDatasource(Datasource):
     def __init__(self, do_shuffle: bool):
         self._shuffle = do_shuffle
@@ -174,10 +188,6 @@ class TunerTest(unittest.TestCase):
         assert len(results) == 2
 
     def test_tuner_trainer_fail(self):
-        class DummyTrainer(Trainer):
-            def training_loop(self) -> None:
-                raise RuntimeError("There is an error in trainer!")
-
         trainer = DummyTrainer()
         param_space = {
             "scaling_config": {
@@ -235,6 +245,12 @@ class TunerTest(unittest.TestCase):
         )
         results = tuner.fit()
         assert len(results) == 8
+
+    def test_tuner_run_config_override(self):
+        trainer = DummyTrainer(run_config=RunConfig(stop={"metric": 4}))
+        tuner = Tuner(trainer)
+
+        assert tuner._local_tuner._run_config.stop == {"metric": 4}
 
 
 if __name__ == "__main__":

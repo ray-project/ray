@@ -583,7 +583,7 @@ def test_internal_kv(ray_start_regular_shared):
         assert ray._internal_kv_get("apple") == b"asdf"
         assert ray._internal_kv_list("a") == [b"apple"]
         ray._internal_kv_del("apple")
-        assert ray._internal_kv_get("apple") == b""
+        assert ray._internal_kv_get("apple") is None
 
 
 def test_startup_retry(ray_start_regular_shared):

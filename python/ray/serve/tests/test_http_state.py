@@ -8,7 +8,7 @@ from ray.serve.http_state import HTTPState
 
 @pytest.fixture
 def patch_get_namespace():
-    with patch("ray.serve.api._get_controller_namespace") as func:
+    with patch("ray.serve.client.get_controller_namespace") as func:
         func.return_value = "dummy_namespace"
         yield
 
