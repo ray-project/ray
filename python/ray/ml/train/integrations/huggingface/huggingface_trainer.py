@@ -314,7 +314,7 @@ class HuggingFaceTrainer(TorchTrainer):
 
     def as_trainable(self) -> Type[Trainable]:
         # Replace the directory checkpoint with a node ip & path dict checkpoint
-        # used to sync the directory. If we use a directry checkpoint directly,
+        # used to sync the directory. If we use a directory checkpoint directly,
         # it will get deepcopied & serialized unnecessarily
         original_param_dict = self._param_dict.copy()
         resume_from_checkpoint: Optional[Checkpoint] = self._param_dict.get(

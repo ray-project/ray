@@ -49,9 +49,8 @@ def main(
             # Concatenate all texts.
             concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
             total_length = len(concatenated_examples[list(examples.keys())[0]])
-            # We drop the small remainder, we could add padding if the model supported
-            # it instead of this drop, you can
-            # customize this part to your needs.
+            # We drop the small remainder. We could add padding if the model supported
+            # it instead of this drop. You can customize this part to your needs.
             total_length = (total_length // block_size) * block_size
             # Split by chunks of max_len.
             result = {
