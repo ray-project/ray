@@ -61,7 +61,7 @@ spec:
         - name: ray-head
           image: rayproject/ray:1.12.0
           imagePullPolicy: Always
-          # The KubeRay operator uses the ports specified on the ray-container
+          # The KubeRay operator uses the ports specified on the ray-head container
           # to configure a service targeting the ports.
           # The name of the service is <ray cluster name>-head-svc.
           ports:
