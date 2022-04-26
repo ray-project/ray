@@ -165,8 +165,11 @@ class QMixTorchPolicy(Policy):
     """
 
     def __init__(self, obs_space, action_space, config):
-        actual_observation_space = obs_space if not hasattr(
-            obs_space, "original_space") else obs_space.original_space
+        actual_observation_space = (
+            obs_space
+            if not hasattr(obs_space, "original_space")
+            else obs_space.original_space
+        )
         _validate(actual_observation_space, action_space)
         config = dict(ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG, **config)
         self.framework = "torch"
@@ -184,7 +187,7 @@ class QMixTorchPolicy(Policy):
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
-
+    
         agent_obs_space = self.actual_observation_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
             space_keys = set(agent_obs_space.spaces.keys())
@@ -541,7 +544,8 @@ class QMixTorchPolicy(Policy):
             unpacked = _unpack_obs(
                 np.array(obs_batch, dtype=np.float32),
                 self.actual_observation_space,
-                tensorlib=np)
+                tensorlib=np,
+            )
         else:
             unpacked = obs_batch
 
@@ -561,9 +565,7 @@ class QMixTorchPolicy(Policy):
                 [o["action_mask"] for o in unpacked], axis=1
             ).reshape([B, self.n_agents, self.n_actions])
         else:
-            action_mask = np.ones(
-                [B, self.n_agents, self.n_actions], dtype=np.float32
-            )
+            action_mask = np.ones([B, self.n_agents, self.n_actions], dtype=np.float32)
 
         if self.has_env_global_state:
             state = np.concatenate(tree.flatten(unpacked[0][ENV_STATE]), 1)
@@ -574,9 +576,11 @@ class QMixTorchPolicy(Policy):
 
 def _validate(obs_space, action_space):
     if not isinstance(obs_space, Tuple):
-        raise ValueError("Obs space must be a Tuple, got {}. Use ".format(
-            obs_space) + "MultiAgentEnv.with_agent_groups() to group related "
-                         "agents for QMix.")
+        raise ValueError(
+            "Obs space must be a Tuple, got {}. Use ".format(obs_space)
+            + "MultiAgentEnv.with_agent_groups() to group related "
+            "agents for QMix."
+        )
     if not isinstance(action_space, Tuple):
         raise ValueError(
             "Action space must be a Tuple, got {}. ".format(action_space)
@@ -592,8 +596,8 @@ def _validate(obs_space, action_space):
     if len({str(x) for x in obs_space.spaces}) > 1:
         raise ValueError(
             "Implementation limitation: observations of grouped agents "
-            "must be homogeneous, got {}".format(
-                obs_space.spaces))
+            "must be homogeneous, got {}".format(obs_space.spaces)
+        )
     if len({str(x) for x in action_space.spaces}) > 1:
         raise ValueError(
             "Implementation limitation: action space of grouped agents "

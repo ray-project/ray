@@ -1,8 +1,13 @@
 from gym.spaces import Tuple
 import numpy as np
 from pettingzoo.butterfly import cooperative_pong_v5
-from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0, resize_v0, \
-    frame_stack_v1
+from supersuit import (
+    normalize_obs_v0,
+    dtype_v0,
+    color_reduction_v0,
+    resize_v0,
+    frame_stack_v1,
+)
 
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 
@@ -29,8 +34,6 @@ tuple_act_space = Tuple([action_space, action_space])
 
 
 def CooperativePong(env_ctx=None):
-    return ParallelPettingZooEnv(
-        env_creator(env_ctx or {})
-    ).with_agent_groups(
-        grouping, obs_space=tuple_obs_space,
-        act_space=tuple_act_space)
+    return ParallelPettingZooEnv(env_creator(env_ctx or {})).with_agent_groups(
+        grouping, obs_space=tuple_obs_space, act_space=tuple_act_space
+    )
