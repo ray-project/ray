@@ -92,7 +92,7 @@ def train_rl_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
     return result
 
 
-def evaluate_on_checkpoint(checkpoint: Checkpoint, num_episodes) -> list:
+def evaluate_using_checkpoint(checkpoint: Checkpoint, num_episodes) -> list:
     predictor = RLPredictor.from_checkpoint(checkpoint)
 
     env = gym.make("CartPole-v0")
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         "-E",
         type=int,
         default=4,
-        help="Sets number of workers for training.",
+        help="Number of evaluation episodes.",
     )
     args, _ = parser.parse_known_args()
 
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         result = train_rl_ppo_online(num_workers=args.num_workers, use_gpu=args.use_gpu)
     eval_checkpoint = result.checkpoint
 
-    rewards = evaluate_on_checkpoint(
+    rewards = evaluate_using_checkpoint(
         eval_checkpoint, num_episodes=args.num_eval_episodes
     )
     print(
