@@ -166,6 +166,7 @@ class ResultThread(threading.Thread):
         total_object_refs=None,
     ):
         threading.Thread.__init__(self, daemon=True)
+        self.END_SENTINEL = None
         self._got_error = False
         self._object_refs = []
         self._num_ready = 0
@@ -187,32 +188,26 @@ class ResultThread(threading.Thread):
         self._object_refs.append(object_ref)
         self._results.append(None)
 
-    def add_object_ref(self, object_ref, final=False):
+    def add_object_ref(self, object_ref):
         self._new_object_refs.put(object_ref)
-        if final:
-            # To stop iterating, push an additional None object
-            self._new_object_refs.put(None)
 
     def run(self):
         unready = copy.copy(self._object_refs)
         aggregated_batch_results = []
-        winding_down = False
         # Run for a specific number of objects if self._total_object_refs > 0
         # Run until a 'final' (None) object has been pushed when iterating over an
         # iterators (i.e. self._total_object_refs == 0)
-        while (self._total_object_refs == 0) or (
-            self._num_ready < self._total_object_refs
-        ):
+        while self._num_ready < self._total_object_refs:
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
             while True:
                 try:
-                    # Block if we have no IDs to wait on *and* we are not winding down
-                    block = (len(unready) == 0) and not winding_down
+                    block = len(unready) == 0
                     new_object_ref = self._new_object_refs.get(block=block)
-                    # receiving a None object is the signal to stop
-                    if new_object_ref is None:
-                        winding_down = True
+                    if new_object_ref is self.END_SENTINEL:
+                        # Receiving the END_SENTINEL object is the signal to stop.
+                        # Store the total number of added objects.
+                        self._total_object_refs = len(self._object_refs)
                     else:
                         self._add_object_ref(new_object_ref)
                         unready.append(new_object_ref)
@@ -220,32 +215,27 @@ class ResultThread(threading.Thread):
                     # queue.Empty means no result was retrieved if block=False.
                     break
 
-            if len(unready) == 0:
-                # not awaiting any more IDs; exit if we are winding down
-                if winding_down:
-                    break
-            else:
-                [ready_id], unready = ray.wait(unready, num_returns=1)
-                try:
-                    batch = ray.get(ready_id)
-                except ray.exceptions.RayError as e:
-                    batch = [e]
+            [ready_id], unready = ray.wait(unready, num_returns=1)
+            try:
+                batch = ray.get(ready_id)
+            except ray.exceptions.RayError as e:
+                batch = [e]
 
-                # The exception callback is called only once on the first result
-                # that errors. If no result errors, it is never called.
-                if not self._got_error:
-                    for result in batch:
-                        if isinstance(result, Exception):
-                            self._got_error = True
-                            if self._error_callback is not None:
-                                self._error_callback(result)
-                            break
-                        else:
-                            aggregated_batch_results.append(result)
+            # The exception callback is called only once on the first result
+            # that errors. If no result errors, it is never called.
+            if not self._got_error:
+                for result in batch:
+                    if isinstance(result, Exception):
+                        self._got_error = True
+                        if self._error_callback is not None:
+                            self._error_callback(result)
+                        break
+                    else:
+                        aggregated_batch_results.append(result)
 
-                self._num_ready += 1
-                self._results[self._indices[ready_id]] = batch
-                self._ready_index_queue.put(self._indices[ready_id])
+            self._num_ready += 1
+            self._results[self._indices[ready_id]] = batch
+            self._ready_index_queue.put(self._indices[ready_id])
 
         # The regular callback is called only once on the entire List of
         # results as long as none of the results were errors. If any results
@@ -368,8 +358,9 @@ class IMapIterator:
         if isinstance(iterable, collections.abc.Iterator):
             # Got iterator (which has no len() function).
             # Make default chunksize 1 instead of using _calculate_chunksize().
+            # Indicate unknown queue length, requiring explicit stopping.
             self._chunksize = chunksize or 1
-            result_list_size = 0
+            result_list_size = float("inf")
         else:
             self._chunksize = chunksize or pool._calculate_chunksize(iterable)
             result_list_size = div_round_up(len(iterable), chunksize)
@@ -403,8 +394,11 @@ class IMapIterator:
             self._func, chunk_iterator, self._chunksize, actor_index
         )
         self._submitted_chunks.append(False)
-        # Wait for the result, and indicate if this is the final chunk to be submitted
-        self._result_thread.add_object_ref(new_chunk_id, final=self._finished_iterating)
+        # Wait for the result
+        self._result_thread.add_object_ref(new_chunk_id)
+        # If we submitted the final chunk, notify the result thread
+        if self._finished_iterating:
+            self._result_thread.add_object_ref(self._result_thread.END_SENTINEL)
 
     def __iter__(self):
         return self
