@@ -15,8 +15,6 @@ from ray.tune.session import (
     get_trial_name,
     get_trial_id,
     get_trial_resources,
-    make_checkpoint_dir,
-    save_checkpoint,
     checkpoint_dir,
     is_session_enabled,
 )

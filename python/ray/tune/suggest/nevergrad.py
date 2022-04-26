@@ -59,8 +59,6 @@ class NevergradSearch(Searcher):
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
-        use_early_stopped_trials: Deprecated.
-        max_concurrent: Deprecated.
 
     Tune automatically converts search spaces to Nevergrad's format:
 
@@ -120,7 +118,6 @@ class NevergradSearch(Searcher):
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
-        max_concurrent: Optional[int] = None,
         **kwargs,
     ):
         assert (
@@ -131,9 +128,7 @@ class NevergradSearch(Searcher):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        super(NevergradSearch, self).__init__(
-            metric=metric, mode=mode, max_concurrent=max_concurrent, **kwargs
-        )
+        super(NevergradSearch, self).__init__(metric=metric, mode=mode, **kwargs)
 
         self._space = None
         self._opt_factory = None
@@ -180,7 +175,6 @@ class NevergradSearch(Searcher):
             )
 
         self._live_trial_mapping = {}
-        self.max_concurrent = max_concurrent
 
         if self._nevergrad_opt or self._space:
             self._setup_nevergrad()
