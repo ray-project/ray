@@ -107,7 +107,7 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,
                          GcsKVManagerTest,
-                         ::testing::Values("redis", "redis_client", "memory_client"));
+                         ::testing::Values("redis", "redis_client", "memory"));
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
