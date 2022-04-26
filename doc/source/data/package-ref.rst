@@ -122,6 +122,21 @@ Custom Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
+Partitioning API
+---------------------
+
+.. autoclass:: ray.data.datasource.PartitionStyle
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionEncoder
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionParser
+    :members:
+
+.. autoclass:: ray.data.datasource.PathPartitionFilter
+    :members:
+
 Table Row API
 ---------------------
 
