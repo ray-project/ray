@@ -20,20 +20,20 @@ class SimpleTensorFlowDatasource(Datasource[T]):
     Example:
         >>> import ray.data
         >>> from ray.data.datasource import SimpleTensorFlowDatasource
-        >>> import tensorflow_datasets as tfds
+        >>> import tensorflow_datasets as tfds  # doctest: +SKIP
         >>>
         >>> def dataset_factory():
         ...     return tfds.load("cifar10", split=["train"], as_supervised=True)[0]
         ...
-        >>> dataset = ray.data.read_datasource(
+        >>> dataset = ray.data.read_datasource(  # doctest: +SKIP
         ...     SimpleTensorFlowDatasource(),
         ...     parallelism=1,
         ...     dataset_factory=dataset_factory
         ... )
-        >>> features, label = dataset.take(1)[0]
-        >>> features.shape
+        >>> features, label = dataset.take(1)[0]  # doctest: +SKIP
+        >>> features.shape  # doctest: +SKIP
         TensorShape([32, 32, 3])
-        >>> label
+        >>> label  # doctest: +SKIP
         <tf.Tensor: shape=(), dtype=int64, numpy=7>
     """
 
