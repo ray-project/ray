@@ -89,7 +89,7 @@ Here is one procedure to test development autoscaler code.
 ```dockerfile
 # Use the latest Ray master as base.
 FROM rayproject/ray:nightly
-# Invalidate cache so that fresh code is pulled in the next step.
+# Invalidate the cache so that fresh code is pulled in the next step.
 ARG BUILD_DATE
 # Retrieve your development code.
 RUN git clone -b <my-dev-branch> https://github.com/<my-git-handle>/ray
