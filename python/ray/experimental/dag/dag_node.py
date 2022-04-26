@@ -10,7 +10,6 @@ from typing import (
     Any,
     TypeVar,
     Callable,
-    Set,
 )
 import uuid
 
@@ -84,39 +83,42 @@ class DAGNode:
         """Execute this DAG using the Ray default executor."""
         return self.apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
 
-    def _get_toplevel_child_nodes(self) -> Set["DAGNode"]:
-        """Return the set of nodes specified as top-level args.
+    def _get_toplevel_child_nodes(self) -> List["DAGNode"]:
+        """Return the list of nodes specified as top-level args.
 
         For example, in `f.remote(a, [b])`, only `a` is a top-level arg.
 
-        This set of nodes are those that are typically resolved prior to
+        This list of nodes are those that are typically resolved prior to
         task execution in Ray. This does not include nodes nested within args.
         For that, use ``_get_all_child_nodes()``.
         """
 
-        children = set()
+        children = []
         for a in self.get_args():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         for a in self.get_kwargs().values():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         for a in self.get_other_args_to_resolve().values():
             if isinstance(a, DAGNode):
-                children.add(a)
+                if a not in children:
+                    children.append(a)
         return children
 
-    def _get_all_child_nodes(self) -> Set["DAGNode"]:
-        """Return the set of nodes referenced by the args, kwargs, and
+    def _get_all_child_nodes(self) -> List["DAGNode"]:
+        """Return the list of nodes referenced by the args, kwargs, and
         args_to_resolve in current node, even they're deeply nested.
 
         Examples:
-            f.remote(a, [b]) -> set(a, b)
-            f.remote(a, [b], key={"nested": [c]}) -> set(a, b, c)
+            f.remote(a, [b]) -> list(a, b)
+            f.remote(a, [b], key={"nested": [c]}) -> list(a, b, c)
         """
 
         scanner = _PyObjScanner()
-        children = set()
+        children = []
         for n in scanner.find_nodes(
             [
                 self._bound_args,
@@ -124,7 +126,8 @@ class DAGNode:
                 self._bound_other_args_to_resolve,
             ]
         ):
-            children.add(n)
+            if n not in children:
+                children.append(n)
         return children
 
     def _apply_and_replace_all_child_nodes(

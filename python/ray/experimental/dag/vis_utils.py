@@ -1,5 +1,6 @@
-from ray.experimental.dag.dag_node import DAGNode
-from ray.serve.pipeline.generate import DeploymentNameGenerator
+from typing import Dict
+
+from ray.experimental.dag import DAGNode, InputNode, InputAtrributeNode, ClassMethodNode
 
 import os
 import tempfile
@@ -67,13 +68,10 @@ def dag_to_dot(dag: DAGNode):
 
     # Step 1: generate unique name for each node in dag
     nodes, edges = get_nodes_and_edges(dag)
-    # TODO(lchu): For now, we borrow name generator from
-    # Serve, however, we should eventually have a similar
-    # low-level name generator for DAGNode
-    name_generator = DeploymentNameGenerator()
+    name_generator = DAGNodeNameGenerator()
     node_names = {}
     for node in nodes:
-        node_names[node] = name_generator.get_deployment_name(node)
+        node_names[node] = name_generator.get_node_name(node)
 
     # Step 2: create graph with all the edges
     for edge in edges:
@@ -110,3 +108,42 @@ def plot(dag: DAGNode, to_file=None):
         tmp_file.close()
     except NameError:
         pass
+
+
+class DAGNodeNameGenerator(object):
+    """
+    Generate unique suffix for each given Node in the DAG.
+    Apply monotonic increasing id suffix for duplicated names.
+    """
+
+    def __init__(self):
+        self.name_to_suffix: Dict[str, int] = dict()
+
+    def get_node_name(self, node: DAGNode):
+
+        if isinstance(node, InputNode):
+            node_name = "input_node"
+        elif isinstance(node, InputAtrributeNode):
+            node_name = "input_attributed_node"
+        elif isinstance(node, ClassMethodNode):
+            node_name = node.get_options().get("name", None) or node._method_name
+        else:
+            node_name = node.get_options().get("name", None) or node._body.__name__
+
+        if node_name not in self.name_to_suffix:
+            self.name_to_suffix[node_name] = 0
+            return node_name
+        else:
+            self.name_to_suffix[node_name] += 1
+            suffix_num = self.name_to_suffix[node_name]
+
+            return f"{node_name}_{suffix_num}"
+
+    def reset(self):
+        self.name_to_suffix = dict()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.reset()
