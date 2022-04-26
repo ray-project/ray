@@ -294,7 +294,6 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             pod=head_pod,
             container="ray-head",
             namespace="default",
-            return_out=True,
         )
         logger.info("Scaling down all workers by editing maxReplicas.")
         # TODO (Dmitri) Expose worker idleTimeout in KubeRay CRD, set it low,
