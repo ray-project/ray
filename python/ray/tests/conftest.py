@@ -702,6 +702,9 @@ def append_short_test_summary(rep):
 
     summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
 
+    if platform.system() != "Linux":
+        summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR_HOST")
+
     if not summary_dir:
         return
 
