@@ -2,8 +2,8 @@ import ray
 
 
 def main():
-    """Requests placement of a GPU actor.
-    """
+    """Requests placement of a GPU actor."""
+
     @ray.remote(num_gpus=1, num_cpus=1)
     class GPUActor:
         def where_am_i(self):

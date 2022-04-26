@@ -261,22 +261,27 @@ def _get_service_port(service: str, namespace: str, target_port: int) -> int:
     Returns:
         service_port: The port exposed by the service.
     """
-    service_str = subprocess.check_output(
-        [
-            "kubectl", "-n", namespace, "get", "service", service, "-o", "yaml"
-        ]
-    ).decode().strip()
+    service_str = (
+        subprocess.check_output(
+            ["kubectl", "-n", namespace, "get", "service", service, "-o", "yaml"]
+        )
+        .decode()
+        .strip()
+    )
     service_dict = yaml.safe_load(service_str)
     service_ports: List = service_dict["spec"]["ports"]
-    matching_ports = [port for port in service_ports if port["targetPort"] == target_port]
+    matching_ports = [
+        port for port in service_ports if port["targetPort"] == target_port
+    ]
     assert matching_ports
     service_port = matching_ports[0]["port"]
     return service_port
 
 
 @contextlib.contextmanager
-def _kubectl_port_forward(service: str, namespace: str, target_port: int,
-                          local_port: Optional[int] = None) -> Generator[int, None, None]:
+def _kubectl_port_forward(
+    service: str, namespace: str, target_port: int, local_port: Optional[int] = None
+) -> Generator[int, None, None]:
     """Context manager which creates a kubectl port-forward process targeting a
     K8s service.
 
@@ -299,8 +304,12 @@ def _kubectl_port_forward(service: str, namespace: str, target_port: int,
 
     process = subprocess.Popen(
         [
-            "kubectl", "-n", namespace, "port-forward", f"service/{service}",
-            f"{local_port}:{service_port}"
+            "kubectl",
+            "-n",
+            namespace,
+            "port-forward",
+            f"service/{service}",
+            f"{local_port}:{service_port}",
         ]
     )
 
@@ -317,10 +326,12 @@ def _kubectl_port_forward(service: str, namespace: str, target_port: int,
 
 
 @contextlib.contextmanager
-def ray_client_port_forward(head_service: str,
-                            k8s_namespace: str = "default",
-                            ray_namespace: Optional[str] = None,
-                            ray_client_port: int = 10001):
+def ray_client_port_forward(
+    head_service: str,
+    k8s_namespace: str = "default",
+    ray_namespace: Optional[str] = None,
+    ray_client_port: int = 10001,
+):
     """Context manager which manages a Ray client connection using kubectl port-forward.
 
     Args:
@@ -329,8 +340,8 @@ def ray_client_port_forward(head_service: str,
         ray_namespace: The Ray namespace to connect to.
         ray_client_port: The port on which the Ray head is running the Ray client server.
     """
-    with _kubectl_port_forward(service=head_service,
-                               namespace=k8s_namespace,
-                               target_port=ray_client_port) as local_port:
+    with _kubectl_port_forward(
+        service=head_service, namespace=k8s_namespace, target_port=ray_client_port
+    ) as local_port:
         with ray.init(f"ray://127.0.0.1:{local_port}", namespace=ray_namespace):
             yield

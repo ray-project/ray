@@ -23,10 +23,7 @@ from ray.tests.kuberay.utils import (
 )
 
 
-from ray.tests.kuberay.scripts import (
-    gpu_actor_placement,
-    gpu_actor_validation
-)
+from ray.tests.kuberay.scripts import gpu_actor_placement, gpu_actor_validation
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -125,7 +122,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         config["spec"]["workerGroupSpecs"].append(gpu_group)
 
         # Substitute images.
-        for group_spec in config["spec"]["workerGroupSpecs"] + [config["spec"]["headGroupSpec"]]:
+        for group_spec in config["spec"]["workerGroupSpecs"] + [
+            config["spec"]["headGroupSpec"]
+        ]:
             containers = group_spec["template"]["spec"]["containers"]
 
             # Will assume the example config maintains this invariant:
@@ -136,14 +135,15 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             for container in containers:
                 container["imagePullPolicy"] = PULL_POLICY
 
-        head_containers = config["spec"]["headGroupSpec"]["template"]["spec"]["containers"]
+        head_containers = config["spec"]["headGroupSpec"]["template"]["spec"][
+            "containers"
+        ]
         autoscaler_container = [
-            container for container in head_containers if container["name"] == "autoscaler"
+            container
+            for container in head_containers
+            if container["name"] == "autoscaler"
         ].pop()
         autoscaler_container["image"] = AUTOSCALER_IMAGE
-
-
-
 
         return config
 
@@ -261,8 +261,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
         logger.info("Scheduling an Actor with GPU demands.")
         # Use Ray client to validate that it works against KubeRay.
-        with ray_client_port_forward(head_service="raycluster-complete-head-svc",
-                                     ray_namespace="gpu-test"):
+        with ray_client_port_forward(
+            head_service="raycluster-complete-head-svc", ray_namespace="gpu-test"
+        ):
             gpu_actor_placement.main()
         # 3. Confirm new pod number and presence of fake GPU worker.
         logger.info("Confirming fake GPU worker up-scaling.")
@@ -276,8 +277,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # 4. Confirm that the GPU actor is up and that Ray believes
         # the node the actor is on has a GPU.
         logger.info("Confirming GPU actor placement.")
-        with ray_client_port_forward(head_service="raycluster-complete-head-svc",
-                                     ray_namespace="gpu-test"):
+        with ray_client_port_forward(
+            head_service="raycluster-complete-head-svc", ray_namespace="gpu-test"
+        ):
             out = gpu_actor_validation.main()
         # Confirms the actor was placed on a GPU-annotated node.
         # (See gpu_actor_validation.py for details.)

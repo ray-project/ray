@@ -2,8 +2,7 @@ import ray
 
 
 def main():
-    """Confirms placement of a GPU actor.
-    """
+    """Confirms placement of a GPU actor."""
     gpu_actor = ray.get_actor("gpu_actor")
     actor_response = ray.get(gpu_actor.where_am_i.remote())
     return actor_response
