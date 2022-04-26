@@ -207,9 +207,6 @@ def make_learner_thread(local_worker, config):
 
 class Identity:
     def __call__(self, x):
-        import ipdb
-
-        ipdb.set_trace()
         return x
 
 

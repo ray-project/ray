@@ -194,7 +194,6 @@ class MixInReplay:
 
     def __call__(self, sample_batch: SampleBatchType) -> List[SampleBatchType]:
         # Put in replay buffer if enabled.
-        import ipdb; ipdb.set_trace()
         self.replay_buffer.add_batch(sample_batch)
 
         # Proportional replay.
