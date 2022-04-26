@@ -1,9 +1,7 @@
-from optparse import Option
 import os
 import logging
 from typing import Dict, List, Optional, Tuple, Any, Set, Union
 import json
-from typing_extensions import runtime
 from google.protobuf import json_format
 from copy import deepcopy
 

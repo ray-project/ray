@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from re import M
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -11,11 +10,6 @@ from ray._private.services import get_ray_jars_dir
 
 logger = logging.getLogger(__name__)
 
-
-def my_log(s):
-    import os
-    with open("/tmp/ray/context.txt", "a") as f:
-        f.write("{}\n".format(s))
 
 @DeveloperAPI
 class RuntimeEnvContext:
