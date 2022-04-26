@@ -718,6 +718,7 @@ def _env_runner(
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
         t4 = time.time()
+        
         base_env.send_actions(actions_to_send)
         perf_stats.env_wait_time += time.time() - t4
 
@@ -1244,12 +1245,16 @@ def _process_policy_eval_results(
             episode._set_last_extra_action_outs(
                 agent_id, {k: v[i] for k, v in extra_action_out_cols.items()}
             )
+            
             if env_id in off_policy_actions and agent_id in off_policy_actions[env_id]:
                 episode._set_last_action(agent_id, off_policy_actions[env_id][agent_id])
             else:
                 episode._set_last_action(agent_id, action)
 
             assert agent_id not in actions_to_send[env_id]
+            # Flag actions as immutable to notify the user when trying to change it 
+            # and to avoid hardly traceable errors.
+            action_to_send.setflags(write=False)
             actions_to_send[env_id][agent_id] = action_to_send
 
     return actions_to_send
