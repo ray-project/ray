@@ -1,5 +1,4 @@
 diff --git third_party/py/python_configure.bzl third_party/py/python_configure.bzl
-index 7ec4459d61..6569d3e9c1 100644
 --- third_party/py/python_configure.bzl
 +++ third_party/py/python_configure.bzl
 @@ -345,7 +345,7 @@ def _python_autoconf_impl(repository_ctx):
