@@ -21,6 +21,15 @@
 
 namespace ray {
 namespace gcs {
+namespace {
+constexpr std::string_view kNamespacePrefix = "@namespace_";
+Status ValidateKey(const std::string &key) {
+  if (absl::StartsWith(key, kNamespacePrefix)) {
+    return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
+  }
+  return Status::OK();
+}
+}  // namespace
 
 void GcsInternalKVManager::HandleInternalKVGet(
     const rpc::InternalKVGetRequest &request,
