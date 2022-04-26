@@ -205,6 +205,14 @@ def make_learner_thread(local_worker, config):
     return learner_thread
 
 
+class Identity:
+    def __call__(self, x):
+        import ipdb
+
+        ipdb.set_trace()
+        return x
+
+
 def gather_experiences_directly(workers, config):
     rollouts = ParallelRollouts(
         workers,
@@ -212,23 +220,42 @@ def gather_experiences_directly(workers, config):
         num_async=config["max_sample_requests_in_flight_per_worker"],
     )
 
+    # temp = rollouts.flatten().for_each(Identity())
+
     # Augment with replay and concat to desired train batch size.
+    # train_batches = (
+    #     rollouts.for_each(lambda batch: batch.decompress_if_needed())
+    #     .for_each(
+    #         MixInReplay(
+    #             num_slots=config["replay_buffer_num_slots"],
+    #             replay_proportion=config["replay_proportion"],
+    #         )
+    #     )
+    #     .flatten()
+    #     .combine(
+    #         ConcatBatches(
+    #             min_batch_size=config["train_batch_size"],
+    #             count_steps_by=config["multiagent"]["count_steps_by"],
+    #         )
+    #     )
+    # )
+
     train_batches = (
         rollouts.for_each(lambda batch: batch.decompress_if_needed())
-        .for_each(
+        .for_each(Identity())
+    )
+    train_batches = train_batches.for_each(
             MixInReplay(
                 num_slots=config["replay_buffer_num_slots"],
                 replay_proportion=config["replay_proportion"],
             )
-        )
-        .flatten()
-        .combine(
+        ).flatten().combine(
             ConcatBatches(
                 min_batch_size=config["train_batch_size"],
                 count_steps_by=config["multiagent"]["count_steps_by"],
             )
         )
-    )
+
 
     return train_batches
 
@@ -585,6 +612,7 @@ class ImpalaTrainer(Trainer):
     def place_processed_samples_on_learner_queue(
         self, processed_samples: SampleBatchType
     ) -> None:
+        self._counters["num_samples_added_to_queue"]
         try:
             if processed_samples:
                 self._learner_thread.inqueue.put(processed_samples, block=False)
@@ -592,6 +620,7 @@ class ImpalaTrainer(Trainer):
                 self._counters[
                     NUM_AGENT_STEPS_SAMPLED
                 ] += processed_samples.agent_steps()
+                self._counters["num_samples_added_to_queue"] = processed_samples.count
         except queue.Full:
             self._counters["num_times_learner_queue_full"] += 1
 
@@ -611,15 +640,6 @@ class ImpalaTrainer(Trainer):
                     learner_infos.append(learner_results)
             else:
                 raise RuntimeError("The learner thread died in while training")
-        # if len(learner_infos) > 0:
-        #     learner_info_builder = LearnerInfoBuilder(num_devices=1)
-        #     for _learner_info in learner_infos:
-        #         for policy_id in _learner_info:
-        #             learner_info_builder.add_learn_on_batch_results(
-        #                 _learner_info[policy_id],
-        #             )
-        #     learner_info = learner_info_builder.finalize()
-        # else:
         learner_info = copy.deepcopy(self._learner_thread.learner_info)
 
         # Update the steps trained counters.
@@ -644,7 +664,7 @@ class ImpalaTrainer(Trainer):
         for batch in batches:
             batch = batch.decompress_if_needed()
             self.local_mixin_buffer.add(batch)
-            batch = self.local_mixin_buffer.sample(self.config["train_batch_size"])
+            batch = self.local_mixin_buffer.sample(self.config["rollout_fragment_length"])
             if batch:
                 processed_batches.append(batch)
         if processed_batches:
@@ -693,7 +713,7 @@ class ImpalaTrainer(Trainer):
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
-        global_vars = {"timestep": self._counters[NUM_ENV_STEPS_SAMPLED]}
+        global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
         self._counters["steps_since_broadcast"] += 1
         if (
             self.workers.remote_workers()
