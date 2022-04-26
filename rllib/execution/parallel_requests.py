@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Union
+from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set
 
 import ray
 from ray.actor import ActorHandle
@@ -11,11 +11,8 @@ logger = logging.getLogger(__name__)
 
 @ExperimentalAPI
 def asynchronous_parallel_requests(
-    *,
-    actors: List[Union[ActorHandle, Any]],
-    remote_requests_in_flight: Optional[
-        DefaultDict[ActorHandle, Set[ray.ObjectRef]]
-    ] = None,
+    remote_requests_in_flight: DefaultDict[ActorHandle, Set[ray.ObjectRef]],
+    actors: List[ActorHandle],
     ray_wait_timeout_s: Optional[float] = None,
     max_remote_requests_in_flight_per_actor: int = 2,
     remote_fn: Optional[
@@ -90,21 +87,6 @@ def asynchronous_parallel_requests(
         assert len(remote_args) == len(actors)
     if remote_kwargs is not None:
         assert len(remote_kwargs) == len(actors)
-
-    # If `actors` are not remote Ray Actors -> Call `remote_fn` on them in sequence
-    # and return.
-    if any(not isinstance(a, ActorHandle) for a in actors):
-        assert all(not isinstance(a, ActorHandle) for a in actors)
-        # Loop through list of (fake actor) objects and collect return values.
-        ret = {}
-        for actor_idx, actor in enumerate(actors):
-            if remote_fn is None:
-                ret[actor] = actor.sample()
-            else:
-                args = remote_args[actor_idx] if remote_args else []
-                kwargs = remote_kwargs[actor_idx] if remote_kwargs else {}
-                ret[actor] = actor.apply(remote_fn, *args, **kwargs)
-        return ret
 
     # For faster hash lookup.
     actor_set = set(actors)
