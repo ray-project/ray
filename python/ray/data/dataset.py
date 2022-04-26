@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     import modin
     import dask
     import pyspark
-    import ray.util.sgd
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
@@ -2959,6 +2958,7 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
     def _split(
         self, index: int, return_right_half: bool
     ) -> ("Dataset[T]", "Dataset[T]"):
+        start_time = time.perf_counter()
         get_num_rows = cached_remote_fn(_get_num_rows)
         split_block = cached_remote_fn(_split_block, num_returns=4)
 
@@ -2994,19 +2994,50 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 right_metadata.append(ray.get(m1))
             count += num_rows
 
+        split_duration = time.perf_counter() - start_time
+        left_meta_for_stats = [
+            BlockMetadata(
+                num_rows=m.num_rows,
+                size_bytes=m.size_bytes,
+                schema=m.schema,
+                input_files=m.input_files,
+                exec_stats=None,
+            )
+            for m in left_metadata
+        ]
+        left_dataset_stats = DatasetStats(
+            stages={"split": left_meta_for_stats},
+            parent=self._plan.stats(),
+        )
+        left_dataset_stats.time_total_s = split_duration
         left = Dataset(
             ExecutionPlan(
                 BlockList(left_blocks, left_metadata),
-                self._plan.stats().child_TODO("split"),
+                left_dataset_stats,
             ),
             self._epoch,
             self._lazy,
         )
         if return_right_half:
+            right_meta_for_stats = [
+                BlockMetadata(
+                    num_rows=m.num_rows,
+                    size_bytes=m.size_bytes,
+                    schema=m.schema,
+                    input_files=m.input_files,
+                    exec_stats=None,
+                )
+                for m in right_metadata
+            ]
+            right_dataset_stats = DatasetStats(
+                stages={"split": right_meta_for_stats},
+                parent=self._plan.stats(),
+            )
+            right_dataset_stats.time_total_s = split_duration
             right = Dataset(
                 ExecutionPlan(
                     BlockList(right_blocks, right_metadata),
-                    self._plan.stats().child_TODO("split"),
+                    right_dataset_stats,
                 ),
                 self._epoch,
                 self._lazy,
