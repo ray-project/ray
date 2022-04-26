@@ -405,7 +405,7 @@ class IMapIterator:
         self._result_thread.add_object_ref(new_chunk_id)
         # If we submitted the final chunk, notify the result thread
         if self._finished_iterating:
-            self._result_thread.add_object_ref(self._result_thread.END_SENTINEL)
+            self._result_thread.add_object_ref(ResultThread.END_SENTINEL)
 
     def __iter__(self):
         return self
