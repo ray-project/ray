@@ -157,9 +157,12 @@ class PoolTaskError(Exception):
 
 
 class ResultThread(threading.Thread):
-    # END_SENTINEL signals that there are no more new object_refs.
-    # When this thread gets the END_SENTINEL from
-    # self._new_object_refs, it winds down.
+    # Thread that collects results from distributed actors.
+    # It winds down when a prespecified number of objects has been processed,
+    # or until the END_SENTINEL (submitted through self.add_object_ref())
+    # has been received and all objects received until that time have been processed.
+    # Initialise the thread with total_object_refs = float('inf') to wait for the
+    # END_SENTINEL.
     END_SENTINEL = None
 
     def __init__(
@@ -198,9 +201,9 @@ class ResultThread(threading.Thread):
     def run(self):
         unready = copy.copy(self._object_refs)
         aggregated_batch_results = []
-        # Run for a specific number of objects if self._total_object_refs > 0
-        # Run until a 'final' (None) object has been pushed when iterating over an
-        # iterators (i.e. self._total_object_refs == 0)
+        # Run for a specific number of objects if self._total_object_refs is finite.
+        # Otherwise, process all objects received prior to the stop signal, given by
+        # self.add_object(END_SENTINEL).
         while self._num_ready < self._total_object_refs:
             # Get as many new IDs from the queue as possible without blocking,
             # unless we have no IDs to wait on, in which case we block.
