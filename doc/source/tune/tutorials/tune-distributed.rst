@@ -248,7 +248,7 @@ Fault Tolerance
 Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
 
 Tune will restore trials from the latest checkpoint, where available. In the distributed setting, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
-See :ref:`the section on syncing <Syncing>`.
+See :ref:`our checkpointing guide <tune-checkpoint-syncing>`.
 
 
 If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
