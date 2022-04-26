@@ -412,6 +412,7 @@ class GcsRpcClient {
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
  private:
+  instrumented_io_context *io_context_;
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
   /// The gRPC-generated stub.
@@ -426,6 +427,9 @@ class GcsRpcClient {
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
+
+
+  std::vector<Executor *> queued_executors_;
 };
 
 }  // namespace rpc
