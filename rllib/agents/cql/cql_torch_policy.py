@@ -57,7 +57,7 @@ def _repeat_tensor(t: TensorType, n: int):
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
     batch_size = tree.flatten(obs)[0].shape[0]
     obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
-    logits = model.get_policy_output(obs_temp)
+    logits, _ = model.get_action_model_outputs(obs_temp)
     policy_dist = action_dist(logits, model)
     actions, logp_ = policy_dist.sample_logp()
     logp = logp_.unsqueeze(-1)
@@ -70,9 +70,9 @@ def q_values_repeat(model, obs, actions, twin=False):
     num_repeat = int(action_shape / obs_shape)
     obs_temp = tree.map_structure(lambda t: _repeat_tensor(t, num_repeat), obs)
     if not twin:
-        preds_ = model.get_q_values(obs_temp, actions)
+        preds_, _ = model.get_q_values(obs_temp, actions)
     else:
-        preds_ = model.get_twin_q_values(obs_temp, actions)
+        preds_, _ = model.get_twin_q_values(obs_temp, actions)
     preds = preds_.view(obs_shape, num_repeat, 1)
     return preds
 
@@ -120,9 +120,8 @@ def cql_loss(
     )
 
     action_dist_class = _get_dist_class(policy, policy.config, policy.action_space)
-    action_dist_t = action_dist_class(
-        model.get_policy_output(model_out_t), policy.model
-    )
+    action_dist_inputs_t, _ = model.get_action_model_outputs(model_out_t)
+    action_dist_t = action_dist_class(action_dist_inputs_t, model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
     log_pis_t = torch.unsqueeze(log_pis_t, -1)
 
@@ -139,9 +138,9 @@ def cql_loss(
     # Policy Loss (Either Behavior Clone Loss or SAC Loss)
     alpha = torch.exp(model.log_alpha)
     if policy.cur_iter >= bc_iters:
-        min_q = model.get_q_values(model_out_t, policy_t)
+        min_q, _ = model.get_q_values(model_out_t, policy_t)
         if twin_q:
-            twin_q_ = model.get_twin_q_values(model_out_t, policy_t)
+            twin_q_, _ = model.get_twin_q_values(model_out_t, policy_t)
             min_q = torch.min(min_q, twin_q_)
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
@@ -157,23 +156,22 @@ def cql_loss(
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
-    action_dist_tp1 = action_dist_class(
-        model.get_policy_output(model_out_tp1), policy.model
-    )
+    action_dist_inputs_tp1, _ = model.get_action_model_outputs(model_out_tp1)
+    action_dist_tp1 = action_dist_class(action_dist_inputs_tp1, model)
     policy_tp1, _ = action_dist_tp1.sample_logp()
 
-    q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
+    q_t, _ = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
     q_t_selected = torch.squeeze(q_t, dim=-1)
     if twin_q:
-        twin_q_t = model.get_twin_q_values(
+        twin_q_t, _ = model.get_twin_q_values(
             model_out_t, train_batch[SampleBatch.ACTIONS]
         )
         twin_q_t_selected = torch.squeeze(twin_q_t, dim=-1)
 
     # Target q network evaluation.
-    q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
+    q_tp1, _ = target_model.get_q_values(target_model_out_tp1, policy_tp1)
     if twin_q:
-        twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1, policy_tp1)
+        twin_q_tp1, _ = target_model.get_twin_q_values(target_model_out_tp1, policy_tp1)
         # Take min over both twin-NNs.
         q_tp1 = torch.min(q_tp1, twin_q_tp1)
 

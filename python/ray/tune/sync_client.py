@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 import time
 import types
-import warnings
 
 from typing import Optional, List, Callable, Union, Tuple
 
@@ -18,7 +17,6 @@ import ray
 from ray.tune.error import TuneError
 from ray.tune.utils.file_transfer import sync_dir_between_nodes, delete_on_node
 from ray.util.annotations import PublicAPI
-from ray.util.debug import log_once
 from ray.ml.utils.remote_storage import (
     S3_PREFIX,
     GS_PREFIX,
@@ -197,13 +195,12 @@ class FunctionBasedClient(SyncClient):
         self._sync_down_legacy = _is_legacy_sync_fn(sync_up_func)
 
         if self._sync_up_legacy or self._sync_down_legacy:
-            if log_once("func_sync_up_legacy"):
-                warnings.warn(
-                    "Your sync functions currently only accepts two params "
-                    "(a `source` and a `target`). In the future, we will "
-                    "pass an additional `exclude` parameter. Please adjust "
-                    "your sync function accordingly."
-                )
+            raise DeprecationWarning(
+                "Your sync functions currently only accepts two params "
+                "(a `source` and a `target`). In the future, we will "
+                "pass an additional `exclude` parameter. Please adjust "
+                "your sync function accordingly."
+            )
 
         self.delete_func = delete_func or noop
 

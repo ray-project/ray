@@ -58,8 +58,7 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # Min Q weight multiplier.
         "min_q_weight": 5.0,
         "replay_buffer_config": {
-            # Use the new ReplayBuffer API.
-            "_enable_replay_buffer_api": True,
+            "_enable_replay_buffer_api": False,
             "type": "MultiAgentReplayBuffer",
             # Replay buffer should be larger or equal the size of the offline
             # dataset.
@@ -67,7 +66,6 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         },
         # Reporting: As CQL is offline (no sampling steps), we need to limit an
         # iteration's reporting by the number of steps trained (not sampled).
-        "timesteps_per_iteration": DEPRECATED_VALUE,
         "min_sample_timesteps_per_reporting": 0,
         "min_train_timesteps_per_reporting": 100,
 
@@ -77,6 +75,9 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # Deprecated keys.
         # Use `replay_buffer_config.capacity` instead.
         "buffer_size": DEPRECATED_VALUE,
+        # Use `min_sample_timesteps_per_reporting` and
+        # `min_train_timesteps_per_reporting` instead.
+        "timesteps_per_iteration": DEPRECATED_VALUE,
     })
 # __sphinx_doc_end__
 # fmt: on

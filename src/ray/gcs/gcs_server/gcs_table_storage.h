@@ -101,6 +101,9 @@ class GcsTable {
 /// specific jobs. This class is not meant to be used directly. All gcs table classes with
 /// job id should derive from this class and override the table_name_ member with a unique
 /// value for that table.
+///
+/// GcsTableWithJobId build index in memory. There is a known race condition
+/// that index could be stale if multiple writer change the same index at the same time.
 template <typename Key, typename Data>
 class GcsTableWithJobId : public GcsTable<Key, Data> {
  public:
