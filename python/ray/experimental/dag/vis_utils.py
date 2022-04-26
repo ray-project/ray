@@ -15,13 +15,16 @@ def check_pydot_and_graphviz():
     try:
         import pydot
     except ImportError:
-        raise ImportError("pydot is required to plot DAG, "
-                          "install it with `pip install pydot`.")
+        raise ImportError(
+            "pydot is required to plot DAG, " "install it with `pip install pydot`."
+        )
     try:
         pydot.Dot.create(pydot.Dot())
     except (OSError, pydot.InvocationException):
-        raise ImportError("graphviz is required to plot DAG, "
-                          "download it from https://graphviz.gitlab.io/download/")
+        raise ImportError(
+            "graphviz is required to plot DAG, "
+            "download it from https://graphviz.gitlab.io/download/"
+        )
 
 
 def get_nodes_and_edges(dag: DAGNode):
@@ -32,12 +35,14 @@ def get_nodes_and_edges(dag: DAGNode):
     Unique nodes will be used to generate unique names,
     while edges will be used to construct the graph.
     """
+
     def _dfs(node, res, visited):
         if node not in visited:
             visited.append(node)
             for child_node in node._get_all_child_nodes():
                 res.append((child_node, node))
                 _dfs(child_node, res, visited)
+
     edges = []
     nodes = []
     _dfs(dag, edges, nodes)
@@ -57,7 +62,8 @@ def dag_to_dot(dag: DAGNode):
     # Step 0: check dependencies and init graph
     check_pydot_and_graphviz()
     import pydot
-    graph = pydot.Dot(rankdir='LR')
+
+    graph = pydot.Dot(rankdir="LR")
 
     # Step 1: generate unique name for each node in dag
     nodes, edges = get_nodes_and_edges(dag)
@@ -94,6 +100,7 @@ def plot(dag: DAGNode, to_file=None):
     # Render the image directly if running inside a Jupyter notebook
     try:
         from IPython import display
+
         return display.Image(filename=to_file)
     except ImportError:
         pass

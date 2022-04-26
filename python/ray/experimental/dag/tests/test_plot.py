@@ -7,15 +7,15 @@ def test_basic_plot(shared_ray_instance):
     def a(*args, **kwargs):
         pass
 
-    tmp1 = a.options(name='tmp1').bind()
-    tmp2 = a.options(name='tmp2').bind()
-    tmp3 = a.options(name='tmp3').bind(tmp1, tmp2)
-    tmp4 = a.options(name='tmp4').bind()
-    tmp5 = a.options(name='tmp5').bind(tmp4)
-    tmp6 = a.options(name='tmp6').bind()
+    tmp1 = a.options(name="tmp1").bind()
+    tmp2 = a.options(name="tmp2").bind()
+    tmp3 = a.options(name="tmp3").bind(tmp1, tmp2)
+    tmp4 = a.options(name="tmp4").bind()
+    tmp5 = a.options(name="tmp5").bind(tmp4)
+    tmp6 = a.options(name="tmp6").bind()
     dag = a.bind(tmp3, tmp5, tmp6)
 
-    to_file = 'model_1.png'
+    to_file = "model_1.png"
     ray.experimental.dag.plot(dag, to_file)
     assert os.path.isfile(to_file)
     os.remove(to_file)
