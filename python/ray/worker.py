@@ -41,7 +41,6 @@ from ray._private.usage import usage_lib
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
-import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.util.debug import log_once
@@ -1601,14 +1600,6 @@ def connect(
             " and will be removed in the future."
         )
 
-    # Start the import thread
-    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
-        worker.import_thread = import_thread.ImportThread(
-            worker, mode, worker.threads_stopped
-        )
-        if ray._raylet.Config.start_python_importer_thread():
-            worker.import_thread.start()
-
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
     # push messages to the driver's worker service, but we ran into bugs when
@@ -1692,8 +1683,6 @@ def disconnect(exiting_interpreter=False):
         worker.gcs_function_key_subscriber.close()
         worker.gcs_error_subscriber.close()
         worker.gcs_log_subscriber.close()
-        if hasattr(worker, "import_thread"):
-            worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "logger_thread"):

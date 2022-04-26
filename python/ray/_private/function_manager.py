@@ -151,36 +151,6 @@ class FunctionActorManager:
         except Exception:
             return None
 
-    def export_key(self, key):
-        """Export a key so it can be imported by other workers"""
-
-        # It's going to check all the keys until if reserve one key not
-        # existing in the cluster.
-        # One optimization is that we can use importer counter since
-        # it's sure keys before this counter has been allocated.
-        with self._export_lock:
-            self._num_exported = max(
-                self._num_exported, self._worker.import_thread.num_imported
-            )
-            while True:
-                self._num_exported += 1
-                holder = make_export_key(
-                    self._num_exported, self._worker.current_job_id
-                )
-                # This step is atomic since internal kv is a single thread
-                # atomic db.
-                if (
-                    self._worker.gcs_client.internal_kv_put(
-                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE
-                    )
-                    > 0
-                ):
-                    break
-        # Notify all subscribers that there is a new function exported. Note
-        # that the notification doesn't include any actual data.
-        # TODO(mwtian) implement per-job notification here.
-        self._worker.gcs_publisher.publish_function_key(key)
-
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
         Args:
@@ -423,10 +393,7 @@ class FunctionActorManager:
                         job_id=job_id,
                     )
                 warning_sent = True
-            # Try importing in case the worker did not get notified, or the
-            # importer thread did not run.
-            self._worker.import_thread._do_importing()
-            time.sleep(0.001)
+            time.sleep(0.1)
 
     def export_actor_class(
         self, Class, actor_creation_function_descriptor, actor_method_names

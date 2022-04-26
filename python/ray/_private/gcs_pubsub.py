@@ -44,17 +44,6 @@ class _PublisherBase:
         )
 
     @staticmethod
-    def _create_function_key_request(key: bytes):
-        return gcs_service_pb2.GcsPublishRequest(
-            pub_messages=[
-                pubsub_pb2.PubMessage(
-                    channel_type=pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL,
-                    python_function_message=dependency_pb2.PythonFunction(key=key),
-                )
-            ]
-        )
-
-    @staticmethod
     def _create_node_resource_usage_request(key: str, json: str):
         return gcs_service_pb2.GcsPublishRequest(
             pub_messages=[
@@ -130,13 +119,6 @@ class _SubscriberBase:
         return logging_utils.log_batch_proto_to_dict(msg.log_batch_message)
 
     @staticmethod
-    def _pop_function_key(queue):
-        if len(queue) == 0:
-            return None
-        msg = queue.popleft()
-        return msg.python_function_message.key
-
-    @staticmethod
     def _pop_resource_usage(queue):
         if len(queue) == 0:
             return None, None
@@ -171,11 +153,6 @@ class GcsPublisher(_PublisherBase):
     def publish_logs(self, log_batch: dict) -> None:
         """Publishes logs to GCS."""
         req = self._create_log_request(log_batch)
-        self._gcs_publish(req)
-
-    def publish_function_key(self, key: bytes) -> None:
-        """Publishes function key to GCS."""
-        req = self._create_function_key_request(key)
         self._gcs_publish(req)
 
     def _gcs_publish(self, req) -> None:
@@ -350,40 +327,6 @@ class GcsLogSubscriber(_SyncSubscriber):
         with self._lock:
             self._poll_locked(timeout=timeout)
             return self._pop_log_batch(self._queue)
-
-
-class GcsFunctionKeySubscriber(_SyncSubscriber):
-    """Subscriber to function（and actor class) dependency keys. Thread safe.
-
-    Usage example:
-        subscriber = GcsFunctionKeySubscriber()
-        # Subscribe to the function key channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            key = subscriber.poll()
-            ......
-        # Unsubscribe from the function key channel.
-        subscriber.close()
-    """
-
-    def __init__(
-        self,
-        address: str = None,
-        channel: grpc.Channel = None,
-    ):
-        super().__init__(pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL, address, channel)
-
-    def poll(self, timeout=None) -> Optional[bytes]:
-        """Polls for new function key messages.
-
-        Returns:
-            A byte string of function key.
-            None if polling times out or subscriber closed.
-        """
-        with self._lock:
-            self._poll_locked(timeout=timeout)
-            return self._pop_function_key(self._queue)
 
 
 class GcsActorSubscriber(_SyncSubscriber):
