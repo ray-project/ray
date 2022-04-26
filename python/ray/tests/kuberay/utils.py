@@ -298,9 +298,16 @@ def _kubectl_port_forward(
 
     def terminate_process():
         process.terminate()
+        # Wait for the process to terminate,
+        # check that it returned the expected exit code.
+        assert process.wait() == -15
+        # (-15 means "I was terminated.")
+        # Checking the exit code also cleans up the zombie entry
+        # from the process table.
 
     # Ensure clean-up in case of interrupt.
     atexit.register(terminate_process)
+    # terminate_process is ok to execute multiple times.
 
     try:
         yield local_port
