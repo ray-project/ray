@@ -35,13 +35,18 @@ def test_mars(ray_start_regular):
     )
 
     # Test Arrow Dataset
-    pdf2 = pd.DataFrame({c: range(5) for c in 'abc'})
-    ds = ray.data.from_arrow([pa.Table.from_pandas(pdf2) for _ in range(3)])
-    df3 = ds2.to_mars()
+    pdf2 = pd.DataFrame({c: range(5) for c in "abc"})
+    ds3 = ray.data.from_arrow([pa.Table.from_pandas(pdf2) for _ in range(3)])
+    df3 = ds3.to_mars()
     pd.testing.assert_frame_equal(
         df3.head(5).to_pandas(),
         pdf2,
     )
+
+    # Test simple datasets
+    with pytest.raises(NotImplementedError):
+        ray.data.range(10).to_mars()
+
     cluster.stop()
 
 
