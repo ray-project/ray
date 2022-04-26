@@ -666,6 +666,7 @@ def options(
         if "_metadata" not in f._default_options:
             f._default_options["_metadata"] = {}
         f._default_options["_metadata"][WORKFLOW_OPTIONS] = workflow_options
+        return f
 
     return _apply_workflow_options
 
@@ -680,4 +681,5 @@ __all__ = (
     "get_status",
     "get_metadata",
     "cancel",
+    "options",
 )

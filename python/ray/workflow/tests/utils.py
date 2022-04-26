@@ -41,7 +41,7 @@ def clear_marks():
         file.unlink()
 
 
-def update_workflow_options(f: RemoteFunction, **workflow_options):
+def update_workflow_options(f: RemoteFunction, **workflow_options) -> RemoteFunction:
     new_metadata = f._default_options.get("_metadata", {}).copy()
     # copy again because the origina copy is shallow copy
     new_workflow_options = new_metadata.get(WORKFLOW_OPTIONS, {}).copy()
