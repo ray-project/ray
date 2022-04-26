@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray import workflow
 from ray.workflow import workflow_access
+from ray.workflow.tests.utils import update_workflow_options
 
 
 def test_basic_workflows(workflow_start_regular_shared):
@@ -228,7 +229,8 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
 def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
     (tmp_path / "test").write_text("0")
 
-    @workflow.step(max_retries=10)
+    @workflow.options(max_retries=10)
+    @ray.remote
     def unstable_step():
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -236,11 +238,12 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    assert unstable_step.step().run() == 10
+    assert workflow.create(unstable_step.bind()).run() == 10
 
     (tmp_path / "test").write_text("0")
 
-    @workflow.step(catch_exceptions=True)
+    @workflow.options(catch_exceptions=True)
+    @ray.remote
     def unstable_step_exception():
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -248,13 +251,14 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    (ret, err) = unstable_step_exception.step().run()
+    (ret, err) = workflow.create(unstable_step_exception.bind()).run()
     assert ret is None
     assert err is not None
 
     (tmp_path / "test").write_text("0")
 
-    @workflow.step(catch_exceptions=True, max_retries=3)
+    @workflow.options(catch_exceptions=True, max_retries=3)
+    @ray.remote
     def unstable_step_exception():
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -262,7 +266,7 @@ def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
             raise ValueError("Invalid")
         return v
 
-    (ret, err) = unstable_step_exception.step().run()
+    (ret, err) = workflow.create(unstable_step_exception.bind()).run()
     assert ret is None
     assert err is not None
     assert (tmp_path / "test").read_text() == "4"
@@ -335,27 +339,34 @@ def test_workflow_error_message():
 
 
 def test_options_update(workflow_start_regular_shared):
+    from ray.workflow.common import WORKFLOW_OPTIONS
+
     # Options are given in decorator first, then in the first .options()
     # and finally in the second .options()
-    @workflow.step(name="old_name", metadata={"k": "v"}, max_retries=1, num_cpus=2)
+    @workflow.options(name="old_name", metadata={"k": "v"}, max_retries=1)
+    @ray.remote(num_cpus=2)
     def f():
         return
 
-    new_f = f.options(name="new_name", metadata={"extra_k1": "extra_v1"}).options(
-        num_returns=2, metadata={"extra_k2": "extra_v2"}
-    )
-    # name is updated from the old name in the decorator to the new
-    # name in the first .options(), then preserved in the second options.
-    assert new_f._name == "new_name"
+    # name is updated from the old name in the decorator to the new name in the first
+    # .options(), then preserved in the second options.
     # metadata and ray_options are "updated"
-    assert new_f._user_metadata == {
-        "k": "v",
-        "extra_k1": "extra_v1",
-        "extra_k2": "extra_v2",
-    }
-    assert new_f._step_options.ray_options == {"num_cpus": 2, "num_returns": 2}
     # max_retries only defined in the decorator and it got preserved all the way
-    assert new_f._step_options.max_retries == 1
+    new_f = update_workflow_options(
+        f, name="new_name", num_returns=2, metadata={"extra_k2": "extra_v2"}
+    )
+    options = new_f.bind().get_options()
+    assert options == {
+        "num_cpus": 2,
+        "_metadata": {
+            WORKFLOW_OPTIONS: {
+                "name": "new_name",
+                "metadata": {"extra_k2": "extra_v2"},
+                "max_retries": 1,
+                "num_returns": 2,
+            }
+        },
+    }
 
 
 if __name__ == "__main__":
