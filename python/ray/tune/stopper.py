@@ -368,9 +368,6 @@ class TimeoutStopper(Stopper):
 
         return False
 
-    def __getstate__(self):
-        return self.__dict__
-
     def __setstate__(self, state: dict):
         state["_last_check"] = None
         self.__dict__.update(state)
