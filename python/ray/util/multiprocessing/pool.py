@@ -201,6 +201,7 @@ class ResultThread(threading.Thread):
     def run(self):
         unready = copy.copy(self._object_refs)
         aggregated_batch_results = []
+        
         # Run for a specific number of objects if self._total_object_refs is finite.
         # Otherwise, process all objects received prior to the stop signal, given by
         # self.add_object(END_SENTINEL).
@@ -213,7 +214,7 @@ class ResultThread(threading.Thread):
                     new_object_ref = self._new_object_refs.get(block=block)
                     if new_object_ref is self.END_SENTINEL:
                         # Receiving the END_SENTINEL object is the signal to stop.
-                        # Store the total number of added objects.
+                        # Store the total number of objects.
                         self._total_object_refs = len(self._object_refs)
                     else:
                         self._add_object_ref(new_object_ref)
@@ -390,10 +391,10 @@ class IMapIterator:
         # This consumes the original iterator, so we convert to a list and back
         chunk_list = list(chunk_iterator)
         if len(chunk_list) < self._chunksize:
-            # we have reached the end of self._iterator
+            # Reached end of self._iterator
             self._finished_iterating = True
             if len(chunk_list) == 0:
-                # there is nothing to do, return.
+                # Nothing to do, return.
                 return
         chunk_iterator = iter(chunk_list)
 
