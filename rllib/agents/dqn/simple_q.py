@@ -272,10 +272,12 @@ class SimpleQTrainer(Trainer):
                 len(s) if isinstance(s, SampleBatch) else s.agent_steps()
             )
             # (2) Store new samples in replay buffer
-            self.local_replay_buffer.add(s)
+            # Use deprecated add_batch() to support old replay buffers for now
+            self.local_replay_buffer.add_batch(s)
 
         # (3) Sample training batch (MultiAgentBatch) from replay buffer.
-        train_batch = self.local_replay_buffer.sample(batch_size)
+        # Use deprecated replay() to support old replay buffers for now
+        train_batch = self.local_replay_buffer.replay(batch_size)
 
         # (4) Learn on training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other

@@ -52,9 +52,15 @@ TD3_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
         "num_gpus_per_worker": 0,
         "worker_side_prioritization": False,
         "buffer_size": 1000000,
-        "prioritized_replay": False,
         "clip_rewards": False,
         "use_state_preprocessor": False,
+        "replay_buffer_config": {
+            "_enable_replay_buffer_api": False,
+            "type": "MultiAgentReplayBuffer",
+            "capacity": 50000,
+            "prioritized_replay": False,
+        },
+        "_disable_execution_plan_api": True,
     },
 )
 
