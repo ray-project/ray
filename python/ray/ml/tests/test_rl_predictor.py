@@ -48,27 +48,6 @@ class _DummyPolicy(Policy):
         )
 
 
-class _DummyEnv(gym.Env):
-    """Returns reward = 1 for actions > 2"""
-
-    def __init__(self):
-        self._iter = 0
-
-    def seed(self, seed=None):
-        pass
-
-    def _obs(self):
-        return np.random.uniform(-2, 2, size=10)
-
-    def reset(self):
-        self._iter = 0
-        return self._obs()
-
-    def step(self, action):
-        self._iter += 1
-        return self._obs(), int(action > 2.0), self._iter > 10, {}
-
-
 class _DummyPreprocessor(Preprocessor):
     def transform_batch(self, df):
         self._batch_transformed = True
@@ -78,10 +57,9 @@ class _DummyPreprocessor(Preprocessor):
 def create_checkpoint(
     preprocessor: Optional[Preprocessor] = None, config: Optional[dict] = None
 ) -> Checkpoint:
-    config = config or {}
     rl_trainer = RLTrainer(
         algorithm=_DummyTrainer,
-        config={"env": _DummyEnv, **config},
+        config=config or {},
         preprocessor=preprocessor,
     )
     rl_trainable_cls = rl_trainer.as_trainable()
