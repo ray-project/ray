@@ -263,7 +263,7 @@ Tune automatically persists the progress of your entire experiment (a ``tune.run
 - The default setting of ``resume=False`` creates a new experiment.
 - ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
 - ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
-- ``resume="ERRORED_ONLY"`` will looks for errored trials in ``local_dir/[experiment_name]`` and only run these from scratch.
+- ``resume="ERRORED_ONLY"`` will looks for errored trials in ``local_dir/[experiment_name]`` and only run these (and start from scratch).
 - ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
 - ``resume="AUTO"`` will automatically look for an existing experiment at ``local_dir/[experiment_name]``. If found, it will be continued (as if ``resume=True``), otherwise a new experiment is started.
 
