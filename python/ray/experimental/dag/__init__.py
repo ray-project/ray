@@ -3,7 +3,7 @@ from ray.experimental.dag.function_node import FunctionNode
 from ray.experimental.dag.class_node import ClassNode, ClassMethodNode
 from ray.experimental.dag.input_node import (
     InputNode,
-    InputAtrributeNode,
+    InputAttributeNode,
     DAGInputData,
 )
 from ray.experimental.dag.constants import (
@@ -19,7 +19,7 @@ __all__ = [
     "DAGNode",
     "FunctionNode",
     "InputNode",
-    "InputAtrributeNode",
+    "InputAttributeNode",
     "DAGInputData",
     "PARENT_CLASS_NODE_KEY",
     "PREV_CLASS_METHOD_CALL_KEY",

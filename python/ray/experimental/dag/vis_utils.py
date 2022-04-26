@@ -3,7 +3,7 @@ from typing import Dict
 from ray.experimental.dag import (
     DAGNode,
     InputNode,
-    InputAtrributeNode,
+    InputAttributeNode,
     FunctionNode,
     ClassNode,
     ClassMethodNode,
@@ -63,7 +63,7 @@ def get_nodes_and_edges(dag: DAGNode):
 
 
 def get_shape(node: DAGNode):
-    if isinstance(node, (InputNode, InputAtrributeNode)):
+    if isinstance(node, (InputNode, InputAttributeNode)):
         return "box"
     else:
         return "circle"
@@ -148,9 +148,9 @@ class DAGNodeNameGenerator(object):
 
     def get_node_name(self, node: DAGNode):
         if isinstance(node, InputNode):
-            node_name = "input_node"
-        elif isinstance(node, InputAtrributeNode):
-            node_name = "input_attributed_node"
+            node_name = "INPUT_NODE"
+        elif isinstance(node, InputAttributeNode):
+            node_name = "INPUT_ATTRIBUTE_NODE"
         elif isinstance(node, ClassMethodNode):
             node_name = node.get_options().get("name", None) or node._method_name
         elif isinstance(node, (ClassNode, FunctionNode)):
