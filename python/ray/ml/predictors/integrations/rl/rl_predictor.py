@@ -35,7 +35,10 @@ class RLPredictor(Predictor):
 
     @classmethod
     def from_checkpoint(
-        cls, checkpoint: Checkpoint, env: Optional[EnvType] = None, **kwargs
+        cls,
+        checkpoint: Checkpoint,
+        env: Optional[EnvType] = None,
+        **kwargs,
     ) -> "Predictor":
         """Create RLPredictor from checkpoint.
 
@@ -114,4 +117,5 @@ class RLPredictor(Predictor):
 
         policy = self.trainer.get_policy()
         actions, _outs, _info = policy.compute_actions(obs)
+
         return actions

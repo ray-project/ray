@@ -39,6 +39,7 @@ class _DummyPolicy(Policy):
     def compute_actions(
         self,
         obs_batch,
+        *args,
         **kwargs,
     ):
         return (

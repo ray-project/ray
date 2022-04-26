@@ -1,5 +1,8 @@
 from typing import Dict, Optional, Type, Union
 
+import numpy as np
+import pandas as pd
+
 from ray._private.utils import import_attr
 from ray.ml.checkpoint import Checkpoint
 from ray.ml.predictor import Predictor
@@ -64,6 +67,8 @@ class ModelWrapper(SimpleSchemaIngress):
             documentation to learn more.
         batching_params(dict, None, False): override the default parameters to
             :func:`ray.serve.batch`. Pass ``False`` to disable batching.
+        **predictor_kwargs: Additional keyword arguments passed to the
+            ``Predictor.from_checkpoint()`` call.
     """
 
     def __init__(
@@ -74,11 +79,12 @@ class ModelWrapper(SimpleSchemaIngress):
             str, InputSchemaFn
         ] = "ray.serve.http_adapters.json_to_ndarray",
         batching_params: Optional[Union[Dict[str, int], bool]] = None,
+        **predictor_kwargs,
     ):
         predictor_cls = _load_predictor_cls(predictor_cls)
         checkpoint = _load_checkpoint(checkpoint)
 
-        self.model = predictor_cls.from_checkpoint(checkpoint)
+        self.model = predictor_cls.from_checkpoint(checkpoint, **predictor_kwargs)
 
         # Configure Batching
         if batching_params is False:
@@ -101,7 +107,17 @@ class ModelWrapper(SimpleSchemaIngress):
 
     async def predict(self, inp):
         """Perform inference directly without HTTP."""
-        return await self.batched_predict(inp)
+        results = await self.batched_predict(inp)
+
+        # Convert received data to native python
+        if isinstance(results, np.ndarray):
+            results = results.tolist()
+        elif isinstance(results, np.generic):
+            results = results.item()
+        elif isinstance(results, pd.DataFrame):
+            results = results.to_numpy(copy=False).tolist()
+
+        return results
 
 
 @serve.deployment
