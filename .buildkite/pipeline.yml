@@ -302,12 +302,20 @@
       --test_tag_filters=release_unit
       release/...
 
-- label: ":python: (Small & Client)"
+- label: ":python: (Client) (Python 3.7)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - PYTHON=3.7 ./ci/env/install-dependencies.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=client_tests
+      -- python/ray/tests/...
+- label: ":python: (Small)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=client_tests,small_size_python_tests
+      --test_tag_filters=small_size_python_tests
       -- python/ray/tests/...
 - label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
