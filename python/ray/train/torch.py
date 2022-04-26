@@ -49,11 +49,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _get_torch_distributed_sampler(dataset, shuffle):
-    # Returns a torch DistributedSampler
-    return DistributedSampler(dataset, shuffle=shuffle)
-
-
 class TorchAccelerator(Accelerator):
     """A utility that implements methods to accelerate PyTorch training.
 
@@ -117,8 +112,7 @@ class TorchAccelerator(Accelerator):
 
         return model
 
-    @staticmethod
-    def _patch_model_forward_and_state(model):
+    def _patch_model_forward_and_state(self, model):
         def wrap_forward(forward):
             @functools.wraps(forward)
             def wrapper(*args, **kwargs):
@@ -243,7 +237,9 @@ class TorchAccelerator(Accelerator):
                     "timeout": loader.timeout,
                     "worker_init_fn": worker_init_fn,
                     "generator": generator,
-                    "sampler": _get_torch_distributed_sampler(loader.dataset, shuffle),
+                    "sampler": self._get_torch_distributed_sampler(
+                        loader.dataset, shuffle
+                    ),
                 }
                 return DataLoader(**data_loader_args)
 
@@ -254,6 +250,10 @@ class TorchAccelerator(Accelerator):
             data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
         return data_loader
+
+    def _get_torch_distributed_sampler(self, dataset, shuffle):
+        # Returns a torch DistributedSampler
+        return DistributedSampler(dataset, shuffle=shuffle)
 
     def get_device(self) -> torch.device:
         """Gets the correct torch device to use for training."""

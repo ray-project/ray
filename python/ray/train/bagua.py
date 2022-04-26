@@ -31,16 +31,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _get_torch_distributed_sampler(dataset, shuffle):
-    # Return a torch DistributedSampler with Bagua configurations
-    return DistributedSampler(
-        dataset,
-        num_replicas=bagua.torch_api.get_world_size(),
-        rank=bagua.torch_api.get_rank(),
-        shuffle=shuffle,
-    )
-
-
 class BaguaAccelerator(TorchAccelerator):
     """A utility that implements methods to accelerate PyTorch training using Bagua.
 
@@ -100,6 +90,15 @@ class BaguaAccelerator(TorchAccelerator):
             do_flatten=do_flatten,
         )
         return model
+
+    def _get_torch_distributed_sampler(self, dataset, shuffle):
+        # Return a torch DistributedSampler with Bagua configurations
+        return DistributedSampler(
+            dataset,
+            num_replicas=bagua.torch_api.get_world_size(),
+            rank=bagua.torch_api.get_rank(),
+            shuffle=shuffle,
+        )
 
 
 @PublicAPI(stability="beta")
