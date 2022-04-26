@@ -2299,6 +2299,24 @@ cc_library(
 )
 
 cc_library(
+    name = "observable_store_client",
+    srcs = [
+        "src/ray/gcs/store_client/observable_store_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/observable_store_client.h",
+        "src/ray/gcs/store_client/store_client.h",
+    ],
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":ray_common",
+        ":ray_util",
+    ],
+)
+
+cc_library(
     name = "store_client_test_lib",
     hdrs = [
         "src/ray/gcs/store_client/test/store_client_test_base.h",
@@ -2339,6 +2357,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs_in_memory_store_client",
+        ":observable_store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],

@@ -84,6 +84,10 @@ DECLARE_stats(spill_manager_objects_bytes);
 DECLARE_stats(spill_manager_request_total);
 DECLARE_stats(spill_manager_throughput_mb);
 
+/// GCS Storage
+DECLARE_stats(gcs_storage_operation_latency_ms);
+DECLARE_stats(gcs_storage_operation_count);
+
 /// GCS Resource Manager
 DECLARE_stats(gcs_new_resource_creation_latency_ms);
 

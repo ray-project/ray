@@ -184,6 +184,18 @@ DEFINE_stats(gcs_new_resource_creation_latency_ms,
              ({0.1, 1, 10, 100, 1000, 10000}, ),
              ray::stats::HISTOGRAM);
 
+/// GCS Storage
+DEFINE_stats(gcs_storage_operation_latency_ms,
+             "Time to invoke an operation on Gcs storage",
+             ("Operation"),
+             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
+DEFINE_stats(gcs_storage_operation_count,
+             "Number of operations invoked on Gcs storage",
+             ("Operation"),
+             (),
+             ray::stats::COUNT);
+
 /// Placement Group
 // The end to end placement group creation latency.
 // The time from placement group creation request has received
