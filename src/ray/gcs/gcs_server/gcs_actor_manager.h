@@ -147,8 +147,8 @@ class GcsActor {
   rpc::ActorTableData *GetMutableActorTableData();
   rpc::TaskSpec *GetMutableTaskSpec();
 
-  bool GetScheduledByGcs() const;
-  void SetScheduledByGcs(bool scheduled_by_gcs);
+  const ResourceRequest &GetAcquiredResources() const;
+  ResourceRequest *GetMutableAcquiredResources();
   bool GetGrantOrReject() const;
   void SetGrantOrReject(bool grant_or_reject);
 
@@ -157,8 +157,8 @@ class GcsActor {
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
   const std::unique_ptr<rpc::TaskSpec> task_spec_;
-  /// Whether this actor was scheduled by GCS.
-  bool scheduled_by_gcs_ = false;
+  /// Resources acquired by this actor.
+  ResourceRequest acquired_resources_;
   /// Whether the actor's target node only grants or rejects the lease request.
   bool grant_or_reject_ = false;
 };

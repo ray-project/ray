@@ -179,10 +179,10 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
 
-bool GcsActor::GetScheduledByGcs() const { return scheduled_by_gcs_; }
-void GcsActor::SetScheduledByGcs(bool scheduled_by_gcs) {
-  scheduled_by_gcs_ = scheduled_by_gcs;
+const ResourceRequest &GcsActor::GetAcquiredResources() const {
+  return acquired_resources_;
 }
+ResourceRequest *GcsActor::GetMutableAcquiredResources() { return &acquired_resources_; }
 
 bool GcsActor::GetGrantOrReject() const { return grant_or_reject_; }
 void GcsActor::SetGrantOrReject(bool grant_or_reject) {

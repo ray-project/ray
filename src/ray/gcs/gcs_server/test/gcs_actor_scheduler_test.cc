@@ -620,6 +620,9 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
 /***********************************************************/
 
 TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNodeByGcs) {
+  // This feature flag is turned on for all of the following tests.
+  RayConfig::instance().initialize(R"({"gcs_actor_scheduling_enabled": true})");
+
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
 
   std::unordered_map<std::string, double> required_placement_resources = {

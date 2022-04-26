@@ -49,8 +49,7 @@ GcsActorScheduler::GcsActorScheduler(
 void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled() ||
-      actor->GetScheduledByGcs()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     ScheduleByGcs(actor);
   } else {
     ScheduleByRaylet(actor);
@@ -77,13 +76,15 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
                   .emplace(actor->GetActorID())
                   .second);
 
-    actor->SetScheduledByGcs(true);
+    auto acquired_resources = actor->GetMutableAcquiredResources();
+    *acquired_resources = ResourceMapToResourceRequest(
+        actor->GetCreationTaskSpecification().GetRequiredResources().GetResourceMap(),
+        false);
     // Lease worker directly from the node.
     actor->SetGrantOrReject(true);
     LeaseWorkerFromNode(actor, node.value());
   };
 
-  actor->SetScheduledByGcs(false);
   // Queue and schedule the actor locally (gcs).
   cluster_task_manager_->QueueAndScheduleTask(actor->GetCreationTaskSpecification(),
                                               /*grant_or_reject*/ false,
@@ -603,7 +604,7 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
       if (reply.rejected()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
                       << actor->GetActorID()
-                      << " as the resources are seized by normal tasks, job id = "
+                      << " as the resources are not enough, job id = "
                       << actor->GetActorID().JobId();
         HandleWorkerLeaseRejectedReply(actor, reply);
       } else {
@@ -626,32 +627,32 @@ void GcsActorScheduler::HandleWorkerLeaseReply(
 void GcsActorScheduler::HandleWorkerLeaseRejectedReply(
     std::shared_ptr<GcsActor> actor, const rpc::RequestWorkerLeaseReply &reply) {
   // The request was rejected because of insufficient resources.
-  if (actor->GetScheduledByGcs()) {
+  if (!actor->GetAcquiredResources().IsEmpty()) {
     // Return the actor's acquired resources, which updates GCS' resource view.
     ReturnActorAcquiredResources(actor);
-    if (normal_task_resources_changed_callback_) {
-      normal_task_resources_changed_callback_(actor->GetNodeID(), reply.resources_data());
-    }
+  }
+  if (normal_task_resources_changed_callback_ &&
+      RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    normal_task_resources_changed_callback_(actor->GetNodeID(), reply.resources_data());
   }
   actor->UpdateAddress(rpc::Address());
   Reschedule(actor);
 }
 
 void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
-  if (actor->GetScheduledByGcs()) {
+  if (!actor->GetAcquiredResources().IsEmpty()) {
     ReturnActorAcquiredResources(actor);
+    cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }
 
 void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor) {
   auto &cluster_resource_manager =
       cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
-  auto acquired_resources = ResourceMapToResourceRequest(
-      actor->GetCreationTaskSpecification().GetRequiredResources().GetResourceMap(),
-      false);
+  auto acquired_resources = actor->GetMutableAcquiredResources();
   cluster_resource_manager.AddNodeAvailableResources(
-      scheduling::NodeID(actor->GetNodeID().Binary()), acquired_resources);
-  cluster_task_manager_->ScheduleAndDispatchTasks();
+      scheduling::NodeID(actor->GetNodeID().Binary()), *acquired_resources);
+  acquired_resources->Clear();
 }
 
 size_t GcsActorScheduler::GetPendingActorsCount() const {
