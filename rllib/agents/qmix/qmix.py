@@ -33,6 +33,7 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -190,16 +191,11 @@ class QMixTrainer(SimpleQTrainer):
 
         # Sample n batches from replay buffer until the total number of timesteps
         # reaches `train_batch_size`.
-        train_batch_size = 0
-        train_batches = []
-        while train_batch_size < self.config["train_batch_size"]:
-            train_batches.append(self.local_replay_buffer.sample(num_items=1))
-            train_batch_size += (
-                train_batches[-1].agent_steps()
-                if self._by_agent_steps
-                else train_batches[-1].env_steps()
-            )
-        train_batch = SampleBatch.concat_samples(train_batches)
+        train_batch = sample_min_n_steps_from_buffer(
+            replay_buffer=self.local_replay_buffer,
+            min_steps=self.config["train_batch_size"],
+            count_by_agent_steps=self._by_agent_steps,
+        )
 
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
