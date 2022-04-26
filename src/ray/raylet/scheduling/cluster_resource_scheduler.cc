@@ -27,10 +27,10 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     scheduling::NodeID local_node_id,
     const NodeResources &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
-    bool is_local_available)
+    bool is_local_node_with_raylet)
     : local_node_id_(local_node_id),
       is_node_available_fn_(is_node_available_fn),
-      is_local_available_(is_local_available) {
+      is_local_node_with_raylet_(is_local_node_with_raylet) {
   Init(local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr);
@@ -78,7 +78,7 @@ void ClusterResourceScheduler::Init(
 
 bool ClusterResourceScheduler::NodeAlive(scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
-    return is_local_available_;
+    return is_local_node_with_raylet_;
   }
   if (node_id.IsNil()) {
     return false;

@@ -355,6 +355,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param actor The actor to be scheduled.
   void ScheduleByRaylet(std::shared_ptr<GcsActor> actor);
 
+  /// Return the resources acquired by the actor, which updates GCS' resource view.
+  ///
+  /// \param acthr The actor whose resources are being returned.
+  void ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor);
+
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).

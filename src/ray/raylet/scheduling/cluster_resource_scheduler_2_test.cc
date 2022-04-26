@@ -32,7 +32,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
-        /*is_local_available=*/false);
+        /*is_local_node_with_raylet=*/false);
   }
 
   void TearDown() override { cluster_resource_scheduler_.reset(); }

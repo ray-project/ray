@@ -51,7 +51,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         NodeResources(),
         /*is_node_available_fn=*/
         [](auto) { return true; },
-        /*is_local_available=*/false);
+        /*is_local_node_with_raylet=*/false);
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         gcs_table_storage_, cluster_resource_scheduler_->GetClusterResourceManager());
     ray_syncer_ = std::make_shared<ray::gcs_syncer::RaySyncer>(
