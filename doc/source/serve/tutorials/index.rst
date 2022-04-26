@@ -16,6 +16,7 @@ Ray Serve functionality and how to integrate different modeling frameworks.
    batch.rst
    web-server-integration.rst
    rllib
+   streamlit
 
 Other Topics:
 
