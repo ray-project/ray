@@ -22,10 +22,10 @@ class SimpleTorchDatasource(Datasource[T]):
         >>> from ray.data.datasource import SimpleTorchDatasource
         >>>
         >>> dataset_factory = lambda: torchvision.datasets.MNIST("data", download=True)
-        >>> dataset = ray.data.read_datasource(
+        >>> dataset = ray.data.read_datasource(  # doctest: +SKIP
         ...     SimpleTorchDatasource(), parallelism=1, dataset_factory=dataset_factory
         ... )
-        >>> dataset.take(1)
+        >>> dataset.take(1)  # doctest: +SKIP
         (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)
     """
 
