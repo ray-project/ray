@@ -184,7 +184,7 @@ class RLTrainer(Trainer):
 
     def as_trainable(self) -> Type[Trainable]:
         param_dict = self._param_dict
-        base_config = self._config
+        base_config = self._config or {}
         trainer_cls = self.__class__
         preprocessor = self.preprocessor
 
@@ -202,7 +202,7 @@ class RLTrainer(Trainer):
                 remote_checkpoint_dir: Optional[str] = None,
                 sync_function_tpl: Optional[str] = None,
             ):
-                resolved_config = merge_dicts(base_config, config)
+                resolved_config = merge_dicts(base_config, config or {})
                 param_dict["config"] = resolved_config
 
                 trainer = trainer_cls(**param_dict)

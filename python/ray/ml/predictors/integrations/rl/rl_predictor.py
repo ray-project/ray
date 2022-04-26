@@ -93,19 +93,14 @@ class RLPredictor(Predictor):
             else:
                 preprocessor = None
 
-            config["evaluation_config"].pop("in_evaluation", None)
+            config.get("evaluation_config", {}).pop("in_evaluation", None)
             trainer = trainer_cls(config=config, env=env)
             trainer.restore(checkpoint_data_path)
 
             return RLPredictor(trainer=trainer, preprocessor=preprocessor)
 
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
-        if self.preprocessor:
-            data = self.preprocessor.transform_batch(data)
-
         if isinstance(data, pd.DataFrame):
-            obs = data.to_numpy()
-        elif isinstance(data, pd.Series):
             obs = data.to_numpy()
         elif isinstance(data, np.ndarray):
             obs = data.squeeze()
@@ -113,6 +108,9 @@ class RLPredictor(Predictor):
             obs = np.array(data)
         else:
             raise RuntimeError("Invalid data type:", type(data))
+
+        if self.preprocessor:
+            obs = self.preprocessor.transform_batch(obs)
 
         policy = self.trainer.get_policy()
         actions, _outs, _info = policy.compute_actions(obs)
