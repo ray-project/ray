@@ -14,7 +14,6 @@
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
 
-#include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
 namespace ray {
@@ -24,8 +23,7 @@ namespace gcs {
 class InMemoryStoreClientTest : public StoreClientTestBase {
  public:
   void InitStoreClient() override {
-    store_client_ = std::make_shared<ObservableStoreClient>(
-        std::make_unique<InMemoryStoreClient>(*(io_service_pool_->Get())));
+    store_client_ = std::make_shared<InMemoryStoreClient>(*(io_service_pool_->Get()));
   }
 
   void DisconnectStoreClient() override {}
@@ -36,7 +34,6 @@ TEST_F(InMemoryStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncG
 TEST_F(InMemoryStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
 }
-
 }  // namespace gcs
 
 }  // namespace ray

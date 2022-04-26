@@ -2357,6 +2357,19 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs_in_memory_store_client",
+        ":store_client_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "observable_store_client_test",
+    size = "small",
+    srcs = ["src/ray/gcs/store_client/test/in_memory_store_client_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_in_memory_store_client",
         ":observable_store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
