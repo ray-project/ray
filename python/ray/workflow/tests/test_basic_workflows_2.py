@@ -110,7 +110,7 @@ def test_get_output_3(workflow_start_regular, tmp_path):
         return 10
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        workflow.create(incr.options(max_retries=0).bind()).run("incr")
+        workflow.create(update_workflow_options(incr, max_retries=0).bind()).run("incr")
 
     assert cnt_file.read_text() == "1"
 

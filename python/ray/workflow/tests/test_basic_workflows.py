@@ -199,7 +199,7 @@ def test_run_or_resume_during_running(workflow_start_regular_shared):
 def test_step_failure(workflow_start_regular_shared, tmp_path):
     (tmp_path / "test").write_text("0")
 
-    @workflow.step
+    @ray.remote
     def unstable_step():
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -208,20 +208,31 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
-        unstable_step.options(max_retries=-2).step().run()
+        workflow.create(update_workflow_options(unstable_step, max_retries=-2).bind())
 
     with pytest.raises(Exception):
-        unstable_step.options(max_retries=2).step().run()
-    assert 10 == unstable_step.options(max_retries=7).step().run()
-    (tmp_path / "test").write_text("0")
-    (ret, err) = (
-        unstable_step.options(max_retries=2, catch_exceptions=True).step().run()
+        workflow.create(
+            update_workflow_options(unstable_step, max_retries=2).bind()
+        ).run()
+    assert (
+        10
+        == workflow.create(
+            update_workflow_options(unstable_step, max_retries=7).bind()
+        ).run()
     )
+    (tmp_path / "test").write_text("0")
+    (ret, err) = workflow.create(
+        update_workflow_options(
+            unstable_step, max_retries=2, catch_exceptions=True
+        ).bind()
+    ).run()
     assert ret is None
     assert isinstance(err, ValueError)
-    (ret, err) = (
-        unstable_step.options(max_retries=7, catch_exceptions=True).step().run()
-    )
+    (ret, err) = workflow.create(
+        update_workflow_options(
+            unstable_step, max_retries=7, catch_exceptions=True
+        ).bind()
+    ).run()
     assert ret == 10
     assert err is None
 
@@ -277,22 +288,26 @@ def test_nested_catch_exception(workflow_start_regular_shared, tmp_path):
     def f2():
         return 10
 
-    @workflow.step
+    @ray.remote
     def f1():
         return workflow.continuation(f2.bind())
 
-    assert (10, None) == f1.options(catch_exceptions=True).step().run()
+    assert (10, None) == workflow.create(
+        update_workflow_options(f1, catch_exceptions=True).bind()
+    ).run()
 
 
 def test_nested_catch_exception_2(workflow_start_regular_shared, tmp_path):
-    @workflow.step
+    @ray.remote
     def f1(n):
         if n == 0:
             raise ValueError()
         else:
-            return f1.step(n - 1)
+            return workflow.continuation(f1.bind(n - 1))
 
-    ret, err = f1.options(catch_exceptions=True).step(5).run()
+    ret, err = workflow.create(
+        update_workflow_options(f1, catch_exceptions=True).bind(5)
+    ).run()
     assert ret is None
     assert isinstance(err, ValueError)
 
@@ -304,16 +319,18 @@ def test_dynamic_output(workflow_start_regular_shared):
             if n < 3:
                 raise Exception("Failed intentionally")
             return workflow.continuation(
-                exponential_fail.options(name=f"step_{n}").bind(k * 2, n - 1)
+                update_workflow_options(exponential_fail, name=f"step_{n}").bind(
+                    k * 2, n - 1
+                )
             )
         return k
 
     # When workflow fails, the dynamic output should points to the
     # latest successful step.
     try:
-        workflow.create(exponential_fail.options(name="step_0").bind(3, 10)).run(
-            workflow_id="dynamic_output"
-        )
+        workflow.create(
+            update_workflow_options(exponential_fail, name="step_0").bind(3, 10)
+        ).run(workflow_id="dynamic_output")
     except Exception:
         pass
     from ray.workflow.workflow_storage import get_workflow_storage
