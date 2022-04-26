@@ -103,7 +103,7 @@ class RLPredictor(Predictor):
         if isinstance(data, pd.DataFrame):
             obs = data.to_numpy()
         elif isinstance(data, np.ndarray):
-            obs = data.squeeze()
+            obs = data
         elif isinstance(data, list):
             obs = np.array(data)
         else:
