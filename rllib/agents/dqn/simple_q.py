@@ -79,7 +79,6 @@ class SimpleQConfig(TrainerConfig):
 
     Example:
         >>> config = SimpleQConfig()
-        >>> print(config.adam_epsilon)
         >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
         >>> config.environment(env="CartPole-v1")
         >>> tune.run(
@@ -95,22 +94,22 @@ class SimpleQConfig(TrainerConfig):
         >>>     {
         >>>         "initial_epsilon": 1.5,
         >>>         "final_epsilon": 0.01,
-        >>>         "epsilon_timesteps": 5000
+        >>>         "epsilon_timesteps": 5000,
         >>>     }
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
-        >>>             .exploration(exploration_config=explore_config)\
-        >>>             .training(learning_starts=200)
+        >>>                         .exploration(exploration_config=explore_config)\
+        >>>                         .training(learning_starts=200)
 
     Example:
         >>> config = SimpleQConfig()
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
         >>>     {
-        >>>         "type": "softq"
-        >>>         "temperature": [1.0]
+        >>>         "type": "softq",
+        >>>         "temperature": [1.0],
         >>>     }
         >>> config = SimpleQConfig().training(lr_schedule=[[1, 1e-3], [500, 5e-3]])\
-        >>>             .exploration(exploration_config=explore_config)
+        >>>                         .exploration(exploration_config=explore_config)
     """
 
     def __init__(self):
@@ -206,6 +205,10 @@ class SimpleQConfig(TrainerConfig):
                         "prioritized_replay_eps": 1e-6,
                         "replay_sequence_length": 1,
                     }
+                    - Where -
+                    prioritized_replay_alpha: Alpha parameter controls the degree of prioritization in the buffer. In other words, when a buffer sample has a higher temporal-difference error, with how much more probability should it drawn to use to update the parametrized Q-network. 0.0 corresponds to uniform probability. Setting much above 1.0 may quickly result as the sampling distribution could become heavily “pointy” with low entropy.
+                    prioritized_replay_beta: Beta parameter controls the degree of importance sampling which suppresses the influence of gradient updates from samples that have higher probability of being sampled via alpha parameter and the temporal-difference error.
+                    prioritized_replay_eps: Epsilon parameter sets the baseline probability for sampling so that when the temporal-difference error of a sample is zero, there is still a chance of drawing the sample.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
                     - This is True AND restoring from a checkpoint that contains no buffer data.
@@ -253,6 +256,14 @@ class _deprecated_default_config(dict):
                     "store_buffer_in_checkpoints": False,
                     "buffer_size": DEPRECATED_VALUE,
                     "prioritized_replay": DEPRECATED_VALUE,
+                    "buffer_size": DEPRECATED_VALUE,
+                    "prioritized_replay": DEPRECATED_VALUE,
+                    "learning_starts": DEPRECATED_VALUE,
+                    "replay_batch_size": DEPRECATED_VALUE,
+                    "replay_sequence_length": DEPRECATED_VALUE,
+                    "prioritized_replay_alpha": DEPRECATED_VALUE,
+                    "prioritized_replay_beta": DEPRECATED_VALUE,
+                    "prioritized_replay_eps": DEPRECATED_VALUE,
                     "replay_buffer_config": {
                         "_enable_replay_buffer_api": True,
                         "learning_starts": 1000,

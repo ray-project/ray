@@ -56,10 +56,6 @@ from ray.rllib.utils.replay_buffers import MultiAgentPrioritizedReplayBuffer
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as LegacyMultiAgentReplayBuffer,
 )
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-)
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.common import (
@@ -86,15 +82,14 @@ class DQNConfig(SimpleQConfig):
         >>> )
         >>> config.training(replay_buffer_config=replay_config)\
         >>>       .resources(num_gpus=1)\
-        >>>       .rollouts(num_rollout_workers=3)
-                  .environment("CartPole-v1")
+        >>>       .rollouts(num_rollout_workers=3)\
+        >>>       .environment("CartPole-v1")
         >>> trainer = DQNTrainer(config=config)
         >>> while True:
         >>>     trainer.train()
 
     Example:
         >>> config = DQNConfig()
-        >>> print(config.num_atoms)
         >>> config.training(num_atoms=tune.grid_search(list(range(1,11)))
         >>> config.environment(env="CartPole-v1")
         >>> tune.run(
@@ -121,8 +116,8 @@ class DQNConfig(SimpleQConfig):
         >>> print(config.exploration_config)
         >>> explore_config = config.exploration_config.update(
         >>>     {
-        >>>         "type": "softq"
-        >>>         "temperature": [1.0]
+        >>>         "type": "softq",
+        >>>         "temperature": [1.0],
         >>>     }
         >>> )
         >>> config.training(lr_schedule=[[1, 1e-3, [500, 5e-3]])\
@@ -132,12 +127,12 @@ class DQNConfig(SimpleQConfig):
     def __init__(self):
         """Initializes a DQNConfig instance."""
         SimpleQConfig.__init__(self)
-        super(SimpleQConfig, self).__init__(trainer_class=DQNTrainer)
 
         # DQN specific
         # fmt: off
         # __sphinx_doc_begin__
         #
+        self.trainer_class = DQNTrainer
         self.num_atoms = 1
         self.v_min = -10.0
         self.v_max = 10.0
@@ -227,6 +222,10 @@ class DQNConfig(SimpleQConfig):
                         "prioritized_replay_eps": 1e-6,
                         "replay_sequence_length": 1,
                     }
+                    - Where -
+                    prioritized_replay_alpha: Alpha parameter controls the degree of prioritization in the buffer. In other words, when a buffer sample has a higher temporal-difference error, with how much more probability should it drawn to use to update the parametrized Q-network. 0.0 corresponds to uniform probability. Setting much above 1.0 may quickly result as the sampling distribution could become heavily “pointy” with low entropy.
+                    prioritized_replay_beta: Beta parameter controls the degree of importance sampling which suppresses the influence of gradient updates from samples that have higher probability of being sampled via alpha parameter and the temporal-difference error.
+                    prioritized_replay_eps: Epsilon parameter sets the baseline probability for sampling so that when the temporal-difference error of a sample is zero, there is still a chance of drawing the sample.
         Returns:
             This updated TrainerConfig object.
         """
@@ -280,6 +279,7 @@ class _deprecated_default_config(dict):
                     "before_learn_on_batch": None,
                     "training_intensity": None,
                     "worker_side_prioritization": False,
+                    "buffer_size": DEPRECATED_VALUE,
                     # Changes to SimpleQConfig default: 
                     "replay_buffer_config": {
                         "_enable_replay_buffer_api": True,
