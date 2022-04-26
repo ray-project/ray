@@ -26,23 +26,32 @@ class HuggingFacePredictor(TorchPredictor):
         model: The Transformers model to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
+        training_args: ``transformers.TrainingArguments`` to use for the prediction.
+        trainer_class: ``transformers.Trainer`` subclass to use for prediction.
+            Defaults to ``transformers.Trainer``.
     """
 
     def __init__(
         self,
         model: Union[PreTrainedModel, torch.nn.Module],
         preprocessor: Optional[Preprocessor] = None,
+        *,
         training_args: Optional[TrainingArguments] = None,
+        trainer_class: HFTrainer = HFTrainer,
     ):
         self.model = model
         self.preprocessor = preprocessor
         self.training_args = training_args
+        self.trainer_class = trainer_class
 
     @classmethod
     def from_checkpoint(
         cls,
         checkpoint: Checkpoint,
         model: Union[Type[PreTrainedModel], torch.nn.Module],
+        *,
+        training_args: Optional[TrainingArguments] = None,
+        trainer_class: HFTrainer = HFTrainer,
         **pretrained_model_kwargs,
     ) -> "HuggingFacePredictor":
         """Instantiate the predictor from a Checkpoint.
@@ -56,6 +65,10 @@ class HuggingFacePredictor(TorchPredictor):
             model: Either a ``transformers.PreTrainedModel`` class
                 (eg. ``AutoModelForCausalLM``), or a PyTorch model to load the
                 weights to. This should be the same model used for training.
+            training_args: ``transformers.TrainingArguments`` to use for the prediction.
+                Defaults to training arguments saved inside the checkpoint.
+            trainer_class: ``transformers.Trainer`` subclass to use for prediction.
+                Defaults to ``transformers.Trainer``.
             **pretrained_model_kwargs: Any kwargs to pass to the
                 ``model.from_pretrained()`` call. Only used if
                 ``model`` is a ``PreTrainerModel`` class.
@@ -83,8 +96,26 @@ class HuggingFacePredictor(TorchPredictor):
             else:
                 training_args = None
         return HuggingFacePredictor(
-            model=model, preprocessor=preprocessor, training_args=training_args
+            model=model,
+            preprocessor=preprocessor,
+            training_args=training_args,
+            trainer_class=trainer_class,
         )
+
+    def to_transformers_trainer(self, **trainer_kwargs) -> HFTrainer:
+        """Converts this predictor to a fitted ``transformers.Trainer``.
+
+        Args:
+            **trainer_kwargs: Any kwargs to pass to the
+                ``trainer_class`` initialization. ``model`` and
+                ``args`` are preset.
+        """
+        if self.training_args:
+            self.training_args.local_rank = -1
+        trainer = self.trainer_class(
+            model=self.model, args=self.training_args, **trainer_kwargs
+        )
+        return trainer
 
     def _convert_to_tensor(
         self,
@@ -107,9 +138,7 @@ class HuggingFacePredictor(TorchPredictor):
         )
 
     def _predict(self, tensor: Dict[str, torch.Tensor]) -> pd.DataFrame:
-        if self.training_args:
-            self.training_args.local_rank = -1
-        trainer = HFTrainer(model=self.model, args=self.training_args)
+        trainer = self.to_transformers_trainer()
         dataset = HFIterableDatasetWithLen([tensor], 1)
         # squeeze out the extra dimension added by torch.stack
         # inside the HF data collator
