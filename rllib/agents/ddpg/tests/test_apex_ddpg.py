@@ -22,7 +22,6 @@ class TestApexDDPG(unittest.TestCase):
         """Test whether an APEX-DDPGTrainer can be built on all frameworks."""
         config = apex_ddpg.APEX_DDPG_DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
-        config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 100
         config["min_time_s_per_reporting"] = 1
         config["learning_starts"] = 0
