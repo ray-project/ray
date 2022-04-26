@@ -220,9 +220,9 @@ install_upgrade_pip() {
     python=python3
   fi
 
-  "${python}" -m pip install cryptography==36.0.2
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
     "${python}" -m pip install --quiet pip==21.3.1
+    "${python}" -m pip install cryptography==36.0.2
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
