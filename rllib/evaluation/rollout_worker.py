@@ -1442,9 +1442,12 @@ class RolloutWorker(ParallelIteratorWorker):
             `func([policy, pid, **kwargs])`.
         """
         return [
-            # Make sure to only iterate over keys() and not items(). Iterating over items will access policy_map elements even for pids that we do not need,
-            # i.e. those that are not in policy_to_train. Access to policy_map elements can cause disk access for policies that were offloaded to disk. Since
-            # these policies will be skipped in the for-loop accessing them is unnecessary, making subsequent disk access unnecessary.
+            # Make sure to only iterate over keys() and not items(). Iterating over
+            # items will access policy_map elements even for pids that we do not need,
+            # i.e. those that are not in policy_to_train. Access to policy_map elements
+            # can cause disk access for policies that were offloaded to disk. Since
+            # these policies will be skipped in the for-loop accessing them is
+            # unnecessary, making subsequent disk access unnecessary.
             func(self.policy_map[pid], pid, **kwargs)
             for pid in self.policy_map.keys()
             if self.is_policy_to_train(pid, None)
@@ -1565,9 +1568,12 @@ class RolloutWorker(ParallelIteratorWorker):
         policies = force_list(policies)
 
         return {
-            # Make sure to only iterate over keys() and not items(). Iterating over items will access policy_map elements even for pids that we do not need,
-            # i.e. those that are not in policies. Access to policy_map elements can cause disk access for policies that were offloaded to disk. Since
-            # these policies will be skipped in the for-loop accessing them is unnecessary, making subsequent disk access unnecessary.
+            # Make sure to only iterate over keys() and not items(). Iterating over
+            # items will access policy_map elements even for pids that we do not need,
+            # i.e. those that are not in policies. Access to policy_map elements can
+            # cause disk access for policies that were offloaded to disk. Since these
+            # policies will be skipped in the for-loop accessing them is unnecessary,
+            # making subsequent disk access unnecessary.
             pid: self.policy_map[pid].get_weights()
             for pid in self.policy_map.keys()
             if pid in policies
@@ -1631,8 +1637,9 @@ class RolloutWorker(ParallelIteratorWorker):
             >>> global_vars = worker.set_global_vars( # doctest: +SKIP
             ...     {"timestep": 4242})
         """
-        # Only update policies that are being trained in order to avoid superfluous access of policies which might have been offloaded to disk.
-        # This is important here since global vars are constantly being updated.
+        # Only update policies that are being trained in order to avoid superfluous
+        # access of policies which might have been offloaded to disk. This is important
+        # here since global vars are constantly being updated.
         self.foreach_policy_to_train(lambda p, _: p.on_global_var_update(global_vars))
         self.global_vars = global_vars
 
