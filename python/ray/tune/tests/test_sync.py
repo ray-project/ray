@@ -41,37 +41,26 @@ class TestSyncFunctionality(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testSyncConfigDeprecation(self):
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(node_sync_period=4, cloud_sync_period=8)
-            self.assertEqual(sync_conf.sync_period, 4)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(node_sync_period=4, cloud_sync_period=8)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(node_sync_period=4)
-            self.assertEqual(sync_conf.sync_period, 4)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(node_sync_period=4)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="sync_period"):
-            sync_conf = tune.SyncConfig(cloud_sync_period=8)
-            self.assertEqual(sync_conf.sync_period, 8)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="sync_period"):
+            tune.SyncConfig(cloud_sync_period=8)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(
-                sync_to_driver="a", sync_to_cloud="b", upload_dir=None
-            )
-            self.assertEqual(sync_conf.syncer, "a")
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", sync_to_cloud="b", upload_dir=None)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(
-                sync_to_driver="a", sync_to_cloud="b", upload_dir="c"
-            )
-            self.assertEqual(sync_conf.syncer, "b")
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", sync_to_cloud="b", upload_dir="c")
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
-            self.assertEqual(sync_conf.syncer, None)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
 
-        with self.assertWarnsRegex(DeprecationWarning, expected_regex="syncer"):
-            sync_conf = tune.SyncConfig(sync_to_driver="a", upload_dir="c")
-            self.assertEqual(sync_conf.syncer, None)
+        with self.assertRaisesRegex(DeprecationWarning, expected_regex="syncer"):
+            tune.SyncConfig(sync_to_driver="a", upload_dir="c")
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testCloudProperString(self):
@@ -159,7 +148,7 @@ class TestSyncFunctionality(unittest.TestCase):
         tmpdir2 = tempfile.mkdtemp()
         os.mkdir(os.path.join(tmpdir2, "foo"))
 
-        def sync_func(local, remote):
+        def sync_func(local, remote, exclude=None):
             for filename in glob.glob(os.path.join(local, "*.json")):
                 shutil.copy(filename, remote)
 
@@ -187,7 +176,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 time.sleep(1)
                 tune.report(score=i)
 
-        def counter(local, remote):
+        def counter(local, remote, exclude=None):
             count_file = os.path.join(tmpdir, "count.txt")
             if not os.path.exists(count_file):
                 count = 0
@@ -219,7 +208,7 @@ class TestSyncFunctionality(unittest.TestCase):
         shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):
-        def sync_func_driver(source, target):
+        def sync_func_driver(source, target, exclude=None):
             assert ":" in source, "Source {} not a remote path.".format(source)
             assert ":" not in target, "Target is supposed to be local."
             with open(os.path.join(target, "test.log2"), "w") as f:
@@ -255,7 +244,7 @@ class TestSyncFunctionality(unittest.TestCase):
     def testNoSync(self):
         """Sync should not run on a single node."""
 
-        def sync_func(source, target):
+        def sync_func(source, target, exclude=None):
             pass
 
         sync_config = tune.SyncConfig(syncer=sync_func)
@@ -409,7 +398,7 @@ class TestSyncFunctionality(unittest.TestCase):
         sync_config = tune.SyncConfig(syncer=None)
 
         # Create syncer callbacks
-        callbacks = create_default_callbacks([], sync_config, loggers=None)
+        callbacks = create_default_callbacks([], sync_config)
         syncer_callback = callbacks[-1]
 
         # Sanity check that we got the syncer callback
