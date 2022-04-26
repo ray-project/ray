@@ -334,6 +334,12 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._gcs_node_info_stub = \
             gcs_service_pb2_grpc.NodeInfoGcsServiceStub(gcs_channel)
 
-        await asyncio.gather(self._update_nodes(), self._update_node_stats(),
-                             self._update_log_info(),
-                             self._update_error_info())
+        await asyncio.gather(
+            self._update_nodes(),
+            self._update_node_stats(),
+            # NOTE(architkulkarni): Skip this function
+            # because it overloads the dashboard when there
+            # are too many logs, which prevents the jobs API
+            # from working.
+            # self._update_log_info(),
+            self._update_error_info())
