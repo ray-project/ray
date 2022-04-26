@@ -40,6 +40,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED,
+    TARGET_NET_UPDATE_TIMER,
 )
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -289,10 +290,11 @@ class SimpleQTrainer(Trainer):
         cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config["target_network_update_freq"]:
-            to_update = local_worker.get_policies_to_train()
-            local_worker.foreach_policy_to_train(
-                lambda p, pid: pid in to_update and p.update_target()
-            )
+            with self._timers[TARGET_NET_UPDATE_TIMER]:
+                to_update = local_worker.get_policies_to_train()
+                local_worker.foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
