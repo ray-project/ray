@@ -229,8 +229,9 @@ class _Bracket:
                 and not self._stop_last_trials
             ):
                 # If our result has been recorded for this trial already, the
-                # decision to continue has already been made. Thus we can skip new
-                # cutoff calculation and just continue.
+                # decision to continue training has already been made. Thus we can
+                # skip new cutoff calculation and just continue training.
+                # We can also break as milestones are descending.
                 break
             if cur_iter < milestone or trial.trial_id in recorded:
                 continue
