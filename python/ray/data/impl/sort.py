@@ -28,6 +28,7 @@ from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.impl.push_based_shuffle import PushBasedShufflePlan
 from ray.data.context import DatasetContext
+from ray.data.impl.arrow_block import ArrowBlockAccessor
 
 T = TypeVar("T")
 
@@ -60,7 +61,7 @@ class _SortOp(ShuffleOp):
     def reduce(
         key: SortKeyT, descending: bool, *mapper_outputs: List[Block]
     ) -> (Block, BlockMetadata):
-        return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
+        return ArrowBlockAccessor.merge_sorted_blocks(
             mapper_outputs, key, descending
         )
 

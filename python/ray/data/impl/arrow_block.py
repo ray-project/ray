@@ -14,6 +14,7 @@ from typing import (
 )
 
 import numpy as np
+import polars as pl
 
 try:
     import pyarrow
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
+USE_POLARS = True
 
 class ArrowRow(TableRow):
     """
@@ -267,6 +269,20 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         import pyarrow.compute as pac
 
+        if USE_POLARS:
+            key = [k[0] for k in key][0]
+            df = pl.from_arrow(self._table)
+            df = df.sort(key)
+
+            partitions = []
+            last_idx = 0
+            bounds = np.searchsorted(df[key], boundaries)
+            for idx in bounds:
+                partitions.append(df.slice(last_idx, idx - last_idx))
+                last_idx = idx
+            partitions.append(df.slice(last_idx, len(df)))
+            return partitions
+
         indices = pac.sort_indices(self._table, sort_keys=key)
         table = self._table.take(indices)
         if len(boundaries) == 0:
@@ -387,10 +403,17 @@ class ArrowBlockAccessor(TableBlockAccessor):
         blocks: List[Block[T]], key: "SortKeyT", _descending: bool
     ) -> Tuple[Block[T], BlockMetadata]:
         stats = BlockExecStats.builder()
-        blocks = [b for b in blocks if b.num_rows > 0]
+        #blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
             ret = ArrowBlockAccessor._empty_table()
         else:
+            if USE_POLARS:
+                key = [k[0] for k in key]
+                df = pl.concat(blocks).sort(key)
+                ret = df.to_arrow()
+                meta = ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
+                return ret, meta
+
             ret = pyarrow.concat_tables(blocks, promote=True)
             indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
             ret = ret.take(indices)
