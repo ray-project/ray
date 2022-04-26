@@ -14,7 +14,7 @@ spec:
   # head group template and specs, (perhaps 'group' is not needed in the name)
   headGroupSpec:
     # Kubernetes Service Type, valid values are 'ClusterIP', 'NodePort' and 'LoadBalancer'
-    serviceType: NodePort
+    serviceType: ClusterIP
     #enableIngress: true
     # the pod replicas in this group typed head (assuming there could be more than 1 in the future)
     replicas: 1
