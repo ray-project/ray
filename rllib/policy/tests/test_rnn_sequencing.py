@@ -104,11 +104,11 @@ class TestRNNSequencing(unittest.TestCase):
 
         inputs_numpy = np.repeat(
             np.arange(B * T)[:, np.newaxis], repeats=F, axis=-1
-        ).astype(np.int64)
+        ).astype(np.int32)
         check(inputs_numpy.shape, (B * T, F))
 
-        time_shift_diff_batch_major = np.ones(shape=(B, T - 1, F), dtype=np.int64)
-        time_shift_diff_time_major = np.ones(shape=(T - 1, B, F), dtype=np.int64)
+        time_shift_diff_batch_major = np.ones(shape=(B, T - 1, F), dtype=np.int32)
+        time_shift_diff_time_major = np.ones(shape=(T - 1, B, F), dtype=np.int32)
 
         if tf is not None:
             # Test tensorflow batch-major
