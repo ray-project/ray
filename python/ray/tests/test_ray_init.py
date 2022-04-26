@@ -393,14 +393,14 @@ def test_redis_connect_backoff():
             ray._private.services.wait_for_redis_to_start(redis_ip, redis_port)
         end = time.time()
         duration = end - start
-        assert duration > 2 and duration < 4
+        assert duration > 2
 
         start = time.time()
         with pytest.raises(RuntimeError):
             ray._private.services.create_redis_client(redis_address=unreachable_address)
         end = time.time()
         duration = end - start
-        assert duration > 2 and duration < 4
+        assert duration > 2
     finally:
         ray_constants.START_REDIS_WAIT_RETRIES = wait_retries
 
