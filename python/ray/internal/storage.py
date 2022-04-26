@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import urllib
 import importlib
+import re
 
 from ray._private.client_mode_hook import client_mode_hook
 
@@ -368,7 +369,15 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
     else:
         _filesystem, _storage_prefix = pyarrow.fs.FileSystem.from_uri(_storage_uri)
 
-    valid_file = os.path.join(_storage_prefix, "_valid")
+    if os.name == "nt":
+        # Special care for windows. "//C/windows/system32" is a valid network
+        # name many applications support, but unfortunately not by pyarrow.
+        # This formats "//C/windows/system32" to "C:/windows/system32".
+        if re.match("^//[A-Za-z]/.*", _storage_prefix):
+            _storage_prefix = _storage_prefix[2] + ":" + _storage_prefix[4:]
+
+    # enforce use of "/"
+    valid_file = _storage_prefix + "/_valid"
     if create_valid_file:
         _filesystem.create_dir(_storage_prefix)
         with _filesystem.open_output_stream(valid_file):
