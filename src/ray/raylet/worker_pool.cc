@@ -429,8 +429,8 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
         // therefore we need to remove the ["java", "-cp", "path_to_jars"] because
         // we should change the class path in setup worker.
         worker_command_args.erase(worker_command_args.begin() + 2,
-                                  worker_command_args.begin() + 5); 
-      }                        
+                                  worker_command_args.begin() + 5);
+      }
     } else {
       // Check that the arg really is the path to the setup worker before erasing it, to
       // prevent breaking tests that mock out the worker command args.
