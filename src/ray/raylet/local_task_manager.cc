@@ -281,6 +281,9 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
+      // for infeasible tasks that requires placement group resources,
+      // the only reason they become infeasible is because the pg
+      // has been removed. Thus we should cancel these tasks.
       CancelInfeasiblePlacementGroupTasks(dispatch_queue);
     }
 
@@ -783,6 +786,12 @@ void LocalTaskManager::CancelInfeasiblePlacementGroupTasks(
   for (auto work_it = tasks.begin(); work_it != tasks.end();) {
     if ((*work_it)->GetState() != internal::WorkStatus::WAITING) {
       // Only cancel waiting tasks.
+      ++work_it;
+      continue;
+    }
+    if ((*work_it)->task.GetTaskSpecification().PlacementGroupBundleId().first ==
+        PlacementGroupID::Nil()) {
+      // Only cancel placement group tasks.
       ++work_it;
       continue;
     }
