@@ -41,7 +41,8 @@ RAY_IMAGE = os.environ.get("RAY_IMAGE", "rayproject/ray:8c5fe4")
 AUTOSCALER_IMAGE = os.environ.get("AUTOSCALER_IMAGE", RAY_IMAGE)
 # Set to IfNotPresent in kind CI.
 PULL_POLICY = os.environ.get("PULL_POLICY", "Always")
-logger.info(f"Using image `{RAY_IMAGE}` for autoscaler and Ray nodes.")
+logger.info(f"Using image `{RAY_IMAGE}` for Ray containers.")
+logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 # The default "rayproject/ray:413fe0" is the currently pinned autoscaler image
 # (to be replaced with rayproject/ray:1.12.0 upon 1.12.0 release).
