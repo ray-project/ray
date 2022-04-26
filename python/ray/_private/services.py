@@ -578,7 +578,7 @@ def create_redis_client(redis_address, password=None):
             # Wait a little bit.
             time.sleep(delay)
             # Make sure the retry interval doesn't increase too large.
-            delay = 1 if i >= 10 else delay * 2
+            delay = min(1, delay * 2)
 
     raise RuntimeError(f"Unable to connect to Redis at {redis_address}")
 
@@ -870,7 +870,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
             time.sleep(delay)
             # Make sure the retry interval doesn't increase too large, which will
             # affect the delivery time of the Ray cluster.
-            delay = 1 if i >= 10 else delay * 2
+            delay = min(1, delay * 2)
         else:
             break
     else:
