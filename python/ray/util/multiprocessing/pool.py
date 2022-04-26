@@ -157,6 +157,11 @@ class PoolTaskError(Exception):
 
 
 class ResultThread(threading.Thread):
+    # END_SENTINEL signals that there are no more new object_refs.
+    # When this thread gets the END_SENTINEL from
+    # self._new_object_refs, it winds down.
+    END_SENTINEL = None
+
     def __init__(
         self,
         object_refs,
@@ -166,7 +171,6 @@ class ResultThread(threading.Thread):
         total_object_refs=None,
     ):
         threading.Thread.__init__(self, daemon=True)
-        self.END_SENTINEL = None
         self._got_error = False
         self._object_refs = []
         self._num_ready = 0
