@@ -373,7 +373,7 @@ def _default_dataset_split_fn(
             )
         else:
             # Only shard the training dataset.
-            dataset_splits = [dataset] * training_worker_handles
+            dataset_splits = [dataset] * len(training_worker_handles)
 
         for i in range(len(dataset_splits)):
             dataset_dict_splits[i][key] = dataset_splits[i]

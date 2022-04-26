@@ -51,10 +51,10 @@ class _RayDatasetSpec:
 
         if isinstance(self.dataset_or_dict, dict):
             # Return a smaller dict for each shard.
-            dataset_shards = [{} for _ in range(len(self.worker_group))]
+            dataset_shards = [{} for _ in range(len(training_worker_handles))]
             for key, dataset in self.dataset_or_dict.items():
                 split_datasets = split_dataset(dataset)
-                assert len(split_datasets) == len(self.worker_group)
+                assert len(split_datasets) == len(training_worker_handles)
                 for i in range(len(split_datasets)):
                     dataset_shards[i][key] = split_datasets[i]
             return dataset_shards
