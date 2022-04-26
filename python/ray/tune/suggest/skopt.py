@@ -68,8 +68,6 @@ class SkOptSearch(Searcher):
         convert_to_python: SkOpt outputs numpy primitives (e.g.
             ``np.int64``) instead of Python types. If this setting is set
             to ``True``, the values will be converted to Python primitives.
-        max_concurrent: Deprecated.
-        use_early_stopped_trials: Deprecated.
 
     Tune automatically converts search spaces to SkOpt's format:
 
@@ -127,8 +125,6 @@ class SkOptSearch(Searcher):
         points_to_evaluate: Optional[List[Dict]] = None,
         evaluated_rewards: Optional[List] = None,
         convert_to_python: bool = True,
-        max_concurrent: Optional[int] = None,
-        use_early_stopped_trials: Optional[bool] = None,
     ):
         assert sko is not None, (
             "skopt must be installed! "
@@ -138,12 +134,10 @@ class SkOptSearch(Searcher):
 
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-        self.max_concurrent = max_concurrent
+
         super(SkOptSearch, self).__init__(
             metric=metric,
             mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials,
         )
 
         self._initial_points = []
