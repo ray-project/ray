@@ -226,6 +226,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         head_pod = get_pod(
             pod_name_filter="raycluster-complete-head", namespace="default"
         )
+        assert head_pod, "Could not find the Ray head pod."
         # Scale-up
         logger.info("Scaling up to one worker via Ray resource request.")
         # The request for 2 cpus should give us a 1-cpu head (already present) and a
@@ -330,6 +331,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             container="ray-head",
             namespace="default",
         )
+        logger.info("Confirming two workers have scaled up.")
         wait_for_pods(goal_num_pods=3, namespace="default")
 
         # Cluster deletion

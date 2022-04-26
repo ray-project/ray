@@ -1,4 +1,5 @@
 import logging
+import posixpath
 from typing import (
     Callable,
     Optional,
@@ -12,6 +13,8 @@ from typing import (
     TYPE_CHECKING,
 )
 import urllib.parse
+
+from ray.data.datasource.partitioning import PathPartitionFilter
 
 if TYPE_CHECKING:
     import pyarrow
@@ -111,10 +114,10 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         file_format: Optional[str] = None,
     ) -> str:
         suffix = f"{dataset_uuid}_{block_index:06}.{file_format}"
-        # Use forward slashes for cross-filesystem compatibility, since PyArrow
+        # Uses POSIX path for cross-filesystem compatibility, since PyArrow
         # FileSystem paths are always forward slash separated, see:
         # https://arrow.apache.org/docs/python/filesystems.html
-        return f"{base_path}/{suffix}"
+        return posixpath.join(base_path, suffix)
 
 
 @DeveloperAPI
@@ -254,6 +257,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
         meta_provider: BaseFileMetadataProvider = DefaultFileMetadataProvider(),
+        partition_filter: PathPartitionFilter = None,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **reader_args,
@@ -264,6 +268,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         paths, file_sizes = meta_provider.expand_paths(paths, filesystem)
+        if partition_filter is not None:
+            paths = partition_filter(paths)
 
         read_stream = self._read_stream
 
@@ -375,6 +381,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         _block_udf: Optional[Callable[[Block], Block]] = None,
+        ray_remote_args: Dict[str, Any] = None,
         **write_args,
     ) -> List[ObjectRef[WriteResult]]:
         """Creates and returns write tasks for a file-based datasource."""
@@ -388,6 +395,9 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         if open_stream_args is None:
             open_stream_args = {}
+
+        if ray_remote_args is None:
+            ray_remote_args = {}
 
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
@@ -405,7 +415,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                     **write_args,
                 )
 
-        write_block = cached_remote_fn(write_block)
+        write_block = cached_remote_fn(write_block).options(**ray_remote_args)
 
         file_format = self._file_format()
         write_tasks = []
@@ -588,8 +598,9 @@ def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
-    parsed = urllib.parse.urlparse(path)
-    return parsed.netloc + parsed.path
+    parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
+    query = "?" + parsed.query if parsed.query else ""  # support '?' in path
+    return parsed.netloc + parsed.path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
