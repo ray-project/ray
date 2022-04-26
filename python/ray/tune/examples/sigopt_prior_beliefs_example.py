@@ -89,7 +89,6 @@ if __name__ == "__main__":
         connection=conn,
         experiment_id=experiment.id,
         name="SigOpt Example Existing Experiment",
-        max_concurrent=1,
         metric=["average", "std"],
         mode=["obs", "min"],
     )

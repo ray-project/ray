@@ -1011,42 +1011,48 @@ class SampleBatch(dict):
             if not self._slice_map:
                 sum_ = 0
                 # Loop through all seq_lens.
-                for i, l in enumerate(self[SampleBatch.SEQ_LENS]):
+                for i, l in enumerate(map(int, self[SampleBatch.SEQ_LENS])):
                     # Step through the current sequence and map all positions therein
                     # on that sequence's start index.
-                    for j in range(l):
-                        self._slice_map.append((i, sum_, j + 1))
-                    sum_ += l
+                    #for j in range(l):
+                    self._slice_map.extend([(i, sum_)] * l))
+                    sum_ = sum_ + l
                 # In case `stop` points to the very end (lengths of this
                 # batch), return the last sequence (the -1 here makes sure we
                 # never go beyond it; would result in an index error below).
                 self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_, 0))
 
-            start_seq_len, actual_start, _ = self._slice_map[start]
-            actual_stop = stop
-            if actual_start != start:
-                actual_stop -= start - actual_start
-            stop_seq_len, _, last_seq_len = self._slice_map[actual_stop - 1]
-            stop_seq_len += 1
-            if self.zero_padded:
-                actual_start = start_seq_len * self.max_seq_len
-                actual_stop = (stop_seq_len - 1) * self.max_seq_len + last_seq_len
+                start_seq_len, actual_start, _ = self._slice_map[start]
+                actual_stop = stop
+                if actual_start != start:
+                    actual_stop -= start - actual_start
+                stop_seq_len, _, last_seq_len = self._slice_map[actual_stop - 1]
+                stop_seq_len += 1
 
-            def map_(path, value):
-                if path[0] == SampleBatch.SEQ_LENS:
-                    seq_lens = value[start_seq_len:stop_seq_len].copy()
-                    seq_lens[-1] = last_seq_len
-                    return seq_lens
-                elif path[0].startswith("state_in_"):
-                    return value[start_seq_len:stop_seq_len]
-                else:
-                    ret = value[actual_start:actual_stop]
-                    if self.zero_padded:
-                        shape = (self.max_seq_len - last_seq_len,) + ret.shape[1:]
-                        ret = np.concatenate(
-                            [ret, np.zeros(shape=shape, dtype=ret.dtype)]
-                        )
-                    return ret
+                start_padded = actual_start
+                stop_padded = actual_stop
+                if self.zero_padded:
+                    start_padded = start_seq_len * self.max_seq_len
+                    stop_padded = (stop_seq_len - 1) * self.max_seq_len + last_seq_len
+
+                def map_(path, value):
+                    if path[0] == SampleBatch.SEQ_LENS:
+                        seq_lens = value[start_seq_len:stop_seq_len].copy()
+                        seq_lens[-1] = last_seq_len
+                        return seq_lens
+                    elif path[0].startswith("state_in_"):
+                        return value[start_seq_len:stop_seq_len]
+                    elif path[0] == SampleBatch.INFOS:
+                        return value[actual_start:actual_stop]
+                    else:
+                        ret = value[start_padded:stop_padded]
+                        if self.zero_padded:
+                            shape = (self.max_seq_len - last_seq_len,) + ret.shape[
+                                                                         1:]
+                            ret = np.concatenate(
+                                [ret, np.zeros(shape=shape, dtype=ret.dtype)]
+                            )
+                        return ret
 
             data = tree.map_structure_with_path(map_, self)
             # Restore `self.get_interceptor`.

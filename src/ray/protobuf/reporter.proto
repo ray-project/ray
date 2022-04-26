@@ -60,7 +60,7 @@ message NodeResourceUsage {
   string json = 1;
 }
 
-// Service for communicating with the reporter.py process on a remote node.
+// Service for communicating with the reporter agent module on a remote node.
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
@@ -68,4 +68,38 @@ service ReporterService {
   rpc ReportMetrics(ReportMetricsRequest) returns (ReportMetricsReply);
   // Report OpenCensus metrics to the local metrics agent.
   rpc ReportOCMetrics(ReportOCMetricsRequest) returns (ReportOCMetricsReply);
+}
+
+message StreamLogRequest {
+  // File name of the log file
+  string log_file_name = 1;
+  // Keeps stream alive perpertually if true, else terminates on EOF
+  bool keep_alive = 2;
+  // Number of lines to tail from the log file initially
+  // -1 indicates to fetch the whole file
+  optional int32 lines = 3;
+  // if keep_alive is true, this indicates how frequently to poll the
+  // log file for new lines
+  optional float interval = 4;
+}
+
+message StreamLogReply {
+  // The raw bytes of the log file chunk
+  bytes data = 1;
+}
+
+message ListLogsRequest {}
+
+message ListLogsReply {
+  // The file names of all the log files in this node's
+  // log directory
+  repeated string log_files = 1;
+}
+
+// Service for communicating with the log agent module on a remote node.
+service LogService {
+  // Get the list of logs from the agent.
+  rpc ListLogs(ListLogsRequest) returns (ListLogsReply);
+  // Streams a log file from the agent.
+  rpc StreamLog(StreamLogRequest) returns (stream StreamLogReply);
 }
