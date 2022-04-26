@@ -15,7 +15,7 @@ import pytest
     reason="This test is only run in CI with a minimal Ray installation.",
 )
 def test_error_msg():
-    with pytest.raises(ModuleNotFoundError, match='install "ray[serve]"'):
+    with pytest.raises(ModuleNotFoundError, match=r'.*install "ray\[serve\]".*'):
         from ray import serve
 
         serve.start()
