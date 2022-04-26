@@ -274,6 +274,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           if (raylet_client == nullptr) {
             RAY_LOG(ERROR) << "Failed to connect to node: " << alive_node.first
                            << ". Skip this round of pulling for resource load";
+          } else {
             raylet_client->GetResourceLoad([this](auto &status, auto &load) {
               if (status.ok()) {
                 gcs_resource_manager_->UpdateResourceLoads(load.resources());
