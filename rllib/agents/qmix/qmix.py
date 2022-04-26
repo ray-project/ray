@@ -23,7 +23,6 @@ from ray.rllib.execution.train_ops import (
     UpdateTargetNetwork,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
