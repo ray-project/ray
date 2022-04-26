@@ -1,6 +1,18 @@
 from typing import Dict
 
-from ray.experimental.dag import DAGNode, InputNode, InputAtrributeNode, ClassMethodNode
+from ray.experimental.dag import (
+    DAGNode,
+    InputNode,
+    InputAtrributeNode,
+    FunctionNode,
+    ClassNode,
+    ClassMethodNode,
+)
+from ray.serve.pipeline.deployment_node import (
+    DeploymentNode,
+    DeploymentMethodNode,
+    DeploymentFunctionNode,
+)
 
 import os
 import tempfile
@@ -50,6 +62,13 @@ def get_nodes_and_edges(dag: DAGNode):
     return nodes, edges
 
 
+def get_shape(node: DAGNode):
+    if isinstance(node, (InputNode, InputAtrributeNode)):
+        return "box"
+    else:
+        return "circle"
+
+
 def dag_to_dot(dag: DAGNode):
     """Create a Dot graph from dag.
 
@@ -75,7 +94,15 @@ def dag_to_dot(dag: DAGNode):
 
     # Step 2: create graph with all the edges
     for edge in edges:
-        graph.add_edge(pydot.Edge(node_names[edge[0]], node_names[edge[1]]))
+        src = edge[0]
+        dst = edge[1]
+        src_name = node_names[src]
+        dst_name = node_names[dst]
+        src_shape = get_shape(src)
+        dst_shape = get_shape(dst)
+        src_node = pydot.Node(src_name, shape=src_shape)
+        dst_node = pydot.Node(dst_name, shape=dst_shape)
+        graph.add_edge(pydot.Edge(src_node, dst_node))
 
     return graph
 
@@ -120,15 +147,22 @@ class DAGNodeNameGenerator(object):
         self.name_to_suffix: Dict[str, int] = dict()
 
     def get_node_name(self, node: DAGNode):
-
         if isinstance(node, InputNode):
             node_name = "input_node"
         elif isinstance(node, InputAtrributeNode):
             node_name = "input_attributed_node"
         elif isinstance(node, ClassMethodNode):
             node_name = node.get_options().get("name", None) or node._method_name
-        else:
+        elif isinstance(node, (ClassNode, FunctionNode)):
             node_name = node.get_options().get("name", None) or node._body.__name__
+        elif isinstance(
+            node, (DeploymentNode, DeploymentMethodNode, DeploymentFunctionNode)
+        ):
+            node_name = node.get_deployment_name()
+        else:
+            raise ValueError(
+                "get_node_name() should only be called on DAGNode instances."
+            )
 
         if node_name not in self.name_to_suffix:
             self.name_to_suffix[node_name] = 0

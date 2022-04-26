@@ -2,12 +2,10 @@ import os
 import pytest
 import os
 import sys
-from typing import TypeVar, Union
+import tempfile
 
 import ray
 from ray import serve
-from ray.serve.application import Application
-from ray.serve.api import build as build_app
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_graph import ClassNode, InputNode
 from ray.serve.drivers import DAGDriver
@@ -27,10 +25,10 @@ def test_basic_dag_with_names_plot():
     tmp6 = a.options(name="tmp6").bind()
     dag = a.bind(tmp3, tmp5, tmp6)
 
-    to_file = "dag_1.png"
-    ray.experimental.dag.plot(dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(dag)
     to_string = graph.to_string()
@@ -55,10 +53,10 @@ def test_basic_dag_without_names_plot():
     tmp6 = a.bind()
     dag = a.bind(tmp3, tmp5, tmp6)
 
-    to_file = "dag_2.png"
-    ray.experimental.dag.plot(dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(dag)
     to_string = graph.to_string()
@@ -70,15 +68,7 @@ def test_basic_dag_without_names_plot():
     assert "a_1 -> a" in to_string
 
 
-RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
-
-
-def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
-    if use_build:
-        return Application.from_dict(build_app(node).to_dict())
-    else:
-        return node
 
 
 @serve.deployment
@@ -108,8 +98,8 @@ class Model:
 class Combine:
     def __init__(
         self,
-        m1: "RayHandleLike",
-        m2: "RayHandleLike" = None,
+        m1,
+        m2=None,
         m2_nested: bool = False,
     ):
         self.m1 = m1
@@ -183,10 +173,10 @@ def test_serve_pipeline_single_func_no_input_plot():
     dag = fn_hello.bind()
     serve_dag = NoargDriver.bind(dag)
 
-    to_file = "serve_dag_1.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
@@ -198,10 +188,10 @@ def test_serve_pipeline_single_func_deployment_dag_plot():
         dag = combine.bind(dag_input[0], dag_input[1], kwargs_output=1)
         serve_dag = DAGDriver.bind(dag, input_schema=json_resolver)
 
-    to_file = "serve_dag_2.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
@@ -226,10 +216,10 @@ def test_serve_pipeline_chained_function_plot():
         output_2 = func_2.bind(dag_input)
         serve_dag = combine.bind(output_1, output_2)
 
-    to_file = "serve_dag_3.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
@@ -245,10 +235,10 @@ def test_serve_pipeline_class_with_class_method_plot():
         dag = model.forward.bind(dag_input)
         serve_dag = DAGDriver.bind(dag, input_schema=json_resolver)
 
-    to_file = "serve_dag_4.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
@@ -266,10 +256,10 @@ def test_serve_pipeline_func_class_with_class_method_plot():
         combine_output = combine.bind(m1_output, m2_output, kwargs_output=dag_input[2])
         serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
-    to_file = "serve_dag_5.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
@@ -294,10 +284,10 @@ def test_serve_pipeline_multi_instantiation_class_deployment_in_init_args_plot()
         combine_output = combine.__call__.bind(dag_input)
         serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
-    to_file = "serve_dag_6.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
@@ -315,10 +305,10 @@ def test_serve_pipeline_test_shared_deployment_handle_plot():
         combine_output = combine.__call__.bind(dag_input)
         serve_dag = DAGDriver.bind(combine_output, input_schema=json_resolver)
 
-    to_file = "serve_dag_7.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
@@ -336,10 +326,10 @@ def test_serve_pipeline_multi_instantiation_class_nested_deployment_arg_dag_plot
         output = combine.__call__.bind(dag_input)
         serve_dag = DAGDriver.bind(output, input_schema=json_resolver)
 
-    to_file = "serve_dag_8.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
@@ -356,10 +346,10 @@ def test_serve_pipeline_class_factory_plot():
         output = instance.get.bind()
         serve_dag = NoargDriver.bind(output)
 
-    to_file = "serve_dag_9.png"
-    ray.experimental.dag.plot(serve_dag, to_file)
-    assert os.path.isfile(to_file)
-    os.remove(to_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        to_file = os.path.join(tmpdir, "tmp.png")
+        ray.experimental.dag.plot(serve_dag, to_file)
+        assert os.path.isfile(to_file)
 
     graph = ray.experimental.dag.vis_utils.dag_to_dot(serve_dag)
     to_string = graph.to_string()
