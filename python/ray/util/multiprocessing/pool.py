@@ -157,12 +157,42 @@ class PoolTaskError(Exception):
 
 
 class ResultThread(threading.Thread):
-    # Thread that collects results from distributed actors.
-    # It winds down when a prespecified number of objects has been processed,
-    # or until the END_SENTINEL (submitted through self.add_object_ref())
-    # has been received and all objects received until that time have been processed.
-    # Initialise the thread with total_object_refs = float('inf') to wait for the
-    # END_SENTINEL.
+    """Thread that collects results from distributed actors.
+
+    It winds down when either:
+        - A pre-specified number of objects has been processed
+        - When the END_SENTINEL (submitted through self.add_object_ref())
+            has been received and all objects received before that have been
+            processed.
+
+    Initialize the thread with total_object_refs = float('inf') to wait for the
+    END_SENTINEL.
+
+    Args:
+        object_refs (List[RayActorObjectRefs]): ObjectRefs to Ray Actor calls.
+            Thread tracks whether they are ready. More ObjectRefs may be added
+            with add_object_ref (or _add_object_ref internally) until the object
+            count reaches total_object_refs.
+        single_result (bool): Should be True if the thread is managing function
+            with a single result (like apply_async). False if the thread is managing
+            a function with a List of results.
+        callback (Callable): called only once at the end of the thread
+            if no results were errors. If single_result=True, and result is
+            not an error, callback is invoked with the result as the only
+            argument. If single_result=False, callback is invoked with
+            a list of all the results as the only argument.
+        error_callback (Callable): called only once on the first result
+            that errors. Should take an Exception as the only argument.
+            If no result errors, this callback is not called.
+        total_object_refs (int): Number of ObjectRefs that this thread
+            expects to be ready. May be more than len(object_refs) since
+            more ObjectRefs can be submitted after the thread starts.
+            If None, defaults to len(object_refs). If float("inf"), thread runs
+            until END_SENTINEL (submitted through self.add_object_ref())
+            has been received and all objects received before that have
+            been processed.
+    """
+
     END_SENTINEL = None
 
     def __init__(
@@ -201,7 +231,7 @@ class ResultThread(threading.Thread):
     def run(self):
         unready = copy.copy(self._object_refs)
         aggregated_batch_results = []
-        
+
         # Run for a specific number of objects if self._total_object_refs is finite.
         # Otherwise, process all objects received prior to the stop signal, given by
         # self.add_object(END_SENTINEL).
