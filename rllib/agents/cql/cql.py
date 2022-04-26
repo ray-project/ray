@@ -115,7 +115,8 @@ class CQLTrainer(SACTrainer):
                 self.local_replay_buffer.add(batch)
             print(
                 f"Loaded {num_batches} batches ({total_timesteps} ts) into the"
-                f" replay buffer, which has capacity {self.local_replay_buffer.capacity}."
+                " replay buffer, which has capacity "
+                f"{self.local_replay_buffer.capacity}."
             )
         else:
             raise ValueError(
@@ -191,7 +192,8 @@ class CQLTrainer(SACTrainer):
 
         # Update target network every target_network_update_freq steps
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED]
+            NUM_AGENT_STEPS_TRAINED if self._by_agent_steps else NUM_ENV_STEPS_TRAINED
+        ]
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config["target_network_update_freq"]:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
