@@ -110,25 +110,31 @@ class ActorPoolStrategy(ComputeStrategy):
         self,
         min_size: int = 1,
         max_size: Optional[int] = None,
-        max_tasks_in_flight: Optional[int] = 2,
+        max_tasks_in_flight_per_actor: Optional[int] = 2,
     ):
         """Construct ActorPoolStrategy for a Dataset transform.
 
         Args:
             min_size: The minimize size of the actor pool.
             max_size: The maximum size of the actor pool.
-            max_tasks_in_flight: The maximum number of tasks to concurrently send to a
-                single actor worker. Increasing this will increase opportunities for
-                pipelining task dependency prefetching with computation and avoiding
-                actor startup delays, but will also increase queueing delay.
+            max_tasks_in_flight_per_actor: The maximum number of tasks to concurrently
+                send to a single actor worker. Increasing this will increase
+                opportunities for pipelining task dependency prefetching with
+                computation and avoiding actor startup delays, but will also increase
+                queueing delay.
         """
         if min_size < 1:
             raise ValueError("min_size must be > 1", min_size)
         if max_size is not None and min_size > max_size:
             raise ValueError("min_size must be <= max_size", min_size, max_size)
+        if max_tasks_in_flight_per_actor < 1:
+            raise ValueError(
+                "max_tasks_in_flight_per_actor must be >= 1, got: ",
+                max_tasks_in_flight_per_actor,
+            )
         self.min_size = min_size
         self.max_size = max_size or float("inf")
-        self.max_tasks_in_flight = max_tasks_in_flight
+        self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
 
     def _apply(
         self,
@@ -213,7 +219,10 @@ class ActorPoolStrategy(ComputeStrategy):
                 )
 
             # Schedule a new task.
-            while blocks_in and tasks_in_flight[worker] < self.max_tasks_in_flight:
+            while (
+                blocks_in
+                and tasks_in_flight[worker] < self.max_tasks_in_flight_per_actor
+            ):
                 block, meta = blocks_in.pop()
                 if context.block_splitting_enabled:
                     ref = worker.map_block_split.remote(block, meta.input_files)
