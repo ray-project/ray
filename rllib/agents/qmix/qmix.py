@@ -79,7 +79,7 @@ DEFAULT_CONFIG = with_common_config({
         "explore": False,
     },
 
-    # Number of env steps to optimize for before returning
+    # Number of env steps to optimize for before returning.
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
@@ -87,10 +87,10 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     "replay_buffer_config": {
         # Use the new ReplayBuffer API here
-        "_enable_replay_buffer_api": True,
+        #"_enable_replay_buffer_api": True,
         "type": "ReplayBuffer",
-        # Size of the replay buffer in batches (not timesteps!).
-        "capacity": 1000,
+    #    # Size of the replay buffer in batches (not timesteps!).
+    #    "capacity": 1000,
     },
 
     # === Optimization ===
@@ -138,7 +138,7 @@ DEFAULT_CONFIG = with_common_config({
     # Use `replay_buffer_config.learning_starts` instead.
     "learning_starts": DEPRECATED_VALUE,
     # Use `replay_buffer_config.capacity` instead.
-    "buffer_size": DEPRECATED_VALUE,
+    "buffer_size": 1000,#DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on
