@@ -139,7 +139,8 @@ class DeploymentNode(DAGNode):
 
     def _execute_impl(self, *args, **kwargs):
         """Executor of DeploymentNode by ray.remote()"""
-        return self._deployment_handle.remote(*self._bound_args, **self._bound_kwargs)
+        # TODO fix comment
+        return self._deployment_handle
 
     def _get_serve_deployment_handle(
         self,
