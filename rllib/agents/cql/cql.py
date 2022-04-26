@@ -50,9 +50,11 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # dataset.
         "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
+            "_enable_replay_buffer_api": False,
             "type": "MultiAgentReplayBuffer",
             "capacity": int(1e6),
         },
+        "_disable_execution_plan_api": False
     })
 # __sphinx_doc_end__
 # fmt: on
