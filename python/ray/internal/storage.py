@@ -359,7 +359,9 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
 
     import pyarrow.fs
 
-    parsed_uri = urllib.parse.urlparse(_storage_uri)
+    # TODO(suquark): This is a temporary patch for windows - the backslash
+    # could not be understood by pyarrow. We replace it with slash here.
+    parsed_uri = urllib.parse.urlparse(_storage_uri.replace("\\", "/"))
     if parsed_uri.scheme == "custom":
         fs_creator = _load_class(parsed_uri.netloc)
         _filesystem, _storage_prefix = fs_creator(parsed_uri.path)
