@@ -1,22 +1,18 @@
 import argparse
+import sys
+
 import numpy as np
-import os
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, Subset
-from torchvision.datasets import CIFAR10
-import torchvision.transforms as transforms
 
 import ray
+
 from ray import tune
-from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils.mock import FailureInjectorCallback
-from ray.util.sgd.torch import TorchTrainer, TrainingOperator
-from ray.util.sgd.torch.resnet import ResNet18
-from ray.util.sgd.utils import BATCH_SIZE
-
 from ray.tune.utils.release_test_util import ProgressCallback
+
+from ray.train import Trainer
+from ray.train.examples.tune_cifar_pytorch_pbt_example import train_func
+from ray.train.torch import TorchConfig
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -27,87 +23,20 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-
-def initialization_hook():
-    # Need this for avoiding a connection restart issue on AWS.
-    os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
-    os.environ["NCCL_LL_THRESHOLD"] = "0"
-
-    # set the below if needed
-    # print("NCCL DEBUG SET")
-    # os.environ["NCCL_DEBUG"] = "INFO"
-
-
-def cifar_creator(config):
-    transform_train = transforms.Compose(
-        [
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ]
-    )  # meanstd transformation
-
-    transform_test = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ]
-    )
-    train_dataset = CIFAR10(
-        root="~/data", train=True, download=True, transform=transform_train
-    )
-    validation_dataset = CIFAR10(
-        root="~/data", train=False, download=False, transform=transform_test
-    )
-
-    if config.get("test_mode"):
-        train_dataset = Subset(train_dataset, list(range(64)))
-        validation_dataset = Subset(validation_dataset, list(range(64)))
-
-    train_loader = DataLoader(
-        train_dataset, batch_size=config[BATCH_SIZE], num_workers=2
-    )
-    validation_loader = DataLoader(
-        validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2
-    )
-    return train_loader, validation_loader
-
-
-def optimizer_creator(model, config):
-    """Returns optimizer"""
-    return torch.optim.SGD(
-        model.parameters(),
-        lr=config.get("lr", 0.1),
-        momentum=config.get("momentum", 0.9),
-    )
-
-
 ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
 num_training_workers = 1 if args.smoke_test else 3
 
-CustomTrainingOperator = TrainingOperator.from_creators(
-    model_creator=ResNet18,
-    optimizer_creator=optimizer_creator,
-    data_creator=cifar_creator,
-    loss_creator=nn.CrossEntropyLoss,
-)
-
-TorchTrainable = TorchTrainer.as_trainable(
-    training_operator_cls=CustomTrainingOperator,
-    initialization_hook=initialization_hook,
+trainer = Trainer(
     num_workers=num_training_workers,
-    config={
-        "test_mode": args.smoke_test,
-        BATCH_SIZE: 128 * num_training_workers,
-    },
     use_gpu=not args.smoke_test,
-    backend="gloo",  # This should also work with NCCL
+    backend=TorchConfig(backend="gloo"),
 )
+TorchTrainable = trainer.to_tune_trainable(train_func=train_func)
+
 
 pbt_scheduler = PopulationBasedTraining(
     time_attr="training_iteration",
-    metric="val_loss",
+    metric="loss",
     mode="min",
     perturbation_interval=1,
     hyperparam_mutations={
@@ -118,10 +47,6 @@ pbt_scheduler = PopulationBasedTraining(
     },
 )
 
-reporter = CLIReporter()
-reporter.add_metric_column("val_loss", "loss")
-reporter.add_metric_column("val_accuracy", "acc")
-
 analysis = tune.run(
     TorchTrainable,
     num_samples=4,
@@ -130,13 +55,17 @@ analysis = tune.run(
         "momentum": 0.8,
         "head_location": None,
         "worker_locations": None,
+        "test_mode": args.smoke_test,
+        "batch_size": 128 * num_training_workers,
+        # For the long running test, we want the training to run forever, and it will
+        # be terminated by the release test infra.
+        "epochs": 1 if args.smoke_test else sys.maxsize,
     },
     max_failures=-1,  # used for fault tolerance
     checkpoint_freq=2,  # used for fault tolerance
-    progress_reporter=reporter,
     scheduler=pbt_scheduler,
     callbacks=[FailureInjectorCallback(time_between_checks=90), ProgressCallback()],
     stop={"training_iteration": 1} if args.smoke_test else None,
 )
 
-print(analysis.get_best_config(metric="val_loss", mode="min"))
+print(analysis.get_best_config(metric="loss", mode="min"))
