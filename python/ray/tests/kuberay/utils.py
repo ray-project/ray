@@ -299,7 +299,7 @@ def _kubectl_port_forward(
     def terminate_process():
         process.terminate()
 
-    # Try to clean up in case of interrupt.
+    # Ensure clean-up in case of interrupt.
     atexit.register(terminate_process)
 
     try:
