@@ -11,10 +11,17 @@ from ray.rllib.execution.replay_ops import (
     Replay,
     StoreToReplayBuffer,
 )
-from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts, \
-    synchronous_parallel_sample
-from ray.rllib.execution.train_ops import multi_gpu_train_one_step, \
-    train_one_step, TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.rollout_ops import (
+    ConcatBatches,
+    ParallelRollouts,
+    synchronous_parallel_sample,
+)
+from ray.rllib.execution.train_ops import (
+    multi_gpu_train_one_step,
+    train_one_step,
+    TrainOneStep,
+    UpdateTargetNetwork,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -28,6 +35,7 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
+from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -183,14 +191,11 @@ class QMixTrainer(SimpleQTrainer):
             # Store new samples in the replay buffer.
             self.local_replay_buffer.add(batch)
 
-        # Sample n batches from replay buffer until the total number of timesteps
-        # reaches `train_batch_size`.
-        train_batch_size = 0
-        train_batches = []
-        while train_batch_size < self.config["train_batch_size"]:
-            train_batches.append(self.local_replay_buffer.sample(num_items=1))
-            train_batch_size += train_batches[-1].agent_steps() if self._by_agent_steps else train_batches[-1].env_steps()
-        train_batch = SampleBatch.concat_samples(train_batches)
+        train_batch = sample_min_n_steps_from_buffer(
+            replay_buffer=self.local_replay_buffer,
+            min_steps=self.config["train_batch_size"],
+            count_by_agent_steps=self._by_agent_steps,
+        )
 
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other

@@ -1,5 +1,4 @@
-from ray.rllib.execution import \
-    MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer
+from ray.rllib.execution import MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as LegacyMultiAgentReplayBuffer,
 )
@@ -70,6 +69,39 @@ def update_priorities_in_replay_buffer(
         # Make the actual buffer API call to update the priority weights on all
         # policies.
         replay_buffer.update_priorities(prio_dict)
+
+
+def sample_min_n_steps_from_buffer(
+    replay_buffer: ReplayBuffer, min_steps: int, count_by_agent_steps: bool
+) -> Optional[SampleBatchType]:
+    """Samples a minimum of n timesteps from a given replay buffer.
+
+    This utility method is primarily used by the QMIX algorithm and helps with
+    sampling a given number of time steps which has stored samples in units
+    of sequences or complete episodes. Samples n batches from replay buffer
+    until the total number of timesteps reaches `train_batch_size`.
+
+    Args:
+        replay_buffer: The replay buffer to sample from
+        num_timesteps: The number of timesteps to sample
+        count_by_agent_steps: Whether to count agent steps or env steps
+
+    Returns:
+        A concatenated SampleBatch or MultiAgentBatch with samples from the
+        buffer.
+    """
+    train_batch_size = 0
+    train_batches = []
+    while train_batch_size < min_steps:
+        train_batches.append(replay_buffer.sample(num_items=1))
+        train_batch_size += (
+            train_batches[-1].agent_steps()
+            if count_by_agent_steps
+            else train_batches[-1].env_steps()
+        )
+    # All batch types are the same type, hence we can use any concat_samples()
+    train_batch = train_batches[0].concat_samples(train_batches)
+    return train_batch
 
 
 @ExperimentalAPI
