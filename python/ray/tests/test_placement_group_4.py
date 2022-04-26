@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import time
 
 import ray
 import ray.cluster_utils
@@ -429,6 +430,53 @@ def test_infeasible_pg(ray_start_cluster):
     # Add a new node. PG can now be scheduled.
     cluster.add_node(num_cpus=4, num_gpus=1)
     assert ray.get(pg.ready(), timeout=10)
+
+
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_removed_placement_infeasible(ray_start_cluster, connect_to_client):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def warmup():
+        pass
+
+    # warm up the cluster.
+    ray.get([warmup.remote() for _ in range(4)])
+
+    with connect_to_client_or_not(connect_to_client):
+        placement_group = ray.util.placement_group([{"CPU": 2}])
+
+        @ray.remote(num_cpus=2)
+        def f():
+            return 3
+
+        # Make sure placement group is ready.
+        assert ray.get(f.options(placement_group=placement_group).remote()) == 3
+
+        @ray.remote(num_cpus=2)
+        class Actor:
+            def f(self):
+                return 3
+
+        # Schedule a long running task and actor.
+        actor = Actor.options(placement_group=placement_group).remote()
+
+        # Make sure the actor is ready.
+        assert ray.get(actor.f.remote()) == 3
+
+        # schedule a task, it will become pending.
+        infeasible_task = f.options(placement_group=placement_group).remote()
+
+        time.sleep(2)
+        # remove the placement_group
+        ray.util.remove_placement_group(placement_group)
+        placement_group_assert_no_leak([placement_group])
+
+        # Ensure it doesn't hang.
+        with pytest.raises(ray.exceptions.TaskPlacementGroupRemoved):
+            ray.get(infeasible_task, timeout=3.0)
 
 
 if __name__ == "__main__":
