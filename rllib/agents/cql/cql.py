@@ -95,7 +95,7 @@ class CQLTrainer(SACTrainer):
         # For d4rl, add the D4RLReaders' dataset to the buffer.
         if isinstance(self.config["input"], str) and "d4rl" in self.config["input"]:
             dataset = reader.dataset
-            self.local_replay_buffer.add(dataset)
+            self.local_replay_buffer.add_batch(dataset)
         # For a list of files, add each file's entire content to the buffer.
         elif isinstance(reader, ShuffledInput):
             num_batches = 0

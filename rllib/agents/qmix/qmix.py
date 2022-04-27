@@ -187,7 +187,7 @@ class QMixTrainer(SimpleQTrainer):
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
             # Store new samples in the replay buffer.
-            self.local_replay_buffer.add(batch)
+            self.local_replay_buffer.add_batch(batch)
 
         # Sample n batches from replay buffer until the total number of timesteps
         # reaches `train_batch_size`.
