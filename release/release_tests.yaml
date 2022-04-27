@@ -3392,16 +3392,14 @@
   team: core
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/large_scale.yaml
+    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
 
   run:
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-
     wait_for_nodes:
       num_nodes: 20
       timeout: 900
-
     type: sdk_command
     file_manager: sdk
 
@@ -3418,16 +3416,62 @@
   team: core
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/large_scale.yaml
+    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
 
   run:
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-
     wait_for_nodes:
       num_nodes: 20
       timeout: 900
+    type: sdk_command
+    file_manager: sdk
 
+- name: dataset_shuffle_random_shuffle_1tb_small_instances
+  group: core-dataset-tests
+  working_dir: nightly_tests
+  legacy:
+    test_name: dataset_shuffle_random_shuffle_1tb_small_instances
+    test_suite: dataset_test
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+
+  run:
+    timeout: 7200
+    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
+    wait_for_nodes:
+      num_nodes: 20
+      timeout: 900
+    type: sdk_command
+    file_manager: sdk
+
+- name: dataset_shuffle_sort_1tb_small_instances
+  group: core-dataset-tests
+  working_dir: nightly_tests
+  legacy:
+    test_name: dataset_shuffle_sort_1tb_small_instances
+    test_suite: dataset_test
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+
+  run:
+    timeout: 7200
+    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
+    wait_for_nodes:
+      num_nodes: 20
+      timeout: 900
     type: sdk_command
     file_manager: sdk
 
