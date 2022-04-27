@@ -386,11 +386,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert "test2.parquet" in str(input_files)
     assert (
         str(ds) == "Dataset(num_blocks=2, num_rows=6, "
-                   "schema={one: int64, two: string})"
+        "schema={one: int64, two: string})"
     ), ds
     assert (
         repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
-                    "schema={one: int64, two: string})"
+        "schema={one: int64, two: string})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
 

@@ -9,23 +9,23 @@ from ray.data.datasource.datasource import (
     WriteResult,
 )
 from ray.data.datasource.file_based_datasource import (
-    BaseFileMetadataProvider,
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
-    DefaultFileMetadataProvider,
     FileBasedDatasource,
     _S3FileSystemWrapper,
-    FastFileMetadataProvider,
 )
-from ray.data.datasource.file_meta_provider import FileMetadataProvider
+from ray.data.datasource.file_meta_provider import (
+    BaseFileMetadataProvider,
+    DefaultFileMetadataProvider,
+    DefaultParquetMetadataProvider,
+    FastFileMetadataProvider,
+    FileMetadataProvider,
+    ParquetMetadataProvider,
+)
 from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
-from ray.data.datasource.parquet_datasource import (
-    DefaultParquetMetadataProvider,
-    ParquetDatasource,
-    ParquetMetadataProvider,
-)
+from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.datasource.partitioning import (
     PartitionStyle,
     PathPartitionEncoder,
