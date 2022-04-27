@@ -6,7 +6,7 @@
     ]
   commands:
     # Build the wheels and jars
-    - LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
+    - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
     - bash ./java/build-jar-multiplatform.sh linux
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.

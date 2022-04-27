@@ -29,7 +29,6 @@ class SimpleImputer(Preprocessor):
         strategy: str = "mean",
         fill_value: Optional[Union[str, Number]] = None,
     ):
-        super().__init__()
         self.columns = columns
         self.strategy = strategy
         self.fill_value = fill_value
@@ -74,7 +73,14 @@ class SimpleImputer(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"<Imputer columns={self.columns} stats={self.stats_}>"
+        stats = getattr(self, "stats_", None)
+        return (
+            f"SimpleImputer("
+            f"columns={self.columns}, "
+            f"strategy={self.strategy}, "
+            f"fill_value={self.fill_value}, "
+            f"stats={stats})"
+        )
 
 
 def _get_most_frequent_values(

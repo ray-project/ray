@@ -15,7 +15,6 @@ import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import async_loop_forever
-from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -319,13 +318,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 process_error(error_data)
             except Exception:
                 logger.exception("Error receiving error info from GCS.")
-
-    @routes.get("/api/v0/nodes")
-    async def get_nodes(self, req) -> aiohttp.web.Response:
-        data = await self._dashboard_head.state_aggregator.get_nodes()
-        return rest_response(
-            success=True, message="", result=data, convert_google_style=False
-        )
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
