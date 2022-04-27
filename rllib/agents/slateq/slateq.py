@@ -34,7 +34,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
-from ray.rllib.utils.replay_buffers.replay_buffer import validate_buffer_config
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 
 logger = logging.getLogger(__name__)
 

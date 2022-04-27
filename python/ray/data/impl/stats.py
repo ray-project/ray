@@ -165,12 +165,9 @@ class DatasetStats:
         """
 
         self.stages: Dict[str, List[BlockMetadata]] = stages
-        self.parents: List["DatasetStats"] = []
-        if parent:
-            if isinstance(parent, list):
-                self.parents.extend(parent)
-            else:
-                self.parents.append(parent)
+        if parent is not None and not isinstance(parent, list):
+            parent = [parent]
+        self.parents: List["DatasetStats"] = parent
         self.number: int = (
             0 if not self.parents else max(p.number for p in self.parents) + 1
         )
@@ -280,9 +277,22 @@ class DatasetStats:
             if rounded_total <= 0:
                 # Handle -0.0 case.
                 rounded_total = 0
-            out = "{}/{} blocks executed in {}s\n".format(
-                len(exec_stats), len(blocks), rounded_total
-            )
+            if exec_stats:
+                out = "{}/{} blocks executed in {}s".format(
+                    len(exec_stats), len(blocks), rounded_total
+                )
+            else:
+                out = ""
+            if len(exec_stats) < len(blocks):
+                if exec_stats:
+                    out += ", "
+                num_inherited = len(blocks) - len(exec_stats)
+                out += "{}/{} blocks split from parent".format(
+                    num_inherited, len(blocks)
+                )
+                if not exec_stats:
+                    out += " in {}s".format(rounded_total)
+            out += "\n"
 
         if exec_stats:
             out += indent

@@ -36,6 +36,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
@@ -354,41 +355,13 @@ class DQNTrainer(SimpleQTrainer):
             else:
                 train_results = multi_gpu_train_one_step(self, train_batch)
 
-            # Update priorities
-            if (
-                type(self.local_replay_buffer) is LegacyMultiAgentReplayBuffer
-                and self.config["replay_buffer_config"].get(
-                    "prioritized_replay_alpha", 0.0
-                )
-                > 0.0
-            ) or isinstance(
-                self.local_replay_buffer, MultiAgentPrioritizedReplayBuffer
-            ):
-                prio_dict = {}
-                for policy_id, info in train_results.items():
-                    # TODO(sven): This is currently structured differently for
-                    #  torch/tf. Clean up these results/info dicts across
-                    #  policies (note: fixing this in torch_policy.py will
-                    #  break e.g. DDPPO!).
-                    td_error = info.get(
-                        "td_error", info[LEARNER_STATS_KEY].get("td_error")
-                    )
-                    train_batch.policy_batches[policy_id].set_get_interceptor(None)
-                    batch_indices = train_batch.policy_batches[policy_id].get(
-                        "batch_indexes"
-                    )
-                    # In case the buffer stores sequences, TD-error could
-                    # already be calculated per sequence chunk.
-                    if len(batch_indices) != len(td_error):
-                        T = self.local_replay_buffer.replay_sequence_length
-                        assert (
-                            len(batch_indices) > len(td_error)
-                            and len(batch_indices) % T == 0
-                        )
-                        batch_indices = batch_indices.reshape([-1, T])[:, 0]
-                        assert len(batch_indices) == len(td_error)
-                    prio_dict[policy_id] = (batch_indices, td_error)
-                self.local_replay_buffer.update_priorities(prio_dict)
+            # Update replay buffer priorities.
+            update_priorities_in_replay_buffer(
+                self.local_replay_buffer,
+                self.config,
+                train_batch,
+                train_results,
+            )
 
             # (6) Update target network every target_network_update_freq steps
             cur_ts = self._counters[NUM_ENV_STEPS_SAMPLED]

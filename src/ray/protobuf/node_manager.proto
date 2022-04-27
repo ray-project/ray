@@ -310,10 +310,18 @@ message GetObjectsInfoReply {
   repeated CoreWorkerStats core_workers_stats = 1;
 }
 
+message GetResourceLoadRequest {}
+
+message GetResourceLoadReply {
+  ResourcesData resources = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
-  // Update the node's view of the cluster resource usage
+  // Update the node's view of the cluster resource usage.
   rpc UpdateResourceUsage(UpdateResourceUsageRequest) returns (UpdateResourceUsageReply);
+  // Get the resource load of the raylet.
+  rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
   // Request the current resource usage from this raylet
   rpc RequestResourceReport(RequestResourceReportRequest)
       returns (RequestResourceReportReply);
