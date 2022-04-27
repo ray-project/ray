@@ -1226,7 +1226,7 @@ TEST_F(ClusterTaskManagerTest, ResourceReportForNodeAffinitySchedulingStrategyTa
     *callback_occurred_ptr = true;
   };
 
-  // Feasible task won't be reported.
+  // Feasible strict task won't be reported.
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
       id_.Binary());
@@ -1234,15 +1234,36 @@ TEST_F(ClusterTaskManagerTest, ResourceReportForNodeAffinitySchedulingStrategyTa
   RayTask task1 =
       CreateTask({{ray::kCPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
   task_manager_.QueueAndScheduleTask(task1, false, false, &reply, callback);
-  // Infeasible task will be reported.
+
+  // Feasible soft task won't be reported.
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
       id_.Binary());
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
   RayTask task2 =
-      CreateTask({{ray::kGPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
+      CreateTask({{ray::kCPU_ResourceLabel, 2}}, 0, {}, nullptr, scheduling_strategy);
   task_manager_.QueueAndScheduleTask(task2, false, false, &reply, callback);
 
+  // Infeasible soft task will be reported.
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
+  RayTask task3 =
+      CreateTask({{ray::kGPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply, callback);
   ASSERT_FALSE(callback_occurred);
+
+  // Infeasible strict task won't be reported (will fail immediately).
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      id_.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  RayTask task4 =
+      CreateTask({{ray::kGPU_ResourceLabel, 2}}, 0, {}, nullptr, scheduling_strategy);
+  task_manager_.QueueAndScheduleTask(task4, false, false, &reply, callback);
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE);
+
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 0);
 
