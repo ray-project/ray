@@ -4,6 +4,7 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 
+from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
@@ -241,8 +242,9 @@ def get_tf_eager_cls_if_necessary(
 
             from ray.rllib.policy.tf_policy import TFPolicy
 
-            # Create eager-class.
-            if hasattr(orig_cls, "as_eager"):
+            # Create eager-class (if not already one).
+            if hasattr(orig_cls, "as_eager") and \
+                    not issubclass(orig_cls, EagerTFPolicy):
                 cls = orig_cls.as_eager()
                 if config.get("eager_tracing"):
                     cls = cls.with_tracing()

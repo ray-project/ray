@@ -250,6 +250,11 @@ class OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
+class EagerTFPolicy(Policy):
+    """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
+    pass
+
+
 def build_eager_tf_policy(
     name,
     loss_fn,
@@ -287,7 +292,7 @@ def build_eager_tf_policy(
 
     This has the same signature as build_tf_policy()."""
 
-    base = add_mixins(Policy, mixins)
+    base = add_mixins(EagerTFPolicy, mixins)
 
     if obs_include_prev_action_reward != DEPRECATED_VALUE:
         deprecation_warning(old="obs_include_prev_action_reward", error=False)
@@ -309,7 +314,7 @@ def build_eager_tf_policy(
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             self.framework = config.get("framework", "tfe")
-            Policy.__init__(self, observation_space, action_space, config)
+            EagerTFPolicy.__init__(self, observation_space, action_space, config)
 
             # Global timestep should be a tensor.
             self.global_timestep = tf.Variable(0, trainable=False, dtype=tf.int64)
@@ -594,7 +599,7 @@ def build_eager_tf_policy(
         ):
             assert tf.executing_eagerly()
             # Call super's postprocess_trajectory first.
-            sample_batch = Policy.postprocess_trajectory(self, sample_batch)
+            sample_batch = EagerTFPolicy.postprocess_trajectory(self, sample_batch)
             if postprocess_fn:
                 return postprocess_fn(self, sample_batch, other_agent_batches, episode)
             return sample_batch
