@@ -93,6 +93,10 @@ class DAGNode:
         For that, use ``_get_all_child_nodes()``.
         """
 
+        # we use List instead of Set here because the hash key of the node
+        # object changes each time we create it. So if using Set here, the
+        # order of returned children can be different if we create the same
+        # nodes and dag one more time.
         children = []
         for a in self.get_args():
             if isinstance(a, DAGNode):
@@ -113,11 +117,13 @@ class DAGNode:
         args_to_resolve in current node, even they're deeply nested.
 
         Examples:
-            f.remote(a, [b]) -> list(a, b)
-            f.remote(a, [b], key={"nested": [c]}) -> list(a, b, c)
+            f.remote(a, [b]) -> [a, b]
+            f.remote(a, [b], key={"nested": [c]}) -> [a, b, c]
         """
 
         scanner = _PyObjScanner()
+        # we use List instead of Set here, reason explained
+        # in `_get_toplevel_child_nodes`.
         children = []
         for n in scanner.find_nodes(
             [
