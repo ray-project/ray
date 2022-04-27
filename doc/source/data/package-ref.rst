@@ -122,7 +122,7 @@ Custom Datasource API
 .. autoclass:: ray.data.ReadTask
     :members:
 
-Partitioning API
+Datasource Partitioning API
 ---------------------
 
 .. autoclass:: ray.data.datasource.PartitionStyle
