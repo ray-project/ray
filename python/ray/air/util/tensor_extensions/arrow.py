@@ -135,6 +135,8 @@ class ArrowTensorArray(pa.ExtensionArray):
               containing ``len(arr)`` tensors of variable shape.
             - If scalar elements, a ``pyarrow.Array``.
         """
+        # TODO(Clark): Support null elements, e.g. a list or object-dtyped ndarray
+        # containing ndarrays + Nones, via mapping this to an Arrow validity bitmap.
         if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
             # Stack ndarrays and pass through to ndarray handling logic below.
             try:

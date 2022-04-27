@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -15,6 +16,7 @@ import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.stats import _StatsActor
 from ray.data._internal.arrow_block import ArrowRow
+from ray.data._internal.arrow_ops.transform_pyarrow import concat
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
@@ -493,6 +495,27 @@ def test_arrow_block_slice_copy_empty():
     assert table2.equals(expected_slice)
     assert table2.schema == table.schema
     assert table2.num_rows == 0
+
+
+def test_arrow_table_concat_tables():
+    # Check upcasting ints.
+    t1 = pa.table({"a": [1, 2, 3]}, schema=pa.schema([("a", pa.int8())]))
+    t2 = pa.table({"a": [4, 5, 6]}, schema=pa.schema([("a", pa.int64())]))
+    t = concat([t1, t2])
+    assert pa.types.is_int64(t.schema.field("a").type)
+
+    # Check upcasting floats.
+    t1 = pa.table({"a": [1.0, 2.5, 3.1]}, schema=pa.schema([("a", pa.float32())]))
+    t2 = pa.table({"a": [4.2, 5.4, 6.9]}, schema=pa.schema([("a", pa.float64())]))
+    t = concat([t1, t2])
+    assert pa.types.is_float64(t.schema.field("a").type)
+
+    # Check upcasting with nulls.
+    t1 = pa.table({"a": [1, 2, None]}, schema=pa.schema([("a", pa.int8())]))
+    t2 = pa.table({"a": [4, 5, 6]}, schema=pa.schema([("a", pa.int64())]))
+    t3 = pa.table({"a": [None, None, None]})
+    t = concat([t1, t2, t3])
+    assert pa.types.is_int64(t.schema.field("a").type)
 
 
 def test_range_table(ray_start_regular_shared):
@@ -2702,6 +2725,12 @@ def test_map_with_mismatched_columns(ray_start_regular_shared):
     assert ds_map.take() == [{"a": "hello1", "b": "hello2"} for _ in range(10)]
 
 
+def test_select_polars(ray_start_regular_shared):
+    ds = ray.data.range_table(1000, parallelism=10)
+    ds2 = ds.select_polars([2 * pl.col("value") + 1])
+    assert ds2.take(limit=10000) == [{"value": 2 * i + 1} for i in range(1000)]
+
+
 def test_union(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
 
@@ -3179,10 +3208,17 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("use_polars", [True, False])
 def test_groupby_tabular_count(
-    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+    ray_start_regular_shared,
+    use_push_based_shuffle,
+    use_polars,
+    ds_format,
+    num_parts,
 ):
     # Test built-in count aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
     random.seed(seed)
@@ -3208,10 +3244,13 @@ def test_groupby_tabular_count(
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("use_polars", [True, False])
 def test_groupby_tabular_sum(
-    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+    ray_start_regular_shared, use_push_based_shuffle, use_polars, ds_format, num_parts
 ):
     # Test built-in sum aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_sum with: {seed}")
     random.seed(seed)
@@ -3278,12 +3317,135 @@ def test_groupby_tabular_sum(
                 "sum(B)": [None, None, None],
             }
         ),
+        check_dtype=False,
+    )
+
+
+@pytest.mark.skip(
+    reason=("Waiting for Arrow compute kernels and Polars to support extension types.")
+)
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_groupby_tabular_sum_tensor_extension(
+    ray_start_regular_shared, use_polars, ds_format, num_parts
+):
+    # Test built-in sum aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_tabular_sum_tensor_extension with: {seed}")
+    random.seed(seed)
+    num_rows = 100
+    shape = (2, 2)
+    xs = list(range(num_rows * np.prod(shape)))
+    random.shuffle(xs)
+    xs = np.array(xs).reshape((num_rows,) + shape)
+    keys = [x % 3 for x in range(num_rows)]
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    t = pa.table({"A": keys, "B": ArrowTensorArray.from_numpy(xs)})
+    ds = ray.data.from_arrow(t).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+
+    agg_ds = ds.groupby("A").sum("B")
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": 1683},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
+
+    # Test built-in sum aggregation with nans
+    ds = ray.data.from_items(
+        [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
+    ).repartition(num_parts)
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_grouped_ds = ds.groupby("A")
+    nan_agg_ds = nan_grouped_ds.sum("B")
+    assert nan_agg_ds.count() == 3
+    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
+        {"A": 0, "sum(B)": 1683},
+        {"A": 1, "sum(B)": 1617},
+        {"A": 2, "sum(B)": 1650},
+    ]
+    # Test ignore_nulls=False
+    nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
+    assert nan_agg_ds.count() == 3
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "sum(B)": [None, 1617, 1650],
+            }
+        ),
+        check_dtype=False,
+    )
+    # Test all nans
+    ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
+        num_parts
+    )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+    nan_agg_ds = ds.groupby("A").sum("B")
+    assert nan_agg_ds.count() == 3
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "sum(B)": [None, None, None],
+            }
+        ),
+        check_dtype=False,
     )
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
+def test_groupby_tabular_sum_tensor_extension_pandas(
+    ray_start_regular_shared, num_parts
+):
+    # Test built-in sum aggregation
+    num_rows = 10
+    shape = (2, 2)
+    xs = list(np.arange(num_rows * np.prod(shape)).reshape((num_rows,) + shape))
+    xs = np.array(xs)
+    keys = [x % 3 for x in range(num_rows)]
+
+    t = pa.table({"A": keys, "B": ArrowTensorArray.from_numpy(xs)})
+    ds = ray.data.from_arrow(t).repartition(num_parts)
+    ds = ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    agg_ds = ds.groupby("A").sum("B")
+    assert agg_ds.count() == 3
+    df = agg_ds.sort("A").to_pandas()
+    assert list(df["A"]) == [0, 1, 2]
+    np.testing.assert_equal(
+        np.array(list(df["sum(B)"].to_numpy())),
+        np.array(
+            [
+                [[72, 76], [80, 84]],
+                [[48, 51], [54, 57]],
+                [[60, 63], [66, 69]],
+            ]
+        ),
+    )
+
+    # TODO(Clark): Add null coverage once tensor extension supports null elements.
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_global_tabular_sum(ray_start_regular_shared, use_polars, ds_format, num_parts):
+    # Test built-in sum aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_sum with: {seed}")
     random.seed(seed)
@@ -3324,8 +3486,16 @@ def test_global_tabular_sum(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_groupby_tabular_min(
+    ray_start_regular_shared,
+    use_polars,
+    ds_format,
+    num_parts,
+):
     # Test built-in min aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_min with: {seed}")
     random.seed(seed)
@@ -3398,7 +3568,11 @@ def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_global_tabular_min(ray_start_regular_shared, use_polars, ds_format, num_parts):
+    # Test built-in min aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_min with: {seed}")
     random.seed(seed)
@@ -3439,8 +3613,16 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_groupby_tabular_max(
+    ray_start_regular_shared,
+    use_polars,
+    ds_format,
+    num_parts,
+):
     # Test built-in max aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_max with: {seed}")
     random.seed(seed)
@@ -3464,7 +3646,7 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
         {"A": 2, "max(B)": 98},
     ]
 
-    # Test built-in min aggregation with nans
+    # Test built-in max aggregation with nans
     ds = ray.data.from_items(
         [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
     ).repartition(num_parts)
@@ -3513,7 +3695,11 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_global_tabular_max(ray_start_regular_shared, use_polars, ds_format, num_parts):
+    # Test built-in max aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_max with: {seed}")
     random.seed(seed)
@@ -3554,8 +3740,16 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_groupby_tabular_mean(
+    ray_start_regular_shared,
+    use_polars,
+    ds_format,
+    num_parts,
+):
     # Test built-in mean aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_mean with: {seed}")
     random.seed(seed)
@@ -3628,7 +3822,16 @@ def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_global_tabular_mean(
+    ray_start_regular_shared,
+    use_polars,
+    ds_format,
+    num_parts,
+):
+    # Test built-in mean aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_mean with: {seed}")
     random.seed(seed)
@@ -3669,8 +3872,16 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_groupby_tabular_std(
+    ray_start_regular_shared,
+    use_polars,
+    ds_format,
+    num_parts,
+):
     # Test built-in std aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_tabular_std with: {seed}")
     random.seed(seed)
@@ -3710,6 +3921,7 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
     expected = nan_df.groupby("A")["B"].std().to_numpy()
     np.testing.assert_array_almost_equal(result, expected)
+
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
@@ -3717,6 +3929,7 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     expected = nan_df.groupby("A")["B"].std()
     expected[0] = None
     np.testing.assert_array_almost_equal(result, expected)
+
     # Test all nans
     nan_df = pd.DataFrame({"A": [x % 3 for x in xs], "B": [None] * len(xs)})
     ds = ray.data.from_pandas(nan_df).repartition(num_parts)
@@ -3725,13 +3938,22 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     nan_agg_ds = ds.groupby("A").std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
-    expected = pd.Series([None] * 3)
+    if ds_format == "arrow" and use_polars:
+        # When using Arrow and Polars, all-nulls are properly represented as well-typed
+        # columns
+        expected = pd.Series([np.nan] * 3)
+    else:
+        expected = pd.Series([None] * 3)
     np.testing.assert_array_equal(result, expected)
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
+@pytest.mark.parametrize("use_polars", [True, False])
+def test_global_tabular_std(ray_start_regular_shared, use_polars, ds_format, num_parts):
+    # Test built-in std aggregation
+    ctx = DatasetContext.get_current()
+    ctx.use_polars = use_polars
     seed = int(time.time())
     print(f"Seeding RNG for test_global_arrow_std with: {seed}")
     random.seed(seed)
@@ -3744,7 +3966,7 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     def _to_pandas(ds):
         return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
 
-    # Test built-in global max aggregation
+    # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
     ds = ray.data.from_pandas(df).repartition(num_parts)
     if ds_format == "arrow":

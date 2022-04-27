@@ -41,6 +41,7 @@ SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 class _SortOp(ShuffleOp):
     @staticmethod
     def map(
+        ctx: DatasetContext,
         idx: int,
         block: Block,
         output_num_blocks: int,
@@ -59,6 +60,7 @@ class _SortOp(ShuffleOp):
 
     @staticmethod
     def reduce(
+        ctx: DatasetContext,
         key: SortKeyT,
         descending: bool,
         *mapper_outputs: List[Block],

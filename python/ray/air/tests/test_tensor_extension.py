@@ -321,7 +321,8 @@ def test_tensor_array_reductions():
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
 
     # Reduction tests, using NumPy as the groundtruth.
-    for name, reducer in TensorArray.SUPPORTED_REDUCERS.items():
+    for name, reducers in TensorArray.SUPPORTED_REDUCERS.items():
+        reducer, nan_reducer = reducers
         np_kwargs = {}
         if name in ("std", "var"):
             # Pandas uses a ddof default of 1 while NumPy uses 0.
@@ -329,6 +330,9 @@ def test_tensor_array_reductions():
             # standard deviation calculations.
             np_kwargs["ddof"] = 1
         np.testing.assert_equal(df["two"].agg(name), reducer(arr, axis=0, **np_kwargs))
+        np.testing.assert_equal(
+            df["two"].agg(name), nan_reducer(arr, axis=0, **np_kwargs)
+        )
 
 
 @pytest.mark.parametrize("chunked", [False, True])

@@ -31,7 +31,7 @@ from ray.data._internal.table_block import (
     TableBlockBuilder,
     VALUE_COL_NAME,
 )
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, PolarsAggregation
 
 if TYPE_CHECKING:
     import pyarrow
@@ -90,8 +90,6 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
             if key == VALUE_COL_NAME or isinstance(next(iter(value), None), np.ndarray):
                 from ray.data.extensions.tensor_extension import TensorArray
 
-                if len(value) == 1:
-                    value = value[0]
                 columns[key] = TensorArray(value)
         return pandas.DataFrame(columns)
 
@@ -286,6 +284,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._apply_agg(lambda col: col.count(), on)
 
     def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        from ray.data.extensions import TensorArrayElement
+
         pd = lazy_import_pandas()
         if on is not None and not isinstance(on, str):
             raise ValueError(
@@ -297,13 +297,18 @@ class PandasBlockAccessor(TableBlockAccessor):
             return None
 
         col = self._table[on]
-        if col.isnull().all():
+        all_nan = col.isnull().all()
+        if isinstance(all_nan, TensorArrayElement):
+            all_nan = np.all(all_nan)
+        if all_nan:
             # Short-circuit on an all-null column, returning None. This is required for
             # sum() since it will otherwise return 0 when summing on an all-null column,
             # which is not what we want.
             return None
         val = col.sum(skipna=ignore_nulls)
-        if pd.isnull(val):
+        if isinstance(val, TensorArrayElement):
+            val = np.asarray(val)
+        elif pd.isnull(val):
             return None
         return val
 
@@ -368,7 +373,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         partitions.append(table[last_idx:])
         return partitions
 
-    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(
+        self,
+        key: KeyFn,
+        aggs: Tuple[AggregateFn, PolarsAggregation],
+        ctx: DatasetContext,
+    ) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -461,8 +471,9 @@ class PandasBlockAccessor(TableBlockAccessor):
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
         key: KeyFn,
-        aggs: Tuple[AggregateFn],
+        aggs: Tuple[AggregateFn, PolarsAggregation],
         finalize: bool,
+        ctx: DatasetContext,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 

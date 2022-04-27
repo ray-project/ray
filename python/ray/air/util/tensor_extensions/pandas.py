@@ -696,16 +696,16 @@ class TensorArray(
     """
 
     SUPPORTED_REDUCERS = {
-        "sum": np.sum,
-        "all": np.all,
-        "any": np.any,
-        "min": np.min,
-        "max": np.max,
-        "mean": np.mean,
-        "median": np.median,
-        "prod": np.prod,
-        "std": np.std,
-        "var": np.var,
+        "sum": (np.sum, np.nansum),
+        "all": (np.all, np.all),
+        "any": (np.any, np.any),
+        "min": (np.min, np.nanmin),
+        "max": (np.max, np.nanmax),
+        "mean": (np.mean, np.nanmean),
+        "median": (np.median, np.nanmedian),
+        "prod": (np.prod, np.nanprod),
+        "std": (np.std, np.nanstd),
+        "var": (np.var, np.nanvar),
     }
 
     # See https://github.com/pandas-dev/pandas/blob/master/pandas/core/arrays/base.py
@@ -740,6 +740,8 @@ class TensorArray(
 
         if isinstance(values, np.ndarray):
             if values.dtype.type is np.object_:
+                # TODO(Clark): Support null elements, e.g. an object-dtyped ndarray
+                # containing ndarrays and Nones.
                 if len(values) == 0:
                     # Tensor is empty, pass through to create empty TensorArray.
                     pass
@@ -1190,7 +1192,9 @@ class TensorArray(
                 pass
         try:
             return TensorArrayElement(
-                self.SUPPORTED_REDUCERS[name](self._tensor, axis=0, **reducer_kwargs)
+                self.SUPPORTED_REDUCERS[name][skipna](
+                    self._tensor, axis=0, **reducer_kwargs
+                )
             )
         except KeyError:
             raise NotImplementedError(f"'{name}' aggregate not implemented.") from None

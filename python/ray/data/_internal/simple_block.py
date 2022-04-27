@@ -22,6 +22,7 @@ from ray.data.block import (
     BlockExecStats,
     KeyFn,
 )
+from ray.data.context import DatasetContext
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
 
@@ -282,7 +283,10 @@ class SimpleBlockAccessor(BlockAccessor):
         return ret
 
     def combine(
-        self, key: KeyFn, aggs: Tuple[AggregateFn]
+        self,
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+        ctx: DatasetContext,
     ) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
@@ -369,6 +373,7 @@ class SimpleBlockAccessor(BlockAccessor):
         key: KeyFn,
         aggs: Tuple[AggregateFn],
         finalize: bool,
+        ctx: DatasetContext,
     ) -> Tuple[Block[Tuple[KeyType, Union[U, AggType]]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 

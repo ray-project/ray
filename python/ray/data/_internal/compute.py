@@ -450,8 +450,7 @@ def _map_block_split(
 ) -> BlockPartition:
     stats = BlockExecStats.builder()
     blocks, fn_args = blocks_and_fn_args[:num_blocks], blocks_and_fn_args[num_blocks:]
-    if fn is not None:
-        fn_args = (fn,) + fn_args
+    fn_args = (fn,) + fn_args
     new_metas = []
     for new_block in block_fn(blocks, *fn_args, **fn_kwargs):
         accessor = BlockAccessor.for_block(new_block)
@@ -479,8 +478,7 @@ def _map_block_nosplit(
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
     blocks, fn_args = blocks_and_fn_args[:num_blocks], blocks_and_fn_args[num_blocks:]
-    if fn is not None:
-        fn_args = (fn,) + fn_args
+    fn_args = (fn,) + fn_args
     for new_block in block_fn(blocks, *fn_args, **fn_kwargs):
         builder.add_block(new_block)
     new_block = builder.build()

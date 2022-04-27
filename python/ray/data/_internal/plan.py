@@ -629,23 +629,24 @@ class OneToOneStage(Stage):
 
         def block_fn(
             blocks: Iterable[Block],
-            fn: UDF,
+            fn: Optional[UDF],
             *fn_args,
             **fn_kwargs,
         ) -> Iterable[Block]:
             assert not fn_kwargs, fn_kwargs
             # Unpack flat position args list into
-            self_fn_args, self_fn_kwargs, prev_fn_args, prev_fn_kwargs = unpack_args(
-                fn_args
-            )
-            self_fn_args = self_fn_args if fn is None else (fn,) + self_fn_args
+            (
+                self_fn_args,
+                self_fn_kwargs,
+                prev_fn_args,
+                prev_fn_kwargs,
+            ) = unpack_args(fn_args)
+            self_fn_args = (fn,) + self_fn_args
             if use_outer_fn:
                 prev_fn_ = fn
             else:
                 prev_fn_ = prev_fn
-            prev_fn_args = (
-                prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
-            )
+            prev_fn_args = (prev_fn_,) + prev_fn_args
             blocks = block_fn1(blocks, *prev_fn_args, **prev_fn_kwargs)
             return block_fn2(blocks, *self_fn_args, **self_fn_kwargs)
 
@@ -828,7 +829,10 @@ def _rewrite_read_stage(
     )
 
     @_adapt_for_multiple_blocks
-    def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
+    def block_fn(
+        read_fn: Callable[[], Iterator[Block]], fn: Optional[UDF] = None
+    ) -> Iterator[Block]:
+        assert fn is None
         for block in read_fn():
             yield block
 

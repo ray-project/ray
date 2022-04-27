@@ -114,6 +114,7 @@ if TYPE_CHECKING:
     import mars
     import modin
     import pandas
+    import polars
     import pyarrow
     import pyspark
     import tensorflow as tf
@@ -605,6 +606,55 @@ class Dataset(Generic[T]):
                 fn_kwargs=fn_kwargs,
                 fn_constructor_args=fn_constructor_args,
                 fn_constructor_kwargs=fn_constructor_kwargs,
+            )
+        )
+        return Dataset(plan, self._epoch, self._lazy)
+
+    @PublicAPI(stability="alpha")
+    def select_polars(
+        self,
+        exprs: "List[polars.Expr]",
+        *,
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        **ray_remote_args,
+    ) -> "Dataset[U]":
+        """Map a Polars expression over the Dataset.
+
+        Examples:
+            >>> import ray
+            >>> import polars as pl
+            >>> ds = ray.data.range_arrow(1000) # doctest: +SKIP
+            >>> ds.select_polars([ # doctest: +SKIP
+            ...     pl.col("value"),
+            ...     (2 * pl.col("value") + 1).alias("col2"),
+            ...     pl.when(pl.col("value") % 2 == 0) \
+            ...     .then(pl.col("value") + 1) \
+            ...     .otherwise(pl.col("value") + 2) \
+            ...     .alias("col3")])
+
+        Args:
+            exprs: A list of Polars expressions to map over each block of this dataset.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or ActorPoolStrategy(min, max) to use an autoscaling actor pool.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """
+        import polars as pl
+
+        @_adapt_for_multiple_blocks
+        def transform(block: Block, fn: Optional[BatchUDF] = None) -> Iterable[Block]:
+            assert fn is None
+            block = BlockAccessor.for_block(block).to_arrow()
+            df = pl.from_arrow(block)
+            result = df.select(exprs)
+            yield result.to_arrow()
+
+        plan = self._plan.with_stage(
+            OneToOneStage(
+                "select",
+                transform,
+                compute=compute,
+                ray_remote_args=ray_remote_args,
             )
         )
         return Dataset(plan, self._epoch, self._lazy)
@@ -4013,14 +4063,19 @@ class Dataset(Generic[T]):
     def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
         if result is not None and len(result) == 1:
             if isinstance(result, tuple):
-                return result[0]
+                result = result[0]
             else:
                 # NOTE (kfstorm): We cannot call `result[0]` directly on
                 # `PandasRow` because indexing a column with position is not
                 # supported by pandas.
-                return list(result.values())[0]
-        else:
-            return result
+                result = list(result.values())[0]
+                # Try to coerce np.nan to None.
+                try:
+                    if np.isnan(result):
+                        result = None
+                except TypeError:
+                    pass
+        return result
 
     def _ipython_display_(self):
         try:
