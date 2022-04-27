@@ -39,6 +39,7 @@ class _DummyPolicy(Policy):
     def compute_actions(
         self,
         obs_batch,
+        *args,
         **kwargs,
     ):
         return (
@@ -71,12 +72,6 @@ def create_checkpoint(
         checkpoint_data = Checkpoint.from_directory(checkpoint_path).to_dict()
 
     return Checkpoint.from_dict(checkpoint_data)
-
-
-def test_trainer_properties_saved():
-    checkpoint = create_checkpoint(config={"param": 4})
-    predictor = RLPredictor.from_checkpoint(checkpoint)
-    assert predictor.trainer.config["param"] == 4
 
 
 @pytest.mark.parametrize("batch_type", [list, np.array, pd.DataFrame])
