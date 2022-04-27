@@ -122,12 +122,12 @@ class Categorizer(Preprocessor):
 
     Note that in case of automatic inferrence, you will most
     likely want to run this preprocessor on the entire dataset
-    before splitting it (eg. into train and test sets), so
-    that all the categories are inferred. There is no risk
+    before splitting it (e.g. into train and test sets), so
+    that all of the categories are inferred. There is no risk
     of data leakage when using this preprocessor.
 
     Args:
-        columns: The columns which data type to change. Can be
+        columns: The columns whose data type to change. Can be
             either a list of columns, in which case the categories
             will be inferred automatically from the data, or
             a dict of `column:pd.CategoricalDtype or None` -
@@ -145,7 +145,7 @@ class Categorizer(Preprocessor):
             self.columns
             if isinstance(self.columns, list)
             else [
-                column for column in self.columns.keys() if self.columns[column] is None
+                column for column, cat_type in self.columns.items() if cat_type is None
             ]
         )
         if columns_to_get:
