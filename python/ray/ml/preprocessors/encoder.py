@@ -23,7 +23,7 @@ class OrdinalEncoder(Preprocessor):
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, *self.columns)
+        self.stats_ = _get_unique_value_indices(dataset, self.columns)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -62,7 +62,7 @@ class OneHotEncoder(Preprocessor):
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, *self.columns)
+        self.stats_ = _get_unique_value_indices(dataset, self.columns)
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -99,7 +99,7 @@ class LabelEncoder(Preprocessor):
         self.label_column = label_column
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        self.stats_ = _get_unique_value_indices(dataset, self.label_column)
+        self.stats_ = _get_unique_value_indices(dataset, [self.label_column])
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -150,7 +150,7 @@ class Categorizer(Preprocessor):
         )
         if columns_to_get:
             unique_indices = _get_unique_value_indices(
-                dataset, *columns_to_get, drop_na_values=True, key_format="{0}"
+                dataset, columns_to_get, drop_na_values=True, key_format="{0}"
             )
             unique_indices = {
                 column: pd.CategoricalDtype(values_indices.keys())
@@ -173,12 +173,11 @@ class Categorizer(Preprocessor):
 
 def _get_unique_value_indices(
     dataset: Dataset,
-    *columns: str,
+    columns: List[str],
     drop_na_values: bool = False,
     key_format: str = "unique_values({0})",
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
-    columns = list(columns)
 
     def get_pd_unique_values(df: pd.DataFrame):
         return [{col: set(df[col].unique()) for col in columns}]
