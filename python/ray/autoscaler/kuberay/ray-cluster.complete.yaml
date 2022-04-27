@@ -202,22 +202,22 @@ spec:
           - name: CPU_REQUEST
             valueFrom:
               resourceFieldRef:
-                containerName: machine-learning
+                containerName: ray-worker
                 resource: requests.cpu
           - name: CPU_LIMITS
             valueFrom:
               resourceFieldRef:
-                containerName: machine-learning
+                containerName: ray-worker
                 resource: limits.cpu
           - name: MEMORY_LIMITS
             valueFrom:
               resourceFieldRef:
-                containerName: machine-learning
+                containerName: ray-worker
                 resource: limits.memory
           - name: MEMORY_REQUESTS
             valueFrom:
               resourceFieldRef:
-                containerName: machine-learning
+                containerName: ray-worker
                 resource: requests.memory
           - name: MY_POD_NAME
             valueFrom:
