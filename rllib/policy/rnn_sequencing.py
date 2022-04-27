@@ -115,7 +115,7 @@ def pad_batch_to_sequences_of_same_size(
         elif (
             not feature_keys
             and not k.startswith("state_out_")
-            and k not in ["infos", SampleBatch.SEQ_LENS]
+            and k not in [SampleBatch.INFOS, SampleBatch.SEQ_LENS]
         ):
             feature_keys_.append(k)
 

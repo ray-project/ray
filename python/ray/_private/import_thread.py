@@ -43,6 +43,9 @@ class ImportThread:
         self.num_imported = 0
         # Protect writes to self.num_imported.
         self._lock = threading.Lock()
+        # Try to load all FunctionsToRun so that these functions will be
+        # run before accepting tasks.
+        self._do_importing()
 
     def start(self):
         """Start the import thread."""

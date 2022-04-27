@@ -137,10 +137,10 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&request_worker_lease_cb));
 
-  std::function<void(ray::Status)> async_put_with_index_cb;
+  std::function<void(bool)> async_put_with_index_cb;
   // Leasing successfully
-  EXPECT_CALL(*store_client, AsyncPut(_, _, _, _))
-      .WillOnce(DoAll(SaveArg<3>(&async_put_with_index_cb), Return(Status::OK())));
+  EXPECT_CALL(*store_client, AsyncPut(_, _, _, _, _))
+      .WillOnce(DoAll(SaveArg<4>(&async_put_with_index_cb), Return(Status::OK())));
   actor_scheduler->ScheduleByRaylet(actor);
   rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
@@ -151,7 +151,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   // Worker start to run task
   EXPECT_CALL(*core_worker_client, PushNormalTask(_, _))
       .WillOnce(testing::SaveArg<1>(&push_normal_task_cb));
-  async_put_with_index_cb(Status::OK());
+  async_put_with_index_cb(true);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::DEAD);
   actor_scheduler->CancelOnWorker(node_id, worker_id);
   push_normal_task_cb(Status::OK(), rpc::PushTaskReply());
