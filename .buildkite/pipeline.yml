@@ -391,6 +391,8 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - echo "--- Setting up Python 3.7 environment."
+    - PYTHON=3.7 ./ci/env/install-dependencies.sh
     - echo "--- Setting up local kind cluster."
     - ./ci/k8s/prep-k8s-environment.sh
     - echo "--- Building py37-cpu Ray image for the test."
