@@ -8,11 +8,6 @@ from ray.experimental.dag import (
     ClassNode,
     ClassMethodNode,
 )
-from ray.serve.pipeline.deployment_node import (
-    DeploymentNode,
-    DeploymentMethodNode,
-    DeploymentFunctionNode,
-)
 
 
 class DAGNodeNameGenerator(object):
@@ -33,9 +28,11 @@ class DAGNodeNameGenerator(object):
             node_name = node.get_options().get("name", None) or node._method_name
         elif isinstance(node, (ClassNode, FunctionNode)):
             node_name = node.get_options().get("name", None) or node._body.__name__
-        elif isinstance(node, (DeploymentNode, DeploymentFunctionNode)):
+        # we use instance class name check here to avoid importing ServeNodes as
+        # serve components are not included in Ray Core.
+        elif type(node).__name__ in ("DeploymentNode", "DeploymentFunctionNode"):
             node_name = node.get_deployment_name()
-        elif isinstance(node, DeploymentMethodNode):
+        elif type(node).__name__ == "DeploymentMethodNode":
             node_name = node.get_deployment_method_name()
         else:
             raise ValueError(
