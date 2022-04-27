@@ -148,62 +148,57 @@ def main(
 ):
     if local_test:
         setup_local_single_node_cluster(4, num_cpu_per_node=2)
-        serve_dag = test_long_chain_deployment_graph(
-            chain_length,
-            init_delay_secs=init_delay_secs,
-            compute_delay_secs=compute_delay_secs,
-        )
-        dag_handle = serve.run(serve_dag)
-
-        # 1 + 2 + 3 + 4 + ... + chain_length
-        expected = ((1 + chain_length) * chain_length) / 2
-        assert ray.get(dag_handle.predict.remote(0)) == expected
-        loop = asyncio.get_event_loop()
-
-        throughput_mean, throughput_std = loop.run_until_complete(
-            benchmark_batch_throughput(dag_handle, expected, num_calls=num_calls)
-        )
-        latency_mean, latency_std = loop.run_until_complete(
-            benchmark_latency(dag_handle, expected, num_calls=num_calls)
-        )
-
-        results = {
-            "chain_length": chain_length,
-            "init_delay_secs": init_delay_secs,
-            "compute_delay_secs": compute_delay_secs,
-            "local_test": local_test,
-        }
-        results["perf_metrics"] = [
-            {
-                "perf_metric_name": "requests_per_s_avg",
-                "perf_metric_value": throughput_mean,
-                "perf_metric_type": "THROUGHPUT",
-            },
-            {
-                "perf_metric_name": "requests_per_s_std",
-                "perf_metric_value": throughput_std,
-                "perf_metric_type": "THROUGHPUT",
-            },
-            {
-                "perf_metric_name": "latency_per_s_avg",
-                "perf_metric_value": latency_mean,
-                "perf_metric_type": "LATENCY",
-            },
-            {
-                "perf_metric_name": "requests_per_s_std",
-                "perf_metric_value": latency_std,
-                "perf_metric_type": "LATENCY",
-            },
-        ]
-        save_test_results(results)
     else:
         setup_anyscale_cluster()
-        serve_dag = test_long_chain_deployment_graph(
-            chain_length=chain_length,
-            init_delay_secs=init_delay_secs,
-            compute_delay_secs=compute_delay_secs,
-        )
-        dag_handle = serve.run(serve_dag)
+
+    serve_dag = test_long_chain_deployment_graph(
+        chain_length,
+        init_delay_secs=init_delay_secs,
+        compute_delay_secs=compute_delay_secs,
+    )
+    dag_handle = serve.run(serve_dag)
+
+    # 1 + 2 + 3 + 4 + ... + chain_length
+    expected = ((1 + chain_length) * chain_length) / 2
+    assert ray.get(dag_handle.predict.remote(0)) == expected
+    loop = asyncio.get_event_loop()
+
+    throughput_mean, throughput_std = loop.run_until_complete(
+        benchmark_batch_throughput(dag_handle, expected, num_calls=num_calls)
+    )
+    latency_mean, latency_std = loop.run_until_complete(
+        benchmark_latency(dag_handle, expected, num_calls=num_calls)
+    )
+
+    results = {
+        "chain_length": chain_length,
+        "init_delay_secs": init_delay_secs,
+        "compute_delay_secs": compute_delay_secs,
+        "local_test": local_test,
+    }
+    results["perf_metrics"] = [
+        {
+            "perf_metric_name": "requests_per_s_avg",
+            "perf_metric_value": throughput_mean,
+            "perf_metric_type": "THROUGHPUT",
+        },
+        {
+            "perf_metric_name": "requests_per_s_std",
+            "perf_metric_value": throughput_std,
+            "perf_metric_type": "THROUGHPUT",
+        },
+        {
+            "perf_metric_name": "latency_per_s_avg",
+            "perf_metric_value": latency_mean,
+            "perf_metric_type": "LATENCY",
+        },
+        {
+            "perf_metric_name": "requests_per_s_std",
+            "perf_metric_value": latency_std,
+            "perf_metric_type": "LATENCY",
+        },
+    ]
+    save_test_results(results)
 
 
 if __name__ == "__main__":
