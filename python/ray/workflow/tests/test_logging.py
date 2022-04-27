@@ -1,13 +1,15 @@
+import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
-def test_basic_workflow_logs(tmp_path):
+def test_basic_workflow_logs(workflow_start_regular):
     script = f"""
 import os
 import ray
 from ray import workflow
 
-workflow.init("{tmp_path}")
+ray.init(address='auto')
+workflow.init("{ray.workflow.storage.get_global_storage().storage_url}")
 
 @workflow.step(name="f")
 def f():
@@ -28,13 +30,14 @@ f.step().run("wid")
     assert "Step status [SUCCESSFUL]\t[wid@f" in logs
 
 
-def test_chained_workflow_logs(tmp_path):
+def test_chained_workflow_logs(workflow_start_regular):
     script = f"""
 import os
 import ray
 from ray import workflow
 
-workflow.init("{tmp_path}")
+ray.init(address='auto')
+workflow.init("{ray.workflow.storage.get_global_storage().storage_url}")
 
 @workflow.step(name="f1")
 def f1():
@@ -60,13 +63,14 @@ f2.step(f1.step()).run("wid1")
     assert "Step status [SUCCESSFUL]\t[wid1@f2" in logs
 
 
-def test_dynamic_workflow_logs(tmp_path):
+def test_dynamic_workflow_logs(workflow_start_regular):
     script = f"""
 import os
 import ray
 from ray import workflow
 
-workflow.init("{tmp_path}")
+ray.init(address='auto')
+workflow.init("{ray.workflow.storage.get_global_storage().storage_url}")
 
 @workflow.step(name="f3")
 def f3(x):
@@ -92,13 +96,14 @@ f4.step(10).run("wid2")
     assert "Step status [SUCCESSFUL]\t[wid2@f4" in logs
 
 
-def test_virtual_actor_logs(tmp_path):
+def test_virtual_actor_logs(workflow_start_regular):
     script = f"""
 import os
 import ray
 from ray import workflow
 
-workflow.init("{tmp_path}")
+ray.init(address='auto')
+workflow.init("{ray.workflow.storage.get_global_storage().storage_url}")
 
 @workflow.virtual_actor
 class Counter:
