@@ -25,7 +25,7 @@ from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
-PIECES_PER_META_FETCH = 6
+PIECES_PER_META_FETCH = 18
 PARALLELIZE_META_FETCH_THRESHOLD = 24
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
