@@ -298,10 +298,13 @@ def _kubectl_port_forward(
 
     def terminate_process():
         process.terminate()
-        # Wait for the process to terminate,
+        # Wait 10 seconds for the process to terminate,
         # check that it returned the expected exit code.
-        assert process.wait() == -15
-        # (-15 means "I was terminated.")
+        # The wait of 10 seconds is excessive, but setting a timeout of any size
+        # makes us happier than if we waited forever.
+        exit_code = process.wait(timeout=10)
+        # -15 means "I was terminated."
+        assert exit_code == -15
         # Checking the exit code also cleans up the zombie entry
         # from the process table.
 
