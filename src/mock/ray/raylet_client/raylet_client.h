@@ -116,6 +116,10 @@ class MockResourceTrackingInterface : public ResourceTrackingInterface {
               RequestResourceReport,
               (const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              GetResourceLoad,
+              (const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback),
+              (override));
 };
 
 }  // namespace ray
@@ -205,6 +209,10 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(void,
               RequestResourceReport,
               (const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              GetResourceLoad,
+              (const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback),
               (override));
   MOCK_METHOD(void,
               ShutdownRaylet,
