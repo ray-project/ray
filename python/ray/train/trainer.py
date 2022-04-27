@@ -1,8 +1,10 @@
+import copy
 from datetime import datetime
 import logging
 import os
 from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
+import warnings
 
 import ray
 from ray.actor import ActorHandle
@@ -139,6 +141,16 @@ class Trainer:
         logdir: Optional[str] = None,
         max_retries: int = 3,
     ):
+        warnings.warn(
+            "The `ray.train.Trainer` API will be deprecated in Ray "
+            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+            "provide greater functionality than `ray.train.Trainer`, "
+            "and with a more flexible and easy-to-use API.",
+            PendingDeprecationWarning,
+            stacklevel=2,
+        )
+
         if num_workers <= 0:
             raise ValueError("`num_workers` must be a positive integer.")
 
@@ -152,6 +164,10 @@ class Trainer:
                 "GPU training, make sure to set `use_gpu` to True "
                 "when instantiating your Trainer."
             )
+
+        if resources_per_worker is not None:
+            # Copy this parameter to avoid mutating the user input
+            resources_per_worker = copy.deepcopy(resources_per_worker)
 
         self._num_workers = num_workers
         self._use_gpu = use_gpu

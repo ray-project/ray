@@ -321,7 +321,7 @@ def serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
     if SERVE_HANDLE_JSON_KEY not in d:
         raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")
 
-    return serve.api.internal_get_global_client().get_handle(
+    return serve.context.get_global_client().get_handle(
         d["deployment_name"],
         sync=d[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC,
         missing_ok=True,
