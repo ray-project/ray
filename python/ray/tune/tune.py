@@ -25,8 +25,12 @@ from ray.tune.progress_reporter import (
     JupyterNotebookReporter,
 )
 from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.registry import get_trainable_cls
-from ray.tune.schedulers import PopulationBasedTraining, PopulationBasedTrainingReplay
+from ray.tune.registry import get_trainable_cls, is_function_trainable
+from ray.tune.schedulers import (
+    PopulationBasedTraining,
+    PopulationBasedTrainingReplay,
+    ResourceChangingScheduler,
+)
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, SearchGenerator
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
@@ -44,7 +48,12 @@ from ray.tune.schedulers.util import (
 # fmt: on
 
 from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
+from ray.tune.syncer import (
+    SyncConfig,
+    set_sync_periods,
+    wait_for_sync,
+    validate_upload_dir,
+)
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -58,15 +67,42 @@ from ray.tune.utils.placement_groups import PlacementGroupFactory
 logger = logging.getLogger(__name__)
 
 
-def _check_default_resources_override(run_identifier):
-    if not isinstance(run_identifier, str):
-        # If obscure dtype, assume it is overridden.
+def _check_default_resources_override(
+    run_identifier: Union[Experiment, str, Type, Callable]
+) -> bool:
+    if isinstance(run_identifier, Experiment):
+        run_identifier = run_identifier.run_identifier
+
+    if isinstance(run_identifier, type):
+        if not issubclass(run_identifier, Trainable):
+            # If obscure dtype, assume it is overridden.
+            return True
+        trainable_cls = run_identifier
+    elif callable(run_identifier):
+        trainable_cls = run_identifier
+    elif isinstance(run_identifier, str):
+        trainable_cls = get_trainable_cls(run_identifier)
+    else:
+        # Default to True
         return True
-    trainable_cls = get_trainable_cls(run_identifier)
+
     return hasattr(trainable_cls, "default_resource_request") and (
         trainable_cls.default_resource_request.__code__
         != Trainable.default_resource_request.__code__
     )
+
+
+def _check_gpus_in_resources(
+    resources: Optional[Union[Dict, PlacementGroupFactory]]
+) -> bool:
+    if not resources:
+        return False
+
+    if isinstance(resources, PlacementGroupFactory):
+        return bool(resources.required_resources.get("GPU", None))
+
+    if isinstance(resources, dict):
+        return bool(resources.get("gpu", None))
 
 
 def _report_progress(
@@ -92,8 +128,8 @@ def run(
     name: Optional[str] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
-    stop: Union[None, Mapping, Stopper, Callable[[str, Mapping], bool]] = None,
-    time_budget_s: Union[None, int, float, datetime.timedelta] = None,
+    stop: Optional[Union[Mapping, Stopper, Callable[[str, Mapping], bool]]] = None,
+    time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None,
     config: Optional[Dict[str, Any]] = None,
     resources_per_trial: Union[
         None, Mapping[str, Union[float, int, Mapping]], PlacementGroupFactory
@@ -118,7 +154,7 @@ def run(
     restore: Optional[str] = None,
     server_port: Optional[int] = None,
     resume: Union[bool, str] = False,
-    reuse_actors: bool = False,
+    reuse_actors: Optional[bool] = None,
     trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
@@ -126,7 +162,6 @@ def run(
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     # Deprecated args
-    queue_trials: Optional[bool] = None,
     loggers: Optional[Sequence[Type[Logger]]] = None,
     _remote: Optional[bool] = None,
 ) -> ExperimentAnalysis:
@@ -170,7 +205,7 @@ def run(
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
             model to train. This may refer to the name of a built-on algorithm
-            (e.g. RLLib's DQN or PPO), a user-defined trainable
+            (e.g. RLlib's DQN or PPO), a user-defined trainable
             function or class, or the string identifier of a
             trainable function or class registered in the tune registry.
             If Experiment, then Tune will execute training based on
@@ -287,6 +322,8 @@ def run(
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
+            Defaults to ``True`` for function trainables and ``False`` for
+            class and registered trainables.
         trial_executor: Manage the execution of trials.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
@@ -311,27 +348,6 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
-
-    # To be removed in 1.9.
-    if queue_trials is not None:
-        raise DeprecationWarning(
-            "`queue_trials` has been deprecated and is replaced by "
-            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
-            "Per default at least one Trial is queued at all times, "
-            "so you likely don't need to change anything other than "
-            "removing this argument from your call to `tune.run()`"
-        )
-
-    # Starting deprecation in ray 1.10.
-    if os.environ.get("TUNE_TRIAL_RESULT_WAIT_TIME_S") is not None:
-        warnings.warn("`TUNE_TRIAL_RESULT_WAIT_TIME_S` is deprecated.")
-
-    if os.environ.get("TUNE_TRIAL_STARTUP_GRACE_PERIOD") is not None:
-        warnings.warn("`TUNE_TRIAL_STARTUP_GRACE_PERIOD` is deprecated.")
-
-    if os.environ.get("TUNE_PLACEMENT_GROUP_WAIT_S") is not None:
-        warnings.warn("`TUNE_PLACEMENT_GROUP_WAIT_S` is deprecated.")
-
     # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
     # remote_run_kwargs must be defined before any other
     # code is ran to ensure that at this point,
@@ -401,8 +417,8 @@ def run(
     all_start = time.time()
 
     if loggers:
-        # Raise DeprecationWarning in 1.9, remove in 1.10/1.11
-        warnings.warn(
+        # Deprecated: Remove in Ray > 1.13
+        raise DeprecationWarning(
             "The `loggers` argument is deprecated. Please pass the respective "
             "`LoggerCallback` classes to the `callbacks` argument instead. "
             "See https://docs.ray.io/en/latest/tune/api_docs/logging.html"
@@ -418,6 +434,7 @@ def run(
 
     config = config or {}
     sync_config = sync_config or SyncConfig()
+    validate_upload_dir(sync_config)
     set_sync_periods(sync_config)
 
     if num_samples == -1:
@@ -448,6 +465,33 @@ def run(
                 f"to 1 instead."
             )
         result_buffer_length = 1
+
+    # If reuse_actors is unset, default to False for string and class trainables,
+    # and default to True for everything else (i.e. function trainables)
+    if reuse_actors is None:
+        trainable = (
+            run_or_experiment.run_identifier
+            if isinstance(run_or_experiment, Experiment)
+            else run_or_experiment
+        )
+        reuse_actors = (
+            # Only default to True for function trainables that meet certain conditions
+            is_function_trainable(trainable)
+            and not (
+                # Changing resources requires restarting actors
+                scheduler
+                and isinstance(scheduler, ResourceChangingScheduler)
+            )
+            and not (
+                # If GPUs are requested we could run into problems with device memory
+                _check_gpus_in_resources(resources_per_trial)
+            )
+            and not (
+                # If the resource request is overridden, we don't know if GPUs
+                # will be requested, yet, so default to False
+                _check_default_resources_override(trainable)
+            )
+        )
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -576,9 +620,7 @@ def run(
         )
 
     # Create syncer callbacks
-    callbacks = create_default_callbacks(
-        callbacks, sync_config, metric=metric, loggers=loggers
-    )
+    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -609,17 +651,6 @@ def run(
         if resources_per_trial:
             runner.update_pending_trial_resources(resources_per_trial)
 
-    progress_reporter = progress_reporter or detect_reporter()
-
-    if not progress_reporter.set_search_properties(metric, mode):
-        raise ValueError(
-            "You passed a `metric` or `mode` argument to `tune.run()`, but "
-            "the reporter you are using was already instantiated with their "
-            "own `metric` and `mode` parameters. Either remove the arguments "
-            "from your reporter or from your call to `tune.run()`"
-        )
-    progress_reporter.set_total_samples(search_alg.total_samples)
-
     # Calls setup on callbacks
     runner.setup_experiments(
         experiments=experiments, total_num_samples=search_alg.total_samples
@@ -627,7 +658,7 @@ def run(
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
-        if isinstance(resources_per_trial, dict) and "gpu" in resources_per_trial:
+        if _check_gpus_in_resources(resources=resources_per_trial):
             # "gpu" is manually set.
             pass
         elif _check_default_resources_override(experiments[0].run_identifier):
@@ -645,31 +676,45 @@ def run(
             )
 
     original_handler = signal.getsignal(signal.SIGINT)
-    state = {signal.SIGINT: False}
+    state = {"signal": None}
 
-    def sigint_handler(sig, frame):
+    def signal_interrupt_tune_run(sig: int, frame):
         logger.warning(
-            "SIGINT received (e.g. via Ctrl+C), ending Ray Tune run. "
+            "Stop signal received (e.g. via SIGINT/Ctrl+C), ending Ray Tune run. "
             "This will try to checkpoint the experiment state one last time. "
-            "Press CTRL+C one more time (or send SIGINT/SIGKILL/SIGTERM) "
+            "Press CTRL+C (or send SIGINT/SIGKILL/SIGTERM) "
             "to skip. "
         )
-        state[signal.SIGINT] = True
+        state["signal"] = sig
         # Restore original signal handler to react to future SIGINT signals
         signal.signal(signal.SIGINT, original_handler)
 
     # We should only install the handler when it is safe to do so.
     # When tune.run() is called from worker thread, signal.signal will
     # fail.
+    allow_signal_catching = True
     if threading.current_thread() != threading.main_thread():
-        os.environ["TUNE_DISABLE_SIGINT_HANDLER"] = "1"
+        allow_signal_catching = False
 
-    if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
-        signal.signal(signal.SIGINT, sigint_handler)
+    if allow_signal_catching:
+        if not int(os.getenv("TUNE_DISABLE_SIGINT_HANDLER", "0")):
+            signal.signal(signal.SIGINT, signal_interrupt_tune_run)
+
+        # Always register SIGUSR1 if available (not available e.g. on Windows)
+        if hasattr(signal, "SIGUSR1"):
+            signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
+
+    progress_reporter = progress_reporter or detect_reporter()
 
     tune_start = time.time()
-    progress_reporter.set_start_time(tune_start)
-    while not runner.is_finished() and not state[signal.SIGINT]:
+
+    progress_reporter.setup(
+        start_time=tune_start,
+        total_samples=search_alg.total_samples,
+        metric=metric,
+        mode=mode,
+    )
+    while not runner.is_finished() and not state["signal"]:
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
@@ -692,7 +737,7 @@ def run(
             incomplete_trials += [trial]
 
     if incomplete_trials:
-        if raise_on_failed_trial and not state[signal.SIGINT]:
+        if raise_on_failed_trial and not state["signal"]:
             raise TuneError("Trials did not complete", incomplete_trials)
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
@@ -704,7 +749,7 @@ def run(
             f"({tune_taken:.2f} seconds for the tuning loop)."
         )
 
-    if state[signal.SIGINT]:
+    if state["signal"]:
         logger.warning(
             "Experiment has been interrupted, but the most recent state was "
             "saved. You can continue running this experiment by passing "
@@ -729,12 +774,11 @@ def run_experiments(
     verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
-    reuse_actors: bool = False,
+    reuse_actors: Optional[bool] = None,
     trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
     # Deprecated args.
-    queue_trials: Optional[bool] = None,
     callbacks: Optional[Sequence[Callback]] = None,
     _remote: Optional[bool] = None,
 ):
@@ -753,16 +797,6 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
-    # To be removed in 1.9.
-    if queue_trials is not None:
-        raise DeprecationWarning(
-            "`queue_trials` has been deprecated and is replaced by "
-            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
-            "Per default at least one Trial is queued at all times, "
-            "so you likely don't need to change anything other than "
-            "removing this argument from your call to `tune.run()`"
-        )
-
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 

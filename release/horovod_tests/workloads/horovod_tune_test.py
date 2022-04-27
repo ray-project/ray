@@ -14,7 +14,7 @@ from ray.tune.integration.horovod import (
     DistributedTrainableCreator,
     distributed_checkpoint_dir,
 )
-from ray.util.sgd.torch.resnet import ResNet18
+from ray.util.ml_utils.resnet import ResNet18
 
 from ray.tune.utils.release_test_util import ProgressCallback
 

@@ -29,8 +29,11 @@ observation space. Thereby, the following simple rules apply:
 
 - Discrete observations are one-hot encoded, e.g. ``Discrete(3) and value=1 -> [0, 1, 0]``.
 
-- MultiDiscrete observations are "multi" one-hot encoded,
-  e.g. ``MultiDiscrete([3, 4]) and value=[1, 0] -> [0 1 0 1 0 0 0]``.
+- MultiDiscrete observations are encoded by one-hot encoding each discrete element
+  and then concatenating the respective one-hot encoded vectors. 
+  e.g. ``MultiDiscrete([3, 4]) and value=[1, 3] -> [0 1 0 0 0 0 1]`` because
+  the first ``1`` is encoded as ``[0 1 0]`` and the second ``3`` is encoded as
+  ``[0 0 0 1]``; these two vectors are then concatenated to ``[0 1 0 0 0 0 1]``.
 
 - Tuple and Dict observations are flattened, thereby, Discrete and MultiDiscrete
   sub-spaces are handled as described above.

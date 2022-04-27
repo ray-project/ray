@@ -289,9 +289,7 @@ class OptunaSearch(Searcher):
         evaluated_rewards: Optional[List] = None,
     ):
         assert ot is not None, "Optuna must be installed! Run `pip install optuna`."
-        super(OptunaSearch, self).__init__(
-            metric=metric, mode=mode, max_concurrent=None, use_early_stopped_trials=None
-        )
+        super(OptunaSearch, self).__init__(metric=metric, mode=mode)
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
@@ -326,6 +324,8 @@ class OptunaSearch(Searcher):
 
         self._sampler = sampler
         self._seed = seed
+
+        self._completed_trials = set()
 
         self._ot_trials = {}
         self._ot_study = None
@@ -474,6 +474,12 @@ class OptunaSearch(Searcher):
             # Optuna doesn't support incremental results
             # for multi-objective optimization
             return
+        if trial_id in self._completed_trials:
+            logger.warning(
+                f"Received additional result for trial {trial_id}, but "
+                f"it already finished. Result: {result}"
+            )
+            return
         metric = result[self.metric]
         step = result[TRAINING_ITERATION]
         ot_trial = self._ot_trials[trial_id]
@@ -482,6 +488,13 @@ class OptunaSearch(Searcher):
     def on_trial_complete(
         self, trial_id: str, result: Optional[Dict] = None, error: bool = False
     ):
+        if trial_id in self._completed_trials:
+            logger.warning(
+                f"Received additional completion for trial {trial_id}, but "
+                f"it already finished. Result: {result}"
+            )
+            return
+
         ot_trial = self._ot_trials[trial_id]
 
         if result:
@@ -499,8 +512,10 @@ class OptunaSearch(Searcher):
                 ot_trial_state = OptunaTrialState.PRUNED
         try:
             self._ot_study.tell(ot_trial, val, state=ot_trial_state)
-        except ValueError as exc:
+        except Exception as exc:
             logger.warning(exc)  # E.g. if NaN was reported
+
+        self._completed_trials.add(trial_id)
 
     def add_evaluated_point(
         self,

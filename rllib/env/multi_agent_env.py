@@ -41,7 +41,7 @@ class MultiAgentEnv(gym.Env):
         if not hasattr(self, "_agent_ids"):
             self._agent_ids = set()
 
-        # do the action and observation spaces map from agent ids to spaces
+        # Do the action and observation spaces map from agent ids to spaces
         # for the individual agents?
         if not hasattr(self, "_spaces_in_preferred_format"):
             self._spaces_in_preferred_format = None
@@ -189,7 +189,6 @@ class MultiAgentEnv(gym.Env):
                 if agent_id != "__all__"
             }
         logger.warning("action_space_sample() has not been implemented")
-        del agent_ids
         return {}
 
     @ExperimentalAPI
@@ -221,7 +220,6 @@ class MultiAgentEnv(gym.Env):
             samples = {agent_id: samples[agent_id] for agent_id in agent_ids}
             return samples
         logger.warning("observation_space_sample() has not been implemented")
-        del agent_ids
         return {}
 
     @PublicAPI
@@ -480,18 +478,17 @@ class MultiAgentEnvWrapper(BaseEnv):
     def __init__(
         self,
         make_env: Callable[[int], EnvType],
-        existing_envs: MultiAgentEnv,
+        existing_envs: List["MultiAgentEnv"],
         num_envs: int,
     ):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
-            make_env (Callable[[int], EnvType]): Factory that produces a new
-                MultiAgentEnv instance. Must be defined, if the number of
-                existing envs is less than num_envs.
-            existing_envs (List[MultiAgentEnv]): List of already existing
-                multi-agent envs.
-            num_envs (int): Desired num multiagent envs to have at the end in
+            make_env: Factory that produces a new MultiAgentEnv instance taking the
+                vector index as only call argument.
+                Must be defined, if the number of existing envs is less than num_envs.
+            existing_envs: List of already existing multi-agent envs.
+            num_envs: Desired num multiagent envs to have at the end in
                 total. This will include the given (already created)
                 `existing_envs`.
         """
@@ -505,7 +502,6 @@ class MultiAgentEnvWrapper(BaseEnv):
             assert isinstance(env, MultiAgentEnv)
         self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
         self._unwrapped_env = self.envs[0].unwrapped
-        self._agent_ids = self._unwrapped_env.get_agent_ids()
 
     @override(BaseEnv)
     def poll(
@@ -599,7 +595,7 @@ class MultiAgentEnvWrapper(BaseEnv):
 
     @override(BaseEnv)
     def get_agent_ids(self) -> Set[AgentID]:
-        return self._agent_ids
+        return self.envs[0].get_agent_ids()
 
 
 class _MultiAgentEnvState:

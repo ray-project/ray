@@ -1,7 +1,7 @@
 import random
 import sys
 import heapq
-from typing import Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
+from typing import Callable, Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -88,6 +88,9 @@ class SimpleBlockAccessor(BlockAccessor):
 
         return pyarrow.Table.from_pandas(self.to_pandas())
 
+    def to_block(self) -> List[T]:
+        return self._items
+
     def size_bytes(self) -> int:
         return sys.getsizeof(self._items)
 
@@ -125,6 +128,103 @@ class SimpleBlockAccessor(BlockAccessor):
         if key is None:
             return ret
         return [key(x) for x in ret]
+
+    def count(self, on: KeyFn) -> Optional[U]:
+        if on is not None and not callable(on):
+            raise ValueError(
+                "on must be a callable or None when aggregating on Simple blocks, but "
+                f"got: {type(on)}."
+            )
+
+        if self.num_rows() == 0:
+            return None
+
+        count = 0
+        for r in self.iter_rows():
+            if on is not None:
+                r = on(r)
+            if r is not None:
+                count += 1
+        return count
+
+    def _apply_accum(
+        self,
+        init: AggType,
+        accum: Callable[[AggType, T], AggType],
+        on: KeyFn,
+        ignore_nulls: bool,
+    ) -> Optional[U]:
+        """Helper providing null handling around applying an aggregation."""
+        if on is not None and not callable(on):
+            raise ValueError(
+                "on must be a callable or None when aggregating on Simple blocks, but "
+                f"got: {type(on)}."
+            )
+
+        if self.num_rows() == 0:
+            return None
+
+        has_data = False
+        a = init
+        for r in self.iter_rows():
+            if on is not None:
+                r = on(r)
+            if r is None:
+                if ignore_nulls:
+                    continue
+                else:
+                    return None
+            else:
+                has_data = True
+                a = accum(a, r)
+        return a if has_data else None
+
+    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        return self._apply_accum(0, lambda a, r: a + r, on, ignore_nulls)
+
+    def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        return self._apply_accum(float("inf"), min, on, ignore_nulls)
+
+    def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        return self._apply_accum(float("-inf"), max, on, ignore_nulls)
+
+    def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        return self._apply_accum(
+            [0, 0],
+            lambda a, r: [a[0] + r, a[1] + 1],
+            on,
+            ignore_nulls,
+        )
+
+    def std(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        def accum(a: List[float], r: float) -> List[float]:
+            # Accumulates the current count, the current mean, and the sum of
+            # squared differences from the current mean (M2).
+            M2, mean, count = a
+            count += 1
+            delta = r - mean
+            mean += delta / count
+            delta2 = r - mean
+            M2 += delta * delta2
+            return [M2, mean, count]
+
+        return self._apply_accum([0, 0, 0], accum, on, ignore_nulls)
+
+    def sum_of_squared_diffs_from_mean(
+        self,
+        on: KeyFn,
+        ignore_nulls: bool,
+        mean: Optional[U] = None,
+    ) -> Optional[U]:
+        if mean is None:
+            # If precomputed mean not given, we compute it ourselves.
+            mean = self.mean(on, ignore_nulls)
+        return self._apply_accum(
+            0,
+            lambda a, r: a + (r - mean) ** 2,
+            on,
+            ignore_nulls,
+        )
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
@@ -181,45 +281,57 @@ class SimpleBlockAccessor(BlockAccessor):
             aggregation.
             If key is None then the k element of tuple is omitted.
         """
-        key_fn = key if key else lambda r: None
-        iter = self.iter_rows()
-        next_row = None
-        # Use a bool to indicate if next_row is valid
-        # instead of checking if next_row is None
-        # since a row can have None value.
-        has_next_row = False
-        ret = []
-        while True:
-            try:
-                if not has_next_row:
-                    next_row = next(iter)
-                    has_next_row = True
-                next_key = key_fn(next_row)
+        if key is not None and not callable(key):
+            raise ValueError(
+                "key must be a callable or None when aggregating on Simple blocks, but "
+                f"got: {type(key)}."
+            )
 
-                def gen():
-                    nonlocal iter
-                    nonlocal next_row
-                    nonlocal has_next_row
-                    assert has_next_row
-                    while key_fn(next_row) == next_key:
-                        yield next_row
+        def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
+            """Creates an iterator over zero-copy group views."""
+            if key is None:
+                # Global aggregation consists of a single "group", so we short-circuit.
+                yield None, self.to_block()
+                return
+
+            start = end = 0
+            iter = self.iter_rows()
+            next_row = None
+            # Use a bool to indicate if next_row is valid
+            # instead of checking if next_row is None
+            # since a row can have None value.
+            has_next_row = False
+            while True:
+                try:
+                    if not has_next_row:
+                        next_row = next(iter)
+                        has_next_row = True
+                    next_key = key(next_row)
+                    while key(next_row) == next_key:
+                        end += 1
                         try:
                             next_row = next(iter)
                         except StopIteration:
                             has_next_row = False
                             next_row = None
                             break
+                    yield next_key, self.slice(start, end, copy=False)
+                    start = end
+                except StopIteration:
+                    break
 
-                accumulators = [agg.init(next_key) for agg in aggs]
-                for r in gen():
-                    for i in range(len(aggs)):
-                        accumulators[i] = aggs[i].accumulate(accumulators[i], r)
-                if key is None:
-                    ret.append(tuple(accumulators))
-                else:
-                    ret.append((next_key,) + tuple(accumulators))
-            except StopIteration:
-                break
+        ret = []
+        for group_key, group_view in iter_groups():
+            # Aggregate.
+            accumulators = [agg.init(group_key) for agg in aggs]
+            for i in range(len(aggs)):
+                accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
+
+            # Build the row.
+            if key is None:
+                ret.append(tuple(accumulators))
+            else:
+                ret.append((group_key,) + tuple(accumulators))
         return ret
 
     @staticmethod

@@ -6,12 +6,14 @@ import sys
 import signal
 import pytest
 import requests
+from tempfile import NamedTemporaryFile
 
 import ray
 from ray import serve
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray._private.test_utils import wait_for_condition
-from ray.serve.api import Application
+from ray.serve.application import Application
+from ray.serve.deployment_graph import RayServeDAGHandle
 
 
 def ping_endpoint(endpoint: str, params: str = ""):
@@ -207,7 +209,7 @@ def test_status(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file_name])
     status_response = subprocess.check_output(["serve", "status"])
-    statuses = json.loads(status_response)["statuses"]
+    statuses = json.loads(status_response)
 
     expected_deployments = {"shallow", "deep", "one"}
     for status in statuses:
@@ -370,6 +372,45 @@ def test_run_runtime_env(ray_start_stop):
     wait_for_condition(lambda: ping_endpoint("one") == "2", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
+
+
+@serve.deployment
+def global_f(*args):
+    return "wonderful world"
+
+
+@serve.deployment
+class NoArgDriver:
+    def __init__(self, dag: RayServeDAGHandle):
+        self.dag = dag
+
+    async def __call__(self):
+        return await self.dag.remote()
+
+
+TestBuildFNode = global_f.bind()
+TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
+def test_build(ray_start_stop, node):
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+
+        # Build an app
+        subprocess.check_output(
+            [
+                "serve",
+                "build",
+                f"ray.serve.tests.test_cli.{node}",
+                "-o",
+                tmp.name,
+            ]
+        )
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        assert ping_endpoint("") == "wonderful world"
+        subprocess.check_output(["serve", "delete", "-y"])
+        assert ping_endpoint("") == "connection error"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

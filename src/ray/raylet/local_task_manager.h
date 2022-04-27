@@ -160,7 +160,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
   /// resource manager.
   /// Calculate normal task resources.
-  ResourceSet CalcNormalTaskResources() const;
+  ResourceRequest CalcNormalTaskResources() const;
 
   void SetWorkerBacklog(SchedulingClass scheduling_class,
                         const WorkerID &worker_id,
@@ -183,6 +183,10 @@ class LocalTaskManager : public ILocalTaskManager {
   void DebugStr(std::stringstream &buffer) const override;
 
   size_t GetNumTaskSpilled() const override { return num_task_spilled_; }
+  size_t GetNumWaitingTaskSpilled() const override { return num_waiting_task_spilled_; }
+  size_t GetNumUnschedulableTaskSpilled() const override {
+    return num_unschedulable_task_spilled_;
+  }
 
  private:
   struct SchedulingClassInfo;
@@ -376,6 +380,8 @@ class LocalTaskManager : public ILocalTaskManager {
   const int64_t sched_cls_cap_max_ms_;
 
   size_t num_task_spilled_ = 0;
+  size_t num_waiting_task_spilled_ = 0;
+  size_t num_unschedulable_task_spilled_ = 0;
 
   friend class SchedulerResourceReporter;
   friend class ClusterTaskManagerTest;

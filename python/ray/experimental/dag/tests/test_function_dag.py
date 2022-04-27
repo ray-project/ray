@@ -111,8 +111,10 @@ def test_invalid_task_options(shared_ray_instance):
 
     # Ensure current DAG is executable
     assert ray.get(dag.execute()) == 4
-    invalid_dag = b.options(num_cpus=-1).bind(a_ref)
-    with pytest.raises(ValueError, match=".*Resource quantities may not be negative.*"):
+    with pytest.raises(
+        ValueError, match=r".*only accepts None, 0 or a positive number.*"
+    ):
+        invalid_dag = b.options(num_cpus=-1).bind(a_ref)
         ray.get(invalid_dag.execute())
 
 
@@ -168,6 +170,43 @@ def test_nested_args(shared_ray_instance):
 
     assert ray.get(dag.execute()) == 7
     assert ray.get(ct.get.remote()) == 4
+
+
+def test_dag_options(shared_ray_instance):
+    @ray.remote(num_gpus=100)
+    def foo():
+        pass
+
+    assert foo.bind().get_options() == {"num_gpus": 100}
+    assert foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
+    assert foo.options(num_cpus=500).bind().get_options() == {
+        "num_gpus": 100,
+        "num_cpus": 500,
+    }
+
+    @ray.remote
+    def bar():
+        pass
+
+    assert bar.bind().get_options() == {}
+    assert bar.options(num_gpus=100).bind().get_options() == {"num_gpus": 100}
+
+    @ray.remote(num_gpus=100)
+    class Foo:
+        pass
+
+    assert Foo.bind().get_options() == {"num_gpus": 100}
+    assert Foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
+    assert Foo.options(num_cpus=500).bind().get_options() == {
+        "num_gpus": 100,
+        "num_cpus": 500,
+    }
+
+    @ray.remote
+    class Bar:
+        pass
+
+    assert Bar.bind().get_options() == {}
 
 
 if __name__ == "__main__":

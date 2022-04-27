@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -34,7 +35,10 @@ def install_cluster_env_packages(cluster_env: Dict[Any, Any]):
 
     for package in packages:
         subprocess.check_output(
-            f"pip install -U {package}", shell=True, env=os.environ, text=True
+            f"pip install -U {shlex.quote(package)}",
+            shell=True,
+            env=os.environ,
+            text=True,
         )
 
 

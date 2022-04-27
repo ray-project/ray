@@ -23,17 +23,23 @@ from ray.train.utils import get_address_and_port
 from ray.util import PublicAPI
 
 import numpy as np
-import torch
-from torch.cuda.amp import autocast, GradScaler
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import (
-    DistributedSampler,
-    DataLoader,
-    IterableDataset,
-    SequentialSampler,
-    RandomSampler,
-)
+
+try:
+    import torch
+    from torch.cuda.amp import autocast, GradScaler
+    import torch.distributed as dist
+    from torch.nn.parallel import DistributedDataParallel
+    from torch.utils.data import (
+        DistributedSampler,
+        DataLoader,
+        IterableDataset,
+        SequentialSampler,
+        RandomSampler,
+    )
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "PyTorch isn't installed. To install PyTorch, run 'pip install torch'"
+    )
 
 try:
     from torch.profiler import profile
@@ -241,8 +247,14 @@ class TorchAccelerator(Accelerator):
     def get_device(self) -> torch.device:
         """Gets the correct torch device to use for training."""
         if torch.cuda.is_available():
-            rank = train.local_rank()
-            device = torch.device(f"cuda:{rank}")
+            gpu_ids = ray.get_gpu_ids()
+            if len(gpu_ids) > 0:
+                device_id = gpu_ids[0]
+            else:
+                # If called on the driver or outside of Ray Train, return the
+                # 0th device.
+                device_id = 0
+            device = torch.device(f"cuda:{device_id}")
         else:
             device = torch.device("cpu")
 
@@ -492,7 +504,13 @@ class _WrappedDataLoader(DataLoader):
         # the tensor might be freed once it is no longer used by
         # the creator stream.
         for i in item:
-            i.record_stream(curr_stream)
+            # The Pytorch DataLoader has no restrictions on what is outputted for
+            # each batch. We should only ``record_stream`` if the item has the
+            # ability to do so.
+            try:
+                i.record_stream(curr_stream)
+            except AttributeError:
+                pass
 
     def __len__(self):
         return len(self._dataloader)

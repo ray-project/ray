@@ -100,117 +100,6 @@ class WandbIntegrationTest(unittest.TestCase):
         if WANDB_ENV_VAR in os.environ:
             del os.environ[WANDB_ENV_VAR]
 
-    def testWandbLegacyLoggerConfig(self):
-        trial_config = {"par1": 4, "par2": 9.12345678}
-        trial = Trial(
-            trial_config, 0, "trial_0", "trainable", PlacementGroupFactory([{"CPU": 1}])
-        )
-
-        if WANDB_ENV_VAR in os.environ:
-            del os.environ[WANDB_ENV_VAR]
-
-        # Needs at least a project
-        with self.assertRaises(ValueError):
-            logger = WandbTestLogger(trial_config, "/tmp", trial)
-
-        # No API key
-        trial_config["wandb"] = {"project": "test_project"}
-        with self.assertRaises(ValueError):
-            logger = WandbTestLogger(trial_config, "/tmp", trial)
-
-        # API Key in config
-        trial_config["wandb"] = {"project": "test_project", "api_key": "1234"}
-        logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertEqual(os.environ[WANDB_ENV_VAR], "1234")
-
-        logger.close()
-        del os.environ[WANDB_ENV_VAR]
-
-        # API Key file
-        with tempfile.NamedTemporaryFile("wt") as fp:
-            fp.write("5678")
-            fp.flush()
-
-            trial_config["wandb"] = {"project": "test_project", "api_key_file": fp.name}
-
-            logger = WandbTestLogger(trial_config, "/tmp", trial)
-            self.assertEqual(os.environ[WANDB_ENV_VAR], "5678")
-
-        logger.close()
-        del os.environ[WANDB_ENV_VAR]
-
-        # API Key in env
-        os.environ[WANDB_ENV_VAR] = "9012"
-        trial_config["wandb"] = {"project": "test_project"}
-        logger = WandbTestLogger(trial_config, "/tmp", trial)
-        logger.close()
-
-        # From now on, the API key is in the env variable.
-
-        # Default configuration
-        trial_config["wandb"] = {"project": "test_project"}
-
-        logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertEqual(logger.trial_process.kwargs["project"], "test_project")
-        self.assertEqual(logger.trial_process.kwargs["id"], trial.trial_id)
-        self.assertEqual(logger.trial_process.kwargs["name"], trial.trial_name)
-        self.assertEqual(logger.trial_process.kwargs["group"], trial.trainable_name)
-        self.assertIn("config", logger.trial_process._exclude)
-
-        logger.close()
-
-        # log config.
-        trial_config["wandb"] = {"project": "test_project", "log_config": True}
-
-        logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertNotIn("config", logger.trial_process._exclude)
-        self.assertNotIn("metric", logger.trial_process._exclude)
-
-        logger.close()
-
-        # Exclude metric.
-        trial_config["wandb"] = {"project": "test_project", "excludes": ["metric"]}
-
-        logger = WandbTestLogger(trial_config, "/tmp", trial)
-        self.assertIn("config", logger.trial_process._exclude)
-        self.assertIn("metric", logger.trial_process._exclude)
-
-        logger.close()
-
-    def testWandbLegacyLoggerReporting(self):
-        trial_config = {"par1": 4, "par2": 9.12345678}
-        trial = Trial(
-            trial_config, 0, "trial_0", "trainable", PlacementGroupFactory([{"CPU": 1}])
-        )
-
-        trial_config["wandb"] = {
-            "project": "test_project",
-            "api_key": "1234",
-            "excludes": ["metric2"],
-        }
-        logger = WandbTestLogger(trial_config, "/tmp", trial)
-
-        r1 = {
-            "metric1": 0.8,
-            "metric2": 1.4,
-            "metric3": np.asarray(32.0),
-            "metric4": np.float32(32.0),
-            "const": "text",
-            "config": trial_config,
-        }
-
-        logger.on_result(r1)
-
-        logged = logger.trial_process.logs.get(timeout=10)
-        self.assertIn("metric1", logged)
-        self.assertNotIn("metric2", logged)
-        self.assertIn("metric3", logged)
-        self.assertIn("metric4", logged)
-        self.assertNotIn("const", logged)
-        self.assertNotIn("config", logged)
-
-        logger.close()
-
     def testWandbLoggerConfig(self):
         trial_config = {"par1": 4, "par2": 9.12345678}
         trial = Trial(
@@ -437,8 +326,8 @@ class WandbIntegrationTest(unittest.TestCase):
         self.assertEqual(wrapped.wandb.kwargs["id"], trial.trial_id)
         self.assertEqual(wrapped.wandb.kwargs["name"], trial.trial_name)
 
-    def testWandbMixinRllib(self):
-        """Test compatibility with RLLib configuration dicts"""
+    def testWandbMixinRLlib(self):
+        """Test compatibility with RLlib configuration dicts"""
         # Local import to avoid tune dependency on rllib
         try:
             from ray.rllib.agents.ppo import PPOTrainer

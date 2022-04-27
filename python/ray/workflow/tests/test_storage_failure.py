@@ -12,45 +12,45 @@ from ray.workflow.storage.filesystem import FilesystemStorageImpl
 from ray.workflow.tests.utils import _alter_storage
 
 
-@workflow.step
+@ray.remote
 def pass_1(x: str, y: str):
     return sha1((x + y + "1").encode()).hexdigest()
 
 
-@workflow.step
+@ray.remote
 def pass_2(x: str, y: str):
     if sha1((x + y + "_2").encode()).hexdigest() > x:
         return sha1((x + y + "2").encode()).hexdigest()
-    return pass_1.step(x, y)
+    return workflow.continuation(pass_1.bind(x, y))
 
 
-@workflow.step
+@ray.remote
 def pass_3(x: str, y: str):
     if sha1((x + y + "_3").encode()).hexdigest() > x:
         return sha1((x + y + "3").encode()).hexdigest()
-    return pass_2.step(x, y)
+    return workflow.continuation(pass_2.bind(x, y))
 
 
-@workflow.step
+@ray.remote
 def merge(x0: str, x1: str, x2: str) -> str:
     return sha1((x0 + x1 + x2).encode()).hexdigest()
 
 
-@workflow.step
+@ray.remote
 def scan(x0: str, x1: str, x2: str):
     x0 = sha1((x0 + x2).encode()).hexdigest()
     x1 = sha1((x1 + x2).encode()).hexdigest()
     x2 = sha1((x0 + x1 + x2).encode()).hexdigest()
-    y0, y1, y2 = pass_1.step(x0, x1), pass_2.step(x1, x2), pass_3.step(x2, x0)
-    return merge.step(y0, y1, y2)
+    y0, y1, y2 = pass_1.bind(x0, x1), pass_2.bind(x1, x2), pass_3.bind(x2, x0)
+    return workflow.continuation(merge.bind(y0, y1, y2))
 
 
 def construct_workflow(length: int):
     results = ["a", "b"]
     for i in range(length):
         x0, x1, x2 = results[-2], results[-1], str(i)
-        results.append(scan.step(x0, x1, x2))
-    return results[-1]
+        results.append(scan.bind(x0, x1, x2))
+    return workflow.create(results[-1])
 
 
 def _locate_initial_commit(debug_store: DebugStorage) -> int:

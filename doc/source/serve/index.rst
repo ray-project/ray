@@ -24,8 +24,7 @@ Ray Serve is an easy-to-use scalable model serving library built on Ray.  Ray Se
   :ref:`Tensorflow, and Keras <serve-tensorflow-tutorial>`, to :ref:`Scikit-Learn <serve-sklearn-tutorial>` models, to arbitrary Python business logic.
 - **Python-first**: Configure your model serving declaratively in pure Python, without needing YAML or JSON configs.
 
-Ray Serve enables :ref:`seamless multi-models inference pipeline (also known as model composition) <serve-pipeline-api>`. You can
-write your inference pipeline all in code and integrate business logic with ML.
+Ray Serve enables composing multiple ML models into a :ref:`deployment graph <serve-deployment-graph>`. This allows you to write a complex inference service consisting of multiple ML models and business logic all in Python code.
 
 Since Ray Serve is built on Ray, it allows you to easily scale to many machines, both in your datacenter and in the cloud.
 
@@ -36,12 +35,12 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 2. Alternatively, call them from :ref:`within your existing Python web server <serve-web-server-integration-tutorial>` using the Python-native :ref:`servehandle-api`.
 
 .. note::
-  Serve recently added an experimental first-class API for model composition (pipelines).
-  Please take a look at the :ref:`Pipeline API <serve-pipeline-api>` and try it out!
+  Serve recently added an experimental API for building deployment graphs of multiple models.
+  Please take a look at the :ref:`Deployment Graph API <serve-deployment-graph>` and try it out!
 
 .. tip::
   Chat with Ray Serve users and developers on our `forum <https://discuss.ray.io/>`_!
- 
+
 .. _serve_quickstart:
 
 Ray Serve Quickstart
@@ -85,10 +84,10 @@ Next, start the Ray Serve runtime:
 
 .. warning::
 
-  When the Python script exits, Ray Serve will shut down.  
+  When the Python script exits, Ray Serve will shut down.
   If you would rather keep Ray Serve running in the background you can use ``serve.start(detached=True)`` (see :doc:`deployment` for details).
 
-Now we will define a simple Counter class. The goal is to serve this class behind an HTTP endpoint using Ray Serve.  
+Now we will define a simple Counter class. The goal is to serve this class behind an HTTP endpoint using Ray Serve.
 
 By default, Ray Serve offers a simple HTTP proxy that will send requests to the class' ``__call__`` method. The argument to this method will be a Starlette ``Request`` object.
 
@@ -120,7 +119,7 @@ In order to deploy this, we simply need to call ``Counter.deploy()``.
 
   Deployments can be configured to improve performance, for example by increasing the number of replicas of the class being served in parallel.  For details, see :ref:`configuring-a-deployment`.
 
-Now that our deployment is up and running, let's test it out by making a query over HTTP.  
+Now that our deployment is up and running, let's test it out by making a query over HTTP.
 In your browser, simply visit ``http://127.0.0.1:8000/Counter``, and you should see the output ``{"count": 1"}``.
 If you keep refreshing the page, the count should increase, as expected.
 
@@ -177,7 +176,7 @@ Note that the count has been reset to zero because the new version of ``Counter`
   {"count": 0}
 
 Congratulations, you just built and ran your first Ray Serve application! You should now have enough context to dive into the :doc:`core-apis` to get a deeper understanding of Ray Serve.
-For more interesting example applications, including integrations with popular machine learning frameworks and Python web servers, be sure to check out :doc:`tutorials/index`. 
+For more interesting example applications, including integrations with popular machine learning frameworks and Python web servers, be sure to check out :doc:`tutorials/index`.
 For a high-level view of the architecture underlying Ray Serve, see :doc:`architecture`.
 
 Why Ray Serve?
@@ -206,7 +205,7 @@ When should I use Ray Serve?
 
 Ray Serve is a flexible tool that's easy to use for deploying, operating, and monitoring Python-based machine learning applications.
 Ray Serve excels when you want to mix business logic with ML models and scaling out in production is a necessity. This might be because of large-scale batch processing
-requirements or because you want to scale up a model pipeline consisting of many individual models with different performance properties.
+requirements or because you want to scale up a deployment graph consisting of many individual models with different performance properties.
 
 If you plan on running on multiple machines, Ray Serve will serve you well!
 

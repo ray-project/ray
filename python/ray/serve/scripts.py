@@ -5,6 +5,7 @@ import pathlib
 import click
 import time
 import sys
+from typing import Optional, Union
 import yaml
 
 import ray
@@ -20,10 +21,11 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.autoscaler._private.cli_logger import cli_logger
-from ray.serve.api import (
-    Application,
-    get_deployment_statuses,
-    serve_application_status_to_schema,
+from ray.serve.api import build as build_app
+from ray.serve.application import Application
+from ray.serve.deployment_graph import (
+    FunctionNode,
+    ClassNode,
 )
 
 APP_DIR_HELP_STR = (
@@ -138,7 +140,7 @@ def shutdown(address: str, namespace: str):
         address=address,
         namespace=namespace,
     )
-    serve.api._connect()
+    serve.context._connect()
     serve.shutdown()
 
 
@@ -152,6 +154,7 @@ def shutdown(address: str, namespace: str):
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
+    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
@@ -183,7 +186,7 @@ def deploy(config_file_name: str, address: str):
     short_help="Run a Serve app.",
     help=(
         "Runs the Serve app from the specified import path or YAML config.\n"
-        "Any import path must lead to an Application or DeploymentNode object. "
+        "Any import path must lead to an Application or ClassNode object. "
         "By default, this will block and periodically log status. If you "
         "Ctrl-C the command, it will tear down the app."
     ),
@@ -279,12 +282,12 @@ def run(
     app_or_node = None
     if pathlib.Path(config_or_import_path).is_file():
         config_path = config_or_import_path
-        cli_logger.print(f"Loading app from config file: '{config_path}'.")
+        cli_logger.print(f"Deploying from config file: '{config_path}'.")
         with open(config_path, "r") as config_file:
             app_or_node = Application.from_yaml(config_file)
     else:
         import_path = config_or_import_path
-        cli_logger.print(f"Loading app from import path: '{import_path}'.")
+        cli_logger.print(f"Deploying from import path: '{import_path}'.")
         app_or_node = import_attr(import_path)
 
     # Setting the runtime_env here will set defaults for the deployments.
@@ -292,14 +295,11 @@ def run(
 
     try:
         serve.run(app_or_node, host=host, port=port)
-        cli_logger.success("Deployed successfully!\n")
+        cli_logger.success("Deployed successfully.")
 
         if blocking:
             while True:
-                statuses = serve_application_status_to_schema(
-                    get_deployment_statuses()
-                ).json(indent=4)
-                cli_logger.info(f"{statuses}")
+                # Block, letting Ray print logs to the terminal.
                 time.sleep(10)
 
     except KeyboardInterrupt:
@@ -310,6 +310,7 @@ def run(
 
 @cli.command(
     help="Get the current config of the running Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -349,11 +350,12 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(json.dumps(app_status, indent=4))
+        print(json.dumps(app_status["statuses"], indent=4))
 
 
 @cli.command(
     help="Deletes all deployments in the Serve app.",
+    hidden=True,
 )
 @click.option(
     "--address",
@@ -378,3 +380,52 @@ def delete(address: str, yes: bool):
     cli_logger.newline()
     cli_logger.success("\nSent delete request successfully!\n")
     cli_logger.newline()
+
+
+@cli.command(
+    short_help="Writes a Pipeline's config file.",
+    help=(
+        "Imports the ClassNode or FunctionNode at IMPORT_PATH "
+        "and generates a structured config for it that can be used by "
+        "`serve deploy` or the REST API. "
+    ),
+    hidden=True,
+)
+@click.option(
+    "--app-dir",
+    "-d",
+    default=".",
+    type=str,
+    help=APP_DIR_HELP_STR,
+)
+@click.option(
+    "--output-path",
+    "-o",
+    default=None,
+    type=str,
+    help=(
+        "Local path where the output config will be written in YAML format. "
+        "If not provided, the config will be printed to STDOUT."
+    ),
+)
+@click.argument("import_path")
+def build(app_dir: str, output_path: Optional[str], import_path: str):
+    sys.path.insert(0, app_dir)
+
+    node: Union[ClassNode, FunctionNode] = import_attr(import_path)
+    if not isinstance(node, (ClassNode, FunctionNode)):
+        raise TypeError(
+            f"Expected '{import_path}' to be ClassNode or "
+            f"FunctionNode, but got {type(node)}."
+        )
+
+    app = build_app(node)
+
+    if output_path is not None:
+        if not output_path.endswith(".yaml"):
+            raise ValueError("FILE_PATH must end with '.yaml'.")
+
+        with open(output_path, "w") as f:
+            app.to_yaml(f)
+    else:
+        print(app.to_yaml(), end="")

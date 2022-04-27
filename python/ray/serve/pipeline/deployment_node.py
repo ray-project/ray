@@ -9,12 +9,9 @@ from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
 from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
-from ray.serve.api import (
-    Deployment,
-    DeploymentConfig,
-    RayServeDAGHandle,
-    schema_to_deployment,
-)
+from ray.serve.deployment import Deployment, schema_to_deployment
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.config import DeploymentConfig
 from ray.serve.utils import get_deployment_import_path
 from ray.serve.schema import DeploymentSchema
 
@@ -214,22 +211,28 @@ class DeploymentNode(DAGNode):
             return "dummy"
         return get_deployment_import_path(self._deployment)
 
-    def to_json(self, encoder_cls) -> Dict[str, Any]:
-        json_dict = super().to_json_base(encoder_cls, DeploymentNode.__name__)
-        json_dict["deployment_name"] = self.get_deployment_name()
-        json_dict["import_path"] = self.get_import_path()
-
-        return json_dict
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            DAGNODE_TYPE_KEY: DeploymentNode.__name__,
+            "deployment_name": self.get_deployment_name(),
+            # Will be overriden by build()
+            "import_path": self.get_import_path(),
+            "args": self.get_args(),
+            "kwargs": self.get_kwargs(),
+            # .options() should not contain any DAGNode type
+            "options": self.get_options(),
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
+            "uuid": self.get_stable_uuid(),
+        }
 
     @classmethod
     def from_json(cls, input_json, object_hook=None):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentNode.__name__
-        args_dict = super().from_json_base(input_json, object_hook=object_hook)
         return cls(
             input_json["import_path"],
             input_json["deployment_name"],
-            args_dict["args"],
-            args_dict["kwargs"],
-            args_dict["options"],
-            other_args_to_resolve=args_dict["other_args_to_resolve"],
+            input_json["args"],
+            input_json["kwargs"],
+            input_json["options"],
+            other_args_to_resolve=input_json["other_args_to_resolve"],
         )
