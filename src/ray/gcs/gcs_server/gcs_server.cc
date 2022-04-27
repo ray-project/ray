@@ -254,6 +254,40 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   node_resource_info_service_.reset(
       new rpc::NodeResourceInfoGrpcService(main_service_, *gcs_resource_manager_));
   rpc_server_.RegisterService(*node_resource_info_service_);
+
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
+          std::shared_ptr<ray::RayletClientInterface> raylet_client;
+          // GetOrConnectionByID will not connect to the raylet is it hasn't been
+          // connected.
+          if (auto conn_opt = raylet_client_pool_->GetOrConnectByID(alive_node.first)) {
+            raylet_client = *conn_opt;
+          } else {
+            // When not connect, use GetOrConnectByAddress
+            rpc::Address remote_address;
+            remote_address.set_raylet_id(alive_node.second->node_id());
+            remote_address.set_ip_address(alive_node.second->node_manager_address());
+            remote_address.set_port(alive_node.second->node_manager_port());
+            raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+          }
+          if (raylet_client == nullptr) {
+            RAY_LOG(ERROR) << "Failed to connect to node: " << alive_node.first
+                           << ". Skip this round of pulling for resource load";
+          } else {
+            raylet_client->GetResourceLoad([this](auto &status, auto &load) {
+              if (status.ok()) {
+                gcs_resource_manager_->UpdateResourceLoads(load.resources());
+              } else {
+                RAY_LOG(ERROR) << "Failed to get the resource load: "
+                               << status.ToString();
+              }
+            });
+          }
+        }
+      },
+      RayConfig::instance().gcs_pull_resource_loads_period_milliseconds(),
+      "RayletLoadPulled");
 }
 
 void GcsServer::InitClusterResourceScheduler() {
