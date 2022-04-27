@@ -265,35 +265,24 @@ class ReplicaConfig:
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
+            if not isinstance(ray_actor_options, dict):
+                raise TypeError("ray_actor_options must be a dictionary.")
+            allowed_ray_actor_options = {
+                "accelerator_type",
+                "memory",
+                "num_cpus",
+                "num_gpus",
+                "object_store_memory",
+                "resources",
+                "runtime_env",
+            }
+            for option in ray_actor_options:
+                if option not in allowed_ray_actor_options:
+                    raise ValueError(
+                        f"Specifying {option} in ray_actor_options is not allowed."
+                    )
+            ray_option_utils.validate_actor_options(ray_actor_options, in_options=True)
             self.ray_actor_options = ray_actor_options
-
-        self.resource_dict = {}
-        self._validate()
-
-    def _validate(self):
-        if not isinstance(self.ray_actor_options, dict):
-            raise TypeError("ray_actor_options must be a dictionary.")
-
-        disallowed_ray_actor_options = {
-            "max_concurrency",
-            "max_restarts",
-            "max_task_retries",
-            "name",
-            "namespace",
-            "lifetime",
-            "placement_group",
-            "placement_group_bundle_index",
-            "placement_group_capture_child_tasks",
-            "max_pending_calls",
-            "scheduling_strategy",
-        }
-
-        for option in disallowed_ray_actor_options:
-            if option in self.ray_actor_options:
-                raise ValueError(
-                    f"Specifying {option} in ray_actor_options is not allowed."
-                )
-        ray_option_utils.validate_actor_options(self.ray_actor_options, in_options=True)
 
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.resource_dict.setdefault("CPU", 1)

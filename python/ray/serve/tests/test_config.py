@@ -162,8 +162,6 @@ def test_replica_config_validation():
         ReplicaConfig(Class, ray_actor_options={"resources": []})
 
     disallowed_ray_actor_options = {
-        "args",
-        "kwargs",
         "max_concurrency",
         "max_restarts",
         "max_task_retries",
@@ -175,6 +173,8 @@ def test_replica_config_validation():
         "placement_group_capture_child_tasks",
         "max_pending_calls",
         "scheduling_strategy",
+        "get_if_exists",
+        "_metadata",
     }
 
     for option in disallowed_ray_actor_options:
@@ -196,10 +196,10 @@ def test_replica_config_default_memory_none(memory_omitted_options):
 
     if memory_omitted_options is None:
         config = ReplicaConfig("fake.import_path")
-        assert config.ray_actor_options["memory"] is None
+        assert config.ray_actor_options.get("memory") is None
 
     config = ReplicaConfig("fake.import_path", ray_actor_options=memory_omitted_options)
-    assert config.ray_actor_options["memory"] is None
+    assert config.ray_actor_options.get("memory") is None
 
 
 def test_http_options():
