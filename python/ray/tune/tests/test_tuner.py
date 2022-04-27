@@ -91,7 +91,7 @@ class TunerTest(unittest.TestCase):
         prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
+                "num_workers": 1,
             },
             "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
@@ -134,10 +134,8 @@ class TunerTest(unittest.TestCase):
         prep_v2 = StandardScaler(["worst concavity", "worst smoothness"])
         param_space = {
             "scaling_config": {
-                "num_workers": tune.grid_search([1, 2]),
+                "num_workers": 1,
             },
-            # TODO(xwjiang): Add when https://github.com/ray-project/ray/issues/23363
-            #  is resolved.
             "preprocessor": tune.grid_search([prep_v1, prep_v2]),
             "datasets": {
                 "train": tune.choice(
