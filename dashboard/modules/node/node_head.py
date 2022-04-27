@@ -260,7 +260,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_log_info(self):
         if ray_constants.DISABLE_DASHBOARD_LOG_INFO:
-            pass
+            return
 
         def process_log_batch(log_batch):
             ip = log_batch["ip"]
