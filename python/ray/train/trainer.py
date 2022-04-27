@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
+import warnings
 
 import ray
 from ray.actor import ActorHandle
@@ -136,6 +137,16 @@ class Trainer:
         logdir: Optional[str] = None,
         max_retries: int = 3,
     ):
+        warnings.warn(
+            "The `ray.train.Trainer` API will be deprecated in Ray "
+            "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+            "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+            "provide greater functionality than `ray.train.Trainer`, "
+            "and with a more flexible and easy-to-use API.",
+            PendingDeprecationWarning,
+            stacklevel=2,
+        )
+
         if num_workers <= 0:
             raise ValueError("`num_workers` must be a positive integer.")
 
