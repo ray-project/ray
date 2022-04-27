@@ -1689,7 +1689,7 @@
     type: sdk_command
     file_manager: job
 
-  alert: default  
+  alert: default
 
 - name: jobs_basic_remote_working_dir
   group: Jobs tests
@@ -1716,7 +1716,7 @@
     type: sdk_command
     file_manager: job
 
-  alert: default 
+  alert: default
 
 ########################
 # Runtime env tests
@@ -3985,4 +3985,3 @@
 
     type: sdk_command
     file_manager: sdk
-
