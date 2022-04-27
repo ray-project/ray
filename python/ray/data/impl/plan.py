@@ -256,7 +256,7 @@ class ExecutionPlan:
             self._snapshot_blocks = self._snapshot_blocks.compute_to_blocklist()
         return self._snapshot_blocks
 
-    def clear(self) -> None:
+    def clear_block_refs(self) -> None:
         """Clear all cached block references of this plan, including input blocks.
 
         This will render the plan un-executable unless the root is a LazyBlockList."""

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Dict, List, Union
 from collections import OrderedDict
 
 from ray.experimental.dag import (
@@ -53,25 +53,6 @@ class DeploymentNameGenerator(object):
         self.reset()
 
 
-def _remove_non_default_ray_actor_options(ray_actor_options: Dict[str, Any]):
-    """
-    In Ray DAG building we pass full ray_actor_options regardless if a field
-    was explicitly set. Since some values are invalid, we need to remove them
-    from ray_actor_options.
-    """
-    # TODO: (jiaodong) Revisit when we implement build() when user explicitly
-    # pass default value
-    ray_actor_options = {k: v for k, v in ray_actor_options.items() if v}
-    if ray_actor_options.get("placement_group") == "default":
-        del ray_actor_options["placement_group"]
-    if ray_actor_options.get("placement_group_bundle_index") == -1:
-        del ray_actor_options["placement_group_bundle_index"]
-    if ray_actor_options.get("max_pending_calls") == -1:
-        del ray_actor_options["max_pending_calls"]
-
-    return ray_actor_options
-
-
 def transform_ray_dag_to_serve_dag(
     dag_node: DAGNode, deployment_name_generator: DeploymentNameGenerator
 ):
@@ -81,15 +62,12 @@ def transform_ray_dag_to_serve_dag(
     """
     if isinstance(dag_node, ClassNode):
         deployment_name = deployment_name_generator.get_deployment_name(dag_node)
-        ray_actor_options = _remove_non_default_ray_actor_options(
-            dag_node.get_options()
-        )
         return DeploymentNode(
             dag_node._body,
             deployment_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
-            ray_actor_options,
+            dag_node.get_options(),
             # TODO: (jiaodong) Support .options(metadata=xxx) for deployment
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
         )

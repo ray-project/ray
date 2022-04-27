@@ -525,13 +525,11 @@ class Quantized(Sampler):
         return list(quantized)
 
 
-# TODO (krfricke): Remove tune.function
+# Deprecated: Remove in Ray > 1.13
 def function(func):
-    logger.warning(
-        "DeprecationWarning: wrapping {} with tune.function() is no "
-        "longer needed".format(func)
+    raise DeprecationWarning(
+        "wrapping {} with tune.function() is no longer needed".format(func)
     )
-    return func
 
 
 def sample_from(func: Callable[[Dict], Any]):

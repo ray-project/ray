@@ -347,19 +347,6 @@ Status ActorInfoAccessor::AsyncSubscribe(
     absl::MutexLock lock(&mutex_);
     resubscribe_operations_[actor_id] =
         [this, actor_id, subscribe](const StatusCallback &subscribe_done) {
-          // Unregister the previous subscription before subscribing the to new
-          // GCS instance. Otherwise, the existing long poll on the previous GCS
-          // instance could leak or access invalid memory when returned.
-          // In future if long polls can be cancelled, this might become unnecessary.
-          while (true) {
-            Status s = client_impl_->GetGcsSubscriber().UnsubscribeActor(actor_id);
-            if (s.ok()) {
-              break;
-            }
-            RAY_LOG(WARNING) << "Unsubscribing failed for " << actor_id.Hex()
-                             << ", retrying ...";
-            absl::SleepFor(absl::Seconds(1));
-          }
           return client_impl_->GetGcsSubscriber().SubscribeActor(
               actor_id, subscribe, subscribe_done);
         };
