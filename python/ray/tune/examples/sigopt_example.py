@@ -63,7 +63,6 @@ if __name__ == "__main__":
     algo = SigOptSearch(
         space,
         name="SigOpt Example Experiment",
-        max_concurrent=1,
         metric="mean_loss",
         mode="min",
     )

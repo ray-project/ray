@@ -44,7 +44,7 @@ def test_scale_up(ray_cluster):
         return pids
 
     serve.start(detached=True)
-    client = serve.api._connect()
+    client = serve.context._connect()
 
     D.deploy()
     pids1 = get_pids(1)
@@ -130,8 +130,8 @@ def test_replica_startup_status_transitions(ray_cluster):
 
     @serve.deployment(version="1", ray_actor_options={"num_cpus": 2})
     class E:
-        def __init__(self):
-            ray.get(signal.wait.remote())
+        async def __init__(self):
+            await signal.wait.remote()
 
     E.deploy(_blocking=False)
 
@@ -144,15 +144,8 @@ def test_replica_startup_status_transitions(ray_cluster):
     wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
     replica = get_replicas(ReplicaState.STARTING)[0]
 
-    # FIXME: We switched our code formatter from YAPF to Black. Check whether we still
-    # need shorthands and update the comment below. See issue #21318.
-    # declare shorthands as yapf doesn't like long lambdas
-    PENDING_ALLOCATION = ReplicaStartupStatus.PENDING_ALLOCATION
-    PENDING_INITIALIZATION = ReplicaStartupStatus.PENDING_INITIALIZATION
-    SUCCEEDED = ReplicaStartupStatus.SUCCEEDED
-
     # currently there are no resources to allocate the replica
-    assert replica.check_started() == PENDING_ALLOCATION
+    assert replica.check_started() == ReplicaStartupStatus.PENDING_ALLOCATION
 
     # add the necessary resources to allocate the replica
     cluster.add_node(num_cpus=4)
@@ -162,13 +155,15 @@ def test_replica_startup_status_transitions(ray_cluster):
     def is_replica_pending_initialization():
         status = replica.check_started()
         print(status)
-        return status == PENDING_INITIALIZATION
+        return status == ReplicaStartupStatus.PENDING_INITIALIZATION
 
     wait_for_condition(is_replica_pending_initialization, timeout=25)
 
     # send signal to complete replica intialization
     signal.send.remote()
-    wait_for_condition(lambda: replica.check_started() == SUCCEEDED)
+    wait_for_condition(
+        lambda: replica.check_started() == ReplicaStartupStatus.SUCCEEDED
+    )
 
 
 def test_intelligent_scale_down(ray_cluster):

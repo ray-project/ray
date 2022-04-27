@@ -745,7 +745,7 @@ def _env_runner(
                     simple_image_viewer.imshow(rendered)
             elif rendered not in [True, False, None]:
                 raise ValueError(
-                    "The env's ({base_env}) `try_render()` method returned an"
+                    f"The env's ({base_env}) `try_render()` method returned an"
                     " unsupported value! Make sure you either return a "
                     "uint8/w x h x 3 (RGB) image or handle rendering in a "
                     "window and then return `True`."
