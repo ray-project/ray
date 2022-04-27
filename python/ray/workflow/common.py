@@ -24,6 +24,7 @@ WorkflowOutputType = ObjectRef
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
+WORKFLOW_OPTIONS = "workflow.io/options"
 
 
 def asyncio_run(coro):
