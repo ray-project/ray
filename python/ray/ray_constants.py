@@ -40,7 +40,7 @@ ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
-DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10 ** 9
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
@@ -48,18 +48,18 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
-DEFAULT_REDIS_MAX_MEMORY_BYTES = 10 ** 10
+DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
-REDIS_MINIMUM_MEMORY_BYTES = 10 ** 7
+REDIS_MINIMUM_MEMORY_BYTES = 10**7
 # Above this number of bytes, raise an error by default unless the user sets
 # RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
-REQUIRE_SHM_SIZE_THRESHOLD = 10 ** 10
+REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # Mac with 16GB memory has degraded performance when the object store size is
 # greater than 2GB.
 # (see https://github.com/ray-project/ray/issues/20388 for details)
 # The workaround here is to limit capacity to 2GB for Mac by default,
 # and raise error if the capacity is overwritten by user.
-MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2 ** 30
+MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT = 2 * 2**30
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
@@ -93,8 +93,9 @@ DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
-FUNCTION_SIZE_WARN_THRESHOLD = 10 ** 7
-FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD", (10 ** 8))
+FUNCTION_SIZE_WARN_THRESHOLD = 10**7
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD",
+                                            (10**8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
@@ -182,6 +183,11 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # `services.py::wait_for_redis_to_start()` and
 # `services.py::create_redis_client()`
 START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)
+
+# Temporary flag to disable log processing in the dashboard.  This is useful
+# if the dashboard is overloaded by logs and failing to process other
+# dashboard API requests (e.g. Job Submission).
+DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
