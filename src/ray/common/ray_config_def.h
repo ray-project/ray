@@ -51,7 +51,7 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 RAY_CONFIG(uint64_t, raylet_heartbeat_period_milliseconds, 1000)
 
 /// The duration between loads pulled by GCS
-RAY_CONFIG(uint64_t, gcs_pull_loads_period_milliseconds, 1000)
+RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report

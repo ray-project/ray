@@ -286,7 +286,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
           }
         }
       },
-      RayConfig::instance().gcs_pull_loads_period_milliseconds(),
+      RayConfig::instance().gcs_pull_resource_loads_period_milliseconds(),
       "RayletLoadPulled");
 }
 

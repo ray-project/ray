@@ -134,7 +134,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   /// Update the resource loads.
   ///
-  /// \param data The resource load reported by raylet.
+  /// \param data The resource loads reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
  private:
