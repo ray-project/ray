@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 import ray.cloudpickle as pickle
 import ray._private.memory_monitor as memory_monitor
 import ray.internal.storage as storage
+from ray.internal.storage import _load_class
 import ray.node
 import ray.job_config
 import ray._private.parameter
@@ -36,6 +37,7 @@ from ray._private.gcs_pubsub import (
     GcsLogSubscriber,
     GcsFunctionKeySubscriber,
 )
+from ray._private.usage import usage_lib
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -919,6 +921,11 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
+    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+        runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env
+        )
+
     if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
         if runtime_env:
             logger.warning(
@@ -981,6 +988,10 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
+
+        # Don't collect usage stats in ray.init().
+        usage_lib.set_usage_stats_enabled_via_env_var(False)
+
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,

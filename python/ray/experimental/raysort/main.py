@@ -332,9 +332,14 @@ def sort_main(args: Args):
     assert len(parts) == args.num_mappers
     boundaries = sortlib.get_boundaries(args.num_reducers)
 
+    # The exception of 'ValueError("Resource quantities >1 must be whole numbers.")'
+    # will be raised if the `num_cpus` > 1 and not an integer.
+    num_cpus = os.cpu_count() / args.num_concurrent_rounds
+    if num_cpus > 1.0:
+        num_cpus = int(num_cpus)
     mapper_opt = {
         "num_returns": args.num_reducers,
-        "num_cpus": os.cpu_count() / args.num_concurrent_rounds,
+        "num_cpus": num_cpus,
     }  # Load balance across worker nodes by setting `num_cpus`.
     merge_results = np.empty((args.num_rounds, args.num_reducers), dtype=object)
 

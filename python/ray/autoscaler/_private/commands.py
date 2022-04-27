@@ -23,6 +23,7 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
+from ray._private.usage import usage_lib
 from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
@@ -648,6 +649,8 @@ def get_or_create_head_node(
         cli_logger.confirm(
             yes, "No head node found. Launching a new cluster.", _abort=True
         )
+        cli_logger.newline()
+        usage_lib.show_usage_stats_prompt()
 
     if head_node:
         if restart_only:
@@ -659,6 +662,8 @@ def get_or_create_head_node(
                 cf.bold("--restart-only"),
                 _abort=True,
             )
+            cli_logger.newline()
+            usage_lib.show_usage_stats_prompt()
         elif no_restart:
             cli_logger.print(
                 "Cluster Ray runtime will not be restarted due to `{}`.",
@@ -674,6 +679,8 @@ def get_or_create_head_node(
             cli_logger.confirm(
                 yes, cf.bold("Cluster Ray runtime will be restarted."), _abort=True
             )
+            cli_logger.newline()
+            usage_lib.show_usage_stats_prompt()
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)

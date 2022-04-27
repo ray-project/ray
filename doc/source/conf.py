@@ -134,7 +134,6 @@ all_toc_libs += [
     "cluster",
     "tune",
     "data",
-    "raysgd",
     "train",
     "rllib",
     "serve",

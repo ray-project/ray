@@ -57,14 +57,6 @@ py_test(
 )
 
 py_test(
-    name = "test_cloud",
-    size = "medium",
-    srcs = ["tests/test_cloud.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "tests_dir_C"],
-)
-
-py_test(
     name = "test_cluster",
     size = "large",
     srcs = ["tests/test_cluster.py"],
@@ -270,6 +262,14 @@ py_test(
     srcs = ["tests/test_soft_imports.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "soft_imports", "tests_dir_S"],
+)
+
+py_test(
+    name = "test_stopper",
+    size = "small",
+    srcs = ["tests/test_stopper.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
 )
 
 py_test(

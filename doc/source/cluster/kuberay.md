@@ -83,12 +83,18 @@ Here is one procedure to test development autoscaler code.
 ```dockerfile
 # Use the latest Ray master as base.
 FROM rayproject/ray:nightly
+# Invalidate cache so that fresh code is pulled in the next step.
+ARG BUILD_DATE
 # Retrieve your development code.
 RUN git clone -b <my-dev-branch> https://github.com/<my-git-handle>/ray
 # Install symlinks to your modified Python code.
 RUN python ray/python/ray/setup-dev.py -y
 ```
-3. Push the image to your docker account or registry.
+3. Push the image to your docker account or registry. Assuming your Dockerfile is named "Dockerfile":
+```shell
+docker build --build-arg BUILD_DATE=$(date +%Y-%m-%d:%H:%M:%S) -t <registry>/<repo>:<tag> - < Dockerfile
+docker push <registry>/<repo>:<tag>
+```
 4. Update the autoscaler image in `ray-cluster.complete.yaml`
 
 Refer to the [Ray development documentation](https://docs.ray.io/en/latest/development.html#building-ray-python-only) for
