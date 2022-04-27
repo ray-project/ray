@@ -1006,6 +1006,12 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertEqual(config1, config2)
 
+        # Hyperopt natively convert list to tuple.
+        # Try out the following script:
+        # ```
+        # a = HyperOptSearch.convert_search_space({"a": tune.choice([[1,2], [3,4]])})
+        # print(hyperopt.pyll.stochastic.sample(a))
+        # ```
         self.assertTrue(config1.get("a") in [(1, 2), (3, 4)])
 
     def testConvertHyperOptNested(self):
