@@ -1250,6 +1250,20 @@ def _process_policy_eval_results(
                 episode._set_last_action(agent_id, action)
 
             assert agent_id not in actions_to_send[env_id]
+            # Flag actions as immutable to notify the user when trying to change it
+            # and to avoid hardly traceable errors.
+            def make_action_immutable(obj):
+                if isinstance(obj, np.ndarray):
+                    obj.setflags(write=False)
+                    return obj
+                elif isinstance(obj, dict):
+                    from types import MappingProxyType
+
+                    return MappingProxyType(obj)
+                else:
+                    return obj
+
+            tree.map_structure(make_action_immutable, action_to_send)
             actions_to_send[env_id][agent_id] = action_to_send
 
     return actions_to_send
