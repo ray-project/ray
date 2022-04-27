@@ -144,7 +144,11 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             # Piece metadata was not available, construct an empty
             # BlockMetadata.
             block_metadata = BlockMetadata(
-                num_rows=None, size_bytes=None, schema=schema, input_files=paths
+                num_rows=None,
+                size_bytes=None,
+                schema=schema,
+                input_files=paths,
+                exec_stats=None,
             )
         return block_metadata
 
