@@ -38,7 +38,10 @@ def run(
     validate_user_metadata(metadata)
     metadata = metadata or {}
 
-    assert ray.is_initialized()
+    from ray.workflow.api import _ensure_workflow_initialized
+
+    _ensure_workflow_initialized()
+
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
@@ -103,7 +106,9 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
     """Get the output of a running workflow.
     See "api.get_output()" for details.
     """
-    assert ray.is_initialized()
+    from ray.workflow.common import _ensure_workflow_initialized
+
+    _ensure_workflow_initialized()
     try:
         workflow_manager = get_management_actor()
     except ValueError as e:
