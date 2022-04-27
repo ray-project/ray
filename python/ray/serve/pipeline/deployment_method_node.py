@@ -56,40 +56,6 @@ class DeploymentMethodNode(DAGNode):
             **self._bound_kwargs,
         )
 
-    def _get_serve_deployment_handle(
-        self,
-        deployment: Deployment,
-        bound_other_args_to_resolve: Dict[str, Any],
-    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """
-        Return a sync or async handle of the encapsulated Deployment based on
-        config.
-
-        Args:
-            deployment (Deployment): Deployment instance wrapped in the DAGNode.
-            bound_other_args_to_resolve (Dict[str, Any]): Contains args used
-                to configure DeploymentNode.
-
-        Returns:
-            RayServeHandle: Default and catch-all is to return sync handle.
-                return async handle only if user explicitly set
-                USE_SYNC_HANDLE_KEY with value of False.
-        """
-        # TODO (jiaodong): Support configurable async handle
-        if USE_SYNC_HANDLE_KEY not in bound_other_args_to_resolve:
-            # Return sync RayServeLazySyncHandle
-            return RayServeLazySyncHandle(deployment.name)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is True:
-            # Return sync RayServeSyncHandle
-            return deployment.get_handle(sync=True)
-        elif bound_other_args_to_resolve.get(USE_SYNC_HANDLE_KEY) is False:
-            # Return async RayServeHandle
-            return deployment.get_handle(sync=False)
-        else:
-            raise ValueError(
-                f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value."
-            )
-
     def __str__(self) -> str:
         return get_dag_node_str(
             self,

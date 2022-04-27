@@ -2,6 +2,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray.experimental.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.input_node import InputNode
 from ray.serve.deployment import Deployment
 from ray.serve.config import DeploymentConfig
@@ -153,20 +154,7 @@ def test_invalid_use_sync_handle():
             {},
             other_args_to_resolve={USE_SYNC_HANDLE_KEY: {"options_a": "hii"}},
         )
-    with pytest.raises(
-        ValueError,
-        match=f"{USE_SYNC_HANDLE_KEY} should only be set with a boolean value",
-    ):
-        _ = DeploymentMethodNode(
-            deployment,
-            "method",
-            [],
-            {},
-            {},
-            other_args_to_resolve={
-                USE_SYNC_HANDLE_KEY: None,
-            },
-        )
+
 
 
 def test_mix_sync_async_handle(serve_instance):

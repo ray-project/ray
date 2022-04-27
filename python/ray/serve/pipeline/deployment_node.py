@@ -7,7 +7,7 @@ from ray.serve.handle import RayServeLazySyncHandle, RayServeSyncHandle, RayServ
 from ray.serve.pipeline.deployment_method_node import DeploymentMethodNode
 from ray.serve.pipeline.deployment_function_node import DeploymentFunctionNode
 from ray.serve.pipeline.constants import USE_SYNC_HANDLE_KEY
-from ray.experimental.dag.constants import DAGNODE_TYPE_KEY
+from ray.experimental.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
 from ray.experimental.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
@@ -199,7 +199,10 @@ class DeploymentNode(DAGNode):
             (),
             {},
             {},
-            other_args_to_resolve=self._bound_other_args_to_resolve,
+            other_args_to_resolve={
+                **self._bound_other_args_to_resolve,
+                PARENT_CLASS_NODE_KEY: self,
+            },
         )
         return call_node
 
