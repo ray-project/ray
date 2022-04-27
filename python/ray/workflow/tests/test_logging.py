@@ -46,7 +46,7 @@ def f1():
 @workflow.step(name="f2")
 def f2(x):
     return x+1
-    
+
 f2.step(f1.step()).run("wid1")
     """
     proc = run_string_as_driver_nonblocking(script)
@@ -113,7 +113,7 @@ class Counter:
     def add(self, y):
         self.x += y
         return self.x
-        
+
 couter = Counter.get_or_create("vid", 10)
 couter.add.options(name="add").run(1)
     """
