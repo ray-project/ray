@@ -58,7 +58,7 @@ int64_t SchedulerResourceReporter::TotalBacklogSize(
 
 void SchedulerResourceReporter::FillResourceUsage(
     rpc::ResourcesData &data,
-    const std::shared_ptr<SchedulingResources> &last_reported_resources) const {
+    const std::shared_ptr<NodeResources> &last_reported_resources) const {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
@@ -138,13 +138,14 @@ void SchedulerResourceReporter::FillResourceUsage(
                      "the autoscaler.";
   }
 
-  if (RayConfig::instance().enable_light_weight_resource_report()) {
+  if (RayConfig::instance().enable_light_weight_resource_report() &&
+      last_reported_resources != nullptr) {
     // Check whether resources have been changed.
     absl::flat_hash_map<std::string, double> local_resource_map(
         data.resource_load().begin(), data.resource_load().end());
-    ResourceSet local_resource(local_resource_map);
-    if (last_reported_resources == nullptr ||
-        !last_reported_resources->GetLoadResources().IsEqual(local_resource)) {
+    ray::ResourceRequest local_resource =
+        ResourceMapToResourceRequest(local_resource_map, false);
+    if (last_reported_resources->load != local_resource) {
       data.set_resource_load_changed(true);
     }
   } else {

@@ -254,8 +254,8 @@ def _get_num_gpus(
     Ray Operator.
     """
 
-    if "num_gpus" in ray_start_params:
-        return int(ray_start_params["num_gpus"])
+    if "num-gpus" in ray_start_params:
+        return int(ray_start_params["num-gpus"])
 
     # Issue a warning if GPUs are present in the container spec but not in the
     # ray start params.

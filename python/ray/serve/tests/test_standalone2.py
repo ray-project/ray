@@ -11,7 +11,7 @@ from ray.exceptions import RayActorError
 import ray
 import ray.state
 from ray import serve
-from ray.serve.api import internal_get_global_client
+from ray.serve.context import get_global_client
 from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
@@ -76,7 +76,7 @@ def test_override_namespace(shutdown_ray, detached):
     ray.init(namespace=ray_namespace)
     serve.start(detached=detached, _override_controller_namespace=controller_namespace)
 
-    controller_name = internal_get_global_client()._controller_name
+    controller_name = get_global_client()._controller_name
     ray.get_actor(controller_name, namespace=controller_namespace)
 
     serve.shutdown()
@@ -148,7 +148,7 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     serve.shutdown()  # Ensure serve isn't running before beginning the test
     serve.start(detached=detached, _override_controller_namespace=controller_namespace)
 
-    old_handle = internal_get_global_client()._controller
+    old_handle = get_global_client()._controller
     ray.kill(old_handle, no_restart=True)
 
     def controller_died(handle):
@@ -163,7 +163,7 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     # Call start again to refresh handle
     serve.start(detached=detached, _override_controller_namespace=controller_namespace)
 
-    new_handle = internal_get_global_client()._controller
+    new_handle = get_global_client()._controller
     assert new_handle is not old_handle
 
     # Health check should not error

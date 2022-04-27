@@ -24,6 +24,12 @@ from ray.data.datasource.file_based_datasource import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.file_meta_provider import FileMetadataProvider
+from ray.data.datasource.partitioning import (
+    PartitionStyle,
+    PathPartitionEncoder,
+    PathPartitionParser,
+    PathPartitionFilter,
+)
 
 __all__ = [
     "JSONDatasource",
@@ -46,4 +52,8 @@ __all__ = [
     "DefaultFileMetadataProvider",
     "ParquetMetadataProvider",
     "DefaultParquetMetadataProvider",
+    "PartitionStyle",
+    "PathPartitionParser",
+    "PathPartitionEncoder",
+    "PathPartitionFilter",
 ]

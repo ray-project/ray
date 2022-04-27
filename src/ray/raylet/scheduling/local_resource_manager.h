@@ -142,7 +142,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Replace the local resources by the provided value.
   ///
   /// \param replacement: the new value.
-  void ResetLastReportResourceUsage(const SchedulingResources &replacement);
+  void ResetLastReportResourceUsage(const NodeResources &replacement);
 
   /// Check whether the specific resource exists or not in local node.
   ///

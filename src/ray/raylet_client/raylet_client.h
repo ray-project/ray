@@ -166,6 +166,9 @@ class ResourceTrackingInterface {
   virtual void RequestResourceReport(
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
 
+  virtual void GetResourceLoad(
+      const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
+
   virtual ~ResourceTrackingInterface(){};
 };
 
@@ -461,6 +464,9 @@ class RayletClient : public RayletClientInterface {
 
   void RequestResourceReport(
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
+
+  void GetResourceLoad(
+      const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;
 
   // Subscribe to receive notification on plasma object
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);

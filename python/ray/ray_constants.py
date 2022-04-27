@@ -181,7 +181,7 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 # Number of attempts to ping the Redis server. See
 # `services.py::wait_for_redis_to_start()` and
 # `services.py::create_redis_client()`
-START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 16)
+START_REDIS_WAIT_RETRIES = env_integer("RAY_START_REDIS_WAIT_RETRIES", 60)
 
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_HELP = f"The logging format. default='{LOGGER_FORMAT}'"
@@ -337,3 +337,5 @@ KV_NAMESPACE_CLUSTER = b"cluster"
 KV_NAMESPACE_PACKAGE = None
 KV_NAMESPACE_SERVE = b"serve"
 KV_NAMESPACE_FUNCTION_TABLE = b"fun"
+
+LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
