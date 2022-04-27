@@ -100,7 +100,11 @@ class TestRNNSequencing(unittest.TestCase):
     def test_add_time_dimension(self):
         """Test add_time_dimension gives sequential data along the time dimension"""
 
-        B, T, F = np.random.choice(list(range(8, 32)), size=3, replace=False)
+        B, T, F = np.random.choice(
+            np.asarray(list(range(8, 32)), dtype=np.int32),  # use int32 for seq_lens
+            size=3,
+            replace=False,
+        )
 
         inputs_numpy = np.repeat(
             np.arange(B * T)[:, np.newaxis], repeats=F, axis=-1
