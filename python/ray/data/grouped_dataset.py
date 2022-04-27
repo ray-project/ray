@@ -24,6 +24,7 @@ from ray.util.annotations import PublicAPI
 class _GroupbyOp(ShuffleOp):
     @staticmethod
     def map(
+        ctx: DatasetContext,
         idx: int,
         block: Block,
         output_num_blocks: int,
@@ -41,7 +42,7 @@ class _GroupbyOp(ShuffleOp):
                 [(key, "ascending")] if isinstance(key, str) else key,
                 descending=False,
             )
-        parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
+        parts = [BlockAccessor.for_block(p).combine(key, aggs, ctx) for p in partitions]
         meta = BlockAccessor.for_block(block).get_metadata(
             input_files=None, exec_stats=stats.build()
         )
@@ -49,6 +50,7 @@ class _GroupbyOp(ShuffleOp):
 
     @staticmethod
     def reduce(
+        ctx: DatasetContext,
         key: KeyFn,
         aggs: Tuple[AggregateFn],
         *mapper_outputs: List[Block],
@@ -56,7 +58,7 @@ class _GroupbyOp(ShuffleOp):
     ) -> (Block, BlockMetadata):
         """Aggregate sorted and partially combined blocks."""
         return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs, finalize=not partial_reduce
+            list(mapper_outputs), key, aggs, not partial_reduce, ctx
         )
 
 

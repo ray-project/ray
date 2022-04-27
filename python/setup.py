@@ -251,8 +251,9 @@ if setup_spec.type == SetupType.RAY:
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
-    if sys.version_info >= (3, 7, 0):
+    if sys.version_info >= (3, 7):
         setup_spec.extras["k8s"].append("kopf")
+        setup_spec.extras["data"].append("polars >= 0.14.0")
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",

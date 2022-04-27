@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ray.data.context import DatasetContext
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -23,7 +24,11 @@ class ShuffleOp:
 
     @staticmethod
     def map(
-        idx: int, block: Block, output_num_blocks: int, *map_args: List[Any]
+        ctx: DatasetContext,
+        idx: int,
+        block: Block,
+        output_num_blocks: int,
+        *map_args: List[Any],
     ) -> List[Union[BlockMetadata, Block]]:
         """
         Map function to be run on each input block.
@@ -34,6 +39,7 @@ class ShuffleOp:
 
     @staticmethod
     def reduce(
+        ctx: DatasetContext,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> (Block, BlockMetadata):
@@ -78,11 +84,13 @@ class SimpleShufflePlan(ShuffleOp):
 
         map_bar = ProgressBar("Shuffle Map", total=input_num_blocks)
 
+        ctx = DatasetContext.get_current()
+
         shuffle_map_out = [
             shuffle_map.options(
                 **map_ray_remote_args,
                 num_returns=1 + output_num_blocks,
-            ).remote(i, block, output_num_blocks, *self._map_args)
+            ).remote(ctx, i, block, output_num_blocks, *self._map_args)
             for i, block in enumerate(input_blocks_list)
         ]
 
@@ -105,6 +113,7 @@ class SimpleShufflePlan(ShuffleOp):
         reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
         shuffle_reduce_out = [
             shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2,).remote(
+                ctx,
                 *self._reduce_args,
                 *[shuffle_map_out[i][j] for i in range(input_num_blocks)],
             )

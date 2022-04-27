@@ -7,6 +7,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.context import DatasetContext
 
 
 class _ShufflePartitionOp(ShuffleOp):
@@ -27,6 +28,7 @@ class _ShufflePartitionOp(ShuffleOp):
 
     @staticmethod
     def map(
+        ctx: DatasetContext,
         idx: int,
         block: Block,
         output_num_blocks: int,
@@ -71,6 +73,7 @@ class _ShufflePartitionOp(ShuffleOp):
 
     @staticmethod
     def reduce(
+        ctx: DatasetContext,
         random_shuffle: bool,
         random_seed: Optional[int],
         *mapper_outputs: List[Block],

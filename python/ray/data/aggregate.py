@@ -1,3 +1,4 @@
+import functools
 import math
 from typing import Callable, Optional, List, TYPE_CHECKING
 
@@ -21,6 +22,7 @@ from ray.data._internal.null_aggregate import (
 )
 
 if TYPE_CHECKING:
+    import polars
     from ray.data import Dataset
 
 
@@ -86,7 +88,28 @@ class AggregateFn(object):
         pass
 
 
-class _AggregateOnKeyBase(AggregateFn):
+@PublicAPI(stability="alpha")
+class PolarsAggregation:
+    """A Polars aggregation, expressed via mapper and reducer Polars expressions."""
+
+    def __init__(
+        self,
+        map_expression: "polars.Expr",
+        reduce_expression: "polars.Expr",
+    ):
+        self.map_expression = map_expression
+        self.reduce_expression = reduce_expression
+
+
+@PublicAPI(stability="alpha")
+class WithPolars:
+    """An aggregation that can also be used as a Polars aggregation."""
+
+    def as_polars(self) -> PolarsAggregation:
+        raise NotImplementedError
+
+
+class _AggregateOnKeyBase(AggregateFn, WithPolars):
     def _set_key_fn(self, on: KeyFn):
         self._key_fn = on
 
@@ -95,7 +118,7 @@ class _AggregateOnKeyBase(AggregateFn):
 
 
 @PublicAPI
-class Count(AggregateFn):
+class Count(AggregateFn, WithPolars):
     """Defines count aggregation."""
 
     def __init__(self):
@@ -107,6 +130,11 @@ class Count(AggregateFn):
             merge=lambda a1, a2: a1 + a2,
             name="count()",
         )
+
+    def as_polars(self) -> PolarsAggregation:
+        import polars as pl
+
+        return PolarsAggregation(pl.count(), pl.sum("count").suffix("()"))
 
 
 @PublicAPI
@@ -130,6 +158,28 @@ class Sum(_AggregateOnKeyBase):
             name=(f"sum({str(on)})"),
         )
 
+        self.on = on
+        self.ignore_nulls = ignore_nulls
+
+    def as_polars(self) -> PolarsAggregation:
+        import polars as pl
+
+        sum_col = f"sum({self.on})"
+
+        map_expr = (
+            pl.when(self.ignore_nulls or pl.col(self.on).null_count() == 0)
+            .then(pl.sum(self.on))
+            .otherwise(None)
+            .alias(sum_col)
+        )
+        reduce_expr = (
+            pl.when(self.ignore_nulls or pl.col(sum_col).null_count() == 0)
+            .then(pl.sum(sum_col))
+            .otherwise(None)
+            .alias(sum_col)
+        )
+        return PolarsAggregation(map_expr, reduce_expr)
+
 
 @PublicAPI
 class Min(_AggregateOnKeyBase):
@@ -152,6 +202,28 @@ class Min(_AggregateOnKeyBase):
             name=(f"min({str(on)})"),
         )
 
+        self.on = on
+        self.ignore_nulls = ignore_nulls
+
+    def as_polars(self) -> PolarsAggregation:
+        import polars as pl
+
+        temp_col = f"__{self.on}_MIN__"
+
+        map_expr = (
+            pl.when(self.ignore_nulls or pl.col(self.on).null_count() == 0)
+            .then(pl.min(self.on))
+            .otherwise(None)
+            .alias(temp_col)
+        )
+        reduce_expr = (
+            pl.when(self.ignore_nulls or pl.col(temp_col).null_count() == 0)
+            .then(pl.min(temp_col))
+            .otherwise(None)
+            .alias(f"min({str(self.on)})")
+        )
+        return PolarsAggregation(map_expr, reduce_expr)
+
 
 @PublicAPI
 class Max(_AggregateOnKeyBase):
@@ -173,6 +245,28 @@ class Max(_AggregateOnKeyBase):
             finalize=_null_wrap_finalize(lambda a: a),
             name=(f"max({str(on)})"),
         )
+
+        self.on = on
+        self.ignore_nulls = ignore_nulls
+
+    def as_polars(self) -> PolarsAggregation:
+        import polars as pl
+
+        temp_col = f"__{self.on}_MAX__"
+
+        map_expr = (
+            pl.when(self.ignore_nulls or pl.col(self.on).null_count() == 0)
+            .then(pl.max(self.on))
+            .otherwise(None)
+            .alias(temp_col)
+        )
+        reduce_expr = (
+            pl.when(self.ignore_nulls or pl.col(temp_col).null_count() == 0)
+            .then(pl.max(temp_col))
+            .otherwise(None)
+            .alias(f"max({str(self.on)})")
+        )
+        return PolarsAggregation(map_expr, reduce_expr)
 
 
 @PublicAPI
@@ -209,6 +303,38 @@ class Mean(_AggregateOnKeyBase):
             finalize=_null_wrap_finalize(lambda a: a[0] / a[1]),
             name=(f"mean({str(on)})"),
         )
+
+        self.on = on
+        self.ignore_nulls = ignore_nulls
+
+    def as_polars(self) -> PolarsAggregation:
+        import polars as pl
+
+        temp_col = f"__{self.on}_MEAN__"
+
+        map_expr = (
+            pl.when(self.ignore_nulls or pl.col(self.on).null_count() == 0)
+            .then(
+                pl.struct(
+                    [
+                        pl.sum(self.on).alias("sum"),
+                        (pl.count() - pl.col(self.on).null_count()).alias("count"),
+                    ]
+                ),
+            )
+            .otherwise(None)
+            .alias(temp_col)
+        )
+        reduce_expr = (
+            pl.when(self.ignore_nulls or pl.col(temp_col).null_count() == 0)
+            .then(
+                pl.col(temp_col).struct.field("sum").sum()
+                / pl.col(temp_col).struct.field("count").sum()
+            )
+            .otherwise(None)
+            .alias(f"mean({str(self.on)})")
+        )
+        return PolarsAggregation(map_expr, reduce_expr)
 
 
 @PublicAPI
@@ -284,6 +410,77 @@ class Std(_AggregateOnKeyBase):
             finalize=_null_wrap_finalize(finalize),
             name=(f"std({str(on)})"),
         )
+
+        self.on = on
+        self.ignore_nulls = ignore_nulls
+        self.ddof = ddof
+
+    def as_polars(self) -> PolarsAggregation:
+        import polars as pl
+
+        temp_col = f"__{self.on}_STD__"
+
+        map_expr = (
+            pl.when(self.ignore_nulls or pl.col(self.on).null_count() == 0)
+            .then(
+                pl.struct(
+                    [
+                        ((pl.col(self.on) - pl.mean(self.on)) ** 2).sum().alias("M2"),
+                        pl.mean(self.on).alias("mean"),
+                        (pl.count() - pl.col(self.on).null_count()).alias("count"),
+                    ]
+                )
+            )
+            .otherwise(None)
+            .alias(temp_col)
+        )
+
+        # TODO(Clark): Generalize Chan's method for merging Welford accumulations to be
+        # vectorized over N accumulations, rather than using binary fold/accumulation
+        # implementation.
+        def fold(acc, x):
+            if x is None:
+                return acc
+            # Merges two accumulations into one.
+            # See
+            # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+            M2_acc, mean_acc, count_acc = acc["M2"], acc["mean"], acc["count"]
+            M2_x, mean_x, count_x = x["M2"], x["mean"], x["count"]
+            if count_x is None or count_x == 0:
+                return acc
+            delta = mean_x - mean_acc
+            count = count_acc + count_x
+            # NOTE: We use this mean calculation since it's more numerically
+            # stable than mean_acc + delta * count_x / count, which actually
+            # deviates from Pandas in the ~15th decimal place and causes our
+            # exact comparison tests to fail.
+            mean = (mean_acc * count_acc + mean_x * count_x) / count
+            # Update the sum of squared differences.
+            M2 = M2_acc + M2_x + (delta ** 2) * count_acc * count_x / count
+            return {"M2": M2, "mean": mean, "count": count}
+
+        def finalize(a: dict):
+            # Compute the final standard deviation from the accumulated
+            # sum of squared differences from current mean and the count.
+            if a is None:
+                return 0.0
+            M2, _, count = a["M2"], a["mean"], a["count"]
+            if count is None or count < 2:
+                return 0.0
+            return math.sqrt(M2 / (count - self.ddof))
+
+        reduce_expr = (
+            pl.when(self.ignore_nulls or pl.col(temp_col).null_count() == 0)
+            .then(
+                pl.col(temp_col).apply(
+                    lambda s: finalize(functools.reduce(fold, s)),
+                    return_dtype=pl.datatypes.Float64(),
+                )
+            )
+            .otherwise(None)
+            .alias(f"std({self.on})")
+        )
+        return PolarsAggregation(map_expr, reduce_expr)
 
 
 @PublicAPI

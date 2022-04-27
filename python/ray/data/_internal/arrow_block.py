@@ -26,7 +26,7 @@ from ray.data._internal.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
 )
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, PolarsAggregation, WithPolars
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -40,13 +40,17 @@ from ray.data.context import DatasetContext
 from ray.data.row import TableRow
 
 try:
-    import pyarrow
+    import pyarrow as pa
+
+    # This import is necessary to load the tensor extension type.
+    from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
 except ImportError:
-    pyarrow = None
+    pa = None
 
 
 if TYPE_CHECKING:
     import pandas
+    import pyarrow
 
     from ray.data._internal.sort import SortKeyT
 
@@ -96,9 +100,9 @@ class ArrowRow(TableRow):
 
 class ArrowBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
-        if pyarrow is None:
+        if pa is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        super().__init__(pyarrow.Table)
+        super().__init__(pa.Table)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
@@ -108,24 +112,21 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
 
                 columns[col_name] = ArrowTensorArray.from_numpy(col)
-        return pyarrow.Table.from_pydict(columns)
+        return pa.Table.from_pydict(columns)
 
     def _concat_tables(self, tables: List[Block]) -> Block:
-        if len(tables) > 1:
-            return pyarrow.concat_tables(tables, promote=True)
-        else:
-            return tables[0]
+        return _concat_tables(tables)
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":
-        return pyarrow.Table.from_pydict({})
+        return pa.Table.from_pydict({})
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
     def __init__(self, table: "pyarrow.Table"):
-        if pyarrow is None:
+        if pa is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         super().__init__(table)
 
@@ -134,15 +135,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @classmethod
     def from_bytes(cls, data: bytes) -> "ArrowBlockAccessor":
-        reader = pyarrow.ipc.open_stream(data)
+        reader = pa.ipc.open_stream(data)
         return cls(reader.read_all())
 
     @staticmethod
     def numpy_to_block(
         batch: Union[np.ndarray, Dict[str, np.ndarray]],
     ) -> "pyarrow.Table":
-        import pyarrow as pa
-
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
         if isinstance(batch, np.ndarray):
@@ -208,7 +207,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         for column in columns:
             array = self._table[column]
             if array.num_chunks == 0:
-                array = pyarrow.array([], type=array.type)
+                array = pa.array([], type=array.type)
             elif _is_column_extension_type(array):
                 array = _concatenate_extension_column(array)
             else:
@@ -261,7 +260,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> "pyarrow.Table":
         """Select rows from the underlying table.
 
-        This method is an alternative to pyarrow.Table.take(), which breaks for
+        This method is an alternative to pa.Table.take(), which breaks for
         extension arrays.
         """
         return transform_pyarrow.take_table(self._table, indices)
@@ -291,8 +290,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         self, compute_fn: Callable, on: KeyFn, ignore_nulls: bool
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation to a column."""
-        import pyarrow as pa
-
         if not isinstance(on, str):
             raise ValueError(
                 "on must be a string when aggregating on Arrow blocks, but got:"
@@ -393,7 +390,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
         partitions.append(_copy_table(table.slice(last_idx)))
         return partitions
 
-    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
+    def combine_polars(
+        self,
+        key: KeyFn,
+        aggs: Tuple[PolarsAggregation],
+    ) -> Block[ArrowRow]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -408,6 +409,56 @@ class ArrowBlockAccessor(TableBlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
+        import polars as pl
+
+        if key is not None and not isinstance(key, str):
+            raise ValueError(
+                "key must be a string or None when aggregating on Arrow blocks, but "
+                f"got: {type(key)}."
+            )
+
+        df = pl.from_arrow(self._table)
+
+        if key is None:
+            df = df.select([agg.map_expression for agg in aggs])
+        else:
+            df = (
+                df.with_column(pl.col(key).set_sorted())
+                .groupby(key, maintain_order=True)
+                .agg([agg.map_expression for agg in aggs])
+            )
+
+        return df.to_arrow()
+
+    def combine(
+        self,
+        key: KeyFn,
+        aggs: Tuple[AggregateFn, PolarsAggregation],
+        ctx: DatasetContext,
+    ) -> Block[ArrowRow]:
+        """Combine rows with the same key into an accumulator.
+        This assumes the block is already sorted by key in ascending order.
+        Args:
+            key: The column name of key or None for global aggregation.
+            aggs: The aggregations to do.
+        Returns:
+            A sorted block of [k, v_1, ..., v_n] columns where k is the groupby
+            key and v_i is the partially combined accumulator for the ith given
+            aggregation.
+            If key is None then the k column is omitted.
+        """
+        # Only use Polars if enabled in config AND all aggregations support Polars.
+        # TODO (Clark): Support Polars aggregations for push-based shuffle.
+        if (
+            ctx.use_polars
+            and not ctx.use_push_based_shuffle
+            and all(isinstance(agg, (PolarsAggregation, WithPolars)) for agg in aggs)
+        ):
+            aggs = [
+                agg.as_polars() if isinstance(agg, WithPolars) else agg for agg in aggs
+            ]
+            return self.combine_polars(key, aggs)
+
         if key is not None and not isinstance(key, str):
             raise ValueError(
                 "key must be a string or None when aggregating on Arrow blocks, but "
@@ -486,11 +537,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
     @staticmethod
-    def aggregate_combined_blocks(
-        blocks: List[Block[ArrowRow]],
-        key: KeyFn,
-        aggs: Tuple[AggregateFn],
-        finalize: bool,
+    def aggregate_combined_blocks_polars(
+        blocks: List[Block[ArrowRow]], key: KeyFn, aggs: Tuple[PolarsAggregation]
     ) -> Tuple[Block[ArrowRow], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
@@ -501,9 +549,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks: A list of partially combined and sorted blocks.
             key: The column name of key or None for global aggregation.
             aggs: The aggregations to do.
-            finalize: Whether to finalize the aggregation. This is used as an
-                optimization for cases where we repeatedly combine partially
-                aggregated groups.
 
         Returns:
             A block of [k, v_1, ..., v_n] columns and its metadata where k is
@@ -511,6 +556,64 @@ class ArrowBlockAccessor(TableBlockAccessor):
             the ith given aggregation.
             If key is None then the k column is omitted.
         """
+        import polars as pl
+
+        stats = BlockExecStats.builder()
+
+        blocks = [b for b in blocks if b.num_rows > 0]
+
+        if len(blocks) == 0:
+            ret = ArrowBlockAccessor._empty_table()
+        else:
+            ret = (
+                pl.concat([pl.from_arrow(b) for b in blocks])
+                .groupby(key, maintain_order=True)
+                .agg([agg.reduce_expression for agg in aggs])
+                .to_arrow()
+            )
+
+        return ret, BlockAccessor.for_block(ret).get_metadata(None, stats.build())
+
+    @staticmethod
+    def aggregate_combined_blocks(
+        blocks: List[Block[ArrowRow]],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn, PolarsAggregation],
+        finalize: bool,
+        ctx: DatasetContext,
+    ) -> Tuple[Block[ArrowRow], BlockMetadata]:
+        """Aggregate sorted, partially combined blocks with the same key range.
+        This assumes blocks are already sorted by key in ascending order,
+        so we can do merge sort to get all the rows with the same key.
+        Args:
+            blocks: A list of partially combined and sorted blocks.
+            key: The column name of key or None for global aggregation.
+            aggs: The aggregations to do.
+            finalize: Whether to finalize the aggregation. This is used as an
+                optimization for cases where we repeatedly combine partially
+                aggregated groups.
+        Returns:
+            A block of [k, v_1, ..., v_n] columns and its metadata where k is
+            the groupby key and v_i is the corresponding aggregation result for
+            the ith given aggregation.
+            If key is None then the k column is omitted.
+        """
+        # Only use Polars if enabled in config AND all aggregations support Polars.
+        # TODO (Clark): Support Polars aggregations for push-based shuffle.
+        if (
+            ctx.use_polars
+            and not ctx.use_push_based_shuffle
+            and all(isinstance(agg, (PolarsAggregation, WithPolars)) for agg in aggs)
+            and finalize
+        ):
+            aggs = [
+                agg.as_polars() if isinstance(agg, WithPolars) else agg for agg in aggs
+            ]
+            return ArrowBlockAccessor.aggregate_combined_blocks_polars(
+                blocks,
+                key,
+                aggs,
+            )
 
         stats = BlockExecStats.builder()
         key_fn = (
@@ -589,8 +692,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     """Copy the provided Arrow table."""
-    import pyarrow as pa
-
     # Copy the table by copying each column and constructing a new table with
     # the same schema.
     cols = table.columns
@@ -603,3 +704,99 @@ def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
             arr = col.combine_chunks()
         new_cols.append(arr)
     return pa.Table.from_arrays(new_cols, schema=table.schema)
+
+
+def _concat_tables(tables: List["pyarrow.Table"]) -> "pyarrow.Table":
+    """Concatenate the provided Arrow tables into a single Arrow table, upcasting column
+    types and promoting nulls as necessary.
+    """
+    if len(tables) > 1:
+        # TODO(Clark): Remove this upcasting once Arrow's concatenate supports implicit
+        # upcasting.
+        tables = _upcast_tables(tables)
+        table = pa.concat_tables(tables, promote=True)
+    else:
+        table = tables[0]
+    return table
+
+
+def _upcast_tables(tables: List["pyarrow.Table"]) -> List["pyarrow.Table"]:
+    """Upcast columns across tables to their minimumally sufficient dtype to ensure that
+    the tables can be properly concatenated.
+    """
+    field_dtypes = collections.defaultdict(list)
+    field_meta = collections.defaultdict(dict)
+    field_nullable = collections.defaultdict(bool)
+    schema_meta = {}
+    for table in tables:
+        if table.schema.metadata is not None:
+            schema_meta.update(table.schema.metadata)
+        for field in table.schema:
+            if not pa.types.is_null(field.type):
+                # All Arrow types are nullable, so drop any null-type columns from
+                # the common dtype search.
+                field_dtypes[field.name].append(field.type)
+            if field.metadata is not None:
+                field_meta[field.name].update(field.metadata)
+            field_nullable[field.name] = field.nullable
+    common_dtypes = {}
+    for name in field_nullable.keys():
+        dtypes = field_dtypes[name]
+        if dtypes:
+            # Delegate to NumPy to find the minimally sufficient type for this column
+            # across all tables.
+            common_dtypes[name] = _common_arrow_type(dtypes)
+        else:
+            # All table's dtypes for this column are null, just use the first
+            # table's dtype for this column.
+            common_dtypes[name] = tables[0].schema.field(name).type
+    fields = [
+        pa.field(name, common_dtypes[name], field_nullable[name], field_meta[name])
+        for name in field_nullable.keys()
+    ]
+    schema = pa.schema(fields, schema_meta)
+    return [table.cast(schema) for table in tables]
+
+
+def _common_arrow_type(dtypes: List["pyarrow.DataType"]) -> "pyarrow.DataType":
+    """Get common Arrow type for the provided Arrow types, such that casting to the
+    returned type will not result in any loss of precision or other errors.
+    """
+    np_dtypes = [dtype.to_pandas_dtype() for dtype in dtypes]
+    if all(np_dtype is not np.object_ for np_dtype in np_dtypes):
+        # Use NumPy to find common dtype if all dtypes are known to NumPy.
+        common_np_dtype = np.find_common_type(np_dtypes, [])
+        return pa.from_numpy_dtype(common_np_dtype)
+    dtype = _common_arrow_binary_type(dtypes)
+    if dtype is not None:
+        return dtype
+    # Fall back to dtype of first table.
+    return dtypes[0]
+
+
+def _common_arrow_binary_type(
+    dtypes: List["pyarrow.DataType"],
+) -> Optional["pyarrow.DataType"]:
+    """Get common binary Arrow type for the provided Arrow types. Returns None if any
+    are non-binary.
+    """
+    all_utf8, all_offset32 = True, True
+    for dtype in dtypes:
+        if pa.types.is_string(dtype):
+            pass
+        elif pa.types.is_binary(dtype):
+            all_utf8 = False
+        elif pa.types.is_fixed_size_binary(dtype):
+            all_utf8 = False
+        elif pa.types.is_large_string(dtype):
+            all_offset32 = False
+        elif pa.types.is_large_binary(dtype):
+            all_offset32 = False
+            all_utf8 = False
+        else:
+            return None
+    if all_utf8:
+        # Strings.
+        return pa.string() if all_offset32 else pa.large_string()
+    # Binary.
+    return pa.binary() if all_offset32 else pa.large_binary()

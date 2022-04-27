@@ -194,7 +194,9 @@ class _MapStageIterator:
         # Therefore, we do not specify a node affinity policy for map tasks
         # in case the caller or Ray has a better scheduling strategy, e.g.,
         # based on data locality.
+        ctx = DatasetContext.get_current()
         map_result = self._shuffle_map.remote(
+            ctx,
             self._mapper_idx,
             block,
             *self._map_args,
@@ -246,10 +248,12 @@ class _MergeStageIterator:
         num_merge_returns = self._stage.merge_schedule.get_num_reducers_per_merge_idx(
             self._merge_idx
         )
+        ctx = DatasetContext.get_current()
         merge_result = self._shuffle_merge.options(
             num_returns=1 + num_merge_returns,
             **self._stage.get_merge_task_options(self._merge_idx),
         ).remote(
+            ctx,
             *merge_args,
             reduce_args=self._reduce_args,
         )
@@ -313,11 +317,12 @@ class _ReduceStageIterator:
         # outputs produced by the corresponding merge task.
         # We also add the merge task arguments so that the reduce task
         # is colocated with its inputs.
+        ctx = DatasetContext.get_current()
         block, meta = self._shuffle_reduce.options(
             **self._ray_remote_args,
             **self._stage.get_merge_task_options(merge_idx),
             num_returns=2,
-        ).remote(*self._reduce_args, *reduce_arg_blocks, partial_reduce=False)
+        ).remote(ctx, *self._reduce_args, *reduce_arg_blocks, partial_reduce=False)
         self._reduce_results.append((reduce_idx, block))
         return meta
 
@@ -528,13 +533,14 @@ class PushBasedShufflePlan(ShuffleOp):
     @staticmethod
     def _map_partition(
         map_fn,
+        ctx: DatasetContext,
         idx: int,
         block: Block,
         output_num_blocks: int,
         schedule: _MergeTaskSchedule,
         *map_args: List[Any],
     ) -> List[Union[BlockMetadata, Block]]:
-        mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
+        mapper_outputs = map_fn(ctx, idx, block, output_num_blocks, *map_args)
         meta = mapper_outputs.pop(-1)
 
         parts = []
@@ -553,6 +559,7 @@ class PushBasedShufflePlan(ShuffleOp):
     @staticmethod
     def _merge(
         reduce_fn,
+        ctx: DatasetContext,
         *all_mapper_outputs: List[List[Block]],
         reduce_args: Optional[List[Any]] = None,
     ) -> List[Union[BlockMetadata, Block]]:
@@ -570,7 +577,12 @@ class PushBasedShufflePlan(ShuffleOp):
         size_bytes = 0
         schema = None
         for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
-            block, meta = reduce_fn(*reduce_args, *mapper_outputs, partial_reduce=True)
+            block, meta = reduce_fn(
+                ctx,
+                *reduce_args,
+                *mapper_outputs,
+                partial_reduce=True,
+            )
             yield block
 
             block = BlockAccessor.for_block(block)

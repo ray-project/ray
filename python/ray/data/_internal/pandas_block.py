@@ -31,7 +31,7 @@ from ray.data._internal.table_block import (
     TableBlockBuilder,
     VALUE_COL_NAME,
 )
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, PolarsAggregation
 
 if TYPE_CHECKING:
     import pyarrow
@@ -358,7 +358,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         partitions.append(table[last_idx:])
         return partitions
 
-    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(
+        self,
+        key: KeyFn,
+        aggs: Tuple[AggregateFn, PolarsAggregation],
+        ctx: DatasetContext,
+    ) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -451,8 +456,9 @@ class PandasBlockAccessor(TableBlockAccessor):
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
         key: KeyFn,
-        aggs: Tuple[AggregateFn],
+        aggs: Tuple[AggregateFn, PolarsAggregation],
         finalize: bool,
+        ctx: DatasetContext,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
