@@ -74,12 +74,6 @@ def create_checkpoint(
     return Checkpoint.from_dict(checkpoint_data)
 
 
-def test_trainer_properties_saved():
-    checkpoint = create_checkpoint(config={"param": 4})
-    predictor = RLPredictor.from_checkpoint(checkpoint)
-    assert predictor.trainer.config["param"] == 4
-
-
 @pytest.mark.parametrize("batch_type", [list, np.array, pd.DataFrame])
 def test_predict_no_preprocessor(batch_type):
     checkpoint = create_checkpoint()

@@ -11,26 +11,25 @@ from ray.ml.train.integrations.rl.rl_trainer import (
     RL_TRAINER_CLASS_FILE,
     RL_CONFIG_FILE,
 )
-from ray.rllib.agents.trainer import Trainer as RLlibTrainer
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 
 
 class RLPredictor(Predictor):
-    """A predictor for RLlib trainer checkpoints.
+    """A predictor for RLlib policies.
 
     Args:
-        trainer: The RLlib trainer instance containing the policy on which to
-            perform inference on.
+        policy: The RLlib policy on which to perform inference on.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
     """
 
     def __init__(
         self,
-        trainer: RLlibTrainer,
+        policy: Policy,
         preprocessor: Optional[Preprocessor] = None,
     ):
-        self.trainer = trainer
+        self.policy = policy
         self.preprocessor = preprocessor
 
     @classmethod
@@ -100,7 +99,9 @@ class RLPredictor(Predictor):
             trainer = trainer_cls(config=config, env=env)
             trainer.restore(checkpoint_data_path)
 
-            return RLPredictor(trainer=trainer, preprocessor=preprocessor)
+            policy = trainer.get_policy()
+
+            return RLPredictor(policy=policy, preprocessor=preprocessor)
 
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         if isinstance(data, pd.DataFrame):
@@ -115,7 +116,8 @@ class RLPredictor(Predictor):
         if self.preprocessor:
             obs = self.preprocessor.transform_batch(obs)
 
-        policy = self.trainer.get_policy()
-        actions, _outs, _info = policy.compute_actions(obs)
+        actions, _outs, _info = self.policy.compute_actions_from_input_dict(
+            input_dict={"obs": obs}
+        )
 
         return actions

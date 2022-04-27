@@ -1,4 +1,3 @@
-import logging
 import os
 import signal
 import sys
@@ -103,90 +102,6 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
     p.close()
-
-
-def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    def create_remote_function():
-        @ray.remote
-        def g():
-            return 1
-
-        return ray.get(g.remote())
-
-    for _ in range(ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD - 1):
-        ray.get(create_remote_function.remote())
-
-    import io
-
-    log_capture_string = io.StringIO()
-    ch = logging.StreamHandler(log_capture_string)
-
-    # TODO(rkn): It's terrible to have to rely on this implementation detail,
-    # the fact that the warning comes from ray._private.import_thread.logger.
-    # However, I didn't find a good way to capture the output for all loggers
-    # simultaneously.
-    ray._private.import_thread.logger.addHandler(ch)
-
-    ray.get(create_remote_function.remote())
-
-    start_time = time.time()
-    while time.time() < start_time + 10:
-        log_contents = log_capture_string.getvalue()
-        if len(log_contents) > 0:
-            break
-
-    ray._private.import_thread.logger.removeHandler(ch)
-
-    assert "remote function" in log_contents
-    assert (
-        "has been exported {} times.".format(
-            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD
-        )
-        in log_contents
-    )
-
-    # Now test the same thing but for actors.
-
-    @ray.remote
-    def create_actor_class():
-        # Require a GPU so that the actor is never actually created and we
-        # don't spawn an unreasonable number of processes.
-        @ray.remote(num_gpus=1)
-        class Foo:
-            pass
-
-        Foo.remote()
-
-    for _ in range(ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD - 1):
-        ray.get(create_actor_class.remote())
-
-    log_capture_string = io.StringIO()
-    ch = logging.StreamHandler(log_capture_string)
-
-    # TODO(rkn): As mentioned above, it's terrible to have to rely on this
-    # implementation detail.
-    ray._private.import_thread.logger.addHandler(ch)
-
-    ray.get(create_actor_class.remote())
-
-    start_time = time.time()
-    while time.time() < start_time + 10:
-        log_contents = log_capture_string.getvalue()
-        if len(log_contents) > 0:
-            break
-
-    ray._private.import_thread.logger.removeHandler(ch)
-
-    assert "actor" in log_contents
-    assert (
-        "has been exported {} times.".format(
-            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD
-        )
-        in log_contents
-    )
 
 
 # Note that this test will take at least 10 seconds because it must wait for

@@ -341,23 +341,33 @@ class TimeoutStopper(Stopper):
                 "`datetime.timedelta` object. Found: {}".format(type(timeout))
             )
 
-        # To account for setup overhead, set the start time only after
+        self._budget = self._timeout_seconds
+
+        # To account for setup overhead, set the last check time only after
         # the first call to `stop_all()`.
-        self._start = None
+        self._last_check = None
 
     def __call__(self, trial_id, result):
         return False
 
     def stop_all(self):
-        if not self._start:
-            self._start = time.time()
-            return False
-
         now = time.time()
-        if now - self._start >= self._timeout_seconds:
+
+        if self._last_check:
+            taken = now - self._last_check
+            self._budget -= taken
+
+        self._last_check = now
+
+        if self._budget <= 0:
             logger.info(
                 f"Reached timeout of {self._timeout_seconds} seconds. "
                 f"Stopping all trials."
             )
             return True
+
         return False
+
+    def __setstate__(self, state: dict):
+        state["_last_check"] = None
+        self.__dict__.update(state)
