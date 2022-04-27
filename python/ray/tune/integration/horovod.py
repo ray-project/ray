@@ -1,3 +1,4 @@
+import warnings
 from typing import Callable, Dict, Type, Optional
 
 from contextlib import contextmanager
@@ -229,6 +230,16 @@ def DistributedTrainableCreator(
 
     .. versionadded:: 1.0.0
     """
+    warnings.warn(
+        "Ray Tune's `DistributedTrainableCreator` will be deprecated in Ray "
+        "2.0, and will be replaced by Ray AI Runtime (Ray AIR). Ray AIR ("
+        "https://docs.ray.io/en/latest/ray-air/getting-started.html) will "
+        "provide greater functionality than `DistributedTrainableCreator`, "
+        "and with a more flexible and easy-to-use API.",
+        PendingDeprecationWarning,
+        stacklevel=2,
+    )
+
     ssh_identity_file = None
     sshkeystr = None
 

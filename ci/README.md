@@ -43,7 +43,7 @@ The following practices can avoid such pitfalls while maintaining intuitive cont
   (The sheer length of the script is a secondary concern and can be mitigated by keeping functions modular.)
 
 - Avoid adding new scripts if possible. If it's necessary that you do so, call them instead of sourcing them.
-  Note that thies implies new scripts should not modify the environment, or the caller will not see such changes!
+  Note that this implies new scripts should not modify the environment, or the caller will not see such changes!
 
 - Always add code inside a function, not at global scope. Use `local` for variables where it makes sense.
   However, be careful and know the shell rules: for example, e.g. `local x=$(false)` succeeds even under `set -e`.

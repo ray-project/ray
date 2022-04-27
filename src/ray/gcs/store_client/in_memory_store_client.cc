@@ -21,12 +21,22 @@ namespace gcs {
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
                                      const std::string &key,
                                      const std::string &data,
-                                     const StatusCallback &callback) {
+                                     bool overwrite,
+                                     std::function<void(bool)> callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  table->records_[key] = data;
+  auto it = table->records_.find(key);
+  bool inserted = false;
+  if (it != table->records_.end()) {
+    if (overwrite) {
+      it->second = data;
+    }
+  } else {
+    table->records_[key] = data;
+    inserted = true;
+  }
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
+    main_io_service_.post([callback, inserted]() { callback(inserted); },
                           "GcsInMemoryStore.Put");
   }
   return Status::OK();
@@ -88,12 +98,12 @@ Status InMemoryStoreClient::AsyncMultiGet(
 
 Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
                                         const std::string &key,
-                                        const StatusCallback &callback) {
+                                        std::function<void(bool)> callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  table->records_.erase(key);
+  auto num = table->records_.erase(key);
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
+    main_io_service_.post([callback, num]() { callback(num > 0); },
                           "GcsInMemoryStore.Delete");
   }
   return Status::OK();
@@ -101,20 +111,22 @@ Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
 
 Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
                                              const std::vector<std::string> &keys,
-                                             const StatusCallback &callback) {
+                                             std::function<void(int64_t)> callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
+  int64_t num = 0;
   for (auto &key : keys) {
-    table->records_.erase(key);
+    num += table->records_.erase(key);
   }
   if (callback != nullptr) {
-    main_io_service_.post([callback]() { callback(Status::OK()); },
+    main_io_service_.post([callback, num]() { callback(num); },
                           "GcsInMemoryStore.BatchDelete");
   }
   return Status::OK();
 }
 
 int InMemoryStoreClient::GetNextJobID() {
+  absl::MutexLock lock(&mutex_);
   job_id_ += 1;
   return job_id_;
 }
@@ -130,6 +142,37 @@ std::shared_ptr<InMemoryStoreClient::InMemoryTable> InMemoryStoreClient::GetOrCr
     tables_[table_name] = table;
     return table;
   }
+}
+
+Status InMemoryStoreClient::AsyncGetKeys(
+    const std::string &table_name,
+    const std::string &prefix,
+    std::function<void(std::vector<std::string>)> callback) {
+  RAY_CHECK(callback);
+  auto table = GetOrCreateTable(table_name);
+  std::vector<std::string> result;
+  absl::MutexLock lock(&(table->mutex_));
+  for (auto &pair : table->records_) {
+    if (pair.first.find(prefix) == 0) {
+      result.push_back(pair.first);
+    }
+  }
+  main_io_service_.post(
+      [result = std::move(result), callback]() mutable { callback(std::move(result)); },
+      "GcsInMemoryStore.Keys");
+  return Status::OK();
+}
+
+Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
+                                        const std::string &key,
+                                        std::function<void(bool)> callback) {
+  RAY_CHECK(callback);
+  auto table = GetOrCreateTable(table_name);
+  absl::MutexLock lock(&(table->mutex_));
+  bool result = table->records_.contains(key);
+  main_io_service_.post([result, callback]() mutable { callback(result); },
+                        "GcsInMemoryStore.Exists");
+  return Status::OK();
 }
 
 }  // namespace gcs

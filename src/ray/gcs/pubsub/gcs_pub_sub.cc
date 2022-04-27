@@ -114,25 +114,21 @@ Status GcsSubscriber::SubscribeAllJobs(
     const JobID id = JobID::FromBinary(msg.key_id());
     subscribe(id, msg.job_message());
   };
-  // TODO(mwtian): Improve error handling, e.g. try to resubscribe automatically.
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
   };
-  if (!subscriber_->SubscribeChannel(
-          std::make_unique<rpc::SubMessage>(),
-          rpc::ChannelType::GCS_JOB_CHANNEL,
-          gcs_address_,
-          [done](Status status) {
-            if (done != nullptr) {
-              done(status);
-            }
-          },
-          std::move(subscribe_item_callback),
-          std::move(subscription_failure_callback))) {
-    return Status::ObjectExists(
-        "Job channel already subscribed. Please unsubscribe first if it needs to be "
-        "resubscribed.");
-  }
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->SubscribeChannel(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_JOB_CHANNEL,
+      gcs_address_,
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback)));
   return Status::OK();
 }
 
@@ -152,22 +148,19 @@ Status GcsSubscriber::SubscribeActor(
     RAY_LOG(WARNING) << "Subscription to Actor " << id.Hex()
                      << " failed: " << status.ToString();
   };
-  if (!subscriber_->Subscribe(
-          std::make_unique<rpc::SubMessage>(),
-          rpc::ChannelType::GCS_ACTOR_CHANNEL,
-          gcs_address_,
-          id.Binary(),
-          [done](Status status) {
-            if (done != nullptr) {
-              done(status);
-            }
-          },
-          std::move(subscription_callback),
-          std::move(subscription_failure_callback))) {
-    return Status::ObjectExists(
-        "Actor already subscribed. Please unsubscribe first if it needs to be "
-        "resubscribed.");
-  }
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->Subscribe(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_ACTOR_CHANNEL,
+      gcs_address_,
+      id.Binary(),
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscription_callback),
+      std::move(subscription_failure_callback)));
   return Status::OK();
 }
 
@@ -192,21 +185,18 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to NodeInfo channel failed: " << status.ToString();
   };
-  if (!subscriber_->SubscribeChannel(
-          std::make_unique<rpc::SubMessage>(),
-          rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-          gcs_address_,
-          [done](Status status) {
-            if (done != nullptr) {
-              done(status);
-            }
-          },
-          std::move(subscribe_item_callback),
-          std::move(subscription_failure_callback))) {
-    return Status::ObjectExists(
-        "NodeInfo channel already subscribed. Please unsubscribe first if it needs to "
-        "be resubscribed.");
-  }
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->SubscribeChannel(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+      gcs_address_,
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback)));
   return Status::OK();
 }
 
@@ -221,22 +211,19 @@ Status GcsSubscriber::SubscribeAllNodeResources(
     RAY_LOG(WARNING) << "Subscription to NodeResource channel failed: "
                      << status.ToString();
   };
-  if (!subscriber_->SubscribeChannel(
-          std::make_unique<rpc::SubMessage>(),
-          rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-          gcs_address_,
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->SubscribeChannel(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+      gcs_address_,
 
-          [done](Status status) {
-            if (done != nullptr) {
-              done(status);
-            }
-          },
-          std::move(subscribe_item_callback),
-          std::move(subscription_failure_callback))) {
-    return Status::ObjectExists(
-        "NodeResource channel already subscribed. Please unsubscribe first if it needs "
-        "to be resubscribed.");
-  }
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback)));
   return Status::OK();
 }
 
@@ -250,22 +237,19 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
     RAY_LOG(WARNING) << "Subscription to WorkerDelta channel failed: "
                      << status.ToString();
   };
-  if (!subscriber_->SubscribeChannel(
-          std::make_unique<rpc::SubMessage>(),
-          rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-          gcs_address_,
-          /*subscribe_done_callback=*/
-          [done](Status status) {
-            if (done != nullptr) {
-              done(status);
-            }
-          },
-          std::move(subscribe_item_callback),
-          std::move(subscription_failure_callback))) {
-    return Status::ObjectExists(
-        "WorkerDelta channel already subscribed. Please unsubscribe first if it needs "
-        "to be resubscribed.");
-  }
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->SubscribeChannel(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+      gcs_address_,
+      /*subscribe_done_callback=*/
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback)));
   return Status::OK();
 }
 

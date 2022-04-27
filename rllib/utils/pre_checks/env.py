@@ -1,4 +1,5 @@
 """Common pre-checks for all RLlib experiments."""
+from copy import copy
 import logging
 import gym
 import numpy as np
@@ -218,10 +219,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
                 "within your MutiAgentEnv's constructor. "
                 "This will raise an error in the future."
             )
-        env.observation_space = (
-            env.action_space
-        ) = env._spaces_in_preferred_format = None
-        env._agent_ids = set()
+        return
 
     reset_obs = env.reset()
     sampled_obs = env.observation_space_sample()
@@ -263,7 +261,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not env.action_space_contains(sampled_action):
         error = (
             _not_contained_error("action_space_sample", "action")
-            + "\n\n sampled_action {sampled_action}\n\n"
+            + f"\n\n sampled_action {sampled_action}\n\n"
         )
         raise ValueError(error)
 
@@ -280,7 +278,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     if not env.observation_space_contains(next_obs):
         error = (
             _not_contained_error("env.step(sampled_action)", "observation")
-            + ":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
+            + f":\n\n next_obs: {next_obs} \n\n sampled_obs: {sampled_obs}"
         )
         raise ValueError(error)
 
@@ -491,7 +489,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f" {type(element)}"
             )
         raise ValueError(error)
-    agent_ids: Set = env.get_agent_ids()
+    agent_ids: Set = copy(env.get_agent_ids())
     agent_ids.add("__all__")
 
     if not all(k in agent_ids for k in element):

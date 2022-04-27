@@ -7,7 +7,7 @@ import ray
 from ray import tune
 from ray.ml.constants import TRAIN_DATASET_KEY, PREPROCESSOR_KEY
 from ray.ml.trainer import Trainer
-from ray.ml.config import ScalingConfig, RunConfig, ScalingConfigDataClass
+from ray.ml.config import ScalingConfig, RunConfig
 from ray.ml.trainer import GenDataset
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
@@ -181,6 +181,14 @@ class DataParallelTrainer(Trainer):
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
+    _scaling_config_allowed_keys = [
+        "num_workers",
+        "num_cpus_per_worker",
+        "num_gpus_per_worker",
+        "additional_resources_per_worker",
+        "use_gpu",
+    ]
+
     def __init__(
         self,
         *,
@@ -250,7 +258,9 @@ class DataParallelTrainer(Trainer):
             )
 
     def training_loop(self) -> None:
-        scaling_config_dataclass = ScalingConfigDataClass(**self.scaling_config)
+        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
+            self.scaling_config
+        )
 
         train_loop_per_worker = construct_train_func(
             self.train_loop_per_worker,

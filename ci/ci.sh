@@ -191,7 +191,8 @@ test_python() {
 
 # For running large Python tests on Linux and MacOS.
 test_large() {
-  bazel test --config=ci "$(./ci/run/bazel_export_options)" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}" \
       -- python/ray/tests/...
@@ -429,8 +430,11 @@ build_wheels() {
 
         # Sync the directory to buildkite artifacts
         rm -rf /artifact-mount/.whl || true
-        cp -r .whl /artifact-mount/.whl
-        chmod -R 777 /artifact-mount/.whl
+
+        if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
+          cp -r .whl /artifact-mount/.whl
+          chmod -R 777 /artifact-mount/.whl
+        fi
 
         validate_wheels_commit_str
       fi
@@ -440,8 +444,11 @@ build_wheels() {
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
-      cp -r .whl /tmp/artifacts/.whl
-      chmod -R 777 /tmp/artifacts/.whl
+
+      if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
+        cp -r .whl /tmp/artifacts/.whl
+        chmod -R 777 /tmp/artifacts/.whl
+      fi
 
       validate_wheels_commit_str
       ;;
@@ -464,6 +471,10 @@ lint_readme() {
 
 lint_scripts() {
   FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/lint/format.sh --all-scripts
+}
+
+lint_banned_words() {
+  "${ROOT_DIR}"/lint/check-banned-words.sh
 }
 
 lint_bazel() {
@@ -532,6 +543,9 @@ _lint() {
 
   # Run script linting
   lint_scripts
+
+  # Run banned words check.
+  lint_banned_words
 
   # Make sure that the README is formatted properly.
   lint_readme

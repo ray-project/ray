@@ -83,11 +83,6 @@ def _configure_system():
     )
     sys.path.insert(0, thirdparty_files)
 
-    if sys.platform == "win32":
-        import ray._private.compat  # noqa: E402
-
-        ray._private.compat.patch_redis_empty_recv()
-
     if (
         platform.system() == "Linux"
         and "Microsoft".lower() in platform.release().lower()

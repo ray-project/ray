@@ -22,6 +22,7 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.datacenter import DataSource, DataOrganizer
 
+
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
@@ -61,7 +62,6 @@ def actor_table_data_to_dict(message):
         "numExecutedTasks",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
-    logger.info(light_message)
     if "functionDescriptor" in light_message:
         actor_class = actor_classname_from_func_descriptor(
             light_message["functionDescriptor"]
