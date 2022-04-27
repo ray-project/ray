@@ -172,8 +172,8 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   }
   if (data.resource_load_changed()) {
     (*iter->second.mutable_resource_load()) = data.resource_load();
+    (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
   }
-  (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 }
 
 void GcsResourceManager::HandleReportResourceUsage(
