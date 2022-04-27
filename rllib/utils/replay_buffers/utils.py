@@ -1,9 +1,12 @@
+import logging
+import psutil
 from typing import Optional
 
 from ray.rllib.execution import MultiAgentReplayBuffer as Legacy_MultiAgentReplayBuffer
 from ray.rllib.execution.buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer as LegacyMultiAgentReplayBuffer,
 )
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -14,6 +17,9 @@ from ray.rllib.utils.replay_buffers import (
     ReplayBuffer,
 )
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, TrainerConfigDict
+from ray.util import log_once
+
+logger = logging.getLogger(__name__)
 
 
 def update_priorities_in_replay_buffer(
@@ -94,14 +100,17 @@ def sample_min_n_steps_from_buffer(
     train_batch_size = 0
     train_batches = []
     while train_batch_size < min_steps:
-        train_batches.append(replay_buffer.sample(num_items=1))
+        batch = replay_buffer.sample(num_items=1)
+        if batch is None:
+            return None
+        train_batches.append(batch)
         train_batch_size += (
             train_batches[-1].agent_steps()
             if count_by_agent_steps
             else train_batches[-1].env_steps()
         )
     # All batch types are the same type, hence we can use any concat_samples()
-    train_batch = train_batches[0].concat_samples(train_batches)
+    train_batch = SampleBatch.concat_samples(train_batches)
     return train_batch
 
 
@@ -317,3 +326,38 @@ def validate_buffer_config(config: dict):
     # Pop prioritized replay because it's not a valid parameter for older
     # replay buffers
     config["replay_buffer_config"].pop("prioritized_replay", None)
+
+
+def warn_replay_buffer_capacity(*, item: SampleBatchType, capacity: int) -> None:
+    """Warn if the configured replay buffer capacity is too large for machine's memory.
+
+    Args:
+        item: A (example) item that's supposed to be added to the buffer.
+            This is used to compute the overall memory footprint estimate for the
+            buffer.
+        capacity: The capacity value of the buffer. This is interpreted as the
+            number of items (such as given `item`) that will eventually be stored in
+            the buffer.
+
+    Raises:
+        ValueError: If computed memory footprint for the buffer exceeds the machine's
+            RAM.
+    """
+    if log_once("warn_replay_buffer_capacity"):
+        item_size = item.size_bytes()
+        psutil_mem = psutil.virtual_memory()
+        total_gb = psutil_mem.total / 1e9
+        mem_size = capacity * item_size / 1e9
+        msg = (
+            "Estimated max memory usage for replay buffer is {} GB "
+            "({} batches of size {}, {} bytes each), "
+            "available system memory is {} GB".format(
+                mem_size, capacity, item.count, item_size, total_gb
+            )
+        )
+        if mem_size > total_gb:
+            raise ValueError(msg)
+        elif mem_size > 0.2 * total_gb:
+            logger.warning(msg)
+        else:
+            logger.info(msg)

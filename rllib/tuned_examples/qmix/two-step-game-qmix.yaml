@@ -21,5 +21,3 @@ two-step-game-qmix-with-qmix-mixer:
         train_batch_size: 32
         num_workers: 0
         mixer: qmix
-
-        _disable_execution_plan_api: false

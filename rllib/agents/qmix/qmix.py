@@ -87,10 +87,11 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     "replay_buffer_config": {
         # Use the new ReplayBuffer API here
-        #"_enable_replay_buffer_api": True,
-        "type": "ReplayBuffer",
-    #    # Size of the replay buffer in batches (not timesteps!).
-    #    "capacity": 1000,
+        "_enable_replay_buffer_api": True,
+        "type": "SimpleReplayBuffer",
+        # Size of the replay buffer in batches (not timesteps!).
+        "capacity": 1000,
+        "learning_starts": 1000,
     },
 
     # === Optimization ===
@@ -138,7 +139,7 @@ DEFAULT_CONFIG = with_common_config({
     # Use `replay_buffer_config.learning_starts` instead.
     "learning_starts": DEPRECATED_VALUE,
     # Use `replay_buffer_config.capacity` instead.
-    "buffer_size": 1000,#DEPRECATED_VALUE,
+    "buffer_size": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # fmt: on
@@ -195,6 +196,8 @@ class QMixTrainer(SimpleQTrainer):
             min_steps=self.config["train_batch_size"],
             count_by_agent_steps=self._by_agent_steps,
         )
+        if train_batch is None:
+            return {}
 
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
@@ -220,10 +223,14 @@ class QMixTrainer(SimpleQTrainer):
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-        # Update remote workers' weights after learning on local worker.
-        if self.workers.remote_workers():
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights()
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
+        global_vars = {
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+        }
+        # Update remote workers' weights and global vars after learning on local worker.
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
 
         # Return all collected metrics for the iteration.
         return train_results
