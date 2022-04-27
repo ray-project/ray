@@ -240,11 +240,9 @@ def get_tf_eager_cls_if_necessary(
             assert tf1.executing_eagerly()
 
             from ray.rllib.policy.tf_policy import TFPolicy
-            from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
 
-            # Create eager-class (if not already one).
-            if hasattr(orig_cls, "as_eager") and \
-                    not issubclass(orig_cls, EagerTFPolicy):
+            # Create eager-class.
+            if hasattr(orig_cls, "as_eager"):
                 cls = orig_cls.as_eager()
                 if config.get("eager_tracing"):
                     cls = cls.with_tracing()

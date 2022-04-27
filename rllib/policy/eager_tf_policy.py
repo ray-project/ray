@@ -250,11 +250,6 @@ class OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
-class EagerTFPolicy(Policy):
-    """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
-    pass
-
-
 def build_eager_tf_policy(
     name,
     loss_fn,
