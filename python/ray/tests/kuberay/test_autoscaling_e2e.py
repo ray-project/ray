@@ -128,8 +128,9 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         ]:
             containers = group_spec["template"]["spec"]["containers"]
 
-            # Will assume the example config maintains this invariant:
             ray_container = containers[0]
+            # Confirm that the first container in the example config is the Ray container.
+            assert ray_container["name"] in ["ray-head", "ray-worker"]
 
             ray_container["image"] = RAY_IMAGE
 
