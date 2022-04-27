@@ -76,10 +76,9 @@ void GcsActorScheduler::ScheduleByGcs(std::shared_ptr<GcsActor> actor) {
                   .emplace(actor->GetActorID())
                   .second);
 
-    auto acquired_resources = actor->GetMutableAcquiredResources();
-    *acquired_resources = ResourceMapToResourceRequest(
+    actor->SetAcquiredResources(ResourceMapToResourceRequest(
         actor->GetCreationTaskSpecification().GetRequiredResources().GetResourceMap(),
-        false);
+        false));
     // Lease worker directly from the node.
     actor->SetGrantOrReject(true);
     LeaseWorkerFromNode(actor, node.value());
@@ -649,10 +648,9 @@ void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
 void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor) {
   auto &cluster_resource_manager =
       cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
-  auto acquired_resources = actor->GetMutableAcquiredResources();
   cluster_resource_manager.AddNodeAvailableResources(
-      scheduling::NodeID(actor->GetNodeID().Binary()), *acquired_resources);
-  acquired_resources->Clear();
+      scheduling::NodeID(actor->GetNodeID().Binary()), actor->GetAcquiredResources());
+  actor->SetAcquiredResources(ResourceRequest());
 }
 
 size_t GcsActorScheduler::GetPendingActorsCount() const {

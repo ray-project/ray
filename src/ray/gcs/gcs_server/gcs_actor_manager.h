@@ -148,7 +148,7 @@ class GcsActor {
   rpc::TaskSpec *GetMutableTaskSpec();
 
   const ResourceRequest &GetAcquiredResources() const;
-  ResourceRequest *GetMutableAcquiredResources();
+  void SetAcquiredResources(ResourceRequest &&resource_request);
   bool GetGrantOrReject() const;
   void SetGrantOrReject(bool grant_or_reject);
 

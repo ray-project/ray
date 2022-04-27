@@ -182,7 +182,9 @@ rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
 const ResourceRequest &GcsActor::GetAcquiredResources() const {
   return acquired_resources_;
 }
-ResourceRequest *GcsActor::GetMutableAcquiredResources() { return &acquired_resources_; }
+void GcsActor::SetAcquiredResources(ResourceRequest &&resource_request) {
+  acquired_resources_ = std::move(resource_request);
+}
 
 bool GcsActor::GetGrantOrReject() const { return grant_or_reject_; }
 void GcsActor::SetGrantOrReject(bool grant_or_reject) {
@@ -1432,10 +1434,9 @@ bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
   // The actor was pending scheduling. Remove it from the queue.
   if (pending_it != pending_actors_.end()) {
     pending_actors_.erase(pending_it);
-  } else if (!gcs_actor_scheduler_->RemovePendingActor(actor)) {
-    return false;
+    return true;
   }
-  return true;
+  return gcs_actor_scheduler_->RemovePendingActor(actor);
 }
 
 size_t GcsActorManager::GetPendingActorsCount() const {
