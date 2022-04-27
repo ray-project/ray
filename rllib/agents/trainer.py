@@ -851,6 +851,7 @@ class Trainer(Trainable):
         self._counters = defaultdict(int)
         self._episode_history = []
         self._episodes_to_be_collected = []
+        self._remote_workers_for_metrics = []
 
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[WorkerSet] = None
@@ -955,13 +956,13 @@ class Trainer(Trainable):
                 local_worker=True,
                 logdir=self.logdir,
             )
+            # By default, collect metrics for all remote workers.
+            self._remote_workers_for_metrics = self.workers.remote_workers()
 
             # Function defining one single training iteration's behavior.
             if self.config["_disable_execution_plan_api"]:
-                # TODO: Ensure remote workers are initially in sync with the
-                # local worker.
-                # self.workers.sync_weights()
-                pass  # TODO: Uncommenting line above breaks tf2+eager_tracing for A3C.
+                # Ensure remote workers are initially in sync with the local worker.
+                self.workers.sync_weights()
             # LocalIterator-creating "execution plan".
             # Only call this once here to create `self.train_exec_impl`,
             # which is a ray.util.iter.LocalIterator that will be `next`'d
@@ -1468,14 +1469,13 @@ class Trainer(Trainable):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        # Update weights - after learning on the local worker - on all remote
-        # workers.
+        # Update weights and global_vars - after learning on the local worker - on all
+        # remote workers.
         global_vars = {
-            "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
+            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
         }
-        if self.workers.remote_workers():
-            with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+        with self._timers[WORKER_UPDATE_TIMER]:
+            self.workers.sync_weights(global_vars=global_vars)
 
         return train_results
 
@@ -2880,7 +2880,7 @@ class Trainer(Trainable):
         # Collect rollout worker metrics.
         episodes, self._episodes_to_be_collected = collect_episodes(
             self.workers.local_worker(),
-            self.workers.remote_workers(),
+            self._remote_workers_for_metrics,
             self._episodes_to_be_collected,
             timeout_seconds=self.config["metrics_episode_collection_timeout_s"],
         )

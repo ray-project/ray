@@ -10,26 +10,32 @@ from ray.workflow import workflow_storage
 from ray.exceptions import RaySystemError
 
 
-@workflow.step
+@ray.remote
 def large_input():
     return np.arange(2 ** 24)
 
 
-@workflow.step
+@ray.remote
 def identity(x):
     return x
 
 
-@workflow.step
+@ray.remote
 def average(x):
     return np.mean(x)
 
 
-@workflow.step
+@ray.remote
 def checkpoint_dag(checkpoint):
-    x = large_input.options(name="large_input", checkpoint=checkpoint).step()
-    y = identity.options(name="identity", checkpoint=checkpoint).step(x)
-    return average.options(name="average").step(y)
+    x = utils.update_workflow_options(
+        large_input, name="large_input", checkpoint=checkpoint
+    ).bind()
+    y = utils.update_workflow_options(
+        identity, name="identity", checkpoint=checkpoint
+    ).bind(x)
+    return workflow.continuation(
+        utils.update_workflow_options(average, name="average").bind(y)
+    )
 
 
 def _assert_step_checkpoints(wf_storage, step_id, mode):
@@ -53,10 +59,12 @@ def _assert_step_checkpoints(wf_storage, step_id, mode):
 
 
 def test_checkpoint_dag_skip_all(workflow_start_regular):
-    outputs = (
-        checkpoint_dag.options(name="checkpoint_dag", checkpoint=False)
-        .step(False)
-        .run(workflow_id="checkpoint_skip")
+    outputs = utils.run_workflow_dag_with_options(
+        checkpoint_dag,
+        (False,),
+        workflow_id="checkpoint_skip",
+        name="checkpoint_dag",
+        checkpoint=False,
     )
     assert np.isclose(outputs, 8388607.5)
     recovered = ray.get(workflow.resume("checkpoint_skip"))
@@ -70,10 +78,11 @@ def test_checkpoint_dag_skip_all(workflow_start_regular):
 
 
 def test_checkpoint_dag_skip_partial(workflow_start_regular):
-    outputs = (
-        checkpoint_dag.options(name="checkpoint_dag")
-        .step(False)
-        .run(workflow_id="checkpoint_partial")
+    outputs = utils.run_workflow_dag_with_options(
+        checkpoint_dag,
+        (False,),
+        workflow_id="checkpoint_partial",
+        name="checkpoint_dag",
     )
     assert np.isclose(outputs, 8388607.5)
     recovered = ray.get(workflow.resume("checkpoint_partial"))
@@ -87,10 +96,8 @@ def test_checkpoint_dag_skip_partial(workflow_start_regular):
 
 
 def test_checkpoint_dag_full(workflow_start_regular):
-    outputs = (
-        checkpoint_dag.options(name="checkpoint_dag")
-        .step(True)
-        .run(workflow_id="checkpoint_whole")
+    outputs = utils.run_workflow_dag_with_options(
+        checkpoint_dag, (True,), workflow_id="checkpoint_whole", name="checkpoint_dag"
     )
     assert np.isclose(outputs, 8388607.5)
     recovered = ray.get(workflow.resume("checkpoint_whole"))
@@ -103,7 +110,7 @@ def test_checkpoint_dag_full(workflow_start_regular):
     _assert_step_checkpoints(wf_storage, "average", mode="checkpointed")
 
 
-@workflow.step
+@ray.remote
 def identity2(x):
     if not utils.check_global_mark():
         import os
@@ -112,26 +119,26 @@ def identity2(x):
     return x
 
 
-@workflow.step
+@ray.remote
 def checkpoint_dag2(checkpoint):
-    x = large_input.options(checkpoint=checkpoint).step()
-    y = identity2.options(checkpoint=checkpoint).step(x)
-    return average.step(y)
+    x = utils.update_workflow_options(large_input, checkpoint=checkpoint).bind()
+    y = utils.update_workflow_options(identity2, checkpoint=checkpoint).bind(x)
+    return workflow.continuation(average.bind(y))
 
 
 def test_checkpoint_dag_recovery(workflow_start_regular):
     utils.set_global_mark()
     # warm up to ensure precise timing
     for _ in range(3):
-        outputs = checkpoint_dag2.step(True).run()
+        outputs = workflow.create(checkpoint_dag2.bind(True)).run()
         assert np.isclose(outputs, 8388607.5)
 
     utils.unset_global_mark()
 
     start = time.time()
     with pytest.raises(RaySystemError):
-        checkpoint_dag2.options(checkpoint=False).step(False).run(
-            workflow_id="checkpoint_skip2"
+        utils.run_workflow_dag_with_options(
+            checkpoint_dag2, (False,), workflow_id="checkpoint_skip2", checkpoint=False
         )
     run_duration_skipped = time.time() - start
 
@@ -146,7 +153,9 @@ def test_checkpoint_dag_recovery(workflow_start_regular):
 
     start = time.time()
     with pytest.raises(RaySystemError):
-        checkpoint_dag2.step(False).run(workflow_id="checkpoint_partial2")
+        workflow.create(checkpoint_dag2.bind(False)).run(
+            workflow_id="checkpoint_partial2"
+        )
     run_duration_partial = time.time() - start
 
     utils.set_global_mark()
@@ -160,7 +169,7 @@ def test_checkpoint_dag_recovery(workflow_start_regular):
 
     start = time.time()
     with pytest.raises(RaySystemError):
-        checkpoint_dag2.step(True).run(workflow_id="checkpoint_whole2")
+        workflow.create(checkpoint_dag2.bind(True)).run(workflow_id="checkpoint_whole2")
     run_duration_whole = time.time() - start
 
     utils.set_global_mark()

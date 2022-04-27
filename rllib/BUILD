@@ -121,7 +121,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/alpha_star/multi-agent-cartpole-alpha-star.yaml"],
-    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=20"]
+    args = ["--yaml-dir=tuned_examples/alpha_star", "--num-cpus=10"]
 )
 
 # APEX-DQN
@@ -256,6 +256,16 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/ppo/cartpole-ddppo.yaml"]),
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "learning_tests_pendulum_ddppo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "torch_only", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/ppo/pendulum-ddppo.yaml"]),
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
