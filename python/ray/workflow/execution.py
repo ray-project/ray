@@ -106,7 +106,7 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
     """Get the output of a running workflow.
     See "api.get_output()" for details.
     """
-    from ray.workflow.common import _ensure_workflow_initialized
+    from ray.workflow.api import _ensure_workflow_initialized
 
     _ensure_workflow_initialized()
     try:
