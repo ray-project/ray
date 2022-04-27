@@ -54,13 +54,6 @@ def get_nodes_and_edges(dag: DAGNode):
     return nodes, edges
 
 
-def get_shape(node: DAGNode):
-    if isinstance(node, (InputNode, InputAttributeNode)):
-        return "box"
-    else:
-        return "circle"
-
-
 def dag_to_dot(dag: DAGNode):
     """Create a Dot graph from dag.
 
@@ -86,15 +79,10 @@ def dag_to_dot(dag: DAGNode):
 
     # Step 2: create graph with all the edges
     for edge in edges:
-        src = edge[0]
-        dst = edge[1]
-        src_name = node_names[src]
-        dst_name = node_names[dst]
-        src_shape = get_shape(src)
-        dst_shape = get_shape(dst)
-        src_node = pydot.Node(src_name, shape=src_shape)
-        dst_node = pydot.Node(dst_name, shape=dst_shape)
-        graph.add_edge(pydot.Edge(src_node, dst_node))
+        graph.add_edge(pydot.Edge(node_names[edge[0]], node_names[edge[1]]))
+    # if there is only one node
+    if len(nodes) == 1 and len(edges) == 0:
+        graph.add_node(pydot.Node(node_names[nodes[0]]))
 
     return graph
 
