@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple, Type
+from typing import Any, Optional, Tuple, Type
 
 import datasets.iterable_dataset
 import transformers.trainer
@@ -43,18 +43,18 @@ def wrap_transformers_trainer(
     class RayTrainer(base_trainer_class):
         # TODO(yard1): Upstream data collator removing unused columns to
         # transformers.
+        # This is necessary to provide the same experience as with a
+        # non-iterable HuggingFace Dataset, which can remove columns
+        # not supported by the model.
         def _prepare_data_collator(self):
+            """Wrap the data collator in a function removing superflous columns."""
             # Hack to set the self._signature_columns attribute.
             try:
                 self._remove_unused_columns(None, description="nan")
             except AttributeError:
                 pass
 
-            self.data_collator = self._get_remove_columns_data_collator()
-
-        def _get_remove_columns_data_collator(self) -> Callable:
             if self._signature_columns and not hasattr(self, "_original_data_collator"):
-
                 self._original_data_collator = self.data_collator
 
                 def remove_columns_collator(features):
@@ -71,7 +71,8 @@ def wrap_transformers_trainer(
                 collator = remove_columns_collator
             else:
                 collator = self.data_collator
-            return collator
+
+            self.data_collator = collator
 
         def get_train_dataloader(self):
             if self.train_dataset is None:
@@ -79,7 +80,7 @@ def wrap_transformers_trainer(
 
             train_dataset = self.train_dataset
 
-            # While we are not sharding the datasets again, this
+            # While we are not sharding the train dataset again, this
             # class ensures that the last batch has a consistent size.
             train_dataset = transformers.trainer.IterableDatasetShard(
                 train_dataset,
