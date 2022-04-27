@@ -109,16 +109,16 @@ def combine(*args):
 def test_dag_driver_partial_input(serve_instance):
     with InputNode() as inp:
         dag = DAGDriver.bind(
-            combine.bind(echo.bind(inp[0]), echo.bind(inp[1])),
+            combine.bind(echo.bind(inp[0]), echo.bind(inp[1]), echo.bind(inp[2])),
             input_schema=json_request,
         )
     handle = serve.run(dag)
-    assert ray.get(handle.predict.remote([1, 2])) == [1, 2]
+    assert ray.get(handle.predict.remote([1, 2, [3, 4]])) == [1, 2, [3, 4]]
 
-    resp = requests.post("http://127.0.0.1:8000/", json=[1, 2])
+    resp = requests.post("http://127.0.0.1:8000/", json=[1, 2, [3, 4]])
     print(resp.text)
     resp.raise_for_status()
-    assert resp.json() == [1, 2]
+    assert resp.json() == [1, 2, [3, 4]]
 
 
 if __name__ == "__main__":
