@@ -1,73 +1,98 @@
 Workflow Basics
 ===============
 
-Get started with a single three-step workflow:
+If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <core-walkthrough>`.
+
+Ray DAG
+-------
+
+Normally, Ray tasks are executed eagerly.
+Ray DAG provides a way to build the DAG without execution, and Ray Workflow is based on Ray DAGs.
+
+It is simple to build a Ray DAG: you just replace all ``.remote(...)`` with ``.bind(...)`` in a Ray application.
+Ray DAGs can be composed in arbitrarily like normal Ray tasks.
+
+Here is a single three-node DAG:
 
 .. code-block:: python
 
-    from ray import workflow
     from typing import List
+    import ray
 
-    @workflow.step
+    # Define Ray remote functions.
+    @ray.remote
     def read_data(num: int):
         return [i for i in range(num)]
 
-    @workflow.step
+    @ray.remote
     def preprocessing(data: List[float]) -> List[float]:
         return [d**2 for d in data]
 
-    @workflow.step
+    @ray.remote
     def aggregate(data: List[float]) -> float:
         return sum(data)
 
-    # Initialize workflow storage.
+    # Build the DAG.
+    data = read_data.bind(10)
+    preprocessed_data = preprocessing.bind(data)
+    output = aggregate.bind(preprocessed_data)
+
+
+The Ray DAG will not be executed until further actions are taken on it.
+
+Your first workflow
+-------------------
+
+A single line is all you need to turn the previous DAG into a workflow:
+
+.. code-block:: python
+
+    # <follow the previous code>
+    from ray import workflow
+
+    # Initialize workflow.
     workflow.init()
-
-    # Setup the workflow.
-    data = read_data.step(10)
-    preprocessed_data = preprocessing.step(data)
-    output = aggregate.step(preprocessed_data)
-
+    # Create the workflow from the DAG.
+    wf = workflow.create(output)
     # Execute the workflow and print the result.
     print(output.run())
 
     # The workflow can also be executed asynchronously.
     # print(ray.get(output.run_async()))
 
-Here we created the workflow:
+Here is the workflow we created:
 
 .. image:: basic.png
    :width: 500px
    :align: center
 
-Workflow steps behave similarly to Ray tasks. They are declared via the ``@workflow.step`` annotation, and can take in either concrete values or the output of another workflow step as an argument.
+Each node in the original DAG becomes a workflow step.
+Workflow steps behave similarly to Ray tasks. They are executed in a parallel and distributed way.
 
-Unlike Ray tasks, which return an ``ObjectRef[T]`` when called and are executed eagerly, workflow steps return ``Workflow[T]`` and are not executed until ``.run()`` is called on a composed workflow DAG.
-
-Composing workflow steps
-------------------------
-
-As seen in the example above, workflow steps can be composed by passing ``Workflow[T]`` outputs to other steps. Just like a Ray task, a step can take multiple inputs:
-
-.. code-block:: python
-
-    @workflow.step
-    def add(left: int, right: int) -> int:
-        return left + right
-
-    @workflow.step
-    def get_val() -> int:
-        return 10
-
-    ret = add.step(get_val.step(), 20)
-    assert ret.run("add_example") == 30
-
-Here we can see though ``get_val1.step()`` returns a ``Workflow[int]``, when passed to the ``add`` step, the ``add`` function will see its resolved value.
 
 Retrieving results
 ------------------
 
-Workflow results can be retrieved with ``workflow.get_output(workflow_id) -> ObjectRef[T]``. If the workflow has not yet completed, calling ``ray.get()`` on the returned reference will block until the result is computed. For example:
+To retrieve a workflow result, you can assign ``workflow_id`` when running a workflow:
+
+.. code-block:: python
+
+    import ray
+    from ray import workflow
+
+    @ray.remote
+    def add(left: int, right: int) -> int:
+        return left + right
+
+    @ray.remote
+    def get_val() -> int:
+        return 10
+
+    ret = add.bind(get_val.bind(), 20)
+
+    assert workflow.create(ret).run(workflow_id="add_example") == 30
+
+Then workflow results can be retrieved with ``workflow.get_output(workflow_id) -> ObjectRef[T]``. If the workflow has not yet completed, calling ``ray.get()`` on the returned reference will block until the result is computed. For example:
 
 .. code-block:: python
 
@@ -76,13 +101,13 @@ Workflow results can be retrieved with ``workflow.get_output(workflow_id) -> Obj
 We can retrieve the results for individual workflow steps too with *named steps*. A step can be named in two ways:
 
  1) via ``.options(name="step_name")``
- 2) via decorator ``@workflow.step(name="step_name"``)
+ 2) via decorator ``@workflow.options(name="step_name"``)
 
 Once a step is given a name, the result of the step will be retrievable via ``workflow.get_output(workflow_id, name="step_name")``. If the step with the given name hasn't been executed yet, an exception will be thrown. Here are some examples:
 
 .. code-block:: python
 
-    @workflow.step
+    @ray.remote
     def double(v):
         return 2 * v
     
@@ -100,13 +125,14 @@ If there are multiple steps with the same name, a suffix with a counter ``_n`` w
 
 .. code-block:: python
 
-    @workflow.step(name="double")
+    @workflow.options(name="double")
+    @ray.remote
     def double(s):
         return s * 2
 
-    inner_step = double.step(1)
-    outer_step = double.step(inner_step)
-    result = outer_step.run_async("double")
+    inner_step = double.bind(1)
+    outer_step = double.bind(inner_step)
+    result = workflow.create(outer_step).run_async("double")
 
     inner = workflow.get_output("double", name="double")
     outer = workflow.get_output("double", name="double_1")
@@ -127,17 +153,20 @@ The following error handling flags can be either set in the step decorator or vi
 
 .. code-block:: python
 
-    @workflow.step
+    import ray
+    from ray import workflow
+
+    @ray.remote
     def faulty_function() -> str:
         if random.random() > 0.5:
             raise RuntimeError("oops")
         return "OK"
 
     # Tries up to three times before giving up.
-    r1 = faulty_function.options(max_retries=5).step()
-    r1.run()
+    r1 = faulty_function.options(max_retries=5).bind()
+    workflow.create(r1).run()
 
-    @workflow.step
+    @ray.remote
     def handle_errors(result: Tuple[str, Exception]):
         # The exception field will be None on success.
         err = result[1]
@@ -147,8 +176,8 @@ The following error handling flags can be either set in the step decorator or vi
             return "OK"
 
     # `handle_errors` receives a tuple of (result, exception).
-    r2 = faulty_function.options(catch_exceptions=True).step()
-    handle_errors.step(r2).run()
+    r2 = faulty_function.options(catch_exceptions=True).bind()
+    workflow.create(handle_errors.bind(r2)).run()
 
 - If ``max_retries`` is given, the step will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray. By default, ``max_retries`` is set to be 3.
 - If ``catch_exceptions`` is True, the return value of the function will be converted to ``Tuple[Optional[T], Optional[Exception]]``. This can be combined with ``max_retries`` to try a given number of times before returning the result tuple.
@@ -157,7 +186,8 @@ The parameters can also be passed to the decorator
 
 .. code-block:: python
 
-    @workflow.step(max_retries=5, catch_exceptions=True)
+    @workflow.options(max_retries=5, catch_exceptions=True)
+    @ray.remote
     def faulty_function():
         pass
 
@@ -176,24 +206,24 @@ Note that steps that have side-effects still need to be idempotent. This is beca
 .. code-block:: python
     :caption: Non-idempotent workflow:
 
-    @workflow.step
+    @ray.remote
     def book_flight_unsafe() -> FlightTicket:
         ticket = service.book_flight()
         # Uh oh, what if we failed here?
         return ticket
 
     # UNSAFE: we could book multiple flight tickets
-    book_flight_unsafe.step().run()
+    workflow.create(book_flight_unsafe.bind()).run()
 
 .. code-block:: python
     :caption: Idempotent workflow:
 
-    @workflow.step
+    @ray.remote
     def generate_id() -> str:
        # Generate a unique idempotency token.
        return uuid.uuid4().hex
 
-    @workflow.step
+    @ray.remote
     def book_flight_idempotent(request_id: str) -> FlightTicket:
        if service.has_ticket(request_id):
            # Retrieve the previously created ticket.
@@ -201,57 +231,63 @@ Note that steps that have side-effects still need to be idempotent. This is beca
        return service.book_flight(request_id)
 
     # SAFE: book_flight is written to be idempotent
-    request_id = generate_id.step()
-    book_flight_idempotent.step(request_id).run()
+    request_id = generate_id.bind()
+    workflow.create(book_flight_idempotent.bind(request_id)).run()
 
 Dynamic workflows
 -----------------
 
-Additional steps can be dynamically created and inserted into the workflow DAG during execution. The following example shows how to implement the recursive ``factorial`` program using dynamically generated steps:
+Additional steps can be dynamically created and inserted into the workflow DAG during execution.
+
+This is achieved by returning a continuation of a DAG.
+A continuation is something returned by a function and executed after it returns.
+The continuation feature enables nesting, looping, and recursion within workflows.
+
+The following example shows how to implement the recursive ``factorial`` program using dynamically generated steps:
 
 .. code-block:: python
 
-    @workflow.step
+    @ray.remote
     def factorial(n: int) -> int:
         if n == 1:
             return 1
         else:
-            return multiply.step(n, factorial.step(n - 1))
+            return workflow.continuation(multiply.bind(n, factorial.bind(n - 1)))
 
-    @workflow.step
+    @ray.remote
     def multiply(a: int, b: int) -> int:
         return a * b
 
-    ret = factorial.step(10).run()
+    ret = workflow.create(factorial.bind(10))
     assert ret.run() == 3628800
 
 The key behavior to note is that when a step returns a ``Workflow`` output instead of a concrete value, that workflow's output will be substituted for the step's return. To better understand dynamic workflows, let's look at a more realistic example of booking a trip:
 
 .. code-block:: python
 
-    @workflow.step
+    @ray.remote
     def book_flight(...) -> Flight: ...
 
-    @workflow.step
+    @ray.remote
     def book_hotel(...) -> Hotel: ...
 
-    @workflow.step
+    @ray.remote
     def finalize_or_cancel(
         flights: List[Flight],
         hotels: List[Hotel]) -> Receipt: ...
 
-    @workflow.step
+    @ray.remote
     def book_trip(origin: str, dest: str, dates) ->
             "Workflow[Receipt]":
         # Note that the workflow engine will not begin executing
         # child workflows until the parent step returns.
         # This avoids step overlap and ensures recoverability.
-        f1: Workflow = book_flight.step(origin, dest, dates[0])
-        f2: Workflow = book_flight.step(dest, origin, dates[1])
-        hotel: Workflow = book_hotel.step(dest, dates)
-        return finalize_or_cancel.step([f1, f2], [hotel])
+        f1: Workflow = book_flight.bind(origin, dest, dates[0])
+        f2: Workflow = book_flight.bind(dest, origin, dates[1])
+        hotel: Workflow = book_hotel.bind(dest, dates)
+        return workflow.continuation(finalize_or_cancel.bind([f1, f2], [hotel]))
 
-    fut = book_trip.step("OAK", "SAN", ["6/12", "7/5"])
+    fut = workflow.create(book_trip.bind("OAK", "SAN", ["6/12", "7/5"]))
     fut.run()  # returns Receipt(...)
 
 Here the workflow initially just consists of the ``book_trip`` step. Once executed, ``book_trip`` generates steps to book flights and hotels in parallel, which feeds into a step to decide whether to cancel the trip or finalize it. The DAG can be visualized as follows (note the dynamically generated nested workflows within ``book_trip``):
@@ -278,15 +314,18 @@ Workflows are compatible with Ray tasks and actors. There are two methods of usi
 
 Passing nested arguments
 ~~~~~~~~~~~~~~~~~~~~~~~~
-Unlike Ray tasks, when you pass a list of ``Workflow`` outputs to a step, the values are fully resolved. This ensures that all a step's ancestors are fully executed prior to the step starting:
+Like Ray tasks, when you pass a list of ``Workflow`` outputs to a step, the values are not resolved. But we ensure that all ancestors of a step are fully executed prior to the step starting:
 
 .. code-block:: python
 
-    @workflow.step
-    def add(values: List[int]) -> int:
-        return sum(values)
+    @ray.remote
+    def add(values: List[ray.ObjectRef[int]]) -> int:
+        # although those value are not resolved, they have been
+        # fully executed and checkpointed. This guarantees exactly-once
+        # execution semantics.
+        return sum(ray.get(values))
 
-    @workflow.step
+    @ray.remote
     def get_val() -> int:
         return 10
 
@@ -320,8 +359,8 @@ You can assign resources (e.g., CPUs, GPUs to steps via the same ``num_cpus``, `
 
 .. code-block:: python
 
-    @workflow.step(num_gpus=1)
+    @ray.remote(num_gpus=1)
     def train_model() -> Model:
         pass  # This step is assigned a GPU by Ray.
 
-    train_model.step().run()
+    workflow.create(train_model.bind()).run()

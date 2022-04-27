@@ -29,24 +29,48 @@ Concepts
 --------
 Workflows provides the *step* and *virtual actor* durable primitives, which are analogous to Ray's non-durable tasks and actors.
 
-Steps
-~~~~~
-Steps are functions annotated with the ``@workflow.step`` decorator. Steps are retried on failure, but once a step finishes successfully it will never be run again. Similar to Ray tasks, steps can take other step futures as arguments. Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on step futures, which ensures recoverability.
+Ray DAG
+~~~~~~~
+
+If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <core-walkthrough>`.
+
+Normally, Ray tasks are executed eagerly.
+Ray DAG provides a way to build the DAG without execution, and Ray Workflow is based on Ray DAGs.
+
+It is simple to build a Ray DAG: you just replace all ``.remote(...)`` with ``.bind(...)`` in a Ray application.
+Ray DAGs can be composed in arbitrarily like normal Ray tasks.
+
+Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on DAGs.
 
 .. code-block:: python
-    :caption: Composing steps together into a workflow:
+    :caption: Composing functions together into a DAG:
 
-    from ray import workflow
+    import ray
 
-    @workflow.step
+    @ray.remote
     def one() -> int:
         return 1
 
-    @workflow.step
+    @ray.remote
     def add(a: int, b: int) -> int:
         return a + b
 
-    output: "Workflow[int]" = add.step(100, one.step())
+    dag = add.bind(100, one.bind())
+
+Steps
+~~~~~
+
+It takes a single line of code to turn a DAG into a workflow. Each node in the DAG becomes a workflow step.
+
+Steps are retried on failure, but once a step finishes successfully it will never be run again.
+
+
+.. code-block:: python
+    :caption: Turning the DAG into a workflow:
+
+    from ray import workflow
+
+    output: "Workflow[int]" = workflow.create(dag)
 
 Workflows
 ~~~~~~~~~
@@ -61,7 +85,7 @@ A workflow is an execution graph of steps created with ``Workflow.run()`` or ``W
     assert workflow.get_output("run_1") == 101
 
 Objects
-~~~~~~~~~
+~~~~~~~
 Large data objects can be stored in the Ray object store. References to these objects can be passed into and returned from steps. Objects are checkpointed when initially returned from a step. After checkpointing, the object can be shared among any number of workflow steps at memory-speed via the Ray object store.
 
 .. code-block:: python
@@ -74,35 +98,40 @@ Large data objects can be stored in the Ray object store. References to these ob
     def hello():
         return "hello"
 
-    @workflow.step
+    @ray.remote
     def words() -> List[ray.ObjectRef]:
+        # NOTE: Here it is ".remote()" instead of ".bind()", so
+        # it creates an ObjectRef instead of a DAG.
         return [hello.remote(), ray.put("world")]
 
-    @workflow.step
+    @ray.remote
     def concat(words: List[ray.ObjectRef]) -> str:
         return " ".join([ray.get(w) for w in words])
 
     workflow.init()
-    assert concat.step(words.step()).run() == "hello world"
+    assert workflow.create(concat.bind(words.bind())).run() == "hello world"
 
 Dynamic Workflows
 ~~~~~~~~~~~~~~~~~
-Workflows can generate new steps at runtime. When a step returns a step future as its output, that DAG of steps is dynamically inserted into the workflow DAG following the original step. This feature enables nesting, looping, and recursion within workflows.
+Workflows can generate new steps at runtime. This is achieved by returning a continuation of a DAG.
+A continuation is something returned by a function and executed after it returns.
+The continuation feature enables nesting, looping, and recursion within workflows.
 
 .. code-block:: python
     :caption: The Fibonacci recursive workflow:
 
-    @workflow.step
+    @ray.remote
     def add(a: int, b: int) -> int:
         return a + b
 
-    @workflow.step
+    @ray.remote
     def fib(n: int) -> int:
         if n <= 1:
             return n
-        return add.step(fib.step(n - 1), fib.step(n - 2))
+        # return a continuation of a DAG
+        return workflow.continuation(add.bind(fib.bind(n - 1), fib.bind(n - 2)))
 
-    assert fib.step(10).run() == 55
+    assert workflow.create(fib.bind(10)).run() == 55
 
 Virtual Actors
 ~~~~~~~~~~~~~~
@@ -138,6 +167,9 @@ Workflows can be efficiently triggered by timers or external events using the ev
     # `wait_for_events` allows for pluggable event listeners.
     event_step = workflow.wait_for_event(MyEventListener)
 
+    @ray.remote
+    def gather(*args):
+        return args
 
     # If a step's arguments include events, the step function won't be executed until all of the events have occured.
-    gather.step(sleep_step, event_step, "hello world").run()
+    workflow.create(gather.bind(sleep_step, event_step, "hello world")).run()

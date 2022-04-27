@@ -15,11 +15,11 @@ For example:
 
 .. code-block:: python
 
-    @workflow.step
+    @ray.remote
     def add(left: int, right: int) -> int:
         return left + right
 
-    add.step(10, 20).run("add_example")
+    workflow.create(add.bind(10, 20)).run("add_example")
 
     workflow_metadata = workflow.get_metadata("add_example")
 
@@ -32,7 +32,7 @@ providing the step name:
 
 .. code-block:: python
 
-    add.options(name="add_step").step(10, 20).run("add_example_2")
+    workflow.create(add.options(name="add_step").bind(10, 20)).run("add_example_2")
 
     step_metadata = workflow.get_metadata("add_example_2", name="add_step")
 
@@ -47,11 +47,11 @@ which is useful when you want to attach some extra information to the
 workflow or workflow step.
 
 - workflow-level metadata can be added via ``.run(metadata=metadata)``
-- step-level metadata can be added via ``.options(metadata=metadata)`` or in the decorator ``@workflow.step(metadata=metadata``)
+- step-level metadata can be added via ``.options(metadata=metadata)`` or in the decorator ``@workflow.options(metadata=metadata)``
 
 .. code-block:: python
 
-    add.options(name="add_step", metadata={"step_k": "step_v"}).step(10, 20)\
+    workflow.create(add.options(name="add_step", metadata={"step_k": "step_v"}).bind(10, 20))\
     .run("add_example_3", metadata={"workflow_k": "workflow_v"})
 
     assert workflow.get_metadata("add_example_3")["user_metadata"] == {"workflow_k": "workflow_v"}
@@ -146,13 +146,13 @@ is completed).
 
 .. code-block:: python
 
-    @workflow.step
+    @ray.remote
     def simple():
         flag.touch() # touch a file here
         time.sleep(1000)
         return 0
 
-    simple.step().run_async(workflow_id)
+    workflow.create(simple.bind()).run_async(workflow_id)
 
     # make sure workflow step starts running
     while not flag.exists():
@@ -175,17 +175,18 @@ be updated whenever a workflow is resumed.
 
 .. code-block:: python
 
-    @workflow.step
+    workflow_id = "simple"
+    error_flag = tmp_path / "error"
+    error_flag.touch()
+
+    @ray.remote
     def simple():
         if error_flag.exists():
             raise ValueError()
         return 0
 
-    # create a flag to force step fail
-    error_flag.touch()
-
-    try:
-        simple.step().run(workflow_id)
+    with pytest.raises(ray.exceptions.RaySystemError):
+        workflow.create(simple.bind()).run(workflow_id)
 
     workflow_metadata_failed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_failed["status"] == "FAILED"
@@ -198,8 +199,7 @@ be updated whenever a workflow is resumed.
     workflow_metadata_resumed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_resumed["status"] == "SUCCESSFUL"
 
-    # resume updated running stats
-    assert workflow_metadata_resumed["stats"]["start_time"] > workflow_metadata_failed["stats"]["start_time"]
+    # make sure resume updated running metrics
+    assert  workflow_metadata_resumed["stats"]["start_time"] > workflow_metadata_failed["stats"]["start_time"]
     assert workflow_metadata_resumed["stats"]["end_time"] > workflow_metadata_failed["stats"]["end_time"]
-
 
