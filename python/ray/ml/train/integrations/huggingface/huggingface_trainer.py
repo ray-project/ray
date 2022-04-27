@@ -99,10 +99,6 @@ class HuggingFaceTrainer(TorchTrainer):
     shards, with each Actor training on a single shard.
     All the other datasets will not be split.
 
-    The datasets will NOT be shuffled by default. Call ``Dataset.random_shuffle()``
-    on the "train" dataset you are passing in ``datasets`` if you wish for the
-    training data to be shuffled.
-
     Please note that if you use a custom ``transformers.Trainer`` subclass,
     the ``get_train_dataloader`` method will be overriden to disable distributed
     sampling, as the dataset will already be sharded.
