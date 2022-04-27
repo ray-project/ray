@@ -265,6 +265,14 @@ py_test(
 )
 
 py_test(
+    name = "test_stopper",
+    size = "small",
+    srcs = ["tests/test_stopper.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_S"],
+)
+
+py_test(
     name = "test_sync",
     size = "medium",
     srcs = ["tests/test_sync.py"],
