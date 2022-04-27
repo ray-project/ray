@@ -291,10 +291,10 @@ class ReplayBuffer:
         """
         return platform.node()
 
-    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=True)
+    @Deprecated(old="ReplayBuffer.add_batch()", new="RepayBuffer.add()", error=False)
     def add_batch(self, *args, **kwargs):
         return self.add(*args, **kwargs)
 
-    @Deprecated(old="RepayBuffer.replay()", new="RepayBuffer.sample()", error=True)
+    @Deprecated(old="RepayBuffer.replay()", new="RepayBuffer.sample()", error=False)
     def replay(self, *args, **kwargs):
         return self.sample(*args, **kwargs)
