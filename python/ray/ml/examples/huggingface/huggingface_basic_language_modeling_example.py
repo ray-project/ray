@@ -12,11 +12,13 @@ from transformers import (
     TrainingArguments,
 )
 
+import pandas as pd
 import torch
 
 import ray
 import ray.data
 from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
+from ray.ml.predictors.integrations.huggingface import HuggingFacePredictor
 
 
 def main(
@@ -111,6 +113,16 @@ def main(
     )
     results = trainer.fit()
     print(results.metrics)
+
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+    prompt = ["My text: Complete me..."]
+    predictor = HuggingFacePredictor.from_checkpoint(
+        results.checkpoint, task="text-generation", tokenizer=tokenizer
+    )
+    prediction = predictor.predict(pd.DataFrame(prompt, columns=["prompt"]))
+    prediction = prediction.iloc[0]["generated_text"]
+
+    print(f"Generated text for prompt '{prompt}': '{prediction}'")
 
 
 if __name__ == "__main__":

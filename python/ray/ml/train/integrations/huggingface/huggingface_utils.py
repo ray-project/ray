@@ -41,7 +41,10 @@ def wrap_transformers_trainer(
     base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
 
     class RayTrainer(base_trainer_class):
+        # TODO(yard1): Upstream data collator removing unused columns to
+        # transformers.
         def _prepare_data_collator(self):
+            # Hack to set the self._signature_columns attribute.
             try:
                 self._remove_unused_columns(None, description="nan")
             except AttributeError:
@@ -97,8 +100,10 @@ def wrap_transformers_trainer(
     return trainer
 
 
+# TODO(ml-team): Replace with a Ray Datasets-HuggingFace integration when available.
 class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
     """HF ExamplesIterable backed by a Ray Dataset."""
+
     def __init__(self, dataset: Dataset) -> None:
         self.dataset = dataset
         self.generate_examples_fn = self.dataset.iter_rows
@@ -133,7 +138,7 @@ def process_datasets(
     train_dataset: Dataset,
     eval_dataset: Dataset,
 ) -> Tuple[IterableDataset, IterableDataset]:
-    """Convert Ray train and validation to HF-friendly IterableDatasets."""
+    """Convert Ray train and validation to HF IterableDatasets."""
     train_torch_dataset = process_dataset_for_hf(train_dataset)
 
     if eval_dataset:
@@ -149,7 +154,7 @@ class TrainReportCallback(TrainerCallback):
 
     def __init__(self) -> None:
         # HF first logs metrics, and then checkpoints. With Ray AIR, we need the
-        # opposite. Furthermore, some metrics are logged in several calls.
+        # opposite. Furthermore, some metrics are logged just at the end.
         # Therefore, if we detect that a checkpoint will be created,
         # we delay the train.report call after the checkpoint is reported
         # to Ray Train.
@@ -159,36 +164,23 @@ class TrainReportCallback(TrainerCallback):
 
     def on_step_end(self, args, state, control, **kwargs):
         if control.should_training_stop:
-            # always save at end
+            # Always save at the end.
             control.should_save = True
         return control
 
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
+        # Log is called in multiple places (evaluation, train metrics).
         report = {**logs, "step": state.global_step, "epoch": state.epoch}
         if not self.first_report_keys:
             self.first_report_keys = set(report)
-        # if saving or evaluation is coming, delay reporting
-        if (
-            control.should_save
-            or control.should_evaluate
-            or not set(report).issuperset(self.first_report_keys)
-        ):
-            self.delayed_report.update(report)
-        else:
+        # if saving or training end is coming, delay reporting
+        if not control.should_save and not control.should_training_stop:
             train.report(**report)
-
-    def on_evaluate(self, args, state, control, **kwargs):
-        # saving comes after evaluation, so report if we
-        # aren't going to save
-        if (
-            self.delayed_report
-            and set(self.delayed_report).issuperset(self.first_report_keys)
-            and not control.should_save
-        ):
-            train.report(**self.delayed_report)
-            self.delayed_report = {}
+        else:
+            self.delayed_report.update(report)
 
     def on_save(self, args, state, control, **kwargs):
+        # Save is called after evaluation.
         checkpoint_path = Path(
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
@@ -199,6 +191,12 @@ class TrainReportCallback(TrainerCallback):
                     CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
                 }
             )
+        if self.delayed_report and not control.should_training_stop:
+            train.report(**self.delayed_report)
+            self.delayed_report = {}
+
+    def on_train_end(self, args, state, control, **kwargs):
+        # Final callback. Train metrics are logged right before this.
         if self.delayed_report:
             train.report(**self.delayed_report)
             self.delayed_report = {}

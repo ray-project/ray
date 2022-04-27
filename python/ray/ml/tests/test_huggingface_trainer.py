@@ -1,13 +1,17 @@
 import pandas as pd
 import pytest
-import torch
-from datasets.arrow_dataset import Dataset
-from transformers import AutoConfig, AutoModelForCausalLM, Trainer, TrainingArguments
+
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    Trainer,
+    TrainingArguments,
+)
 
 import ray.data
 from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
 from ray.ml.predictors.integrations.huggingface import HuggingFacePredictor
-from ray.ml.train.integrations.huggingface.huggingface_utils import process_datasets
 from ray.ml.batch_predictor import BatchPredictor
 
 from ray.ml.tests._huggingface_data import train_data, validation_data
@@ -15,10 +19,14 @@ from ray.ml.tests._huggingface_data import train_data, validation_data
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation
 train_df = pd.read_json(train_data)
 validation_df = pd.read_json(validation_data)
+prompts = pd.DataFrame(
+    ["Complete me", "And me", "Please complete"], columns=["sentences"]
+)
 
 # We are only testing Casual Language Modelling here
 
 model_checkpoint = "sshleifer/tiny-gpt2"
+tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
 
 
 @pytest.fixture
@@ -81,8 +89,11 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.checkpoint
 
     predictor = BatchPredictor.from_checkpoint(
-        result2.checkpoint, HuggingFacePredictor, model=AutoModelForCausalLM
+        result2.checkpoint,
+        HuggingFacePredictor,
+        task="text-generation",
+        tokenizer=AutoTokenizer.from_pretrained(tokenizer_checkpoint),
     )
 
-    predictions = predictor.predict(ray_validation)
-    assert predictions.count() == 16
+    predictions = predictor.predict(ray.data.from_pandas(prompts))
+    assert predictions.count() == 3

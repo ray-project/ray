@@ -107,11 +107,11 @@ class HuggingFaceTrainer(TorchTrainer):
     the ``get_train_dataloader`` method will be overriden to disable distributed
     sampling, as the dataset will already be sharded.
 
-    Hugging Face loggers will be automatically disabled, and the ``local_rank``
+    HuggingFace loggers will be automatically disabled, and the ``local_rank``
     argument in ``TrainingArguments`` will be automatically set. Please note
     that if you want to use CPU training, you will need to set the ``no_cuda``
     argument in ``TrainingArguments`` manually - otherwise, an exception
-    may be thrown.
+    (segfault) may be thrown.
 
     Example:
         .. code-block:: python
@@ -380,7 +380,6 @@ def _huggingface_train_loop_per_worker(config):
         eval_dataset,
     )
 
-    # TODO(yard1): Automatically set `no_cuda` somehow
     trainer: transformers.trainer.Trainer = trainer_init_per_worker(
         train_torch_dataset, eval_torch_dataset, **config
     )
