@@ -145,15 +145,19 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 + memoryview(buf)
             )
             # 24 bytes to store owner address, metadata, and buffer lengths.
-            assert self.HEADER_LENGTH + address_len + metadata_len + buf_len == len(
-                payload
+            payload_len = len(payload)
+            assert (
+                self.HEADER_LENGTH + address_len + metadata_len + buf_len == payload_len
             )
             written_bytes = f.write(payload)
+            assert written_bytes == payload_len
             url_with_offset = create_url_with_offset(
                 url=url, offset=offset, size=written_bytes
             )
             keys.append(url_with_offset.encode())
-            offset = f.tell()
+            offset += written_bytes
+        # Necessary because pyarrow.io.NativeFile does not flush() on close().
+        f.flush()
         return keys
 
     def _size_check(self, address_len, metadata_len, buffer_len, obtained_data_size):
@@ -403,8 +407,9 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
             url = parsed_result.base_url
             offset = parsed_result.offset
             # Read a part of the file and recover the object.
-            with self._fs.open_input_stream(url, buffer_size=self._buffer_size) as f:
+            with self._fs.open_input_file(url) as f:
                 f.seek(offset)
+                f = self._fs._wrap_input_stream(f, url, None, self._buffer_size)
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
