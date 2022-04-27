@@ -1047,8 +1047,7 @@ class SampleBatch(dict):
                 else:
                     ret = value[start_padded:stop_padded]
                     if self.zero_padded:
-                        shape = (self.max_seq_len - last_seq_len,) + ret.shape[
-                                                                     1:]
+                        shape = (self.max_seq_len - last_seq_len,) + ret.shape[1:]
                         ret = np.concatenate(
                             [ret, np.zeros(shape=shape, dtype=ret.dtype)]
                         )
