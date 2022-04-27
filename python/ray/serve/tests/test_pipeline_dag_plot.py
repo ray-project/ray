@@ -8,7 +8,7 @@ from ray import serve
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.utils import DAGNodeNameGenerator
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.deployment_graph import ClassNode, InputNode
+from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
 import starlette.requests
 
