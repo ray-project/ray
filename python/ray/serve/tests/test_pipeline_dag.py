@@ -446,5 +446,32 @@ def test_unsupported_remote():
         _ = func.bind().remote()
 
 
+def test_suprious_call(serve_instance):
+    # https://github.com/ray-project/ray/issues/24116
+
+    @serve.deployment
+    class CallTracker:
+        def __init__(self):
+            self.records = []
+
+        def __call__(self, inp):
+            self.records.append("__call__")
+
+        def predict(self, inp):
+            self.records.append("predict")
+
+        def get(self):
+            return self.records
+
+    tracker = CallTracker.bind()
+    with InputNode() as inp:
+        dag = DAGDriver.bind(tracker.predict.bind(inp))
+    handle = serve.run(dag)
+    ray.get(handle.predict.remote(1))
+
+    call_tracker = CallTracker.get_handle()
+    assert ray.get(call_tracker.get.remote()) == ["predict"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

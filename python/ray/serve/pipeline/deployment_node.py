@@ -138,8 +138,12 @@ class DeploymentNode(DAGNode):
         )
 
     def _execute_impl(self, *args, **kwargs):
-        """Executor of DeploymentNode by ray.remote()"""
-        # TODO fix comment
+        """Executor of DeploymentNode getting called each time on dag.execute.
+
+        The execute implementation is recursive, that is, the method nodes will receive
+        whatever this method returns. We return a handle here so method node can
+        directly call upon.
+        """
         return self._deployment_handle
 
     def _get_serve_deployment_handle(
