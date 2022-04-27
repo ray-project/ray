@@ -1,99 +1,143 @@
 from pathlib import Path
-from typing import Dict, Generator, Iterator, List, Tuple
+from typing import Any, Callable, Optional, Tuple, Type
 
-import torch
+import datasets.iterable_dataset
 import transformers.trainer
-from torch.utils.data import IterableDataset
+from torch.utils.data import IterableDataset, DataLoader
 from transformers.trainer_callback import TrainerCallback
 
 from ray import train
 from ray.util import get_node_ip_address
 from ray.data.dataset import Dataset
 
+# Constants for the sync checkpoint dict. See huggingface_trainer.py
 CHECKPOINT_PATH_ON_NODE_KEY = "checkpoint_path_on_node"
 NODE_IP_KEY = "node_ip"
 
 
-class HFIterableDataset(IterableDataset):
-    """Special Torch IterableDataset with HF format."""
+def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
+    """Change the class of obj to a subclass with predefined __len__ if needed."""
+    # By adding length to the dataset we let HF calculate steps per epoch
+    # and other such values. Without length, it's not possible to use
+    # epochs as the evaluation strategy, which makes for poor UX.
 
-    def __init__(self, generator: Generator):
-        self.generator = generator
-
-    def __iter__(self) -> Iterator[Dict[str, torch.Tensor]]:
-        it = self.generator
-        for x in it:
-            # HF-specific format. See transformers.Trainer._prepare_inputs
-            if isinstance(x, dict):
-                # Just features
-                yield x
-            else:
-                # Features and labels
-                yield x[0]
-
-
-class HFIterableDatasetWithLen(HFIterableDataset):
-    """Special Torch IterableDataset with preset length."""
-
-    def __init__(self, generator: Generator, length: int):
-        self.generator = generator
-        self._len = length
+    if not length or hasattr(obj, "__len__"):
+        return obj
 
     def __len__(self):
-        return self._len
+        return length
 
-
-def process_dataset_for_hf(
-    dataset: Dataset, feature_columns: Dict[str, List[str]], batch_size: int = 1
-) -> IterableDataset:
-    """Converts a Ray Dataset into a HF-compatible Torch Dataset."""
-    torch_dataset = dataset.to_torch(
-        batch_size=batch_size,
-        feature_columns=feature_columns,
-        label_column=None,
-        unsqueeze_label_tensor=False,
-        unsqueeze_feature_tensors=False,
+    new_class = type(
+        f"{obj.__class__.__name__}WithLength", (obj.__class__,), {"__len__": __len__}
     )
+    obj.__class__ = new_class
+    return obj
+
+
+def wrap_transformers_trainer(
+    trainer: transformers.trainer.Trainer,
+) -> transformers.trainer.Trainer:
+    """Change the class of trainer to a subclass implementing Ray-specific logic."""
+    base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
+
+    class RayTrainer(base_trainer_class):
+        def _prepare_data_collator(self):
+            try:
+                self._remove_unused_columns(None, description="nan")
+            except AttributeError:
+                pass
+
+            self.data_collator = self._get_remove_columns_data_collator()
+
+        def _get_remove_columns_data_collator(self) -> Callable:
+            if self._signature_columns and not hasattr(self, "_original_data_collator"):
+
+                self._original_data_collator = self.data_collator
+
+                def remove_columns_collator(features):
+                    features = [
+                        {
+                            k: v
+                            for k, v in feature.items()
+                            if k in self._signature_columns
+                        }
+                        for feature in features
+                    ]
+                    return self._original_data_collator(features)
+
+                collator = remove_columns_collator
+            else:
+                collator = self.data_collator
+            return collator
+
+        def get_train_dataloader(self):
+            if self.train_dataset is None:
+                raise ValueError("Trainer: training requires a train_dataset.")
+
+            train_dataset = self.train_dataset
+
+            # While we are not sharding the datasets again, this
+            # class ensures that the last batch has a consistent size.
+            train_dataset = transformers.trainer.IterableDatasetShard(
+                train_dataset,
+                batch_size=self.args.train_batch_size,
+                drop_last=self.args.dataloader_drop_last,
+            )
+
+            return DataLoader(
+                train_dataset,
+                batch_size=self.args.per_device_train_batch_size,
+                collate_fn=self.data_collator,
+                num_workers=self.args.dataloader_num_workers,
+                pin_memory=self.args.dataloader_pin_memory,
+            )
+
+    trainer.__class__ = RayTrainer
+    trainer._prepare_data_collator()
+    return trainer
+
+
+class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
+    """HF ExamplesIterable backed by a Ray Dataset."""
+    def __init__(self, dataset: Dataset) -> None:
+        self.dataset = dataset
+        self.generate_examples_fn = self.dataset.iter_rows
+
+        # Required for the superclass
+        self.kwargs = {}
+
+    def __iter__(self):
+        for row in self.generate_examples_fn(**self.kwargs):
+            yield (0, {k: v for k, v in row.as_pydict().items()})
+
+
+def process_dataset_for_hf(dataset: Dataset) -> IterableDataset:
+    """Converts a Ray Dataset into a HF IterableDataset."""
+    hf_iterable = RayDatasetHFIterable(dataset)
+
+    iterable_dataset = datasets.iterable_dataset.IterableDataset(
+        hf_iterable, format_type="torch"
+    ).with_format("torch")
+
     try:
-        count = dataset.count()
+        dataset_length = dataset.count()
     except ValueError:
         # pipeline case
-        count = None
-    if count:
-        # By adding length to the dataset we let HF calculate steps per epoch
-        # and other such values. Without length, it's not possible to use
-        # epochs as the evaluation strategy.
-        torch_dataset = HFIterableDatasetWithLen(torch_dataset, count)
-    else:
-        torch_dataset = HFIterableDataset(torch_dataset)
-    return torch_dataset
+        dataset_length = None
+
+    iterable_dataset = maybe_add_length(iterable_dataset, dataset_length)
+    return iterable_dataset
 
 
 def process_datasets(
-    train_dataset: Dataset, eval_dataset: Dataset
+    train_dataset: Dataset,
+    eval_dataset: Dataset,
 ) -> Tuple[IterableDataset, IterableDataset]:
     """Convert Ray train and validation to HF-friendly IterableDatasets."""
-    train_columns = set(train_dataset.schema(fetch_if_missing=True).names)
-
-    # HF-specific format. See transformers.Trainer._prepare_inputs
-    feature_columns = {column: [column] for column in train_columns}
-
-    # This is set to 1 to ensure that the model input format
-    # is the same as with HF's Dataset. If we were to pass
-    # an n>1 batch obtained from to_torch to HF Trainer,
-    # the format will differ, and the example count calculation
-    # will be messed up (as it assumes that it will always get
-    # just one row per output of the IterableDataset).
-    # TODO (yard1): Investigate if we can work around this.
-    batch_size = 1
-    train_torch_dataset = process_dataset_for_hf(
-        train_dataset, feature_columns, batch_size=batch_size
-    )
+    train_torch_dataset = process_dataset_for_hf(train_dataset)
 
     if eval_dataset:
-        eval_torch_dataset = process_dataset_for_hf(
-            eval_dataset, feature_columns, batch_size=batch_size
-        )
+        eval_torch_dataset = process_dataset_for_hf(eval_dataset)
     else:
         eval_torch_dataset = None
 
@@ -105,15 +149,12 @@ class TrainReportCallback(TrainerCallback):
 
     def __init__(self) -> None:
         # HF first logs metrics, and then checkpoints. With Ray AIR, we need the
-        # opposite. Therefore, if we detect that a checkpoint will be created,
+        # opposite. Furthermore, some metrics are logged in several calls.
+        # Therefore, if we detect that a checkpoint will be created,
         # we delay the train.report call after the checkpoint is reported
         # to Ray Train.
-        self.delayed_report = None
-        # Avoid double reporting at the end.
-        # TODO(yard1): Train statistics are only reported at the end. Combine
-        # the second to last report and the last report somehow. We want
-        # steps/epochs to match the training iteration.
-        self.last_step = None
+        self.delayed_report = {}
+        self.first_report_keys = None
         super().__init__()
 
     def on_step_end(self, args, state, control, **kwargs):
@@ -123,14 +164,29 @@ class TrainReportCallback(TrainerCallback):
         return control
 
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
-        if state.global_step == self.last_step:
-            return
-        self.last_step = state.global_step
         report = {**logs, "step": state.global_step, "epoch": state.epoch}
-        if control.should_save:
-            self.delayed_report = report
+        if not self.first_report_keys:
+            self.first_report_keys = set(report)
+        # if saving or evaluation is coming, delay reporting
+        if (
+            control.should_save
+            or control.should_evaluate
+            or not set(report).issuperset(self.first_report_keys)
+        ):
+            self.delayed_report.update(report)
         else:
             train.report(**report)
+
+    def on_evaluate(self, args, state, control, **kwargs):
+        # saving comes after evaluation, so report if we
+        # aren't going to save
+        if (
+            self.delayed_report
+            and set(self.delayed_report).issuperset(self.first_report_keys)
+            and not control.should_save
+        ):
+            train.report(**self.delayed_report)
+            self.delayed_report = {}
 
     def on_save(self, args, state, control, **kwargs):
         checkpoint_path = Path(
@@ -145,4 +201,4 @@ class TrainReportCallback(TrainerCallback):
             )
         if self.delayed_report:
             train.report(**self.delayed_report)
-            self.delayed_report = None
+            self.delayed_report = {}

@@ -1,25 +1,21 @@
-import os
 from typing import Dict, Optional, Type, Union, List
 
+import numpy as np
 import pandas as pd
-from ray.ml.train.integrations.huggingface.huggingface_utils import (
-    HFIterableDatasetWithLen,
-)
+
 import torch
+from datasets import Dataset as HFDataset
 from transformers.modeling_utils import PreTrainedModel
-from transformers.trainer import WEIGHTS_NAME, TRAINING_ARGS_NAME, Trainer as HFTrainer
+from transformers.trainer import Trainer as HFTrainer
 from transformers import TrainingArguments
 
-import ray.cloudpickle as cpickle
-from ray.ml.predictor import DataBatchType
-from ray.ml.predictors.integrations.torch import TorchPredictor
+from ray.ml.predictor import DataBatchType, Predictor
 from ray.ml.preprocessor import Preprocessor
 from ray.ml.checkpoint import Checkpoint
-from ray.ml.utils.torch_utils import load_torch_model
-from ray.ml.constants import PREPROCESSOR_KEY
+from ray.ml.utils.huggingface_checkpoint_utils import load_huggingface_checkpoint
 
 
-class HuggingFacePredictor(TorchPredictor):
+class HuggingFacePredictor(Predictor):
     """A predictor for HuggingFace Transformers PyTorch models.
 
     Args:
@@ -73,28 +69,10 @@ class HuggingFacePredictor(TorchPredictor):
                 ``model.from_pretrained()`` call. Only used if
                 ``model`` is a ``PreTrainerModel`` class.
         """
-        with checkpoint.as_directory() as checkpoint_path:
-            preprocessor_path = os.path.join(checkpoint_path, PREPROCESSOR_KEY)
-            if os.path.exists(preprocessor_path):
-                with open(preprocessor_path, "rb") as f:
-                    preprocessor = cpickle.load(f)
-            else:
-                preprocessor = None
-            if isinstance(model, torch.nn.Module):
-                state_dict = torch.load(
-                    os.path.join(checkpoint_path, WEIGHTS_NAME), map_location="cpu"
-                )
-                model = load_torch_model(saved_model=state_dict, model_definition=model)
-            else:
-                model = model.from_pretrained(
-                    checkpoint_path, **pretrained_model_kwargs
-                )
-            training_args_path = os.path.join(checkpoint_path, TRAINING_ARGS_NAME)
-            if os.path.exists(training_args_path):
-                with open(training_args_path, "rb") as f:
-                    training_args = torch.load(f, map_location="cpu")
-            else:
-                training_args = None
+        model, preprocessor, loaded_training_args = load_huggingface_checkpoint(
+            checkpoint, model, **pretrained_model_kwargs
+        )
+        training_args = training_args or loaded_training_args
         return HuggingFacePredictor(
             model=model,
             preprocessor=preprocessor,
@@ -103,7 +81,7 @@ class HuggingFacePredictor(TorchPredictor):
         )
 
     def to_transformers_trainer(self, **trainer_kwargs) -> HFTrainer:
-        """Converts this predictor to a fitted ``transformers.Trainer``.
+        """Converts this predictor to a ``transformers.Trainer``.
 
         Args:
             **trainer_kwargs: Any kwargs to pass to the
@@ -117,32 +95,9 @@ class HuggingFacePredictor(TorchPredictor):
         )
         return trainer
 
-    def _convert_to_tensor(
-        self,
-        data: pd.DataFrame,
-        feature_columns: Optional[
-            Union[List[str], List[List[str]], List[int], List[List[int]]]
-        ] = None,
-        dtypes: Optional[torch.dtype] = None,
-        unsqueeze: bool = False,
-    ) -> Dict[str, torch.Tensor]:
-        if not feature_columns:
-            feature_columns = data.columns
-
-        # HF-supported format
-        if not isinstance(feature_columns, dict):
-            feature_columns = {column: [column] for column in feature_columns}
-
-        return super()._convert_to_tensor(
-            data, feature_columns=feature_columns, dtypes=dtypes, unsqueeze=unsqueeze
-        )
-
-    def _predict(self, tensor: Dict[str, torch.Tensor]) -> pd.DataFrame:
+    def _predict(self, dataset: HFDataset) -> pd.DataFrame:
         trainer = self.to_transformers_trainer()
-        dataset = HFIterableDatasetWithLen([tensor], 1)
-        # squeeze out the extra dimension added by torch.stack
-        # inside the HF data collator
-        ret = trainer.predict(dataset).predictions.squeeze()
+        ret = trainer.predict(dataset).predictions
         # TODO(yard1): Return just a numpy array once that's supported
         # by Ray Datasets
         df = pd.DataFrame([ret.tolist()]).T
@@ -153,12 +108,12 @@ class HuggingFacePredictor(TorchPredictor):
         self,
         data: DataBatchType,
         feature_columns: Optional[List[str]] = None,
-        dtype: Optional[Union[Dict[str, torch.dtype], torch.dtype]] = None,
+        dtype: Optional[Union[Dict[str, np.dtype], np.dtype]] = None,
     ) -> DataBatchType:
         """Run inference on data batch.
 
-        The data is converted into a dict of torch Tensors before being inputted to
-        the model.
+        The data is converted into a HuggingFace ``datasets.Dataset``
+        and passed to a ``transformers.Trainer.predict()`` method.
 
         Args:
             data: A batch of input data. Either a pandas DataFrame or numpy
@@ -166,7 +121,7 @@ class HuggingFacePredictor(TorchPredictor):
             feature_columns: The names or indices of the columns in the
                 data to use as features to predict on. If None, use all
                 columns.
-            dtype: The torch dtypes to use when creating the torch tensor.
+            dtype: The numpy dtypes to cast the data to.
                 Can be either a single dtype or a dict of ``column:dtype``.
                 If set to None, then automatically infer the dtype.
 
@@ -232,7 +187,16 @@ class HuggingFacePredictor(TorchPredictor):
         Returns:
             DataBatchType: Prediction result.
         """
-        # We are just changing the signature and docstring.
-        return super().predict(
-            data, feature_columns=feature_columns, dtype=dtype, unsqueeze=False
-        )
+        if self.preprocessor:
+            data = self.preprocessor.transform_batch(data)
+
+        if isinstance(data, np.ndarray):
+            # If numpy array, then convert to pandas dataframe.
+            data = pd.DataFrame(data)
+
+        data = data[feature_columns] if feature_columns else data
+        if dtype:
+            data = data.astype(dtype)
+
+        dataset = HFDataset.from_pandas(data)
+        return self._predict(dataset)

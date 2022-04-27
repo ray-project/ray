@@ -65,6 +65,9 @@ class TorchPredictor(Predictor):
         dtypes: Optional[torch.dtype] = None,
         unsqueeze: bool = True,
     ) -> torch.Tensor:
+        """Handle conversion of data to tensor.
+
+        Same arguments as in ``convert_pandas_to_torch_tensor``."""
         # TODO(amog): Add `_convert_numpy_to_torch_tensor to use based on input type.
         # Reduce conversion cost if input is in Numpy
         if isinstance(feature_columns, dict):
@@ -87,6 +90,7 @@ class TorchPredictor(Predictor):
         return features_tensor
 
     def _predict(self, tensor: torch.Tensor) -> pd.DataFrame:
+        """Handle actual prediction."""
         prediction = self.model(tensor).cpu().detach().numpy()
         return pd.DataFrame(prediction, columns=["predictions"])
 

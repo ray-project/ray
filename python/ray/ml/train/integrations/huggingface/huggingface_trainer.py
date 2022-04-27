@@ -6,12 +6,10 @@ from distutils.version import LooseVersion
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type
 
-import torch
 import transformers
 import transformers.trainer
 import ray.cloudpickle as cpickle
-from torch.utils.data import DataLoader, Dataset as TorchDataset
-from transformers.training_args import TrainingArguments
+from torch.utils.data import Dataset as TorchDataset
 
 from ray import train
 from ray import tune
@@ -28,6 +26,7 @@ from ray.ml.train.integrations.huggingface.huggingface_utils import (
     NODE_IP_KEY,
     process_datasets,
     TrainReportCallback,
+    wrap_transformers_trainer,
 )
 from ray.train.constants import TUNE_CHECKPOINT_ID
 from ray.train.torch import TorchConfig
@@ -49,8 +48,7 @@ from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 # in HuggingFaceTrainer.as_trainable
 # TODO(team-ml): Refactor checkpoint management along with Tune.
 class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
-    """Same as _DataParallelCheckpointManager, but syncs the dir instead
-    of serializing it."""
+    """As _DataParallelCheckpointManager, but syncs the dir instead of serializing."""
 
     def write_checkpoint(self, checkpoint: Dict):
         # If inside a Tune Trainable, then checkpoint with Tune.
@@ -309,35 +307,55 @@ class HuggingFaceTrainer(TorchTrainer):
                 "one GPU per worker in DDP mode and will fail "
                 "if more are assigned."
             )
+        if gpus_per_worker != int(gpus_per_worker):
+            raise ValueError(
+                f"You have assigned {gpus_per_worker} GPUs per worker, "
+                "but fractional GPUs are not supported by HuggingFace."
+            )
 
         super()._validate_attributes()
 
+    def _convert_directory_checkpoint_to_sync(
+        self, checkpoint: Checkpoint
+    ) -> Checkpoint:
+        """Replace the directory checkpoint with a node ip & path dict checkpoint
+        used to sync the directory. If we use a directory checkpoint directly,
+        it will get deepcopied & serialized unnecessarily."""
+        with checkpoint.as_directory() as checkpoint_path:
+            # Load checkpoint from path.
+            checkpoint_path = Path(checkpoint_path).expanduser().absolute()
+            if not checkpoint_path.exists():
+                raise ValueError(f"Checkpoint path {checkpoint_path} does not exist.")
+            with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
+                tune_checkpoint_id = int(f.read())
+
+            return Checkpoint.from_dict(
+                {
+                    NODE_IP_KEY: get_node_ip_address(),
+                    CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
+                    TUNE_CHECKPOINT_ID: tune_checkpoint_id,
+                }
+            )
+
+    def setup(self) -> None:
+        if (
+            self.resume_from_checkpoint
+            and self.resume_from_checkpoint.get_internal_representation()
+            == "local_path"
+        ):
+            self.resume_from_checkpoint = self._convert_directory_checkpoint_to_sync(
+                self.resume_from_checkpoint
+            )
+
     def as_trainable(self) -> Type[Trainable]:
-        # Replace the directory checkpoint with a node ip & path dict checkpoint
-        # used to sync the directory. If we use a directory checkpoint directly,
-        # it will get deepcopied & serialized unnecessarily
         original_param_dict = self._param_dict.copy()
         resume_from_checkpoint: Optional[Checkpoint] = self._param_dict.get(
             "resume_from_checkpoint", None
         )
         if resume_from_checkpoint:
-            with resume_from_checkpoint.as_directory() as checkpoint_path:
-                # Load checkpoint from path.
-                checkpoint_path = Path(checkpoint_path).expanduser().absolute()
-                if not checkpoint_path.exists():
-                    raise ValueError(
-                        f"Checkpoint path {checkpoint_path} does not exist."
-                    )
-                with open(checkpoint_path.joinpath(TUNE_CHECKPOINT_ID), "r") as f:
-                    tune_checkpoint_id = int(f.read())
-
-                self._param_dict["resume_from_checkpoint"] = Checkpoint.from_dict(
-                    {
-                        NODE_IP_KEY: get_node_ip_address(),
-                        CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
-                        TUNE_CHECKPOINT_ID: tune_checkpoint_id,
-                    }
-                )
+            self._param_dict[
+                "resume_from_checkpoint"
+            ] = self._convert_directory_checkpoint_to_sync(resume_from_checkpoint)
         try:
             ret = super().as_trainable()
         finally:
@@ -356,8 +374,10 @@ def _huggingface_train_loop_per_worker(config):
 
     train_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY)
     eval_dataset = train.get_dataset_shard(EVALUATION_DATASET_KEY)
+
     train_torch_dataset, eval_torch_dataset = process_datasets(
-        train_dataset, eval_dataset
+        train_dataset,
+        eval_dataset,
     )
 
     # TODO(yard1): Automatically set `no_cuda` somehow
@@ -365,37 +385,16 @@ def _huggingface_train_loop_per_worker(config):
         train_torch_dataset, eval_torch_dataset, **config
     )
 
-    base_training_arguments_class: Type[TrainingArguments] = trainer.args.__class__
+    if trainer.args.push_to_hub:
+        raise ValueError(
+            "`push_to_hub` parameter in `TrainingArgs` is not supported by "
+            "`HuggingFaceTrainer`. If you would like to push your model to hub "
+            "after training, use the `load_huggingface_checkpoint` function "
+            "to obtain the model from a returned checkpoint, and use it to "
+            "instantiate the `transformers.Trainer` class."
+        )
 
-    class RayTrainingArguments(base_training_arguments_class):
-        @property
-        def device(self) -> "torch.device":
-            return train.torch.get_device()
-
-    base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
-
-    class RayTrainer(base_trainer_class):
-        def get_train_dataloader(self):
-            return DataLoader(
-                self.train_dataset,
-                batch_size=self.args.per_device_train_batch_size,
-                collate_fn=self.data_collator,
-                num_workers=self.args.dataloader_num_workers,
-                pin_memory=self.args.dataloader_pin_memory,
-            )
-
-        def _save(self, *args, **kwargs):
-            # Workaround for RayTrainingArguments not being
-            # pickleable due to it being defined in a local
-            # scope
-            self.args.__class__ = base_training_arguments_class
-            ret = super()._save(*args, **kwargs)
-            self.args.__class__ = RayTrainingArguments
-            return ret
-
-    trainer.__class__ = RayTrainer
-    trainer.args.__class__ = RayTrainingArguments
-    trainer.args.no_cuda = not torch.cuda.is_available()
+    trainer = wrap_transformers_trainer(trainer)
 
     # ensure no HF logging callbacks are added
     # aside from doubling functionality with our callbacks,
@@ -407,8 +406,6 @@ def _huggingface_train_loop_per_worker(config):
         trainer.pop_callback(callback)
 
     trainer.add_callback(TrainReportCallback)
-    if trainer.args.device.type == "cuda":
-        torch.cuda.set_device(trainer.args.device)
 
     checkpoint = train.load_checkpoint()
     checkpoint_path = None

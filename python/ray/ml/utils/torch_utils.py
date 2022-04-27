@@ -28,8 +28,10 @@ def convert_pandas_to_torch_tensor(
         column_dtype (Optional[Union[torch.dtype, List[torch.dtype]): The
             torch dtype to use for the tensor. If set to None,
             then automatically infer the dtype.
-        unsqueeze: Whether to unsqueeze (reshape to a 2d, 1 column tensor)
-            the columns or not.
+        unsqueeze: If set to True, the tensors
+            will be unsqueezed (reshaped to (N, 1)) before being concatenated into
+            the final tensor. Otherwise, they will be left as is, that is
+            (N, ). Defaults to True.
 
     Returns:
         Either a torch tensor of size (N, len(columns)) where N is the

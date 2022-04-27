@@ -65,6 +65,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     result = trainer.fit()
 
     assert result.metrics["epoch"] == 3
+    assert result.metrics["training_iteration"] == 3
     assert result.checkpoint
 
     trainer2 = HuggingFaceTrainer(
@@ -85,39 +86,3 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
     predictions = predictor.predict(ray_validation)
     assert predictions.count() == 16
-
-
-def test_same_data_format(ray_start_4_cpus):
-    train_hf_dataset = Dataset.from_pandas(train_df)
-    validation_hf_dataset = Dataset.from_pandas(validation_df)
-    hf_trainer = train_function(train_hf_dataset, validation_hf_dataset)
-    hf_trainer._get_train_sampler = lambda: None  # No randomness
-    hf_train_dataloader = hf_trainer.get_train_dataloader()
-
-    ray_train = ray.data.from_pandas(train_df)
-    ray_validation = ray.data.from_pandas(validation_df)
-    ray_train, ray_validation = process_datasets(ray_train, ray_validation)
-    ray_trainer = train_function(ray_train, ray_validation)
-    ray_train_dataloader = ray_trainer.get_train_dataloader()
-
-    hf_train_dataloader_inputs = [
-        hf_trainer._prepare_inputs(inputs) for inputs in hf_train_dataloader
-    ]
-    ray_train_dataloader_inputs = [
-        ray_trainer._prepare_inputs(inputs) for inputs in ray_train_dataloader
-    ]
-
-    def equal_or_exception(a: torch.Tensor, b: torch.Tensor):
-        if not torch.equal(a, b):
-            raise AssertionError(
-                f"Tensor A ({a.shape}) doesn't equal tensor B ({b.shape}):"
-                f"\n{a}\n{b}\n"
-            )
-
-    # We squeeze to get rid of the extra dimension added by the HF
-    # torch_default_data_collator. The models seem to train and predict
-    # fine with that extra dimension.
-    [
-        [equal_or_exception(a[k], b[k].squeeze()) for k in a]
-        for a, b in zip(hf_train_dataloader_inputs, ray_train_dataloader_inputs)
-    ]
