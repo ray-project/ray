@@ -228,30 +228,21 @@ class Checkpoint:
             return ray.get(self._obj_ref)
         elif self._local_path or self._uri:
             # Else, checkpoint is either on FS or external storage
-            cleanup = False
+            with self.as_directory() as local_path:
+                checkpoint_data_path = os.path.join(
+                    local_path, _DICT_CHECKPOINT_FILE_NAME
+                )
+                if os.path.exists(checkpoint_data_path):
+                    # If we are restoring a dict checkpoint, load the dict
+                    # from the checkpoint file.
+                    with open(checkpoint_data_path, "rb") as f:
+                        checkpoint_data = pickle.load(f)
+                else:
+                    data = _pack(local_path)
 
-            local_path = self._local_path
-            if not local_path:
-                # Checkpoint does not exist on local path. Save
-                # in temporary directory, but clean up later
-                local_path = self.to_directory()
-                cleanup = True
-
-            checkpoint_data_path = os.path.join(local_path, _DICT_CHECKPOINT_FILE_NAME)
-            if os.path.exists(checkpoint_data_path):
-                # If we are restoring a dict checkpoint, load the dict
-                # from the checkpoint file.
-                with open(checkpoint_data_path, "rb") as f:
-                    checkpoint_data = pickle.load(f)
-            else:
-                data = _pack(local_path)
-
-                checkpoint_data = {
-                    _FS_CHECKPOINT_KEY: data,
-                }
-
-            if cleanup:
-                shutil.rmtree(local_path)
+                    checkpoint_data = {
+                        _FS_CHECKPOINT_KEY: data,
+                    }
 
             return checkpoint_data
         else:
@@ -406,17 +397,8 @@ class Checkpoint:
                 f"Hint: {fs_hint(uri)}"
             )
 
-        cleanup = False
-
-        local_path = self._local_path
-        if not local_path:
-            cleanup = True
-            local_path = self.to_directory()
-
-        upload_to_uri(local_path=local_path, uri=uri)
-
-        if cleanup:
-            shutil.rmtree(local_path)
+        with self.as_directory() as local_path:
+            upload_to_uri(local_path=local_path, uri=uri)
 
         return uri
 

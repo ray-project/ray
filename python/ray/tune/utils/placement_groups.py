@@ -243,16 +243,6 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
         spec = spec._asdict()
 
     spec = spec.copy()
-    extra_custom = spec.pop("extra_custom_resources", {}) or {}
-
-    if any(k.startswith("extra_") and spec[k] for k in spec) or any(
-        extra_custom[k] for k in extra_custom
-    ):
-        raise ValueError(
-            "Passing `extra_*` resource requirements to `resources_per_trial` "
-            "is deprecated. Please use a `PlacementGroupFactory` object "
-            "to define your resource requirements instead."
-        )
 
     cpus = spec.pop("cpu", 0.0)
     gpus = spec.pop("gpu", 0.0)
