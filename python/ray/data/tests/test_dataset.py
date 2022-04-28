@@ -252,8 +252,9 @@ def test_dataset_lineage_serialization(shutdown_only, lazy):
 
 
 @pytest.mark.parametrize("lazy", [False, True])
-def test_dataset_lineage_serialization_in_memory(shutdown_only, lazy):
+def test_dataset_lineage_serialization_unsupported(shutdown_only, lazy):
     ray.init()
+    # In-memory data sources not supported.
     ds = ray.data.from_items(list(range(10)))
     ds = maybe_lazy(ds, lazy)
     ds = ds.map(lambda x: x + 1)
@@ -261,6 +262,43 @@ def test_dataset_lineage_serialization_in_memory(shutdown_only, lazy):
 
     with pytest.raises(ValueError):
         ds.serialize_lineage()
+
+    # In-memory data source unions not supported.
+    ds = ray.data.from_items(list(range(10)))
+    ds = maybe_lazy(ds, lazy)
+    ds1 = ray.data.from_items(list(range(10, 20)))
+    ds2 = ds.union(ds1)
+
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
+
+    # Post-lazy-read unions not supported.
+    ds = ray.data.range(10).map(lambda x: x + 1)
+    ds = maybe_lazy(ds, lazy)
+    ds1 = ray.data.range(20).map(lambda x: 2 * x)
+    ds2 = ds.union(ds1)
+
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
+
+    # Lazy read unions supported.
+    ds = ray.data.range(10)
+    ds = maybe_lazy(ds, lazy)
+    ds1 = ray.data.range(20)
+    ds2 = ds.union(ds1)
+
+    serialized_ds = ds2.serialize_lineage()
+    ds3 = Dataset.deserialize_lineage(serialized_ds)
+    assert ds3.take(30) == list(range(10)) + list(range(20))
+
+    # Zips not supported.
+    ds = ray.data.from_items(list(range(10)))
+    ds = maybe_lazy(ds, lazy)
+    ds1 = ray.data.from_items(list(range(10, 20)))
+    ds2 = ds.zip(ds1)
+
+    with pytest.raises(ValueError):
+        ds2.serialize_lineage()
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
