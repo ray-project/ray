@@ -28,10 +28,16 @@
                   "type": "object",
                   "properties": {
                     "status": {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "status_message": {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "isDead": {
                       "type": "boolean"
@@ -77,23 +83,44 @@
                 "[0-9a-f]*": {
                   "type": "object",
                   "properties": {
+                    "jobSubmissionName": {
+                      "type": "string"
+                    },
                     "status": {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "entrypoint": {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "message": {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "errorType": {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "startTime": {
-                      "type": ["integer", "null"]
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
                     },
                     "endTime": {
-                      "type": ["integer", "null"]
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
                     },
                     "metadata": {
                       "type": "object"
@@ -173,7 +200,10 @@
                             "type": "string"
                           },
                           "version": {
-                            "type": ["string", "null"]
+                            "type": [
+                              "string",
+                              "null"
+                            ]
                           }
                         },
                         "required": [
@@ -219,7 +249,10 @@
                       "type": "integer"
                     },
                     "httpRoute": {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "name": {
                       "type": "string"
@@ -234,7 +267,10 @@
                       "type": "string"
                     },
                     "version": {
-                      "type": ["string", "null"]
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
