@@ -1987,12 +1987,12 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node.yaml
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
-    timeout: 7200
+    timeout: 3600
     long_running: false
-    script: python workloads/deployment_graph_long_chain.py --chain-length=10
+    script: python workloads/deployment_graph_long_chain.py --chain-length=10 --num_clients=4
     type: sdk_command
     file_manager: job
 

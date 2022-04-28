@@ -25,7 +25,18 @@ from serve_test_cluster_utils import (
     setup_anyscale_cluster,
 )
 from serve_test_utils import save_test_results
-from benchmark_utils import measure_latency_ms, measure_throughput_tps
+from benchmark_utils import (
+    DeploymentHandleClient,
+    measure_latency_ms,
+    measure_throughput_tps,
+)
+
+DEFAULT_CHAIN_LENGTH = 4
+
+DEFAULT_NUM_REQUESTS_PER_CLIENT = 20  # request sent for latency test
+DEFAULT_NUM_CLIENTS = 1  # Clients concurrently sending request to deployment
+
+DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS = 10
 
 
 @serve.deployment
@@ -65,22 +76,62 @@ def test_long_chain_deployment_graph(
     return serve_dag
 
 
-async def benchmark_throughput_tps(dag_handle, expected, duration_secs=10):
+async def benchmark_throughput_tps(
+    dag_handle,
+    expected,
+    duration_secs=DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS,
+    num_clients=DEFAULT_NUM_CLIENTS,
+):
     """Call deployment handle in a blocking for loop."""
-    throughput_stats_tps = await measure_throughput_tps(
-        dag_handle.predict.remote, 0, expected, duration_secs=duration_secs
+    clients = [
+        DeploymentHandleClient.remote(measure_throughput_tps)
+        for _ in range(num_clients)
+    ]
+    ray.get([client.ready.remote() for client in clients])
+
+    throughput_stats_tps_list = ray.get(
+        [
+            a.run.remote(
+                dag_handle.predict.remote,
+                0,
+                expected,
+                duration_secs=duration_secs,
+            )
+            for a in clients
+        ]
     )
+    throughput_stats_tps = []
+    for client_rst in throughput_stats_tps_list:
+        throughput_stats_tps.extend(client_rst)
 
     mean = round(np.mean(throughput_stats_tps), 2)
     std = round(np.std(throughput_stats_tps), 2)
     return mean, std
 
 
-async def benchmark_latency_ms(dag_handle, expected, num_requests=100):
+async def benchmark_latency_ms(
+    dag_handle, expected, num_requests=100, num_clients=DEFAULT_NUM_CLIENTS
+):
     """Call deployment handle in a blocking for loop."""
-    latency_stats_ms = await measure_latency_ms(
-        dag_handle.predict.remote, 0, expected, num_requests=num_requests
+    clients = [
+        DeploymentHandleClient.remote(measure_latency_ms) for _ in range(num_clients)
+    ]
+    ray.get([client.ready.remote() for client in clients])
+
+    latency_stats_ms_list = ray.get(
+        [
+            a.run.remote(
+                dag_handle.predict.remote,
+                0,
+                expected,
+                num_requests=num_requests,
+            )
+            for a in clients
+        ]
     )
+    latency_stats_ms = []
+    for client_rst in latency_stats_ms_list:
+        latency_stats_ms.extend(client_rst)
 
     mean = round(np.mean(latency_stats_ms), 2)
     std = round(np.std(latency_stats_ms), 2)
@@ -88,22 +139,32 @@ async def benchmark_latency_ms(dag_handle, expected, num_requests=100):
 
 
 @click.command()
-@click.option("--chain-length", type=int, default=4)
+@click.option("--chain-length", type=int, default=DEFAULT_CHAIN_LENGTH)
 @click.option("--init-delay-secs", type=int, default=0)
 @click.option("--compute-delay-secs", type=int, default=0)
-@click.option("--num-requests-per-client", type=int, default=10)
-@click.option("--throughput-trial-duration-secs", type=int, default=10)
+@click.option(
+    "--num-requests-per-client",
+    type=int,
+    default=DEFAULT_NUM_REQUESTS_PER_CLIENT,
+)
+@click.option("--num-clients", type=int, default=DEFAULT_NUM_CLIENTS)
+@click.option(
+    "--throughput-trial-duration-secs",
+    type=int,
+    default=DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS,
+)
 @click.option("--local-test", type=bool, default=True)
 def main(
     chain_length: Optional[int],
     init_delay_secs: Optional[int],
     compute_delay_secs: Optional[int],
     num_requests_per_client: Optional[int],
+    num_clients: Optional[int],
     throughput_trial_duration_secs: Optional[int],
     local_test: Optional[bool],
 ):
     if local_test:
-        setup_local_single_node_cluster(1, num_cpu_per_node=16)
+        setup_local_single_node_cluster(1, num_cpu_per_node=8)
     else:
         setup_anyscale_cluster()
 
@@ -121,11 +182,19 @@ def main(
 
     throughput_mean_tps, throughput_std_tps = loop.run_until_complete(
         benchmark_throughput_tps(
-            dag_handle, expected, duration_secs=throughput_trial_duration_secs
+            dag_handle,
+            expected,
+            duration_secs=throughput_trial_duration_secs,
+            num_clients=num_clients,
         )
     )
     latency_mean_ms, latency_std_ms = loop.run_until_complete(
-        benchmark_latency_ms(dag_handle, expected, num_requests=num_requests_per_client)
+        benchmark_latency_ms(
+            dag_handle,
+            expected,
+            num_requests=num_requests_per_client,
+            num_clients=num_clients,
+        )
     )
     print(f"latency_mean_ms: {latency_mean_ms}, " f"latency_std_ms: {latency_std_ms}")
     print(

@@ -5,21 +5,14 @@ import ray
 
 @ray.remote
 class DeploymentHandleClient:
-    def __init__(self, deployment_handle, method_name=None):
-        self.deployment_handle = deployment_handle
-        self.method_name = method_name
+    def __init__(self, async_func):
+        self.async_func = async_func
 
     def ready(self):
         return "ok"
 
-    async def do_queries(self, num, data):
-        if self.method_name:
-            handle = getattr(self.deployment_handle, self.method_name)
-        else:
-            handle = self.deployment_handle
-
-        for _ in range(num):
-            await handle.remote(data)
+    async def run(self, *args, **kwargs):
+        return await self.async_func(*args, **kwargs)
 
 
 async def measure_latency_ms(async_fn, args, expected_output, num_requests=10):

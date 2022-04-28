@@ -57,6 +57,24 @@ py_test(
 )
 
 py_test(
+    name = "deployment_graph_long_chain",
+    size = "medium",
+    srcs = test_srcs,
+    env = {
+        "IS_SMOKE_TEST": "1",
+    },
+    main = "deployment_graph_long_chain.py",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test(
     name = "autoscaling_single_deployment_smoke_test",
     size = "medium",
     srcs = test_srcs,
