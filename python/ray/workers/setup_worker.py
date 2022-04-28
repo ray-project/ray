@@ -23,7 +23,6 @@ parser.add_argument("--language", type=str, help="the language type of the worke
 
 if __name__ == "__main__":
     setup_logger(LOGGER_LEVEL, LOGGER_FORMAT)
-
     args, remaining_args = parser.parse_known_args()
     # NOTE(edoakes): args.serialized_runtime_env_context is only None when
     # we're starting the main Ray client proxy server. That case should

@@ -297,7 +297,6 @@ class RuntimeEnv(dict):
     known_fields: Set[str] = {
         "py_modules",
         "java_jars",
-        "dependent_jars",
         "working_dir",
         "conda",
         "pip",

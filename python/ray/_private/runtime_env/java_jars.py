@@ -1,42 +1,21 @@
 import logging
 import os
-from types import ModuleType
-from typing import Any, Dict, List, Optional
-from pathlib import Path
+from typing import Dict, List, Optional
 import asyncio
 
 from ray.experimental.internal_kv import _internal_kv_initialized
-from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
     delete_package,
     get_local_dir_from_uri,
-    get_uri_for_directory,
-    get_uri_for_package,
-    package_exists,
-    parse_uri,
     is_jar_uri,
     Protocol,
-    upload_package_if_needed,
-    upload_package_to_gcs,
 )
 from ray._private.utils import get_directory_size_bytes
 from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
-
-
-def _check_is_uri(s: str) -> bool:
-    try:
-        protocol, path = parse_uri(s)
-    except ValueError:
-        protocol, path = None, None
-
-    if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for remote URIs.")
-
-    return protocol is not None
 
 
 class JavaJarsManager:
@@ -46,7 +25,7 @@ class JavaJarsManager:
         assert _internal_kv_initialized()
 
     def _get_local_dir_from_uri(self, uri: str):
-        return get_local_dir_from_uri(uri, self._resources_dir)
+        return get_local_dir_from_uri(uri)
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
@@ -72,6 +51,7 @@ class JavaJarsManager:
         jar_file = download_and_unpack_package(
             uri, self._resources_dir, logger=logger
         )
+        logger.debug("Succeeded to download jar file {jar_file} .")
         module_dir = self._get_local_dir_from_uri(uri)
         return module_dir
 

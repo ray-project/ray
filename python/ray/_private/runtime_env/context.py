@@ -50,7 +50,7 @@ class RuntimeEnvContext:
         elif language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
-            executable = f"java"
+            executable = "java"
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
             class_path_args = ["-cp", ray_jars + ":" + str(":".join(self.java_jars))]
             passthrough_args = class_path_args + passthrough_args

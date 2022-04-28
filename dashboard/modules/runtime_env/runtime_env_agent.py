@@ -320,10 +320,10 @@ class RuntimeEnvAgent(
             ]:
                 uris = manager.get_uris(runtime_env)
                 if uris is not None:
-                    per_job_logger.info(f"URIs is not None, URI {uris}.")
+                    per_job_logger.debug(f"URIs is not None, URI {uris}.")
                     for uri in uris:
                         if uri not in uri_cache:
-                            per_job_logger.info(f"Cache miss for URI {uri}.")
+                            per_job_logger.debug(f"Cache miss for URI {uri}.")
                             size_bytes = await manager.create(
                                 uri, runtime_env, context, logger=per_job_logger
                             )
@@ -331,7 +331,7 @@ class RuntimeEnvAgent(
                                 uri, size_bytes, logger=per_job_logger
                             )
                         else:
-                            per_job_logger.info(f"Cache hit for URI {uri}.")
+                            per_job_logger.debug(f"Cache hit for URI {uri}.")
                             uri_cache.mark_used(uri, logger=per_job_logger)
                 manager.modify_context(
                     uris, runtime_env, context
