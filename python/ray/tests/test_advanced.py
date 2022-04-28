@@ -116,62 +116,15 @@ def test_caching_functions_to_run(shutdown_only):
     @ray.remote
     def get_state():
         time.sleep(1)
-        return sys.path[-4], sys.path[-3], sys.path[-2], sys.path[-1]
+        for i in range(1, 5):
+            if i not in sys.path:
+                return False
+        return True
 
     res1 = get_state.remote()
     res2 = get_state.remote()
-    assert ray.get(res1) == (1, 2, 3, 4)
-    assert ray.get(res2) == (1, 2, 3, 4)
-
-    # Clean up the path on the workers.
-    def f(worker_info):
-        sys.path.pop()
-        sys.path.pop()
-        sys.path.pop()
-        sys.path.pop()
-
-    ray.worker.global_worker.run_function_on_all_workers(f)
-
-
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_running_function_on_all_workers(shutdown_only):
-    def f1(worker_info):
-        sys.path.append("fake_directory")
-
-    ray.worker.global_worker.run_function_on_all_workers(f1)
-
-    ray.init()
-
-    @ray.remote
-    def get_path1():
-        return sys.path
-
-    assert "fake_directory" == ray.get(get_path1.remote())[-1]
-
-    # the function should only run on the current driver once.
-    assert sys.path[-1] == "fake_directory"
-
-    if len(sys.path) > 1:
-        assert sys.path[-2] != "fake_directory"
-
-    ray.shutdown()
-
-    ray.init()
-
-    def f2(worker_info):
-        sys.path.pop(-1)
-
-    ray.worker.global_worker.run_function_on_all_workers(f1)
-    ray.worker.global_worker.run_function_on_all_workers(f2)
-
-    # Create a second remote function to guarantee that when we call
-    # get_path2.remote(), the second function to run will have been run on
-    # the worker.
-    @ray.remote
-    def get_path2():
-        return sys.path
-
-    assert "fake_directory" not in ray.get(get_path2.remote())
+    assert ray.get(res1) is True
+    assert ray.get(res2) is True
 
 
 @pytest.mark.skipif(
