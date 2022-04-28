@@ -92,6 +92,7 @@ MOCK_MODULES = [
     "ConfigSpace",
     "dask.distributed",
     "datasets",
+    "datasets.iterable_dataset",
     "gym",
     "gym.spaces",
     "horovod",
