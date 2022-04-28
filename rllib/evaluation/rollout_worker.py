@@ -1796,7 +1796,7 @@ class RolloutWorker(ParallelIteratorWorker):
             if not disable_env_checking:
                 try:
                     check_env(env)
-                except:
+                except Exception as e:
                     logger.warning(
                         "We've added a module for checking environments that "
                         "are used in experiments. Your env may not be set up"
@@ -1805,7 +1805,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         "dictionary. You can run the environment checking module "
                         "standalone by calling ray.rllib.utils.check_env(env)."
                     )
-                    raise
+                    raise e
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)
