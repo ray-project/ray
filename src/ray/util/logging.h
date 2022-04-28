@@ -90,7 +90,9 @@ std::string GetCallTrace();
 
 enum class RayLogLevel {
   TRACE = -2,
+  // __doc_debug_log_level_start__
   DEBUG = -1,
+  // __doc_debug_log_level_end__
   INFO = 0,
   WARNING = 1,
   ERROR = 2,

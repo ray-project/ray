@@ -61,7 +61,8 @@ If it worked, you should see as the first line in ``raylet.err``:
 
 .. literalinclude:: /../../src/ray/util/logging.h
   :language: C
-  :lines: 52,54
+  :start-after: __doc_debug_log_level_start__
+  :end-before: __doc_debug_log_level_end__
 
 Backend event stats
 -------------------
