@@ -328,7 +328,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 yield output_buffer.next()
 
         # fix https://github.com/ray-project/ray/issues/24296
-        parallelism = min(parallelism, len(paths), len(file_sizes))
+        parallelism = min(parallelism, len(paths))
 
         read_tasks = []
         for read_paths, file_sizes in zip(
