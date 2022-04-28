@@ -1,4 +1,5 @@
 import time
+import numpy as np
 
 import ray
 
@@ -47,3 +48,63 @@ async def measure_throughput_tps(async_fn, args, expected_output, duration_secs=
         tps_stats.append(request_completed)
 
     return tps_stats
+
+
+async def benchmark_throughput_tps(
+    dag_handle,
+    expected,
+    duration_secs=10,
+    num_clients=1,
+):
+    """Call deployment handle in a blocking for loop from multiple clients."""
+    clients = [
+        DeploymentHandleClient.remote(measure_throughput_tps)
+        for _ in range(num_clients)
+    ]
+    ray.get([client.ready.remote() for client in clients])
+
+    throughput_stats_tps_list = ray.get(
+        [
+            a.run.remote(
+                dag_handle.predict.remote,
+                0,
+                expected,
+                duration_secs=duration_secs,
+            )
+            for a in clients
+        ]
+    )
+    throughput_stats_tps = []
+    for client_rst in throughput_stats_tps_list:
+        throughput_stats_tps.extend(client_rst)
+
+    mean = round(np.mean(throughput_stats_tps), 2)
+    std = round(np.std(throughput_stats_tps), 2)
+    return mean, std
+
+
+async def benchmark_latency_ms(dag_handle, expected, num_requests=100, num_clients=1):
+    """Call deployment handle in a blocking for loop from multiple clients."""
+    clients = [
+        DeploymentHandleClient.remote(measure_latency_ms) for _ in range(num_clients)
+    ]
+    ray.get([client.ready.remote() for client in clients])
+
+    latency_stats_ms_list = ray.get(
+        [
+            a.run.remote(
+                dag_handle.predict.remote,
+                0,
+                expected,
+                num_requests=num_requests,
+            )
+            for a in clients
+        ]
+    )
+    latency_stats_ms = []
+    for client_rst in latency_stats_ms_list:
+        latency_stats_ms.extend(client_rst)
+
+    mean = round(np.mean(latency_stats_ms), 2)
+    std = round(np.std(latency_stats_ms), 2)
+    return mean, std

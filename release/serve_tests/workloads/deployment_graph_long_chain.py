@@ -1,19 +1,16 @@
 """
 Test that focuses on long chain of deployment graph
 
-INPUT -> Node_1 -> Node_2 -> ... -> Node_20 -> OUTPUT
+INPUT -> Node_1 -> Node_2 -> ... -> Node_10 -> OUTPUT
 
  1) Intermediate blob size can be large / small
  2) Compute time each node can be long / short
  3) Init time can be long / short
- 4) Validate performance between Ray DAG and Serve DAG with 1 replica.
-
 """
 import time
 import asyncio
 import click
 
-import numpy as np
 from typing import Optional
 
 import ray
@@ -25,11 +22,7 @@ from serve_test_cluster_utils import (
     setup_anyscale_cluster,
 )
 from serve_test_utils import save_test_results
-from benchmark_utils import (
-    DeploymentHandleClient,
-    measure_latency_ms,
-    measure_throughput_tps,
-)
+from benchmark_utils import benchmark_throughput_tps, benchmark_latency_ms
 
 DEFAULT_CHAIN_LENGTH = 4
 
@@ -45,7 +38,6 @@ class Node:
         time.sleep(init_delay_secs)
         self.id = id
         self.prev_node = prev_node
-        return
 
     async def compute(self, input_data, compute_delay_secs=0):
         await asyncio.sleep(compute_delay_secs)
@@ -59,6 +51,15 @@ class Node:
 def test_long_chain_deployment_graph(
     chain_length, init_delay_secs=0, compute_delay_secs=0
 ):
+    """
+    Test that focuses on long chain of deployment graph
+
+    INPUT -> Node_1 -> Node_2 -> ... -> Node_10 -> OUTPUT
+
+    1) Intermediate blob size can be large / small
+    2) Compute time each node can be long / short
+    3) Init time can be long / short
+    """
     with InputNode() as user_input:
         prev_output = user_input
         prev_node = None
@@ -74,68 +75,6 @@ def test_long_chain_deployment_graph(
         serve_dag = DAGDriver.bind(prev_output)
 
     return serve_dag
-
-
-async def benchmark_throughput_tps(
-    dag_handle,
-    expected,
-    duration_secs=DEFAULT_THROUGHPUT_TRIAL_DURATION_SECS,
-    num_clients=DEFAULT_NUM_CLIENTS,
-):
-    """Call deployment handle in a blocking for loop."""
-    clients = [
-        DeploymentHandleClient.remote(measure_throughput_tps)
-        for _ in range(num_clients)
-    ]
-    ray.get([client.ready.remote() for client in clients])
-
-    throughput_stats_tps_list = ray.get(
-        [
-            a.run.remote(
-                dag_handle.predict.remote,
-                0,
-                expected,
-                duration_secs=duration_secs,
-            )
-            for a in clients
-        ]
-    )
-    throughput_stats_tps = []
-    for client_rst in throughput_stats_tps_list:
-        throughput_stats_tps.extend(client_rst)
-
-    mean = round(np.mean(throughput_stats_tps), 2)
-    std = round(np.std(throughput_stats_tps), 2)
-    return mean, std
-
-
-async def benchmark_latency_ms(
-    dag_handle, expected, num_requests=100, num_clients=DEFAULT_NUM_CLIENTS
-):
-    """Call deployment handle in a blocking for loop."""
-    clients = [
-        DeploymentHandleClient.remote(measure_latency_ms) for _ in range(num_clients)
-    ]
-    ray.get([client.ready.remote() for client in clients])
-
-    latency_stats_ms_list = ray.get(
-        [
-            a.run.remote(
-                dag_handle.predict.remote,
-                0,
-                expected,
-                num_requests=num_requests,
-            )
-            for a in clients
-        ]
-    )
-    latency_stats_ms = []
-    for client_rst in latency_stats_ms_list:
-        latency_stats_ms.extend(client_rst)
-
-    mean = round(np.mean(latency_stats_ms), 2)
-    std = round(np.std(latency_stats_ms), 2)
-    return mean, std
 
 
 @click.command()
@@ -196,6 +135,7 @@ def main(
             num_clients=num_clients,
         )
     )
+    print(f"chain_length: {chain_length}, num_clients: {num_clients}")
     print(f"latency_mean_ms: {latency_mean_ms}, " f"latency_std_ms: {latency_std_ms}")
     print(
         f"throughput_mean_tps: {throughput_mean_tps}, "
