@@ -409,6 +409,27 @@ def test_run_get_ingress_node(serve_instance):
     assert ray.get(ingress_handle.remote()) == "got f"
 
 
+def test_run_delete_old_deployments(serve_instance):
+    """Check that serve.run() can remove all old deployments"""
+
+    @serve.deployment(name="f", route_prefix="/test1")
+    def f():
+        return "got f"
+
+    @serve.deployment(name="g", route_prefix="/test2")
+    def g():
+        return "got g"
+
+    ingress_handle = serve.run(f.bind())
+    assert ray.get(ingress_handle.remote()) == "got f"
+
+    ingress_handle = serve.run(g.bind())
+    assert ray.get(ingress_handle.remote()) == "got g"
+
+    assert "g" in serve.list_deployments()
+    assert "f" not in serve.list_deployments()
+
+
 class TestSetOptions:
     def test_set_options_basic(self):
         @serve.deployment(
