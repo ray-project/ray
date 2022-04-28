@@ -439,7 +439,7 @@ TEST(SyncerTest, Test1To1) {
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> rand_sleep(0, 10000);
-  std::uniform_int_distribution<> choose_component(0, 1);
+  std::uniform_int_distribution<> choose_component(0, kTestComponents - 1);
   size_t s1_updated = 0;
   size_t s2_updated = 0;
 
@@ -629,7 +629,7 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> rand_sleep(0, 1000000);
-  std::uniform_int_distribution<> choose_component(0, 1);
+  std::uniform_int_distribution<> choose_component(0, kTestComponents - 1);
   std::uniform_int_distribution<> choose_server(0, servers.size() - 1);
 
   for (size_t i = 0; i < 1000000; ++i) {
