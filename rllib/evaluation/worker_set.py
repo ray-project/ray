@@ -219,6 +219,7 @@ class WorkerSet:
             )
 
         # Only sync if we have remote workers or `from_worker` is provided.
+        weights = None
         if self.remote_workers() or from_worker is not None:
             weights = (from_worker or self.local_worker()).get_weights(policies)
             # Put weights only once into object store and use same object
@@ -228,14 +229,14 @@ class WorkerSet:
             for to_worker in self.remote_workers():
                 to_worker.set_weights.remote(weights_ref, global_vars=global_vars)
 
-            # If `from_worker` is provided, also sync to this WorkerSet's
-            # local worker.
-            if from_worker is not None and self.local_worker() is not None:
-                self.local_worker().set_weights(weights, global_vars=global_vars)
-            # If `global_vars` is provided and local worker exists  -> Update its
-            # global_vars.
-            elif self.local_worker() is not None and global_vars is not None:
-                self.local_worker().set_global_vars(global_vars)
+        # If `from_worker` is provided, also sync to this WorkerSet's
+        # local worker.
+        if from_worker is not None and self.local_worker() is not None:
+            self.local_worker().set_weights(weights, global_vars=global_vars)
+        # If `global_vars` is provided and local worker exists  -> Update its
+        # global_vars.
+        elif self.local_worker() is not None and global_vars is not None:
+            self.local_worker().set_global_vars(global_vars)
 
     def add_workers(self, num_workers: int) -> None:
         """Creates and adds a number of remote workers to this worker set.
