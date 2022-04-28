@@ -173,7 +173,7 @@ def main(
             "perf_metric_type": "LATENCY",
         },
         {
-            "perf_metric_name": "requests_std_ms",
+            "perf_metric_name": "latency_std_ms",
             "perf_metric_value": latency_std_ms,
             "perf_metric_type": "LATENCY",
         },

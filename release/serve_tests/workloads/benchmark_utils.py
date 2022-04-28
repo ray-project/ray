@@ -1,19 +1,6 @@
+import asyncio
 import time
 import numpy as np
-
-import ray
-
-
-@ray.remote
-class DeploymentHandleClient:
-    def __init__(self, async_func):
-        self.async_func = async_func
-
-    def ready(self):
-        return "ok"
-
-    async def run(self, *args, **kwargs):
-        return await self.async_func(*args, **kwargs)
 
 
 async def measure_latency_ms(async_fn, args, expected_output, num_requests=10):
@@ -57,21 +44,17 @@ async def benchmark_throughput_tps(
     num_clients=1,
 ):
     """Call deployment handle in a blocking for loop from multiple clients."""
-    clients = [
-        DeploymentHandleClient.remote(measure_throughput_tps)
-        for _ in range(num_clients)
-    ]
-    ray.get([client.ready.remote() for client in clients])
+    client_tasks = [measure_throughput_tps for _ in range(num_clients)]
 
-    throughput_stats_tps_list = ray.get(
-        [
-            a.run.remote(
+    throughput_stats_tps_list = await asyncio.gather(
+        *[
+            client_task(
                 dag_handle.predict.remote,
                 0,
                 expected,
                 duration_secs=duration_secs,
             )
-            for a in clients
+            for client_task in client_tasks
         ]
     )
     throughput_stats_tps = []
@@ -85,20 +68,17 @@ async def benchmark_throughput_tps(
 
 async def benchmark_latency_ms(dag_handle, expected, num_requests=100, num_clients=1):
     """Call deployment handle in a blocking for loop from multiple clients."""
-    clients = [
-        DeploymentHandleClient.remote(measure_latency_ms) for _ in range(num_clients)
-    ]
-    ray.get([client.ready.remote() for client in clients])
+    client_tasks = [measure_latency_ms for _ in range(num_clients)]
 
-    latency_stats_ms_list = ray.get(
-        [
-            a.run.remote(
+    latency_stats_ms_list = await asyncio.gather(
+        *[
+            client_task(
                 dag_handle.predict.remote,
                 0,
                 expected,
                 num_requests=num_requests,
             )
-            for a in clients
+            for client_task in client_tasks
         ]
     )
     latency_stats_ms = []
