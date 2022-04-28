@@ -211,28 +211,6 @@ class AlphaStarTrainer(appo.APPOTrainer):
         return DEFAULT_CONFIG
 
     @override(appo.APPOTrainer)
-    def get_default_policy_class(
-        self, config: PartialTrainerConfigDict
-    ) -> Optional[Type[Policy]]:
-        if config["framework"] == "torch":
-            from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
-
-            return AsyncPPOTorchPolicy
-        # We need to differentiate here beteween tf and tf2|tfe, due to the fact
-        # the the automatic `as_eager()` conversion of TFPolicies only happens
-        # when the policy lives inside a RolloutWorker (policy_map). Since
-        # AlphaStar has single policy learner actors, this auto-conversion does not
-        # happen on these actors.
-        elif config["framework"] == "tf":
-            return AsyncPPOTFPolicy
-        # For eager, return the eager'ized (and maybe traced) policy.
-        else:
-            cls = AsyncPPOTFPolicy.as_eager()
-            if config.get("eager_tracing"):
-                cls = cls.with_tracing()
-            return cls
-
-    @override(appo.APPOTrainer)
     def validate_config(self, config: TrainerConfigDict):
         # Create the LeagueBuilder object, allowing it to build the multiagent
         # config as well.
