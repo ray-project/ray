@@ -37,16 +37,14 @@ def train_rl_ppo_online(num_workers: int, use_gpu: bool = False) -> Result:
     return tuner.fit()[0]
 
 
-def serve_rl_model(checkpoint: Checkpoint, name="RLModel") -> ModelWrapperDeployment:
+def serve_rl_model(checkpoint: Checkpoint, name="RLModel") -> str:
     serve.start(detached=True)
     deployment = ModelWrapperDeployment.options(name=name)
     deployment.deploy(RLPredictor, checkpoint)
-    return deployment
+    return deployment.url
 
 
-def run_external_env(
-    endpoint_uri: str = "http://127.0.0.1:8000/RLModel", num_batches: int = 3
-):
+def run_external_env(endpoint_uri: str, num_batches: int = 3):
     sub_env = gym.make("CartPole-v0")
 
     ev = RolloutWorker(
@@ -94,6 +92,6 @@ if __name__ == "__main__":
     else:
         checkpoint = Checkpoint.from_directory(args.checkpoint)
 
-    serve_rl_model(checkpoint)
-    run_external_env()
+    endpoint_uri = serve_rl_model(checkpoint)
+    run_external_env(endpoint_uri=endpoint_uri)
     serve.shutdown()
