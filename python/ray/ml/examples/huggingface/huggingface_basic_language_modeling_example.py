@@ -19,6 +19,7 @@ import ray
 import ray.data
 from ray.ml.train.integrations.huggingface import HuggingFaceTrainer
 from ray.ml.predictors.integrations.huggingface import HuggingFacePredictor
+from ray.ml.batch_predictor import BatchPredictor
 
 
 def main(
@@ -116,11 +117,15 @@ def main(
 
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
     prompt = ["My text: Complete me..."]
-    predictor = HuggingFacePredictor.from_checkpoint(
-        results.checkpoint, task="text-generation", tokenizer=tokenizer
+    predictor = BatchPredictor.from_checkpoint(
+        results.checkpoint,
+        HuggingFacePredictor,
+        task="text-generation",
+        tokenizer=tokenizer
     )
-    prediction = predictor.predict(pd.DataFrame(prompt, columns=["prompt"]))
-    prediction = prediction.iloc[0]["generated_text"]
+    data = ray.data.from_pandas(pd.DataFrame(prompt, columns=["prompt"]))
+    prediction = predictor.predict(data, num_gpus_per_worker=int(use_gpu))
+    prediction = prediction.to_pandas().iloc[0]["generated_text"]
 
     print(f"Generated text for prompt '{prompt}': '{prediction}'")
 
