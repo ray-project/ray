@@ -28,6 +28,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
+#include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/pubsub/publisher.h"
 
 namespace ray {
@@ -480,7 +481,8 @@ void GcsServer::InitKVManager() {
   if (storage_type_ == "redis") {
     instance = std::make_unique<RedisInternalKV>(GetRedisClientOptions());
   } else if (storage_type_ == "memory") {
-    instance = std::make_unique<MemoryInternalKV>(main_service_);
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<InMemoryStoreClient>(main_service_));
   }
 
   kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
