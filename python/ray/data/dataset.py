@@ -75,7 +75,10 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import ShufflePartitionOp
+from ray.data.impl.shuffle_and_partition import (
+    SimpleShufflePartitionOp,
+    PushBasedShufflePartitionOp,
+)
 from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
@@ -510,7 +513,12 @@ class Dataset(Generic[T]):
                     block_list.clear()
                 else:
                     blocks = block_list
-                shuffle_op = ShufflePartitionOp(block_udf, random_shuffle=False)
+                context = DatasetContext.get_current()
+                if context.use_push_based_shuffle:
+                    shuffle_op_cls = PushBasedShufflePartitionOp
+                else:
+                    shuffle_op_cls = SimpleShufflePartitionOp
+                shuffle_op = shuffle_op_cls(block_udf, random_shuffle=False)
                 return shuffle_op.execute(
                     blocks,
                     num_blocks,
@@ -580,7 +588,12 @@ class Dataset(Generic[T]):
                 block_list.clear()
             else:
                 blocks = block_list
-            random_shuffle_op = ShufflePartitionOp(
+            context = DatasetContext.get_current()
+            if context.use_push_based_shuffle:
+                shuffle_op_cls = PushBasedShufflePartitionOp
+            else:
+                shuffle_op_cls = SimpleShufflePartitionOp
+            random_shuffle_op = shuffle_op_cls(
                 block_udf, random_shuffle=True, random_seed=seed
             )
             return random_shuffle_op.execute(
@@ -984,6 +997,9 @@ class Dataset(Generic[T]):
         The order of the blocks in the datasets is preserved, as is the
         relative ordering between the datasets passed in the argument list.
 
+        NOTE: Unioned datasets are not lineage-serializable, i.e. they can not be used
+        as a tunable hyperparameter in Ray Tune.
+
         Args:
             other: List of datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
@@ -994,29 +1010,37 @@ class Dataset(Generic[T]):
         """
 
         start_time = time.perf_counter()
-        context = DatasetContext.get_current()
-        tasks: List[ReadTask] = []
-        block_partition_refs: List[ObjectRef[BlockPartition]] = []
-        block_partition_meta_refs: List[ObjectRef[BlockPartitionMetadata]] = []
 
         datasets = [self] + list(other)
+        bls = []
+        has_nonlazy = False
         for ds in datasets:
             bl = ds._plan.execute()
-            if isinstance(bl, LazyBlockList):
+            if not isinstance(bl, LazyBlockList):
+                has_nonlazy = True
+            bls.append(bl)
+        if has_nonlazy:
+            blocks = []
+            metadata = []
+            for bl in bls:
+                if isinstance(bl, LazyBlockList):
+                    bs, ms = bl._get_blocks_with_metadata()
+                else:
+                    bs, ms = bl._blocks, bl._metadata
+                blocks.extend(bs)
+                metadata.extend(ms)
+            blocklist = BlockList(blocks, metadata)
+        else:
+            tasks: List[ReadTask] = []
+            block_partition_refs: List[ObjectRef[BlockPartition]] = []
+            block_partition_meta_refs: List[ObjectRef[BlockPartitionMetadata]] = []
+            for bl in bls:
                 tasks.extend(bl._tasks)
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
-            else:
-                tasks.extend([ReadTask(lambda: None, meta) for meta in bl._metadata])
-                if context.block_splitting_enabled:
-                    block_partition_refs.extend(
-                        [ray.put([(b, m)]) for b, m in bl.get_blocks_with_metadata()]
-                    )
-                else:
-                    block_partition_refs.extend(bl.get_blocks())
-                block_partition_meta_refs.extend(
-                    [ray.put(meta) for meta in bl._metadata]
-                )
+            blocklist = LazyBlockList(
+                tasks, block_partition_refs, block_partition_meta_refs
+            )
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1036,10 +1060,7 @@ class Dataset(Generic[T]):
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(
-                LazyBlockList(tasks, block_partition_refs, block_partition_meta_refs),
-                dataset_stats,
-            ),
+            ExecutionPlan(blocklist, dataset_stats),
             max_epoch,
             self._lazy,
         )
@@ -1478,6 +1499,9 @@ class Dataset(Generic[T]):
         (e.g., one was produced from a ``.map()`` of another). For Arrow
         blocks, the schema will be concatenated, and any duplicate column
         names disambiguated with _1, _2, etc. suffixes.
+
+        NOTE: Zipped datasets are not lineage-serializable, i.e. they can not be used
+        as a tunable hyperparameter in Ray Tune.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2480,13 +2504,8 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         """
         import raydp
 
-        core_worker = ray.worker.global_worker.core_worker
-        locations = [
-            core_worker.get_owner_address(block)
-            for block in self.get_internal_block_refs()
-        ]
         return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, self.schema(), self.get_internal_block_refs(), locations
+            spark, self.schema(), self.get_internal_block_refs()
         )
 
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
@@ -2906,19 +2925,25 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized bytes
         returned from this method into a Dataset.
 
+        NOTE: Unioned and zipped datasets, produced by :py:meth`Dataset.union` and
+        :py:meth:`Dataset.zip`, are not lineage-serializable.
+
         Returns:
             Serialized bytes containing the lineage of this dataset.
         """
         if not self.has_serializable_lineage():
             raise ValueError(
-                "Lineage-based serialization is only supported for Datasets created "
-                "from data that we know will still exist at deserialization "
-                "time, e.g. external data in persistent cloud object stores or "
-                "in-memory data from long-lived clusters. Concretely, all "
-                "ray.data.read_*() APIs should support lineage-based serialization, "
-                "while all of the ray.data.from_*() APIs do not. To allow this "
-                "Dataset to be serialized to storage, write the data to an external "
-                "store (such as AWS S3, GCS, or Azure Blob Storage) using the "
+                "Lineage-based serialization is not supported for this dataset, which "
+                "means that it cannot be used as a tunable hyperparameter. "
+                "Lineage-based serialization is explicitly NOT supported for unioned "
+                "or zipped datasets (see docstrings for those methods), and is only "
+                "supported for Datasets created from data that we know will still "
+                "exist at deserialization time, e.g. external data in persistent cloud "
+                "object stores or in-memory data from long-lived clusters. Concretely, "
+                "all ray.data.read_*() APIs should support lineage-based "
+                "serialization, while all of the ray.data.from_*() APIs do not. To "
+                "allow this Dataset to be serialized to storage, write the data to an "
+                "external store (such as AWS S3, GCS, or Azure Blob Storage) using the "
                 "Dataset.write_*() APIs, and serialize a new dataset reading from the "
                 "external store using the ray.data.read_*() APIs."
             )
