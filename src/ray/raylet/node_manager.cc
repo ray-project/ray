@@ -615,8 +615,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       *(gcs_client_->NodeResources().GetLastResourceUsage()));
   cluster_resource_scheduler_->GetLocalResourceManager().FillResourceUsage(
       resources_data);
-  cluster_task_manager_->FillResourceUsage(
-      resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
@@ -1680,6 +1678,16 @@ void NodeManager::HandleRequestResourceReport(
   FillResourceReport(*resources_data);
   resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
 
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+                                        rpc::GetResourceLoadReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  auto resources_data = reply->mutable_resources();
+  resources_data->set_node_id(self_node_id_.Binary());
+  resources_data->set_node_manager_address(initial_config_.node_manager_address);
+  cluster_task_manager_->FillResourceUsage(*resources_data, nullptr);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

@@ -40,6 +40,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             is simply a unit-less scalar.
         brackets: Number of brackets. Each bracket has a different
             halving rate, specified by the reduction factor.
+        stop_last_trials: Whether to terminate the trials after
+            reaching max_t. Defaults to True.
     """
 
     def __init__(
@@ -51,6 +53,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         grace_period: int = 1,
         reduction_factor: float = 4,
         brackets: int = 1,
+        stop_last_trials: bool = True,
     ):
         assert max_t > 0, "Max (time_attr) not valid!"
         assert max_t >= grace_period, "grace_period must be <= max_t!"
@@ -68,7 +71,14 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
         # Tracks state for new trial add
         self._brackets = [
-            _Bracket(grace_period, max_t, reduction_factor, s) for s in range(brackets)
+            _Bracket(
+                grace_period,
+                max_t,
+                reduction_factor,
+                s,
+                stop_last_trials=stop_last_trials,
+            )
+            for s in range(brackets)
         ]
         self._counter = 0  # for
         self._num_stopped = 0
@@ -80,6 +90,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         elif self._mode == "min":
             self._metric_op = -1.0
         self._time_attr = time_attr
+        self._stop_last_trials = stop_last_trials
 
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], **spec
@@ -128,7 +139,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         action = TrialScheduler.CONTINUE
         if self._time_attr not in result or self._metric not in result:
             return action
-        if result[self._time_attr] >= self._max_t:
+        if result[self._time_attr] >= self._max_t and self._stop_last_trials:
             action = TrialScheduler.STOP
         else:
             bracket = self._trial_info[trial.trial_id]
@@ -189,12 +200,20 @@ class _Bracket:
         >>> b.cutoff(b._rungs[3][1]) == 2.0 # doctest: +SKIP
     """
 
-    def __init__(self, min_t: int, max_t: int, reduction_factor: float, s: int):
+    def __init__(
+        self,
+        min_t: int,
+        max_t: int,
+        reduction_factor: float,
+        s: int,
+        stop_last_trials: bool = True,
+    ):
         self.rf = reduction_factor
         MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
         self._rungs = [
             (min_t * self.rf ** (k + s), {}) for k in reversed(range(MAX_RUNGS))
         ]
+        self._stop_last_trials = stop_last_trials
 
     def cutoff(self, recorded) -> Optional[Union[int, float, complex, np.ndarray]]:
         if not recorded:
@@ -204,6 +223,16 @@ class _Bracket:
     def on_result(self, trial: Trial, cur_iter: int, cur_rew: Optional[float]) -> str:
         action = TrialScheduler.CONTINUE
         for milestone, recorded in self._rungs:
+            if (
+                cur_iter >= milestone
+                and trial.trial_id in recorded
+                and not self._stop_last_trials
+            ):
+                # If our result has been recorded for this trial already, the
+                # decision to continue training has already been made. Thus we can
+                # skip new cutoff calculation and just continue training.
+                # We can also break as milestones are descending.
+                break
             if cur_iter < milestone or trial.trial_id in recorded:
                 continue
             else:

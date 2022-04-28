@@ -65,9 +65,9 @@ class JobInfo:
     # TODO(architkulkarni): Populate this field with e.g. Runtime env setup failure,
     # Internal error, user script error
     error_type: Optional[str] = None
-    #: The time when the job was started.  A Unix timestamp in seconds.
+    #: The time when the job was started.  A Unix timestamp in ms.
     start_time: Optional[int] = None
-    #: The time when the job moved into a terminal state.  A Unix timestamp in seconds.
+    #: The time when the job moved into a terminal state.  A Unix timestamp in ms.
     end_time: Optional[int] = None
     #: Arbitrary user-provided metadata for the job.
     metadata: Optional[Dict[str, str]] = None
@@ -134,7 +134,7 @@ class JobInfoStorageClient:
             )
 
         if status.is_terminal():
-            new_info.end_time = int(time.time())
+            new_info.end_time = int(time.time() * 1000)
 
         self.put_info(job_id, new_info)
 

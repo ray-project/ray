@@ -1,12 +1,13 @@
 import logging
 import os
 import types
-from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
+from typing import Dict, Set, List, Tuple, Union, Optional, Any, Callable, TYPE_CHECKING
 import time
 
 import ray
 from ray.experimental.dag import DAGNode
 from ray.experimental.dag.input_node import DAGInputData
+from ray.remote_function import RemoteFunction
 
 from ray.workflow import execution
 from ray.workflow.step_function import WorkflowStepFunction
@@ -636,6 +637,40 @@ def continuation(dag_node: "DAGNode") -> Union[Workflow, ray.ObjectRef]:
     return ray.get(dag_node.execute())
 
 
+@PublicAPI(stability="beta")
+def options(
+    **workflow_options: Dict[str, Any]
+) -> Callable[[RemoteFunction], RemoteFunction]:
+    # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is
+    # fairly complex, but we should enable it later.
+    valid_options = {
+        "name",
+        "metadata",
+        "catch_exceptions",
+        "max_retries",
+        "allow_inplace",
+        "checkpoint",
+    }
+    invalid_keywords = set(workflow_options.keys()) - valid_options
+    if invalid_keywords:
+        raise ValueError(
+            f"Invalid option keywords {invalid_keywords} for workflow steps. "
+            f"Valid ones are {valid_options}."
+        )
+
+    def _apply_workflow_options(f: RemoteFunction):
+        if not isinstance(f, RemoteFunction):
+            raise ValueError("Only apply 'workflow.options' to Ray remote functions.")
+        from ray.workflow.common import WORKFLOW_OPTIONS
+
+        if "_metadata" not in f._default_options:
+            f._default_options["_metadata"] = {}
+        f._default_options["_metadata"][WORKFLOW_OPTIONS] = workflow_options
+        return f
+
+    return _apply_workflow_options
+
+
 __all__ = (
     "step",
     "virtual_actor",
@@ -646,4 +681,5 @@ __all__ = (
     "get_status",
     "get_metadata",
     "cancel",
+    "options",
 )

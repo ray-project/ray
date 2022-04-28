@@ -96,6 +96,15 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "pytorch_pbt_failure",
+    size = "medium",
+    srcs = ["tests/pytorch_pbt_failure.py"],
+    tags = ["team:ml", "exlusive"],
+    deps = [":train_lib"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
