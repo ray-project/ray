@@ -35,7 +35,6 @@ from ray._private.gcs_pubsub import (
     GcsPublisher,
     GcsErrorSubscriber,
     GcsLogSubscriber,
-    GcsFunctionKeySubscriber,
 )
 from ray._private.usage import usage_lib
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -1460,9 +1459,6 @@ def connect(
     worker.gcs_publisher = GcsPublisher(address=worker.gcs_client.address)
     worker.gcs_error_subscriber = GcsErrorSubscriber(address=worker.gcs_client.address)
     worker.gcs_log_subscriber = GcsLogSubscriber(address=worker.gcs_client.address)
-    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-        address=worker.gcs_client.address
-    )
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1647,6 +1643,8 @@ def connect(
         # Export cached functions_to_run.
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
+    elif mode == WORKER_MODE:
+        worker.function_actor_manager.fetch_and_execute_functions()
     worker.cached_functions_to_run = None
 
     # Setup tracing here
@@ -1673,7 +1671,6 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        worker.gcs_function_key_subscriber.close()
         worker.gcs_error_subscriber.close()
         worker.gcs_log_subscriber.close()
         if hasattr(worker, "listener_thread"):

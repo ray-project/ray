@@ -78,10 +78,6 @@ class FunctionActorManager:
         self._loaded_actor_classes = {}
         self.execution_infos = {}
 
-        if self._worker.mode == ray.worker.WORKER_MODE:
-            # load and execute functions to run
-            self._fetch_and_execute_functions()
-
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
         self._num_task_executions[function_id] += 1
@@ -298,7 +294,7 @@ class FunctionActorManager:
             raise KeyError(message)
         return info
 
-    def _fetch_and_execute_functions(self):
+    def fetch_and_execute_functions(self):
         function_keys = self._worker.gcs_client.internal_kv_keys(
             make_function_table_key(b"FunctionsToRun", self._worker.current_job_id),
             KV_NAMESPACE_FUNCTION_TABLE,
