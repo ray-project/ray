@@ -1794,17 +1794,18 @@ class RolloutWorker(ParallelIteratorWorker):
             env = env_creator(env_ctx)
             # Validate first.
             if not disable_env_checking:
-                if log_once("env_creator_warning"):
+                try:
+                    check_env(env)
+                except:
                     logger.warning(
                         "We've added a module for checking environments that "
-                        "are used in experiments. It will cause your "
-                        "environment to fail if your environment is not set up"
-                        "correctly. You can disable check env by setting "
+                        "are used in experiments. Your env may not be set up"
+                        "correctly. You can disable env checking for now by setting "
                         "`disable_env_checking` to True in your experiment config "
                         "dictionary. You can run the environment checking module "
                         "standalone by calling ray.rllib.utils.check_env(env)."
                     )
-                check_env(env)
+                    raise
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)
