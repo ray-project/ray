@@ -26,10 +26,7 @@ from serve_test_cluster_utils import (
     setup_anyscale_cluster,
 )
 from serve_test_utils import save_test_results
-from benchmark_utils import (
-    benchmark_throughput_tps,
-    benchmark_latency_ms
-)
+from benchmark_utils import benchmark_throughput_tps, benchmark_latency_ms
 
 DEFAULT_FANOUT_DEGREE = 4
 
@@ -72,16 +69,13 @@ def test_wide_fanout_deployment_graph(
     3) Init time can be long / short
     """
     nodes = [
-        Node.bind(i, init_delay_secs=init_delay_secs)
-        for i in range(0, fanout_degree)
+        Node.bind(i, init_delay_secs=init_delay_secs) for i in range(0, fanout_degree)
     ]
     outputs = []
     with InputNode() as user_input:
         for i in range(0, fanout_degree):
             outputs.append(
-                nodes[i].compute.bind(
-                    user_input, compute_delay_secs=compute_delay_secs
-                )
+                nodes[i].compute.bind(user_input, compute_delay_secs=compute_delay_secs)
             )
 
         dag = combine.bind(outputs)
@@ -150,10 +144,7 @@ def main(
         )
     )
     print(f"fanout_degree: {fanout_degree}, num_clients: {num_clients}")
-    print(
-        f"latency_mean_ms: {latency_mean_ms}, "
-        f"latency_std_ms: {latency_std_ms}"
-    )
+    print(f"latency_mean_ms: {latency_mean_ms}, " f"latency_std_ms: {latency_std_ms}")
     print(
         f"throughput_mean_tps: {throughput_mean_tps}, "
         f"throughput_std_tps: {throughput_std_tps}"
