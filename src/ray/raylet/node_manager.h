@@ -493,6 +493,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestResourceReportReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GetResourceLoad` request.
+  void HandleGetResourceLoad(const rpc::GetResourceLoadRequest &request,
+                             rpc::GetResourceLoadReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `PrepareBundleResources` request.
   void HandlePrepareBundleResources(const rpc::PrepareBundleResourcesRequest &request,
                                     rpc::PrepareBundleResourcesReply *reply,

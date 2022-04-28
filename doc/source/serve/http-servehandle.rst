@@ -9,6 +9,8 @@ This section should help you:
 
 .. contents:: Calling Deployments via HTTP and Python
 
+.. _serve-http:
+
 Calling Deployments via HTTP
 ============================
 
@@ -157,10 +159,22 @@ To try it out, save a code snippet in a local python file (i.e. main.py) and in 
 HTTP Adapters
 ^^^^^^^^^^^^^
 
+HTTP adapters are functions that convert raw HTTP request to Python types that you know and recognize. 
+You can use it in three different scenarios:
+
+- Ray AIR ``ModelWrapper``
+- Serve Deployment Graph ``DAGDriver``
+- Embedded in Bring Your Own ``FastAPI`` Application
+
+
+Let's go over them one by one.
+
+Ray AIR ``ModelWrapper``
+""""""""""""""""""""""""
+
 Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
 You can just use it with :ref:`Ray AI Runtime (AIR) model wrapper<air-serve-integration>` feature
 to one click deploy pre-trained models.
-Alternatively, you can directly import them and put them into your FastAPI app.
 
 For example, we provide a simple adapter for n-dimensional array.
 
@@ -177,6 +191,27 @@ With :ref:`model wrappers<air-serve-integration>`, you can specify it via the ``
         my_ray_air_checkpoint,
         input_schema=json_to_ndarray
     )
+
+Serve Deployment Graph ``DAGDriver``
+""""""""""""""""""""""""""""""""""""
+In :ref:`Serve Deployment Graph <serve-deployment-graph>`, you can configure
+``ray.serve.drivers.DAGDriver`` to accept an http adapter via it's ``input_schema`` field. 
+
+For example, the json request adapters parse JSON in HTTP body:
+
+.. code-block:: python
+
+    from ray.serve.drivers import DAGDriver
+    from ray.serve.http_adapters import json_request
+    from ray.experimental.dag.input_node import InputNode
+
+    with InputNode() as input_node:
+        ...
+        dag = DAGDriver.bind(other_node, input_schema=json_request)
+
+
+Embedded in Bring Your Own ``FastAPI`` Application
+""""""""""""""""""""""""""""""""""""""""""""""""""
 
 You can also bring the adapter to your own FastAPI app using
 `Depends <https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends>`_.
@@ -200,10 +235,13 @@ It has the following schema for input:
 .. autopydantic_model:: ray.serve.http_adapters.NdArray
 
 
+List of Built-in Adapters
+"""""""""""""""""""""""""
+
 Here is a list of adapters and please feel free to `contribute more <https://github.com/ray-project/ray/issues/new/choose>`_!
 
 .. automodule:: ray.serve.http_adapters
-    :members: json_to_ndarray, image_to_ndarray
+    :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request
 
 
 Configuring HTTP Server Locations

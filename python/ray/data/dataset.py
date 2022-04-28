@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     import modin
     import dask
     import pyspark
-    import ray.util.sgd
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
@@ -34,6 +33,7 @@ import itertools
 import numpy as np
 
 import ray
+import ray.cloudpickle as pickle
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import (
@@ -74,7 +74,10 @@ from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import cache_wrapper, CallableClass, ComputeStrategy
 from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
-from ray.data.impl.shuffle import ShufflePartitionOp
+from ray.data.impl.shuffle_and_partition import (
+    SimpleShufflePartitionOp,
+    PushBasedShufflePartitionOp,
+)
 from ray.data.impl.fast_repartition import fast_repartition
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
@@ -508,7 +511,12 @@ class Dataset(Generic[T]):
                     block_list.clear()
                 else:
                     blocks = block_list
-                shuffle_op = ShufflePartitionOp(block_udf, random_shuffle=False)
+                context = DatasetContext.get_current()
+                if context.use_push_based_shuffle:
+                    shuffle_op_cls = PushBasedShufflePartitionOp
+                else:
+                    shuffle_op_cls = SimpleShufflePartitionOp
+                shuffle_op = shuffle_op_cls(block_udf, random_shuffle=False)
                 return shuffle_op.execute(
                     blocks,
                     num_blocks,
@@ -578,7 +586,12 @@ class Dataset(Generic[T]):
                 block_list.clear()
             else:
                 blocks = block_list
-            random_shuffle_op = ShufflePartitionOp(
+            context = DatasetContext.get_current()
+            if context.use_push_based_shuffle:
+                shuffle_op_cls = PushBasedShufflePartitionOp
+            else:
+                shuffle_op_cls = SimpleShufflePartitionOp
+            random_shuffle_op = shuffle_op_cls(
                 block_udf, random_shuffle=True, random_seed=seed
             )
             return random_shuffle_op.execute(
@@ -2839,6 +2852,14 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         ds._set_uuid(self._get_uuid())
         return ds
 
+    def is_fully_executed(self) -> bool:
+        """Returns whether this Dataset has been fully executed.
+
+        This will return False if this Dataset is lazy and if the output of its final
+        stage hasn't been computed yet.
+        """
+        return self._plan.has_computed_output()
+
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         return self._plan.stats().summary_string()
@@ -2862,9 +2883,95 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
         self._lazy = True
         return self
 
+    def has_serializable_lineage(self) -> bool:
+        """Whether this dataset's lineage is able to be serialized for storage and
+        later deserialized, possibly on a different cluster.
+
+        Only datasets that are created from data that we know will still exist at
+        deserialization time, e.g. data external to this Ray cluster such as persistent
+        cloud object stores, support lineage-based serialization. All of the
+        ray.data.read_*() APIs support lineage-based serialization.
+        """
+        return self._plan.has_lazy_input()
+
+    @DeveloperAPI
+    def serialize_lineage(self) -> bytes:
+        """
+        Serialize this dataset's lineage, not the actual data or the existing data
+        futures, to bytes that can be stored and later deserialized, possibly on a
+        different cluster.
+
+        Note that this will drop all computed data, and that everything will be
+        recomputed from scratch after deserialization.
+
+        Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized bytes
+        returned from this method into a Dataset.
+
+        Returns:
+            Serialized bytes containing the lineage of this dataset.
+        """
+        if not self.has_serializable_lineage():
+            raise ValueError(
+                "Lineage-based serialization is only supported for Datasets created "
+                "from data that we know will still exist at deserialization "
+                "time, e.g. external data in persistent cloud object stores or "
+                "in-memory data from long-lived clusters. Concretely, all "
+                "ray.data.read_*() APIs should support lineage-based serialization, "
+                "while all of the ray.data.from_*() APIs do not. To allow this "
+                "Dataset to be serialized to storage, write the data to an external "
+                "store (such as AWS S3, GCS, or Azure Blob Storage) using the "
+                "Dataset.write_*() APIs, and serialize a new dataset reading from the "
+                "external store using the ray.data.read_*() APIs."
+            )
+        # Copy Dataset and clear the blocks from the execution plan so only the
+        # Dataset's lineage is serialized.
+        plan_copy = self._plan.deep_copy(preserve_uuid=True)
+        ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        ds._plan.clear_block_refs()
+        ds._set_uuid(self._get_uuid())
+
+        def _reduce(rf: ray.remote_function.RemoteFunction):
+            # Custom reducer for Ray remote function handles that allows for
+            # cross-cluster serialization.
+            # This manually unsets the last export session and job to force re-exporting
+            # of the function when the handle is deserialized on a new cluster.
+            # TODO(Clark): Fix this in core Ray, see issue:
+            # https://github.com/ray-project/ray/issues/24152.
+            reconstructor, args, state = rf.__reduce__()
+            state["_last_export_session_and_job"] = None
+            return reconstructor, args, state
+
+        context = ray.worker.global_worker.get_serialization_context()
+        try:
+            context._register_cloudpickle_reducer(
+                ray.remote_function.RemoteFunction, _reduce
+            )
+            serialized = pickle.dumps(ds)
+        finally:
+            context._unregister_cloudpickle_reducer(ray.remote_function.RemoteFunction)
+        return serialized
+
+    @DeveloperAPI
+    @staticmethod
+    def deserialize_lineage(serialized_ds: bytes) -> "Dataset":
+        """
+        Deserialize the provided lineage-serialized Dataset.
+
+        This assumes that the provided serialized bytes were serialized using
+        :py:meth:`Dataset.serialize_lineage`.
+
+        Args:
+            serialized_ds: The serialized Dataset that we wish to deserialize.
+
+        Returns:
+            A deserialized ``Dataset`` instance.
+        """
+        return pickle.loads(serialized_ds)
+
     def _split(
         self, index: int, return_right_half: bool
     ) -> ("Dataset[T]", "Dataset[T]"):
+        start_time = time.perf_counter()
         get_num_rows = cached_remote_fn(_get_num_rows)
         split_block = cached_remote_fn(_split_block, num_returns=4)
 
@@ -2900,19 +3007,50 @@ List[str]]]): The names of the columns to use as the features. Can be a list of 
                 right_metadata.append(ray.get(m1))
             count += num_rows
 
+        split_duration = time.perf_counter() - start_time
+        left_meta_for_stats = [
+            BlockMetadata(
+                num_rows=m.num_rows,
+                size_bytes=m.size_bytes,
+                schema=m.schema,
+                input_files=m.input_files,
+                exec_stats=None,
+            )
+            for m in left_metadata
+        ]
+        left_dataset_stats = DatasetStats(
+            stages={"split": left_meta_for_stats},
+            parent=self._plan.stats(),
+        )
+        left_dataset_stats.time_total_s = split_duration
         left = Dataset(
             ExecutionPlan(
                 BlockList(left_blocks, left_metadata),
-                self._plan.stats().child_TODO("split"),
+                left_dataset_stats,
             ),
             self._epoch,
             self._lazy,
         )
         if return_right_half:
+            right_meta_for_stats = [
+                BlockMetadata(
+                    num_rows=m.num_rows,
+                    size_bytes=m.size_bytes,
+                    schema=m.schema,
+                    input_files=m.input_files,
+                    exec_stats=None,
+                )
+                for m in right_metadata
+            ]
+            right_dataset_stats = DatasetStats(
+                stages={"split": right_meta_for_stats},
+                parent=self._plan.stats(),
+            )
+            right_dataset_stats.time_total_s = split_duration
             right = Dataset(
                 ExecutionPlan(
                     BlockList(right_blocks, right_metadata),
-                    self._plan.stats().child_TODO("split"),
+                    right_dataset_stats,
                 ),
                 self._epoch,
                 self._lazy,

@@ -1999,38 +1999,6 @@
   alert: default
 
 ########################
-# SGD tests
-########################
-
-- name: sgd_gpu
-  group: SGD tests
-  working_dir: sgd_tests
-
-  legacy:
-    test_name: sgd_gpu
-    test_suite: sgd_tests
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    cluster_env: sgd_gpu/sgd_gpu_app_config.yaml
-    cluster_compute: sgd_gpu/sgd_gpu_compute.yaml
-
-  run:
-    timeout: 3000
-    script: python sgd_gpu/sgd_gpu_test.py --num-workers=2 --use-gpu --address=auto
-
-    wait_for_nodes:
-      num_nodes: 2
-      timeout: 600
-
-    type: sdk_command
-    file_manager: job
-
-  alert: default
-
-########################
 # Train tests
 ########################
 
@@ -3453,11 +3421,9 @@
   run:
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-
     wait_for_nodes:
       num_nodes: 20
       timeout: 900
-
     type: sdk_command
     file_manager: sdk
 
@@ -3479,11 +3445,57 @@
   run:
     timeout: 7200
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-
     wait_for_nodes:
       num_nodes: 20
       timeout: 900
+    type: sdk_command
+    file_manager: sdk
 
+- name: dataset_shuffle_random_shuffle_1tb_small_instances
+  group: core-dataset-tests
+  working_dir: nightly_tests
+  legacy:
+    test_name: dataset_shuffle_random_shuffle_1tb_small_instances
+    test_suite: dataset_test
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+
+  run:
+    timeout: 7200
+    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
+    wait_for_nodes:
+      num_nodes: 20
+      timeout: 900
+    type: sdk_command
+    file_manager: sdk
+
+- name: dataset_shuffle_sort_1tb_small_instances
+  group: core-dataset-tests
+  working_dir: nightly_tests
+  legacy:
+    test_name: dataset_shuffle_sort_1tb_small_instances
+    test_suite: dataset_test
+
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+
+  run:
+    timeout: 7200
+    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
+    wait_for_nodes:
+      num_nodes: 20
+      timeout: 900
     type: sdk_command
     file_manager: sdk
 
