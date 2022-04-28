@@ -379,6 +379,7 @@ class ImpalaTrainer(Trainer):
         if self.config["_disable_execution_plan_api"]:
             # Create extra aggregation workers and assign each rollout worker to
             # one of them.
+            self.batches_to_place_on_learner = []
             if self.config["num_aggregation_workers"] > 0:
                 # This spawns `num_aggregation_workers` actors that aggregate
                 # experiences coming from RolloutWorkers in parallel. We force
@@ -430,7 +431,6 @@ class ImpalaTrainer(Trainer):
                 self.workers.local_worker(), self.config
             )
             self._learner_thread.start()
-
             self.workers_that_need_updates = set()
 
     @override(Trainer)
@@ -444,12 +444,11 @@ class ImpalaTrainer(Trainer):
                 unprocessed_sample_batches
             )
         else:
+            import ipdb; ipdb.set_trace()
             batch = self.process_experiences_directly(unprocessed_sample_batches)
 
-        train_batch = self._batch_concatenator(batch)
-
-        if train_batch:
-            self.place_processed_samples_on_learner_queue(train_batch[0])
+        self.concatenate_batches_and_pre_queue(batch)
+        self.place_processed_samples_on_learner_queue()
         learner_results = self.process_trained_results()
 
         self.update_workers_if_necessary()
@@ -577,6 +576,26 @@ class ImpalaTrainer(Trainer):
             strategy=config.get("placement_strategy", "PACK"),
         )
 
+    def concatenate_batches_and_pre_queue(self, batches: List[SampleBatch]):
+        """Concatenate batches that are being returned from rollout workers
+
+        Args:
+            batches: batches of experiences from rollout workers
+
+        """
+
+        def aggregate_into_larger_batch():
+            if (
+                sum(b.count for b in self.batch_being_built)
+                > self.config["train_batch_size"]
+            ):
+                batch_to_add = SampleBatch.concat_samples(self.batch_being_built)
+                self.batches_to_place_on_learner.append(batch_to_add)
+                self.batch_being_built = []
+        for batch in batches:
+            self.batch_being_built.append(batch)
+            aggregate_into_larger_batch()
+
     def get_samples_from_workers(self) -> Dict[ActorHandle, List[SampleBatch]]:
         # Perform asynchronous sampling on all (remote) rollout workers.
         if self.workers.remote_workers():
@@ -599,19 +618,19 @@ class ImpalaTrainer(Trainer):
         return sample_batches
 
     def place_processed_samples_on_learner_queue(
-        self, processed_samples: SampleBatchType
+        self, processed_sample_batches: List[SampleBatchType]
     ) -> None:
-        self._counters["num_samples_added_to_queue"]
-        try:
-            if processed_samples:
-                self._learner_thread.inqueue.put(processed_samples, block=False)
-                self._counters[NUM_ENV_STEPS_SAMPLED] += processed_samples.count
+        self._counters["num_samples_added_to_queue"] = 0
+        for batch in processed_sample_batches:
+            try:
+                self._learner_thread.inqueue.put(batch, block=False)
+                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
                 self._counters[
                     NUM_AGENT_STEPS_SAMPLED
-                ] += processed_samples.agent_steps()
-                self._counters["num_samples_added_to_queue"] = processed_samples.count
-        except queue.Full:
-            self._counters["num_times_learner_queue_full"] += 1
+                ] += batch.agent_steps()
+                self._counters["num_samples_added_to_queue"] = batch.count
+            except queue.Full:
+                self._counters["num_times_learner_queue_full"] += 1
 
     def process_trained_results(self) -> ResultDict:
         # Get learner outputs/stats from output queue.
@@ -652,13 +671,11 @@ class ImpalaTrainer(Trainer):
             batches = ray.get(batches)
         for batch in batches:
             batch = batch.decompress_if_needed()
-            self.local_mixin_buffer.add(batch)
-            batch = self.local_mixin_buffer.sample(self.config["rollout_fragment_length"])
+            self.local_mixin_buffer.add_batch(batch)
+            batch = self.local_mixin_buffer.replay()
             if batch:
                 processed_batches.append(batch)
-        if processed_batches:
-            return SampleBatch.concat_samples(processed_batches)
-        return None
+        return processed_batches
 
     def process_experiences_tree_aggregation(
         self, actor_to_sample_batches_refs: Dict[ActorHandle, List[ObjectRef]]
@@ -696,9 +713,7 @@ class ImpalaTrainer(Trainer):
         for ready_sub_batches in waiting_processed_sample_batches.values():
             ready_processed_batches.extend(ready_sub_batches)
 
-        if ready_processed_batches:
-            return SampleBatch.concat_samples(ready_processed_batches)
-        return None
+        return ready_processed_batches
 
     def update_workers_if_necessary(self) -> None:
         # Only need to update workers if there are remote workers.
@@ -739,23 +754,21 @@ class AggregatorWorker:
 
     def __init__(self, config: TrainerConfigDict):
         self.config = config
-        self.local_mixin_buffer = MultiAgentMixInReplayBuffer(
+        self._mixin_buffer = MixInMultiAgentReplayBuffer(
             capacity=(
                 self.config["replay_buffer_num_slots"]
                 if self.config["replay_buffer_num_slots"] > 0
                 else 1
             ),
             replay_ratio=self.config["replay_ratio"],
-            storage_unit="fragments",
-            learning_starts=0,
         )
 
     def process_episodes(self, batch: SampleBatchType) -> SampleBatchType:
         processed_batches = []
 
         batch = batch.decompress_if_needed()
-        self.local_mixin_buffer.add(batch)
-        batch = self.local_mixin_buffer.sample(self.config["train_batch_size"])
+        self._mixin_buffer.add_batch(batch)
+        batch = self._mixin_buffer.replay()
         if batch:
             processed_batches.append(batch)
         if processed_batches:

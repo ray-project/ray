@@ -257,7 +257,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         an empty batch if there are no items in the buffer.
 
         Args:
-            num_items: Number of items to sample fromM this buffer.
+            num_items: Number of items to sample from this buffer.
             policy_id: ID of the policy that produced the experiences to be
             sampled.
             **kwargs: Forward compatibility kwargs.
