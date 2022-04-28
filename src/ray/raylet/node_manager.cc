@@ -569,7 +569,9 @@ ray::Status NodeManager::RegisterGcs() {
           auto triggered_by_global_gc = TryLocalGC();
           // If plasma store is under high pressure, we should try to schedule a global
           // gc.
-          ray_syncer_.OnDemandBroadcasting(syncer::RayComponentId::COMMANDS);
+          if (triggered_by_global_gc) {
+            ray_syncer_.OnDemandBroadcasting(syncer::RayComponentId::COMMANDS);
+          }
         },
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
         "NodeManager.CheckGC");
